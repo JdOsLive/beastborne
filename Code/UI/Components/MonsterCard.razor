@@ -1,0 +1,364 @@
+@namespace Beastborne.UI.Components
+@using System.Linq;
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@inherits Panel
+
+<div class="monster-card @(IsSelected ? "selected" : "") @(IsCompact ? "compact" : "") @GetRarityClass()"
+	 onclick=@OnCardClicked
+	 onmouseover=@OnMouseEnter
+	 onmouseout=@OnMouseLeave>
+
+	<!-- Header -->
+	<div class="card-header">
+		<span class="monster-level">LV @Monster.Level</span>
+		@if (CanEvolve())
+		{
+			<span class="evolve-icon" title="Can Evolve">⬆</span>
+		}
+		<div class="header-icons">
+			@if (Monster.IsFavorite)
+			{
+				<span class="favorite-icon">★</span>
+			}
+			@if (Monster.IsLoyal)
+			{
+				<span class="loyal-icon" title="Bred - Loyal">♥</span>
+			}
+			<span class="rarity-pip @GetRarityPipClass()" title="@GetRarityName()">●</span>
+		</div>
+	</div>
+
+	<!-- Monster Icon (Animated) - Use div with background instead of img for better update control -->
+	<div class="monster-icon-container">
+		@if (HasSprite())
+		{
+			<div class="monster-icon" style="background-image: url(@GetCurrentFrame())"></div>
+		}
+		else
+		{
+			<div class="monster-icon-placeholder">?</div>
+		}
+	</div>
+
+	<!-- Name -->
+	<div class="monster-name-row">
+		<div class="monster-name">@Monster.Nickname</div>
+	</div>
+
+	@if (!IsCompact)
+	{
+		<!-- Stats -->
+		<div class="stats-container">
+			<div class="stat-row">
+				<span class="stat-label">HP</span>
+				<div class="stat-bar-bg">
+					<div class="stat-bar-fill hp" style="width: @(GetStatPercent(Monster.MaxHP, 1400))%"></div>
+				</div>
+				<span class="stat-value">@Monster.MaxHP</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">ATK</span>
+				<div class="stat-bar-bg">
+					<div class="stat-bar-fill atk" style="width: @(GetStatPercent(Monster.ATK, 1400))%"></div>
+				</div>
+				<span class="stat-value">@Monster.ATK</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">DEF</span>
+				<div class="stat-bar-bg">
+					<div class="stat-bar-fill def" style="width: @(GetStatPercent(Monster.DEF, 1400))%"></div>
+				</div>
+				<span class="stat-value">@Monster.DEF</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">SpA</span>
+				<div class="stat-bar-bg">
+					<div class="stat-bar-fill spa" style="width: @(GetStatPercent(Monster.SpA, 1400))%"></div>
+				</div>
+				<span class="stat-value">@Monster.SpA</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">SpD</span>
+				<div class="stat-bar-bg">
+					<div class="stat-bar-fill spd-def" style="width: @(GetStatPercent(Monster.SpD, 1400))%"></div>
+				</div>
+				<span class="stat-value">@Monster.SpD</span>
+			</div>
+			<div class="stat-row">
+				<span class="stat-label">SPD</span>
+				<div class="stat-bar-bg">
+					<div class="stat-bar-fill spd" style="width: @(GetStatPercent(Monster.SPD, 1400))%"></div>
+				</div>
+				<span class="stat-value">@Monster.SPD</span>
+			</div>
+		</div>
+
+		<!-- Genetics Quality -->
+		@if (ShouldShowGenetics())
+		{
+			<div class="genetics-row">
+				<span class="genetics-label">Genes:</span>
+				<span class="genetics-value @GetGeneticsClass()">@Monster.Genetics.QualityRating</span>
+			</div>
+		}
+	}
+
+	<!-- Power Rating with Element -->
+	@if (ShouldShowPowerRating())
+	{
+		<div class="power-rating">
+			<span class="power-label">PWR</span>
+			<span class="power-value">@Monster.PowerRating</span>
+			<div class="element-badge @GetElementClass()">@GetElementShort()</div>
+		</div>
+	}
+</div>
+
+@code {
+	public Monster Monster { get; set; }
+	public bool IsSelected { get; set; }
+	public bool IsCompact { get; set; }
+	public bool UseStaticImage { get; set; } = false;
+	public bool AnimateOnHover { get; set; } = false;
+	public Action ClickAction { get; set; }
+	public Action HoverAction { get; set; }
+	public Action LeaveAction { get; set; }
+	public bool ShouldAnimate { get; set; } = false;
+	public int AnimationFrame { get; set; } = 0;
+
+	private Panel iconElement;
+	private int lastRenderedFrame = -1;
+	private bool wasShouldAnimate = false;
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		base.OnAfterTreeRender( firstTime );
+
+		// Always find the icon element after render as it may have been recreated
+		FindIconElement();
+	}
+
+	private void FindIconElement()
+	{
+		foreach ( var child in Descendants )
+		{
+			if ( child is Panel panel && panel.HasClass( "monster-icon" ) )
+			{
+				iconElement = panel;
+				break;
+			}
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		// Handle animation state changes
+		if ( ShouldAnimate != wasShouldAnimate )
+		{
+			wasShouldAnimate = ShouldAnimate;
+			// Reset frame tracking so animation updates on next tick
+			lastRenderedFrame = -1;
+			// Re-find icon element in case it was recreated
+			FindIconElement();
+
+			if ( !ShouldAnimate && iconElement != null )
+			{
+				// Reset to static frame when animation stops
+				var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+				if ( species?.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+				{
+					iconElement.Style.SetBackgroundImage( species.AnimationFrames[0] );
+				}
+			}
+		}
+
+		// Determine if we should animate
+		// - If AnimateOnHover is true, use the ShouldAnimate prop from parent
+		// - If UseStaticImage is true and AnimateOnHover is false, never animate
+		// - Otherwise, always animate
+		bool shouldAnimate = AnimateOnHover ? ShouldAnimate : !UseStaticImage;
+
+		if ( !shouldAnimate ) return;
+
+		// Try to find the icon element if not found yet
+		if ( iconElement == null )
+		{
+			FindIconElement();
+			if ( iconElement == null ) return;
+		}
+
+		// Read directly from SpriteAnimator instead of relying on passed parameter
+		int currentFrame = SpriteAnimator.GlobalFrame;
+
+		// Update the icon's background image directly when frame changes
+		if ( currentFrame != lastRenderedFrame )
+		{
+			lastRenderedFrame = currentFrame;
+			var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+			if ( species?.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+			{
+				int frameIndex = currentFrame % species.AnimationFrames.Count;
+				var framePath = species.AnimationFrames[frameIndex];
+				iconElement.Style.SetBackgroundImage( framePath );
+			}
+		}
+	}
+
+	private void OnCardClicked()
+	{
+		Log.Info($"MonsterCard clicked: {Monster?.Nickname ?? "null"}, ClickAction is {(ClickAction != null ? "SET" : "NULL")}");
+		ClickAction?.Invoke();
+	}
+
+	private bool isInternallyHovered = false;
+
+	private void OnMouseEnter()
+	{
+		// Prevent duplicate calls from child element bubbling
+		if ( isInternallyHovered ) return;
+
+		isInternallyHovered = true;
+		HoverAction?.Invoke();
+	}
+
+	private void OnMouseLeave()
+	{
+		// Check if mouse is still within this panel (moved to child element)
+		// HasHovered is true if mouse is over this panel or any descendant
+		if ( HasHovered ) return;
+
+		isInternallyHovered = false;
+		LeaveAction?.Invoke();
+	}
+
+	private bool HasSprite()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		if ( species == null ) return false;
+
+		// Check if has animation frames or icon path
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+			return true;
+		if ( !string.IsNullOrEmpty( species.IconPath ) )
+			return true;
+
+		return false;
+	}
+
+	private string GetCurrentFrame()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		if ( species == null )
+			return "";
+
+		// If using static image or animate-on-hover (and not currently animating), return first frame
+		if ( UseStaticImage || (AnimateOnHover && !ShouldAnimate) )
+		{
+			if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+				return species.AnimationFrames[0];
+			return species.IconPath ?? "";
+		}
+
+		// Check if species has animation frames defined
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+		{
+			int frameIndex = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
+			return species.AnimationFrames[frameIndex];
+		}
+
+		// Fall back to static icon
+		return species.IconPath ?? "";
+	}
+
+	private string GetRarityClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return $"rarity-{species?.BaseRarity.ToString().ToLower() ?? "common"}";
+	}
+
+	private string GetRarityPipClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.BaseRarity.ToString().ToLower() ?? "common";
+	}
+
+	private string GetRarityName()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.BaseRarity.ToString() ?? "Common";
+	}
+
+	private string GetRarityIcon()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.BaseRarity switch
+		{
+			Rarity.Common => "●",
+			Rarity.Uncommon => "◆",
+			Rarity.Rare => "◆",
+			Rarity.Epic => "★",
+			Rarity.Legendary => "★",
+			Rarity.Mythic => "✦",
+			_ => "●"
+		};
+	}
+
+	private string GetElementClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.Element.ToString().ToLower() ?? "neutral";
+	}
+
+	private string GetElementShort()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.Element switch
+		{
+			ElementType.Fire => "FIR",
+			ElementType.Water => "WTR",
+			ElementType.Earth => "ERT",
+			ElementType.Wind => "WND",
+			ElementType.Electric => "ELC",
+			ElementType.Ice => "ICE",
+			ElementType.Nature => "NAT",
+			ElementType.Metal => "MTL",
+			ElementType.Shadow => "SHD",
+			ElementType.Spirit => "SPR",
+			_ => "NEU"
+		};
+	}
+
+	private float GetStatPercent( int value, int max )
+	{
+		return Math.Min( 100, (float)value / max * 100 );
+	}
+
+	private string GetGeneticsClass()
+	{
+		return Monster?.Genetics?.QualityRating?.ToLower() switch
+		{
+			"perfect" => "perfect",
+			"excellent" => "excellent",
+			"great" => "great",
+			"good" => "good",
+			_ => "average"
+		};
+	}
+
+	private bool CanEvolve()
+	{
+		if ( Monster == null ) return false;
+		var species = MonsterManager.Instance?.GetSpecies( Monster.SpeciesId );
+		if ( species == null ) return false;
+		return Monster.CanEvolve( species );
+	}
+
+	// Settings helpers
+	private bool ShouldShowGenetics() => SettingsManager.Instance?.Settings?.ShowGeneticsOnCards ?? false;
+	private bool ShouldShowPowerRating() => SettingsManager.Instance?.Settings?.ShowPowerRatings ?? true;
+}

@@ -1,0 +1,597 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+<div class="beastiary-panel" onclick=@OnPanelClicked>
+	<div class="beastiary-header">
+		<div class="header-left">
+			<div class="beastiary-title">Beastiary</div>
+			<div class="beastiary-subtitle">Your collection of discovered creatures</div>
+		</div>
+		<div class="discovery-count">
+			<span class="count-value">@GetDiscoveredCount()</span>
+			<span class="count-separator">/</span>
+			<span class="count-total">@GetTotalCount()</span>
+			<span class="count-label">Discovered</span>
+		</div>
+	</div>
+
+	<div class="beastiary-content">
+		<div class="beastiary-left">
+			<div class="filter-bar-row">
+				<FilterBar @ref="filterBar"
+						   CurrentElement=@currentElementStr
+						   CurrentSort=@currentSort
+						   ShowBeastiarySort=@true
+						   HideMonsterOnlySorts=@true
+						   OnElementChanged=@OnElementChanged
+						   OnSortChanged=@OnSortChanged
+						   OnNameFilterChanged=@OnNameFilterChanged
+						   AvailableNames=@GetSpeciesNames() />
+			</div>
+			<div class="species-grid">
+			@foreach (var species in GetFilteredSpecies())
+			{
+				var isDiscovered = IsDiscovered(species.Id);
+				var isSeen = IsSeen(species.Id);
+				var stateClass = isDiscovered ? "discovered" : (isSeen ? "seen" : "undiscovered");
+				<div class="species-entry @stateClass @(selectedSpecies?.Id == species.Id ? "selected" : "")"
+					 onclick=@(() => SelectSpecies(species, isDiscovered))>
+
+					<div class="entry-icon-container @GetRarityClass(species)">
+						@if (isDiscovered || isSeen)
+						{
+							@if (HasSprite(species))
+							{
+								<img class="entry-icon @(isSeen && !isDiscovered ? "seen-only" : "")" src="@species.IconPath" style="margin-left: @(species.IconOffsetX - 18)px; margin-top: @(species.IconOffsetY)px" />
+							}
+							else
+							{
+								<div class="unknown-icon">?</div>
+							}
+						}
+						else
+						{
+							<div class="unknown-icon">?</div>
+						}
+					</div>
+
+					<div class="entry-name-row">
+						<div class="entry-name">
+							@(isDiscovered || isSeen ? species.Name : "???")
+						</div>
+					</div>
+
+					<div class="entry-number">#@species.BeastiaryNumber.ToString("D3")</div>
+					<div class="entry-element @species.Element.ToString().ToLower()"></div>
+				</div>
+			}
+			</div>
+		</div>
+
+		<!-- Species Detail Panel - Always visible -->
+		<div class="species-detail @(selectedSpecies == null ? "empty" : "") @(selectedSpecies != null && !IsDiscovered(selectedSpecies.Id) ? (IsSeen(selectedSpecies.Id) ? "seen" : "undiscovered") : "")">
+			@if (selectedSpecies != null && IsDiscovered(selectedSpecies.Id))
+			{
+				<div class="detail-header">
+					@if (HasSprite(selectedSpecies))
+					{
+						<img class="detail-icon" src="@GetAnimatedIcon(selectedSpecies)" />
+					}
+					else
+					{
+						<div class="detail-icon-placeholder">?</div>
+					}
+					<div class="detail-info">
+						<div class="detail-number">#@selectedSpecies.BeastiaryNumber.ToString("D3")</div>
+						<div class="detail-name">@selectedSpecies.Name</div>
+						<div class="detail-badges">
+							<div class="detail-element @selectedSpecies.Element.ToString().ToLower()">
+								@selectedSpecies.Element
+							</div>
+							<div class="detail-rarity @selectedSpecies.BaseRarity.ToString().ToLower()">
+								@selectedSpecies.BaseRarity
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="detail-description">
+					<div class="description-text">@selectedSpecies.Description</div>
+				</div>
+
+				<div class="detail-section">
+					<div class="section-title">Base Stats</div>
+					<div class="base-stats">
+						<div class="base-stat">
+							<span class="stat-label">HP</span>
+							<div class="stat-bar">
+								<div class="stat-fill hp" style="width: @(statsResetting ? 0 : selectedSpecies.BaseHP * 100 / 150)%"></div>
+							</div>
+							<span class="stat-value">@selectedSpecies.BaseHP</span>
+						</div>
+						<div class="base-stat">
+							<span class="stat-label">ATK</span>
+							<div class="stat-bar">
+								<div class="stat-fill atk" style="width: @(statsResetting ? 0 : selectedSpecies.BaseATK * 100 / 150)%"></div>
+							</div>
+							<span class="stat-value">@selectedSpecies.BaseATK</span>
+						</div>
+						<div class="base-stat">
+							<span class="stat-label">DEF</span>
+							<div class="stat-bar">
+								<div class="stat-fill def" style="width: @(statsResetting ? 0 : selectedSpecies.BaseDEF * 100 / 150)%"></div>
+							</div>
+							<span class="stat-value">@selectedSpecies.BaseDEF</span>
+						</div>
+						<div class="base-stat">
+							<span class="stat-label">SpA</span>
+							<div class="stat-bar">
+								<div class="stat-fill spa" style="width: @(statsResetting ? 0 : selectedSpecies.BaseSpA * 100 / 150)%"></div>
+							</div>
+							<span class="stat-value">@selectedSpecies.BaseSpA</span>
+						</div>
+						<div class="base-stat">
+							<span class="stat-label">SpD</span>
+							<div class="stat-bar">
+								<div class="stat-fill spd-def" style="width: @(statsResetting ? 0 : selectedSpecies.BaseSpD * 100 / 150)%"></div>
+							</div>
+							<span class="stat-value">@selectedSpecies.BaseSpD</span>
+						</div>
+						<div class="base-stat">
+							<span class="stat-label">SPD</span>
+							<div class="stat-bar">
+								<div class="stat-fill spd" style="width: @(statsResetting ? 0 : selectedSpecies.BaseSPD * 100 / 150)%"></div>
+							</div>
+							<span class="stat-value">@selectedSpecies.BaseSPD</span>
+						</div>
+						<div class="base-stat-total">
+							<span class="stat-label">Total</span>
+							<span class="stat-value">@GetBaseStatTotal(selectedSpecies)</span>
+						</div>
+					</div>
+				</div>
+
+				@{
+					var evolutionChain = GetEvolutionChain(selectedSpecies);
+				}
+				@if (evolutionChain.Count > 1)
+				{
+					<div class="detail-section">
+						<div class="section-title">Evolution</div>
+						<div class="evolution-chain">
+							@for (int i = 0; i < evolutionChain.Count; i++)
+							{
+								var evoSpecies = evolutionChain[i];
+								var isCurrent = evoSpecies.Id == selectedSpecies.Id;
+								var isDiscovered = IsDiscovered(evoSpecies.Id);
+
+								@if (i > 0)
+								{
+									<div class="evolution-arrow">→</div>
+								}
+
+								<div class="evolution-stage @(isCurrent ? "current" : "") @(isDiscovered ? "" : "unknown")">
+									@if (isDiscovered)
+									{
+										@if (HasSprite(evoSpecies))
+										{
+											<img class="evo-icon" src="@evoSpecies.IconPath" />
+										}
+										else
+										{
+											<div class="evo-unknown">?</div>
+										}
+										<span class="evo-name">@evoSpecies.Name</span>
+									}
+									else
+									{
+										<div class="evo-unknown">?</div>
+										<span class="evo-name">???</span>
+									}
+									@if (i == 0)
+									{
+										<span class="evo-level">Base</span>
+									}
+									else
+									{
+										var prevSpecies = evolutionChain[i - 1];
+										<span class="evo-level">Lv.@prevSpecies.EvolutionLevel</span>
+									}
+								</div>
+							}
+						</div>
+					</div>
+				}
+
+				<div class="detail-section">
+					<div class="section-title">Possible Traits</div>
+					<div class="traits-list">
+						@foreach (var traitId in selectedSpecies.PossibleTraits)
+						{
+							<span class="trait-tag">@GetTraitName(traitId)</span>
+						}
+					</div>
+				</div>
+			}
+			else if (selectedSpecies != null && IsSeen(selectedSpecies.Id))
+			{
+				<!-- Seen but not caught - show image and name only -->
+				<div class="seen-content">
+					<div class="seen-header">
+						@if (HasSprite(selectedSpecies))
+						{
+							<img class="seen-icon" src="@selectedSpecies.IconPath" />
+						}
+						else
+						{
+							<div class="seen-icon-placeholder">?</div>
+						}
+						<div class="seen-info">
+							<div class="seen-number">#@selectedSpecies.BeastiaryNumber.ToString("D3")</div>
+							<div class="seen-name">@selectedSpecies.Name</div>
+							<div class="seen-element @selectedSpecies.Element.ToString().ToLower()">
+								@selectedSpecies.Element
+							</div>
+						</div>
+					</div>
+					<div class="seen-hint">
+						<div class="seen-hint-icon">📜</div>
+						<div class="seen-hint-text">Catch this creature to unlock full details</div>
+					</div>
+				</div>
+			}
+			else if (selectedSpecies != null)
+			{
+				<div class="undiscovered-content">
+					<div class="undiscovered-icon">?</div>
+					<div class="undiscovered-text">Species Not Discovered</div>
+					<div class="undiscovered-hint">Find this creature in expeditions to learn more about it</div>
+				</div>
+			}
+			else
+			{
+				<div class="empty-content">
+					<div class="empty-icon">📖</div>
+					<div class="empty-text">Select a Species</div>
+					<div class="empty-hint">Click on a creature to view its details</div>
+				</div>
+			}
+		</div>
+	</div>
+</div>
+
+@code {
+	private ElementType? currentElement = null;
+	private string currentElementStr = "all";
+	private string currentSort = "beastiary";
+	private string currentNameFilter = "";
+	private MonsterSpecies selectedSpecies = null;
+	private int selectedIndex = 0;
+	private bool statsResetting = false;
+	private FilterBar filterBar;
+
+	private void OnPanelClicked()
+	{
+		// When user clicks with mouse, ensure we're in panel mode (not tab navigation)
+		GameHUD.EnterPanel();
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		// Note: Input handling is now done via TickInput() called from GameHUD
+	}
+
+	/// <summary>
+	/// Called by GameHUD to handle keyboard input (child panels don't auto-tick in s&box Razor)
+	/// </summary>
+	public void TickInput()
+	{
+		HandleKeyboardInput();
+	}
+
+	private void HandleKeyboardInput()
+	{
+
+		var species = GetFilteredSpecies();
+		if (species.Count == 0)
+		{
+			// No species - W/Up exits to tabs
+			if (Input.Pressed("Up"))
+			{
+				GameHUD.ExitPanel();
+			}
+			return;
+		}
+
+		selectedIndex = Math.Clamp(selectedIndex, 0, species.Count - 1);
+
+		// Grid navigation (assume 5 columns)
+		int columns = 5;
+
+		if (Input.Pressed("Left"))
+		{
+			selectedIndex = Math.Max(0, selectedIndex - 1);
+			SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+			SoundManager.PlayHover();
+		}
+		else if (Input.Pressed("Right"))
+		{
+			selectedIndex = Math.Min(species.Count - 1, selectedIndex + 1);
+			SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+			SoundManager.PlayHover();
+		}
+		else if (Input.Pressed("Up"))
+		{
+			// If at top row, exit to tab navigation
+			if (selectedIndex < columns)
+			{
+				GameHUD.ExitPanel();
+			}
+			else
+			{
+				selectedIndex = Math.Max(0, selectedIndex - columns);
+				SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+				SoundManager.PlayHover();
+			}
+		}
+		else if (Input.Pressed("Down"))
+		{
+			selectedIndex = Math.Min(species.Count - 1, selectedIndex + columns);
+			SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+			SoundManager.PlayHover();
+		}
+		// Cycle element filters with Q/E
+		else if (Input.Pressed("PrevWeapon"))
+		{
+			CycleElementBack();
+		}
+		else if (Input.Pressed("NextWeapon"))
+		{
+			CycleElementForward();
+		}
+	}
+
+	private void CycleElementBack()
+	{
+		var elementStrs = new string[] { "all", "neutral", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit" };
+		int idx = Array.IndexOf(elementStrs, currentElementStr);
+		idx = (idx - 1 + elementStrs.Length) % elementStrs.Length;
+		OnElementChanged(elementStrs[idx]);
+		SoundManager.PlayClick();
+	}
+
+	private void CycleElementForward()
+	{
+		var elementStrs = new string[] { "all", "neutral", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit" };
+		int idx = Array.IndexOf(elementStrs, currentElementStr);
+		idx = (idx + 1) % elementStrs.Length;
+		OnElementChanged(elementStrs[idx]);
+		SoundManager.PlayClick();
+	}
+
+	private void SetElementFilter(ElementType? element)
+	{
+		currentElement = element;
+		selectedIndex = 0;
+		selectedSpecies = null;
+		SoundManager.PlayClick();
+	}
+
+	// FilterBar callback handlers
+	private void OnElementChanged(string element)
+	{
+		currentElementStr = element;
+		currentElement = element switch
+		{
+			"all" => null,
+			"neutral" => ElementType.Neutral,
+			"fire" => ElementType.Fire,
+			"water" => ElementType.Water,
+			"earth" => ElementType.Earth,
+			"wind" => ElementType.Wind,
+			"electric" => ElementType.Electric,
+			"ice" => ElementType.Ice,
+			"nature" => ElementType.Nature,
+			"metal" => ElementType.Metal,
+			"shadow" => ElementType.Shadow,
+			"spirit" => ElementType.Spirit,
+			_ => null
+		};
+		selectedIndex = 0;
+		selectedSpecies = null;
+	}
+
+	private void OnSortChanged(string sort)
+	{
+		currentSort = sort;
+		selectedIndex = 0;
+		selectedSpecies = null;
+	}
+
+	private void OnNameFilterChanged(string name)
+	{
+		currentNameFilter = name;
+		selectedIndex = 0;
+		selectedSpecies = null;
+	}
+
+	private List<string> GetSpeciesNames()
+	{
+		var species = MonsterManager.Instance?.GetAllSpecies() ?? new();
+		return species.Select(s => s.Name).OrderBy(n => n).ToList();
+	}
+
+	private int GetDiscoveredCount()
+	{
+		return BeastiaryManager.Instance?.DiscoveredSpecies?.Count ?? 0;
+	}
+
+	private int GetTotalCount()
+	{
+		return MonsterManager.Instance?.GetAllSpecies()?.Count ?? 0;
+	}
+
+	private List<MonsterSpecies> GetFilteredSpecies()
+	{
+		var species = MonsterManager.Instance?.GetAllSpecies() ?? new();
+
+		// Apply element filter
+		if (currentElement.HasValue)
+		{
+			species = species.Where(s => s.Element == currentElement.Value).ToList();
+		}
+
+		// Apply name filter
+		if (currentSort == "name" && !string.IsNullOrEmpty(currentNameFilter))
+		{
+			species = species.Where(s => s.Name.Equals(currentNameFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+		}
+
+		// Apply sort
+		species = currentSort switch
+		{
+			"beastiary" => species.OrderBy(s => s.BeastiaryNumber).ToList(),
+			"power" => species.OrderByDescending(s => s.BaseHP + s.BaseATK + s.BaseDEF + s.BaseSpA + s.BaseSpD + s.BaseSPD).ToList(),
+			"basestats" => species.OrderByDescending(s => s.BaseHP + s.BaseATK + s.BaseDEF + s.BaseSpA + s.BaseSpD + s.BaseSPD).ToList(),
+			"level" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No level for species, use beastiary
+			"genes" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No genes for species, use beastiary
+			"rarity" => species.OrderByDescending(s => (int)s.BaseRarity).ThenBy(s => s.BeastiaryNumber).ToList(),
+			"fav" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No favorites for species
+			"recent" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No recent for species
+			"name" => species.OrderBy(s => s.Name).ToList(),
+			_ => species.OrderBy(s => s.BeastiaryNumber).ToList()
+		};
+
+		return species;
+	}
+
+	private bool IsDiscovered(string speciesId)
+	{
+		return BeastiaryManager.Instance?.IsDiscovered(speciesId) ?? false;
+	}
+
+	private bool IsSeen(string speciesId)
+	{
+		return BeastiaryManager.Instance?.IsSeen(speciesId) ?? false;
+	}
+
+	private string GetRarityClass(MonsterSpecies species)
+	{
+		return $"rarity-{species.BaseRarity.ToString().ToLower()}";
+	}
+
+	private bool HasSprite(MonsterSpecies species)
+	{
+		if (species == null) return false;
+
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+			return true;
+		if (!string.IsNullOrEmpty(species.IconPath))
+			return true;
+
+		return false;
+	}
+
+	private async void SelectSpecies(MonsterSpecies species, bool isDiscovered)
+	{
+		if (selectedSpecies?.Id != species?.Id)
+		{
+			// Trigger stat bar animation by resetting then expanding
+			statsResetting = true;
+			selectedSpecies = species;
+			StateHasChanged();
+
+			await Task.Delay(50);
+			statsResetting = false;
+			StateHasChanged();
+		}
+		else
+		{
+			selectedSpecies = species;
+		}
+	}
+
+	private MonsterSpecies GetSpecies(string id)
+	{
+		return MonsterManager.Instance?.GetSpecies(id);
+	}
+
+	private string GetAnimatedIcon(MonsterSpecies species)
+	{
+		if (species == null)
+			return "ui/monsters/default.png";
+
+		// Check if species has animation frames defined
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+		{
+			int frameIndex = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
+			return species.AnimationFrames[frameIndex];
+		}
+
+		// Fall back to static icon
+		return species.IconPath ?? "ui/monsters/default.png";
+	}
+
+	private List<MonsterSpecies> GetEvolutionChain(MonsterSpecies species)
+	{
+		var chain = new List<MonsterSpecies>();
+		if (species == null) return chain;
+
+		// Find the base form by walking back
+		var current = species;
+		while (!string.IsNullOrEmpty(current.EvolvesFrom))
+		{
+			var prev = GetSpecies(current.EvolvesFrom);
+			if (prev == null) break;
+			current = prev;
+		}
+
+		// Now walk forward from the base form
+		while (current != null)
+		{
+			chain.Add(current);
+			if (string.IsNullOrEmpty(current.EvolvesTo)) break;
+			current = GetSpecies(current.EvolvesTo);
+		}
+
+		return chain;
+	}
+
+	private string GetTraitName(string traitId)
+	{
+		var trait = TraitDatabase.GetTrait(traitId);
+		return trait?.Name ?? traitId;
+	}
+
+	private int GetBaseStatTotal(MonsterSpecies species)
+	{
+		if (species == null) return 0;
+		return species.BaseHP + species.BaseATK + species.BaseDEF +
+			   species.BaseSpA + species.BaseSpD + species.BaseSPD;
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(currentElement);
+		hash.Add(currentElementStr);
+		hash.Add(currentSort);
+		hash.Add(currentNameFilter);
+		hash.Add(selectedSpecies?.Id);
+		hash.Add(statsResetting);
+		// Only include animation frame if we have a selected species with animation
+		// This prevents the entire grid from rebuilding every frame
+		if (selectedSpecies != null && selectedSpecies.AnimationFrames?.Count > 0)
+		{
+			hash.Add(SpriteAnimator.GlobalFrame);
+		}
+		return hash.ToHashCode();
+	}
+}

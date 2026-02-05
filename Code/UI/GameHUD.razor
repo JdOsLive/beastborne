@@ -1,0 +1,1002 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Panels;
+@using Beastborne.UI.Components;
+@inherits PanelComponent
+
+<root class="game-hud @(IsVisible ? "" : "hidden") @GetActiveThemeClass()" onclick=@OnRootClicked>
+	<!-- Top Bar: Player Info, Resources, and Boosts -->
+	<div class="top-bar">
+		<div class="top-bar-center">
+			<div class="player-info" onclick=@OnPlayerInfoClicked>
+				<div class="player-avatar @GetGenderClass()">
+					<span class="avatar-fallback">@GetAvatarEmoji()</span>
+					<img src="@GetAvatarImagePath()" class="avatar-img" />
+				</div>
+				<div class="player-level">
+					<span class="level-badge">LV @GetTamerLevel()</span>
+					<div class="xp-bar">
+						<div class="xp-fill" style="width: @(GetTamerXPProgress() * 100)%"></div>
+					</div>
+					<span class="xp-text">@GetTamerCurrentXP() / @GetTamerXPRequired() XP</span>
+				</div>
+			</div>
+		</div>
+
+	</div>
+
+	<!-- Tab Navigation -->
+	<div class="tab-navigation @(IsNavigatingTabs ? "focused" : "")">
+		<div class="tab @(currentTab == "monsters" ? "active" : "") @(IsNavigatingTabs && selectedTabIndex == 0 ? "keyboard-selected" : "")"
+			 onclick=@(() => { SwitchTabByIndex(0); IsNavigatingTabs = false; })
+			 onmouseover=@(() => hoveredTab = "monsters")>
+			<span class="tab-icon">🐾</span>
+			<span class="tab-label">BEASTS</span>
+			<span class="tab-key">1</span>
+		</div>
+
+		<div class="tab @(currentTab == "skills" ? "active" : "") @(IsNavigatingTabs && selectedTabIndex == 1 ? "keyboard-selected" : "")"
+			 onclick=@(() => { SwitchTabByIndex(1); IsNavigatingTabs = false; })
+			 onmouseover=@(() => hoveredTab = "skills")>
+			<span class="tab-icon">🌳</span>
+			<span class="tab-label">SKILLS</span>
+			<span class="tab-key">2</span>
+		</div>
+
+		<div class="tab @(currentTab == "expedition" ? "active" : "") @(IsNavigatingTabs && selectedTabIndex == 2 ? "keyboard-selected" : "")"
+			 onclick=@(() => { SwitchTabByIndex(2); IsNavigatingTabs = false; })
+			 onmouseover=@(() => hoveredTab = "expedition")>
+			<span class="tab-icon">⚔</span>
+			<span class="tab-label">EXPEDITION</span>
+			<span class="tab-key">3</span>
+		</div>
+
+		<div class="tab @(currentTab == "online" ? "active" : "") @(IsNavigatingTabs && selectedTabIndex == 3 ? "keyboard-selected" : "")"
+			 onclick=@(() => { SwitchTabByIndex(3); IsNavigatingTabs = false; })
+			 onmouseover=@(() => hoveredTab = "online")>
+			<span class="tab-icon">🌐</span>
+			<span class="tab-label">ONLINE</span>
+			<span class="tab-key">4</span>
+		</div>
+
+		<div class="tab @(currentTab == "beastiary" ? "active" : "") @(IsNavigatingTabs && selectedTabIndex == 4 ? "keyboard-selected" : "")"
+			 onclick=@(() => { SwitchTabByIndex(4); IsNavigatingTabs = false; })
+			 onmouseover=@(() => hoveredTab = "beastiary")>
+			<span class="tab-icon">📖</span>
+			<span class="tab-label">BEASTIARY</span>
+			<span class="tab-key">5</span>
+		</div>
+
+		<div class="tab @(currentTab == "shop" ? "active" : "") @(IsNavigatingTabs && selectedTabIndex == 5 ? "keyboard-selected" : "")"
+			 onclick=@(() => { SwitchTabByIndex(5); IsNavigatingTabs = false; })
+			 onmouseover=@(() => hoveredTab = "shop")>
+			<span class="tab-icon">🛒</span>
+			<span class="tab-label">SHOP</span>
+			<span class="tab-key">6</span>
+		</div>
+	</div>
+
+	<!-- Sub-navigation for Beasts tab -->
+	@if (currentTab == "monsters")
+	{
+		<div class="sub-navigation">
+			<div class="sub-nav-bubble">
+				<button class="sub-nav-btn @(beastsSubView == "collection" ? "active" : "")"
+						onclick=@(() => SwitchBeastsSubView("collection"))>
+					🐾 Collection
+				</button>
+				<button class="sub-nav-btn @(beastsSubView == "breeding" ? "active" : "")"
+						onclick=@(() => SwitchBeastsSubView("breeding"))>
+					⚗ Fusion
+				</button>
+			</div>
+		</div>
+	}
+
+	<!-- Content Area -->
+	<div class="content-area">
+		@switch (currentTab)
+		{
+			case "monsters":
+				<MonsterRosterPanel @ref="monsterRosterPanel" />
+				break;
+
+			case "skills":
+				<SkillTreePanel @ref="skillTreePanel" />
+				break;
+
+			case "expedition":
+				<ExpeditionPanel @ref="expeditionPanel" />
+				break;
+
+			case "online":
+				<ArenaPanel @ref="arenaPanel" />
+				break;
+
+			case "beastiary":
+				<BeastiaryPanel @ref="beastiaryPanel" />
+				break;
+
+			case "shop":
+				<ShopPanelContent />
+				break;
+		}
+	</div>
+
+	<!-- Bottom Bar: Menu & Inventory -->
+	<div class="bottom-bar">
+		<button class="action-btn menu" onclick=@OnMenuClicked>
+			<span class="action-icon">☰</span>
+			<span class="action-label">MENU</span>
+		</button>
+
+		<button class="action-btn inventory @(HasNewItems() ? "has-new" : "")" onclick=@OnInventoryClicked>
+			<span class="action-icon">🎒</span>
+			<span class="action-label">INVENTORY</span>
+			@if (HasNewItems())
+			{
+				<span class="new-badge">NEW</span>
+			}
+		</button>
+	</div>
+
+	<!-- HUD overlays - render before popups so popups appear on top -->
+	<ActiveEffectsPanel />
+	<NotificationPanel />
+	<ChatPanel />
+	<RadioWidget />
+
+	<!-- Popup/Modal panels - render after HUD overlays so they appear on top -->
+	<AutoBattlerPopup OnViewExpedition=@OnViewExpedition />
+	<BeastShowcasePopup />
+	<ProfilePanel />
+	<TutorialPanel />
+	<MenuPopup />
+	<OptionsPanel />
+	<InventoryPanel />
+	<HelpPanel />
+	<CreditsPanel />
+
+	<!-- Version & Resources (top-right) -->
+	<div class="top-right-info">
+		<div class="resources">
+			<div class="resource gold">
+				<span class="resource-icon">🪙</span>
+				<span class="resource-value">@FormatNumber(GetGold())</span>
+			</div>
+			<div class="resource ink">
+				<span class="resource-icon">🖋️</span>
+				<span class="resource-value">@GetContractInk()</span>
+			</div>
+			<div class="resource boss-tokens">
+				<span class="resource-icon">💎</span>
+				<span class="resource-value">@GetBossTokens()</span>
+			</div>
+		</div>
+		<div class="version-indicator">
+			<span class="version-alpha">ALPHA</span>
+			<span class="version-number">v0.4.1</span>
+		</div>
+		<button class="help-btn" onclick=@OnHelpClicked>
+			<span class="help-icon">ℹ️</span>
+		</button>
+	</div>
+</root>
+
+@code {
+	private string currentTab = "monsters";
+	private string hoveredTab = "";
+	private string beastsSubView = "collection"; // "collection" or "breeding"
+
+	// Panel references for input forwarding
+	private MonsterRosterPanel monsterRosterPanel;
+	private SkillTreePanel skillTreePanel;
+	private ExpeditionPanel expeditionPanel;
+	private ArenaPanel arenaPanel;
+	private BeastiaryPanel beastiaryPanel;
+
+	// Keyboard navigation state
+	// When true, user is navigating tabs at top level (Left/Right to switch, Down to enter panel)
+	// When false, the current panel handles input (panel calls ExitPanel() to return)
+	// Starts false so panels work immediately - user presses Up to go to tab level
+	public static bool IsNavigatingTabs { get; set; } = false;
+	private static string[] tabs = { "monsters", "skills", "expedition", "online", "beastiary", "shop" };
+	private int selectedTabIndex = 0;
+
+	// Tutorial auto-start
+	private bool _tutorialChecked = false;
+	private float _tutorialCheckDelay = 0.5f;
+
+	/// <summary>
+	/// Called by panels when user presses W/Up at top row to exit back to tab navigation
+	/// </summary>
+	public static void ExitPanel()
+	{
+		IsNavigatingTabs = true;
+		SoundManager.PlayBack();
+	}
+
+	/// <summary>
+	/// Called when mouse clicks anywhere in a panel to exit tab navigation mode
+	/// </summary>
+	public static void EnterPanel()
+	{
+		IsNavigatingTabs = false;
+	}
+
+	// Only show when game is running (not in main menu)
+	private bool IsVisible => GameManager.Instance?.IsInGame == true;
+
+	protected override void OnStart()
+	{
+		// Subscribe to state changes
+		if ( GameManager.Instance != null )
+		{
+			GameManager.Instance.OnStateChanged += OnGameStateChanged;
+		}
+
+		// Subscribe to tutorial step changes to switch tabs
+		if ( TutorialManager.Instance != null )
+		{
+			TutorialManager.Instance.OnStepChanged += OnTutorialStepChanged;
+		}
+
+		// Reset static navigation state on start (in case it was stuck from previous session)
+		IsNavigatingTabs = false;
+
+		// Reset tutorial check flag (will check after a brief delay in OnUpdate)
+		_tutorialChecked = false;
+		_tutorialCheckDelay = 0.5f;
+
+		// Initialize the radio system
+		RadioManager.Initialize();
+	}
+
+	private void OnRootClicked()
+	{
+		// Enter panel mode when user clicks inside the panel
+		IsNavigatingTabs = false;
+	}
+
+	protected override void OnDestroy()
+	{
+		if ( GameManager.Instance != null )
+		{
+			GameManager.Instance.OnStateChanged -= OnGameStateChanged;
+		}
+
+		if ( TutorialManager.Instance != null )
+		{
+			TutorialManager.Instance.OnStepChanged -= OnTutorialStepChanged;
+		}
+	}
+
+	/// <summary>
+	/// Handle tutorial step changes - switch to the target tab if specified
+	/// </summary>
+	private void OnTutorialStepChanged( TutorialStep step )
+	{
+		if ( step == null ) return;
+		if ( string.IsNullOrEmpty( step.TargetTab ) ) return;
+
+		// Switch to the target tab for this tutorial step
+		SwitchTab( step.TargetTab );
+	}
+
+	private void OnGameStateChanged( GameState oldState, GameState newState )
+	{
+		// Handle state-specific UI changes if needed
+	}
+
+	/// <summary>
+	/// Check if tutorial should auto-start for new players
+	/// </summary>
+	private void CheckAndStartTutorial()
+	{
+		if ( TutorialManager.Instance == null )
+		{
+			Log.Info( "[Tutorial] TutorialManager.Instance is null" );
+			return;
+		}
+
+		// Reload tutorial state from current save slot to ensure we have fresh data
+		TutorialManager.Instance.ReloadFromSlot();
+
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		Log.Info( $"[Tutorial] CheckAndStartTutorial: Tamer={tamer?.Name ?? "null"}, Level={tamer?.Level ?? -1}, ExpCleared={tamer?.HighestExpeditionCleared ?? -1}, Completed={TutorialManager.Instance.HasCompletedTutorial}, Skipped={TutorialManager.Instance.WasSkipped}, Active={TutorialManager.Instance.IsTutorialActive}" );
+
+		// Only start if tutorial should be shown (new player who hasn't completed/skipped)
+		if ( TutorialManager.Instance.ShouldShowTutorial() )
+		{
+			Log.Info( "[Tutorial] Auto-starting tutorial for new player" );
+			TutorialManager.Instance.StartTutorial();
+		}
+		else
+		{
+			Log.Info( "[Tutorial] Tutorial should not auto-start" );
+		}
+	}
+
+	protected override void OnUpdate()
+	{
+		try
+		{
+			// Update global sprite animations and force re-render for animation
+			if ( SpriteAnimator.Update() )
+			{
+				StateHasChanged();
+			}
+
+			// Tick background expedition - since manager OnUpdate may not run in all scenarios,
+			// we use GameHUD.OnUpdate as a reliable tick source for background battles
+			TickBackgroundExpedition();
+
+			if ( !IsVisible ) return;
+
+			// Check for tutorial auto-start after a brief delay (ensures managers are loaded)
+			if ( !_tutorialChecked )
+			{
+				_tutorialCheckDelay -= RealTime.Delta;
+				if ( _tutorialCheckDelay <= 0 )
+				{
+					_tutorialChecked = true;
+					CheckAndStartTutorial();
+				}
+			}
+
+			// Tick the current panel's input handling (child panels don't auto-tick in s&box Razor)
+			TickCurrentPanel();
+
+			HandleKeyboardInput();
+
+			// Check radio hotkeys and tick for auto-advance
+			RadioManager.CheckInput();
+			RadioManager.Tick();
+
+			// Update radio context based on game state
+			UpdateRadioContext();
+		}
+		catch (Exception ex)
+		{
+			Log.Warning($"GameHUD.OnUpdate exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Manually tick the current panel's input handling since child panels don't auto-tick
+	/// </summary>
+	private void TickCurrentPanel()
+	{
+		// Only tick panels when not navigating tabs (panels handle their own input)
+		if (IsNavigatingTabs) return;
+
+		try
+		{
+			switch (currentTab)
+			{
+				case "monsters":
+					monsterRosterPanel?.TickInput();
+					break;
+				case "skills":
+					skillTreePanel?.TickInput();
+					break;
+				case "expedition":
+					expeditionPanel?.TickInput();
+					break;
+				case "online":
+					arenaPanel?.TickInput();
+					break;
+				case "beastiary":
+					beastiaryPanel?.TickInput();
+					break;
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Warning($"TickCurrentPanel error in '{currentTab}': {ex.Message}");
+		}
+	}
+
+	private float _bgDebugTimer = 0;
+
+	/// <summary>
+	/// Tick background expedition battles. Called from OnUpdate which runs reliably.
+	/// </summary>
+	private void TickBackgroundExpedition()
+	{
+		try
+		{
+			// Only tick if we're in background mode with an active expedition
+			if ( ExpeditionManager.Instance?.IsRunningInBackground != true ) return;
+			if ( ExpeditionManager.Instance?.CurrentExpedition == null ) return;
+			if ( BattleManager.Instance == null ) return;
+
+			// Don't tick expedition battles while in online/arena mode - arena manages its own battles
+			if ( GameManager.Instance?.CurrentState == GameState.InArena ) return;
+			if ( currentTab == "online" ) return;
+
+			// Debug log every 2 seconds
+			_bgDebugTimer += RealTime.Delta;
+			if ( _bgDebugTimer >= 2f )
+			{
+				Log.Info( $"[GameHUD BG] IsInBattle={BattleManager.Instance.IsInBattle}, IsPlaying={BattleManager.Instance.IsPlaying}, Turn={BattleManager.Instance.CurrentTurnIndex}/{BattleManager.Instance.CurrentResult?.Turns?.Count ?? 0}, Wave={ExpeditionManager.Instance.CurrentWave}" );
+				_bgDebugTimer = 0;
+			}
+
+			// If battle is in progress, tick it
+			if ( BattleManager.Instance.IsInBattle )
+			{
+				var result = BattleManager.Instance.CurrentResult;
+
+				// Check if battle is complete (all turns executed)
+				if ( result != null && BattleManager.Instance.CurrentTurnIndex >= result.Turns.Count )
+				{
+					// Battle is done - handle it directly since event subscription isn't working
+					Log.Info( $"[GameHUD] Battle complete! PlayerWon={result.PlayerWon}, Wave={ExpeditionManager.Instance.CurrentWave}" );
+					HandleBackgroundBattleEnd( result );
+					return;
+				}
+
+				// Start playback if not already playing
+				if ( !BattleManager.Instance.IsPlaying )
+				{
+					Log.Info( $"[GameHUD] Starting playback for background battle, Wave={ExpeditionManager.Instance.CurrentWave}, Turn={BattleManager.Instance.CurrentTurnIndex}" );
+					BattleManager.Instance.PlaybackSpeed = 4.0f;
+					BattleManager.Instance.StartPlayback();
+				}
+
+				// Tick the battle
+				BattleManager.Instance.ManualTick( RealTime.Delta );
+
+				// Force UI update so popup shows progress
+				StateHasChanged();
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Warning($"TickBackgroundExpedition exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Handle battle end directly from GameHUD since event subscription to ExpeditionManager isn't reliable
+	/// </summary>
+	private void HandleBackgroundBattleEnd( BattleResult result )
+	{
+		try
+		{
+			var em = ExpeditionManager.Instance;
+			if ( em == null || em.CurrentExpedition == null ) return;
+
+			bool playerWon = result?.PlayerWon ?? false;
+			int currentWave = em.CurrentWave;
+			int totalWaves = em.CurrentExpedition.Waves;
+
+			Log.Info( $"[GameHUD] HandleBackgroundBattleEnd: PlayerWon={playerWon}, Wave={currentWave}/{totalWaves}, AutoRetry={em.AutoRetry}" );
+
+			// Accumulate rewards from battle result
+			if ( result != null )
+			{
+				em.AddAccumulatedRewards( result.TotalGold, result.TotalXP );
+			}
+
+			// Capture enemy team before exiting battle (for auto-catch)
+			var enemyTeam = BattleManager.Instance?.EnemyTeam?.ToList();
+
+			// Handle auto-catch if enabled and we won
+			if ( playerWon && em.AutoNegotiate && enemyTeam != null )
+			{
+				TryAutoCatch( enemyTeam );
+			}
+
+			// Exit the current battle
+			BattleManager.Instance?.ExitBattle();
+
+			if ( playerWon && currentWave < totalWaves )
+			{
+				// Continue to next wave
+				Log.Info( $"[GameHUD] Starting next wave..." );
+				em.StartNextWave();
+			}
+			else if ( playerWon && currentWave >= totalWaves )
+			{
+				// Expedition complete!
+				Log.Info( $"[GameHUD] Expedition complete!" );
+
+				// Save expedition ID and team before completion clears them
+				var expeditionId = em.CurrentExpedition.Id;
+				var team = new List<Monster>( em.SelectedTeam );
+				bool shouldAutoRetry = em.AutoRetry;
+
+				// Award rewards for completion (this clears CurrentExpedition)
+				em.OnWaveComplete( true );
+
+				// If auto-retry is on, restart the expedition
+				if ( shouldAutoRetry && expeditionId != null )
+				{
+					Log.Info( $"[GameHUD] Auto-retry enabled, restarting expedition '{expeditionId}' from wave 1" );
+					em.SelectTeam( team );
+					em.StartExpedition( expeditionId );
+
+					// Ensure background mode stays enabled
+					em.EnableBackgroundMode();
+				}
+			}
+			else if ( !playerWon && em.AutoRetry )
+			{
+				// Retry from wave 1 - reset wave counter and start fresh
+				Log.Info( $"[GameHUD] Auto-retry, resetting to wave 1" );
+				em.ResetToWaveOne();
+				em.StartNextWave();
+			}
+			else
+			{
+				// Failed
+				Log.Info( $"[GameHUD] Expedition failed" );
+				em.OnWaveComplete( false );
+			}
+		}
+		catch (Exception ex)
+		{
+			Log.Warning($"HandleBackgroundBattleEnd exception: {ex.Message}");
+		}
+	}
+
+	/// <summary>
+	/// Attempt to auto-catch a monster from the defeated enemy team
+	/// </summary>
+	private void TryAutoCatch( List<Monster> enemyTeam )
+	{
+		try
+		{
+			var em = ExpeditionManager.Instance;
+			if ( em == null || enemyTeam == null || enemyTeam.Count == 0 ) return;
+
+			// Check if we have contract ink
+			if ( (TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0) <= 0 )
+			{
+				Log.Info( "[GameHUD] Auto-catch: No contract ink available" );
+				return;
+			}
+
+			// Skip catching if strategy is set to skip (-1)
+			if ( em.AutoNegotiateStrategy == -1 )
+			{
+				Log.Info( "[GameHUD] Auto-catch: Skipping catch (strategy set to Skip)" );
+				return;
+			}
+
+			// Find a catchable enemy from the battle
+			Monster targetMonster = null;
+			foreach ( var enemy in enemyTeam )
+			{
+				if ( enemy == null ) continue;
+				var species = MonsterManager.Instance?.GetSpecies( enemy.SpeciesId );
+				if ( species != null && species.IsCatchable )
+				{
+					targetMonster = enemy;
+					break;
+				}
+			}
+
+			if ( targetMonster == null )
+			{
+				Log.Info( "[GameHUD] Auto-catch: No catchable enemy found" );
+				return;
+			}
+
+			var species2 = MonsterManager.Instance?.GetSpecies( targetMonster.SpeciesId );
+			if ( species2 == null ) return;
+
+			// Generate negotiation options
+			var options = ContractGenerator.GenerateNegotiationOptions( species2, targetMonster );
+			if ( options == null || options.Count == 0 ) return;
+
+			// Select option based on AutoNegotiateStrategy (0=GEN, 1=FAIR, 2=STR, 3=GOLD)
+			int strategyIndex = Math.Clamp( em.AutoNegotiateStrategy, 0, options.Count - 1 );
+			var selectedOption = options[strategyIndex];
+			var currentInk = TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
+
+			// Check if we can afford ink cost
+			if ( currentInk < selectedOption.InkCost )
+			{
+				// Try to fall back to a cheaper option
+				var affordableOption = options.Where( o => currentInk >= o.InkCost ).OrderByDescending( o => o.InkCost ).FirstOrDefault();
+				if ( affordableOption == null )
+				{
+					Log.Info( $"[GameHUD] Auto-catch: Not enough ink! Have {currentInk}, need {selectedOption.InkCost}" );
+					return;
+				}
+				Log.Info( $"[GameHUD] Auto-catch: Can't afford {selectedOption.Name} ({selectedOption.InkCost} ink), using {affordableOption.Name}" );
+				selectedOption = affordableOption;
+			}
+
+			// Check if we can afford gold cost
+			if ( selectedOption.GoldCost > 0 )
+			{
+				int currentGold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+				if ( currentGold < selectedOption.GoldCost )
+				{
+					Log.Info( $"[GameHUD] Auto-catch: Can't afford gold cost ({selectedOption.GoldCost}), trying Fair Terms instead" );
+					// Fall back to Fair Terms (no gold cost)
+					selectedOption = options[1];
+				}
+			}
+
+			// Spend contract ink based on option's cost
+			if ( !TamerManager.Instance.SpendContractInk( selectedOption.InkCost ) )
+			{
+				Log.Info( $"[GameHUD] Auto-catch: Not enough ink! Need {selectedOption.InkCost}" );
+				return;
+			}
+
+			// Attempt negotiation
+			bool success = ContractGenerator.AttemptNegotiation( selectedOption );
+
+			if ( success )
+			{
+				// Create the caught monster
+				var caughtMonster = MonsterManager.Instance?.CreateMonster(
+					targetMonster.SpeciesId,
+					isBred: false,
+					targetMonster.Genetics
+				);
+
+				if ( caughtMonster != null )
+				{
+					caughtMonster.Level = targetMonster.Level;
+					caughtMonster.Contract = selectedOption.Contract;
+					MonsterManager.Instance?.RecalculateStats( caughtMonster );
+
+					// Mark as discovered in beastiary
+					BeastiaryManager.Instance?.DiscoverSpecies( targetMonster.SpeciesId );
+
+					// Fire event (updates the popup's caught count)
+					em.OnMonsterCaught?.Invoke( caughtMonster );
+
+					Log.Info( $"[GameHUD] Auto-catch SUCCESS: Caught {caughtMonster.Nickname} with {selectedOption.Name}!" );
+				}
+			}
+			else
+			{
+				Log.Info( $"[GameHUD] Auto-catch FAILED: {selectedOption.Name} negotiation failed" );
+			}
+		}
+		catch ( Exception ex )
+		{
+			Log.Warning( $"TryAutoCatch exception: {ex.Message}" );
+		}
+	}
+
+	private void HandleKeyboardInput()
+	{
+		try
+		{
+		// Don't process keyboard input when chat is focused (user is typing)
+		if (ChatPanel.IsChatFocused) return;
+
+		// Tab switching with number keys (always available)
+		// Number keys switch tab AND enter the panel immediately
+		if (Input.Pressed("Slot1")) { SwitchTabByIndex(0); IsNavigatingTabs = false; }
+		else if (Input.Pressed("Slot2")) { SwitchTabByIndex(1); IsNavigatingTabs = false; }
+		else if (Input.Pressed("Slot3")) { SwitchTabByIndex(2); IsNavigatingTabs = false; }
+		else if (Input.Pressed("Slot4")) { SwitchTabByIndex(3); IsNavigatingTabs = false; }
+		else if (Input.Pressed("Slot5")) { SwitchTabByIndex(4); IsNavigatingTabs = false; }
+		else if (Input.Pressed("Slot6")) { SwitchTabByIndex(5); IsNavigatingTabs = false; }
+
+		// Tab-level navigation (when at tab bar, after pressing Up from panel)
+		if (IsNavigatingTabs)
+		{
+			// Left/Right (A/D) to switch tabs
+			if (Input.Pressed("Left"))
+			{
+				selectedTabIndex = Math.Max(0, selectedTabIndex - 1);
+				SwitchTabByIndex(selectedTabIndex);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Right"))
+			{
+				selectedTabIndex = Math.Min(tabs.Length - 1, selectedTabIndex + 1);
+				SwitchTabByIndex(selectedTabIndex);
+				SoundManager.PlayHover();
+			}
+			// Down/Enter (S/Space/Click) to enter the current panel
+			else if (Input.Pressed("Down") || Input.Pressed("attack1") || Input.Pressed("jump"))
+			{
+				IsNavigatingTabs = false;
+				SoundManager.PlayForward();
+			}
+		}
+
+		// Escape/Menu to go back to main menu (or exit panel first)
+		if (Input.Pressed("Menu") || Input.Pressed("Escape"))
+		{
+			if (!IsNavigatingTabs)
+			{
+				// Exit panel first (go to tab navigation)
+				IsNavigatingTabs = true;
+				SoundManager.PlayBack();
+			}
+			else
+			{
+				// Already at tabs, go to main menu
+				OnMenuClicked();
+			}
+		}
+		}
+		catch (Exception ex)
+		{
+			Log.Warning($"HandleKeyboardInput exception: {ex.Message}");
+		}
+	}
+
+	private void SwitchTabByIndex(int index)
+	{
+		if (index >= 0 && index < tabs.Length)
+		{
+			selectedTabIndex = index;
+			SwitchTab(tabs[index]);
+		}
+	}
+
+	private void SwitchTab(string tab)
+	{
+		if (currentTab == tab) return;
+
+		Log.Info($"SwitchTab: from '{currentTab}' to '{tab}', IsInBattle={BattleManager.Instance?.IsInBattle}, IsRunningInBackground={ExpeditionManager.Instance?.IsRunningInBackground}");
+
+		// Reset beasts sub-view when switching away from monsters tab
+		// This ensures the MonsterRosterPanel state stays in sync when recreated
+		if (currentTab == "monsters")
+		{
+			beastsSubView = "collection";
+		}
+
+		// Handle background expedition mode
+		if (currentTab == "expedition" && ExpeditionManager.Instance?.CurrentExpedition != null)
+		{
+			// Only enable background mode if there's actually an active battle
+			// and we're not already in background mode
+			if (BattleManager.Instance?.IsInBattle == true && ExpeditionManager.Instance?.IsRunningInBackground != true)
+			{
+				Log.Info($"SwitchTab: Enabling background mode");
+				ExpeditionManager.Instance.EnableBackgroundMode();
+			}
+		}
+		else if (tab == "expedition" && ExpeditionManager.Instance?.IsRunningInBackground == true)
+		{
+			// Switching back to expedition - disable background mode
+			ExpeditionManager.Instance.DisableBackgroundMode();
+		}
+
+		currentTab = tab;
+		SoundManager.PlayTabSwitch();
+	}
+
+	private void SwitchBeastsSubView(string view)
+	{
+		if (beastsSubView == view) return;
+		beastsSubView = view;
+		monsterRosterPanel?.SwitchView(view);
+	}
+
+	// Resource getters
+	private int GetTamerLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 1;
+	private float GetTamerXPProgress() => TamerManager.Instance?.CurrentTamer?.XPProgress ?? 0;
+	private int GetTamerCurrentXP() => TamerManager.Instance?.CurrentTamer?.CurrentLevelXP ?? 0;
+	private int GetTamerXPRequired() => TamerManager.Instance?.CurrentTamer?.XPForNextLevel ?? 100;
+	private int GetGold() => TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+	private int GetGems() => TamerManager.Instance?.CurrentTamer?.Gems ?? 0;
+	private int GetContractInk() => TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
+	private int GetBossTokens() => TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0;
+
+	// Theme helper
+	private string GetActiveThemeClass()
+	{
+		var themeId = TamerManager.Instance?.CurrentTamer?.ActiveThemeId ?? "default";
+		var theme = CosmeticDatabase.GetTheme(themeId);
+		return theme?.CssClass ?? "";
+	}
+
+	// Format large numbers with commas (e.g., 434814 -> "434,814")
+	private string FormatNumber(int value)
+	{
+		return value.ToString("N0");
+	}
+
+	// Active Boosts helpers
+	private List<(ShopItemType Type, float Multiplier, TimeSpan TimeRemaining, bool IsServer, string ActivatedBy)> GetActiveBoosts()
+	{
+		return ShopManager.Instance?.GetAllActiveBoosts() ?? new();
+	}
+
+	private string GetBoostIcon(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => "⬆",
+			ShopItemType.BeastXPBoost => "⬆",
+			ShopItemType.XPBoost => "⬆",
+			ShopItemType.GoldBoost => "💰",
+			ShopItemType.RareEncounter => "🍀",
+			ShopItemType.LuckyCharm => "🍀",
+			_ => "✨"
+		};
+	}
+
+	private string GetBoostLabel(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => "2x Tamer XP",
+			ShopItemType.BeastXPBoost => "2x Beast XP",
+			ShopItemType.XPBoost => "2x XP",
+			ShopItemType.GoldBoost => "1.5x Gold",
+			ShopItemType.RareEncounter => "Lucky",
+			ShopItemType.LuckyCharm => "Lucky",
+			_ => type.ToString()
+		};
+	}
+
+	private string FormatBoostTime(TimeSpan time)
+	{
+		if (time.TotalMinutes >= 60)
+			return $"{(int)time.TotalHours}h {time.Minutes}m";
+		if (time.TotalMinutes >= 1)
+			return $"{(int)time.TotalMinutes}m";
+		return $"{time.Seconds}s";
+	}
+
+	// Avatar helpers
+	private string GetGenderClass() => TamerManager.Instance?.CurrentTamer?.Gender == TamerGender.Female ? "female" : "male";
+	private string GetAvatarEmoji() => TamerManager.Instance?.CurrentTamer?.Gender == TamerGender.Female ? "👩" : "👨";
+	private string GetAvatarImagePath() => TamerManager.Instance?.CurrentTamer?.Gender == TamerGender.Female
+		? "ui/characters/female/female_tamer.png"
+		: "ui/characters/male/male_tamer.png";
+
+	// Stats getters
+	private int GetMonsterCount() => MonsterManager.Instance?.OwnedMonsters?.Count ?? 0;
+	private int GetSkillCount() => TamerManager.Instance?.CurrentTamer?.UnlockedSkills?.Count ?? 0;
+	private int GetHighestExpedition() => TamerManager.Instance?.CurrentTamer?.HighestExpeditionCleared ?? 0;
+	private string GetArenaRank() => TamerManager.Instance?.CurrentTamer?.ArenaRank ?? "Unranked";
+	private string GetBeastiaryProgress() => BeastiaryManager.Instance?.GetCompletionText() ?? "0/0";
+	private bool IsExpeditionRunning() => ExpeditionManager.Instance?.CurrentExpedition != null;
+
+	/// <summary>
+	/// Update the radio context based on current game state.
+	/// Battle music only plays when actively viewing a battle on the expedition tab.
+	/// Switching tabs always returns to chill music.
+	/// </summary>
+	private void UpdateRadioContext()
+	{
+		// Battle music only when on expedition tab AND actively in battle
+		// Auto-battler doesn't affect this - if you're watching, it's battle music
+		if ( currentTab == "expedition" && BattleManager.Instance?.IsInBattle == true )
+		{
+			RadioManager.SetContext( RadioContext.Battle );
+			return;
+		}
+
+		// Everything else: chill music (Menu context)
+		// This includes: switching tabs during battle, between waves, browsing menus, arena lobby
+		RadioManager.SetContext( RadioContext.Menu );
+	}
+
+	private void OnMenuClicked()
+	{
+		// Show menu popup instead of directly returning to main menu
+		MenuPopup.Show();
+	}
+
+	private void OnInventoryClicked()
+	{
+		SoundManager.PlayClick();
+		InventoryPanel.Toggle();
+
+		// Mark all items as seen when opening inventory
+		ItemManager.Instance?.MarkAllItemsSeen();
+	}
+
+	private bool HasNewItems()
+	{
+		return ItemManager.Instance?.HasNewItems ?? false;
+	}
+
+	private int GetInventoryItemCount()
+	{
+		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if (inventory == null) return 0;
+		return inventory.Values.Sum();
+	}
+
+	private void OnHelpClicked()
+	{
+		// Map current tab to help category
+		// Check for Fusion view within monsters tab
+		if (currentTab == "monsters" && monsterRosterPanel?.CurrentView == "breeding")
+		{
+			HelpPanel.ShowCategory("breeding");
+			return;
+		}
+
+		var helpCategory = currentTab switch
+		{
+			"monsters" => "beasts",
+			"skills" => "skills",
+			"expedition" => "expeditions",
+			"online" => "combat",
+			"beastiary" => "beasts",
+			"shop" => "resources",
+			_ => "getting-started"
+		};
+		HelpPanel.ShowCategory(helpCategory);
+	}
+
+	private void OnPlayerInfoClicked()
+	{
+		SoundManager.PlayClick();
+		ProfilePanel.Show();
+	}
+
+	private void OnViewExpedition()
+	{
+		// Switch to expedition tab and disable background mode
+		ExpeditionManager.Instance?.DisableBackgroundMode();
+		currentTab = "expedition";
+	}
+
+	protected override int BuildHash()
+	{
+		try
+		{
+			var hash = new HashCode();
+			hash.Add(IsVisible);
+			hash.Add(currentTab);
+			hash.Add(hoveredTab);
+			hash.Add(GetGold());
+			hash.Add(GetContractInk());
+			hash.Add(GetMonsterCount());
+			hash.Add(GetTamerLevel());
+			hash.Add(IsExpeditionRunning());
+			hash.Add(ExpeditionManager.Instance?.CurrentWave ?? 0);
+			hash.Add(ExpeditionManager.Instance?.IsRunningInBackground ?? false);
+			hash.Add(BattleManager.Instance?.CurrentTurnIndex ?? 0);
+			// Keyboard navigation state
+			hash.Add(IsNavigatingTabs);
+			hash.Add(selectedTabIndex);
+			// Inventory count for badge updates
+			hash.Add(GetInventoryItemCount());
+			// New items indicator
+			hash.Add(HasNewItems());
+			// Add animation frame to hash so MonsterCards update with animation
+			hash.Add(SpriteAnimator.GlobalFrame);
+			// Active boosts (update timer display)
+			var boosts = GetActiveBoosts();
+			hash.Add(boosts.Count);
+			foreach (var boost in boosts)
+			{
+				hash.Add((int)boost.TimeRemaining.TotalSeconds);
+			}
+			// Notifications (update when notifications change)
+			var notifications = NotificationManager.Instance?.ActiveNotifications;
+			hash.Add(notifications?.Count ?? 0);
+			if (notifications != null)
+			{
+				foreach (var n in notifications)
+				{
+					hash.Add(n.Id);
+					hash.Add((int)(n.Progress * 100));
+				}
+			}
+			return hash.ToHashCode();
+		}
+		catch (Exception ex)
+		{
+			Log.Warning($"GameHUD.BuildHash exception: {ex.Message}");
+			return 0;
+		}
+	}
+}

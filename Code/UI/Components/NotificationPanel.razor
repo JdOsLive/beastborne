@@ -1,0 +1,164 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Systems;
+@inherits Panel
+
+<div class="notification-panel @(isExpanded ? "expanded" : "")">
+	@if (isExpanded)
+	{
+		<!-- Expanded History View -->
+		<div class="notification-history">
+			<div class="notification-history-header">
+				<div class="header-left">
+					<span class="history-icon">🔔</span>
+					<span class="history-title">NOTIFICATIONS</span>
+				</div>
+				<div class="history-actions">
+					@if (GetHistory().Count > 0)
+					{
+						<button class="clear-btn" onclick=@ClearHistory>Clear All</button>
+					}
+					<button class="close-btn" onclick=@ToggleExpanded>×</button>
+				</div>
+			</div>
+			<div class="notification-history-list">
+				@{
+					var history = GetHistory();
+				}
+				@if (history.Count == 0)
+				{
+					<div class="no-notifications">No notifications yet</div>
+				}
+				else
+				{
+					@foreach (var notification in history)
+					{
+						<div class="notification-history-item @GetTypeClass(notification.Type)">
+							<div class="notification-icon">@notification.Icon</div>
+							<div class="notification-content">
+								<div class="notification-title">@notification.Title</div>
+								<div class="notification-message">@notification.Message</div>
+								<div class="notification-time">@GetTimeAgo(notification.CreatedAt)</div>
+							</div>
+						</div>
+					}
+				}
+			</div>
+		</div>
+	}
+	else
+	{
+		<!-- Expand Button (at top) -->
+		<button class="notification-expand-btn @(GetUnreadCount() > 0 ? "has-unread" : "")" onclick=@ToggleExpanded>
+			<span class="notification-btn-icon">🔔</span>
+			<span class="notification-btn-text">NOTIFICATIONS</span>
+			@if (GetUnreadCount() > 0)
+			{
+				<span class="unread-badge">@GetUnreadCount()</span>
+			}
+		</button>
+
+		<!-- Toast Notifications (below button) -->
+		@foreach (var notification in GetNotifications())
+		{
+			<div class="notification @GetTypeClass(notification.Type)" onclick=@(() => DismissNotification(notification.Id))>
+				<div class="notification-icon">@notification.Icon</div>
+				<div class="notification-content">
+					<div class="notification-title">@notification.Title</div>
+					<div class="notification-message">@notification.Message</div>
+				</div>
+				<div class="notification-close">×</div>
+				<div class="notification-progress">
+					<div class="notification-progress-bar" style="width: @(notification.Progress * 100)%"></div>
+				</div>
+			</div>
+		}
+	}
+</div>
+
+@code {
+	private bool isExpanded = false;
+
+	// Static property so other components (like RadioWidget) can check if notifications are open
+	public static bool IsNotificationsExpanded { get; private set; } = false;
+
+	private List<Notification> GetNotifications()
+	{
+		return NotificationManager.Instance?.ActiveNotifications?.ToList() ?? new();
+	}
+
+	private List<Notification> GetHistory()
+	{
+		return NotificationManager.Instance?.NotificationHistory?.ToList() ?? new();
+	}
+
+	private int GetUnreadCount()
+	{
+		return NotificationManager.Instance?.UnreadCount ?? 0;
+	}
+
+	private string GetTypeClass(NotificationType type)
+	{
+		return type switch
+		{
+			NotificationType.Info => "info",
+			NotificationType.Success => "success",
+			NotificationType.Warning => "warning",
+			NotificationType.Evolution => "evolution",
+			NotificationType.ServerBoost => "server-boost",
+			NotificationType.RankedBattle => "ranked-battle",
+			NotificationType.Catch => "catch",
+			NotificationType.TamerLevelUp => "tamer-level-up",
+			_ => "info"
+		};
+	}
+
+	private string GetTimeAgo(DateTime time)
+	{
+		var diff = DateTime.UtcNow - time;
+		if (diff.TotalSeconds < 60) return "Just now";
+		if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+		if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+		return $"{(int)diff.TotalDays}d ago";
+	}
+
+	private void DismissNotification(Guid id)
+	{
+		NotificationManager.Instance?.RemoveNotification(id);
+		SoundManager.PlayClick();
+	}
+
+	private void ToggleExpanded()
+	{
+		isExpanded = !isExpanded;
+		IsNotificationsExpanded = isExpanded; // Update static property for other components
+		if (isExpanded)
+		{
+			NotificationManager.Instance?.MarkAllRead();
+		}
+		SoundManager.PlayClick();
+	}
+
+	private void ClearHistory()
+	{
+		NotificationManager.Instance?.ClearHistory();
+		SoundManager.PlayClick();
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(isExpanded);
+		hash.Add(GetNotifications().Count);
+		hash.Add(GetHistory().Count);
+		hash.Add(GetUnreadCount());
+		foreach (var n in GetNotifications())
+		{
+			hash.Add(n.Id);
+			hash.Add((int)(n.Progress * 100));
+		}
+		return hash.ToHashCode();
+	}
+}

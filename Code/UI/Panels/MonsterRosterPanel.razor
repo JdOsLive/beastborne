@@ -1,0 +1,3100 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+<div class="roster-panel @(CurrentView == "breeding" ? "fusion-view" : "")" onclick=@OnPanelClicked>
+	<div class="roster-header">
+		<div class="header-left">
+			<div class="roster-title">@(CurrentView == "collection" ? "My Beasts" : "Contract Fusion")</div>
+			<div class="roster-subtitle">@(CurrentView == "collection" ? "Manage and view your collection" : "Fuse two contracted souls to forge a new lineage")</div>
+		</div>
+		<div class="header-right">
+			<!-- Storage Count -->
+			@if (CurrentView == "collection")
+			{
+				<div class="roster-count">
+					<span class="storage-icon">📦</span>
+					<span class="storage-text">@GetMonsterCount() / @GetMaxMonsters()</span>
+				</div>
+			}
+		</div>
+	</div>
+
+	@if (CurrentView == "collection")
+	{
+		<!-- Collection View -->
+		<div class="view-container @(isTransitioningView ? "transitioning-out-" + slideDirection : "slide-in-from-" + (slideDirection == "left" ? "right" : "left"))">
+		<div class="collection-layout @(SelectedMonster != null ? "with-detail" : "")">
+			<div class="collection-main">
+				<div class="filter-bar-row">
+					<FilterBar @ref="filterBar"
+							   CurrentElement=@currentFilter
+							   CurrentSort=@currentSort
+							   CurrentRarity=@currentRarity
+							   SortAscending=@sortAscending
+							   ShowBeastiarySort=@true
+							   ShowRarityFilter=@true
+							   OnElementChanged=@OnElementChanged
+							   OnSortChanged=@OnSortChanged
+							   OnRarityChanged=@OnRarityChanged
+							   OnNameFilterChanged=@OnNameFilterChanged
+							   OnSortDirectionChanged=@OnSortDirectionChanged
+							   AvailableNames=@GetMonsterNames() />
+					<button class="sort-btn multi-select @(isMultiSelectMode ? "active" : "")"
+							onclick=@ToggleMultiSelectMode>
+						@(isMultiSelectMode ? $"Cancel ({selectedForRelease.Count})" : "Multi-Release")
+					</button>
+				</div>
+
+				<!-- Multi-select action bar -->
+				@if (isMultiSelectMode && selectedForRelease.Count > 0)
+				{
+					<div class="multi-select-bar">
+						<span class="selected-count">@selectedForRelease.Count selected</span>
+						<button class="release-selected-btn" onclick=@OnReleaseSelectedClicked>
+							Release @selectedForRelease.Count Monster@(selectedForRelease.Count > 1 ? "s" : "")
+						</button>
+					</div>
+				}
+
+				<div class="roster-grid" onmouseup=@OnDragSelectEnd>
+				@{
+					var collectionMonsters = GetFilteredMonsters();
+					var keyboardIdx = Math.Clamp(selectedMonsterIndex, 0, Math.Max(0, collectionMonsters.Count - 1));
+				}
+				@for (int i = 0; i < collectionMonsters.Count; i++)
+				{
+					var monster = collectionMonsters[i];
+					var idx = i;
+					var isKeyboardSelected = isKeyboardNavigationActive && i == keyboardIdx;
+					var isSelectedForRelease = selectedForRelease.Contains(monster.Id);
+					<div class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "")"
+						 onclick=@(() => OnMonsterCardClicked(monster, idx))
+						 onmousedown=@(() => OnCardMouseDown(monster, idx))
+						 onmouseenter=@(() => OnCardMouseEnter(monster, idx))
+						 onmouseup=@OnDragSelectEnd>
+						@if (isMultiSelectMode)
+						{
+							<div class="select-checkbox @(isSelectedForRelease ? "checked" : "")">
+								@(isSelectedForRelease ? "✓" : "")
+							</div>
+						}
+@{
+							// Card is hovered if it matches the hoveredMonsterId
+							var isThisCardHovered = hoveredMonsterId.HasValue && hoveredMonsterId.Value == monster.Id;
+							// Card is selected if it's the SelectedMonster, keyboard selected, or hovered (for visual styling - purple glow)
+							var isThisCardSelected = (SelectedMonster?.Id == monster.Id || isKeyboardSelected || isThisCardHovered);
+							// Should animate if: hovered, OR (selected AND no other card is hovered)
+							var shouldAnimate = isThisCardHovered || (isThisCardSelected && !hoveredMonsterId.HasValue);
+						}
+						<MonsterCard Monster=@monster
+									 IsSelected=@isThisCardSelected
+									 ShouldAnimate=@shouldAnimate
+									 IsCompact=@true
+									 AnimateOnHover=@true
+									 AnimationFrame=@SpriteAnimator.GlobalFrame
+									 ClickAction=@(() => {})
+									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
+									 LeaveAction=@OnMouseLeaveCard />
+					</div>
+				}
+
+				@if (currentFilter == "all")
+				{
+					var totalMonsters = GetMonsterCount();
+					var emptySlots = GetEmptySlotCount(totalMonsters);
+					@for (int i = 0; i < emptySlots; i++)
+					{
+						<div class="empty-slot compact" onmouseover=@OnMouseLeaveCard>
+							<div class="empty-slot-border"></div>
+						</div>
+					}
+				}
+
+				@if (GetFilteredMonsters().Count == 0 && currentFilter != "all")
+				{
+					<div class="empty-roster">
+						<div class="empty-icon">?</div>
+						<div class="empty-text">No monsters found</div>
+						<div class="empty-hint">No monsters match this filter</div>
+					</div>
+				}
+				</div>
+			</div>
+
+			@if (SelectedMonster != null)
+			{
+				<div class="detail-sidebar">
+					<div class="detail-header">
+						<div class="header-actions">
+							<div class="pill-btn" onclick=@ShowOffBeast>
+								<span class="pill-icon">📣</span>
+								<span class="pill-text">Show Off</span>
+							</div>
+							@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
+							{
+								<div class="pill-btn" onclick=@OpenJournal>
+									<span class="pill-icon">📖</span>
+									<span class="pill-text">Journal</span>
+								</div>
+							}
+							<div class="pill-btn @(SelectedMonster.IsFavorite ? "active" : "")" onclick=@ToggleFavorite>
+								<span class="pill-icon">@(SelectedMonster.IsFavorite ? "★" : "☆")</span>
+								<span class="pill-text">Favorite</span>
+							</div>
+						</div>
+						<button class="close-detail-btn" onclick=@CloseDetail>×</button>
+					</div>
+
+					<div class="detail-scroll">
+						<!-- Monster Portrait -->
+						<div class="portrait-section">
+							<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass()">
+								<div class="evolution-glow"></div>
+								<div class="evolution-particles">
+									<div class="particle p1"></div>
+									<div class="particle p2"></div>
+									<div class="particle p3"></div>
+									<div class="particle p4"></div>
+									<div class="particle p5"></div>
+									<div class="particle p6"></div>
+									<div class="particle p7"></div>
+									<div class="particle p8"></div>
+								</div>
+								<div class="monster-portrait @(evolutionPhase == "transform" || evolutionPhase == "burst" ? "hidden" : "")" style="background-image: url(@GetSelectedIconPath())"></div>
+								@if (!string.IsNullOrEmpty(evolvedIconPath) && (evolutionPhase == "transform" || evolutionPhase == "burst"))
+								{
+									<div class="monster-portrait evolved-portrait" style="background-image: url(@evolvedIconPath)"></div>
+								}
+								<div class="element-tag @GetSelectedElementClass()">@GetSelectedElementName()</div>
+							</div>
+							<div class="monster-name-section">
+								<div class="nickname-row">
+									@if (isEditingNickname)
+									{
+										<div class="nickname-input-wrapper">
+											<TextEntry class="nickname-input" @ref="nicknameInput" Text="@editingNickname" />
+										</div>
+										<div class="nickname-btn save" onclick=@SaveNickname>✓</div>
+										<div class="nickname-btn cancel" onclick=@CancelNicknameEdit>✕</div>
+									}
+									else
+									{
+										<div class="nickname">@SelectedMonster.Nickname</div>
+										<div class="nickname-btn edit" onclick=@StartNicknameEdit>✎</div>
+									}
+								</div>
+								<div class="species-name">@GetSelectedSpeciesName()</div>
+								<div class="level-power-row">
+									<div class="level-badge">LV @SelectedMonster.Level</div>
+									<div class="power-badge">
+										<span class="power-label">PWR</span>
+										<span class="power-value">@SelectedMonster.PowerRating</span>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- Stats + Info Row -->
+						<div class="stats-info-row">
+							<!-- Stats Section -->
+							<div class="stats-section">
+								<div class="section-title">Stats</div>
+								<div class="stats-grid">
+									<div class="stat-item">
+										<div class="stat-header">
+											<span class="stat-name">HP <span class="stat-gene">(@SelectedMonster.Genetics.HPGene/30)</span></span>
+											<span class="stat-value">@SelectedMonster.MaxHP @if(GetStatVeteranBonus(SelectedMonster.MaxHP, true) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.MaxHP, true))</span>}</span>
+										</div>
+										<div class="stat-bar-bg">
+											<div class="stat-bar-fill hp" style="width: @(GetStatPercent(SelectedMonster.MaxHP, 1330))%"></div>
+										</div>
+									</div>
+									<div class="stat-item">
+										<div class="stat-header">
+											<span class="stat-name">ATK <span class="stat-gene">(@SelectedMonster.Genetics.ATKGene/30)</span></span>
+											<span class="stat-value">@SelectedMonster.ATK @if(GetStatVeteranBonus(SelectedMonster.ATK) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.ATK))</span>}</span>
+										</div>
+										<div class="stat-bar-bg">
+											<div class="stat-bar-fill atk" style="width: @(GetStatPercent(SelectedMonster.ATK, 1330))%"></div>
+										</div>
+									</div>
+									<div class="stat-item">
+										<div class="stat-header">
+											<span class="stat-name">DEF <span class="stat-gene">(@SelectedMonster.Genetics.DEFGene/30)</span></span>
+											<span class="stat-value">@SelectedMonster.DEF @if(GetStatVeteranBonus(SelectedMonster.DEF) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.DEF))</span>}</span>
+										</div>
+										<div class="stat-bar-bg">
+											<div class="stat-bar-fill def" style="width: @(GetStatPercent(SelectedMonster.DEF, 1330))%"></div>
+										</div>
+									</div>
+									<div class="stat-item">
+										<div class="stat-header">
+											<span class="stat-name">SpA <span class="stat-gene">(@SelectedMonster.Genetics.SpAGene/30)</span></span>
+											<span class="stat-value">@SelectedMonster.SpA @if(GetStatVeteranBonus(SelectedMonster.SpA) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpA))</span>}</span>
+										</div>
+										<div class="stat-bar-bg">
+											<div class="stat-bar-fill spa" style="width: @(GetStatPercent(SelectedMonster.SpA, 1330))%"></div>
+										</div>
+									</div>
+									<div class="stat-item">
+										<div class="stat-header">
+											<span class="stat-name">SpD <span class="stat-gene">(@SelectedMonster.Genetics.SpDGene/30)</span></span>
+											<span class="stat-value">@SelectedMonster.SpD @if(GetStatVeteranBonus(SelectedMonster.SpD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpD))</span>}</span>
+										</div>
+										<div class="stat-bar-bg">
+											<div class="stat-bar-fill spd-def" style="width: @(GetStatPercent(SelectedMonster.SpD, 1330))%"></div>
+										</div>
+									</div>
+									<div class="stat-item">
+										<div class="stat-header">
+											<span class="stat-name">SPD <span class="stat-gene">(@SelectedMonster.Genetics.SPDGene/30)</span></span>
+											<span class="stat-value">@SelectedMonster.SPD @if(GetStatVeteranBonus(SelectedMonster.SPD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SPD))</span>}</span>
+										</div>
+										<div class="stat-bar-bg">
+											<div class="stat-bar-fill spd" style="width: @(GetStatPercent(SelectedMonster.SPD, 1330))%"></div>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<!-- Info Section -->
+							<div class="info-section">
+								<div class="section-title">Info</div>
+								<div class="info-grid">
+									<div class="info-row xp-row">
+										<span class="info-label">XP</span>
+										<div class="xp-bar-container">
+											<div class="xp-bar">
+												<div class="xp-fill" style="width: @(GetSelectedXPPercent())%"></div>
+											</div>
+											<span class="xp-text">@SelectedMonster.CurrentXP/@SelectedMonster.XPToNextLevel</span>
+										</div>
+									</div>
+									<div class="info-row">
+										<span class="info-label">Gen</span>
+										<span class="info-value">@(SelectedMonster.Generation == 0 ? "Wild" : $"{SelectedMonster.Generation}")</span>
+									</div>
+									<div class="info-row">
+										<span class="info-label">Loyalty</span>
+										<span class="info-value @(SelectedMonster.IsLoyal ? "loyal" : "contracted")">@(SelectedMonster.IsLoyal ? "Loyal" : "Contract")</span>
+									</div>
+									<div class="info-row">
+										<span class="info-label">Obtained</span>
+										<span class="info-value">@SelectedMonster.CaughtAt.ToString("MMM d")</span>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- Genetics + Abilities Row -->
+						<div class="genetics-abilities-row">
+							<!-- Genetics Section -->
+							<div class="genetics-section">
+								<div class="section-title">Genetics</div>
+								<div class="genetics-info">
+									<div class="genetics-row">
+										<span class="genetics-label">Quality</span>
+										<span class="genetics-value @GetSelectedGeneticsClass()">@SelectedMonster.Genetics.QualityRating</span>
+									</div>
+									<div class="genetics-row">
+										<span class="genetics-label">Nature</span>
+										<span class="genetics-value nature">@GetSelectedNature()</span>
+									</div>
+									<div class="genetics-row nature-effect">
+										<span class="genetics-value effect">@GetSelectedNatureEffect()</span>
+									</div>
+									<div class="genetics-row">
+										<span class="genetics-label">Genes</span>
+										<span class="genetics-value">@GetSelectedTotalGenes()/180</span>
+									</div>
+								</div>
+							</div>
+
+							<!-- Traits Section -->
+							<div class="traits-section">
+								<div class="section-title">Traits</div>
+								<div class="traits-list">
+									@if (SelectedMonster.Traits != null && SelectedMonster.Traits.Count > 0)
+									{
+										@foreach (var traitId in SelectedMonster.Traits)
+										{
+											<div class="trait-item">
+												<div class="trait-header">
+													<span class="trait-icon">✦</span>
+													<span class="trait-name">@GetTraitName(traitId)</span>
+												</div>
+												<div class="trait-desc">@GetTraitDescription(traitId)</div>
+											</div>
+										}
+									}
+									else
+									{
+										<div class="trait-item empty">
+											<span class="trait-name">None</span>
+										</div>
+									}
+								</div>
+							</div>
+						</div>
+
+						<!-- Lineage Section (for bred monsters) -->
+						@if (SelectedMonster.Generation > 0 && (SelectedMonster.Parent1Id.HasValue || SelectedMonster.Parent2Id.HasValue))
+						{
+							<div class="lineage-section">
+								<div class="section-title">Lineage</div>
+								<div class="lineage-info">
+									<div class="lineage-row">
+										<span class="lineage-label">Generation</span>
+										<span class="lineage-value">@SelectedMonster.Generation</span>
+									</div>
+									@if (SelectedMonster.Parent1Id.HasValue)
+									{
+										<div class="lineage-row">
+											<span class="lineage-label">Source 1</span>
+											<span class="lineage-value">@GetParentName(SelectedMonster.Parent1Id.Value)</span>
+										</div>
+									}
+									@if (SelectedMonster.Parent2Id.HasValue)
+									{
+										<div class="lineage-row">
+											<span class="lineage-label">Source 2</span>
+											<span class="lineage-value">@GetParentName(SelectedMonster.Parent2Id.Value)</span>
+										</div>
+									}
+								</div>
+							</div>
+						}
+
+						<!-- Battle Mastery Section -->
+						<div class="veteran-section">
+							<div class="section-title">Battle Mastery</div>
+							<div class="veteran-info">
+								<div class="veteran-rank @GetSelectedVeteranRankClass()">
+									<span class="rank-icon">@GetSelectedVeteranRankIcon()</span>
+									<span class="rank-name">@GetSelectedVeteranRankName()</span>
+									@if (GetSelectedVeteranBonusPercent() > 0)
+									{
+										<span class="rank-bonus">+@GetSelectedVeteranBonusPercent()% Stats</span>
+									}
+								</div>
+								<div class="veteran-stats">
+									<div class="vet-stat">
+										<span class="vet-stat-value">@SelectedMonster.BattlesFought</span>
+										<span class="vet-stat-label">Battles</span>
+									</div>
+									<div class="vet-stat">
+										<span class="vet-stat-value">@SelectedMonster.TotalKnockouts</span>
+										<span class="vet-stat-label">KOs</span>
+									</div>
+									<div class="vet-stat">
+										<span class="vet-stat-value">@FormatDamageValue(SelectedMonster.TotalDamageDealt)</span>
+										<span class="vet-stat-label">Damage</span>
+									</div>
+									<div class="vet-stat">
+										<span class="vet-stat-value">@SelectedMonster.BossesDefeated</span>
+										<span class="vet-stat-label">Bosses</span>
+									</div>
+								</div>
+								<div class="veteran-progress">
+									<div class="progress-bar">
+										<div class="progress-fill" style="width: @GetSelectedVeteranProgress()%"></div>
+									</div>
+									@if (SelectedMonster.BattlesToNextRank() > 0)
+									{
+										<span class="progress-text">@SelectedMonster.BattlesToNextRank() battles to next rank</span>
+									}
+									else
+									{
+										<span class="progress-text">Max rank achieved!</span>
+									}
+								</div>
+							</div>
+						</div>
+
+					</div>
+
+					<!-- Actions -->
+					<div class="detail-actions">
+						@if (CanSelectedMonsterEvolve())
+						{
+							<button class="action-btn evolve" onclick=@OnEvolveClicked>
+								<span class="action-icon">✦</span>
+								<span class="action-text">Evolve to @GetSelectedMonsterEvolutionName()</span>
+							</button>
+						}
+						<button class="action-btn item @(HasSelectedHeldItem() ? "has-item" : "") @GetSelectedHeldItemRarityClass()" onclick=@OpenItemPicker>
+							@if (HasSelectedHeldItem())
+							{
+								<img class="action-item-icon" src="@GetSelectedHeldItemIconPath()" onerror="this.style.display='none'" />
+								<span class="action-text">@GetSelectedHeldItemName()</span>
+							}
+							else
+							{
+								<span class="action-icon">⚔</span>
+								<span class="action-text">Item</span>
+							}
+						</button>
+						<div class="action-stack">
+							<button class="action-btn fuse stacked" onclick=@OnBreedFromDetail>
+								<span class="action-icon">⚗</span>
+								<span class="action-text">Fuse</span>
+							</button>
+							<button class="action-btn release stacked @(CanReleaseMonster() ? "" : "disabled")" onclick=@OnReleaseClicked>
+								<span class="action-icon">↗</span>
+								<span class="action-text">@(CanReleaseMonster() ? "Release" : "Last")</span>
+							</button>
+						</div>
+					</div>
+				</div>
+			}
+
+			<!-- Release Confirmation Modal -->
+			@if (showReleaseConfirm && monsterToRelease != null)
+			{
+				<div class="confirm-overlay" onclick=@CancelRelease>
+					<div class="confirm-panel" onclick:stopPropagation>
+						<div class="confirm-title">Release Monster?</div>
+						<div class="confirm-content">
+							<div class="confirm-monster-name">@monsterToRelease.Nickname</div>
+							<div class="confirm-warning">This action cannot be undone!</div>
+						</div>
+						<div class="confirm-buttons">
+							<button class="confirm-btn cancel" onclick=@CancelRelease>Cancel</button>
+							<button class="confirm-btn release" onclick=@ConfirmRelease>Release</button>
+						</div>
+					</div>
+				</div>
+			}
+
+			<!-- Bulk Release Confirmation Modal -->
+			@if (showBulkReleaseConfirm && selectedForRelease.Count > 0)
+			{
+				<div class="confirm-overlay" onclick=@CancelBulkRelease>
+					<div class="confirm-panel" onclick:stopPropagation>
+						<div class="confirm-title">Release @selectedForRelease.Count Beasts?</div>
+						<div class="confirm-content">
+							<div class="confirm-monster-list">
+								@foreach (var monsterId in selectedForRelease.Take(5))
+								{
+									var monster = MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault(m => m.Id == monsterId);
+									if (monster != null)
+									{
+										<div class="confirm-monster-item">@monster.Nickname (Lv.@monster.Level)</div>
+									}
+								}
+								@if (selectedForRelease.Count > 5)
+								{
+									<div class="confirm-monster-item more">...and @(selectedForRelease.Count - 5) more</div>
+								}
+							</div>
+							<div class="confirm-warning">This action cannot be undone!</div>
+						</div>
+						<div class="confirm-buttons">
+							<button class="confirm-btn cancel" onclick=@CancelBulkRelease>Cancel</button>
+							<button class="confirm-btn release" onclick=@ConfirmBulkRelease>Release All</button>
+						</div>
+					</div>
+				</div>
+			}
+
+			<!-- Journal Modal -->
+			@if (showJournalModal && SelectedMonster != null)
+			{
+				<div class="journal-modal-overlay" onclick=@CloseJournal>
+					<div class="journal-modal" onclick:stopPropagation>
+						<div class="journal-modal-header">
+							<div class="journal-modal-title">
+								<span class="journal-icon">📖</span>
+								<span class="journal-name">@(string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname)'s Journal</span>
+							</div>
+							<button class="journal-close-btn" onclick=@CloseJournal>×</button>
+						</div>
+						<div class="journal-modal-content">
+							@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
+							{
+								@foreach (var entry in SelectedMonster.Journal.OrderByDescending(e => e.Timestamp))
+								{
+									<div class="journal-modal-entry @GetJournalEntryClass(entry.Type) @(!string.IsNullOrEmpty(entry.ZoneId) ? "has-background" : "") @(entry.Type == JournalEntryType.BossDefeat ? "has-monster" : "")" style="@GetEntryBackgroundStyle(entry)">
+										<span class="entry-icon">@GetJournalEntryIcon(entry.Type)</span>
+										<div class="entry-body">
+											<div class="entry-text">@entry.Content</div>
+											<div class="entry-meta">
+												<div class="entry-badge @GetJournalEntryClass(entry.Type)">
+													<span class="badge-text">@GetJournalEntryBadge(entry.Type)</span>
+												</div>
+												<div class="entry-timestamp">@entry.Timestamp.ToString("MMM d, yyyy") at @entry.Timestamp.ToString("h:mm tt")</div>
+											</div>
+										</div>
+										@if (entry.Type == JournalEntryType.BossDefeat)
+										{
+											<div class="entry-monster">
+												@if (!string.IsNullOrEmpty(entry.SpeciesId))
+												{
+													<img src="@GetJournalSpeciesIcon(entry.SpeciesId)" />
+												}
+												else
+												{
+													<span class="monster-placeholder">💀</span>
+												}
+											</div>
+										}
+									</div>
+								}
+							}
+							else
+							{
+								<div class="journal-empty">No journal entries yet. Your beast's story is just beginning!</div>
+							}
+						</div>
+					</div>
+				</div>
+			}
+		</div>
+		</div>
+	}
+	else
+	{
+		<!-- Breeding View - Left/Right Layout (Grid on left, Selection on right like Collection view) -->
+		<div class="view-container @(isTransitioningView ? "transitioning-out-" + slideDirection : "slide-in-from-" + (slideDirection == "left" ? "left" : "right"))">
+		<div class="breeding-content">
+			<!-- Left Side: Monster Selection Grid -->
+			<div class="breeding-left">
+				<div class="filter-bar-row">
+					<FilterBar @ref="breedingFilterBar"
+							   CurrentElement=@breedingFilter
+							   CurrentSort=@breedingSort
+							   CurrentRarity=@breedingRarity
+							   SortAscending=@breedingSortAscending
+							   ShowBeastiarySort=@true
+							   ShowRarityFilter=@true
+							   OnElementChanged=@OnBreedingElementChanged
+							   OnSortChanged=@OnBreedingSortChanged
+							   OnRarityChanged=@OnBreedingRarityChanged
+							   OnNameFilterChanged=@OnBreedingNameFilterChanged
+							   OnSortDirectionChanged=@OnBreedingSortDirectionChanged
+							   AvailableNames=@GetBreedingMonsterNames() />
+				</div>
+				<div class="breeding-grid">
+					@{
+						var availableMonsters = GetAvailableBreedingMonsters();
+					}
+					@foreach (var monster in availableMonsters)
+					{
+						bool isParent1 = Parent1?.Id == monster.Id;
+						bool isParent2 = Parent2?.Id == monster.Id;
+						bool isSelected = isParent1 || isParent2;
+						bool isCompatible = Parent1 == null || monster.SpeciesId == Parent1.SpeciesId;
+						bool isBreedingHovered = hoveredBreedingMonsterId.HasValue && hoveredBreedingMonsterId.Value == monster.Id;
+						bool shouldAnimateBreeding = isBreedingHovered || (isSelected && !hoveredBreedingMonsterId.HasValue);
+						<div class="breeding-monster-wrapper @(isSelected ? "selected" : "") @(!isCompatible ? "incompatible" : "")"
+							 onclick=@(() => OnBreedingMonsterClicked(monster))>
+							<MonsterCard Monster=@monster
+										 IsCompact=@true
+										 IsSelected=@isSelected
+										 AnimateOnHover=@true
+										 ShouldAnimate=@shouldAnimateBreeding
+										 HoverAction=@(() => { hoveredBreedingMonsterId = monster.Id; })
+										 LeaveAction=@(() => { if (hoveredBreedingMonsterId == monster.Id) hoveredBreedingMonsterId = null; })
+										 ClickAction=@(() => {}) />
+							<div class="monster-genes-badge @(isSelected ? "selected" : "")">
+								<span class="genes-total">@GetMonsterTotalGenes(monster)</span>
+							</div>
+							@if (isParent1)
+							{
+								<div class="parent-indicator p1">S1</div>
+							}
+							@if (isParent2)
+							{
+								<div class="parent-indicator p2">S2</div>
+							}
+						</div>
+					}
+					@if (availableMonsters.Count == 0)
+					{
+						<div class="no-monsters-hint">
+							<div class="hint-icon">🐾</div>
+							<div class="hint-text">No compatible beasts available</div>
+						</div>
+					}
+				</div>
+			</div>
+
+			<!-- Right Side: Parent Selection + Preview/Tips -->
+			<div class="breeding-right">
+				<!-- Fusion Material Selection Panel -->
+				<div class="parents-panel">
+					<div class="section-title">Fusion Materials</div>
+					<div class="parents-row">
+						<div class="parent-slot @(Parent1 != null ? "filled" : "") @(selectedForSlot == 1 ? "selecting" : "")"
+							 onclick=@(() => SetSelectingSlot(1))>
+							@if (Parent1 != null)
+							{
+								<MonsterCard Monster=@Parent1 IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
+								<button class="remove-btn" onclick=@(() => ClearParent(1)) onclick:stopPropagation>×</button>
+							}
+							else
+							{
+								<div class="empty-parent">
+									<div class="empty-icon">+</div>
+									<div class="empty-text">Source 1</div>
+								</div>
+							}
+						</div>
+
+						<div class="breed-connector">
+							<div class="fusion-icon">⚡</div>
+						</div>
+
+						<div class="parent-slot @(Parent2 != null ? "filled" : "") @(selectedForSlot == 2 ? "selecting" : "")"
+							 onclick=@(() => SetSelectingSlot(2))>
+							@if (Parent2 != null)
+							{
+								<MonsterCard Monster=@Parent2 IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
+								<button class="remove-btn" onclick=@(() => ClearParent(2)) onclick:stopPropagation>×</button>
+							}
+							else
+							{
+								<div class="empty-parent">
+									<div class="empty-icon">+</div>
+									<div class="empty-text">Source 2</div>
+								</div>
+							}
+						</div>
+					</div>
+
+					<!-- Breed Button inside parents panel -->
+					@if (Parent1 != null && Parent2 != null)
+					{
+						var compatibility = GeneticsCalculator.CheckCompatibility(Parent1, Parent2);
+						@if (!compatibility.CanBreed)
+						{
+							<div class="compatibility-warning">
+								<span class="warning-icon">⚠</span>
+								<span class="warning-text">@compatibility.Reason</span>
+							</div>
+						}
+						else
+						{
+							<div class="breed-action">
+								@{
+									var cost = GeneticsCalculator.CalculateBreedingCost(Parent1, Parent2);
+									var canAfford = TamerManager.Instance?.CurrentTamer?.Gold >= cost;
+								}
+								<div class="breed-cost @(canAfford == true ? "" : "insufficient")">
+									<span class="cost-icon">💰</span>
+									<span class="cost-value">@cost Gold</span>
+								</div>
+								<button class="breed-btn @(canAfford == true ? "" : "disabled")" onclick=@OnBreedClicked>
+									<span class="breed-icon">⚡</span>
+									<span class="breed-text">FUSE</span>
+								</button>
+								<div class="breed-warning">Both parents will be consumed!</div>
+							</div>
+						}
+					}
+				</div>
+
+				<!-- Preview or Tips -->
+				<div class="breeding-info-scroll">
+					@if (Parent1 != null && Parent2 != null)
+					{
+						var compatibility = GeneticsCalculator.CheckCompatibility(Parent1, Parent2);
+						@if (compatibility.CanBreed)
+						{
+							@{
+								var preview = GeneticsCalculator.PreviewOffspring(Parent1, Parent2, lockedGenes.Count > 0 ? lockedGenes : null);
+								var p1Genes = Parent1.Genetics;
+								var p2Genes = Parent2.Genetics;
+								var p1Total = p1Genes.HPGene + p1Genes.ATKGene + p1Genes.DEFGene + p1Genes.SpAGene + p1Genes.SpDGene + p1Genes.SPDGene;
+								var p2Total = p2Genes.HPGene + p2Genes.ATKGene + p2Genes.DEFGene + p2Genes.SpAGene + p2Genes.SpDGene + p2Genes.SPDGene;
+								var offspringAvgTotal = preview.AvgHP + preview.AvgATK + preview.AvgDEF + preview.AvgSpA + preview.AvgSpD + preview.AvgSPD;
+								var maxLocks = preview.GeneLockSlots;
+								var hasLockSkill = maxLocks > 0;
+							}
+
+							<!-- Parent Genes Comparison -->
+							<div class="genes-comparison">
+								<div class="comparison-title">Genetics Comparison</div>
+								<div class="comparison-header">
+									<span class="gene-lock-header">@lockedGenes.Count/@maxLocks</span>
+									<span class="gene-label"></span>
+									<span class="parent-label">S1</span>
+									<span class="parent-label">S2</span>
+									<span class="parent-label offspring">Result</span>
+								</div>
+
+								<div class="comparison-row @(lockedGenes.Contains("HP") ? "gene-locked" : "")">
+									<div class="gene-lock-btn @(hasLockSkill ? "" : "no-skill") @(lockedGenes.Contains("HP") ? "locked" : "") @(hasLockSkill && lockedGenes.Count >= maxLocks && !lockedGenes.Contains("HP") ? "disabled" : "")"
+											onclick=@(() => ToggleGeneLock("HP"))>
+										@(lockedGenes.Contains("HP") ? "🔒" : "🔓")
+									</div>
+									<span class="gene-label hp">HP</span>
+									<span class="gene-value @(p1Genes.HPGene >= p2Genes.HPGene ? "better" : "")">@p1Genes.HPGene</span>
+									<span class="gene-value @(p2Genes.HPGene >= p1Genes.HPGene ? "better" : "")">@p2Genes.HPGene</span>
+									<span class="gene-value predicted">@preview.AvgHP</span>
+								</div>
+								<div class="comparison-row @(lockedGenes.Contains("ATK") ? "gene-locked" : "")">
+									<div class="gene-lock-btn @(hasLockSkill ? "" : "no-skill") @(lockedGenes.Contains("ATK") ? "locked" : "") @(hasLockSkill && lockedGenes.Count >= maxLocks && !lockedGenes.Contains("ATK") ? "disabled" : "")"
+											onclick=@(() => ToggleGeneLock("ATK"))>
+										@(lockedGenes.Contains("ATK") ? "🔒" : "🔓")
+									</div>
+									<span class="gene-label atk">ATK</span>
+									<span class="gene-value @(p1Genes.ATKGene >= p2Genes.ATKGene ? "better" : "")">@p1Genes.ATKGene</span>
+									<span class="gene-value @(p2Genes.ATKGene >= p1Genes.ATKGene ? "better" : "")">@p2Genes.ATKGene</span>
+									<span class="gene-value predicted">@preview.AvgATK</span>
+								</div>
+								<div class="comparison-row @(lockedGenes.Contains("DEF") ? "gene-locked" : "")">
+									<div class="gene-lock-btn @(hasLockSkill ? "" : "no-skill") @(lockedGenes.Contains("DEF") ? "locked" : "") @(hasLockSkill && lockedGenes.Count >= maxLocks && !lockedGenes.Contains("DEF") ? "disabled" : "")"
+											onclick=@(() => ToggleGeneLock("DEF"))>
+										@(lockedGenes.Contains("DEF") ? "🔒" : "🔓")
+									</div>
+									<span class="gene-label def">DEF</span>
+									<span class="gene-value @(p1Genes.DEFGene >= p2Genes.DEFGene ? "better" : "")">@p1Genes.DEFGene</span>
+									<span class="gene-value @(p2Genes.DEFGene >= p1Genes.DEFGene ? "better" : "")">@p2Genes.DEFGene</span>
+									<span class="gene-value predicted">@preview.AvgDEF</span>
+								</div>
+								<div class="comparison-row @(lockedGenes.Contains("SpA") ? "gene-locked" : "")">
+									<div class="gene-lock-btn @(hasLockSkill ? "" : "no-skill") @(lockedGenes.Contains("SpA") ? "locked" : "") @(hasLockSkill && lockedGenes.Count >= maxLocks && !lockedGenes.Contains("SpA") ? "disabled" : "")"
+											onclick=@(() => ToggleGeneLock("SpA"))>
+										@(lockedGenes.Contains("SpA") ? "🔒" : "🔓")
+									</div>
+									<span class="gene-label spa">SpA</span>
+									<span class="gene-value @(p1Genes.SpAGene >= p2Genes.SpAGene ? "better" : "")">@p1Genes.SpAGene</span>
+									<span class="gene-value @(p2Genes.SpAGene >= p1Genes.SpAGene ? "better" : "")">@p2Genes.SpAGene</span>
+									<span class="gene-value predicted">@preview.AvgSpA</span>
+								</div>
+								<div class="comparison-row @(lockedGenes.Contains("SpD") ? "gene-locked" : "")">
+									<div class="gene-lock-btn @(hasLockSkill ? "" : "no-skill") @(lockedGenes.Contains("SpD") ? "locked" : "") @(hasLockSkill && lockedGenes.Count >= maxLocks && !lockedGenes.Contains("SpD") ? "disabled" : "")"
+											onclick=@(() => ToggleGeneLock("SpD"))>
+										@(lockedGenes.Contains("SpD") ? "🔒" : "🔓")
+									</div>
+									<span class="gene-label spd-def">SpD</span>
+									<span class="gene-value @(p1Genes.SpDGene >= p2Genes.SpDGene ? "better" : "")">@p1Genes.SpDGene</span>
+									<span class="gene-value @(p2Genes.SpDGene >= p1Genes.SpDGene ? "better" : "")">@p2Genes.SpDGene</span>
+									<span class="gene-value predicted">@preview.AvgSpD</span>
+								</div>
+								<div class="comparison-row @(lockedGenes.Contains("SPD") ? "gene-locked" : "")">
+									<div class="gene-lock-btn @(hasLockSkill ? "" : "no-skill") @(lockedGenes.Contains("SPD") ? "locked" : "") @(hasLockSkill && lockedGenes.Count >= maxLocks && !lockedGenes.Contains("SPD") ? "disabled" : "")"
+											onclick=@(() => ToggleGeneLock("SPD"))>
+										@(lockedGenes.Contains("SPD") ? "🔒" : "🔓")
+									</div>
+									<span class="gene-label spd">SPD</span>
+									<span class="gene-value @(p1Genes.SPDGene >= p2Genes.SPDGene ? "better" : "")">@p1Genes.SPDGene</span>
+									<span class="gene-value @(p2Genes.SPDGene >= p1Genes.SPDGene ? "better" : "")">@p2Genes.SPDGene</span>
+									<span class="gene-value predicted">@preview.AvgSPD</span>
+								</div>
+
+								<div class="comparison-row total-row">
+									<span class="gene-lock-header"></span>
+									<span class="gene-label">TOTAL</span>
+									<span class="gene-value total">@p1Total</span>
+									<span class="gene-value total">@p2Total</span>
+									<span class="gene-value total predicted">@offspringAvgTotal</span>
+								</div>
+
+								<div class="comparison-row quality-row">
+									<span class="gene-lock-header"></span>
+									<span class="gene-label">Quality</span>
+									<span class="gene-value quality @p1Genes.QualityRating.ToLower()">@p1Genes.QualityRating</span>
+									<span class="gene-value quality @p2Genes.QualityRating.ToLower()">@p2Genes.QualityRating</span>
+									<span class="gene-value quality @preview.PredictedQuality.ToLower()">@preview.PredictedQuality</span>
+								</div>
+
+							</div>
+
+							<div class="preview-extras">
+								<div class="extra-row">
+									<span class="extra-label">Twins</span>
+									<span class="extra-value">@((preview.TwinChance * 100).ToString("F0"))%</span>
+								</div>
+								<div class="extra-row">
+									<span class="extra-label">Mutation</span>
+									<span class="extra-value">@((preview.MutationChance * 100).ToString("F0"))%</span>
+								</div>
+							</div>
+						}
+					}
+					else
+					{
+						<!-- Tips shown when no parents selected -->
+						<div class="tips-section">
+							<div class="tips-title">Fusion Tips</div>
+							<div class="tips-list">
+								<div class="tip-item">
+									<span class="tip-icon">🧬</span>
+									<span class="tip-text">Genes range 0-30. Total genes max is 180.</span>
+								</div>
+								<div class="tip-item">
+									<span class="tip-icon">📈</span>
+									<span class="tip-text">70% chance to inherit the better gene!</span>
+								</div>
+								<div class="tip-item">
+									<span class="tip-icon">🎰</span>
+									<span class="tip-text">15% mutation chance - mostly positive!</span>
+								</div>
+								<div class="tip-item">
+									<span class="tip-icon">⚡</span>
+									<span class="tip-text">Fused beasts are loyal - no contracts!</span>
+								</div>
+							</div>
+						</div>
+					}
+				</div>
+			</div>
+		</div>
+
+		</div>
+	}
+
+	<!-- Item Picker Modal (at root level for full coverage) -->
+	@if (showItemPicker && SelectedMonster != null)
+	{
+		<div class="item-picker-overlay" onclick=@CloseItemPicker>
+			<div class="item-picker-modal" onclick:stopPropagation>
+				<div class="item-picker-header">
+					<span class="picker-title">Held Item</span>
+					<button class="picker-close-btn" onclick=@CloseItemPicker>×</button>
+				</div>
+				@if (HasSelectedHeldItem())
+				{
+					<div class="current-item-section">
+						<span class="section-label">Currently Equipped</span>
+						<div class="current-item @GetSelectedHeldItemRarityClass()">
+							<img class="item-icon" src="@GetSelectedHeldItemIconPath()" onerror="this.style.display='none'" />
+							<div class="item-info">
+								<span class="item-name">@GetSelectedHeldItemName()</span>
+								<span class="item-effect">@GetSelectedHeldItemDescription()</span>
+							</div>
+							<button class="unequip-btn" onclick=@UnequipCurrentItem>Unequip</button>
+						</div>
+					</div>
+				}
+				<div class="item-picker-content">
+					<div class="available-items-section">
+						<span class="section-label">Available Items (@GetAvailableHeldItems().Count)</span>
+						<div class="items-grid">
+							@foreach (var item in GetAvailableHeldItems())
+							{
+								<div class="item-option @GetItemRarityClass(item)" onclick="@(() => EquipItem(item.Id))">
+									<img class="item-icon" src="@item.IconPath" onerror="this.style.display='none'" />
+									<div class="item-info">
+										<span class="item-name">@item.Name</span>
+										<span class="item-rarity">@item.Rarity</span>
+										<span class="item-effect">@item.Description</span>
+									</div>
+									<span class="item-qty">x@(GetItemQuantity(item.Id))</span>
+								</div>
+							}
+							@if (GetAvailableHeldItems().Count == 0)
+							{
+								<div class="no-items">
+									<span class="no-items-icon">📦</span>
+									<span class="no-items-text">No held items in inventory</span>
+								</div>
+							}
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+
+	<!-- Fusion Confirmation Modal (at root level for full coverage) -->
+	@if (showFusionConfirm && Parent1 != null && Parent2 != null)
+	{
+		<div class="confirm-overlay" onclick=@CancelFusion>
+			<div class="confirm-panel" onclick:stopPropagation>
+				<div class="confirm-title">Fuse Beasts?</div>
+				<div class="confirm-content">
+					<div class="confirm-monster-name">@Parent1.Nickname + @Parent2.Nickname</div>
+					<div class="confirm-warning">Both parents will be consumed!</div>
+				</div>
+				<div class="confirm-buttons">
+					<button class="confirm-btn cancel" onclick=@CancelFusion>Cancel</button>
+					<button class="confirm-btn fuse" onclick=@ConfirmFusion>Fuse</button>
+				</div>
+			</div>
+		</div>
+	}
+
+	<!-- Fusion Result Modal (at root level for full coverage) -->
+	@if (showResult && breedingResult != null)
+	{
+		<div class="result-overlay @(isFusionAnimating ? "animating" : "")">
+			<!-- Result Panel - always visible, animation plays inside -->
+			<div class="result-panel @(isFusionAnimating ? "fusing" : "")">
+				<!-- Fusion Animation (inside panel) -->
+				@if (isFusionAnimating)
+				{
+					<div class="fusion-animation-container @fusionPhase">
+						<!-- DNA Helix Spirals -->
+						<div class="dna-helix left">
+							@for (int i = 0; i < 8; i++)
+							{
+								<div class="helix-particle p@(i)"></div>
+							}
+						</div>
+						<div class="dna-helix right">
+							@for (int i = 0; i < 8; i++)
+							{
+								<div class="helix-particle p@(i)"></div>
+							}
+						</div>
+
+						<!-- Swirling energy particles -->
+						<div class="energy-vortex">
+							@for (int i = 0; i < 12; i++)
+							{
+								<div class="vortex-particle p@(i)"></div>
+							}
+						</div>
+
+						<!-- Central fusion core -->
+						<div class="fusion-core">
+							<div class="core-inner"></div>
+							<div class="core-ring r1"></div>
+							<div class="core-ring r2"></div>
+							<div class="core-ring r3"></div>
+						</div>
+
+						<!-- Flash effect -->
+						<div class="fusion-flash"></div>
+					</div>
+				}
+
+				<!-- Result Content (hidden during animation, revealed after) -->
+				<div class="result-content-wrapper @(isFusionAnimating ? "hidden" : "revealed")">
+					<div class="result-title">Fusion Complete!</div>
+					<div class="result-content">
+						<div class="monster-reveal-container pop-in">
+							<div class="reveal-glow"></div>
+							<div class="reveal-sparkles">
+								@for (int i = 0; i < 8; i++)
+								{
+									<div class="sparkle s@(i)"></div>
+								}
+							</div>
+							<MonsterCard Monster=@breedingResult IsCompact=@false AnimationFrame=@SpriteAnimator.GlobalFrame />
+						</div>
+						<div class="result-right">
+							<div class="result-info">
+								<div class="info-row">
+									<span class="info-label">Genetics Quality</span>
+									<span class="info-value quality @breedingResult.Genetics.QualityRating.ToLower()">@breedingResult.Genetics.QualityRating</span>
+								</div>
+								<div class="info-row">
+									<span class="info-label">Total Genes</span>
+									<span class="info-value">@GetResultTotalGenes() / 180</span>
+								</div>
+								<div class="info-row">
+									<span class="info-label">Nature</span>
+									<span class="info-value">@breedingResult.Genetics.Nature</span>
+								</div>
+							</div>
+							<div class="result-genes">
+								<div class="result-gene hp">
+									<span class="gene-name">HP</span>
+									<span class="gene-val">@breedingResult.Genetics.HPGene</span>
+								</div>
+								<div class="result-gene atk">
+									<span class="gene-name">ATK</span>
+									<span class="gene-val">@breedingResult.Genetics.ATKGene</span>
+								</div>
+								<div class="result-gene def">
+									<span class="gene-name">DEF</span>
+									<span class="gene-val">@breedingResult.Genetics.DEFGene</span>
+								</div>
+								<div class="result-gene spa">
+									<span class="gene-name">SpA</span>
+									<span class="gene-val">@breedingResult.Genetics.SpAGene</span>
+								</div>
+								<div class="result-gene spd-def">
+									<span class="gene-name">SpD</span>
+									<span class="gene-val">@breedingResult.Genetics.SpDGene</span>
+								</div>
+								<div class="result-gene spd">
+									<span class="gene-name">SPD</span>
+									<span class="gene-val">@breedingResult.Genetics.SPDGene</span>
+								</div>
+							</div>
+						</div>
+					</div>
+					<button class="result-btn" onclick=@CloseResult>CONTINUE</button>
+				</div>
+			</div>
+		</div>
+	}
+</div>
+
+@code {
+	public Monster SelectedMonster { get; set; }
+	public Action<Monster> OnSelect { get; set; }
+
+	public string CurrentView { get; private set; } = "collection";
+	private string currentFilter = "all";
+	private string currentSort = "power";
+	private string currentRarity = "all";
+	private string currentNameFilter = "";
+	private bool sortAscending = false;
+	private FilterBar filterBar;
+
+	// Breeding state
+	private Monster Parent1 = null;
+	private Monster Parent2 = null;
+	private int selectedForSlot = 1; // Which slot is being selected for (1 or 2)
+	private string breedingFilter = "all";
+	private string breedingSort = "genes";
+	private string breedingRarity = "all";
+	private string breedingNameFilter = "";
+	private bool breedingSortAscending = false;
+	private FilterBar breedingFilterBar;
+	private bool showResult = false;
+	private Monster breedingResult = null;
+	private HashSet<string> lockedGenes = new();
+
+	// Fusion animation state
+	private bool isFusionAnimating = false;
+	private string fusionPhase = "";
+	private float fusionAnimationStart = 0;
+
+	// Nickname editing state
+	private bool isEditingNickname = false;
+	private string editingNickname = "";
+	private TextEntry nicknameInput;
+
+	// Release confirmation state
+	private bool showReleaseConfirm = false;
+	private Monster monsterToRelease = null;
+
+	// Fusion confirmation state
+	private bool showFusionConfirm = false;
+
+	// Multi-select release state
+	private bool isMultiSelectMode = false;
+	private HashSet<Guid> selectedForRelease = new();
+	private bool showBulkReleaseConfirm = false;
+	private int lastSelectedIndex = -1;
+	private bool isDragSelecting = false;
+
+	// Journal modal state
+	private bool showJournalModal = false;
+
+	// Item picker modal state
+	private bool showItemPicker = false;
+
+	// Track if keyboard navigation is active (vs mouse)
+	private bool isKeyboardNavigationActive = false;
+
+	// Track which card is being hovered (to prevent selected card from animating when hovering another)
+	private Guid? hoveredMonsterId = null;
+
+	// Track which breeding card is being hovered
+	private Guid? hoveredBreedingMonsterId = null;
+
+	// View transition state
+	private bool isTransitioningView = false;
+	private string slideDirection = "right"; // "left" or "right" for slide direction
+
+	// Evolution animation state
+	private bool isEvolving = false;
+	private string evolutionPhase = ""; // "shake", "glow", "transform", "burst"
+	private string evolvedIconPath = "";
+
+	public async void SwitchView(string view)
+	{
+		if (CurrentView == view || isTransitioningView) return;
+		SoundManager.PlayTabSwitch();
+
+		// Determine slide direction based on view order
+		slideDirection = view == "breeding" ? "left" : "right";
+
+		// Start transition out
+		isTransitioningView = true;
+		StateHasChanged();
+
+		// Wait for slide-out animation
+		await Task.Delay(200);
+
+		// Switch view
+		CurrentView = view;
+		selectedMonsterIndex = 0;
+
+		// Let the new view slide in
+		StateHasChanged();
+
+		// Brief delay then end transition
+		await Task.Delay(50);
+		isTransitioningView = false;
+		StateHasChanged();
+	}
+
+	private int GetMonsterCount()
+	{
+		return MonsterManager.Instance?.OwnedMonsters?.Count ?? 0;
+	}
+
+	private int GetMaxMonsters()
+	{
+		return MonsterManager.Instance?.MaxMonsters ?? 50;
+	}
+
+	private List<Monster> GetFilteredMonsters()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters ?? new List<Monster>();
+
+		// Apply element filter
+		if (currentFilter != "all")
+		{
+			var elementType = currentFilter switch
+			{
+				"fire" => ElementType.Fire,
+				"water" => ElementType.Water,
+				"earth" => ElementType.Earth,
+				"wind" => ElementType.Wind,
+				"electric" => ElementType.Electric,
+				"ice" => ElementType.Ice,
+				"nature" => ElementType.Nature,
+				"metal" => ElementType.Metal,
+				"shadow" => ElementType.Shadow,
+				"spirit" => ElementType.Spirit,
+				"neutral" => ElementType.Neutral,
+				_ => ElementType.Neutral
+			};
+
+			monsters = monsters.Where(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				return species?.Element == elementType;
+			}).ToList();
+		}
+
+		// Apply rarity filter
+		if (currentRarity != "all")
+		{
+			var rarityType = currentRarity switch
+			{
+				"common" => Rarity.Common,
+				"uncommon" => Rarity.Uncommon,
+				"rare" => Rarity.Rare,
+				"epic" => Rarity.Epic,
+				"legendary" => Rarity.Legendary,
+				"mythic" => Rarity.Mythic,
+				_ => Rarity.Common
+			};
+
+			monsters = monsters.Where(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				return species?.BaseRarity == rarityType;
+			}).ToList();
+		}
+
+		// Apply name filter (if searching by name)
+		if (currentSort == "name" && !string.IsNullOrEmpty(currentNameFilter))
+		{
+			monsters = monsters.Where(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				return species?.Name?.Equals(currentNameFilter, StringComparison.OrdinalIgnoreCase) == true ||
+					   m.Nickname?.Equals(currentNameFilter, StringComparison.OrdinalIgnoreCase) == true;
+			}).ToList();
+		}
+
+		// Apply sort (default is descending/high-to-low)
+		monsters = currentSort switch
+		{
+			"genes" => sortAscending
+				? monsters.OrderBy(m => GetMonsterTotalGenes(m)).ToList()
+				: monsters.OrderByDescending(m => GetMonsterTotalGenes(m)).ToList(),
+			"power" => sortAscending
+				? monsters.OrderBy(m => m.PowerRating).ToList()
+				: monsters.OrderByDescending(m => m.PowerRating).ToList(),
+			"level" => sortAscending
+				? monsters.OrderBy(m => m.Level).ToList()
+				: monsters.OrderByDescending(m => m.Level).ToList(),
+			"recent" => sortAscending
+				? monsters.OrderBy(m => m.CaughtAt).ToList()
+				: monsters.OrderByDescending(m => m.CaughtAt).ToList(),
+			"rarity" => sortAscending
+				? monsters.OrderBy(m => {
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					return (int)(species?.BaseRarity ?? Rarity.Common);
+				}).ToList()
+				: monsters.OrderByDescending(m => {
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					return (int)(species?.BaseRarity ?? Rarity.Common);
+				}).ToList(),
+			"basestats" => sortAscending
+				? monsters.OrderBy(m => {
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					if (species == null) return 0;
+					return species.BaseHP + species.BaseATK + species.BaseDEF + species.BaseSpA + species.BaseSpD + species.BaseSPD;
+				}).ToList()
+				: monsters.OrderByDescending(m => {
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					if (species == null) return 0;
+					return species.BaseHP + species.BaseATK + species.BaseDEF + species.BaseSpA + species.BaseSpD + species.BaseSPD;
+				}).ToList(),
+			"fav" => sortAscending
+				? monsters.OrderBy(m => m.IsFavorite).ThenBy(m => m.PowerRating).ToList()
+				: monsters.OrderByDescending(m => m.IsFavorite).ThenByDescending(m => m.PowerRating).ToList(),
+			"beastiary" => sortAscending
+				? monsters.OrderByDescending(m => {
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					return species?.BeastiaryNumber ?? 9999;
+				}).ToList()
+				: monsters.OrderBy(m => {
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					return species?.BeastiaryNumber ?? 9999;
+				}).ToList(),
+			"name" => sortAscending
+				? monsters.OrderByDescending(m => m.Nickname ?? MonsterManager.Instance?.GetSpecies(m.SpeciesId)?.Name ?? "").ToList()
+				: monsters.OrderBy(m => m.Nickname ?? MonsterManager.Instance?.GetSpecies(m.SpeciesId)?.Name ?? "").ToList(),
+			_ => monsters
+		};
+
+		return monsters;
+	}
+
+	private void SetFilter(string filter)
+	{
+		SoundManager.PlayClick();
+		currentFilter = filter;
+	}
+
+	private void SetSort(string sort)
+	{
+		SoundManager.PlayClick();
+		currentSort = sort;
+	}
+
+	// FilterBar callback handlers
+	private void OnElementChanged(string element)
+	{
+		currentFilter = element;
+	}
+
+	private void OnSortChanged(string sort)
+	{
+		currentSort = sort;
+	}
+
+	private void OnSortDirectionChanged(bool ascending)
+	{
+		sortAscending = ascending;
+	}
+
+	private void OnNameFilterChanged(string name)
+	{
+		currentNameFilter = name;
+	}
+
+	private void OnRarityChanged(string rarity)
+	{
+		currentRarity = rarity;
+	}
+
+	private List<string> GetMonsterNames()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters ?? new List<Monster>();
+		var names = new HashSet<string>();
+
+		foreach (var monster in monsters)
+		{
+			// Add nickname if it exists
+			if (!string.IsNullOrEmpty(monster.Nickname))
+				names.Add(monster.Nickname);
+
+			// Add species name
+			var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+			if (species != null && !string.IsNullOrEmpty(species.Name))
+				names.Add(species.Name);
+		}
+
+		return names.OrderBy(n => n).ToList();
+	}
+
+	private void OnMonsterSelected(Monster monster)
+	{
+		SoundManager.PlaySelect();
+		SelectedMonster = monster;
+		isEditingNickname = false;
+
+		// Sync keyboard index with mouse selection to prevent both showing as selected
+		var monsters = GetFilteredMonsters();
+		var index = monsters.FindIndex(m => m.Id == monster.Id);
+		if (index >= 0)
+		{
+			selectedMonsterIndex = index;
+		}
+
+		OnSelect?.Invoke(monster);
+	}
+
+	private void OnPanelClicked()
+	{
+		// When user clicks with mouse, ensure we're in panel mode (not tab navigation)
+		GameHUD.EnterPanel();
+	}
+
+	private void OnMouseHoverCard(Guid monsterId)
+	{
+		// Only update if hover state actually changed (onmouseover fires repeatedly from child elements)
+		if (hoveredMonsterId == monsterId && !isKeyboardNavigationActive) return;
+
+		// When mouse hovers over a card, switch to mouse mode (disable keyboard selection highlight)
+		isKeyboardNavigationActive = false;
+		hoveredMonsterId = monsterId;
+		StateHasChanged();
+	}
+
+	private void OnMouseLeaveCard()
+	{
+		// Only update if we were actually hovering something
+		if (hoveredMonsterId == null) return;
+
+		hoveredMonsterId = null;
+		StateHasChanged();
+	}
+
+	private int GetEmptySlotCount(int currentCount)
+	{
+		// Show all remaining slots up to capacity
+		int maxCapacity = GetMaxMonsters();
+		int remainingSlots = maxCapacity - currentCount;
+		return Math.Max(0, remainingSlots);
+	}
+
+	// ==========================================
+	// Detail Panel Methods
+	// ==========================================
+
+	private void CloseDetail()
+	{
+		SoundManager.PlayBack();
+		SelectedMonster = null;
+		isEditingNickname = false;
+	}
+
+	private void ToggleFavorite()
+	{
+		if (SelectedMonster != null)
+		{
+			SelectedMonster.IsFavorite = !SelectedMonster.IsFavorite;
+			SoundManager.PlayClick();
+		}
+	}
+
+	private void ShowOffBeast()
+	{
+		if (SelectedMonster == null) return;
+
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster.SpeciesId);
+		if (species == null) return;
+
+		ChatManager.Instance?.SendBeastShowcase(SelectedMonster, species);
+		SoundManager.PlayNotification();
+
+		var name = string.IsNullOrEmpty(SelectedMonster.Nickname) ? species.Name : SelectedMonster.Nickname;
+		NotificationManager.Instance?.AddNotification(NotificationType.Info, "Beast Shared!", $"Shared {name} in chat");
+	}
+
+	private void StartNicknameEdit()
+	{
+		editingNickname = SelectedMonster?.Nickname ?? "";
+		isEditingNickname = true;
+		SoundManager.PlayClick();
+	}
+
+	private void OnNicknameChanged(PanelEvent e)
+	{
+		if (e.Target is TextEntry textEntry)
+		{
+			editingNickname = textEntry.Text ?? "";
+		}
+	}
+
+	private void SaveNickname()
+	{
+		if (SelectedMonster != null && nicknameInput != null)
+		{
+			var newName = nicknameInput.Text?.Trim();
+			if (!string.IsNullOrEmpty(newName))
+			{
+				SelectedMonster.Nickname = newName;
+			}
+		}
+		isEditingNickname = false;
+		SoundManager.PlayClick();
+	}
+
+	private void CancelNicknameEdit()
+	{
+		isEditingNickname = false;
+		editingNickname = "";
+		SoundManager.PlayBack();
+	}
+
+	private string GetSelectedIconPath()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster?.SpeciesId);
+		if (species?.AnimationFrames != null && species.AnimationFrames.Count > 0)
+		{
+			int frameIndex = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
+			return species.AnimationFrames[frameIndex];
+		}
+		return species?.IconPath ?? "ui/monsters/default.png";
+	}
+
+	private string GetSelectedSpeciesName()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster?.SpeciesId);
+		return species?.Name ?? "Unknown";
+	}
+
+	private string GetSelectedRarityClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster?.SpeciesId);
+		return $"rarity-{species?.BaseRarity.ToString().ToLower() ?? "common"}";
+	}
+
+	private string GetSelectedElementClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster?.SpeciesId);
+		return species?.Element.ToString().ToLower() ?? "neutral";
+	}
+
+	private string GetSelectedElementName()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster?.SpeciesId);
+		return species?.Element.ToString().ToUpper() ?? "NEUTRAL";
+	}
+
+	private float GetStatPercent(int value, int max)
+	{
+		return Math.Min(100, (float)value / max * 100);
+	}
+
+	private string GetSelectedGeneticsClass()
+	{
+		return SelectedMonster?.Genetics?.QualityRating?.ToLower() switch
+		{
+			"perfect" => "perfect",
+			"excellent" => "excellent",
+			"great" => "great",
+			"good" => "good",
+			_ => "average"
+		};
+	}
+
+	private string GetSelectedNature()
+	{
+		return SelectedMonster?.Genetics?.Nature.ToString() ?? "Neutral";
+	}
+
+	private string GetSelectedNatureEffect()
+	{
+		return SelectedMonster?.Genetics?.Nature switch
+		{
+			NatureType.Ferocious => "+10% ATK, -10% DEF",
+			NatureType.Stalwart => "+10% DEF, -10% ATK",
+			NatureType.Restless => "+10% SPD, -10% HP",
+			NatureType.Enduring => "+10% HP, -10% SPD",
+			NatureType.Reckless => "+10% ATK, -10% SPD",
+			NatureType.Stoic => "+10% DEF, -10% SPD",
+			NatureType.Skittish => "+10% SPD, -10% DEF",
+			NatureType.Vigorous => "+10% HP, -10% ATK",
+			NatureType.Ruthless => "+10% ATK, -10% HP",
+			NatureType.Nimble => "+10% SPD, -10% ATK",
+			_ => "No effect"
+		};
+	}
+
+	private int GetSelectedTotalGenes()
+	{
+		if (SelectedMonster?.Genetics == null) return 0;
+		return SelectedMonster.Genetics.HPGene + SelectedMonster.Genetics.ATKGene +
+			   SelectedMonster.Genetics.DEFGene + SelectedMonster.Genetics.SPDGene;
+	}
+
+	private string GetEvolutionName(string speciesId)
+	{
+		if (string.IsNullOrEmpty(speciesId)) return "Unknown";
+		var species = MonsterManager.Instance?.GetSpecies(speciesId);
+		return species?.Name ?? speciesId;
+	}
+
+	private string GetParentName(Guid parentId)
+	{
+		var parent = MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault(m => m.Id == parentId);
+		if (parent != null)
+			return parent.Nickname;
+		return "Unknown";
+	}
+
+	private static readonly Dictionary<string, string> TraitDescriptions = new()
+	{
+		// Fire traits
+		{ "Ember Heart", "+15% Fire damage" },
+		{ "Memory Keeper", "Retains buffs between battles" },
+		{ "Flickering", "10% chance to dodge attacks" },
+		{ "Seven-Sighted", "+20% accuracy" },
+		{ "Pyre Born", "Immune to burn" },
+		{ "Hollow Flame", "Attacks ignore 10% DEF" },
+		{ "Volcanic Heart", "+25% damage when HP < 50%" },
+		{ "Glass Walker", "+20% SPD on fire terrain" },
+		{ "Eternal Burn", "Burns never expire" },
+		{ "Ember Guardian", "+10% team Fire resistance" },
+		{ "Warmth Keeper", "Heals 5% HP per turn" },
+		{ "Campfire Born", "+15% HP at night" },
+		{ "Spark Shedder", "Attacks may burn enemies" },
+		{ "Forest Fire", "+30% damage vs Nature" },
+		{ "Scale Forge", "+15% DEF" },
+		{ "Lava Dweller", "Immune to terrain damage" },
+		{ "Tireless Worker", "No fatigue penalty" },
+		{ "Heat Core", "+10% ATK per stack" },
+		{ "Loyal Flame", "+20% stats when paired" },
+		{ "Never Burns", "Ally burn immunity" },
+		{ "Ash Born", "Revives once at 25% HP" },
+		{ "Ember Howl", "+15% team ATK" },
+		{ "Controlled Burn", "Fire damage +20%" },
+		{ "Pack Leader", "+10% team SPD" },
+		{ "Fallen Star", "+50% damage, -25% DEF" },
+		{ "Eternal Flame", "Cannot be extinguished" },
+		{ "Sky Forsaker", "+30% ground damage" },
+
+		// Water traits
+		{ "Tear-Born", "+15% Water damage" },
+		{ "Sorrowful", "+20% damage when ally KO'd" },
+		{ "Still Waters", "+25% DEF when not moved" },
+		{ "Drowned Voice", "Silences on hit" },
+		{ "Current Form", "+15% SPD in water" },
+		{ "Last Breath", "Survive KO once" },
+		{ "Living Abyss", "+30% damage in deep water" },
+		{ "Memory Eater", "Steals enemy buffs" },
+		{ "Depth Eternal", "Immune to pressure" },
+		{ "Reflection Eater", "+15% vs Light types" },
+		{ "Rain Collector", "Heals in rain" },
+		{ "Puddle Born", "+10% evasion" },
+		{ "Fear Reflection", "Reflects 10% damage" },
+		{ "Depth Walker", "Ignores terrain" },
+		{ "Still Surface", "+20% crit damage" },
+		{ "Tear Crystal", "Damage scales with missing HP" },
+		{ "Air Swimmer", "Can hit flying enemies" },
+		{ "Sorrow Seeker", "+15% vs sad targets" },
+		{ "Brook Speaker", "+10% team healing" },
+		{ "Water Song", "Soothes allies" },
+		{ "Playful Current", "+15% dodge" },
+		{ "Stream Mediator", "Reduces incoming damage" },
+		{ "Junction Guardian", "+20% DEF near water" },
+		{ "Flow Arbiter", "Controls turn order" },
+		{ "River's End", "+40% damage when last alive" },
+		{ "Drop Memory", "Remembers fallen allies" },
+		{ "Mourning Depths", "+5% ATK per fallen ally" },
+		{ "Bubble Shield", "Blocks first hit" },
+		{ "Touch Phobia", "Cannot be touched" },
+		{ "Isolated", "+30% stats when alone" },
+		{ "Sailor's Dreams", "Boosts at night" },
+		{ "Wreck Guardian", "+25% near structures" },
+		{ "Warning Foam", "Reveals traps" },
+		{ "Mobile Reef", "+15% team DEF" },
+		{ "Ecosystem Carrier", "Boosts Nature allies" },
+		{ "Anchor Seeker", "Cannot be moved" },
+
+		// Wind traits
+		{ "Echo Keeper", "Doubles sound effects" },
+		{ "Soundless Step", "Always moves first" },
+		{ "Mischievous", "Random bonus effects" },
+		{ "Storm Walker", "+20% in storms" },
+		{ "Faceless", "Immune to targeting" },
+		{ "Restless Air", "Cannot be slowed" },
+		{ "Between Strikes", "+25% counter damage" },
+		{ "Eternal Moment", "Extends buff duration" },
+		{ "Wrath Incarnate", "+50% ATK, -25% accuracy" },
+		{ "Lost Path", "Confuses attackers" },
+		{ "Dust Form", "50% physical evasion" },
+		{ "Wanderer's Companion", "+10% all stats" },
+		{ "Dying Breath", "+100% ATK at 1 HP" },
+		{ "Gust Talon", "+15% crit chance" },
+		{ "Empty Cry", "Pierces barriers" },
+		{ "Hollow Sound", "Attacks twice" },
+		{ "Corner Glimpse", "Cannot be surprised" },
+		{ "Wind Form", "Ignores terrain" },
+		{ "Breeze Rider", "+30% SPD" },
+		{ "Weightless", "Immune to gravity" },
+		{ "Storm Dreamer", "Summons storms" },
+		{ "Eternal Spin", "Continuous damage aura" },
+		{ "Pressure Speech", "Lowers enemy stats" },
+		{ "Dizzy Joy", "Confuses on hit" },
+		{ "Storm Legend", "+40% in weather" },
+		{ "Casual Disaster", "Random AoE effects" },
+		{ "Weather Sovereign", "Controls weather" },
+		{ "Collective Memory", "+5% per ally" },
+		{ "Borrowed Flight", "Grants flight" },
+		{ "Gentle Float", "Soft landing" },
+		{ "Lucky Plume", "+20% crit chance" },
+		{ "Feather Storm", "Multi-hit attacks" },
+		{ "Weather Blessing", "+15% in weather" },
+		{ "Sentient Vortex", "Pulls enemies in" },
+		{ "Spin Confusion", "Disorients enemies" },
+		{ "Stable Chaos", "Consistent random" },
+
+		// Electric traits
+		{ "Lonely Spark", "+25% when alone" },
+		{ "Static Touch", "Paralyzes on contact" },
+		{ "Seeking", "Never misses" },
+		{ "Memory Arc", "Lightning chains" },
+		{ "Storm Thief", "Steals energy" },
+		{ "Woven Light", "+15% accuracy" },
+		{ "Between Seconds", "Extra actions" },
+		{ "Pulse Eternal", "Regenerates energy" },
+		{ "Time Stutter", "Slows enemies" },
+		{ "Frustration Feeder", "+ATK when missed" },
+		{ "Machine Gremlin", "+30% vs machines" },
+		{ "Percussive Fix", "Repairs allies" },
+		{ "Distant Love", "+20% ranged damage" },
+		{ "Shock Friend", "Static immunity share" },
+		{ "Static Fur", "Contact damage" },
+		{ "Gentle Thunder", "+25% Electric damage" },
+		{ "Storm Mane", "Charges in storms" },
+		{ "Controlled Power", "No self damage" },
+		{ "Land Explorer", "Terrain adaptation" },
+		{ "Conduction Confused", "Random targeting" },
+		{ "Electric Fin", "+20% in water" },
+		{ "Seeking Strike", "Homes on target" },
+		{ "Lightning Ghost", "Phase through" },
+		{ "Worthy Target", "Targets strongest" },
+		{ "Path Walker", "Optimal pathing" },
+		{ "Efficiency Judge", "+15% damage vs weak" },
+		{ "Voltage Form", "Electric form" },
+
+		// Earth traits
+		{ "Step Memory", "+10% DEF per turn" },
+		{ "Soil Born", "Heals on earth" },
+		{ "Rooted", "Cannot be moved" },
+		{ "Living Cave", "+30% DEF" },
+		{ "Patient Hunter", "Charges attacks" },
+		{ "Earth Shaper", "Creates terrain" },
+		{ "Living Mountain", "+50% HP, -30% SPD" },
+		{ "Civilization Bearer", "Boosts structures" },
+		{ "Eon Walker", "Immune to time" },
+		{ "Debris Collector", "+5% per rubble" },
+		{ "Misunderstood Builder", "Creates cover" },
+		{ "Rubble Form", "Reforms when broken" },
+		{ "Stone Collector", "+15% Earth damage" },
+		{ "Boulder Dreams", "Sleeps to heal" },
+		{ "Cozy Fit", "Fits anywhere" },
+		{ "Journey Wisdom", "+10% all stats" },
+		{ "Forgotten Origin", "Hidden power" },
+		{ "Rolling Stone", "+20% momentum" },
+		{ "Crystal Song", "Resonates damage" },
+		{ "Earth Music", "Soothes allies" },
+		{ "Resonance", "Echoes attacks" },
+		{ "Shell Desert", "Sandstorm aura" },
+		{ "Mini Sandstorm", "Blinds enemies" },
+		{ "Stone Sight", "Sees through walls" },
+		{ "Treasure Guard", "+25% gold find" },
+		{ "Forgotten Purpose", "Mystery bonus" },
+
+		// Ice traits
+		{ "First Winter", "+20% Ice damage" },
+		{ "Patient Cold", "Slows over time" },
+		{ "Stillness Seeker", "+25% vs frozen" },
+		{ "Frozen Words", "Silences area" },
+		{ "False Warmth", "Deceives enemies" },
+		{ "Crystal Regret", "+30% when alone" },
+		{ "Heat Death", "Absolute zero" },
+		{ "Star's End", "Inevitable damage" },
+		{ "Patient Inevitable", "Guaranteed hit" },
+		{ "Bone Chill", "Pierces resistance" },
+		{ "Warmth Thief", "Steals buffs" },
+		{ "Cold Truth", "Reveals hidden" },
+		{ "Unique Pattern", "+15% crit damage" },
+		{ "Snowflake Pride", "Unique bonus" },
+		{ "Crystal Form", "+20% DEF" },
+		{ "Thousand Voices", "Multi-target" },
+		{ "Patient Predator", "+40% ambush" },
+		{ "Ice Disguise", "Hidden until attack" },
+		{ "Cold Strike", "+25% first hit" },
+		{ "Frozen Breath", "Freezes on hit" },
+		{ "Crystal Script", "Buffs allies" },
+		{ "Drift Form", "Floats over terrain" },
+		{ "Dangerous Gentle", "Deadly touch" },
+		{ "Ice Horns", "+20% charge damage" },
+		{ "Careful Distance", "Ranged bonus" },
+		{ "Mobile Glacier", "+40% HP" },
+		{ "Ancient Ice", "Immune to melt" },
+
+		// Nature traits
+		{ "Lost Seed", "Sprouts on KO" },
+		{ "Unplanted Dreams", "Grows stronger" },
+		{ "Wandering Root", "Spreads damage" },
+		{ "God Strangler", "+50% vs bosses" },
+		{ "Secret Seeker", "Finds hidden items" },
+		{ "Memory Thorns", "Remembers attackers" },
+		{ "All Forests", "Forest bonuses" },
+		{ "Ring Memory", "+5% per year" },
+		{ "Growth Tongue", "Heals allies" },
+		{ "Secret Keeper", "Stores power" },
+		{ "Confession Collector", "+10% vs guilty" },
+		{ "Untimely Hum", "Random timing" },
+		{ "Flower Spreader", "Spreads buffs" },
+		{ "Self Allergy", "Takes recoil" },
+		{ "Bouncy", "+15% dodge" },
+		{ "Garden Knight", "+20% Nature damage" },
+		{ "Pollen Command", "Controls plants" },
+		{ "Permission Seeker", "Asks before acting" },
+		{ "Tree Hugger", "+25% near trees" },
+		{ "Lonely Heart", "Seeks allies" },
+		{ "Coiled Form", "Springs to attack" },
+		{ "Network Mind", "Shared knowledge" },
+		{ "Plant Empath", "Senses plants" },
+		{ "Silent Witness", "Perfect memory" },
+		{ "Tear Collector", "Heals from sadness" },
+		{ "Tree Comforter", "+15% healing" },
+		{ "Kind Misunderstanding", "Helps enemies" },
+		{ "Spring Walker", "Season bonus" },
+		{ "Spontaneous Growth", "Random growth" },
+		{ "Season Bringer", "Changes seasons" },
+
+		// Metal traits
+		{ "Endless Spin", "Perpetual motion" },
+		{ "Fallen Gear", "+20% when damaged" },
+		{ "Purpose Seeker", "Gains purpose" },
+		{ "Bloodless Blade", "+30% ATK" },
+		{ "Shame Bound", "Must protect" },
+		{ "Protector's Form", "+25% when guarding" },
+		{ "First Smelting", "Origin power" },
+		{ "Mountain Memory", "Ancient strength" },
+		{ "Transformation", "Adapts to enemy" },
+		{ "Helpful Decay", "Rusts enemies" },
+		{ "Return Spirit", "Returns to start" },
+		{ "Unwanted Aid", "Forces help" },
+		{ "Ambition's End", "+40% vs kings" },
+		{ "Rust Wing", "Corrodes enemies" },
+		{ "Crown Collector", "Steals titles" },
+		{ "Self Assembly", "Rebuilds self" },
+		{ "Scrap Dreams", "Uses scrap" },
+		{ "Growing Machine", "Grows larger" },
+		{ "Dream Achieved", "Perfect form" },
+		{ "Dismantling Fear", "Fears breaking" },
+		{ "Junk Form", "Scrap armor" },
+		{ "Accidental Razor", "Cuts on contact" },
+		{ "Steel Wings", "+20% flying" },
+		{ "Unintentional Harm", "Passive damage" },
+		{ "Warning Ring", "Alerts allies" },
+		{ "Bell Form", "Sound attacks" },
+		{ "Confused Guardian", "Protects randomly" },
+		{ "Form Confusion", "Shape shifts" },
+		{ "Link Body", "Chains to ally" },
+		{ "Shape Shifter", "Copies forms" },
+		{ "Mirror Scales", "Reflects damage" },
+		{ "Vanity", "+15% when watched" },
+		{ "Perfect Polish", "+20% DEF" },
+
+		// Light traits
+		{ "First Light", "+20% Light damage" },
+		{ "Shadow Blind", "+30% vs Dark" },
+		{ "Warm Glow", "Heals nearby" },
+		{ "Courage Mirror", "+15% team ATK" },
+		{ "Unseen by Fear", "Immune to fear" },
+		{ "Hero's Echo", "Inspires allies" },
+		{ "Pre-Dawn Guardian", "+25% at dawn" },
+		{ "Nameless Colors", "Rainbow bonus" },
+		{ "Threshold Keeper", "Guards entries" },
+		{ "Outlived Thought", "Survives death" },
+		{ "Lost Knowledge", "Ancient wisdom" },
+		{ "Unanswerable", "Cannot be countered" },
+		{ "Wish Carrier", "Grants wishes" },
+		{ "Innocent Hope", "+20% vs evil" },
+		{ "Fountain Born", "Water affinity" },
+		{ "True Granter", "Fulfills wishes" },
+		{ "Earned Wishes", "Wish power" },
+		{ "Wise Hope", "+15% all stats" },
+		{ "Perfect Recall", "Never forgets" },
+		{ "Tear Confused", "Emotional power" },
+		{ "Dream Thief", "Steals dreams" },
+		{ "Wrong Delivery", "Misdirects attacks" },
+		{ "Twilight Dweller", "+20% at dusk" },
+		{ "Inspiration Spark", "Boosts creativity" },
+		{ "Breakthrough Witness", "Eureka moments" },
+		{ "Eureka Moment", "+25% discovery" },
+		{ "Time Witness", "Sees all time" },
+		{ "Kindness Keeper", "+10% healing" },
+		{ "Graceful Burden", "Carries weight" },
+
+		// Dark traits
+		{ "Forgotten Feeder", "+15% Dark damage" },
+		{ "Mind's Corner", "Mental attacks" },
+		{ "Unseen", "Hard to target" },
+		{ "Ending Witness", "+30% vs dying" },
+		{ "Weight of Lasts", "Final blow bonus" },
+		{ "Silent Arrival", "Surprise attacks" },
+		{ "Un-Being", "Exists partially" },
+		{ "Forgotten Dark", "Hidden power" },
+		{ "Absence Given Form", "Void attacks" },
+		{ "Lightless Shadow", "+25% in dark" },
+		{ "Always Present", "Omnipresent" },
+		{ "Unnoticed", "Stealth bonus" },
+		{ "Motion Shy", "Still bonus" },
+		{ "Unseen Movement", "Invisible moves" },
+		{ "Caught Embarrassment", "Surprise penalty" },
+		{ "Shame Overcome", "+20% resolved" },
+		{ "Dark Necessity", "Must use dark" },
+		{ "Silent Hunter", "+30% ambush" },
+		{ "Reluctant Horror", "Scary aura" },
+		{ "Childhood Form", "Young power" },
+		{ "Unintentional Fear", "Fear aura" },
+		{ "Shadow Slip", "Phase ability" },
+		{ "Light Trapped", "Contains light" },
+		{ "Darkness Form", "Pure dark" },
+		{ "Secret Hoarder", "Stores secrets" },
+		{ "Useless Knowledge", "Random info" },
+		{ "Whisper Eater", "Absorbs words" },
+		{ "Eclipse Born", "+40% in eclipse" },
+		{ "Partial Existence", "Half damage" },
+		{ "Inconvenient Reality", "Warps space" },
+		{ "Dream Ruler", "+25% in dreams" },
+		{ "Balance Keeper", "Equalizes stats" },
+		{ "Nightmare King", "+35% nightmare" },
+
+		// Legendary traits
+		{ "First Bloom", "+30% Nature damage" },
+		{ "Eternal Opening", "Never closes" },
+		{ "Origin Flora", "Creation power" },
+		{ "Solar Fragment", "+35% Light damage" },
+		{ "Shadow Banisher", "+50% vs Dark" },
+		{ "Star Heart", "Stellar power" },
+		{ "Atomic Stillness", "Absolute freeze" },
+		{ "Time Slowing", "Slows time" },
+		{ "Ultimate Cold", "Max ice power" },
+		{ "Storm Memory", "Storm mastery" },
+		{ "Lightning Throne", "Electric reign" },
+		{ "Story Origin", "Tale power" },
+		{ "Dream of Beasts", "Beast summoning" },
+		{ "Tale Eternal", "Immortal story" },
+		{ "World Encircler", "Global reach" },
+		{ "Dimensional Body", "Multi-dimensional" },
+		{ "Infinite Form", "Limitless shape" },
+		{ "Star Eater", "Consumes stars" },
+		{ "Light Devourer", "Eats light" },
+		{ "Cosmic Forgetting", "Erases memory" },
+		{ "Before All", "Primordial power" },
+		{ "Infinite Potential", "Unlimited growth" },
+		{ "Unborn", "Pre-existence" },
+	};
+
+	private string GetTraitDescription(string traitId)
+	{
+		var trait = TraitDatabase.GetTrait(traitId);
+		return trait?.Description ?? "Unknown ability";
+	}
+
+	private string GetTraitName(string traitId)
+	{
+		var trait = TraitDatabase.GetTrait(traitId);
+		return trait?.Name ?? traitId;
+	}
+
+	private void OnBreedFromDetail()
+	{
+		if (SelectedMonster == null) return;
+		SoundManager.PlayForward();
+
+		// If this monster is already Parent1, just go to breeding view
+		if (Parent1 != null && Parent1.Id == SelectedMonster.Id)
+		{
+			SelectedMonster = null;
+			SwitchView("breeding");
+			return;
+		}
+
+		// Fuse from detail panel always sets Parent1 (the primary fusion parent)
+		// Parent2 is selected from within the breeding view
+		Parent1 = SelectedMonster;
+		Parent2 = null; // Clear Parent2 since we're starting fresh with a new primary
+		selectedForSlot = 2; // Auto-switch to selecting slot 2
+
+		SelectedMonster = null;
+		SwitchView("breeding");
+	}
+
+	private void OnReleaseClicked()
+	{
+		if (SelectedMonster == null) return;
+
+		// Can't release if it's your only monster
+		if (!CanReleaseMonster())
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Check if confirmation is required
+		if (SettingsManager.Instance?.Settings?.ConfirmBeforeRelease ?? true)
+		{
+			monsterToRelease = SelectedMonster;
+			showReleaseConfirm = true;
+			SoundManager.PlayClick();
+		}
+		else
+		{
+			// Release directly without confirmation
+			MonsterManager.Instance?.ReleaseMonster(SelectedMonster.Id);
+			SoundManager.PlayClick();
+			SelectedMonster = null;
+		}
+	}
+
+	private bool CanReleaseMonster()
+	{
+		// Must have more than 1 monster to release one
+		return (MonsterManager.Instance?.OwnedMonsters?.Count ?? 0) > 1;
+	}
+
+	// Evolution methods
+	private bool CanSelectedMonsterEvolve()
+	{
+		if (SelectedMonster == null) return false;
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster.SpeciesId);
+		if (species == null) return false;
+		return SelectedMonster.CanEvolve(species);
+	}
+
+	private string GetSelectedMonsterEvolutionName()
+	{
+		if (SelectedMonster == null) return "???";
+		var species = MonsterManager.Instance?.GetSpecies(SelectedMonster.SpeciesId);
+		if (species == null || string.IsNullOrEmpty(species.EvolvesTo)) return "???";
+		var evolvedSpecies = MonsterManager.Instance?.GetSpecies(species.EvolvesTo);
+		return evolvedSpecies?.Name ?? "???";
+	}
+
+	private async void OnEvolveClicked()
+	{
+		if (SelectedMonster == null || !CanSelectedMonsterEvolve() || isEvolving)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Get the evolved species icon before starting
+		var currentSpecies = MonsterManager.Instance?.GetSpecies(SelectedMonster?.SpeciesId);
+		var evolvedSpecies = MonsterManager.Instance?.GetSpecies(currentSpecies?.EvolvesTo);
+		evolvedIconPath = evolvedSpecies?.IconPath ?? "";
+
+		// Start evolution animation sequence
+		isEvolving = true;
+		SoundManager.PlayClick();
+		StateHasChanged();
+
+		// Phase 1: Shake (1000ms) - building energy
+		evolutionPhase = "shake";
+		StateHasChanged();
+		await Task.Delay(1000);
+
+		// Phase 2: Glow builds up (800ms) - intense golden light
+		evolutionPhase = "glow";
+		StateHasChanged();
+		await Task.Delay(800);
+
+		// Phase 3: Transform - bright flash and swap sprite (600ms)
+		evolutionPhase = "transform";
+		StateHasChanged();
+		await Task.Delay(600);
+
+		// Phase 4: Burst - particle effect while revealing new form (700ms)
+		evolutionPhase = "burst";
+		StateHasChanged();
+		await Task.Delay(700);
+
+		// Reset animation state
+		evolutionPhase = "";
+		isEvolving = false;
+		evolvedIconPath = "";
+
+		// Perform the actual evolution
+		MonsterManager.Instance?.EvolveMonster(SelectedMonster.Id);
+		SoundManager.PlaySelect(); // TODO: Add a special evolution sound
+		StateHasChanged();
+	}
+
+	private string GetEvolutionClass()
+	{
+		if (!isEvolving) return "";
+		return $"evolving evolving-{evolutionPhase}";
+	}
+
+	private void CancelRelease()
+	{
+		showReleaseConfirm = false;
+		monsterToRelease = null;
+		SoundManager.PlayBack();
+	}
+
+	private void ConfirmRelease()
+	{
+		if (monsterToRelease == null) return;
+
+		MonsterManager.Instance?.ReleaseMonster(monsterToRelease.Id);
+		SoundManager.PlayClick();
+
+		// Clear selection since monster is gone
+		SelectedMonster = null;
+		showReleaseConfirm = false;
+		monsterToRelease = null;
+	}
+
+	// ==========================================
+	// Journal Modal Methods
+	// ==========================================
+
+	private void OpenJournal()
+	{
+		if (SelectedMonster == null) return;
+		showJournalModal = true;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseJournal()
+	{
+		showJournalModal = false;
+		SoundManager.PlayBack();
+	}
+
+	// ==========================================
+	// Held Item Methods
+	// ==========================================
+
+	private bool HasSelectedHeldItem()
+	{
+		return !string.IsNullOrEmpty(SelectedMonster?.HeldItemId);
+	}
+
+	private string GetSelectedHeldItemName()
+	{
+		if (!HasSelectedHeldItem()) return "";
+		var item = ItemManager.Instance?.GetItem(SelectedMonster.HeldItemId);
+		return item?.Name ?? "Unknown Item";
+	}
+
+	private string GetSelectedHeldItemIconPath()
+	{
+		if (!HasSelectedHeldItem()) return "";
+		var item = ItemManager.Instance?.GetItem(SelectedMonster.HeldItemId);
+		return item?.IconPath ?? "";
+	}
+
+	private string GetSelectedHeldItemDescription()
+	{
+		if (!HasSelectedHeldItem()) return "";
+		var item = ItemManager.Instance?.GetItem(SelectedMonster.HeldItemId);
+		return item?.Description ?? "";
+	}
+
+	private string GetSelectedHeldItemTooltip()
+	{
+		if (!HasSelectedHeldItem()) return "Click to equip a held item";
+		var item = ItemManager.Instance?.GetItem(SelectedMonster.HeldItemId);
+		return item != null ? $"{item.Name}: {item.Description}" : "Unknown Item";
+	}
+
+	private string GetSelectedHeldItemRarityClass()
+	{
+		if (!HasSelectedHeldItem()) return "";
+		var item = ItemManager.Instance?.GetItem(SelectedMonster.HeldItemId);
+		return item?.Rarity.ToString().ToLower() ?? "";
+	}
+
+	private string GetItemRarityClass(ItemDefinition item)
+	{
+		return item.Rarity.ToString().ToLower();
+	}
+
+	private void OpenItemPicker()
+	{
+		if (SelectedMonster == null) return;
+		showItemPicker = true;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseItemPicker()
+	{
+		showItemPicker = false;
+	}
+
+	private List<ItemDefinition> GetAvailableHeldItems()
+	{
+		var items = new List<ItemDefinition>();
+		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if (inventory == null) return items;
+
+		foreach (var kvp in inventory)
+		{
+			if (kvp.Value <= 0) continue;
+			var item = ItemManager.Instance?.GetItem(kvp.Key);
+			if (item != null && item.Category == ItemCategory.HeldItem)
+			{
+				items.Add(item);
+			}
+		}
+
+		return items.OrderBy(i => i.Rarity).ThenBy(i => i.Name).ToList();
+	}
+
+	private int GetItemQuantity(string itemId)
+	{
+		return TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault(itemId, 0) ?? 0;
+	}
+
+	private void EquipItem(string itemId)
+	{
+		if (SelectedMonster == null) return;
+
+		var success = ItemManager.Instance?.EquipHeldItem(SelectedMonster, itemId) ?? false;
+		if (success)
+		{
+			SoundManager.PlayNotification();
+			var item = ItemManager.Instance?.GetItem(itemId);
+			NotificationManager.Instance?.AddNotification(NotificationType.Success, "Item Equipped", $"Equipped {item?.Name ?? "item"} to {SelectedMonster.Nickname ?? GetSelectedSpeciesName()}");
+			showItemPicker = false;
+			// Save both tamer inventory and monster data
+			TamerManager.Instance?.SaveToCloud();
+			MonsterManager.Instance?.SaveMonsters();
+		}
+		else
+		{
+			SoundManager.PlayDeny();
+		}
+	}
+
+	private void UnequipCurrentItem()
+	{
+		if (SelectedMonster == null || !HasSelectedHeldItem()) return;
+
+		var itemName = GetSelectedHeldItemName();
+		var success = ItemManager.Instance?.UnequipHeldItem(SelectedMonster) ?? false;
+		if (success)
+		{
+			SoundManager.PlayClick();
+			NotificationManager.Instance?.AddNotification(NotificationType.Info, "Item Unequipped", $"Removed {itemName} from {SelectedMonster.Nickname ?? GetSelectedSpeciesName()}");
+			// Save both tamer inventory and monster data
+			TamerManager.Instance?.SaveToCloud();
+			MonsterManager.Instance?.SaveMonsters();
+		}
+	}
+
+	// ==========================================
+	// Multi-Select Release Methods
+	// ==========================================
+
+	private void ToggleMultiSelectMode()
+	{
+		SoundManager.PlayClick();
+		isMultiSelectMode = !isMultiSelectMode;
+		if (!isMultiSelectMode)
+		{
+			selectedForRelease.Clear();
+			lastSelectedIndex = -1;
+			isDragSelecting = false;
+		}
+		// Close detail panel when entering multi-select mode
+		if (isMultiSelectMode)
+		{
+			SelectedMonster = null;
+		}
+	}
+
+	private int GetMaxSelectableCount()
+	{
+		return (MonsterManager.Instance?.OwnedMonsters?.Count ?? 1) - 1;
+	}
+
+	private bool TrySelectMonster(Guid monsterId)
+	{
+		if (selectedForRelease.Contains(monsterId)) return false;
+		if (selectedForRelease.Count >= GetMaxSelectableCount()) return false;
+		selectedForRelease.Add(monsterId);
+		return true;
+	}
+
+	private void OnMonsterCardClicked(Monster monster, int index)
+	{
+		if (isMultiSelectMode)
+		{
+			// Shift-click: select range from last click to this click
+			if (Input.Down("run") && lastSelectedIndex >= 0)
+			{
+				var filteredMonsters = GetFilteredMonsters();
+				int start = Math.Min(lastSelectedIndex, index);
+				int end = Math.Max(lastSelectedIndex, index);
+				int added = 0;
+
+				for (int i = start; i <= end; i++)
+				{
+					if (i < filteredMonsters.Count)
+					{
+						if (TrySelectMonster(filteredMonsters[i].Id))
+							added++;
+					}
+				}
+
+				if (added > 0)
+					SoundManager.PlaySelect();
+				else
+					SoundManager.PlayDeny();
+
+				lastSelectedIndex = index;
+				return;
+			}
+
+			// Normal click: toggle selection
+			if (selectedForRelease.Contains(monster.Id))
+			{
+				selectedForRelease.Remove(monster.Id);
+				SoundManager.PlayBack();
+			}
+			else
+			{
+				if (TrySelectMonster(monster.Id))
+				{
+					SoundManager.PlaySelect();
+				}
+				else
+				{
+					SoundManager.PlayDeny();
+				}
+			}
+
+			lastSelectedIndex = index;
+		}
+		else
+		{
+			OnMonsterSelected(monster);
+		}
+	}
+
+	private void OnCardMouseDown(Monster monster, int index)
+	{
+		if (!isMultiSelectMode) return;
+		isDragSelecting = true;
+	}
+
+	private void OnCardMouseEnter(Monster monster, int index)
+	{
+		// Always update hover state
+		OnMouseHoverCard(monster.Id);
+
+		if (!isMultiSelectMode || !isDragSelecting) return;
+
+		// Drag-select: select this card as we drag over it
+		if (TrySelectMonster(monster.Id))
+		{
+			lastSelectedIndex = index;
+		}
+	}
+
+	private void OnDragSelectEnd()
+	{
+		isDragSelecting = false;
+	}
+
+	private void OnReleaseSelectedClicked()
+	{
+		if (selectedForRelease.Count == 0)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		showBulkReleaseConfirm = true;
+		SoundManager.PlayClick();
+	}
+
+	private void CancelBulkRelease()
+	{
+		showBulkReleaseConfirm = false;
+		SoundManager.PlayBack();
+	}
+
+	private void ConfirmBulkRelease()
+	{
+		if (selectedForRelease.Count == 0) return;
+
+		int released = MonsterManager.Instance?.ReleaseMonsters(selectedForRelease.ToList()) ?? 0;
+
+		if (released > 0)
+		{
+			SoundManager.PlayClick();
+		}
+
+		// Reset multi-select state
+		showBulkReleaseConfirm = false;
+		selectedForRelease.Clear();
+		isMultiSelectMode = false;
+		lastSelectedIndex = -1;
+		isDragSelecting = false;
+		SelectedMonster = null;
+	}
+
+	// ==========================================
+	// Breeding Methods
+	// ==========================================
+
+	private int GetMonsterTotalGenes(Monster m)
+	{
+		if (m?.Genetics == null) return 0;
+		return m.Genetics.HPGene + m.Genetics.ATKGene + m.Genetics.DEFGene + m.Genetics.SpAGene + m.Genetics.SpDGene + m.Genetics.SPDGene;
+	}
+
+	private int GetResultTotalGenes()
+	{
+		return GetMonsterTotalGenes(breedingResult);
+	}
+
+	private void SetSelectingSlot(int slot)
+	{
+		SoundManager.PlayClick();
+		selectedForSlot = slot;
+	}
+
+	// Breeding FilterBar callbacks
+	private void OnBreedingElementChanged(string element)
+	{
+		breedingFilter = element;
+	}
+
+	private void OnBreedingSortChanged(string sort)
+	{
+		breedingSort = sort;
+	}
+
+	private void OnBreedingRarityChanged(string rarity)
+	{
+		breedingRarity = rarity;
+	}
+
+	private void OnBreedingNameFilterChanged(string name)
+	{
+		breedingNameFilter = name;
+	}
+
+	private void OnBreedingSortDirectionChanged(bool ascending)
+	{
+		breedingSortAscending = ascending;
+	}
+
+	private List<string> GetBreedingMonsterNames()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters ?? new List<Monster>();
+		var names = new HashSet<string>();
+
+		foreach (var monster in monsters)
+		{
+			if (!string.IsNullOrEmpty(monster.Nickname))
+				names.Add(monster.Nickname);
+
+			var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+			if (species != null && !string.IsNullOrEmpty(species.Name))
+				names.Add(species.Name);
+		}
+
+		return names.OrderBy(n => n).ToList();
+	}
+
+	private void ClearParent(int slot)
+	{
+		SoundManager.PlayBack();
+		lockedGenes.Clear();
+		if (slot == 1)
+		{
+			Parent1 = null;
+			selectedForSlot = 1; // Switch to selecting parent 1
+		}
+		else
+		{
+			Parent2 = null;
+			selectedForSlot = 2;
+		}
+	}
+
+	private void ToggleGeneLock(string geneName)
+	{
+		int maxLocks = (int)(TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneLock ) ?? 0);
+		if (maxLocks <= 0)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		if (lockedGenes.Contains(geneName))
+		{
+			lockedGenes.Remove(geneName);
+			SoundManager.PlayBack();
+		}
+		else if (lockedGenes.Count < maxLocks)
+		{
+			lockedGenes.Add(geneName);
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayDeny();
+		}
+	}
+
+	private List<Monster> GetAvailableBreedingMonsters()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters ?? new List<Monster>();
+
+		// Apply element filter
+		if (breedingFilter != "all")
+		{
+			if (Enum.TryParse<ElementType>(breedingFilter, true, out var elementType))
+			{
+				monsters = monsters.Where(m =>
+				{
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					return species?.Element == elementType;
+				}).ToList();
+			}
+		}
+
+		// Apply rarity filter
+		if (breedingRarity != "all")
+		{
+			if (Enum.TryParse<Rarity>(breedingRarity, true, out var rarityType))
+			{
+				monsters = monsters.Where(m =>
+				{
+					var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+					return species?.BaseRarity == rarityType;
+				}).ToList();
+			}
+		}
+
+		// Apply name filter
+		if (breedingSort == "name" && !string.IsNullOrEmpty(breedingNameFilter))
+		{
+			monsters = monsters.Where(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				return species?.Name?.Equals(breedingNameFilter, StringComparison.OrdinalIgnoreCase) == true ||
+					   m.Nickname?.Equals(breedingNameFilter, StringComparison.OrdinalIgnoreCase) == true;
+			}).ToList();
+		}
+
+		// Apply sorting based on breedingSort
+		IEnumerable<Monster> sorted = breedingSort switch
+		{
+			"fav" => monsters.OrderByDescending(m => m.IsFavorite).ThenByDescending(m => GetMonsterTotalGenes(m)),
+			"genes" => monsters.OrderByDescending(m => GetMonsterTotalGenes(m)),
+			"level" => monsters.OrderByDescending(m => m.Level),
+			"power" => monsters.OrderByDescending(m => m.PowerRating),
+			"rarity" => monsters.OrderByDescending(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				return (int)(species?.BaseRarity ?? Rarity.Common);
+			}),
+			"basestats" => monsters.OrderByDescending(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				if (species == null) return 0;
+				return species.BaseHP + species.BaseATK + species.BaseDEF + species.BaseSpA + species.BaseSpD + species.BaseSPD;
+			}),
+			"recent" => monsters.OrderByDescending(m => m.CaughtAt),
+			"beastiary" => monsters.OrderBy(m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies(m.SpeciesId);
+				return species?.BeastiaryNumber ?? 9999;
+			}),
+			"name" => monsters.OrderBy(m => m.Nickname ?? MonsterManager.Instance?.GetSpecies(m.SpeciesId)?.Name ?? ""),
+			_ => monsters.OrderByDescending(m => GetMonsterTotalGenes(m))
+		};
+
+		// Reverse if ascending (default is descending for most sorts)
+		if (breedingSortAscending && breedingSort != "beastiary" && breedingSort != "name")
+		{
+			sorted = sorted.Reverse();
+		}
+		else if (!breedingSortAscending && (breedingSort == "beastiary" || breedingSort == "name"))
+		{
+			sorted = sorted.Reverse();
+		}
+
+		return sorted.ToList();
+	}
+
+	private void OnBreedingMonsterClicked(Monster monster)
+	{
+		// If already selected as a parent, deselect it
+		if (Parent1?.Id == monster.Id)
+		{
+			ClearParent(1);
+			return;
+		}
+		if (Parent2?.Id == monster.Id)
+		{
+			ClearParent(2);
+			return;
+		}
+
+		// Check compatibility if parent 1 is already selected
+		if (Parent1 != null && monster.SpeciesId != Parent1.SpeciesId)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		SoundManager.PlaySelect();
+		lockedGenes.Clear();
+
+		// Assign to the currently selected slot
+		if (selectedForSlot == 1 || Parent1 == null)
+		{
+			Parent1 = monster;
+			// Auto-switch to slot 2 after selecting parent 1
+			selectedForSlot = 2;
+		}
+		else
+		{
+			Parent2 = monster;
+		}
+	}
+
+	private void OnBreedClicked()
+	{
+		if (Parent1 == null || Parent2 == null)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		var compatibility = GeneticsCalculator.CheckCompatibility(Parent1, Parent2);
+		if (!compatibility.CanBreed)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Check if confirmation is required
+		if (SettingsManager.Instance?.Settings?.ConfirmBeforeFusion ?? true)
+		{
+			showFusionConfirm = true;
+			SoundManager.PlayClick();
+		}
+		else
+		{
+			// Proceed directly without confirmation
+			ExecuteFusion();
+		}
+	}
+
+	private void ExecuteFusion()
+	{
+		if (Parent1 == null || Parent2 == null) return;
+
+		var cost = GeneticsCalculator.CalculateBreedingCost(Parent1, Parent2);
+		if (!TamerManager.Instance.SpendGold(cost))
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Create the offspring (pass locked genes for guaranteed inheritance)
+		breedingResult = MonsterManager.Instance?.BreedMonsters(Parent1, Parent2, lockedGenes.Count > 0 ? lockedGenes : null);
+
+		if (breedingResult != null)
+		{
+			// Start fusion animation sequence
+			showResult = true;
+			isFusionAnimating = true;
+			fusionPhase = "spiral";
+			fusionAnimationStart = RealTime.Now;
+
+			// Phase 1: Spiral (0.8s) -> Phase 2: Flash (0.3s) -> Phase 3: Reveal (0.5s)
+			_ = RunFusionAnimation();
+
+			// Clear parents and locks after breeding
+			Parent1 = null;
+			Parent2 = null;
+			lockedGenes.Clear();
+		}
+		showFusionConfirm = false;
+	}
+
+	private async Task RunFusionAnimation()
+	{
+		// Phase 1: Spiral - DNA strands spiral inward
+		fusionPhase = "spiral";
+		await GameTask.DelaySeconds(1.5f);
+
+		// Phase 2: Flash - bright merge flash
+		fusionPhase = "flash";
+		SoundManager.PlayMonsterCatch(); // Play sound at the climax
+		await GameTask.DelaySeconds(0.6f);
+
+		// Animation complete - content wrapper will animate in with reveal animation
+		fusionPhase = "";
+		isFusionAnimating = false;
+	}
+
+	private void CancelFusion()
+	{
+		showFusionConfirm = false;
+		SoundManager.PlayBack();
+	}
+
+	private void ConfirmFusion()
+	{
+		ExecuteFusion();
+	}
+
+	private void CloseResult()
+	{
+		SoundManager.PlayClick();
+		showResult = false;
+		breedingResult = null;
+		isFusionAnimating = false;
+		fusionPhase = "";
+	}
+
+	// Keyboard navigation state for monster selection
+	private int selectedMonsterIndex = 0;
+
+	public override void Tick()
+	{
+		base.Tick();
+		// Note: Input handling is now done via TickInput() called from GameHUD
+	}
+
+	/// <summary>
+	/// Called by GameHUD to handle keyboard input (child panels don't auto-tick in s&box Razor)
+	/// </summary>
+	public void TickInput()
+	{
+		HandleKeyboardInput();
+	}
+
+	private void HandleKeyboardInput()
+	{
+
+		// Handle result modal - Enter or Escape to close
+		if (showResult)
+		{
+			if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Menu"))
+			{
+				CloseResult();
+			}
+			return;
+		}
+
+		// Breeding view keyboard controls (inline grid selection)
+		if (CurrentView == "breeding")
+		{
+			var monsters = GetAvailableBreedingMonsters();
+
+			// Q to go back to collection view
+			if (Input.Pressed("PrevWeapon"))
+			{
+				SwitchView("collection");
+				return;
+			}
+
+			// Tab or E to switch between selecting for slot 1 or 2
+			if (Input.Pressed("NextWeapon"))
+			{
+				selectedForSlot = selectedForSlot == 1 ? 2 : 1;
+				SoundManager.PlayHover();
+				return;
+			}
+
+			// Grid navigation
+			if (monsters.Count > 0)
+			{
+				selectedMonsterIndex = Math.Clamp(selectedMonsterIndex, 0, monsters.Count - 1);
+				int columns = 4; // Assume 4 columns in breeding grid
+
+				if (Input.Pressed("Left"))
+				{
+					selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - 1);
+					isKeyboardNavigationActive = true;
+					SoundManager.PlayHover();
+				}
+				else if (Input.Pressed("Right"))
+				{
+					selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + 1);
+					isKeyboardNavigationActive = true;
+					SoundManager.PlayHover();
+				}
+				else if (Input.Pressed("Up"))
+				{
+					// If at top row, exit to tab navigation
+					if (selectedMonsterIndex < columns)
+					{
+						GameHUD.ExitPanel();
+					}
+					else
+					{
+						selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - columns);
+						isKeyboardNavigationActive = true;
+						SoundManager.PlayHover();
+					}
+				}
+				else if (Input.Pressed("Down"))
+				{
+					selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + columns);
+					isKeyboardNavigationActive = true;
+					SoundManager.PlayHover();
+				}
+				else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				{
+					// Select monster for current slot
+					OnBreedingMonsterClicked(monsters[selectedMonsterIndex]);
+				}
+			}
+
+			// Enter to breed when both parents selected
+			if (Input.Pressed("Menu"))
+			{
+				if (Parent1 != null && Parent2 != null)
+				{
+					OnBreedClicked();
+				}
+			}
+
+			// Backspace/Escape to clear parents
+			if (Input.Pressed("run"))
+			{
+				if (Parent2 != null)
+				{
+					ClearParent(2);
+				}
+				else if (Parent1 != null)
+				{
+					ClearParent(1);
+				}
+			}
+		}
+		// Collection view keyboard controls
+		else if (CurrentView == "collection")
+		{
+			// E to switch to Fusion view
+			if (Input.Pressed("NextWeapon"))
+			{
+				SwitchView("breeding");
+				return;
+			}
+
+			var monsters = GetFilteredMonsters();
+			if (monsters.Count == 0)
+			{
+				// No monsters - W/Up exits to tabs
+				if (Input.Pressed("Up"))
+				{
+					GameHUD.ExitPanel();
+				}
+				return;
+			}
+
+			// Clamp index
+			selectedMonsterIndex = Math.Clamp(selectedMonsterIndex, 0, monsters.Count - 1);
+
+			// Navigation - assume 5 columns in the grid
+			int columns = 5;
+
+			if (Input.Pressed("Left"))
+			{
+				selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - 1);
+				SelectedMonster = null; // Clear mouse selection when using keyboard
+				hoveredMonsterId = null; // Clear hover state when using keyboard
+				isKeyboardNavigationActive = true;
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Right"))
+			{
+				selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + 1);
+				SelectedMonster = null; // Clear mouse selection when using keyboard
+				hoveredMonsterId = null; // Clear hover state when using keyboard
+				isKeyboardNavigationActive = true;
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Up"))
+			{
+				// If at top row, exit to tab navigation
+				if (selectedMonsterIndex < columns)
+				{
+					GameHUD.ExitPanel();
+				}
+				else
+				{
+					selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - columns);
+					SelectedMonster = null; // Clear mouse selection when using keyboard
+					hoveredMonsterId = null; // Clear hover state when using keyboard
+					isKeyboardNavigationActive = true;
+					SoundManager.PlayHover();
+				}
+			}
+			else if (Input.Pressed("Down"))
+			{
+				selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + columns);
+				SelectedMonster = null; // Clear mouse selection when using keyboard
+				hoveredMonsterId = null; // Clear hover state when using keyboard
+				isKeyboardNavigationActive = true;
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			{
+				// Select the highlighted monster
+				OnMonsterSelected(monsters[selectedMonsterIndex]);
+			}
+		}
+	}
+
+	// Get the currently keyboard-selected monster for highlighting in breeding grid
+	private Monster GetKeyboardSelectedBreedingMonster()
+	{
+		if (CurrentView != "breeding" || !isKeyboardNavigationActive) return null;
+		var monsters = GetAvailableBreedingMonsters();
+		if (selectedMonsterIndex >= 0 && selectedMonsterIndex < monsters.Count)
+		{
+			return monsters[selectedMonsterIndex];
+		}
+		return null;
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(CurrentView);
+		hash.Add(currentFilter);
+		hash.Add(currentSort);
+		hash.Add(sortAscending);
+		hash.Add(SelectedMonster?.Id);
+		hash.Add(SelectedMonster?.Nickname);
+		hash.Add(Parent1?.Id);
+		hash.Add(Parent2?.Id);
+		hash.Add(selectedForSlot);
+		hash.Add(breedingFilter);
+		hash.Add(breedingSort);
+		hash.Add(breedingRarity);
+		hash.Add(breedingNameFilter);
+		hash.Add(breedingSortAscending);
+		hash.Add(showResult);
+		hash.Add(breedingResult?.Id);
+		hash.Add(isFusionAnimating);
+		hash.Add(fusionPhase);
+		hash.Add(GetMonsterCount());
+		hash.Add(GetMaxMonsters());
+		hash.Add(SpriteAnimator.GlobalFrame);
+		hash.Add(selectedMonsterIndex);
+		hash.Add(isKeyboardNavigationActive);
+		hash.Add(hoveredMonsterId);
+		hash.Add(isEditingNickname);
+		hash.Add(showReleaseConfirm);
+		hash.Add(showFusionConfirm);
+		hash.Add(isMultiSelectMode);
+		hash.Add(selectedForRelease.Count);
+		hash.Add(showBulkReleaseConfirm);
+		hash.Add(showJournalModal);
+		hash.Add(showItemPicker);
+		hash.Add(SelectedMonster?.HeldItemId);
+		hash.Add(isTransitioningView);
+		hash.Add(slideDirection);
+		hash.Add(isEvolving);
+		hash.Add(evolutionPhase);
+		hash.Add(evolvedIconPath);
+		return hash.ToHashCode();
+	}
+
+	private float GetSelectedXPPercent()
+	{
+		if (SelectedMonster == null || SelectedMonster.XPToNextLevel <= 0) return 0;
+		return (float)SelectedMonster.CurrentXP / SelectedMonster.XPToNextLevel * 100f;
+	}
+
+	// ==========================================
+	// Veteran System Helper Methods
+	// ==========================================
+
+	private string GetSelectedVeteranRankClass()
+	{
+		if (SelectedMonster == null) return "rookie";
+		return SelectedMonster.GetVeteranRank().ToString().ToLower();
+	}
+
+	private string GetSelectedVeteranRankIcon()
+	{
+		if (SelectedMonster == null) return "⚔";
+		return SelectedMonster.GetVeteranRank() switch
+		{
+			VeteranRank.Rookie => "⚔",
+			VeteranRank.Trained => "🗡",
+			VeteranRank.Seasoned => "⚔️",
+			VeteranRank.Veteran => "🛡",
+			VeteranRank.Elite => "⭐",
+			VeteranRank.Champion => "👑",
+			VeteranRank.Legend => "🏆",
+			_ => "⚔"
+		};
+	}
+
+	private string GetSelectedVeteranRankName()
+	{
+		if (SelectedMonster == null) return "Rookie";
+		return SelectedMonster.GetVeteranRank().ToString();
+	}
+
+	private int GetSelectedVeteranBonusPercent()
+	{
+		if (SelectedMonster == null) return 0;
+		return (int)(SelectedMonster.GetVeteranBonusPercent() * 100);
+	}
+
+	// Calculate the veteran bonus amount for a stat (reverse calculate from final stat)
+	private int GetStatVeteranBonus(int currentStat, bool isHP = false)
+	{
+		if (SelectedMonster == null) return 0;
+		float bonusPercent = SelectedMonster.GetVeteranBonusPercent();
+		if (bonusPercent <= 0) return 0;
+
+		// HP gets half bonus, other stats get full bonus
+		float multiplier = isHP ? (1 + bonusPercent * 0.5f) : (1 + bonusPercent);
+		int baseStat = (int)(currentStat / multiplier);
+		return currentStat - baseStat;
+	}
+
+	private float GetSelectedVeteranProgress()
+	{
+		if (SelectedMonster == null) return 0;
+		var rank = SelectedMonster.GetVeteranRank();
+		if (rank == VeteranRank.Legend) return 100;
+
+		int currentBattles = SelectedMonster.BattlesFought;
+		int currentThreshold = rank switch
+		{
+			VeteranRank.Rookie => 0,
+			VeteranRank.Trained => 25,
+			VeteranRank.Seasoned => 100,
+			VeteranRank.Veteran => 200,
+			VeteranRank.Elite => 400,
+			VeteranRank.Champion => 750,
+			_ => 0
+		};
+		int nextThreshold = rank switch
+		{
+			VeteranRank.Rookie => 25,
+			VeteranRank.Trained => 100,
+			VeteranRank.Seasoned => 200,
+			VeteranRank.Veteran => 400,
+			VeteranRank.Elite => 750,
+			VeteranRank.Champion => 1500,
+			_ => 1500
+		};
+
+		float progress = (float)(currentBattles - currentThreshold) / (nextThreshold - currentThreshold) * 100f;
+		return Math.Clamp(progress, 0, 100);
+	}
+
+	private string FormatDamageValue(int damage)
+	{
+		if (damage >= 1000000) return $"{damage / 1000000f:0.#}M";
+		if (damage >= 1000) return $"{damage / 1000f:0.#}K";
+		return damage.ToString();
+	}
+
+	// ==========================================
+	// Journal Helper Methods
+	// ==========================================
+
+	private string GetJournalEntryClass(JournalEntryType type)
+	{
+		return type switch
+		{
+			JournalEntryType.Caught => "caught",
+			JournalEntryType.Bred => "bred",
+			JournalEntryType.Evolution => "evolution",
+			JournalEntryType.BossDefeat => "boss",
+			JournalEntryType.Milestone => "milestone",
+			JournalEntryType.Expedition => "expedition",
+			_ => "general"
+		};
+	}
+
+	private string GetJournalEntryIcon(JournalEntryType type)
+	{
+		return type switch
+		{
+			JournalEntryType.Caught => "🎯",
+			JournalEntryType.Bred => "🥚",
+			JournalEntryType.Evolution => "✨",
+			JournalEntryType.BossDefeat => "💀",
+			JournalEntryType.Milestone => "🏅",
+			JournalEntryType.Expedition => "🗺",
+			_ => "📝"
+		};
+	}
+
+	private string GetJournalEntryBadge(JournalEntryType type)
+	{
+		return type switch
+		{
+			JournalEntryType.Caught => "CAUGHT",
+			JournalEntryType.Bred => "BRED",
+			JournalEntryType.Evolution => "EVOLVED",
+			JournalEntryType.BossDefeat => "BOSS",
+			JournalEntryType.Milestone => "MILESTONE",
+			JournalEntryType.Expedition => "EXPEDITION",
+			_ => "NOTE"
+		};
+	}
+
+	private string GetJournalSpeciesIcon(string speciesId)
+	{
+		if (string.IsNullOrEmpty(speciesId)) return "";
+		var species = MonsterManager.Instance?.GetSpecies(speciesId);
+		return species?.IconPath ?? "";
+	}
+
+	private string GetJournalZoneBackground(string zoneId)
+	{
+		if (string.IsNullOrEmpty(zoneId)) return "";
+		// Map expedition IDs to background filenames
+		var bgName = zoneId switch
+		{
+			"forest_entrance" => "whispering_woods",
+			"tear_lake" => "lake_of_tears",
+			"dawn_sanctuary" => "spirit_sanctum",
+			"origin_void" => "the_origin_void",
+			_ => zoneId // Most IDs match the filename
+		};
+		return $"/ui/locations/{bgName}_background.png";
+	}
+
+	private string GetEntryBackgroundStyle(JournalEntry entry)
+	{
+		// Show zone background for any entry with a zoneId (expeditions and boss defeats)
+		if (!string.IsNullOrEmpty(entry.ZoneId))
+		{
+			var bgPath = GetJournalZoneBackground(entry.ZoneId);
+			return $"background-image: url({bgPath})";
+		}
+		return "";
+	}
+
+	private string GetRelativeTime(DateTime timestamp)
+	{
+		var diff = DateTime.UtcNow - timestamp;
+		if (diff.TotalMinutes < 1) return "Just now";
+		if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+		if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+		if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+		return timestamp.ToString("MMM d");
+	}
+}

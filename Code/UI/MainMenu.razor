@@ -1,0 +1,982 @@
+@using System.Linq;
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Components;
+@inherits PanelComponent
+
+<root class="main-menu @(IsVisible ? "" : "hidden")">
+	<div class="menu-background"></div>
+	<div class="menu-overlay"></div>
+
+	<div class="menu-content @(contentVisible ? "visible" : "")">
+		<div class="menu-left">
+			<div class="logo-container">
+				<img class="game-logo" src="ui/logo/beastbornelogo.png" />
+			</div>
+
+			<div class="menu-buttons">
+				<button class="menu-btn primary @(selectedIndex == 0 ? "selected" : "")"
+						onclick=@OnPlayClicked
+						onmouseover=@(() => OnButtonHover(0))>
+					<span class="btn-text">PLAY</span>
+				</button>
+
+				<button class="menu-btn @(selectedIndex == 1 ? "selected" : "")"
+						onclick=@OnRoadmapClicked
+						onmouseover=@(() => OnButtonHover(1))>
+					<span class="btn-text">ROADMAP</span>
+				</button>
+
+				<button class="menu-btn @(selectedIndex == 2 ? "selected" : "")"
+						onclick=@OnTutorialClicked
+						onmouseover=@(() => OnButtonHover(2))>
+					<span class="btn-text">TUTORIAL</span>
+				</button>
+
+				<button class="menu-btn @(selectedIndex == 3 ? "selected" : "")"
+						onclick=@OnQuitClicked
+						onmouseover=@(() => OnButtonHover(3))>
+					<span class="btn-text">QUIT</span>
+				</button>
+			</div>
+		</div>
+
+		<div class="menu-bottom-left">
+			<div class="discord-link" onclick="@OnDiscordClick">
+				<img class="discord-icon" src="/ui/buttons/pixel--discord-white.png" />
+				<span class="discord-text">@discordDisplayText</span>
+			</div>
+		</div>
+
+		<div class="menu-bottom-right">
+			<div class="alpha-badge">ALPHA v0.4.1</div>
+		</div>
+
+		<!-- Splash Text with Random Beast -->
+		<div class="splash-container">
+			<div class="splash-beast">
+				<img class="splash-sprite" src="@GetSplashBeastSprite()" />
+			</div>
+			<div class="splash-text-container">
+				<span class="splash-text">@currentSplashText</span>
+			</div>
+		</div>
+	</div>
+
+	@if (showSlotSelection)
+	{
+		<div class="starter-overlay">
+			<div class="starter-panel slot-panel">
+				<div class="starter-title">Select Save Slot</div>
+				<div class="starter-subtitle">Choose a character or start a new adventure</div>
+
+				<div class="slot-options">
+					@for (int i = 0; i < 3; i++)
+					{
+						var slotIndex = i;
+						var slotInfo = GetSlotInfo(slotIndex);
+						var hasData = slotInfo != null;
+						var isSelected = selectedSlot == slotIndex;
+
+						<div class="slot-card @(isSelected ? "selected" : "") @(hasData ? "has-data" : "empty")"
+							 onclick=@(() => SelectSlot(slotIndex))
+							 onmouseover=@(() => selectedSlot = slotIndex)>
+							<div class="slot-number">Slot @(slotIndex + 1)</div>
+
+							@if (hasData)
+							{
+								<div class="slot-avatar @(slotInfo.Gender == TamerGender.Female ? "female" : "male")">
+									<img src="@GetTamerIcon(slotInfo.Gender)" />
+								</div>
+								<div class="slot-info">
+									<div class="slot-level">Lv. @slotInfo.TamerLevel</div>
+									<div class="slot-monsters">@slotInfo.MonsterCount Beasts</div>
+									<div class="slot-expedition">Stage @(slotInfo.HighestExpedition + 1)</div>
+								</div>
+								<button class="slot-reset-btn" onclick=@(() => RequestResetSlot(slotIndex)) onclick:stopPropagation>
+									Reset
+								</button>
+							}
+							else
+							{
+								<div class="slot-empty-icon">+</div>
+								<div class="slot-empty-text">New Game</div>
+							}
+						</div>
+					}
+				</div>
+
+				<div class="slot-buttons">
+					<button class="confirm-starter-btn" onclick=@OnConfirmSlot>
+						@(GetSlotInfo(selectedSlot) != null ? "CONTINUE" : "NEW GAME")
+					</button>
+					<button class="back-btn" onclick=@CloseSlotSelection>
+						BACK
+					</button>
+				</div>
+			</div>
+		</div>
+	}
+
+	@if (showResetConfirmation)
+	{
+		<div class="starter-overlay" onclick=@CancelReset>
+			<div class="reset-panel" onclick:stopPropagation>
+				<div class="reset-title">Reset Save Slot?</div>
+				<div class="reset-warning">This will permanently delete all progress in Slot @(slotToReset + 1)!</div>
+				<div class="reset-buttons">
+					<button class="reset-confirm-btn" onclick=@ConfirmResetSlot>DELETE</button>
+					<button class="reset-cancel-btn" onclick=@CancelReset>CANCEL</button>
+				</div>
+			</div>
+		</div>
+	}
+
+	@if (showCharacterSelection)
+	{
+		<div class="starter-overlay">
+			<div class="starter-panel">
+				<div class="starter-title">Choose Your Character</div>
+				<div class="starter-subtitle">Who will become a legendary Tamer?</div>
+
+				<div class="character-options">
+					<div class="character-card male @(selectedGender == 0 ? "selected" : "")"
+						 onclick=@(() => SelectGender(0))
+						 onmouseover=@(() => selectedGender = 0)>
+						<div class="character-icon-container">
+							<img class="character-icon" src="ui/characters/male/male_tamer.png" />
+						</div>
+						<div class="character-info">
+							<span class="character-name">Male Tamer</span>
+						</div>
+					</div>
+
+					<div class="character-card female @(selectedGender == 1 ? "selected" : "")"
+						 onclick=@(() => SelectGender(1))
+						 onmouseover=@(() => selectedGender = 1)>
+						<div class="character-icon-container">
+							<img class="character-icon flipped" src="ui/characters/female/female_tamer.png" />
+						</div>
+						<div class="character-info">
+							<span class="character-name">Female Tamer</span>
+						</div>
+					</div>
+				</div>
+
+				<div class="slot-buttons">
+					<button class="confirm-starter-btn" onclick=@OnConfirmCharacter>
+						CONFIRM CHARACTER
+					</button>
+					<button class="back-btn" onclick=@BackToSlotSelection>
+						BACK
+					</button>
+				</div>
+			</div>
+		</div>
+	}
+
+	@if (showStarterSelection)
+	{
+		<div class="starter-overlay">
+			<div class="starter-panel">
+				<div class="starter-title">Choose Your First Monster</div>
+				<div class="starter-subtitle">This monster will be loyal to you forever</div>
+
+				<div class="starter-options">
+					<div class="starter-card @(selectedStarter == 0 ? "selected" : "")"
+						 onclick=@(() => SelectStarter(0))
+						 onmouseover=@(() => selectedStarter = 0)>
+						<img class="starter-icon" src="@GetStarterIcon("embrik")" />
+						<div class="starter-info">
+							<span class="starter-name">Embrik</span>
+							<span class="starter-element fire">FIRE</span>
+							<span class="starter-desc">Born from dying campfires - balanced</span>
+						</div>
+					</div>
+
+					<div class="starter-card @(selectedStarter == 1 ? "selected" : "")"
+						 onclick=@(() => SelectStarter(1))
+						 onmouseover=@(() => selectedStarter = 1)>
+						<img class="starter-icon" src="@GetStarterIcon("droskul")" />
+						<div class="starter-info">
+							<span class="starter-name">Droskul</span>
+							<span class="starter-element water">WATER</span>
+							<span class="starter-desc">Formed from tears - resilient</span>
+						</div>
+					</div>
+
+					<div class="starter-card @(selectedStarter == 2 ? "selected" : "")"
+						 onclick=@(() => SelectStarter(2))
+						 onmouseover=@(() => selectedStarter = 2)>
+						<img class="starter-icon" src="@GetStarterIcon("wispryn")" />
+						<div class="starter-info">
+							<span class="starter-name">Wispryn</span>
+							<span class="starter-element wind">WIND</span>
+							<span class="starter-desc">Born from echoes - swift</span>
+						</div>
+					</div>
+				</div>
+
+				<button class="confirm-starter-btn" onclick=@OnConfirmStarter>
+					CONFIRM CHOICE
+				</button>
+			</div>
+		</div>
+	}
+
+	@if (showRoadmap)
+	{
+		<div class="starter-overlay" onclick=@CloseRoadmap>
+			<div class="roadmap-panel" onclick:stopPropagation>
+				<div class="roadmap-header">
+					<div class="roadmap-title">Development Roadmap</div>
+					<div class="roadmap-subtitle">Track our progress and upcoming features</div>
+					<button class="roadmap-close" onclick=@CloseRoadmap>✕</button>
+				</div>
+
+				<div class="roadmap-content">
+					<div class="roadmap-column">
+						<div class="column-header completed">
+							<span class="column-icon">✓</span>
+							<span class="column-title">v0.1.5 - Alpha Release</span>
+						</div>
+						<div class="roadmap-items">
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">120+ Monster Species</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Beastiary System</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Monster Collection</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Expedition System</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Turn-Based Combat</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Evolution System</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Genetics & Breeding</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="roadmap-column">
+						<div class="column-header completed">
+							<span class="column-icon">✓</span>
+							<span class="column-title">v0.2.0 - Battle Update</span>
+						</div>
+						<div class="roadmap-items">
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Monster Moves & Abilities</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Move Selection in Battle</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Status Effects</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Unique Traits System</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Balance & Polish</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="roadmap-column">
+						<div class="column-header completed">
+							<span class="column-icon">✓</span>
+							<span class="column-title">v0.3.0 - Expedition Update</span>
+						</div>
+						<div class="roadmap-items">
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Expedition Progression</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Boss Battles</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Expedition Rewards</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Team Selection UI</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Evolution Animations</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="roadmap-column">
+						<div class="column-header current">
+							<span class="column-icon">🔧</span>
+							<span class="column-title">v0.4.1 - Skills & Items</span>
+						</div>
+						<div class="roadmap-items">
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Tamer Skill Tree</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Inventory System</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Held Items for Monsters</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Consumable Items</span>
+							</div>
+							<div class="roadmap-item completed">
+								<span class="item-check">✓</span>
+								<span class="item-text">Expedition Item Drops</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="roadmap-column">
+						<div class="column-header planned">
+							<span class="column-icon">📋</span>
+							<span class="column-title">v0.5.0 - Shop Update</span>
+						</div>
+						<div class="roadmap-items">
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Premium Currency</span>
+							</div>
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Item Shop</span>
+							</div>
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Monster Shop</span>
+							</div>
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Daily Deals</span>
+							</div>
+						</div>
+					</div>
+
+					<div class="roadmap-column">
+						<div class="column-header planned">
+							<span class="column-icon">📋</span>
+							<span class="column-title">v0.6.0 - Online Update</span>
+						</div>
+						<div class="roadmap-items">
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Monster Trading</span>
+							</div>
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Improved PvP Matchmaking</span>
+							</div>
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Online Leaderboards</span>
+							</div>
+							<div class="roadmap-item planned">
+								<span class="item-dot"></span>
+								<span class="item-text">Friend List</span>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+</root>
+
+@code {
+	private bool contentVisible = false;
+	private int selectedIndex = 0;
+	private bool showSlotSelection = false;
+	private bool showCharacterSelection = false;
+	private bool showStarterSelection = false;
+	private bool showRoadmap = false;
+	private bool showResetConfirmation = false;
+	private int selectedSlot = 0;
+	private int slotToReset = -1;
+	private int selectedGender = 0;
+	private int selectedStarter = 0;
+
+	private string[] starterSpecies = { "embrik", "droskul", "wispryn" };
+
+	// Discord link
+	private string discordDisplayText = "discord.gg/dJTTyCqKru";
+	private const string DiscordLink = "https://discord.gg/dJTTyCqKru";
+
+	private async void OnDiscordClick()
+	{
+		Clipboard.SetText( DiscordLink );
+		discordDisplayText = "Copied to clipboard!";
+		StateHasChanged();
+		await Task.Delay( 2000 );
+		discordDisplayText = "discord.gg/dJTTyCqKru";
+		StateHasChanged();
+	}
+
+	// Splash text system
+	private string currentSplashText = "";
+	private string splashBeastSpeciesId = "";
+
+	private static readonly string[] SplashTexts = new[]
+	{
+		// Funny
+		"Embrik used Ember. Your social life took 9999 damage!",
+		"A wild bug appeared! ...oh wait, that's a feature.",
+		"Now with 100% more genetics!",
+		"Have you tried turning it off and catching it again?",
+		"Gotta negotiate contracts with 'em all!",
+		"My Droskul could beat your Droskul.",
+		"Warning: May cause spontaneous breeding.",
+		"No monsters were harmed... mostly.",
+		"Achievement unlocked: Read the splash text!",
+		"This beast has better stats than you IRL.",
+		"Skill issue detected.",
+		"Touch grass? I'd rather catch beasts.",
+		"Your beast evolved into... still a disappointment.",
+		"RNG blessed you today. Maybe.",
+		"Auto-battle enabled. Sit back and pretend you're helping.",
+
+		// Lore-ish
+		"The tower remembers...",
+		"Somewhere, a Wispryn echoes your thoughts.",
+		"Contract signed in cosmic ink.",
+		"Beasts dream of perfect genes too.",
+		"The portal hums with ancient energy.",
+		"Born from campfires, tears, and echoes.",
+		"Loyalty cannot be captured. Only earned.",
+
+		// Meta / Dev
+		"Built with caffeine and questionable decisions.",
+		"Now with fewer bugs than yesterday!",
+		"Alpha means it's supposed to crash, right?",
+		"Report bugs to the Discord... please.",
+		"The devs are watching. Always watching.",
+		"v0.4.1 - Skills & Items Update!",
+
+		// References / Memes
+		"It's super effective! (Not really.)",
+		"You feel an evil presence watching...",
+		"Press F to pay respects to your Gold.",
+		"This is the way.",
+		"I used to be a tamer like you...",
+		"All your beasts are belong to us.",
+		"Snake? SNAKE? SNAAAKE?!",
+		"Do a barrel roll!",
+
+		// Silly
+		"Beasts > Pokemon (probably)",
+		"Your starter chose YOU.",
+		"Bred different. Literally.",
+		"Genetics go brrrrr.",
+		"One does not simply release their starter.",
+		"It's not hoarding if they're cute.",
+		"Sleep? Never heard of her.",
+		"Just one more expedition...",
+		"My beast brings all the tamers to the yard.",
+		"When life gives you Embriks, make fire.",
+	};
+
+	// Track if we should show based on game state
+	private bool IsVisible => GameManager.Instance?.CurrentState == GameState.MainMenu;
+
+	protected override void OnStart()
+	{
+		// Fade in content after a short delay
+		contentVisible = true;
+
+		// Subscribe to state changes
+		if ( GameManager.Instance != null )
+		{
+			GameManager.Instance.OnStateChanged += OnGameStateChanged;
+		}
+
+		// Enable mouse/pointer input for UI
+		Panel.AcceptsFocus = true;
+		Panel.Focus();
+
+		// Initialize splash text
+		RandomizeSplash();
+	}
+
+	private void RandomizeSplash()
+	{
+		// Pick a random splash text
+		var random = new Random();
+		currentSplashText = SplashTexts[random.Next( SplashTexts.Length )];
+
+		// Pick a random beast species
+		var allSpecies = MonsterManager.Instance?.GetAllSpecies();
+		if ( allSpecies != null && allSpecies.Count > 0 )
+		{
+			var speciesList = allSpecies.ToList();
+			splashBeastSpeciesId = speciesList[random.Next( speciesList.Count )].Id;
+		}
+		else
+		{
+			// Fallback to starters if species not loaded yet
+			splashBeastSpeciesId = starterSpecies[random.Next( starterSpecies.Length )];
+		}
+	}
+
+	private string GetSplashBeastSprite()
+	{
+		if ( string.IsNullOrEmpty( splashBeastSpeciesId ) )
+			return "ui/monsters/default.png";
+
+		var species = MonsterManager.Instance?.GetSpecies( splashBeastSpeciesId );
+		if ( species == null )
+			return "ui/monsters/default.png";
+
+		// Use animated sprite
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+		{
+			int frameIndex = SpriteAnimator.GetFrameIndex( species.AnimationFrames.Count );
+			return species.AnimationFrames[frameIndex];
+		}
+
+		return species.IconPath ?? "ui/monsters/default.png";
+	}
+
+	protected override void OnDestroy()
+	{
+		if ( GameManager.Instance != null )
+		{
+			GameManager.Instance.OnStateChanged -= OnGameStateChanged;
+		}
+	}
+
+	private void OnGameStateChanged( GameState oldState, GameState newState )
+	{
+		// Reset selections when returning to main menu
+		if ( newState == GameState.MainMenu )
+		{
+			showSlotSelection = false;
+			showCharacterSelection = false;
+			showStarterSelection = false;
+			showRoadmap = false;
+			showResetConfirmation = false;
+			selectedIndex = 0;
+
+			// Randomize splash text when returning to menu
+			RandomizeSplash();
+		}
+	}
+
+	protected override void OnUpdate()
+	{
+		// Update global sprite animations and force re-render for animation
+		if ( SpriteAnimator.Update() )
+		{
+			StateHasChanged();
+		}
+
+		if ( !IsVisible ) return;
+		HandleKeyboardInput();
+	}
+
+	private void HandleKeyboardInput()
+	{
+		if (showResetConfirmation)
+		{
+			if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				CancelReset();
+			}
+		}
+		else if (showRoadmap)
+		{
+			// Close roadmap with escape or back
+			if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				CloseRoadmap();
+			}
+		}
+		else if (showSlotSelection)
+		{
+			// Navigate slot selection
+			if (Input.Pressed("Left"))
+			{
+				selectedSlot = Math.Max(0, selectedSlot - 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Right"))
+			{
+				selectedSlot = Math.Min(2, selectedSlot + 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				OnConfirmSlot();
+			else if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				CloseSlotSelection();
+			}
+		}
+		else if (showCharacterSelection)
+		{
+			// Navigate character selection
+			if (Input.Pressed("Left"))
+			{
+				selectedGender = 0;
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Right"))
+			{
+				selectedGender = 1;
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				OnConfirmCharacter();
+			else if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				BackToSlotSelection();
+			}
+		}
+		else if (showStarterSelection)
+		{
+			// Navigate starters
+			if (Input.Pressed("Left"))
+			{
+				selectedStarter = Math.Max(0, selectedStarter - 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Right"))
+			{
+				selectedStarter = Math.Min(2, selectedStarter + 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				OnConfirmStarter();
+			else if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				showStarterSelection = false;
+				showCharacterSelection = true;
+				SoundManager.PlayBack();
+			}
+		}
+		else
+		{
+			// Navigate menu (5 buttons)
+			if (Input.Pressed("Up"))
+			{
+				selectedIndex = Math.Max(0, selectedIndex - 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Down"))
+			{
+				selectedIndex = Math.Min(3, selectedIndex + 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				ExecuteSelectedAction();
+		}
+	}
+
+	private void ExecuteSelectedAction()
+	{
+		switch (selectedIndex)
+		{
+			case 0: OnPlayClicked(); break;
+			case 1: OnRoadmapClicked(); break;
+			case 2: OnTutorialClicked(); break;
+			case 3: OnQuitClicked(); break;
+		}
+	}
+
+	private void OnButtonHover(int index)
+	{
+		selectedIndex = index;
+		PlayHoverSound();
+	}
+
+	private void OnPlayClicked()
+	{
+		PlayClickSound();
+
+		// Always show slot selection first
+		selectedSlot = SaveSlotManager.Instance?.ActiveSlot ?? 0;
+		showSlotSelection = true;
+	}
+
+	// Slot selection methods
+	private SaveSlotInfo GetSlotInfo(int slot)
+	{
+		return SaveSlotManager.Instance?.Slots[slot];
+	}
+
+	private void SelectSlot(int slot)
+	{
+		selectedSlot = slot;
+		PlayHoverSound();
+	}
+
+	private void OnConfirmSlot()
+	{
+		PlayClickSound();
+
+		var slotInfo = GetSlotInfo(selectedSlot);
+
+		// Switch to the selected slot
+		if (SaveSlotManager.Instance != null && SaveSlotManager.Instance.ActiveSlot != selectedSlot)
+		{
+			SaveSlotManager.Instance.SwitchSlot(selectedSlot);
+		}
+
+		if (slotInfo != null)
+		{
+			// Existing save - reload and start game
+			showSlotSelection = false;
+			StartGame();
+		}
+		else
+		{
+			// New game - go to character selection
+			showSlotSelection = false;
+			showCharacterSelection = true;
+		}
+	}
+
+	private void CloseSlotSelection()
+	{
+		SoundManager.PlayBack();
+		showSlotSelection = false;
+	}
+
+	private void BackToSlotSelection()
+	{
+		SoundManager.PlayBack();
+		showCharacterSelection = false;
+		showSlotSelection = true;
+	}
+
+	private void RequestResetSlot(int slot)
+	{
+		PlayClickSound();
+		slotToReset = slot;
+		showResetConfirmation = true;
+	}
+
+	private void ConfirmResetSlot()
+	{
+		PlayClickSound();
+		if (slotToReset >= 0)
+		{
+			SaveSlotManager.Instance?.ResetSlot(slotToReset);
+		}
+		showResetConfirmation = false;
+		slotToReset = -1;
+	}
+
+	private void CancelReset()
+	{
+		SoundManager.PlayBack();
+		showResetConfirmation = false;
+		slotToReset = -1;
+	}
+
+	private string GetTamerIcon(TamerGender gender)
+	{
+		return gender == TamerGender.Female
+			? "ui/characters/female/female_tamer.png"
+			: "ui/characters/male/male_tamer.png";
+	}
+
+	private void SelectGender(int index)
+	{
+		selectedGender = index;
+		PlayHoverSound();
+	}
+
+	private void OnConfirmCharacter()
+	{
+		PlayClickSound();
+
+		// Set the tamer's gender
+		var gender = selectedGender == 0 ? TamerGender.Male : TamerGender.Female;
+		TamerManager.Instance?.SetGender(gender);
+
+		// Move to starter monster selection
+		showCharacterSelection = false;
+		showStarterSelection = true;
+	}
+
+	private void SelectStarter(int index)
+	{
+		selectedStarter = index;
+		PlayHoverSound();
+	}
+
+	private void OnConfirmStarter()
+	{
+		PlayClickSound();
+
+		// Create the starter monster (bred = true, so no contract)
+		var speciesId = starterSpecies[selectedStarter];
+		var starter = MonsterManager.Instance?.CreateMonster(speciesId, isBred: true);
+
+		if (starter != null)
+		{
+			// Set starter to level 3 for a better early game experience
+			starter.Level = 3;
+			MonsterManager.Instance?.RecalculateStats(starter);
+			MonsterManager.Instance?.RefreshMovesForLevel(starter);
+			starter.FullHeal();
+
+			Log.Info($"Created starter: {starter.Nickname} at Level {starter.Level}");
+
+			// Immediately save the new character to prevent exploits
+			TamerManager.Instance?.SaveToCloud();
+			MonsterManager.Instance?.SaveMonsters();
+
+			showStarterSelection = false;
+			StartGame();
+		}
+	}
+
+	private void StartGame()
+	{
+		GameManager.Instance?.StartGame();
+	}
+
+	private void OnRoadmapClicked()
+	{
+		PlayClickSound();
+		showRoadmap = true;
+	}
+
+	private void OnTutorialClicked()
+	{
+		PlayClickSound();
+
+		// Check if player has any save data
+		var hasAnySave = false;
+		var firstSlotWithData = -1;
+
+		for ( int i = 0; i < 3; i++ )
+		{
+			var slotInfo = GetSlotInfo( i );
+			if ( slotInfo != null )
+			{
+				hasAnySave = true;
+				if ( firstSlotWithData < 0 )
+					firstSlotWithData = i;
+			}
+		}
+
+		if ( hasAnySave )
+		{
+			// Load the slot (use active slot if it has data, otherwise first with data)
+			var activeSlot = SaveSlotManager.Instance?.ActiveSlot ?? 0;
+			var slotToUse = GetSlotInfo( activeSlot ) != null ? activeSlot : firstSlotWithData;
+
+			if ( SaveSlotManager.Instance != null && SaveSlotManager.Instance.ActiveSlot != slotToUse )
+			{
+				SaveSlotManager.Instance.SwitchSlot( slotToUse );
+			}
+
+			// Start game and restart tutorial
+			GameManager.Instance?.StartGame();
+			TutorialManager.Instance?.RestartTutorial();
+		}
+		else
+		{
+			// No save data - go through normal slot selection (tutorial will auto-start for new players)
+			selectedSlot = 0;
+			showSlotSelection = true;
+		}
+	}
+
+	private void CloseRoadmap()
+	{
+		SoundManager.PlayBack();
+		showRoadmap = false;
+	}
+
+	private void OnQuitClicked()
+	{
+		PlayClickSound();
+		Game.Close();
+	}
+
+
+	private void PlayHoverSound()
+	{
+		SoundManager.PlayHover();
+	}
+
+	private void PlayClickSound()
+	{
+		SoundManager.PlayClick();
+	}
+
+	private string GetStarterIcon( string speciesId )
+	{
+		var species = MonsterManager.Instance?.GetSpecies( speciesId );
+		if ( species == null )
+			return "ui/monsters/default.png";
+
+		// Check if species has animation frames defined
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 )
+		{
+			int frameIndex = SpriteAnimator.GetFrameIndex( species.AnimationFrames.Count );
+			return species.AnimationFrames[frameIndex];
+		}
+
+		// Fall back to static icon
+		return species.IconPath ?? "ui/monsters/default.png";
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(contentVisible);
+		hash.Add(selectedIndex);
+		hash.Add(showSlotSelection);
+		hash.Add(showCharacterSelection);
+		hash.Add(showStarterSelection);
+		hash.Add(showRoadmap);
+		hash.Add(showResetConfirmation);
+		hash.Add(selectedSlot);
+		hash.Add(slotToReset);
+		hash.Add(selectedGender);
+		hash.Add(selectedStarter);
+		hash.Add(currentSplashText);
+		hash.Add(splashBeastSpeciesId);
+		// Add animation frame to hash so UI updates with animation
+		hash.Add(SpriteAnimator.GlobalFrame);
+		return hash.ToHashCode();
+	}
+}

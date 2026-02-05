@@ -1,0 +1,184 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<div class="swap-panel @(IsVisible ? "visible" : "hidden")">
+	<div class="panel-header">
+		<span class="header-title">Choose a Beast to Swap In</span>
+		<button class="back-btn" onclick=@OnBackClicked>
+			<span class="back-icon">←</span>
+			<span class="back-text">Back</span>
+		</button>
+	</div>
+
+	<div class="monster-list">
+		@if (Team != null)
+		{
+			for (int i = 0; i < Team.Count; i++)
+			{
+				var monster = Team[i];
+				if (monster == null) continue;
+
+				var isActive = i == ActiveIndex;
+				var isKO = monster.CurrentHP <= 0;
+				var hpPercent = GetHPPercent(monster);
+				var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+				var index = i;
+
+				<button class="swap-monster-btn @(isActive ? "active" : "") @(isKO ? "ko" : "")"
+						onclick=@(() => OnMonsterSelected(index))
+						disabled=@(isActive || isKO)>
+					<div class="monster-sprite-container">
+						@if (HasSprite(monster))
+						{
+							<div class="monster-sprite" style="background-image: url(@GetSpritePath(monster))"></div>
+						}
+						else
+						{
+							<div class="monster-sprite-placeholder">?</div>
+						}
+					</div>
+
+					<div class="monster-info">
+						<div class="monster-header">
+							<span class="monster-name">@(monster.Nickname ?? species?.Name ?? "Monster")</span>
+							<span class="monster-element @GetElementClass(species)">@GetElementIcon(species)</span>
+						</div>
+
+						<div class="hp-bar-container">
+							<div class="hp-bar-bg">
+								<div class="hp-bar-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
+							</div>
+							<span class="hp-numbers">@monster.CurrentHP/@monster.MaxHP HP</span>
+						</div>
+
+						<div class="monster-level">Lv. @monster.Level</div>
+					</div>
+
+					<div class="status-indicator">
+						@if (isActive)
+						{
+							<span class="status-badge active">ACTIVE</span>
+						}
+						else if (isKO)
+						{
+							<span class="status-badge ko">KO</span>
+						}
+						else
+						{
+							<span class="status-badge ready">READY</span>
+						}
+					</div>
+				</button>
+			}
+		}
+	</div>
+</div>
+
+@code {
+	public bool IsVisible { get; set; } = false;
+	public List<Monster> Team { get; set; }
+	public int ActiveIndex { get; set; } = 0;
+
+	public Action<int> OnSwapSelected { get; set; }
+	public Action OnBackRequested { get; set; }
+
+	private float GetHPPercent(Monster monster)
+	{
+		if (monster.MaxHP <= 0) return 0;
+		return (float)monster.CurrentHP / monster.MaxHP * 100f;
+	}
+
+	private string GetHPColor(float percent)
+	{
+		if (percent > 50) return "healthy";
+		if (percent > 25) return "warning";
+		return "danger";
+	}
+
+	private bool HasSprite(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster?.SpeciesId);
+		if (species == null) return false;
+
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+			return true;
+		if (!string.IsNullOrEmpty(species.IconPath))
+			return true;
+
+		return false;
+	}
+
+	private string GetSpritePath(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+		if (species == null) return "";
+
+		// Use first frame of animation or static icon
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+			return species.AnimationFrames[0];
+
+		return species.IconPath ?? "";
+	}
+
+	private string GetElementClass(MonsterSpecies species)
+	{
+		return species?.Element.ToString().ToLower() ?? "neutral";
+	}
+
+	private string GetElementIcon(MonsterSpecies species)
+	{
+		return species?.Element switch
+		{
+			ElementType.Fire => "FIR",
+			ElementType.Water => "WTR",
+			ElementType.Earth => "ERT",
+			ElementType.Wind => "WND",
+			ElementType.Electric => "ELC",
+			ElementType.Ice => "ICE",
+			ElementType.Nature => "NAT",
+			ElementType.Metal => "MTL",
+			ElementType.Shadow => "SHD",
+			ElementType.Spirit => "SPR",
+			_ => "NEU"
+		};
+	}
+
+	private void OnMonsterSelected(int index)
+	{
+		if (index == ActiveIndex) return;
+		if (Team == null || index >= Team.Count) return;
+		if (Team[index].CurrentHP <= 0) return;
+
+		SoundManager.PlayClick();
+		OnSwapSelected?.Invoke(index);
+	}
+
+	private void OnBackClicked()
+	{
+		SoundManager.PlayBack();
+		OnBackRequested?.Invoke();
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(ActiveIndex);
+		hash.Add(Team?.Count);
+		if (Team != null)
+		{
+			foreach (var monster in Team)
+			{
+				hash.Add(monster?.Id);
+				hash.Add(monster?.CurrentHP);
+				hash.Add(monster?.MaxHP);
+			}
+		}
+		return hash.ToHashCode();
+	}
+}

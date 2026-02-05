@@ -1,0 +1,361 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="@(isExpanded ? "expanded" : "collapsed") @(IsVisible() ? "visible" : "hidden")">
+	<!-- Collapsed: Small button showing expedition status -->
+	@if (!isExpanded && IsVisible())
+	{
+		<div class="autobattler-button" onclick=@ToggleExpanded>
+			<div class="button-left">
+				<span class="button-icon">⚔</span>
+				<div class="button-info">
+					<span class="button-title">@GetExpeditionName()</span>
+					<span class="button-progress">Wave @GetCurrentWave()/@GetTotalWaves()</span>
+				</div>
+			</div>
+			<div class="button-right">
+				@if (IsBattleInProgress())
+				{
+					<span class="status-dot fighting"></span>
+				}
+				else
+				{
+					<span class="status-dot idle"></span>
+				}
+			</div>
+		</div>
+	}
+
+	<!-- Expanded: Full popup with controls -->
+	@if (isExpanded && IsVisible())
+	{
+		<div class="autobattler-popup">
+			<div class="popup-header">
+				<div class="header-left">
+					<span class="popup-icon">⚔</span>
+					<span class="popup-title">@GetExpeditionName()</span>
+				</div>
+				<div class="header-right">
+					<button class="minimize-btn" onclick=@ToggleExpanded>─</button>
+				</div>
+			</div>
+
+			<div class="popup-content">
+				<!-- Wave Progress -->
+				<div class="wave-section">
+					<div class="wave-header">
+						<span class="wave-label">Wave Progress</span>
+						<span class="wave-value">@GetCurrentWave() / @GetTotalWaves()</span>
+					</div>
+					<div class="progress-bar">
+						<div class="progress-fill" style="width: @GetProgressPercent()%"></div>
+					</div>
+				</div>
+
+				<!-- Battle Status -->
+				<div class="battle-section">
+					@if (IsBattleInProgress())
+					{
+						<div class="battle-status fighting">
+							<span class="status-icon">⚔</span>
+							<span class="status-text">Turn @GetCurrentTurn()</span>
+						</div>
+
+						<!-- Team HP Overview -->
+						<div class="team-hp">
+							@foreach (var monster in GetPlayerTeam())
+							{
+								var hpPercent = GetHPPercent(monster);
+								<div class="hp-mini @(monster.CurrentHP <= 0 ? "ko" : "")">
+									<div class="hp-bar">
+										<div class="hp-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
+									</div>
+								</div>
+							}
+						</div>
+					}
+					else
+					{
+						<div class="battle-status idle">
+							<span class="status-icon">⏳</span>
+							<span class="status-text">Preparing...</span>
+						</div>
+					}
+				</div>
+
+				<!-- Rewards Accumulated -->
+				<div class="rewards-section">
+					<div class="reward-item gold">
+						<span class="reward-icon">💰</span>
+						<span class="reward-value">@GetAccumulatedGold()</span>
+					</div>
+					<div class="reward-item xp">
+						<span class="reward-icon">⭐</span>
+						<span class="reward-value">@GetAccumulatedXP()</span>
+					</div>
+					@if (GetAccumulatedTokens() > 0)
+					{
+						<div class="reward-item tokens">
+							<span class="reward-icon">💎</span>
+							<span class="reward-value">@GetAccumulatedTokens()</span>
+						</div>
+					}
+					@if (GetCaughtCount() > 0)
+					{
+						<div class="reward-item catches">
+							<span class="reward-icon">📜</span>
+							<span class="reward-value">@GetCaughtCount()</span>
+						</div>
+					}
+				</div>
+
+				<!-- Toggle Controls -->
+				<div class="controls-section">
+					<div class="toggle-row">
+						<div class="mini-toggle @(GetAutoBattle() ? "active" : "")" onclick=@ToggleAutoBattle>
+							<span class="toggle-icon">▶</span>
+							<span class="toggle-label">Auto</span>
+						</div>
+						<div class="mini-toggle @(GetAutoRetry() ? "active" : "")" onclick=@ToggleAutoRetry>
+							<span class="toggle-icon">🔄</span>
+							<span class="toggle-label">Retry</span>
+						</div>
+						<div class="mini-toggle @(GetAutoCatch() ? "active" : "")" onclick=@ToggleAutoCatch>
+							<span class="toggle-icon">📜</span>
+							<span class="toggle-label">Contract</span>
+						</div>
+					</div>
+
+					@if (GetAutoCatch())
+					{
+						<div class="strategy-row">
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 0 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(0))>GEN <span class="ink-cost">3🖋️</span></div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 1 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(1))>FAIR <span class="ink-cost">2🖋️</span></div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 2 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(2))>STR <span class="ink-cost">1🖋️</span></div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 3 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(3))>GOLD <span class="ink-cost">2🖋️</span></div>
+							<div class="strategy-chip skip @(GetAutoNegotiateStrategy() == -1 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(-1))>SKIP</div>
+						</div>
+					}
+				</div>
+
+				<!-- Speed Control -->
+				<div class="speed-section">
+					<span class="speed-label">Speed</span>
+					<div class="speed-buttons">
+						<button class="speed-btn @(IsSpeedActive(1.0f) ? "active" : "")" onclick=@(() => SetSpeed(1.0f))>1x</button>
+						<button class="speed-btn @(IsSpeedActive(2.0f) ? "active" : "")" onclick=@(() => SetSpeed(2.0f))>2x</button>
+						<button class="speed-btn @(IsSpeedActive(4.0f) ? "active" : "")" onclick=@(() => SetSpeed(4.0f))>4x</button>
+					</div>
+				</div>
+			</div>
+
+			<div class="popup-footer">
+				<button class="btn-view" onclick=@OnViewClicked>
+					VIEW
+				</button>
+				<button class="btn-end" onclick=@OnEndClicked>
+					END
+				</button>
+			</div>
+		</div>
+	}
+</root>
+
+@code {
+	public Action OnViewExpedition { get; set; }
+
+	private bool isExpanded = false;
+	private int caughtCount = 0;
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			// Subscribe to monster caught events
+			if (ExpeditionManager.Instance != null)
+			{
+				ExpeditionManager.Instance.OnMonsterCaught += OnMonsterCaught;
+			}
+		}
+	}
+
+	public override void OnDeleted()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.OnMonsterCaught -= OnMonsterCaught;
+		}
+	}
+
+	private void OnMonsterCaught(Monster monster)
+	{
+		caughtCount++;
+		StateHasChanged();
+	}
+
+	private bool IsVisible()
+	{
+		return ExpeditionManager.Instance?.IsRunningInBackground == true
+			&& ExpeditionManager.Instance?.CurrentExpedition != null;
+	}
+
+	private void ToggleExpanded()
+	{
+		isExpanded = !isExpanded;
+		SoundManager.PlayClick();
+	}
+
+	private string GetExpeditionName() => ExpeditionManager.Instance?.CurrentExpedition?.Name ?? "Expedition";
+	private int GetCurrentWave() => ExpeditionManager.Instance?.CurrentWave ?? 0;
+	private int GetTotalWaves() => ExpeditionManager.Instance?.CurrentExpedition?.Waves ?? 1;
+
+	private float GetProgressPercent()
+	{
+		var total = GetTotalWaves();
+		if (total <= 0) return 0;
+		return (float)GetCurrentWave() / total * 100f;
+	}
+
+	private bool IsBattleInProgress() => BattleManager.Instance?.IsInBattle == true;
+	private int GetCurrentTurn() => BattleManager.Instance?.CurrentTurnIndex ?? 0;
+
+	private List<Monster> GetPlayerTeam()
+	{
+		return BattleManager.Instance?.PlayerTeam ?? new List<Monster>();
+	}
+
+	private float GetHPPercent(Monster monster)
+	{
+		if (monster == null || monster.MaxHP <= 0) return 0;
+		return (float)monster.CurrentHP / monster.MaxHP * 100f;
+	}
+
+	private string GetHPColor(float percent)
+	{
+		if (percent > 50) return "healthy";
+		if (percent > 25) return "warning";
+		return "danger";
+	}
+
+	private int GetAccumulatedGold() => ExpeditionManager.Instance?.AccumulatedGold ?? 0;
+	private int GetAccumulatedXP() => ExpeditionManager.Instance?.AccumulatedXP ?? 0;
+	private int GetAccumulatedTokens() => ExpeditionManager.Instance?.AccumulatedTokens ?? 0;
+	private int GetCaughtCount() => caughtCount;
+
+	// Toggle getters
+	private bool GetAutoBattle() => ExpeditionManager.Instance?.AutoBattle ?? true;
+	private bool GetAutoRetry() => ExpeditionManager.Instance?.AutoRetry ?? false;
+	private bool GetAutoCatch() => ExpeditionManager.Instance?.AutoNegotiate ?? false;
+	private int GetAutoNegotiateStrategy() => ExpeditionManager.Instance?.AutoNegotiateStrategy ?? 0;
+	private float GetSpeed() => BattleManager.Instance?.PlaybackSpeed ?? 1.0f;
+	private bool IsSpeedActive(float speed) => Math.Abs(GetSpeed() - speed) < 0.1f;
+
+	// Toggle setters
+	private void ToggleAutoBattle()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoBattle = !ExpeditionManager.Instance.AutoBattle;
+			if (ExpeditionManager.Instance.AutoBattle)
+				SoundManager.PlayToggleOn();
+			else
+				SoundManager.PlayToggleOff();
+		}
+	}
+
+	private void ToggleAutoRetry()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoRetry = !ExpeditionManager.Instance.AutoRetry;
+			if (ExpeditionManager.Instance.AutoRetry)
+				SoundManager.PlayToggleOn();
+			else
+				SoundManager.PlayToggleOff();
+		}
+	}
+
+	private void ToggleAutoCatch()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoNegotiate = !ExpeditionManager.Instance.AutoNegotiate;
+			if (ExpeditionManager.Instance.AutoNegotiate)
+				SoundManager.PlayToggleOn();
+			else
+				SoundManager.PlayToggleOff();
+		}
+	}
+
+	private void SetAutoNegotiateStrategy(int strategy)
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoNegotiateStrategy = strategy;
+			SoundManager.PlayClick();
+		}
+	}
+
+	private void SetSpeed(float speed)
+	{
+		if (BattleManager.Instance != null)
+		{
+			BattleManager.Instance.PlaybackSpeed = speed;
+			SoundManager.PlayClick();
+		}
+	}
+
+	private void OnViewClicked()
+	{
+		SoundManager.PlayForward();
+		OnViewExpedition?.Invoke();
+	}
+
+	private void OnEndClicked()
+	{
+		SoundManager.PlayBack();
+		caughtCount = 0;
+		ExpeditionManager.Instance?.CancelExpedition();
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		// Reset caught count when expedition ends
+		if (!IsVisible())
+		{
+			caughtCount = 0;
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible());
+		hash.Add(isExpanded);
+		hash.Add(GetCurrentWave());
+		hash.Add(IsBattleInProgress());
+		hash.Add(GetCurrentTurn());
+		hash.Add(GetAutoBattle());
+		hash.Add(GetAutoRetry());
+		hash.Add(GetAutoCatch());
+		hash.Add(GetAutoNegotiateStrategy());
+		hash.Add(GetSpeed());
+		hash.Add(GetAccumulatedGold());
+		hash.Add(GetAccumulatedXP());
+		hash.Add(GetAccumulatedTokens());
+		hash.Add(caughtCount);
+		// Add HP tracking for team
+		foreach (var m in GetPlayerTeam())
+		{
+			if (m != null) hash.Add(m.CurrentHP);
+		}
+		return hash.ToHashCode();
+	}
+}

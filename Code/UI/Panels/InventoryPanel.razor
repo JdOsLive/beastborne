@@ -1,0 +1,647 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="inventory-panel @(IsVisible ? "visible" : "")">
+	<div class="inventory-overlay" onclick=@Close></div>
+
+	<div class="inventory-modal">
+		<div class="inventory-header">
+			<div class="header-left">
+				<span class="inventory-icon">🎒</span>
+				<span class="header-title">INVENTORY</span>
+			</div>
+
+			<div class="header-right">
+				<button class="close-btn" onclick=@Close>×</button>
+			</div>
+		</div>
+
+		<!-- Equipped Relics Bar -->
+		<div class="equipped-relics-bar">
+			<div class="relics-label">Equipped Relics</div>
+			<div class="relic-slots">
+				@for (int i = 0; i < 3; i++)
+				{
+					var relicId = GetEquippedRelic(i);
+					var relic = relicId != null ? ItemManager.Instance?.GetItem(relicId) : null;
+					<div class="relic-slot @(relic != null ? "filled" : "empty") @(selectedItem?.Id == relicId ? "selected" : "")"
+						 onclick=@(() => OnRelicSlotClick(relicId))>
+						@if (relic != null)
+						{
+							<div class="relic-icon-bg @GetRarityClass(relic.Rarity)">
+								<img src="@relic.IconPath" onerror="this.style.display='none'" />
+							</div>
+							<div class="relic-name">@relic.Name</div>
+						}
+						else
+						{
+							<div class="empty-slot-icon">+</div>
+							<div class="empty-slot-text">Empty</div>
+						}
+					</div>
+				}
+			</div>
+		</div>
+
+		<!-- Category Tabs (fixed, outside scroll) -->
+		<div class="category-tabs">
+			<button class="category-tab @(currentCategory == "all" ? "active" : "")" onclick=@(() => currentCategory = "all")>All (@GetTotalItemCount())</button>
+			<button class="category-tab @(currentCategory == "consumable" ? "active" : "")" onclick=@(() => currentCategory = "consumable")>Consumables</button>
+			<button class="category-tab @(currentCategory == "relic" ? "active" : "")" onclick=@(() => currentCategory = "relic")>Relics</button>
+			<button class="category-tab @(currentCategory == "held" ? "active" : "")" onclick=@(() => currentCategory = "held")>Held Items</button>
+			<button class="category-tab @(currentCategory == "boost" ? "active" : "")" onclick=@(() => currentCategory = "boost")>Boosts</button>
+			<button class="category-tab @(currentCategory == "quest" ? "active" : "")" onclick=@(() => currentCategory = "quest")>Quest</button>
+		</div>
+
+		<div class="inventory-content">
+			<!-- Items Grid -->
+			<div class="items-grid">
+				@foreach (var (itemId, quantity) in GetFilteredItems())
+				{
+					var item = ItemManager.Instance?.GetItem(itemId);
+					if (item == null) continue;
+					<div class="inventory-item @GetRarityClass(item.Rarity) @(selectedItem?.Id == itemId ? "selected" : "") @(IsEquipped(itemId) ? "equipped" : "")"
+						 onclick=@(() => SelectItem(item))>
+						<div class="item-icon-container @GetRarityClass(item.Rarity)">
+							<img class="item-icon" src="@item.IconPath" onerror="this.style.display='none'" />
+							@if (quantity > 1)
+							{
+								<span class="item-quantity">x@(quantity)</span>
+							}
+						</div>
+						<div class="item-info">
+							<div class="item-name">@item.Name</div>
+							<div class="item-category">@GetCategoryLabel(item.Category)</div>
+						</div>
+						@if (IsEquipped(itemId))
+						{
+							<div class="equipped-badge">EQUIPPED</div>
+						}
+					</div>
+				}
+
+				@if (GetFilteredItems().Count == 0)
+				{
+					<div class="empty-inventory">
+						<div class="empty-icon">📦</div>
+						<div class="empty-text">No items in this category</div>
+						<div class="empty-hint">Complete expeditions to find items!</div>
+					</div>
+				}
+			</div>
+		</div>
+
+		<!-- Item Detail Panel (outside scroll area) -->
+		@if (selectedItem != null)
+		{
+			<div class="item-detail @GetRarityClass(selectedItem.Rarity)">
+				<div class="detail-header">
+					<div class="detail-icon-container @GetRarityClass(selectedItem.Rarity)">
+						<img class="detail-icon" src="@selectedItem.IconPath" onerror="this.style.display='none'" />
+					</div>
+					<div class="detail-info">
+						<div class="detail-title-row">
+							<div class="detail-name">@selectedItem.Name</div>
+							<div class="detail-rarity @GetRarityClass(selectedItem.Rarity)">@selectedItem.Rarity</div>
+						</div>
+						<div class="detail-desc">@selectedItem.Description</div>
+					</div>
+				</div>
+				<div class="detail-effect">
+					<span class="effect-label">Effect:</span>
+					<span class="effect-value">@GetEffectDescription(selectedItem)</span>
+				</div>
+				@if (selectedItem.EffectDuration > 0 || GetItemQuantity(selectedItem.Id) > 0)
+				{
+					<div class="detail-meta-row">
+						@if (selectedItem.EffectDuration > 0)
+						{
+							<div class="detail-duration">Duration: @selectedItem.EffectDuration waves</div>
+						}
+						@if (GetItemQuantity(selectedItem.Id) > 0)
+						{
+							<div class="detail-owned">Owned: @GetItemQuantity(selectedItem.Id)</div>
+						}
+					</div>
+				}
+				<div class="detail-footer">
+					@if (selectedItem.SellPrice > 0 && CanSellItem(selectedItem))
+					{
+						<button class="action-btn sell @(isHoldingSell ? "holding" : "")"
+								onmousedown=@StartHoldSell
+								onmouseup=@StopHold
+								onmouseleave=@StopHold>
+							<div class="btn-fill" style="width: @(isHoldingSell ? holdProgress * 100 : 0)%;"></div>
+							<span>@(isHoldingSell ? "Selling..." : $"Sell for {selectedItem.SellPrice}g")</span>
+						</button>
+					}
+					@if (selectedItem.Category == ItemCategory.Consumable)
+					{
+						<button class="action-btn use @(CanUseConsumable(selectedItem) ? "" : "disabled")"
+								onclick=@(() => UseConsumable(selectedItem))>
+							Use Item
+						</button>
+					}
+					else if (selectedItem.Category == ItemCategory.Relic)
+					{
+						@if (IsRelicEquipped(selectedItem.Id))
+						{
+							<button class="action-btn unequip" onclick=@(() => UnequipRelic(selectedItem))>
+								Unequip
+							</button>
+						}
+						else
+						{
+							<button class="action-btn equip @(CanEquipRelic() ? "" : "disabled")"
+									onclick=@(() => EquipRelic(selectedItem))>
+								@(CanEquipRelic() ? "Equip" : "Slots Full")
+							</button>
+						}
+					}
+					else if (selectedItem.Category == ItemCategory.HeldItem)
+					{
+						<div class="held-item-hint">Equip from Monster Details</div>
+					}
+					else if (selectedItem.Category == ItemCategory.Boost)
+					{
+						<button class="action-btn use @(CanUseBoost(selectedItem) ? "" : "disabled")"
+								onclick=@(() => UseBoost(selectedItem))>
+							Use Boost
+						</button>
+					}
+					@if (!string.IsNullOrEmpty(boostMessage))
+					{
+						<div class="boost-message @(boostMessageSuccess ? "success" : "error")">@boostMessage</div>
+					}
+				</div>
+			</div>
+		}
+	</div>
+
+	<!-- Monster Picker for Consumables that need a target -->
+	@if (showMonsterPicker && pendingConsumable != null)
+	{
+		<div class="monster-picker-overlay" onclick=@CloseMonsterPicker>
+			<div class="monster-picker-panel" onclick:stopPropagation>
+				<div class="picker-header">
+					<div class="picker-title">Choose a Beast</div>
+					<div class="picker-subtitle">Select which beast to use @pendingConsumable.Name on</div>
+					<button class="close-btn" onclick=@CloseMonsterPicker>x</button>
+				</div>
+				<div class="picker-grid">
+					@foreach (var monster in GetOwnedMonsters())
+					{
+						var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+						<div class="picker-monster" onclick=@(() => UseConsumableOnMonster(monster))>
+							<div class="picker-monster-sprite">
+								@if (species != null && !string.IsNullOrEmpty(species.IconPath))
+								{
+									<img src="@GetMonsterSprite(monster)" onerror="this.style.display='none'" />
+								}
+								else
+								{
+									<div class="sprite-placeholder">?</div>
+								}
+							</div>
+							<div class="picker-monster-info">
+								<div class="picker-monster-name">@monster.Nickname</div>
+								<div class="picker-monster-level">Lv. @monster.Level</div>
+							</div>
+							<div class="picker-monster-xp">
+								<div class="xp-bar-bg">
+									<div class="xp-bar-fill" style="width: @((int)(monster.XPProgress * 100))%"></div>
+								</div>
+								<div class="xp-text">@monster.CurrentXP / @monster.XPForNextLevel XP</div>
+							</div>
+						</div>
+					}
+				</div>
+			</div>
+		</div>
+	}
+
+	<!-- Consumable Use Feedback -->
+	@if (!string.IsNullOrEmpty(consumableMessage))
+	{
+		<div class="consumable-feedback @(consumableMessageSuccess ? "success" : "error")">
+			@consumableMessage
+		</div>
+	}
+</root>
+
+@code {
+	public static bool IsVisible { get; set; } = false;
+	private string currentCategory = "all";
+	private ItemDefinition selectedItem;
+
+	// Hold-to-sell state
+	private bool isHoldingSell = false;
+	private float holdProgress = 0f;
+	private const float HoldDuration = 0.5f; // seconds to hold
+
+	// Boost feedback message
+	private string boostMessage = "";
+	private bool boostMessageSuccess = false;
+	private float boostMessageTimer = 0f;
+	private const float BoostMessageDuration = 3f;
+
+	// Monster picker for consumables
+	private bool showMonsterPicker = false;
+	private ItemDefinition pendingConsumable = null;
+
+	// Consumable use feedback
+	private string consumableMessage = "";
+	private bool consumableMessageSuccess = false;
+	private float consumableMessageTimer = 0f;
+
+	public static void Show() => IsVisible = true;
+	public static void Close() => IsVisible = false;
+	public static void Toggle() => IsVisible = !IsVisible;
+
+	private int GetTotalItemCount()
+	{
+		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if (inventory == null) return 0;
+		return inventory.Values.Sum();
+	}
+
+	private List<(string ItemId, int Quantity)> GetFilteredItems()
+	{
+		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if (inventory == null) return new();
+
+		var items = inventory.Where(kvp => kvp.Value > 0).ToList();
+
+		if (currentCategory == "all")
+		{
+			return items.Select(kvp => (kvp.Key, kvp.Value)).ToList();
+		}
+
+		return items
+			.Where(kvp =>
+			{
+				var item = ItemManager.Instance?.GetItem(kvp.Key);
+				if (item == null) return false;
+				return currentCategory switch
+				{
+					"consumable" => item.Category == ItemCategory.Consumable,
+					"relic" => item.Category == ItemCategory.Relic,
+					"held" => item.Category == ItemCategory.HeldItem,
+					"boost" => item.Category == ItemCategory.Boost,
+					"quest" => item.Category == ItemCategory.QuestItem,
+					_ => true
+				};
+			})
+			.Select(kvp => (kvp.Key, kvp.Value))
+			.ToList();
+	}
+
+	private string GetEquippedRelic(int slot)
+	{
+		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
+		if (relics == null || slot >= relics.Count) return null;
+		return relics[slot];
+	}
+
+	private bool IsEquipped(string itemId)
+	{
+		var item = ItemManager.Instance?.GetItem(itemId);
+		if (item == null) return false;
+
+		if (item.Category == ItemCategory.Relic)
+		{
+			return TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Contains(itemId) ?? false;
+		}
+
+		return false;
+	}
+
+	private bool IsRelicEquipped(string itemId)
+	{
+		return TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Contains(itemId) ?? false;
+	}
+
+	private void SelectItem(ItemDefinition item)
+	{
+		selectedItem = item;
+		SoundManager.PlayClick();
+	}
+
+	private void OnRelicSlotClick(string relicId)
+	{
+		if (string.IsNullOrEmpty(relicId)) return;
+		var item = ItemManager.Instance?.GetItem(relicId);
+		if (item != null)
+		{
+			selectedItem = item;
+			SoundManager.PlayClick();
+		}
+	}
+
+	private int GetItemQuantity(string itemId)
+	{
+		return TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault(itemId, 0) ?? 0;
+	}
+
+	private string GetRarityClass(ItemRarity rarity)
+	{
+		return rarity.ToString().ToLower();
+	}
+
+	private string GetCategoryLabel(ItemCategory category)
+	{
+		return category switch
+		{
+			ItemCategory.Consumable => "Consumable",
+			ItemCategory.Relic => "Relic",
+			ItemCategory.HeldItem => "Held Item",
+			ItemCategory.Boost => "Server Boost",
+			ItemCategory.QuestItem => "Quest",
+			_ => category.ToString()
+		};
+	}
+
+	private string GetEffectDescription(ItemDefinition item)
+	{
+		if (item == null) return "";
+		return item.GetEffectDescription();
+	}
+
+	private bool CanUseConsumable(ItemDefinition item)
+	{
+		if (item.Category != ItemCategory.Consumable) return false;
+		return GetItemQuantity(item.Id) > 0;
+	}
+
+	private bool NeedsTarget(ItemDefinition item)
+	{
+		return item.EffectType == ItemEffectType.XPGrant;
+	}
+
+	private void UseConsumable(ItemDefinition item)
+	{
+		if (!CanUseConsumable(item)) return;
+
+		if (NeedsTarget(item))
+		{
+			// Show monster picker
+			pendingConsumable = item;
+			showMonsterPicker = true;
+			SoundManager.PlayClick();
+			return;
+		}
+
+		// Items that don't need a target
+		if (ItemManager.Instance?.UseItem(item.Id, null) == true)
+		{
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private void CloseMonsterPicker()
+	{
+		showMonsterPicker = false;
+		pendingConsumable = null;
+		SoundManager.PlayBack();
+	}
+
+	private List<Monster> GetOwnedMonsters()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters;
+		if (monsters == null) return new();
+		return monsters.OrderByDescending(m => m.Level).ToList();
+	}
+
+	private string GetMonsterSprite(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+		if (species == null) return "";
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+			return species.AnimationFrames[0];
+		return species.IconPath ?? "";
+	}
+
+	private void UseConsumableOnMonster(Monster monster)
+	{
+		if (pendingConsumable == null || monster == null) return;
+
+		if (ItemManager.Instance?.UseItem(pendingConsumable.Id, monster) == true)
+		{
+			consumableMessage = $"Used {pendingConsumable.Name} on {monster.Nickname}!";
+			consumableMessageSuccess = true;
+			consumableMessageTimer = 3f;
+			SoundManager.PlayForward();
+
+			// If we used the last one, deselect
+			if (GetItemQuantity(pendingConsumable.Id) <= 0)
+			{
+				selectedItem = null;
+			}
+		}
+		else
+		{
+			consumableMessage = "Failed to use item.";
+			consumableMessageSuccess = false;
+			consumableMessageTimer = 3f;
+			SoundManager.PlayBack();
+		}
+
+		showMonsterPicker = false;
+		pendingConsumable = null;
+	}
+
+	private bool CanUseBoost(ItemDefinition item)
+	{
+		if (item == null || item.Category != ItemCategory.Boost) return false;
+		return GetItemQuantity(item.Id) > 0;
+	}
+
+	private void UseBoost(ItemDefinition item)
+	{
+		if (!CanUseBoost(item)) return;
+
+		var result = ItemManager.Instance?.UseBoost(item.Id);
+		if (result.HasValue)
+		{
+			boostMessage = result.Value.Message;
+			boostMessageSuccess = result.Value.Success;
+			boostMessageTimer = BoostMessageDuration;
+
+			if (result.Value.Success)
+			{
+				SoundManager.PlayForward();
+				// If we used the last one, deselect
+				if (GetItemQuantity(item.Id) <= 0)
+				{
+					selectedItem = null;
+				}
+			}
+			else
+			{
+				SoundManager.PlayBack();
+			}
+		}
+	}
+
+	private bool CanEquipRelic()
+	{
+		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
+		return relics == null || relics.Count < 3;
+	}
+
+	private void EquipRelic(ItemDefinition item)
+	{
+		if (item.Category != ItemCategory.Relic) return;
+		if (!CanEquipRelic()) return;
+
+		if (ItemManager.Instance?.EquipRelic(item.Id) == true)
+		{
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private void UnequipRelic(ItemDefinition item)
+	{
+		if (item.Category != ItemCategory.Relic) return;
+
+		if (ItemManager.Instance?.UnequipRelic(item.Id) == true)
+		{
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private bool CanSellItem(ItemDefinition item)
+	{
+		if (item == null || item.SellPrice <= 0) return false;
+		// Can't sell equipped relics
+		if (item.Category == ItemCategory.Relic && IsRelicEquipped(item.Id)) return false;
+		return GetItemQuantity(item.Id) > 0;
+	}
+
+	private void StartHoldSell()
+	{
+		if (selectedItem == null || !CanSellItem(selectedItem)) return;
+		isHoldingSell = true;
+		holdProgress = 0f;
+		SoundManager.PlayHover();
+	}
+
+	private void StopHold()
+	{
+		isHoldingSell = false;
+		holdProgress = 0f;
+	}
+
+	private void SellSelectedItem()
+	{
+		if (selectedItem == null) return;
+
+		if (ItemManager.Instance?.SellItem(selectedItem.Id, 1) == true)
+		{
+			SoundManager.PlayForward();
+			// If we sold the last one, deselect
+			if (GetItemQuantity(selectedItem.Id) <= 0)
+			{
+				selectedItem = null;
+			}
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		if (IsVisible && Input.Pressed("Escape"))
+		{
+			Close();
+		}
+
+		// Handle hold-to-sell
+		if (isHoldingSell && selectedItem != null)
+		{
+			holdProgress += Time.Delta / HoldDuration;
+
+			if (holdProgress >= 1f)
+			{
+				SellSelectedItem();
+				StopHold();
+			}
+		}
+
+		// Handle boost message timeout
+		if (boostMessageTimer > 0)
+		{
+			boostMessageTimer -= Time.Delta;
+			if (boostMessageTimer <= 0)
+			{
+				boostMessage = "";
+			}
+		}
+
+		// Handle consumable message timeout
+		if (consumableMessageTimer > 0)
+		{
+			consumableMessageTimer -= Time.Delta;
+			if (consumableMessageTimer <= 0)
+			{
+				consumableMessage = "";
+			}
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(currentCategory);
+		hash.Add(selectedItem?.Id);
+		hash.Add(GetTotalItemCount());
+		hash.Add(isHoldingSell);
+		hash.Add(holdProgress);
+		hash.Add(boostMessage);
+		hash.Add(showMonsterPicker);
+		hash.Add(consumableMessage);
+
+		// Add equipped relics to hash
+		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
+		if (relics != null)
+		{
+			foreach (var r in relics)
+				hash.Add(r);
+		}
+
+		// Add inventory state
+		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if (inventory != null)
+		{
+			foreach (var kvp in inventory)
+			{
+				hash.Add(kvp.Key);
+				hash.Add(kvp.Value);
+			}
+		}
+
+		return hash.ToHashCode();
+	}
+}

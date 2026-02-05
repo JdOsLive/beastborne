@@ -1,0 +1,358 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<div class="active-effects-panel @(isExpanded ? "expanded" : "")">
+	@if (isExpanded)
+	{
+		<!-- Expanded Panel View -->
+		<div class="effects-popup">
+			<div class="effects-header">
+				<div class="header-left">
+					<span class="effects-icon">✨</span>
+					<span class="effects-title">ACTIVE EFFECTS</span>
+				</div>
+				<button class="close-btn" onclick=@ToggleExpanded>×</button>
+			</div>
+
+			<div class="effects-content">
+				<!-- Active Boosts Section -->
+				<div class="effects-section">
+					<div class="section-header">
+						<span class="section-icon">⬆</span>
+						<span class="section-title">Boosts</span>
+						<span class="section-count">@GetActiveBoosts().Count</span>
+					</div>
+					<div class="section-items">
+						@{
+							var boosts = GetActiveBoosts();
+						}
+						@if (boosts.Count == 0)
+						{
+							<div class="no-effects">No active boosts</div>
+						}
+						else
+						{
+							@foreach (var boost in boosts)
+							{
+								<div class="effect-item @(boost.IsServer ? "server" : "personal")">
+									<div class="effect-icon">@GetBoostIcon(boost.Type)</div>
+									<div class="effect-info">
+										<div class="effect-name">@GetBoostLabel(boost.Type)</div>
+										<div class="effect-desc">@GetBoostDescription(boost.Type, boost.Multiplier)</div>
+										@if (boost.IsServer && !string.IsNullOrEmpty(boost.ActivatedBy))
+										{
+											<div class="effect-source">Activated by @boost.ActivatedBy</div>
+										}
+									</div>
+									<div class="effect-timer @(boost.TimeRemaining.TotalMinutes < 5 ? "expiring" : "")">
+										@FormatBoostTime(boost.TimeRemaining)
+									</div>
+									@if (boost.IsServer)
+									{
+										<div class="server-badge">SERVER</div>
+									}
+								</div>
+							}
+						}
+					</div>
+				</div>
+
+				<!-- Equipped Relics Section -->
+				<div class="effects-section">
+					<div class="section-header">
+						<span class="section-icon">💎</span>
+						<span class="section-title">Equipped Relics</span>
+						<span class="section-count">@GetEquippedRelics().Count/3</span>
+					</div>
+					<div class="section-items">
+						@{
+							var relics = GetEquippedRelics();
+						}
+						@if (relics.Count == 0)
+						{
+							<div class="no-effects">No relics equipped</div>
+						}
+						else
+						{
+							@foreach (var relic in relics)
+							{
+								<div class="effect-item relic @GetRarityClass(relic.Rarity)">
+									<div class="effect-icon-img @GetRarityClass(relic.Rarity)">
+										<img src="@relic.IconPath" onerror="this.style.display='none'" />
+									</div>
+									<div class="effect-info">
+										<div class="effect-name">@relic.Name</div>
+										<div class="effect-desc">@GetRelicEffect(relic)</div>
+									</div>
+									<div class="rarity-badge @GetRarityClass(relic.Rarity)">@relic.Rarity</div>
+								</div>
+							}
+						}
+					</div>
+				</div>
+
+				<!-- Skill Bonuses Section -->
+				<div class="effects-section">
+					<div class="section-header">
+						<span class="section-icon">🌳</span>
+						<span class="section-title">Skill Bonuses</span>
+						<span class="section-count">@GetActiveSkillCount()</span>
+					</div>
+					<div class="section-items">
+						@{
+							var skills = GetActiveSkillBonuses();
+						}
+						@if (skills.Count == 0)
+						{
+							<div class="no-effects">No skill bonuses active</div>
+						}
+						else
+						{
+							@foreach (var skill in skills)
+							{
+								<div class="effect-item skill">
+									<div class="effect-icon">@skill.Icon</div>
+									<div class="effect-info">
+										<div class="effect-name">@skill.Name</div>
+										<div class="effect-desc">@skill.Description</div>
+									</div>
+									<div class="skill-rank">Rank @skill.Rank</div>
+								</div>
+							}
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+	else
+	{
+		<!-- Collapsed Button -->
+		<button class="effects-toggle-btn @(GetTotalEffectCount() > 0 ? "has-effects" : "")" onclick=@ToggleExpanded>
+			<span class="effects-btn-icon">✨</span>
+			<span class="effects-btn-text">EFFECTS</span>
+			@if (GetTotalEffectCount() > 0)
+			{
+				<span class="effects-badge">@GetTotalEffectCount()</span>
+			}
+		</button>
+	}
+</div>
+
+@code {
+	private bool isExpanded = false;
+
+	public static bool IsEffectsExpanded { get; private set; } = false;
+
+	private void ToggleExpanded()
+	{
+		isExpanded = !isExpanded;
+		IsEffectsExpanded = isExpanded;
+		SoundManager.PlayClick();
+	}
+
+	private int GetTotalEffectCount()
+	{
+		return GetActiveBoosts().Count + GetEquippedRelics().Count;
+	}
+
+	private List<(ShopItemType Type, float Multiplier, TimeSpan TimeRemaining, bool IsServer, string ActivatedBy)> GetActiveBoosts()
+	{
+		return ShopManager.Instance?.GetAllActiveBoosts() ?? new();
+	}
+
+	private string GetBoostIcon(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => "📈",
+			ShopItemType.BeastXPBoost => "🐾",
+			ShopItemType.XPBoost => "⬆",
+			ShopItemType.GoldBoost => "💰",
+			ShopItemType.RareEncounter => "🍀",
+			ShopItemType.LuckyCharm => "🍀",
+			_ => "✨"
+		};
+	}
+
+	private string GetBoostLabel(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => "Tamer XP Boost",
+			ShopItemType.BeastXPBoost => "Beast XP Boost",
+			ShopItemType.XPBoost => "XP Boost",
+			ShopItemType.GoldBoost => "Gold Boost",
+			ShopItemType.RareEncounter => "Lucky Charm",
+			ShopItemType.LuckyCharm => "Lucky Charm",
+			_ => type.ToString()
+		};
+	}
+
+	private string GetBoostDescription(ShopItemType type, float multiplier)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => $"{multiplier}x Tamer XP gain",
+			ShopItemType.BeastXPBoost => $"{multiplier}x Beast XP gain",
+			ShopItemType.XPBoost => $"{multiplier}x XP gain",
+			ShopItemType.GoldBoost => $"{multiplier}x Gold from battles",
+			ShopItemType.RareEncounter => $"{multiplier}x Rare encounter chance",
+			ShopItemType.LuckyCharm => $"{multiplier}x Luck bonus",
+			_ => $"{multiplier}x bonus"
+		};
+	}
+
+	private string FormatBoostTime(TimeSpan time)
+	{
+		if (time.TotalHours >= 1)
+			return $"{(int)time.TotalHours}h {time.Minutes}m";
+		if (time.TotalMinutes >= 1)
+			return $"{(int)time.TotalMinutes}m {time.Seconds}s";
+		return $"{time.Seconds}s";
+	}
+
+	private List<ItemDefinition> GetEquippedRelics()
+	{
+		var relicIds = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
+		if (relicIds == null || relicIds.Count == 0) return new();
+
+		var relics = new List<ItemDefinition>();
+		foreach (var id in relicIds)
+		{
+			var item = ItemManager.Instance?.GetItem(id);
+			if (item != null)
+				relics.Add(item);
+		}
+		return relics;
+	}
+
+	private string GetRarityClass(ItemRarity rarity)
+	{
+		return rarity.ToString().ToLower();
+	}
+
+	private string GetRelicEffect(ItemDefinition relic)
+	{
+		if (relic == null) return "";
+
+		return relic.EffectType switch
+		{
+			ItemEffectType.PassiveGoldFind => $"+{relic.EffectValue}% Gold from battles",
+			ItemEffectType.PassiveItemFind => $"+{relic.EffectValue}% Item find rate",
+			ItemEffectType.PassiveCatchRate => $"+{relic.EffectValue}% Contract Success",
+			ItemEffectType.PassiveXPGain => $"+{relic.EffectValue}% Monster XP",
+			_ => relic.Description
+		};
+	}
+
+	private int GetActiveSkillCount()
+	{
+		return TamerManager.Instance?.CurrentTamer?.SkillRanks?.Count ?? 0;
+	}
+
+	private List<(string Name, string Icon, string Description, int Rank)> GetActiveSkillBonuses()
+	{
+		var result = new List<(string, string, string, int)>();
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		var skillTree = TamerManager.Instance?.SkillTree;
+
+		if (tamer?.SkillRanks == null || skillTree == null) return result;
+
+		foreach (var (skillId, rank) in tamer.SkillRanks)
+		{
+			var node = skillTree.GetNode(skillId);
+			if (node == null) continue;
+
+			string icon = GetBranchIcon(node.Branch);
+			string desc = GetSkillBonusDescription(node, rank);
+			result.Add((node.Name, icon, desc, rank));
+		}
+
+		return result.Take(5).ToList(); // Limit to 5 for UI
+	}
+
+	private string GetBranchIcon(SkillBranch branch)
+	{
+		return branch switch
+		{
+			SkillBranch.Power => "⚔",
+			SkillBranch.Fusion => "⚗",
+			SkillBranch.Expedition => "🗺",
+			SkillBranch.Mastery => "👑",
+			SkillBranch.Fortune => "💰",
+			_ => "🌳"
+		};
+	}
+
+	private string GetSkillBonusDescription(SkillNode node, int rank)
+	{
+		if (node == null || node.Effects == null || node.Effects.Count == 0)
+			return node?.Description ?? "";
+
+		// Get first effect and calculate value at current rank
+		var effect = node.Effects[0];
+		float totalValue = effect.Value * rank;
+
+		return effect.Type switch
+		{
+			SkillEffectType.ShopDiscount => $"{totalValue}% shop discount",
+			SkillEffectType.ExpeditionXPBonus or SkillEffectType.XPGainBonus => $"+{totalValue}% XP gain",
+			SkillEffectType.ExpeditionGoldBonus or SkillEffectType.GoldDropBonus or SkillEffectType.GoldFindBonus => $"+{totalValue}% gold",
+			SkillEffectType.CritChanceBonus or SkillEffectType.CritChance => $"+{totalValue}% crit chance",
+			SkillEffectType.CritDamageBonus => $"+{totalValue}% crit damage",
+			SkillEffectType.CatchRateBonus => $"+{totalValue}% catch rate",
+			SkillEffectType.AllMonsterATKPercent => $"+{totalValue}% ATK",
+			SkillEffectType.AllMonsterDEFPercent => $"+{totalValue}% DEF",
+			SkillEffectType.AllMonsterHPPercent => $"+{totalValue}% HP",
+			SkillEffectType.AllMonsterSPDPercent => $"+{totalValue}% SPD",
+			SkillEffectType.GeneticInheritanceBonus or SkillEffectType.GeneInheritanceBonus => $"+{totalValue}% gene inheritance",
+			SkillEffectType.BossDamageBonus => $"+{totalValue}% boss damage",
+			SkillEffectType.ItemFindBonus => $"+{totalValue}% item find",
+			_ => effect.GetDescription()
+		};
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		if (isExpanded && Input.Pressed("Escape"))
+		{
+			isExpanded = false;
+			IsEffectsExpanded = false;
+			SoundManager.PlayBack();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(isExpanded);
+		hash.Add(GetTotalEffectCount());
+
+		// Add boost timers for live updates
+		var boosts = GetActiveBoosts();
+		foreach (var boost in boosts)
+		{
+			hash.Add((int)boost.TimeRemaining.TotalSeconds);
+		}
+
+		// Add equipped relics
+		var relics = GetEquippedRelics();
+		foreach (var relic in relics)
+		{
+			hash.Add(relic.Id);
+		}
+
+		// Add skill count
+		hash.Add(GetActiveSkillCount());
+
+		return hash.ToHashCode();
+	}
+}

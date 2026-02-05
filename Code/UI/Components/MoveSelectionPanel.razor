@@ -1,0 +1,173 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<div class="move-selection-panel @(IsVisible ? "visible" : "hidden")">
+	<div class="panel-header">
+		<span class="monster-name">@GetActiveMonsterName()</span>
+		<span class="action-prompt">Choose Action</span>
+	</div>
+
+	<div class="moves-grid">
+		@{
+			var moves = GetActiveMoves();
+			for (int i = 0; i < 4; i++)
+			{
+				if (i < moves.Count)
+				{
+					var move = moves[i];
+					var moveDef = MoveDatabase.GetMove(move.MoveId);
+					if (moveDef != null)
+					{
+						var elementClass = moveDef.Element.ToString().ToLower();
+						var categoryIcon = GetCategoryIcon(moveDef.Category);
+						var isDisabled = !move.HasPP;
+						<button class="move-button @elementClass @(isDisabled ? "disabled" : "")"
+								onclick=@(() => OnMoveSelected(move.MoveId))
+								disabled=@isDisabled>
+							<div class="move-header">
+								<span class="move-element-icon">@GetElementIcon(moveDef.Element)</span>
+								<span class="move-name">@moveDef.Name</span>
+							</div>
+							<div class="move-stats">
+								@if (moveDef.BasePower > 0)
+								{
+									<span class="move-power">PWR @moveDef.BasePower</span>
+								}
+								else
+								{
+									<span class="move-power status">STATUS</span>
+								}
+								<span class="move-pp @(move.CurrentPP <= 3 ? "low" : "")">PP @move.CurrentPP/@moveDef.MaxPP</span>
+							</div>
+							<div class="move-category">
+								<span class="category-icon">@categoryIcon</span>
+								<span class="category-text">@moveDef.Category</span>
+							</div>
+							@if (moveDef.Accuracy < 100)
+							{
+								<div class="move-accuracy">@moveDef.Accuracy% ACC</div>
+							}
+						</button>
+					}
+				}
+				else
+				{
+					<div class="move-button empty">
+						<span class="empty-text">---</span>
+					</div>
+				}
+			}
+		}
+	</div>
+
+	<div class="action-buttons">
+		<button class="action-btn swap-btn" onclick=@OnSwapClicked>
+			<span class="btn-icon">🔄</span>
+			<span class="btn-text">SWAP</span>
+		</button>
+		<button class="action-btn auto-btn @(IsAutoMode ? "active" : "")" onclick=@OnAutoToggle>
+			<span class="btn-icon">▶</span>
+			<span class="btn-text">@(IsAutoMode ? "AUTO ON" : "AUTO OFF")</span>
+		</button>
+	</div>
+</div>
+
+@code {
+	public bool IsVisible { get; set; } = false;
+	public bool IsAutoMode { get; set; } = true;
+	public Monster ActiveMonster { get; set; }
+
+	public Action<string> OnMoveChosen { get; set; }
+	public Action OnSwapRequested { get; set; }
+	public Action<bool> OnAutoModeChanged { get; set; }
+
+	private string GetActiveMonsterName()
+	{
+		return ActiveMonster?.Nickname ?? "Monster";
+	}
+
+	private List<MonsterMove> GetActiveMoves()
+	{
+		return ActiveMonster?.Moves ?? new List<MonsterMove>();
+	}
+
+	private string GetElementIcon(ElementType element)
+	{
+		return element switch
+		{
+			ElementType.Fire => "🔥",
+			ElementType.Water => "💧",
+			ElementType.Earth => "🪨",
+			ElementType.Wind => "💨",
+			ElementType.Electric => "⚡",
+			ElementType.Ice => "❄️",
+			ElementType.Nature => "🌿",
+			ElementType.Metal => "⚙️",
+			ElementType.Shadow => "🌑",
+			ElementType.Spirit => "✨",
+			_ => "⚪"
+		};
+	}
+
+	private string GetCategoryIcon(MoveCategory category)
+	{
+		return category switch
+		{
+			MoveCategory.Physical => "⚔️",
+			MoveCategory.Special => "✴️",
+			MoveCategory.Status => "📊",
+			_ => "?"
+		};
+	}
+
+	private void OnMoveSelected(string moveId)
+	{
+		if (IsAutoMode) return;
+
+		SoundManager.PlayClick();
+		OnMoveChosen?.Invoke(moveId);
+	}
+
+	private void OnSwapClicked()
+	{
+		if (IsAutoMode) return;
+
+		SoundManager.PlayClick();
+		OnSwapRequested?.Invoke();
+	}
+
+	private void OnAutoToggle()
+	{
+		IsAutoMode = !IsAutoMode;
+
+		if (IsAutoMode)
+			SoundManager.PlayToggleOn();
+		else
+			SoundManager.PlayToggleOff();
+
+		OnAutoModeChanged?.Invoke(IsAutoMode);
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(IsAutoMode);
+		hash.Add(ActiveMonster?.Id);
+		hash.Add(ActiveMonster?.Moves?.Count);
+		if (ActiveMonster?.Moves != null)
+		{
+			foreach (var move in ActiveMonster.Moves)
+			{
+				hash.Add(move.MoveId);
+				hash.Add(move.CurrentPP);
+			}
+		}
+		return hash.ToHashCode();
+	}
+}

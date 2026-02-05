@@ -1,0 +1,181 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Systems;
+@inherits Panel
+
+<div class="radio-widget @(HasStations() ? "" : "hidden") @(NotificationPanel.IsNotificationsExpanded ? "hidden-for-notifications" : "")">
+	@if (IsExpanded && HasStations())
+	{
+		<div class="radio-panel">
+			<div class="panel-header">
+				<span class="panel-title">Radio</span>
+				<button class="close-btn" onclick=@OnCloseClick>
+					<span>X</span>
+				</button>
+			</div>
+
+			<!-- Station Selector -->
+			<div class="station-selector">
+				<span class="section-label">STATION</span>
+				<div class="station-list">
+					@foreach (var station in RadioManager.Stations)
+					{
+						<button class="station-btn @(IsCurrentStation(station) ? "active" : "")"
+								onclick=@(() => OnStationSelect(station))>
+							<span class="station-icon">@station.Icon</span>
+							<span class="station-name">@station.Name</span>
+						</button>
+					}
+				</div>
+			</div>
+
+			<!-- Track List -->
+			<div class="track-selector">
+				<span class="section-label">TRACKS</span>
+				<div class="track-list">
+					@if (RadioManager.CurrentStation != null)
+					{
+						@foreach (var track in RadioManager.CurrentStation.Tracks)
+						{
+							<button class="track-btn @(IsCurrentTrack(track) ? "active" : "")"
+									onclick=@(() => OnTrackSelect(track))>
+								<span class="track-playing">@(IsCurrentTrack(track) && IsPlaying() ? "▶" : "")</span>
+								<span class="track-name">@track.Name</span>
+							</button>
+						}
+					}
+				</div>
+			</div>
+
+			<!-- Controls -->
+			<div class="controls">
+				<button class="control-btn" onclick=@OnPrevClick>
+					<span>⏮</span>
+				</button>
+				<button class="control-btn play" onclick=@OnPlayClick>
+					<span>@(IsPlaying() ? "⏸" : "▶")</span>
+				</button>
+				<button class="control-btn" onclick=@OnNextClick>
+					<span>⏭</span>
+				</button>
+			</div>
+
+			<div class="hotkey-hint">
+				<span>[ ] to skip tracks</span>
+			</div>
+		</div>
+	}
+	else
+	{
+		<button class="radio-button" onclick=@OnWidgetClick>
+			<span class="radio-icon">@GetStationIcon()</span>
+			<span class="now-playing">@GetTrackName()</span>
+		</button>
+	}
+</div>
+
+@code {
+	private bool IsExpanded = false;
+
+	private void OnWidgetClick()
+	{
+		IsExpanded = true;
+		SoundManager.PlayClick();
+	}
+
+	private void OnCloseClick()
+	{
+		IsExpanded = false;
+		SoundManager.PlayClick();
+	}
+
+	private void OnPrevClick()
+	{
+		RadioManager.PreviousTrack();
+	}
+
+	private void OnPlayClick()
+	{
+		RadioManager.TogglePlay();
+		SoundManager.PlayClick();
+	}
+
+	private void OnNextClick()
+	{
+		RadioManager.NextTrack();
+	}
+
+	private void OnStationSelect(RadioManager.Station station)
+	{
+		int index = RadioManager.Stations.IndexOf(station);
+		if (index >= 0)
+		{
+			RadioManager.SetStation(index);
+		}
+		SoundManager.PlayClick();
+	}
+
+	private void OnTrackSelect(RadioManager.Track track)
+	{
+		if (RadioManager.CurrentStation == null) return;
+
+		int index = RadioManager.CurrentStation.Tracks.IndexOf(track);
+		if (index >= 0)
+		{
+			RadioManager.SetTrack(index);
+		}
+		SoundManager.PlayClick();
+	}
+
+	private bool IsCurrentStation(RadioManager.Station station)
+	{
+		return RadioManager.CurrentStation == station;
+	}
+
+	private bool IsCurrentTrack(RadioManager.Track track)
+	{
+		return RadioManager.CurrentTrack == track;
+	}
+
+	private string GetStationIcon()
+	{
+		return RadioManager.CurrentStation?.Icon ?? "📻";
+	}
+
+	private string GetStationName()
+	{
+		return RadioManager.CurrentStation?.Name ?? "No Station";
+	}
+
+	private string GetTrackName()
+	{
+		var track = RadioManager.CurrentTrack;
+		if (track == null)
+			return "No Track";
+		return track.Name;
+	}
+
+	private bool IsPlaying()
+	{
+		return RadioManager.IsPlaying;
+	}
+
+	private bool HasStations()
+	{
+		return RadioManager.Stations.Count > 0;
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsExpanded);
+		hash.Add(GetStationName());
+		hash.Add(GetTrackName());
+		hash.Add(IsPlaying());
+		hash.Add(RadioManager.CurrentStationIndex);
+		hash.Add(RadioManager.CurrentTrackIndex);
+		hash.Add(NotificationPanel.IsNotificationsExpanded); // Re-render when notifications toggle
+		return hash.ToHashCode();
+	}
+}

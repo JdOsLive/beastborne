@@ -1,0 +1,721 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="shop-panel-content">
+	@if (shopType == "gold")
+	{
+		<!-- GOLD SHOP -->
+		<div class="shop-header">
+			<div class="header-left">
+				<div class="shop-title">Gold Shop</div>
+				<div class="shop-subtitle">Purchase supplies and boosts for your journey</div>
+			</div>
+			<div class="header-center">
+				<div class="shop-type-selector">
+					<button class="shop-type-btn @(shopType == "gold" ? "active" : "")" onclick=@(() => SwitchShopType("gold"))>
+						<span class="shop-type-icon">🪙</span>
+						<span class="shop-type-label">Gold</span>
+					</button>
+					<button class="shop-type-btn @(shopType == "boss" ? "active" : "")" onclick=@(() => SwitchShopType("boss"))>
+						<span class="shop-type-icon">💎</span>
+						<span class="shop-type-label">Boss</span>
+					</button>
+				</div>
+			</div>
+			<div class="currency-display">
+				<span class="gold-icon">🪙</span>
+				<span class="gold-value">@GetGold()</span>
+			</div>
+		</div>
+
+		<!-- Category Tabs -->
+		<div class="category-tabs">
+			<button class="category-tab @(currentCategory == "all" ? "active" : "")" onclick=@(() => currentCategory = "all")>All</button>
+			<button class="category-tab @(currentCategory == "supplies" ? "active" : "")" onclick=@(() => currentCategory = "supplies")>Supplies</button>
+			<button class="category-tab @(currentCategory == "boosts" ? "active" : "")" onclick=@(() => currentCategory = "boosts")>Boosts</button>
+			<button class="category-tab @(currentCategory == "storage" ? "active" : "")" onclick=@(() => currentCategory = "storage")>Storage</button>
+		</div>
+
+		<div class="shop-layout">
+			<!-- Left Side: Items -->
+			<div class="shop-left">
+				<div class="items-grid">
+					@foreach (var item in GetFilteredItems())
+					{
+						<div class="shop-item @(CanAfford(item) ? "" : "cant-afford") @(selectedItem?.Id == item.Id ? "selected" : "")"
+							 onclick=@(() => SelectItem(item))>
+							<div class="item-icon-container">
+								<span class="item-emoji">@GetItemEmoji(item.Type)</span>
+								@if (item.Quantity > 1)
+								{
+									<span class="item-quantity">x@(item.Quantity)</span>
+								}
+							</div>
+							<div class="item-info">
+								<div class="item-name">@item.Name</div>
+								<div class="item-price gold">
+									<span class="gold-icon">🪙</span>
+									<span>@item.Price</span>
+								</div>
+							</div>
+							@if (item.RequiredLevel > GetLevel())
+							{
+								<div class="level-lock">LV @item.RequiredLevel</div>
+							}
+						</div>
+					}
+				</div>
+			</div>
+
+			<!-- Right Side: Detail Panel -->
+			<div class="shop-right">
+				@if (selectedItem != null)
+				{
+					<div class="item-detail">
+						<div class="detail-header">
+							<span class="detail-emoji">@GetItemEmoji(selectedItem.Type)</span>
+							<div class="detail-info">
+								<div class="detail-name">@selectedItem.Name</div>
+								@if (selectedItem.Quantity > 1)
+								{
+									<div class="detail-quantity">x@(selectedItem.Quantity)</div>
+								}
+							</div>
+						</div>
+						<div class="detail-description">
+							<label class="description-text">@selectedItem.Description</label>
+						</div>
+						@if (selectedItem.BoostDurationMinutes > 0)
+						{
+							<div class="detail-duration">Duration: @GetDurationText(selectedItem.BoostDurationMinutes)</div>
+						}
+						@if (selectedItem.RequiredLevel > 1)
+						{
+							<div class="detail-level @(GetLevel() >= selectedItem.RequiredLevel ? "" : "locked")">
+								Requires Level @selectedItem.RequiredLevel
+							</div>
+						}
+						<div class="detail-footer">
+							<div class="detail-price gold">
+								<span class="gold-icon">🪙</span>
+								<span>@selectedItem.Price</span>
+							</div>
+							<button class="buy-btn @(CanPurchase(selectedItem) ? "" : "disabled")"
+									onclick=@(() => PurchaseItem(selectedItem))>
+								@if (!CanAfford(selectedItem))
+								{
+									<span>Not Enough</span>
+								}
+								else if (GetLevel() < selectedItem.RequiredLevel)
+								{
+									<span>Level Locked</span>
+								}
+								else
+								{
+									<span>Purchase</span>
+								}
+							</button>
+						</div>
+					</div>
+				}
+				else
+				{
+					<div class="no-selection">
+						<span class="no-selection-icon">🛒</span>
+						<span class="no-selection-text">Select an item</span>
+					</div>
+				}
+			</div>
+		</div>
+	}
+	else
+	{
+		<!-- BOSS SHOP -->
+		<div class="shop-header boss-header">
+			<div class="header-left">
+				<div class="shop-title">Boss Shop</div>
+				<div class="shop-subtitle">Spend tokens earned from defeating bosses</div>
+			</div>
+			<div class="header-center">
+				<div class="shop-type-selector">
+					<button class="shop-type-btn @(shopType == "gold" ? "active" : "")" onclick=@(() => SwitchShopType("gold"))>
+						<span class="shop-type-icon">🪙</span>
+						<span class="shop-type-label">Gold</span>
+					</button>
+					<button class="shop-type-btn @(shopType == "boss" ? "active" : "")" onclick=@(() => SwitchShopType("boss"))>
+						<span class="shop-type-icon">💎</span>
+						<span class="shop-type-label">Boss</span>
+					</button>
+				</div>
+			</div>
+			<div class="currency-display boss-currency">
+				<span class="token-icon">💎</span>
+				<span class="token-value">@GetBossTokens()</span>
+			</div>
+		</div>
+
+		<!-- Boss Shop Category Tabs -->
+		<div class="category-tabs">
+			<button class="category-tab @(bossCategory == "themes" ? "active" : "")" onclick=@(() => bossCategory = "themes")>Themes</button>
+			<button class="category-tab @(bossCategory == "titles" ? "active" : "")" onclick=@(() => bossCategory = "titles")>Titles</button>
+			<button class="category-tab @(bossCategory == "consumables" ? "active" : "")" onclick=@(() => bossCategory = "consumables")>Items</button>
+		</div>
+
+		<div class="shop-layout">
+			<!-- Left Side: Boss Items -->
+			<div class="shop-left">
+				<div class="items-grid">
+					@if (bossCategory == "themes")
+					{
+						@foreach (var theme in CosmeticDatabase.Themes)
+						{
+							bool owned = HasTheme(theme.Id);
+							bool canAfford = GetBossTokens() >= theme.TokenCost;
+							bool meetsRequirement = MeetsBossRequirement(theme.RequiredBossId);
+							bool isActive = GetActiveTheme() == theme.Id;
+
+							<div class="shop-item boss-item @(owned ? "owned" : "") @(!canAfford && !owned ? "cant-afford" : "") @(selectedTheme?.Id == theme.Id ? "selected" : "")"
+								 onclick=@(() => SelectTheme(theme))>
+								<div class="theme-preview">
+									<div class="theme-color primary" style="background-color: @theme.PrimaryColor;"></div>
+									<div class="theme-color secondary" style="background-color: @theme.SecondaryColor;"></div>
+									<div class="theme-color accent" style="background-color: @theme.AccentColor;"></div>
+								</div>
+								<div class="item-info">
+									<div class="item-name">@theme.Name</div>
+									@if (owned)
+									{
+										<div class="owned-badge">@(isActive ? "ACTIVE" : "OWNED")</div>
+									}
+									else
+									{
+										<div class="item-price boss">
+											<span class="token-icon">💎</span>
+											<span>@theme.TokenCost</span>
+										</div>
+									}
+								</div>
+								@if (!meetsRequirement && !owned)
+								{
+									<div class="boss-lock">Boss Required</div>
+								}
+							</div>
+						}
+					}
+					else if (bossCategory == "titles")
+					{
+						@foreach (var title in CosmeticDatabase.Titles)
+						{
+							bool owned = HasTitle(title.Id);
+							bool canAfford = GetBossTokens() >= title.TokenCost;
+							bool meetsRequirement = MeetsBossRequirement(title.RequiredBossId);
+							bool isActive = GetActiveTitle() == title.Id;
+
+							<div class="shop-item boss-item @(owned ? "owned" : "") @(!canAfford && !owned ? "cant-afford" : "") @(selectedTitle?.Id == title.Id ? "selected" : "")"
+								 onclick=@(() => SelectTitle(title))>
+								<div class="title-preview" style="color: @title.TitleColor;">
+									@title.Title
+								</div>
+								<div class="item-info">
+									<div class="item-name">@title.Title</div>
+									@if (owned)
+									{
+										<div class="owned-badge">@(isActive ? "ACTIVE" : "OWNED")</div>
+									}
+									else
+									{
+										<div class="item-price boss">
+											<span class="token-icon">💎</span>
+											<span>@title.TokenCost</span>
+										</div>
+									}
+								</div>
+								@if (!meetsRequirement && !owned)
+								{
+									<div class="boss-lock">Boss Required</div>
+								}
+							</div>
+						}
+					}
+					else if (bossCategory == "consumables")
+					{
+						@foreach (var item in consumables)
+						{
+							bool canAfford = GetBossTokens() >= item.Cost;
+
+							<div class="shop-item boss-item @(!canAfford ? "cant-afford" : "") @(selectedConsumable?.Id == item.Id ? "selected" : "")"
+								 onclick=@(() => SelectConsumable(item))>
+								<div class="consumable-icon">@item.Icon</div>
+								<div class="item-info">
+									<div class="item-name">@item.Name</div>
+									<div class="item-price boss">
+										<span class="token-icon">💎</span>
+										<span>@item.Cost</span>
+									</div>
+								</div>
+							</div>
+						}
+					}
+				</div>
+			</div>
+
+			<!-- Right Side: Boss Item Detail -->
+			<div class="shop-right">
+				@if (bossCategory == "themes" && selectedTheme != null)
+				{
+					<div class="item-detail boss-detail">
+						<div class="detail-header">
+							<div class="theme-preview-large">
+								<div class="theme-color primary" style="background-color: @selectedTheme.PrimaryColor;"></div>
+								<div class="theme-color secondary" style="background-color: @selectedTheme.SecondaryColor;"></div>
+								<div class="theme-color accent" style="background-color: @selectedTheme.AccentColor;"></div>
+							</div>
+							<div class="detail-info">
+								<div class="detail-name">@selectedTheme.Name</div>
+								<div class="detail-type">HUD Theme</div>
+							</div>
+						</div>
+						<div class="detail-description">
+							<label class="description-text">@selectedTheme.Description</label>
+						</div>
+						@if (!string.IsNullOrEmpty(selectedTheme.RequiredBossId))
+						{
+							<div class="detail-requirement @(MeetsBossRequirement(selectedTheme.RequiredBossId) ? "met" : "unmet")">
+								Requires: Clear @GetBossName(selectedTheme.RequiredBossId)
+							</div>
+						}
+						<div class="detail-footer">
+							<div class="detail-price boss">
+								<span class="token-icon">💎</span>
+								<span>@selectedTheme.TokenCost</span>
+							</div>
+							@if (HasTheme(selectedTheme.Id))
+							{
+								@if (GetActiveTheme() == selectedTheme.Id)
+								{
+									<button class="buy-btn active-btn">Active</button>
+								}
+								else
+								{
+									<button class="buy-btn equip-btn" onclick=@(() => EquipTheme(selectedTheme.Id))>Equip</button>
+								}
+							}
+							else
+							{
+								<button class="buy-btn @(CanPurchaseTheme(selectedTheme) ? "" : "disabled")"
+										onclick=@(() => PurchaseTheme(selectedTheme))>
+									@if (!MeetsBossRequirement(selectedTheme.RequiredBossId))
+									{
+										<span>Boss Locked</span>
+									}
+									else if (GetBossTokens() < selectedTheme.TokenCost)
+									{
+										<span>Not Enough</span>
+									}
+									else
+									{
+										<span>Purchase</span>
+									}
+								</button>
+							}
+						</div>
+					</div>
+				}
+				else if (bossCategory == "titles" && selectedTitle != null)
+				{
+					<div class="item-detail boss-detail">
+						<div class="detail-header">
+							<div class="title-preview-large" style="color: @selectedTitle.TitleColor;">
+								@selectedTitle.Title
+							</div>
+							<div class="detail-info">
+								<div class="detail-name">@selectedTitle.Title</div>
+								<div class="detail-type">Title</div>
+							</div>
+						</div>
+						<div class="detail-description">
+							<label class="description-text">@selectedTitle.Description</label>
+						</div>
+						@if (!string.IsNullOrEmpty(selectedTitle.RequiredBossId))
+						{
+							<div class="detail-requirement @(MeetsBossRequirement(selectedTitle.RequiredBossId) ? "met" : "unmet")">
+								Requires: Clear @GetBossName(selectedTitle.RequiredBossId)
+							</div>
+						}
+						<div class="detail-footer">
+							<div class="detail-price boss">
+								<span class="token-icon">💎</span>
+								<span>@selectedTitle.TokenCost</span>
+							</div>
+							@if (HasTitle(selectedTitle.Id))
+							{
+								@if (GetActiveTitle() == selectedTitle.Id)
+								{
+									<button class="buy-btn active-btn">Active</button>
+								}
+								else
+								{
+									<button class="buy-btn equip-btn" onclick=@(() => EquipTitle(selectedTitle.Id))>Equip</button>
+								}
+							}
+							else
+							{
+								<button class="buy-btn @(CanPurchaseTitle(selectedTitle) ? "" : "disabled")"
+										onclick=@(() => PurchaseTitle(selectedTitle))>
+									@if (!MeetsBossRequirement(selectedTitle.RequiredBossId))
+									{
+										<span>Boss Locked</span>
+									}
+									else if (GetBossTokens() < selectedTitle.TokenCost)
+									{
+										<span>Not Enough</span>
+									}
+									else
+									{
+										<span>Purchase</span>
+									}
+								</button>
+							}
+						</div>
+					</div>
+				}
+				else if (bossCategory == "consumables" && selectedConsumable != null)
+				{
+					<div class="item-detail boss-detail">
+						<div class="detail-header">
+							<div class="consumable-icon-large">@selectedConsumable.Icon</div>
+							<div class="detail-info">
+								<div class="detail-name">@selectedConsumable.Name</div>
+								<div class="detail-type">Consumable</div>
+							</div>
+						</div>
+						<div class="detail-description">
+							<label class="description-text">@selectedConsumable.Description</label>
+						</div>
+						<div class="detail-footer">
+							<div class="detail-price boss">
+								<span class="token-icon">💎</span>
+								<span>@selectedConsumable.Cost</span>
+							</div>
+							<button class="buy-btn @(GetBossTokens() >= selectedConsumable.Cost ? "" : "disabled")"
+									onclick=@(() => PurchaseConsumable(selectedConsumable))>
+								@if (GetBossTokens() < selectedConsumable.Cost)
+								{
+									<span>Not Enough</span>
+								}
+								else
+								{
+									<span>Purchase</span>
+								}
+							</button>
+						</div>
+					</div>
+				}
+				else
+				{
+					<div class="no-selection">
+						<span class="no-selection-icon">💎</span>
+						<span class="no-selection-text">Select an item</span>
+					</div>
+				}
+			</div>
+		</div>
+	}
+</root>
+
+@code {
+	// Shop type (gold or boss)
+	private string shopType = "gold";
+
+	// Gold shop state
+	private string currentCategory = "all";
+	private ShopItem selectedItem;
+
+	// Boss shop state
+	private string bossCategory = "themes";
+	private HudTheme selectedTheme;
+	private TamerTitle selectedTitle;
+	private BossConsumable selectedConsumable;
+
+	// Gold shop helpers
+	private int GetGold() => TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+	private int GetGems() => TamerManager.Instance?.CurrentTamer?.Gems ?? 0;
+	private int GetLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 1;
+
+	// Boss shop helpers
+	private int GetBossTokens() => TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0;
+	private string GetActiveTheme() => TamerManager.Instance?.CurrentTamer?.ActiveThemeId ?? "default";
+	private string GetActiveTitle() => TamerManager.Instance?.CurrentTamer?.ActiveTitleId;
+	private bool HasTheme(string id) => TamerManager.Instance?.HasTheme(id) ?? (id == "default");
+	private bool HasTitle(string id) => TamerManager.Instance?.HasTitle(id) ?? false;
+	private bool MeetsBossRequirement(string bossId) => string.IsNullOrEmpty(bossId) || (TamerManager.Instance?.HasClearedBoss(bossId) ?? false);
+
+	private void SwitchShopType(string type)
+	{
+		shopType = type;
+		// Clear selections when switching
+		selectedItem = null;
+		selectedTheme = null;
+		selectedTitle = null;
+		selectedConsumable = null;
+		SoundManager.PlayClick();
+	}
+
+	private List<ShopItem> GetFilteredItems()
+	{
+		var items = ShopManager.Instance?.GetAvailableItems(100) ?? new List<ShopItem>();
+		// Filter out gem-based items since we're not using premium currency
+		items = items.Where(i => i.Currency == CurrencyType.Gold).ToList();
+
+		return currentCategory switch
+		{
+			"supplies" => items.Where(i => i.Type == ShopItemType.ContractInk).ToList(),
+			"boosts" => items.Where(i => i.Type == ShopItemType.XPBoost || i.Type == ShopItemType.GoldBoost || i.Type == ShopItemType.RareEncounter).ToList(),
+			"storage" => items.Where(i => i.Type == ShopItemType.MonsterSlot).ToList(),
+			_ => items
+		};
+	}
+
+	private List<ActiveBoost> GetActiveBoosts()
+	{
+		return ShopManager.Instance?.ActiveBoosts?.Where(b => !b.IsExpired).ToList() ?? new List<ActiveBoost>();
+	}
+
+	private bool CanAfford(ShopItem item)
+	{
+		return GetGold() >= item.Price;
+	}
+
+	private bool CanPurchase(ShopItem item)
+	{
+		return CanAfford(item) && GetLevel() >= item.RequiredLevel && item.IsInStock;
+	}
+
+	private void SelectItem(ShopItem item)
+	{
+		selectedItem = item;
+		SoundManager.PlayClick();
+	}
+
+	private void PurchaseItem(ShopItem item)
+	{
+		if (!CanPurchase(item)) return;
+
+		if (ShopManager.Instance?.PurchaseItem(item.Id) == true)
+		{
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private string GetDurationText(int minutes)
+	{
+		if (minutes >= 60)
+		{
+			int hours = minutes / 60;
+			int mins = minutes % 60;
+			return mins > 0 ? $"{hours}h {mins}m" : $"{hours} hour{(hours > 1 ? "s" : "")}";
+		}
+		return $"{minutes} minutes";
+	}
+
+	private string GetBoostName(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.XPBoost => "2x XP",
+			ShopItemType.GoldBoost => "1.5x Gold",
+			ShopItemType.RareEncounter => "Lucky Charm",
+			_ => type.ToString()
+		};
+	}
+
+	private string GetItemEmoji(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.ContractInk => "🖋️",
+			ShopItemType.Revive => "💊",
+			ShopItemType.XPBoost => "⚡",
+			ShopItemType.GoldBoost => "💰",
+			ShopItemType.RareEncounter => "🍀",
+			ShopItemType.MonsterSlot => "📦",
+			ShopItemType.SkillReset => "🔄",
+			ShopItemType.PartySlot => "👥",
+			ShopItemType.StatBoost => "💪",
+			ShopItemType.NameChange => "✏️",
+			ShopItemType.ElementOrb => "🔮",
+			_ => "🎁"
+		};
+	}
+
+	// Boss shop selection methods
+	private void SelectTheme(HudTheme theme)
+	{
+		selectedTheme = theme;
+		selectedTitle = null;
+		selectedConsumable = null;
+		SoundManager.PlayClick();
+	}
+
+	private void SelectTitle(TamerTitle title)
+	{
+		selectedTheme = null;
+		selectedTitle = title;
+		selectedConsumable = null;
+		SoundManager.PlayClick();
+	}
+
+	private void SelectConsumable(BossConsumable item)
+	{
+		selectedTheme = null;
+		selectedTitle = null;
+		selectedConsumable = item;
+		SoundManager.PlayClick();
+	}
+
+	private bool CanPurchaseTheme(HudTheme theme)
+	{
+		return !HasTheme(theme.Id) &&
+			   GetBossTokens() >= theme.TokenCost &&
+			   MeetsBossRequirement(theme.RequiredBossId);
+	}
+
+	private bool CanPurchaseTitle(TamerTitle title)
+	{
+		return !HasTitle(title.Id) &&
+			   GetBossTokens() >= title.TokenCost &&
+			   MeetsBossRequirement(title.RequiredBossId);
+	}
+
+	private void PurchaseTheme(HudTheme theme)
+	{
+		if (!CanPurchaseTheme(theme)) return;
+
+		if (TamerManager.Instance?.SpendBossTokens(theme.TokenCost) == true)
+		{
+			TamerManager.Instance?.UnlockTheme(theme.Id);
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private void PurchaseTitle(TamerTitle title)
+	{
+		if (!CanPurchaseTitle(title)) return;
+
+		if (TamerManager.Instance?.SpendBossTokens(title.TokenCost) == true)
+		{
+			TamerManager.Instance?.UnlockTitle(title.Id);
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private void EquipTheme(string themeId)
+	{
+		TamerManager.Instance?.SetActiveTheme(themeId);
+		SoundManager.PlayForward();
+	}
+
+	private void EquipTitle(string titleId)
+	{
+		TamerManager.Instance?.SetActiveTitle(titleId);
+		SoundManager.PlayForward();
+	}
+
+	private string GetBossName(string bossId)
+	{
+		return bossId switch
+		{
+			"shadow_depths" => "Shadow Depths",
+			"dawn_sanctuary" => "Spirit Sanctum",
+			"elemental_nexus" => "Elemental Nexus",
+			"mythweavers_realm" => "Mythweaver's Realm",
+			"origin_void" => "Origin Void",
+			_ => bossId?.Replace("_", " ") ?? "Unknown"
+		};
+	}
+
+	// Boss consumables data
+	private List<BossConsumable> consumables = new()
+	{
+		new BossConsumable { Id = "xp_orb_small", Name = "XP Orb (Small)", Description = "Grants 500 XP to one monster", Icon = "🔮", Cost = 50 },
+		new BossConsumable { Id = "xp_orb_large", Name = "XP Orb (Large)", Description = "Grants 2000 XP to one monster", Icon = "🔮", Cost = 150 },
+		new BossConsumable { Id = "elite_ink", Name = "Elite Contract Ink", Description = "+15% catch rate for 10 minutes", Icon = "✨", Cost = 100 },
+		new BossConsumable { Id = "contract_ink_bundle", Name = "Contract Ink x5", Description = "5 Contract Ink for capturing monsters", Icon = "🖋️", Cost = 75 }
+	};
+
+	private void PurchaseConsumable(BossConsumable item)
+	{
+		if (GetBossTokens() < item.Cost) return;
+
+		if (TamerManager.Instance?.SpendBossTokens(item.Cost) == true)
+		{
+			switch (item.Id)
+			{
+				case "contract_ink_bundle":
+					if (TamerManager.Instance?.CurrentTamer != null)
+						TamerManager.Instance.CurrentTamer.ContractInk += 5;
+					break;
+				case "elite_ink":
+					if (TamerManager.Instance?.CurrentTamer != null)
+					{
+						var tamer = TamerManager.Instance.CurrentTamer;
+						// If buff is already active, extend it; otherwise start fresh
+						var currentExpiry = tamer.EliteInkExpiresAt > DateTime.Now ? tamer.EliteInkExpiresAt : DateTime.Now;
+						tamer.EliteInkExpiresAt = currentExpiry.AddMinutes(10);
+					}
+					break;
+				// TODO: Implement XP orb effects (need monster selection UI)
+			}
+			SoundManager.PlayForward();
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	// Helper classes
+	public class BossConsumable
+	{
+		public string Id { get; set; }
+		public string Name { get; set; }
+		public string Description { get; set; }
+		public string Icon { get; set; }
+		public int Cost { get; set; }
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(shopType);
+		hash.Add(currentCategory);
+		hash.Add(bossCategory);
+		hash.Add(selectedItem?.Id);
+		hash.Add(selectedTheme?.Id);
+		hash.Add(selectedTitle?.Id);
+		hash.Add(selectedConsumable?.Id);
+		hash.Add(GetGold());
+		hash.Add(GetBossTokens());
+		hash.Add(GetActiveBoosts().Count);
+		hash.Add(GetActiveTheme());
+		hash.Add(GetActiveTitle());
+		return hash.ToHashCode();
+	}
+}

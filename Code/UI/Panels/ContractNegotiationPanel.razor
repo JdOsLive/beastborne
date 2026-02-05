@@ -1,0 +1,427 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+<div class="contract-negotiation-panel @(IsVisible ? "visible" : "") @GetResultClass()">
+	@if (currentState == NegotiationState.Selecting)
+	{
+		<div class="negotiation-header">
+			<div class="header-title">Contract Negotiation</div>
+			<div class="header-subtitle">Choose your approach to win this creature's trust</div>
+		</div>
+
+		<div class="negotiation-content">
+			<!-- Target Monster Display -->
+			<div class="target-monster">
+				<div class="monster-portrait @GetRarityClass()">
+					@if (HasSprite())
+					{
+						<img class="monster-icon" src="@GetMonsterIcon()" />
+					}
+					else
+					{
+						<div class="monster-icon-placeholder">?</div>
+					}
+				</div>
+				<div class="monster-info">
+					<div class="monster-name-row">
+						<div class="monster-name">@TargetMonster?.Nickname</div>
+						<div class="monster-level">Lv.@TargetMonster?.Level</div>
+						<div class="monster-element @GetElementClass()">@GetElementName()</div>
+					</div>
+					<div class="monster-stats">
+						<div class="stat-item">
+							<div class="stat-label">HP</div>
+							<div class="stat-value">@TargetMonster?.MaxHP</div>
+						</div>
+						<div class="stat-item">
+							<div class="stat-label">ATK</div>
+							<div class="stat-value">@TargetMonster?.ATK</div>
+						</div>
+						<div class="stat-item">
+							<div class="stat-label">DEF</div>
+							<div class="stat-value">@TargetMonster?.DEF</div>
+						</div>
+						<div class="stat-item">
+							<div class="stat-label">SpA</div>
+							<div class="stat-value">@TargetMonster?.SpA</div>
+						</div>
+						<div class="stat-item">
+							<div class="stat-label">SpD</div>
+							<div class="stat-value">@TargetMonster?.SpD</div>
+						</div>
+						<div class="stat-item">
+							<div class="stat-label">SPD</div>
+							<div class="stat-value">@TargetMonster?.SPD</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Stamps Counter -->
+			<div class="stamp-counter">
+				<div class="stamp-label">Stamps Available:</div>
+				<div class="stamp-value">@GetStampCount()</div>
+			</div>
+
+			<!-- Elite Ink Indicator -->
+			@if (HasEliteInk())
+			{
+				<div class="elite-ink-active">
+					<span class="elite-ink-icon">✨</span>
+					<span class="elite-ink-text">Elite Ink Active (+15%) - @GetEliteInkTimeRemaining() remaining</span>
+				</div>
+			}
+
+			<!-- Negotiation Options -->
+			<div class="negotiation-options">
+				@if (negotiationOptions != null)
+				{
+					@foreach (var option in negotiationOptions)
+					{
+						var opt = option;
+						var isSelected = selectedOption == opt;
+						var canAfford = CanAffordOption(opt);
+						<div class="option-card @(isSelected ? "selected" : "") @(!canAfford ? "cant-afford" : "")"
+							 onclick=@(() => SelectOption(opt))>
+							<div class="option-name">@opt.Name</div>
+							<div class="option-chance" style="color: @opt.GetSuccessColor()">@opt.GetSuccessText()</div>
+							<div class="option-description">@opt.Description</div>
+
+							@if (opt.GoldCost > 0)
+							{
+								<div class="option-cost @(!canAfford ? "insufficient" : "")">💰 @opt.GoldCost</div>
+							}
+						</div>
+					}
+				}
+			</div>
+
+			<!-- Action Buttons -->
+			<div class="negotiation-actions">
+				<button class="btn-negotiate @(selectedOption == null ? "disabled" : "")"
+						onclick=@AttemptNegotiation>
+					NEGOTIATE
+				</button>
+				<button class="btn-skip" onclick=@SkipNegotiation>
+					SKIP
+				</button>
+			</div>
+		</div>
+	}
+	else if (currentState == NegotiationState.Success)
+	{
+		<div class="result-content success">
+			<div class="result-icon">🎉</div>
+			<div class="result-title">Contract Signed!</div>
+			<div class="result-monster">
+				@if (HasSprite())
+				{
+					<img class="result-monster-icon" src="@GetMonsterIcon()" />
+				}
+				else
+				{
+					<div class="result-monster-icon-placeholder">?</div>
+				}
+				<div class="result-monster-name">@TargetMonster?.Nickname joined your team!</div>
+			</div>
+			<button class="btn-continue" onclick=@FinishNegotiation>
+				CONTINUE
+			</button>
+		</div>
+	}
+	else if (currentState == NegotiationState.Failed)
+	{
+		<div class="result-content failed">
+			<div class="result-icon">💨</div>
+			<div class="result-title">Negotiation Failed</div>
+			<div class="result-text">@TargetMonster?.Nickname rejected your offer and fled!</div>
+			<button class="btn-continue" onclick=@FinishNegotiation>
+				CONTINUE
+			</button>
+		</div>
+	}
+</div>
+
+@code {
+	public Monster TargetMonster { get; set; }
+	public bool IsVisible { get; set; }
+	public bool IsBossContract { get; set; } = false;
+	public Action<bool, Monster> OnNegotiationComplete { get; set; }
+
+	private enum NegotiationState { Selecting, Success, Failed }
+	private NegotiationState currentState = NegotiationState.Selecting;
+
+	private List<NegotiationOption> negotiationOptions;
+	private NegotiationOption selectedOption;
+	private int selectedOptionIndex = 0;
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime && TargetMonster != null)
+		{
+			GenerateOptions();
+		}
+	}
+
+	public void Initialize(Monster target)
+	{
+		TargetMonster = target;
+		currentState = NegotiationState.Selecting;
+		selectedOption = null;
+		selectedOptionIndex = 0;
+		GenerateOptions();
+		IsVisible = true;
+		StateHasChanged();
+	}
+
+	private void GenerateOptions()
+	{
+		if (TargetMonster == null) return;
+
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster.SpeciesId);
+		if (species == null) return;
+
+		// Pass IsBossContract for boosted catch rates on rare bosses
+		negotiationOptions = ContractGenerator.GenerateNegotiationOptions(species, TargetMonster, IsBossContract);
+
+		// Auto-select first option
+		if (negotiationOptions?.Count > 0)
+		{
+			selectedOption = negotiationOptions[0];
+			selectedOptionIndex = 0;
+		}
+	}
+
+	public void TickInput()
+	{
+		if (!IsVisible) return;
+
+		if (currentState == NegotiationState.Selecting)
+		{
+			// Navigate options
+			if (Input.Pressed("Up") || Input.Pressed("Left"))
+			{
+				selectedOptionIndex = Math.Max(0, selectedOptionIndex - 1);
+				if (negotiationOptions?.Count > 0)
+					selectedOption = negotiationOptions[selectedOptionIndex];
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("Down") || Input.Pressed("Right"))
+			{
+				selectedOptionIndex = Math.Min((negotiationOptions?.Count ?? 1) - 1, selectedOptionIndex + 1);
+				if (negotiationOptions?.Count > 0)
+					selectedOption = negotiationOptions[selectedOptionIndex];
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			{
+				AttemptNegotiation();
+			}
+			else if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				SkipNegotiation();
+			}
+		}
+		else
+		{
+			// Result state - any key to continue
+			if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Menu"))
+			{
+				FinishNegotiation();
+			}
+		}
+
+		StateHasChanged();
+	}
+
+	private void SelectOption(NegotiationOption option)
+	{
+		if (!CanAffordOption(option))
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		selectedOption = option;
+		selectedOptionIndex = negotiationOptions?.IndexOf(option) ?? 0;
+		SoundManager.PlaySelect();
+		StateHasChanged();
+	}
+
+	private bool CanAffordOption(NegotiationOption option)
+	{
+		if (option.GoldCost <= 0) return true;
+		return (TamerManager.Instance?.CurrentTamer?.Gold ?? 0) >= option.GoldCost;
+	}
+
+	private void AttemptNegotiation()
+	{
+		if (selectedOption == null || TargetMonster == null)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		if (!CanAffordOption(selectedOption))
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Check and spend contract ink based on option's cost
+		if (!TamerManager.Instance.SpendContractInk(selectedOption.InkCost))
+		{
+			SoundManager.PlayDeny();
+			Log.Warning($"Not enough contract ink! Need {selectedOption.InkCost}");
+			return;
+		}
+
+		SoundManager.PlayClick();
+
+		// Attempt the negotiation
+		bool success = ContractGenerator.AttemptNegotiation(selectedOption);
+
+		if (success)
+		{
+			currentState = NegotiationState.Success;
+			SoundManager.PlayMonsterCatch();
+
+			// Create the caught monster
+			var caughtMonster = MonsterManager.Instance?.CreateMonster(
+				TargetMonster.SpeciesId,
+				isBred: false,
+				TargetMonster.Genetics
+			);
+
+			if (caughtMonster != null)
+			{
+				caughtMonster.Level = TargetMonster.Level;
+				caughtMonster.Contract = selectedOption.Contract;
+				MonsterManager.Instance?.RecalculateStats(caughtMonster);
+
+				// Mark as discovered in beastiary
+				BeastiaryManager.Instance?.DiscoverSpecies(TargetMonster.SpeciesId);
+
+				// Fire event
+				ExpeditionManager.Instance?.OnMonsterCaught?.Invoke(caughtMonster);
+				Log.Info($"Caught {caughtMonster.Nickname} with contract!");
+			}
+		}
+		else
+		{
+			currentState = NegotiationState.Failed;
+			SoundManager.PlayDeny();
+		}
+
+		StateHasChanged();
+	}
+
+	private void SkipNegotiation()
+	{
+		SoundManager.PlayBack();
+		IsVisible = false;
+		OnNegotiationComplete?.Invoke(false, null);
+	}
+
+	private void FinishNegotiation()
+	{
+		SoundManager.PlayClick();
+		bool caught = currentState == NegotiationState.Success;
+		IsVisible = false;
+		OnNegotiationComplete?.Invoke(caught, caught ? TargetMonster : null);
+	}
+
+	private bool HasSprite()
+	{
+		if (TargetMonster == null) return false;
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster.SpeciesId);
+		if (species == null) return false;
+
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+			return true;
+		if (!string.IsNullOrEmpty(species.IconPath))
+			return true;
+
+		return false;
+	}
+
+	private string GetMonsterIcon()
+	{
+		if (TargetMonster == null) return "";
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster.SpeciesId);
+		return species?.IconPath ?? "";
+	}
+
+	private string GetRarityClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster?.SpeciesId);
+		return species != null ? $"rarity-{species.BaseRarity.ToString().ToLower()}" : "";
+	}
+
+	private string GetElementClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster?.SpeciesId);
+		return species?.Element.ToString().ToLower() ?? "";
+	}
+
+	private string GetElementName()
+	{
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster?.SpeciesId);
+		return species?.Element.ToString() ?? "Unknown";
+	}
+
+	private float GetHPPercent()
+	{
+		if (TargetMonster == null || TargetMonster.MaxHP <= 0) return 0;
+		return 100f * TargetMonster.CurrentHP / TargetMonster.MaxHP;
+	}
+
+	private int GetStampCount()
+	{
+		return TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
+	}
+
+	private bool HasEliteInk()
+	{
+		return TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt > DateTime.Now;
+	}
+
+	private string GetEliteInkTimeRemaining()
+	{
+		var expiry = TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt ?? DateTime.MinValue;
+		if (expiry <= DateTime.Now) return "";
+		var remaining = expiry - DateTime.Now;
+		if (remaining.TotalMinutes >= 1)
+			return $"{(int)remaining.TotalMinutes}m {remaining.Seconds}s";
+		return $"{remaining.Seconds}s";
+	}
+
+	private string GetResultClass()
+	{
+		return currentState switch
+		{
+			NegotiationState.Success => "result-success",
+			NegotiationState.Failed => "result-failed",
+			_ => ""
+		};
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(currentState);
+		hash.Add(TargetMonster?.Id);
+		hash.Add(selectedOption?.Name);
+		hash.Add(TamerManager.Instance?.CurrentTamer?.Gold ?? 0);
+		hash.Add(TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0);
+		hash.Add(HasEliteInk());
+		return hash.ToHashCode();
+	}
+}

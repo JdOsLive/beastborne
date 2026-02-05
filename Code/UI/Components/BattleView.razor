@@ -1,0 +1,1450 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Panels;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+<root class="battle-view @(IsBossWave() ? "boss-battle" : "")" style="@GetBackgroundStyle()">
+	<!-- Dark overlay for readability -->
+	<div class="background-overlay @(IsBossWave() ? "boss-overlay" : "")"></div>
+
+	<!-- Boss Battle Banner -->
+	@if (IsBossWave() && !IsArenaBattle)
+	{
+		<div class="boss-banner @(IsRareBossEncounter() ? "rare" : "")">
+			<div class="boss-banner-line left"></div>
+			<div class="boss-banner-content">
+				<span class="boss-banner-text">@(IsRareBossEncounter() ? "LEGENDARY BOSS" : "BOSS BATTLE")</span>
+				@if (GetBossPhaseCount() > 1)
+				{
+					<span class="boss-phase-text">PHASE @GetCurrentBossPhase()/@GetBossPhaseCount()</span>
+				}
+			</div>
+			<div class="boss-banner-line right"></div>
+		</div>
+	}
+
+	<!-- Top Bar: Wave/Turn Info + Turn Order -->
+	<div class="battle-top-bar">
+		<div class="battle-info">
+			@if (!IsArenaBattle)
+			{
+				<div class="info-badge wave-badge @(IsBossWave() ? "boss-wave" : "")">
+					<span class="badge-label">@(IsBossWave() ? "BOSS" : "WAVE")</span>
+					<span class="badge-value">@GetCurrentWave()</span>
+				</div>
+			}
+			<div class="info-badge turn-badge">
+				<span class="badge-label">TURN</span>
+				<span class="badge-value">@GetCurrentTurn()</span>
+			</div>
+		</div>
+
+		<!-- Turn Order Display (hidden in arena to not reveal speed) -->
+		@if (!IsArenaBattle)
+		{
+			<div class="turn-order">
+				<span class="turn-order-label">NEXT</span>
+				@foreach (var monster in GetTurnOrder().Take(4))
+				{
+					var isPlayer = IsPlayerMonster(monster);
+					<div class="turn-order-icon @(isPlayer ? "player" : "enemy")">
+						@if (HasSprite(monster))
+						{
+							<div class="turn-icon-sprite" style="background-image: url(@GetAnimatedSpritePath(monster))"></div>
+						}
+						else
+						{
+							<span class="turn-icon-placeholder">?</span>
+						}
+					</div>
+				}
+			</div>
+		}
+
+		<!-- Speed Controls (Expedition only) -->
+		@if (!IsArenaBattle)
+		{
+			<div class="speed-controls">
+				<div class="speed-indicator">
+					<span class="speed-label">SPEED</span>
+					<span class="speed-value">@GetSpeedText()</span>
+				</div>
+				<button class="speed-btn @(IsSpeedActive(1.0f) ? "active" : "")" onclick=@(() => SetSpeed(1.0f))>1×</button>
+				<button class="speed-btn @(IsSpeedActive(2.0f) ? "active" : "")" onclick=@(() => SetSpeed(2.0f))>2×</button>
+				<button class="speed-btn @(IsSpeedActive(4.0f) ? "active" : "")" onclick=@(() => SetSpeed(4.0f))>4×</button>
+			</div>
+		}
+	</div>
+
+	<!-- Main Battle Arena -->
+	<div class="battle-arena">
+		<!-- Player Side -->
+		<div class="battle-side player-side">
+			<div class="side-label">YOUR TEAM</div>
+			<div class="monsters-container">
+				@{
+					var playerTeam = GetPlayerTeam();
+					var playerActive = GetPlayerActiveMonster();
+					// Reorder so active monster is always displayed first
+					var displayOrder = new List<Monster>();
+					if (playerActive != null) displayOrder.Add(playerActive);
+					displayOrder.AddRange(playerTeam.Where(m => m != null && m != playerActive));
+				}
+				@foreach (var monster in displayOrder)
+				{
+					if (monster == null) continue;
+					var isActive = monster == playerActive;
+					var isAttacker = IsAttacker(monster);
+					var isDefender = IsDefender(monster);
+					var hpPercent = GetHPPercent(monster);
+					var isKO = monster.CurrentHP <= 0;
+					var canSwapTo = isSwapMode && !isActive && !isKO;
+
+					<div class="monster-card-wrapper @(isActive && CanSelectMoves() ? "show-moves" : "")">
+						<div class="monster-card @(isActive ? "active" : "benched") @(isAttacker ? "attacking" : "") @(isDefender ? "hit" : "") @(isKO ? "ko" : "") @(canSwapTo ? "swap-target" : "")"
+							 onclick=@(() => OnPlayerMonsterClicked(monster, isActive, isKO))>
+							<div class="card-glow"></div>
+							<div class="card-content">
+								<div class="monster-sprite-area">
+									@if (HasSprite(monster))
+									{
+										<div class="sprite" style="background-image: url(@GetAnimatedSpritePath(monster))"></div>
+									}
+									else
+									{
+										<div class="sprite-placeholder">?</div>
+									}
+									@if (isDefender && GetLastDamage(monster) > 0 && ShouldShowDamageNumbers())
+									{
+										<div class="damage-number">-@GetLastDamage(monster)</div>
+									}
+									@if (isKO)
+									{
+										<div class="ko-badge">KO</div>
+									}
+								</div>
+								<div class="monster-info">
+									<div class="name-row">
+										<span class="monster-name">@(monster.Nickname ?? "Monster")</span>
+										<span class="monster-level">Lv.@monster.Level</span>
+									</div>
+									<div class="hp-bar">
+										<div class="hp-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
+									</div>
+									<div class="stats-row">
+										<span class="hp-text">@monster.CurrentHP / @monster.MaxHP</span>
+										<div class="xp-bar">
+											<div class="xp-fill" style="width: @(GetXPPercent(monster))%"></div>
+										</div>
+										<span class="xp-text">@monster.CurrentXP / @monster.XPForNextLevel</span>
+									</div>
+									@{
+										var statuses = GetMonsterStatuses(monster);
+										var statStages = GetStatStageIndicators(monster);
+										if (statuses.Count > 0 || statStages.Count > 0)
+										{
+											<div class="status-row">
+												@foreach (var status in statuses)
+												{
+													<span class="status-badge @status.ToLower()">@GetStatusIcon(status)</span>
+												}
+												@foreach (var (statName, stage, isPositive) in statStages)
+												{
+													<span class="stat-stage-badge @(isPositive ? "buff" : "debuff")">
+														<span class="stat-name">@statName</span>
+														<span class="stat-arrow">@GetStatStageIcon(stage, isPositive)</span>
+													</span>
+												}
+											</div>
+										}
+									}
+								</div>
+							</div>
+						</div>
+
+						<!-- Move Selection Popup (appears below active monster) -->
+						@if (isActive && CanSelectMoves())
+						{
+							<div class="move-popup">
+								<div class="move-popup-content" onmouseleave=@(() => SetHoveredMove(null))>
+									<div class="popup-moves">
+										@{
+											var moves = GetActiveMoves();
+											foreach (var move in moves)
+											{
+												var moveDef = MoveDatabase.GetMove(move.MoveId);
+												if (moveDef != null)
+												{
+													var elementClass = moveDef.Element.ToString().ToLower();
+													var isDisabled = !move.HasPP;
+													var capturedMoveId = move.MoveId;
+													var effectivenessIndicator = GetMoveEffectivenessIndicator(moveDef);
+													var effectivenessClass = GetEffectivenessClass(effectivenessIndicator);
+													<div class="move-btn-wrapper" onmouseover=@(() => SetHoveredMove(capturedMoveId))>
+														<button class="popup-move-btn @elementClass @(isDisabled ? "disabled" : "") @effectivenessClass"
+																onclick=@(() => OnMoveChosen(move.MoveId))>
+															<span class="popup-move-icon">@GetElementIcon(moveDef.Element)</span>
+															<div class="popup-move-info">
+																<span class="popup-move-name">@moveDef.Name</span>
+																<span class="popup-move-pp @(move.CurrentPP <= 3 ? "low" : "")">@move.CurrentPP/@moveDef.MaxPP</span>
+															</div>
+															@if (moveDef.BasePower > 0)
+															{
+																<span class="popup-move-power">@moveDef.BasePower</span>
+															}
+															@if (!string.IsNullOrEmpty(effectivenessIndicator) && ShouldShowTypeEffectiveness())
+															{
+																<span class="effectiveness-badge @effectivenessClass">@effectivenessIndicator</span>
+															}
+														</button>
+													</div>
+												}
+											}
+										}
+									</div>
+									<button class="popup-swap-btn @(isSwapMode ? "active" : "")" onclick=@OnSwapRequested>
+										<span class="swap-icon">🔄</span>
+										<span class="swap-text">@(isSwapMode ? "CANCEL" : "SWAP")</span>
+									</button>
+									@if (!string.IsNullOrEmpty(hoveredMoveId))
+									{
+										var hoveredMove = MoveDatabase.GetMove(hoveredMoveId);
+										if (hoveredMove != null)
+										{
+											var elemClass = hoveredMove.Element.ToString().ToLower();
+											<div class="move-tooltip">
+												<div class="tooltip-header">
+													<span class="tooltip-name">@hoveredMove.Name</span>
+													<span class="tooltip-element @elemClass">@hoveredMove.Element</span>
+												</div>
+												<div class="tooltip-stats">
+													<span>Power: @(hoveredMove.BasePower > 0 ? hoveredMove.BasePower.ToString() : "—")</span>
+													<span>Acc: @(hoveredMove.Accuracy)%</span>
+													<span>@hoveredMove.Category</span>
+												</div>
+												<label class="tooltip-desc">@hoveredMove.Description</label>
+											</div>
+										}
+									}
+								</div>
+							</div>
+						}
+					</div>
+				}
+			</div>
+		</div>
+
+		<!-- Center: Action Display -->
+		<div class="battle-center">
+			@if (!string.IsNullOrEmpty(currentMoveAnnouncement))
+			{
+				<div class="move-announcement">
+					@currentMoveAnnouncement
+				</div>
+			}
+			@if (GetLastTurn() != null)
+			{
+				var turn = GetLastTurn();
+				<div class="action-display">
+					@if (!string.IsNullOrEmpty(turn.MoveName))
+					{
+						<div class="action-move @GetMoveElementClass(turn.MoveElement)">
+							@turn.MoveName
+						</div>
+					}
+					@if (!turn.IsMiss && !turn.IsSwap && turn.Damage > 0)
+					{
+						<div class="action-damage @(turn.IsCritical ? "crit" : "") @(turn.IsSuperEffective && ShouldShowTypeEffectiveness() ? "super" : "") @(turn.IsResisted && ShouldShowTypeEffectiveness() ? "resisted" : "")">
+							@turn.Damage
+							@if (turn.IsCritical) { <span class="damage-tag">CRIT</span> }
+							@if (turn.IsSuperEffective && ShouldShowTypeEffectiveness()) { <span class="damage-tag super">SUPER</span> }
+							@if (turn.IsResisted && ShouldShowTypeEffectiveness()) { <span class="damage-tag resist">RESIST</span> }
+						</div>
+					}
+					@if (turn.IsMiss)
+					{
+						<div class="action-miss">MISS</div>
+					}
+					@if (turn.IsSwap)
+					{
+						<div class="action-swap">SWAP → @turn.SwapToName</div>
+					}
+				</div>
+			}
+		</div>
+
+		<!-- Enemy Side -->
+		<div class="battle-side enemy-side">
+			<div class="side-label">@(IsArenaBattle ? (CompetitiveManager.Instance?.CurrentOpponent?.Name?.ToUpper() ?? "OPPONENT") : "ENEMIES")</div>
+			<div class="monsters-container">
+				@{
+					var enemyTeam = GetEnemyTeam();
+					var enemyActive = GetActiveEnemyMonster();
+					// For arena: only show active monster (like player side). For expedition: show all (horde mode)
+					List<Monster> enemyDisplayOrder;
+					if (IsArenaBattle)
+					{
+						enemyDisplayOrder = new List<Monster>();
+						if (enemyActive != null) enemyDisplayOrder.Add(enemyActive);
+						enemyDisplayOrder.AddRange(enemyTeam.Where(m => m != null && m != enemyActive));
+					}
+					else
+					{
+						enemyDisplayOrder = enemyTeam;
+					}
+				}
+				@foreach (var monster in enemyDisplayOrder)
+				{
+					if (monster == null) continue;
+					var isActive = IsArenaBattle ? (monster == enemyActive) : (monster.CurrentHP > 0);
+					var isTargeted = !IsArenaBattle && IsCurrentTarget(monster); // No targeting in arena
+					var isAttacker = IsAttacker(monster);
+					var isDefender = IsDefender(monster);
+					var hpPercent = GetHPPercent(monster);
+					var isKO = monster.CurrentHP <= 0;
+					var isBoss = IsBossWave() && !IsArenaBattle && IsBossMonster(monster);
+					var isRareBoss = isBoss && IsRareBossEncounter();
+
+					<div class="monster-card-wrapper">
+						<div class="monster-card enemy @(isActive ? "active" : "benched") @(isTargeted ? "targeted" : "") @(isAttacker ? "attacking" : "") @(isDefender ? "hit" : "") @(isKO ? "ko" : "") @(IsArenaBattle ? "no-target" : "") @(isBoss ? "boss-monster" : "") @(isRareBoss ? "rare-boss" : "")"
+							 onclick=@(() => OnEnemyTargetSelected(monster))>
+							@if (isBoss)
+							{
+								<div class="boss-indicator @(isRareBoss ? "legendary" : "")">
+									<span class="boss-label">@(isRareBoss ? "LEGENDARY" : "BOSS")</span>
+								</div>
+							}
+							<div class="card-glow"></div>
+							<div class="card-content">
+								<div class="monster-sprite-area">
+									@if (HasSprite(monster))
+									{
+										<div class="sprite" style="background-image: url(@GetAnimatedSpritePath(monster))"></div>
+									}
+									else
+									{
+										<div class="sprite-placeholder">?</div>
+									}
+									@if (isDefender && GetLastDamage(monster) > 0 && ShouldShowDamageNumbers())
+									{
+										<div class="damage-number">-@GetLastDamage(monster)</div>
+									}
+									@if (isKO)
+									{
+										<div class="ko-badge">KO</div>
+									}
+								</div>
+								<div class="monster-info">
+									<div class="name-row">
+										<span class="monster-name">@(monster.Nickname ?? "Monster")</span>
+										<span class="monster-level">Lv.@monster.Level</span>
+									</div>
+									<div class="hp-bar">
+										<div class="hp-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
+									</div>
+									<div class="hp-text">@monster.CurrentHP / @monster.MaxHP</div>
+									@{
+										var enemyStatuses = GetMonsterStatuses(monster);
+										var enemyStatStages = GetStatStageIndicators(monster);
+										if (enemyStatuses.Count > 0 || enemyStatStages.Count > 0)
+										{
+											<div class="status-row">
+												@foreach (var status in enemyStatuses)
+												{
+													<span class="status-badge @status.ToLower()">@GetStatusIcon(status)</span>
+												}
+												@foreach (var (statName, stage, isPositive) in enemyStatStages)
+												{
+													<span class="stat-stage-badge @(isPositive ? "buff" : "debuff")">
+														<span class="stat-name">@statName</span>
+														<span class="stat-arrow">@GetStatStageIcon(stage, isPositive)</span>
+													</span>
+												}
+											</div>
+										}
+									}
+								</div>
+							</div>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+
+	<!-- Bottom Action Bar -->
+	<div class="action-bar">
+		<div class="auto-controls">
+			@if (!IsArenaBattle)
+			{
+				<button class="control-btn play-btn @(IsPlaying() ? "playing" : "")" onclick=@OnPlayPause>
+					<span class="btn-icon">@(IsPlaying() ? "⏸" : "▶")</span>
+				</button>
+			}
+
+			<div class="toggle-group">
+				@if (!IsArenaBattle)
+				{
+					<div class="toggle-item @(GetAutoBattle() ? "active" : "")" onclick=@ToggleAutoBattle>
+						<div class="toggle-switch"></div>
+						<span class="toggle-label">AUTO-BATTLE</span>
+					</div>
+					<div class="toggle-item @(GetAutoRetry() ? "active" : "")" onclick=@ToggleAutoRetry>
+						<div class="toggle-switch"></div>
+						<span class="toggle-label">AUTO-RETRY</span>
+					</div>
+					<div class="toggle-item @(GetAutoCatch() ? "active" : "")" onclick=@ToggleAutoCatch>
+						<div class="toggle-switch"></div>
+						<span class="toggle-label">AUTO-CONTRACT</span>
+					</div>
+					@if (GetAutoCatch())
+					{
+						<div class="strategy-selector">
+							<div class="strategy-chip skip @(GetAutoNegotiateStrategy() == -1 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(-1))>SKIP</div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 0 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(0))>GEN <span class="ink-cost">3🖋️</span></div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 1 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(1))>FAIR <span class="ink-cost">2🖋️</span></div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 2 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(2))>STR <span class="ink-cost">1🖋️</span></div>
+							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 3 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(3))>GOLD <span class="ink-cost">2🖋️</span></div>
+						</div>
+					}
+				}
+			</div>
+
+			@if (!IsArenaBattle)
+			{
+				<button class="control-btn end-btn" onclick=@OnEndExpedition>
+					<span class="btn-icon">✕</span>
+					<span class="btn-label">END</span>
+				</button>
+			}
+		</div>
+
+		<!-- Target indicator (shown when in manual mode, not arena - arena auto-targets active enemy) -->
+		@if (CanSelectMoves() && !IsArenaBattle)
+		{
+			<div class="target-indicator">
+				@{
+					var currentTarget = GetSelectedTarget();
+					if (currentTarget != null)
+					{
+						<span class="target-label">TARGET:</span>
+						<span class="target-name">@currentTarget.Nickname</span>
+						<span class="target-hint">(click enemy to change)</span>
+					}
+				}
+			</div>
+		}
+
+		<!-- Battle Log (Center, above controls) - Popup Style -->
+		<div class="battle-log @(battleLog.Count > 0 ? "has-entries" : "") @(isLogCollapsed ? "collapsed" : "")">
+			@if (!isLogCollapsed)
+			{
+				<div class="log-popup">
+					<div class="log-entries">
+						@foreach (var entry in battleLog.TakeLast(8))
+						{
+							<div class="log-entry @entry.Type">
+								<span class="log-text">@entry.Text</span>
+							</div>
+						}
+					</div>
+				</div>
+			}
+			<div class="log-header" onclick=@ToggleLogCollapsed>
+				<span class="log-title">LOG</span>
+				<span class="log-toggle">@(isLogCollapsed ? "▲" : "▼")</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Contract Negotiation Overlay -->
+	@if (showNegotiationOverlay && negotiationTarget != null)
+	{
+		<div class="negotiation-overlay">
+			<ContractNegotiationPanel @ref=negotiationPanel IsVisible=@true
+									  TargetMonster=@negotiationTarget
+									  IsBossContract=@isBossContract
+									  OnNegotiationComplete=@OnNegotiationComplete />
+		</div>
+	}
+
+</root>
+
+@code {
+	public Action<bool> OnBattleEnd { get; set; }
+	public Action OnExpeditionCancelled { get; set; }
+	public string ExpeditionId { get; set; } = "";
+	public bool IsArenaBattle { get; set; } = false;
+
+	private bool isSubscribed = false;
+	private BattleTurn lastTurn = null;
+	private string currentMoveAnnouncement = "";
+	private float announcementTimer = 0f;
+	private const float ANNOUNCEMENT_DURATION = 2.0f;
+
+	private List<Monster> cachedPlayerTeam = new();
+	private List<Monster> cachedEnemyTeam = new();
+
+	private bool isSwapMode = false;
+
+	// Battle log entries (persists across waves in same expedition)
+	private List<BattleLogEntry> battleLog = new();
+	private const int MAX_LOG_ENTRIES = 50; // Increased for full expedition logging
+	private bool isLogCollapsed = true; // Start collapsed by default
+	private string lastLoggedExpeditionId = null;
+	private int lastLoggedWave = 0;
+
+	// Horde system: player target selection
+	private Guid selectedTargetId = Guid.Empty;
+
+	// Move tooltip state
+	private string hoveredMoveId = null;
+
+	// Contract negotiation overlay state
+	private bool showNegotiationOverlay = false;
+	private Monster negotiationTarget = null;
+	private bool isBossContract = false;
+	private ContractNegotiationPanel negotiationPanel;
+	private bool lastBattleWon = false;
+
+	private void SetHoveredMove(string moveId)
+	{
+		if (hoveredMoveId != moveId)
+		{
+			hoveredMoveId = moveId;
+			StateHasChanged();
+		}
+	}
+
+	private class BattleLogEntry
+	{
+		public string Text { get; set; }
+		public string Type { get; set; } = "normal"; // normal, damage, heal, status, super, crit
+	}
+
+	private string GetBackgroundStyle()
+	{
+		var bgPath = ExpeditionId switch
+		{
+			"forest_entrance" => "/ui/locations/whispering_woods_background.png",
+			"ember_cavern" => "/ui/locations/ember_cavern_background.png",
+			"tear_lake" => "/ui/locations/lake_of_tears_background.png",
+			"echo_canyon" => "/ui/locations/echo_canyon_background.png",
+			"storm_spire" => "/ui/locations/storm_spire_background.png",
+			"ancient_ruins" => "/ui/locations/ancient_ruins_background.png",
+			"frozen_vale" => "/ui/locations/frozen_vale_background.png",
+			"overgrown_heart" => "/ui/locations/overgrown_heart_background.png",
+			"rusted_foundry" => "/ui/locations/rusted_foundry_background.png",
+			"dawn_sanctuary" => "/ui/locations/spirit_sanctum_background.png",
+			"shadow_depths" => "/ui/locations/shadow_depths_background.png",
+			"elemental_nexus" => "/ui/locations/elemental_nexus_background.png",
+			"primordial_rift" => "/ui/locations/primordial_rift_background.png",
+			"garden_of_origins" => "/ui/locations/garden_of_origins_background.png",
+			"mythweavers_realm" => "/ui/locations/mythweavers_realm_background.png",
+			"origin_void" => "/ui/locations/the_origin_void_background.png",
+			_ => ""
+		};
+
+		if (string.IsNullOrEmpty(bgPath))
+			return "";
+
+		return $"background-image: url({bgPath})";
+	}
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			SubscribeToBattle();
+		}
+		else if (!isSubscribed && (BattleManager.Instance?.IsInBattle == true || BattleManager.Instance?.IsTransitioning == true))
+		{
+			SubscribeToBattle();
+		}
+	}
+
+	public override void OnDeleted()
+	{
+		if (BattleManager.Instance != null)
+		{
+			BattleManager.Instance.OnBattleStart -= HandleBattleStart;
+			BattleManager.Instance.OnTurnExecuted -= OnTurnExecuted;
+			BattleManager.Instance.OnBattleEnd -= HandleBattleEnd;
+			BattleManager.Instance.OnMoveUsed -= HandleMoveAnnouncement;
+		}
+		isSubscribed = false;
+	}
+
+	private void SubscribeToBattle()
+	{
+		if (BattleManager.Instance == null) return;
+		if (!BattleManager.Instance.IsInBattle) return;
+
+		BattleManager.Instance.OnBattleStart -= HandleBattleStart;
+		BattleManager.Instance.OnTurnExecuted -= OnTurnExecuted;
+		BattleManager.Instance.OnBattleEnd -= HandleBattleEnd;
+		BattleManager.Instance.OnMoveUsed -= HandleMoveAnnouncement;
+
+		lastTurn = null;
+		currentMoveAnnouncement = "";
+		// Don't clear log here - HandleBattleStart will manage log persistence
+
+		BattleManager.Instance.OnBattleStart += HandleBattleStart;
+		BattleManager.Instance.OnTurnExecuted += OnTurnExecuted;
+		BattleManager.Instance.OnBattleEnd += HandleBattleEnd;
+		BattleManager.Instance.OnMoveUsed += HandleMoveAnnouncement;
+		isSubscribed = true;
+
+		bool autoBattle = GetAutoBattle();
+		bool waitingForInput = BattleManager.Instance.IsWaitingForPlayerInput;
+		int turnCount = BattleManager.Instance.CurrentResult?.Turns?.Count ?? 0;
+		Log.Info($"[BattleView] SubscribeToBattle: IsArenaBattle={IsArenaBattle}, AutoBattle={autoBattle}, IsWaitingForPlayerInput={waitingForInput}, IsPlaying={BattleManager.Instance.IsPlaying}, TurnCount={turnCount}");
+
+		// Only auto-start playback if in auto mode (has pre-simulated turns)
+		// In manual mode (or arena mode), wait for player input
+		// Arena battles never auto-start - they're always manual mode
+		if (!IsArenaBattle && autoBattle)
+		{
+			// If auto-battle is on but battle was initialized in manual mode (turnCount=0),
+			// switch to auto mode which will simulate the battle
+			if (turnCount == 0)
+			{
+				Log.Info("[BattleView] Auto-battle enabled but no turns - switching to auto mode");
+				BattleManager.Instance.SetAutoMode(true);
+			}
+			Log.Info("[BattleView] Starting playback");
+			BattleManager.Instance.StartPlayback();
+		}
+		else if (!IsArenaBattle && turnCount > 0 && !waitingForInput)
+		{
+			Log.Info("[BattleView] Starting playback (pre-simulated turns)");
+			BattleManager.Instance.StartPlayback();
+		}
+		else
+		{
+			Log.Info($"[BattleView] NOT starting playback - IsArenaBattle={IsArenaBattle}, turnCount={turnCount}, autoBattle={autoBattle}, waitingForInput={waitingForInput}");
+		}
+
+		// Force UI refresh after subscribing to show move selection if ready
+		StateHasChanged();
+	}
+
+	private void HandleBattleStart()
+	{
+		lastTurn = null;
+		currentMoveAnnouncement = "";
+		selectedTargetId = Guid.Empty; // Reset target selection for new battle
+		isSwapMode = false; // Reset swap mode for new battle
+
+		// Check if this is a new expedition or continuing the same one
+		var currentExpeditionId = ExpeditionManager.Instance?.CurrentExpedition?.Id ?? "";
+		var currentWave = ExpeditionManager.Instance?.CurrentWave ?? 1;
+
+		// Clear log only when starting a brand new expedition
+		if (currentExpeditionId != lastLoggedExpeditionId)
+		{
+			battleLog.Clear();
+			lastLoggedExpeditionId = currentExpeditionId;
+			lastLoggedWave = 0;
+		}
+
+		// Add wave divider if this is a new wave in the same expedition
+		if (currentWave > lastLoggedWave && !string.IsNullOrEmpty(currentExpeditionId))
+		{
+			var totalWaves = ExpeditionManager.Instance?.CurrentExpedition?.Waves ?? 1;
+			var isBossWave = ExpeditionManager.Instance?.IsBossWave ?? false;
+			var waveLabel = isBossWave ? $"BOSS WAVE {currentWave}/{totalWaves}" : $"Wave {currentWave}/{totalWaves}";
+			AddLogEntry($"--- {waveLabel} ---", "wave");
+			lastLoggedWave = currentWave;
+		}
+	}
+
+	private void HandleMoveAnnouncement(string announcement)
+	{
+		currentMoveAnnouncement = announcement;
+		announcementTimer = ANNOUNCEMENT_DURATION;
+
+		// Add to battle log
+		var logType = "normal";
+		if (announcement.Contains("super effective")) logType = "super";
+		else if (announcement.Contains("critical")) logType = "crit";
+		else if (announcement.Contains("not very effective")) logType = "resist";
+
+		AddLogEntry(announcement, logType);
+	}
+
+	private void AddLogEntry(string text, string type = "normal")
+	{
+		battleLog.Add(new BattleLogEntry { Text = text, Type = type });
+		if (battleLog.Count > MAX_LOG_ENTRIES)
+		{
+			battleLog.RemoveAt(0);
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		// Handle negotiation panel input when overlay is showing
+		if (showNegotiationOverlay && negotiationPanel != null)
+		{
+			negotiationPanel.TickInput();
+			StateHasChanged();
+			return; // Don't process battle input while negotiating
+		}
+
+		if (BattleManager.Instance == null) return;
+
+		if (BattleManager.Instance.IsInBattle && !isSubscribed)
+		{
+			SubscribeToBattle();
+		}
+
+		if (BattleManager.Instance.IsInBattle && BattleManager.Instance.IsPlaying)
+		{
+			BattleManager.Instance.ManualTick(RealTime.Delta);
+			StateHasChanged();
+		}
+
+		// For arena/manual mode: ensure UI updates when waiting for player input
+		// This is needed because PlaybackManualTurns is async and the UI won't auto-update
+		if (BattleManager.Instance.IsInBattle && !BattleManager.Instance.IsPlaying && BattleManager.Instance.IsWaitingForPlayerInput)
+		{
+			StateHasChanged();
+		}
+
+		if (announcementTimer > 0)
+		{
+			announcementTimer -= RealTime.Delta;
+			if (announcementTimer <= 0)
+			{
+				currentMoveAnnouncement = "";
+			}
+		}
+
+		SpriteAnimator.Update();
+	}
+
+	private void OnTurnExecuted(BattleTurn turn)
+	{
+		lastTurn = turn;
+
+		// Log swap actions
+		if (turn.IsSwap && !string.IsNullOrEmpty(turn.SwapToName))
+		{
+			AddLogEntry($"{turn.SwapToName} entered the battle!", "swap");
+		}
+
+		// Log miss
+		if (turn.IsMiss)
+		{
+			AddLogEntry($"{turn.AttackerName}'s {turn.MoveName} missed!", "miss");
+		}
+
+		// Log damage
+		if (turn.Damage > 0)
+		{
+			var logType = turn.IsCritical ? "crit" : (turn.IsSuperEffective ? "super" : (turn.IsResisted ? "resist" : "damage"));
+			AddLogEntry($"{turn.AttackerName} dealt {turn.Damage} damage!", logType);
+		}
+
+		// Log status message (can't act due to sleep/paralysis, protected itself, etc.)
+		if (!string.IsNullOrEmpty(turn.StatusMessage) && !turn.IsSwap)
+		{
+			var statusType = GetStatusMessageType(turn.StatusMessage);
+			AddLogEntry(turn.StatusMessage, statusType);
+		}
+
+		// Log effect messages (stat changes, status effects, heals, etc.)
+		if (turn.EffectMessages != null)
+		{
+			foreach (var msg in turn.EffectMessages)
+			{
+				if (string.IsNullOrEmpty(msg)) continue;
+				var effectType = GetEffectMessageType(msg);
+				AddLogEntry(msg, effectType);
+			}
+		}
+
+		// Play sounds
+		if (turn.IsCritical)
+			SoundManager.PlayCriticalHit();
+		else if (turn.Damage > 0)
+			SoundManager.PlayAttackHit();
+		else if (turn.IsMiss)
+			SoundManager.PlayAttackMiss();
+	}
+
+	private string GetStatusMessageType(string message)
+	{
+		if (message.Contains("protected") || message.Contains("Guard"))
+			return "guard";
+		if (message.Contains("asleep") || message.Contains("paralyzed") || message.Contains("frozen"))
+			return "status";
+		if (message.Contains("hurt itself") || message.Contains("confused"))
+			return "damage";
+		return "status";
+	}
+
+	private string GetEffectMessageType(string message)
+	{
+		// Stat increases (buffs)
+		if (message.Contains("rose") || message.Contains("sharply rose") || message.Contains("recovered"))
+			return "buff";
+		// Stat decreases (debuffs)
+		if (message.Contains("fell") || message.Contains("harshly fell"))
+			return "debuff";
+		// Status conditions
+		if (message.Contains("burned") || message.Contains("poisoned") || message.Contains("paralyzed") ||
+		    message.Contains("frozen") || message.Contains("asleep") || message.Contains("confused"))
+			return "status";
+		// Healing
+		if (message.Contains("HP"))
+			return "heal";
+		return "effect";
+	}
+
+	private bool HasContractInk()
+	{
+		return (TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0) > 0;
+	}
+
+	private void HandleBattleEnd(BattleResult result)
+	{
+		Log.Info($"[BattleView] HandleBattleEnd: PlayerWon={result?.PlayerWon}, IsBackground={ExpeditionManager.Instance?.IsRunningInBackground}");
+
+		lastBattleWon = result?.PlayerWon ?? false;
+
+		// Victory/defeat sounds disabled per-wave - only play at expedition end
+		// if (result?.PlayerWon == true)
+		// 	SoundManager.PlayVictory();
+		// else
+		// 	SoundManager.PlayDefeat();
+
+		if (ExpeditionManager.Instance?.IsRunningInBackground != true)
+		{
+			// Store catchable enemies BEFORE checking - this must happen here before the
+			// OnBattleComplete callback runs (which previously did this too late)
+			if (lastBattleWon && BattleManager.Instance?.EnemyTeam != null)
+			{
+				ExpeditionManager.Instance?.StoreCatchableEnemies(BattleManager.Instance.EnemyTeam);
+			}
+
+			// Check if there are catchable enemies to negotiate with
+			var expMgr = ExpeditionManager.Instance;
+			bool hasEnemies = expMgr?.HasCatchableEnemy == true;
+			bool hasInk = HasContractInk();
+			bool hasCatchable = hasEnemies && lastBattleWon && hasInk;
+			bool isRareBossDefeat = expMgr?.IsRareBossEncounter == true && lastBattleWon;
+			bool autoNegotiate = expMgr?.AutoNegotiate ?? false;
+
+			Log.Info($"[BattleView] Negotiation check: won={lastBattleWon}, hasEnemies={hasEnemies}, hasInk={hasInk}, autoNegotiate={autoNegotiate}, isRareBoss={isRareBossDefeat}");
+
+			// Show negotiation overlay if:
+			// 1. We won, have catchable enemies, and have ink, AND
+			// 2. Either it's a rare boss (always show) OR (auto-negotiate is off AND 10% chance roll succeeds)
+			// 3. If auto-negotiate is on but species isn't in filter, still show overlay
+			if (hasCatchable)
+			{
+				var random = new Random();
+				double roll = random.NextDouble();
+				// Rare boss = 100% chance, normal = 10% chance
+				bool offerNegotiation = isRareBossDefeat || roll < 0.10f;
+
+				Log.Info($"[BattleView] Negotiation roll: {roll:F2}, offerNegotiation={offerNegotiation}");
+
+				// Select target first so we can check species filter
+				Monster potentialTarget = null;
+				bool potentialIsBoss = false;
+				if (isRareBossDefeat)
+				{
+					potentialTarget = expMgr.CatchableEnemies?.FirstOrDefault(m => m.IsBoss);
+					potentialIsBoss = true;
+				}
+				else
+				{
+					potentialTarget = expMgr.GetRandomCatchableEnemy();
+					potentialIsBoss = false;
+				}
+
+				// Check if auto-negotiate should apply to this species
+				if (autoNegotiate && potentialTarget != null)
+				{
+					bool speciesAllowed = expMgr.IsSpeciesEnabledForAutoContract(potentialTarget.SpeciesId);
+					Log.Info($"[BattleView] Species filter check: {potentialTarget.SpeciesId} allowed={speciesAllowed}");
+
+					// Only auto-skip if species is allowed by filter
+					if (speciesAllowed)
+						offerNegotiation = false;
+					// Otherwise, still show the overlay for manual decision
+				}
+
+				if (offerNegotiation && potentialTarget != null)
+				{
+					negotiationTarget = potentialTarget;
+					isBossContract = potentialIsBoss;
+					Log.Info($"[BattleView] Showing negotiation overlay for {negotiationTarget.Nickname}" + (isRareBossDefeat ? " (RARE BOSS)" : ""));
+					showNegotiationOverlay = true;
+					StateHasChanged();
+					return; // Don't invoke OnBattleEnd yet - wait for negotiation to complete
+				}
+			}
+
+			// No negotiation needed or auto-negotiate handles it
+			Log.Info($"[BattleView] Invoking OnBattleEnd callback");
+			OnBattleEnd?.Invoke(result?.PlayerWon ?? false);
+		}
+	}
+
+	private void OnNegotiationComplete(bool caught, Monster monster)
+	{
+		Log.Info($"[BattleView] OnNegotiationComplete: caught={caught}, monster={monster?.Nickname}");
+		showNegotiationOverlay = false;
+		negotiationTarget = null;
+		isBossContract = false;
+
+		// Clear catchable enemies since negotiation was shown
+		ExpeditionManager.Instance?.ClearCatchableEnemies();
+
+		StateHasChanged();
+
+		// Now invoke the battle end callback to continue the flow
+		OnBattleEnd?.Invoke(lastBattleWon);
+	}
+
+	private int GetCurrentWave() => ExpeditionManager.Instance?.CurrentWave ?? 1;
+
+	// Boss detection helpers
+	private bool IsBossWave() => ExpeditionManager.Instance?.IsBossWave ?? false;
+	private bool IsRareBossEncounter() => ExpeditionManager.Instance?.IsRareBossEncounter ?? false;
+	private bool IsBossMonster(Monster monster)
+	{
+		if (monster == null) return false;
+		var boss = ExpeditionManager.Instance?.SelectedBoss;
+		return boss != null && monster.SpeciesId == boss.SpeciesId;
+	}
+	private int GetBossPhaseCount()
+	{
+		var boss = ExpeditionManager.Instance?.SelectedBoss;
+		// Total power levels = transitions + 1 (includes initial state)
+		return (boss?.Phases?.Count ?? 0) + 1;
+	}
+	private int GetCurrentBossPhase()
+	{
+		var bossState = ExpeditionManager.Instance?.CurrentBossState;
+		// CurrentPhaseIndex tracks how many transitions have occurred
+		// Display as power level: transitions completed + 1
+		return (bossState?.CurrentPhaseIndex ?? 0) + 1;
+	}
+
+	private int GetCurrentTurn()
+	{
+		// In manual mode, use the BattleState turn number
+		// In auto mode, use the playback index
+		if (BattleManager.Instance?.CurrentBattleState != null && !GetAutoBattle())
+		{
+			return BattleManager.Instance.CurrentBattleState.TurnNumber;
+		}
+		return BattleManager.Instance?.CurrentTurnIndex ?? 0;
+	}
+
+	private List<Monster> GetPlayerTeam()
+	{
+		var team = BattleManager.Instance?.PlayerTeam;
+		if (team != null && team.Count > 0) cachedPlayerTeam = team;
+		return cachedPlayerTeam;
+	}
+
+	private List<Monster> GetEnemyTeam()
+	{
+		var team = BattleManager.Instance?.EnemyTeam;
+		if (team != null && team.Count > 0) cachedEnemyTeam = team;
+		return cachedEnemyTeam;
+	}
+
+	private Monster GetPlayerActiveMonster() => BattleManager.Instance?.GetActivePlayerMonster();
+	private Monster GetActiveEnemyMonster() => BattleManager.Instance?.GetActiveEnemyMonster();
+
+	private List<Monster> GetTurnOrder()
+	{
+		var all = new List<Monster>();
+		// Only include player's active monster (benched monsters don't attack)
+		var playerActive = GetPlayerActiveMonster();
+		if (playerActive != null && playerActive.CurrentHP > 0)
+			all.Add(playerActive);
+		// Include all alive enemies (horde mode - all enemies attack)
+		all.AddRange(GetEnemyTeam().Where(m => m?.CurrentHP > 0));
+		return all.OrderByDescending(m => m.SPD).ToList();
+	}
+
+	private bool IsPlayerMonster(Monster m) => GetPlayerTeam().Contains(m);
+
+	private bool HasSprite(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster?.SpeciesId);
+		if (species == null) return false;
+		return (species.AnimationFrames?.Count > 0) || !string.IsNullOrEmpty(species.IconPath);
+	}
+
+	private string GetAnimatedSpritePath(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+		if (species == null) return "";
+		if (species.AnimationFrames?.Count > 0)
+		{
+			int frame = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
+			return species.AnimationFrames[frame];
+		}
+		return species.IconPath ?? "";
+	}
+
+	private float GetHPPercent(Monster m) => m.MaxHP <= 0 ? 0 : (float)m.CurrentHP / m.MaxHP * 100f;
+
+	private float GetXPPercent(Monster m) => m.XPForNextLevel <= 0 ? 0 : (float)m.CurrentXP / m.XPForNextLevel * 100f;
+
+	private string GetHPColor(float pct)
+	{
+		if (pct > 50) return "healthy";
+		if (pct > 25) return "warning";
+		return "danger";
+	}
+
+	private BattleTurn GetLastTurn() => lastTurn;
+	private bool IsAttacker(Monster m) => lastTurn?.AttackerId == m.Id;
+	private bool IsDefender(Monster m) => lastTurn?.DefenderId == m.Id;
+	private int GetLastDamage(Monster m) => (lastTurn?.DefenderId == m.Id) ? lastTurn.Damage : 0;
+
+	private bool IsPlaying() => BattleManager.Instance?.IsPlaying ?? false;
+	private float GetSpeed() => BattleManager.Instance?.PlaybackSpeed ?? 1.0f;
+	private bool IsSpeedActive(float speed) => Math.Abs(GetSpeed() - speed) < 0.1f;
+	private string GetSpeedText() => GetSpeed() switch { 1.0f => "1×", 2.0f => "2×", 4.0f => "4×", _ => $"{GetSpeed()}×" };
+	private void SetSpeed(float s)
+	{
+		if (BattleManager.Instance != null)
+		{
+			BattleManager.Instance.PlaybackSpeed = s;
+			SoundManager.PlayClick();
+			// Save as new default for future expeditions
+			SettingsManager.Instance?.SetBattleSpeed(s);
+		}
+	}
+
+	// Settings helpers
+	private bool ShouldShowDamageNumbers() => SettingsManager.Instance?.Settings?.ShowDamageNumbers ?? true;
+	private bool ShouldShowTypeEffectiveness() => SettingsManager.Instance?.Settings?.ShowTypeEffectiveness ?? true;
+
+	private void OnPlayPause()
+	{
+		SoundManager.PlayClick();
+		if (IsPlaying()) BattleManager.Instance?.PausePlayback();
+		else BattleManager.Instance?.StartPlayback( userInitiated: true );
+	}
+
+	private bool GetAutoBattle()
+	{
+		// NOTE: Default to FALSE (manual mode) when ExpeditionManager is unavailable
+		// This allows moves to be selected even if the manager is temporarily null
+		return ExpeditionManager.Instance?.AutoBattle ?? false;
+	}
+	private bool GetAutoRetry() => ExpeditionManager.Instance?.AutoRetry ?? false;
+	private bool GetAutoCatch() => ExpeditionManager.Instance?.AutoNegotiate ?? false;
+
+	private void ToggleAutoBattle()
+	{
+		bool newValue = !(ExpeditionManager.Instance?.AutoBattle ?? true);
+		if (newValue) SoundManager.PlayToggleOn();
+		else SoundManager.PlayToggleOff();
+		OnAutoModeChanged(newValue);
+		// Save as new default for future expeditions
+		SettingsManager.Instance?.SetAutoBattle(newValue);
+	}
+
+	private void ToggleAutoRetry()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoRetry = !ExpeditionManager.Instance.AutoRetry;
+			if (ExpeditionManager.Instance.AutoRetry) SoundManager.PlayToggleOn();
+			else SoundManager.PlayToggleOff();
+			// Save as new default for future expeditions
+			SettingsManager.Instance?.SetAutoRetry(ExpeditionManager.Instance.AutoRetry);
+		}
+	}
+
+	private void ToggleAutoCatch()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoNegotiate = !ExpeditionManager.Instance.AutoNegotiate;
+			if (ExpeditionManager.Instance.AutoNegotiate) SoundManager.PlayToggleOn();
+			else SoundManager.PlayToggleOff();
+			// Save as new default for future expeditions
+			SettingsManager.Instance?.SetAutoContract(ExpeditionManager.Instance.AutoNegotiate);
+		}
+	}
+
+	private int GetAutoNegotiateStrategy() => ExpeditionManager.Instance?.AutoNegotiateStrategy ?? 0;
+
+	private void ToggleLogCollapsed()
+	{
+		isLogCollapsed = !isLogCollapsed;
+		SoundManager.PlayClick();
+	}
+
+	private void SetAutoNegotiateStrategy(int strategy)
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoNegotiateStrategy = strategy;
+			SoundManager.PlayClick();
+			// Save as new default for future expeditions
+			SettingsManager.Instance?.SetNegotiationStrategy(strategy);
+		}
+	}
+
+	private void OnEndExpedition()
+	{
+		SoundManager.PlayBack();
+		ExpeditionManager.Instance?.CancelExpedition();
+		OnExpeditionCancelled?.Invoke();
+	}
+
+	private List<string> GetMonsterStatuses(Monster monster)
+	{
+		var statuses = new List<string>();
+		var battleState = BattleManager.Instance?.CurrentBattleState;
+		if (battleState == null || monster == null) return statuses;
+		foreach (var s in battleState.GetStatuses(monster.Id))
+		{
+			statuses.Add(s.Condition.ToString());
+		}
+		return statuses;
+	}
+
+	private string GetStatusIcon(string status)
+	{
+		return status.ToLower() switch
+		{
+			"burn" => "🔥",
+			"freeze" => "❄️",
+			"paralyze" => "⚡",
+			"poison" => "☠️",
+			"sleep" => "💤",
+			"confuse" => "💫",
+			_ => "?"
+		};
+	}
+
+	/// <summary>
+	/// Get stat stage indicators for a monster (buffs and debuffs)
+	/// Returns list of (statName, stage, isPositive)
+	/// </summary>
+	private List<(string Name, int Stage, bool IsPositive)> GetStatStageIndicators(Monster monster)
+	{
+		var indicators = new List<(string Name, int Stage, bool IsPositive)>();
+		var battleState = BattleManager.Instance?.CurrentBattleState;
+		if (battleState == null || monster == null) return indicators;
+
+		// Check each stat
+		var statNames = new[] { ("ATK", StatIndex.ATK), ("DEF", StatIndex.DEF), ("SpA", StatIndex.SpA), ("SpD", StatIndex.SpD), ("SPD", StatIndex.SPD) };
+		foreach (var (name, index) in statNames)
+		{
+			int stage = battleState.GetStatStage(monster.Id, index);
+			if (stage != 0)
+			{
+				indicators.Add((name, stage, stage > 0));
+			}
+		}
+
+		return indicators;
+	}
+
+	private string GetStatStageIcon(int stage, bool isPositive)
+	{
+		if (isPositive)
+		{
+			return stage switch
+			{
+				1 => "↑",
+				2 => "↑↑",
+				>= 3 => "↑↑↑",
+				_ => "↑"
+			};
+		}
+		else
+		{
+			return stage switch
+			{
+				-1 => "↓",
+				-2 => "↓↓",
+				<= -3 => "↓↓↓",
+				_ => "↓"
+			};
+		}
+	}
+
+	private string GetMoveElementClass(ElementType el) => $"element-{el.ToString().ToLower()}";
+
+	// Move Selection
+	private bool ShouldShowMoveSelection()
+	{
+		if (BattleManager.Instance == null || !BattleManager.Instance.IsInBattle) return false;
+		// Arena battles always use manual mode (no auto-battle option)
+		if (!IsArenaBattle && GetAutoBattle()) return false;
+		if (BattleManager.Instance.IsWaitingForPlayerInput && !BattleManager.Instance.IsPlaying)
+		{
+			var active = GetPlayerActiveMonster();
+			return active != null && active.CurrentHP > 0;
+		}
+		return false;
+	}
+
+	// Can select moves (manual mode, waiting for input, not playing)
+	private bool CanSelectMoves()
+	{
+		if (BattleManager.Instance == null || !BattleManager.Instance.IsInBattle)
+		{
+			return false;
+		}
+		// Arena battles always use manual mode (no auto-battle option)
+		if (!IsArenaBattle && GetAutoBattle())
+		{
+			return false;
+		}
+		if (BattleManager.Instance.IsPlaying)
+		{
+			return false;
+		}
+		if (!BattleManager.Instance.IsWaitingForPlayerInput)
+		{
+			return false;
+		}
+		var active = GetPlayerActiveMonster();
+		return active != null && active.CurrentHP > 0;
+	}
+
+	private List<MonsterMove> GetActiveMoves()
+	{
+		var monster = GetPlayerActiveMonster();
+		if (monster == null) return new List<MonsterMove>();
+
+		// Validate moves exist in database - fix on-the-fly if needed
+		if (monster.Moves != null && monster.Moves.Count > 0)
+		{
+			bool hasInvalidMove = monster.Moves.Any(m => m != null && MoveDatabase.GetMove(m.MoveId) == null);
+			if (hasInvalidMove)
+			{
+				MonsterManager.Instance?.MigrateMonsterToV2(monster);
+			}
+		}
+
+		return monster.Moves ?? new List<MonsterMove>();
+	}
+
+	private string GetElementIcon(ElementType el)
+	{
+		return el switch
+		{
+			ElementType.Fire => "🔥",
+			ElementType.Water => "💧",
+			ElementType.Earth => "🪨",
+			ElementType.Wind => "💨",
+			ElementType.Electric => "⚡",
+			ElementType.Ice => "❄️",
+			ElementType.Nature => "🌿",
+			ElementType.Metal => "⚙️",
+			ElementType.Shadow => "🌑",
+			ElementType.Spirit => "✨",
+			_ => "⚪"
+		};
+	}
+
+	/// <summary>
+	/// Get type effectiveness indicator for a move against the current target
+	/// Returns: "2x" for super effective, "½x" for not very effective, "" for neutral
+	/// </summary>
+	private string GetMoveEffectivenessIndicator(MoveDefinition move)
+	{
+		if (move == null || move.BasePower <= 0) return ""; // Status moves don't show effectiveness
+
+		// Get the target's element
+		var target = GetSelectedTarget();
+		if (target == null) return "";
+
+		var targetSpecies = MonsterManager.Instance?.GetSpecies(target.SpeciesId);
+		if (targetSpecies == null) return "";
+
+		float effectiveness = BattleAI.GetTypeEffectiveness(move.Element, targetSpecies.Element);
+
+		if (effectiveness >= 2.0f) return "2x";
+		if (effectiveness >= 1.5f) return "1.5x";
+		if (effectiveness <= 0f) return "0x";
+		if (effectiveness <= 0.5f) return "½x";
+		return ""; // Neutral (1.0x) - don't show indicator
+	}
+
+	/// <summary>
+	/// Get CSS class for effectiveness indicator
+	/// </summary>
+	private string GetEffectivenessClass(string indicator)
+	{
+		return indicator switch
+		{
+			"2x" or "1.5x" => "super-effective",
+			"½x" => "not-effective",
+			"0x" => "immune",
+			_ => ""
+		};
+	}
+
+	private void OnMoveChosen(string moveId)
+	{
+		if (BattleManager.Instance?.IsWaitingForPlayerInput == true)
+		{
+			BattleManager.Instance.ExecutePlayerMove(moveId);
+			isSwapMode = false;
+		}
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void OnSwapRequested()
+	{
+		isSwapMode = !isSwapMode;
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void OnPlayerMonsterClicked(Monster monster, bool isActive, bool isKO)
+	{
+		// If in swap mode and clicking a valid benched monster, swap to it
+		if (isSwapMode && !isActive && !isKO && monster != null)
+		{
+			int idx = BattleManager.Instance?.GetMonsterIndex(monster) ?? -1;
+			if (idx >= 0)
+			{
+				BattleManager.Instance.ExecutePlayerSwap(idx);
+				isSwapMode = false;
+				SoundManager.PlayClick();
+				StateHasChanged();
+			}
+		}
+	}
+
+	private List<Monster> GetAvailableSwapTargets() => BattleManager.Instance?.GetAvailableSwapTargets() ?? new List<Monster>();
+
+	// Horde system target selection
+	private bool IsCurrentTarget(Monster monster)
+	{
+		if (monster == null) return false;
+		// If no target selected, default to first alive enemy
+		if (selectedTargetId == Guid.Empty)
+		{
+			var firstAlive = GetEnemyTeam().FirstOrDefault(e => e != null && e.CurrentHP > 0);
+			return monster == firstAlive;
+		}
+		return monster.Id == selectedTargetId;
+	}
+
+	private void OnEnemyTargetSelected(Monster monster)
+	{
+		// In arena mode, targeting is disabled - you always attack the active enemy
+		if (IsArenaBattle) return;
+		if (monster == null || monster.CurrentHP <= 0) return;
+		selectedTargetId = monster.Id;
+		BattleManager.Instance?.SetPlayerTarget(monster);
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private Monster GetSelectedTarget()
+	{
+		if (selectedTargetId == Guid.Empty)
+		{
+			return GetEnemyTeam().FirstOrDefault(e => e != null && e.CurrentHP > 0);
+		}
+		return GetEnemyTeam().FirstOrDefault(e => e?.Id == selectedTargetId && e.CurrentHP > 0);
+	}
+
+	private void OnAutoModeChanged(bool isAuto)
+	{
+		if (ExpeditionManager.Instance != null) ExpeditionManager.Instance.AutoBattle = isAuto;
+		if (BattleManager.Instance != null)
+		{
+			BattleManager.Instance.SetAutoMode(isAuto);
+			if (isAuto && !BattleManager.Instance.IsPlaying && BattleManager.Instance.IsInBattle)
+			{
+				BattleManager.Instance.StartPlayback( userInitiated: true );
+			}
+		}
+		StateHasChanged();
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(BattleManager.Instance?.CurrentTurnIndex);
+		hash.Add(BattleManager.Instance?.IsPlaying);
+		hash.Add(BattleManager.Instance?.IsWaitingForPlayerInput);
+		hash.Add(BattleManager.Instance?.PlaybackSpeed);
+		hash.Add(BattleManager.Instance?.CurrentBattleState?.PlayerActiveIndex ?? 0);
+		hash.Add(BattleManager.Instance?.CurrentBattleState?.TurnNumber ?? 0);
+		hash.Add(lastTurn?.TurnNumber);
+		hash.Add(currentMoveAnnouncement);
+		hash.Add(GetAutoBattle());
+		hash.Add(GetAutoCatch());
+		hash.Add(GetAutoNegotiateStrategy());
+		hash.Add(isSwapMode);
+		hash.Add(isLogCollapsed);
+		hash.Add(battleLog.Count);
+		hash.Add(SpriteAnimator.GlobalFrame);
+		hash.Add(selectedTargetId);
+		hash.Add(hoveredMoveId);
+		// Boss state
+		hash.Add(IsBossWave());
+		hash.Add(IsRareBossEncounter());
+		hash.Add(GetCurrentBossPhase());
+
+		// Track HP and stat stages/statuses for all monsters
+		var battleState = BattleManager.Instance?.CurrentBattleState;
+		if (BattleManager.Instance?.PlayerTeam != null)
+		{
+			foreach (var m in BattleManager.Instance.PlayerTeam)
+			{
+				if (m != null)
+				{
+					hash.Add(m.CurrentHP);
+					// Include stat stages and status count in hash
+					if (battleState != null)
+					{
+						hash.Add(GetStatStageIndicators(m).Count);
+						hash.Add(GetMonsterStatuses(m).Count);
+					}
+				}
+			}
+		}
+		if (BattleManager.Instance?.EnemyTeam != null)
+		{
+			foreach (var m in BattleManager.Instance.EnemyTeam)
+			{
+				if (m != null)
+				{
+					hash.Add(m.CurrentHP);
+					// Include stat stages and status count in hash
+					if (battleState != null)
+					{
+						hash.Add(GetStatStageIndicators(m).Count);
+						hash.Add(GetMonsterStatuses(m).Count);
+					}
+				}
+			}
+		}
+		return hash.ToHashCode();
+	}
+}

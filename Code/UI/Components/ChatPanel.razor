@@ -1,0 +1,301 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@namespace Beastborne.UI.Components
+@inherits Panel
+
+<root class="@(isExpanded ? "expanded" : "collapsed") @(hasUnread ? "has-unread" : "")">
+	<!-- Collapsed: Small chat button -->
+	@if (!isExpanded)
+	{
+		<div class="chat-button" onclick=@ToggleChat>
+			<span class="chat-button-icon">💬</span>
+			<span class="chat-button-text">CHAT</span>
+			@if (hasUnread)
+			{
+				<span class="chat-button-badge">@unreadCount</span>
+			}
+		</div>
+	}
+
+	<!-- Expanded: Full chat overlay -->
+	@if (isExpanded)
+	{
+		<div class="chat-overlay">
+			<div class="chat-header">
+				<div class="header-left">
+					<span class="chat-icon">💬</span>
+					<span class="chat-title">CHAT</span>
+				</div>
+				<div class="header-right">
+					<span class="online-count">@GetOnlineCount() online</span>
+					<button class="close-btn" onclick=@ToggleChat>✕</button>
+				</div>
+			</div>
+
+			<div class="chat-content">
+				<!-- Messages List -->
+				<div class="messages-container" @ref="messagesContainer">
+					@foreach (var message in GetMessages())
+					{
+						@if (message.Type == ChatMessageType.BeastShowcase)
+						{
+							<div class="message showcase-message" onclick=@(() => ShowShowcasePopup(message))>
+								<span class="message-time">@message.FormattedTime</span>
+								<div class="showcase-card @message.ShowcaseElement.ToLower()">
+									<div class="showcase-header">
+										@if (message.IsDeveloper)
+										{
+											<span class="dev-tag">DEV</span>
+										}
+										<span class="showcase-title">@message.PlayerName is showing off</span>
+									</div>
+									<div class="showcase-content">
+										@if (!string.IsNullOrEmpty(message.IconPath))
+										{
+											<img class="showcase-sprite" src="@message.IconPath" />
+										}
+										<div class="showcase-info">
+											<div class="showcase-name">@message.ShowcaseNickname</div>
+											<div class="showcase-species">@message.ShowcaseSpeciesName</div>
+											<div class="showcase-stats">
+												<span class="showcase-level">Lv.@message.ShowcaseLevel</span>
+												<span class="showcase-power">@message.ShowcasePower PWR</span>
+											</div>
+											<div class="showcase-extra">
+												<span class="showcase-rarity @message.ShowcaseRarity.ToLower()">@message.ShowcaseRarity</span>
+												@if (!string.IsNullOrEmpty(message.ShowcaseVeteranRank))
+												{
+													<span class="showcase-rank">@message.ShowcaseVeteranRank</span>
+												}
+											</div>
+										</div>
+									</div>
+									<div class="showcase-footer">
+										<span class="click-hint">Click to view details</span>
+									</div>
+								</div>
+							</div>
+						}
+						else
+						{
+							<div class="message @GetMessageClass(message)">
+								@if (message.Type == ChatMessageType.Player)
+								{
+									<span class="message-time">@message.FormattedTime</span>
+									@if (message.IsDeveloper)
+									{
+										<span class="dev-tag">DEV</span>
+									}
+									<span class="message-author">@message.PlayerName:</span>
+									<span class="message-text">@message.Content</span>
+								}
+								else
+								{
+									<span class="message-time">@message.FormattedTime</span>
+									@if (!string.IsNullOrEmpty(message.IconPath))
+									{
+										<img class="message-icon" src="@message.IconPath" />
+									}
+									<span class="message-text system">@message.Content</span>
+								}
+							</div>
+						}
+					}
+				</div>
+
+				<!-- Input Area -->
+				<div class="input-area">
+					<ChatInputBox @ref="chatInputBox" OnSubmit=@OnSendMessage />
+					<button class="send-btn" onclick=@OnSendMessage>
+						<span>➤</span>
+					</button>
+				</div>
+			</div>
+		</div>
+	}
+
+</root>
+
+@code {
+	private bool isExpanded = false;
+	private bool hasUnread = false;
+	private int unreadCount = 0;
+	private Panel messagesContainer;
+	private ChatInputBox chatInputBox;
+
+	// Track if we're focused on chat input
+	public static bool IsChatFocused { get; set; } = false;
+
+	private void ShowShowcasePopup(ChatMessage message)
+	{
+		// Use the separate popup component for full-screen display
+		BeastShowcasePopup.Show(message);
+	}
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			// Subscribe to chat events
+			if (ChatManager.Instance != null)
+			{
+				ChatManager.Instance.OnMessageReceived += OnMessageReceived;
+				ChatManager.Instance.OnMessagesCleared += OnMessagesCleared;
+			}
+		}
+	}
+
+	public override void OnDeleted()
+	{
+		// Unsubscribe from events
+		if (ChatManager.Instance != null)
+		{
+			ChatManager.Instance.OnMessageReceived -= OnMessageReceived;
+			ChatManager.Instance.OnMessagesCleared -= OnMessagesCleared;
+		}
+		IsChatFocused = false;
+	}
+
+	private void OnMessageReceived(ChatMessage message)
+	{
+		// If chat is collapsed, show unread indicator
+		if (!isExpanded)
+		{
+			hasUnread = true;
+			unreadCount++;
+		}
+		else
+		{
+			// Scroll to bottom when receiving new message while open
+			_ = ScrollToBottomDelayed();
+		}
+
+		StateHasChanged();
+	}
+
+	private void OnMessagesCleared()
+	{
+		hasUnread = false;
+		unreadCount = 0;
+		StateHasChanged();
+	}
+
+	private void ToggleChat()
+	{
+		isExpanded = !isExpanded;
+		SoundManager.PlayClick();
+
+		if (isExpanded)
+		{
+			// Clear unread when opening
+			hasUnread = false;
+			unreadCount = 0;
+
+			// Focus input and scroll to bottom after a small delay
+			_ = FocusInputDelayed();
+			_ = ScrollToBottomDelayed();
+		}
+		else
+		{
+			IsChatFocused = false;
+		}
+	}
+
+	private async Task FocusInputDelayed()
+	{
+		await Task.Delay(100);
+		chatInputBox?.FocusInput();
+		IsChatFocused = true;
+	}
+
+	private async Task ScrollToBottomDelayed()
+	{
+		// Wait for UI to render
+		await Task.Delay(50);
+		if (messagesContainer != null)
+		{
+			messagesContainer.ScrollOffset = new Vector2(0, messagesContainer.ScrollSize.y);
+		}
+	}
+
+	private void OnSendMessage()
+	{
+		var text = chatInputBox?.GetText() ?? "";
+		if (string.IsNullOrWhiteSpace(text)) return;
+
+		ChatManager.Instance?.SendMessage(text);
+		chatInputBox?.ClearText();
+		SoundManager.PlayForward();
+
+		// Refocus input
+		chatInputBox?.FocusInput();
+	}
+
+	private List<ChatMessage> GetMessages()
+	{
+		return ChatManager.Instance?.GetRecentMessages(50) ?? new List<ChatMessage>();
+	}
+
+	private int GetOnlineCount()
+	{
+		return ChatManager.Instance?.OnlinePlayerCount ?? 1;
+	}
+
+	private string GetMessageClass(ChatMessage message)
+	{
+		return message.Type switch
+		{
+			ChatMessageType.Player => "player-message",
+			ChatMessageType.System => "system-message",
+			ChatMessageType.Achievement => "achievement-message",
+			ChatMessageType.Join => "join-message",
+			ChatMessageType.Leave => "leave-message",
+			ChatMessageType.BeastShowcase => "showcase-message",
+			_ => ""
+		};
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		// Handle keyboard shortcuts
+		if (isExpanded)
+		{
+			// Escape to close chat
+			if (Input.Pressed("Escape"))
+			{
+				isExpanded = false;
+				IsChatFocused = false;
+				SoundManager.PlayBack();
+			}
+		}
+		else
+		{
+			// T or Enter to open chat (when not already focused)
+			if (Input.Pressed("Chat") || Input.Pressed("Enter"))
+			{
+				isExpanded = true;
+				hasUnread = false;
+				unreadCount = 0;
+				_ = FocusInputDelayed();
+				SoundManager.PlayClick();
+			}
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(isExpanded);
+		hash.Add(hasUnread);
+		hash.Add(unreadCount);
+		hash.Add(chatInputBox?.GetText());
+		hash.Add(ChatManager.Instance?.Messages?.Count ?? 0);
+		hash.Add(GetOnlineCount());
+		return hash.ToHashCode();
+	}
+}

@@ -1,0 +1,733 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using System.Linq;
+@inherits Panel
+
+<div class="skill-tree-panel" onclick=@OnPanelClicked>
+	<!-- Header Row -->
+	<div class="skill-header">
+		<div class="header-left">
+			<div class="skill-title">Skill Tree</div>
+			<div class="skill-subtitle">Invest skill points to power up</div>
+		</div>
+		<div class="header-right">
+			<div class="skill-progress">
+				<span class="progress-current">@GetTotalRanksUnlocked()</span>
+				<span class="progress-sep">/</span>
+				<span class="progress-max">@GetMaxPossibleRanks()</span>
+				<span class="progress-label">Ranks</span>
+			</div>
+			<div class="skill-points">
+				<span class="points-icon">⭐</span>
+				<span class="points-value">@GetSkillPoints()</span>
+				<span class="points-label">SP</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Branch Tabs + Reset -->
+	<div class="branch-row">
+		<div class="branch-tabs">
+			<button class="branch-tab @(currentBranch == SkillBranch.Power ? "power-active" : "power")"
+					onclick=@(() => SelectBranch(SkillBranch.Power))>
+				<span class="tab-icon">⚔️</span>
+				<span class="tab-name">Power</span>
+				<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Power) pts</span>
+			</button>
+			<button class="branch-tab @(currentBranch == SkillBranch.Fusion ? "fusion-active" : "fusion")"
+					onclick=@(() => SelectBranch(SkillBranch.Fusion))>
+				<span class="tab-icon">🧬</span>
+				<span class="tab-name">Fusion</span>
+				<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Fusion) pts</span>
+			</button>
+			<button class="branch-tab @(currentBranch == SkillBranch.Expedition ? "expedition-active" : "expedition")"
+					onclick=@(() => SelectBranch(SkillBranch.Expedition))>
+				<span class="tab-icon">🗺️</span>
+				<span class="tab-name">Expedition</span>
+				<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Expedition) pts</span>
+			</button>
+			<button class="branch-tab @(currentBranch == SkillBranch.Mastery ? "mastery-active" : "mastery")"
+					onclick=@(() => SelectBranch(SkillBranch.Mastery))>
+				<span class="tab-icon">👑</span>
+				<span class="tab-name">Mastery</span>
+				<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Mastery) pts</span>
+			</button>
+			<button class="branch-tab @(currentBranch == SkillBranch.Fortune ? "fortune-active" : "fortune")"
+					onclick=@(() => SelectBranch(SkillBranch.Fortune))>
+				<span class="tab-icon">💰</span>
+				<span class="tab-name">Fortune</span>
+				<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Fortune) pts</span>
+			</button>
+
+			<!-- Reset Button -->
+			@if (GetTotalRanksUnlocked() > 0)
+			{
+				<button class="reset-btn-header @(isHoldingReset ? "holding" : "")"
+						onmousedown=@StartHoldReset
+						onmouseup=@StopHold
+						onmouseleave=@StopHold>
+					<div class="btn-fill" style="width: @(isHoldingReset ? holdProgress * 100 : 0)%;"></div>
+					<span class="reset-icon">↺</span>
+					<span>@(isHoldingReset ? "Resetting..." : "Reset")</span>
+				</button>
+			}
+		</div>
+	</div>
+
+	<!-- Main Content Area -->
+	<div class="skill-main-content">
+		<!-- Left: Skills Grid (3-column tier layout) -->
+		<div class="skills-container">
+			<div class="skills-grid">
+				@foreach (var tier in new[] { 1, 2, 3 })
+				{
+					var tierNodes = GetBranchNodes().Where(n => n.Tier == tier).OrderBy(n => n.GridRow).ToList();
+					var tierReq = tierNodes.FirstOrDefault()?.RequiredBranchPoints ?? 0;
+					var branchPoints = GetBranchPointsSpent();
+					var isTierUnlocked = branchPoints >= tierReq;
+
+					<div class="tier-column @(isTierUnlocked ? "unlocked" : "locked")">
+						<!-- Tier Header -->
+						<div class="tier-header @currentBranch.ToString().ToLower()">
+							<span class="tier-label">Tier @tier</span>
+							@if (tierReq > 0)
+							{
+								<span class="tier-req @(isTierUnlocked ? "met" : "")">@tierReq pts</span>
+							}
+							else
+							{
+								<span class="tier-req met">Unlocked</span>
+							}
+						</div>
+
+						<!-- Tier Skills -->
+						<div class="tier-skills">
+							@foreach (var node in tierNodes)
+							{
+								var rank = GetSkillRank(node.Id);
+								var isMaxed = rank >= node.MaxRank;
+								var canUpgrade = CanUpgradeSkill(node.Id);
+								var isSelected = selectedNode?.Id == node.Id;
+								var progress = (float)rank / node.MaxRank;
+
+								<div class="skill-node-wrapper">
+									<button class="skill-node @GetNodeStateClass(node) @(isSelected ? "selected" : "") @currentBranch.ToString().ToLower()"
+											onclick=@(() => SelectNode(node))
+											onmouseenter=@(() => HoverNode(node))
+											onmouseleave=@(() => HoverNode(null))>
+										<!-- Node content -->
+										<div class="node-content">
+											<span class="node-icon">@GetSkillIcon(node)</span>
+										</div>
+
+										<!-- Rank display -->
+										<div class="node-rank @(isMaxed ? "maxed" : "") @(rank > 0 ? "has-progress" : "")">
+											@rank/@node.MaxRank
+										</div>
+
+										<!-- Progress bar under node -->
+										@if (node.MaxRank > 1)
+										{
+											<div class="node-progress-bar">
+												<div class="node-progress-fill @currentBranch.ToString().ToLower()" style="width: @(progress * 100)%;"></div>
+											</div>
+										}
+
+										<!-- Checkmark for maxed skills -->
+										@if (isMaxed)
+										{
+											<div class="node-check">✓</div>
+										}
+									</button>
+
+									<div class="node-name">@node.Name</div>
+								</div>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+
+		<!-- Right: Skill Detail Panel -->
+		<div class="skill-detail">
+		@{
+			var displayNode = selectedNode ?? hoveredNode;
+		}
+		@if (displayNode != null)
+		{
+			var rank = GetSkillRank(displayNode.Id);
+			var isMaxed = rank >= displayNode.MaxRank;
+			var canUpgrade = CanUpgradeSkill(displayNode.Id);
+			var currentBonus = GetCurrentBonus(displayNode, rank);
+			var nextBonus = GetCurrentBonus(displayNode, rank + 1);
+			var costToMax = (displayNode.MaxRank - rank) * displayNode.CostPerRank;
+
+			<div class="detail-content">
+				<!-- Skill Image -->
+				<div class="detail-image-container">
+					<img class="detail-image" src="/ui/skills/@(displayNode.Id).png" />
+					<div class="detail-image-overlay @currentBranch.ToString().ToLower()"></div>
+				</div>
+
+				<!-- Skill Header -->
+				<div class="detail-header">
+					<span class="detail-icon @currentBranch.ToString().ToLower()">@GetSkillIcon(displayNode)</span>
+					<div class="detail-title">
+						<span class="detail-name">@displayNode.Name</span>
+						<span class="detail-rank @(isMaxed ? "maxed" : "")">
+							@if (isMaxed)
+							{
+								<span>MAX</span>
+							}
+							else
+							{
+								<span>Rank @rank/@displayNode.MaxRank</span>
+							}
+						</span>
+					</div>
+				</div>
+
+				<!-- Description -->
+				<div class="detail-desc">@displayNode.Description</div>
+
+				<!-- Effects -->
+				<div class="detail-effects">
+					@foreach (var effect in displayNode.Effects)
+					{
+						var currentVal = effect.Value * rank;
+						var nextVal = effect.Value * (rank + 1);
+						var maxVal = effect.Value * displayNode.MaxRank;
+
+						<div class="effect-row">
+							<span class="effect-label">@GetEffectLabel(effect)</span>
+							<div class="effect-values">
+								<span class="effect-current">+@currentVal@GetEffectSuffix(effect)</span>
+								@if (!isMaxed)
+								{
+									<span class="effect-arrow">→</span>
+									<span class="effect-next">+@nextVal@GetEffectSuffix(effect)</span>
+								}
+							</div>
+							<span class="effect-max">(Max: +@maxVal@GetEffectSuffix(effect))</span>
+						</div>
+					}
+				</div>
+
+				<!-- Progress bar -->
+				<div class="detail-progress">
+					<div class="progress-bar">
+						<div class="progress-fill @currentBranch.ToString().ToLower()"
+							 style="width: @((float)rank / displayNode.MaxRank * 100)%;"></div>
+					</div>
+					<span class="progress-text">@rank / @displayNode.MaxRank</span>
+				</div>
+
+				<!-- Actions -->
+				<div class="detail-actions">
+					@if (isMaxed)
+					{
+						<div class="detail-maxed">
+							<span class="maxed-icon">✓</span>
+							<span class="maxed-text">MAXED</span>
+						</div>
+					}
+					else if (canUpgrade)
+					{
+						<div class="detail-cost">
+							<span class="cost-value">@displayNode.CostPerRank</span>
+							<span class="cost-label">SP</span>
+						</div>
+						<div class="detail-buttons">
+							<button class="upgrade-btn @(isHoldingUpgrade ? "holding" : "")"
+									onmousedown=@StartHoldUpgrade
+									onmouseup=@StopHold
+									onmouseleave=@StopHold>
+								<div class="btn-fill" style="width: @(isHoldingUpgrade ? holdProgress * 100 : 0)%;"></div>
+								<span class="btn-text">@(isHoldingUpgrade ? "UPGRADING..." : "Hold to Upgrade")</span>
+							</button>
+							@if (rank < displayNode.MaxRank - 1 && GetSkillPoints() >= costToMax)
+							{
+								<button class="maxout-btn @(isHoldingMax ? "holding" : "")"
+										onmousedown=@StartHoldMax
+										onmouseup=@StopHold
+										onmouseleave=@StopHold>
+									<div class="btn-fill" style="width: @(isHoldingMax ? holdProgress * 100 : 0)%;"></div>
+									<span class="btn-text">@(isHoldingMax ? "MAXING..." : $"Hold to Max ({costToMax} SP)")</span>
+								</button>
+							}
+						</div>
+					}
+					else
+					{
+						<div class="detail-locked">
+							@{
+								var branchPts = GetBranchPointsSpent();
+								var needsBranchPts = displayNode.RequiredBranchPoints > 0 && branchPts < displayNode.RequiredBranchPoints;
+								var needsSkillReq = !string.IsNullOrEmpty(displayNode.RequiredSkillId) && GetSkillRank(displayNode.RequiredSkillId) < displayNode.RequiredSkillRank;
+							}
+							@if (needsBranchPts)
+							{
+								<span class="locked-text">Need @displayNode.RequiredBranchPoints pts in branch (@branchPts/@displayNode.RequiredBranchPoints)</span>
+							}
+							else if (needsSkillReq)
+							{
+								var reqNode = TamerManager.Instance?.SkillTree?.GetNode(displayNode.RequiredSkillId);
+								<span class="locked-text">Requires @reqNode?.Name Rank @displayNode.RequiredSkillRank</span>
+							}
+							else if (GetSkillPoints() < displayNode.CostPerRank)
+							{
+								<span class="locked-text">Not enough SP</span>
+							}
+						</div>
+					}
+				</div>
+			</div>
+		}
+		else
+		{
+			<div class="detail-placeholder">
+				<span class="placeholder-icon">🎯</span>
+				<span class="placeholder-text">Select a skill to see details</span>
+			</div>
+		}
+	</div>
+	</div>
+
+</div>
+
+@code {
+	private SkillBranch currentBranch = SkillBranch.Power;
+	private SkillNode selectedNode = null;
+	private SkillNode hoveredNode = null;
+
+	// Hold-to-upgrade state
+	private bool isHoldingUpgrade = false;
+	private bool isHoldingMax = false;
+	private bool isHoldingReset = false;
+	private float holdProgress = 0f;
+	private const float HoldDuration = 0.7f; // seconds to fill (upgrade)
+	private const float HoldDurationMax = 0.9f; // longer for max (more impactful)
+	private const float HoldDurationReset = 1.0f; // longest for reset (destructive)
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			AcceptsFocus = true;
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		UpdateHoldProgress();
+	}
+
+	private void UpdateHoldProgress()
+	{
+		if (isHoldingUpgrade || isHoldingMax || isHoldingReset)
+		{
+			// Use different durations for each action type
+			float duration = HoldDuration;
+			if (isHoldingMax) duration = HoldDurationMax;
+			else if (isHoldingReset) duration = HoldDurationReset;
+
+			// Increment progress based on time
+			holdProgress += Time.Delta / duration;
+
+			if (holdProgress >= 1f)
+			{
+				// Trigger the action
+				if (isHoldingUpgrade)
+				{
+					UpgradeSelected();
+				}
+				else if (isHoldingMax)
+				{
+					MaxOutSelected();
+				}
+				else if (isHoldingReset)
+				{
+					ResetSkills();
+				}
+
+				// Reset state
+				ResetHoldState();
+			}
+		}
+	}
+
+	private void StartHoldUpgrade()
+	{
+		if (selectedNode == null || !CanUpgradeSkill(selectedNode.Id)) return;
+		isHoldingUpgrade = true;
+		holdProgress = 0f;
+		SoundManager.PlayHover();
+	}
+
+	private void StartHoldMax()
+	{
+		if (selectedNode == null) return;
+		isHoldingMax = true;
+		holdProgress = 0f;
+		SoundManager.PlayHover();
+	}
+
+	private void StartHoldReset()
+	{
+		if (GetTotalRanksUnlocked() <= 0) return;
+		isHoldingReset = true;
+		holdProgress = 0f;
+		SoundManager.PlayHover();
+	}
+
+	private void StopHold()
+	{
+		ResetHoldState();
+	}
+
+	private void ResetHoldState()
+	{
+		isHoldingUpgrade = false;
+		isHoldingMax = false;
+		isHoldingReset = false;
+		holdProgress = 0f;
+	}
+
+	public void TickInput()
+	{
+		HandleKeyboardInput();
+	}
+
+	private void HandleKeyboardInput()
+	{
+		var nodes = GetBranchNodes();
+		if (nodes.Count == 0) return;
+
+		// Navigate branches with Q/E
+		if (Input.Pressed("PrevWeapon"))
+		{
+			CycleBranchBack();
+		}
+		else if (Input.Pressed("NextWeapon"))
+		{
+			CycleBranchForward();
+		}
+
+		// Navigate skills with Left/Right
+		if (Input.Pressed("Left"))
+		{
+			SelectPreviousNode();
+		}
+		else if (Input.Pressed("Right"))
+		{
+			SelectNextNode();
+		}
+
+		// Upgrade with Enter/Space
+		if (Input.Pressed("attack1") || Input.Pressed("jump"))
+		{
+			UpgradeSelected();
+		}
+
+		// Exit with Up
+		if (Input.Pressed("Up"))
+		{
+			GameHUD.ExitPanel();
+		}
+	}
+
+	private void OnPanelClicked()
+	{
+		GameHUD.EnterPanel();
+	}
+
+	private void SelectBranch(SkillBranch branch)
+	{
+		currentBranch = branch;
+		selectedNode = null;
+		SoundManager.PlayClick();
+	}
+
+	private void CycleBranchBack()
+	{
+		var branches = new[] { SkillBranch.Power, SkillBranch.Fusion, SkillBranch.Expedition, SkillBranch.Mastery, SkillBranch.Fortune };
+		int idx = Array.IndexOf(branches, currentBranch);
+		idx = (idx - 1 + branches.Length) % branches.Length;
+		SelectBranch(branches[idx]);
+	}
+
+	private void CycleBranchForward()
+	{
+		var branches = new[] { SkillBranch.Power, SkillBranch.Fusion, SkillBranch.Expedition, SkillBranch.Mastery, SkillBranch.Fortune };
+		int idx = Array.IndexOf(branches, currentBranch);
+		idx = (idx + 1) % branches.Length;
+		SelectBranch(branches[idx]);
+	}
+
+	private void SelectNode(SkillNode node)
+	{
+		selectedNode = node;
+		SoundManager.PlayHover();
+	}
+
+	private void HoverNode(SkillNode node)
+	{
+		hoveredNode = node;
+	}
+
+	private void SelectPreviousNode()
+	{
+		var nodes = GetBranchNodes();
+		if (nodes.Count == 0) return;
+
+		int currentIdx = selectedNode != null ? nodes.FindIndex(n => n.Id == selectedNode.Id) : 0;
+		int newIdx = Math.Max(0, currentIdx - 1);
+		selectedNode = nodes[newIdx];
+		SoundManager.PlayHover();
+	}
+
+	private void SelectNextNode()
+	{
+		var nodes = GetBranchNodes();
+		if (nodes.Count == 0) return;
+
+		int currentIdx = selectedNode != null ? nodes.FindIndex(n => n.Id == selectedNode.Id) : -1;
+		int newIdx = Math.Min(nodes.Count - 1, currentIdx + 1);
+		selectedNode = nodes[newIdx];
+		SoundManager.PlayHover();
+	}
+
+	private void UpgradeSelected()
+	{
+		if (selectedNode == null) return;
+		if (!CanUpgradeSkill(selectedNode.Id)) return;
+
+		TamerManager.Instance?.UnlockSkill(selectedNode.Id);
+		SoundManager.PlayForward();
+	}
+
+	private void MaxOutSelected()
+	{
+		if (selectedNode == null) return;
+
+		TamerManager.Instance?.MaxOutSkill(selectedNode.Id);
+		SoundManager.PlayForward();
+	}
+
+	private int GetSkillPoints() => TamerManager.Instance?.CurrentTamer?.SkillPoints ?? 0;
+
+	private int GetBranchPointsSpent()
+	{
+		return GetBranchPointsSpent(currentBranch);
+	}
+
+	private int GetBranchPointsSpent(SkillBranch branch)
+	{
+		var tamer = TamerManager.Instance;
+		if (tamer?.SkillTree == null || tamer?.CurrentTamer == null) return 0;
+		return tamer.SkillTree.GetPointsSpentInBranch(branch, tamer.CurrentTamer.SkillRanks);
+	}
+
+	private int GetBranchMaxPoints()
+	{
+		var nodes = GetBranchNodes();
+		return nodes.Sum(n => n.MaxRank * n.CostPerRank);
+	}
+
+	private List<SkillNode> GetBranchNodes()
+	{
+		return TamerManager.Instance?.SkillTree?.GetNodesByBranch(currentBranch) ?? new();
+	}
+
+	private int GetSkillRank(string skillId)
+	{
+		return TamerManager.Instance?.GetSkillRank(skillId) ?? 0;
+	}
+
+	private bool CanUpgradeSkill(string skillId)
+	{
+		return TamerManager.Instance?.CanUnlockSkill(skillId) ?? false;
+	}
+
+	private int GetTotalRanksUnlocked()
+	{
+		return TamerManager.Instance?.GetTotalRanksUnlocked() ?? 0;
+	}
+
+	private int GetMaxPossibleRanks()
+	{
+		return TamerManager.Instance?.GetMaxPossibleRanks() ?? 0;
+	}
+
+	private string GetNodeStateClass(SkillNode node)
+	{
+		int rank = GetSkillRank(node.Id);
+		if (rank >= node.MaxRank) return "maxed";
+		if (CanUpgradeSkill(node.Id)) return "available";
+		if (rank > 0) return "partial";
+		return "locked";
+	}
+
+	private string GetSkillIcon(SkillNode node)
+	{
+		// Return emoji based on skill effect type
+		if (node.Effects.Count == 0) return "◆";
+
+		return node.Effects[0].Type switch
+		{
+			SkillEffectType.AllMonsterATKPercent => "⚔️",
+			SkillEffectType.AllMonsterDEFPercent => "🛡️",
+			SkillEffectType.AllMonsterHPPercent => "❤️",
+			SkillEffectType.AllMonsterSpAPercent => "✨",
+			SkillEffectType.AllMonsterSpDPercent => "🔮",
+			SkillEffectType.AllMonsterSPDPercent => "💨",
+			SkillEffectType.CritChanceBonus => "🎯",
+			SkillEffectType.CritDamageBonus => "💥",
+			SkillEffectType.GeneBonusFlat => "🧬",
+			SkillEffectType.GeneticInheritanceBonus => "🔬",
+			SkillEffectType.MutationChance => "⚗️",
+			SkillEffectType.BreedingCostReduction => "💎",
+			SkillEffectType.TwinChance => "👯",
+			SkillEffectType.RareTraitChance => "⭐",
+			SkillEffectType.NatureInheritance => "🌿",
+			SkillEffectType.GeneLock => "🔒",
+			SkillEffectType.ExpeditionSpeedBonus => "🏃",
+			SkillEffectType.ItemFindBonus => "📦",
+			SkillEffectType.EncounterRateBonus => "👁️",
+			SkillEffectType.ExpeditionXPBonus => "📚",
+			SkillEffectType.RareItemChance => "🎁",
+			SkillEffectType.TeamSizeBonus => "👥",
+			SkillEffectType.CartographerUnlock => "🗺️",
+			SkillEffectType.BossDamageBonus => "👑",
+			SkillEffectType.BossDamageReduction => "🛡️",
+			SkillEffectType.BossTokenBonus => "🪙",
+			SkillEffectType.HigherTierDamageBonus => "⬆️",
+			SkillEffectType.PhaseDamageBonus => "💫",
+			SkillEffectType.MythicDamageBonus => "🔥",
+			SkillEffectType.BossSpawnBonus => "🎲",
+			SkillEffectType.ShopDiscount => "🏷️",
+			SkillEffectType.GoldDropBonus => "💰",
+			SkillEffectType.DiscountStackingBonus => "📈",
+			SkillEffectType.DoubleDropChance => "✌️",
+			SkillEffectType.BoostPotencyBonus => "⚡",
+			SkillEffectType.GoldFromAllSources => "🌟",
+			_ => "◆"
+		};
+	}
+
+	private string GetEffectLabel(SkillEffect effect)
+	{
+		return effect.Type switch
+		{
+			SkillEffectType.AllMonsterATKPercent => "ATK",
+			SkillEffectType.AllMonsterDEFPercent => "DEF",
+			SkillEffectType.AllMonsterHPPercent => "HP",
+			SkillEffectType.AllMonsterSpAPercent => "SpA",
+			SkillEffectType.AllMonsterSpDPercent => "SpD",
+			SkillEffectType.AllMonsterSPDPercent => "SPD",
+			SkillEffectType.CritChanceBonus => "Crit Chance",
+			SkillEffectType.CritDamageBonus => "Crit Damage",
+			SkillEffectType.GeneBonusFlat => "Gene Bonus",
+			SkillEffectType.GeneticInheritanceBonus => "Inheritance",
+			SkillEffectType.MutationChance => "Mutation",
+			SkillEffectType.BreedingCostReduction => "Cost Reduction",
+			SkillEffectType.TwinChance => "Twin Chance",
+			SkillEffectType.RareTraitChance => "Rare Trait",
+			SkillEffectType.NatureInheritance => "Nature Inherit",
+			SkillEffectType.GeneLock => "Genes Locked",
+			SkillEffectType.ExpeditionSpeedBonus => "Speed",
+			SkillEffectType.ItemFindBonus => "Item Find",
+			SkillEffectType.EncounterRateBonus => "Encounters",
+			SkillEffectType.ExpeditionXPBonus => "Team XP",
+			SkillEffectType.RareItemChance => "Rare Items",
+			SkillEffectType.TeamSizeBonus => "Team Size",
+			SkillEffectType.CartographerUnlock => "Mode Unlock",
+			SkillEffectType.BossDamageBonus => "Boss Damage",
+			SkillEffectType.BossDamageReduction => "Boss Resist",
+			SkillEffectType.BossTokenBonus => "Tokens",
+			SkillEffectType.HigherTierDamageBonus => "Tier Damage",
+			SkillEffectType.PhaseDamageBonus => "Phase Damage",
+			SkillEffectType.MythicDamageBonus => "Mythic Damage",
+			SkillEffectType.BossSpawnBonus => "Boss Spawn",
+			SkillEffectType.ShopDiscount => "Shop Discount",
+			SkillEffectType.GoldDropBonus => "Gold Drops",
+			SkillEffectType.DiscountStackingBonus => "Stacking Discount",
+			SkillEffectType.DoubleDropChance => "Double Drop",
+			SkillEffectType.BoostPotencyBonus => "Boost Power",
+			SkillEffectType.GoldFromAllSources => "All Gold",
+			_ => effect.Type.ToString()
+		};
+	}
+
+	private string GetEffectSuffix(SkillEffect effect)
+	{
+		// Some effects are flat values, others are percentages
+		return effect.Type switch
+		{
+			SkillEffectType.GeneBonusFlat => "",
+			SkillEffectType.GeneLock => "",
+			SkillEffectType.TeamSizeBonus => "",
+			SkillEffectType.CartographerUnlock => "",
+			_ => "%"
+		};
+	}
+
+	private float GetCurrentBonus(SkillNode node, int rank)
+	{
+		if (node.Effects.Count == 0) return 0;
+		return node.Effects[0].Value * rank;
+	}
+
+	private string GetBranchColor(SkillBranch branch)
+	{
+		return branch switch
+		{
+			SkillBranch.Power => "#ef4444",
+			SkillBranch.Fusion => "#ec4899",
+			SkillBranch.Expedition => "#22c55e",
+			SkillBranch.Mastery => "#fbbf24",
+			SkillBranch.Fortune => "#06b6d4",
+			_ => "#8b5cf6"
+		};
+	}
+
+	private void ResetSkills()
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if (tamer == null) return;
+
+		// Calculate total points spent
+		int refundedPoints = TamerManager.Instance.GetTotalSkillPointsSpent();
+
+		tamer.SkillPoints += refundedPoints;
+		tamer.SkillRanks.Clear();
+
+		TamerManager.Instance.SaveToCloud();
+		selectedNode = null;
+
+		SoundManager.PlayForward();
+		Log.Info($"Reset skills, refunded {refundedPoints} points");
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(currentBranch);
+		hash.Add(selectedNode?.Id);
+		hash.Add(hoveredNode?.Id);
+		hash.Add(GetSkillPoints());
+		hash.Add(GetTotalRanksUnlocked());
+		hash.Add(GetBranchPointsSpent());
+		hash.Add(holdProgress);
+		hash.Add(isHoldingUpgrade);
+		hash.Add(isHoldingMax);
+		hash.Add(isHoldingReset);
+		return hash.ToHashCode();
+	}
+}

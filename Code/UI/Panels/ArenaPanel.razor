@@ -1,0 +1,752 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+<div class="arena-panel" onclick=@OnPanelClicked>
+	@if (currentView == "lobby")
+	{
+		<!-- Arena Lobby -->
+		<div class="panel-header">
+			<div class="header-text">
+				<div class="panel-title">Arena</div>
+				<div class="panel-subtitle">Battle other players and climb the ranks</div>
+			</div>
+		</div>
+
+		<div class="alpha-disclaimer">
+			<span class="disclaimer-icon">⚠</span>
+			<span class="disclaimer-text">Ranked matchmaking is limited during alpha. Full online features coming in a future update with trading!</span>
+		</div>
+
+		<div class="lobby-content">
+			<!-- Player Stats -->
+			<div class="player-stats-section">
+				<div class="rank-card">
+					<div class="rank-icon-large" style="color: @GetRankColor()">@GetRankIcon()</div>
+					<div class="rank-details">
+						<div class="rank-title" style="color: @GetRankColor()">@GetRank()</div>
+						<div class="rank-points">@GetArenaPoints() Points</div>
+					</div>
+				</div>
+
+				<div class="stats-row">
+					<div class="stat-item wins">
+						<span class="stat-value">@GetWins()</span>
+						<span class="stat-label">W</span>
+					</div>
+					<div class="stat-divider">/</div>
+					<div class="stat-item losses">
+						<span class="stat-value">@GetLosses()</span>
+						<span class="stat-label">L</span>
+					</div>
+					<div class="stat-divider">•</div>
+					<div class="stat-item winrate">
+						<span class="stat-value">@GetWinRate()%</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Center: Team Selection -->
+			<div class="team-section">
+				<div class="section-title">SELECT YOUR TEAM</div>
+				<div class="team-slots">
+					@for (int i = 0; i < 3; i++)
+					{
+						var index = i;
+						var monster = selectedTeam.Count > index ? selectedTeam[index] : null;
+						<div class="team-slot @(monster != null ? "filled" : "")"
+							 onclick=@(() => { if (monster != null) RemoveFromTeam(monster); else OpenTeamSelect(); })>
+							@if (monster != null)
+							{
+								<MonsterCard Monster=@monster IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
+							}
+							else
+							{
+								<div class="empty-slot">
+									<span class="empty-icon">+</span>
+								</div>
+							}
+						</div>
+					}
+				</div>
+
+				<!-- Battle Buttons -->
+				<div class="battle-actions">
+					@if (IsOnlineAvailable())
+					{
+						<button class="battle-btn online @(selectedTeam.Count == 0 ? "disabled" : "")"
+								onclick=@FindOnlineOpponent>
+							<span class="btn-icon">⚔</span>
+							<span class="btn-text">QUICK PLAY</span>
+							<span class="btn-sub">@GetPlayersSearching() online</span>
+						</button>
+					}
+					<button class="battle-btn ai @(selectedTeam.Count == 0 ? "disabled" : "")"
+							onclick=@FindOpponent>
+						<span class="btn-icon">🤖</span>
+						<span class="btn-text">VS AI</span>
+					</button>
+				</div>
+			</div>
+
+			<!-- Right Side: Leaderboard Button -->
+			<div class="side-actions">
+				<button class="side-btn leaderboard" onclick=@ViewLeaderboard>
+					<span class="btn-icon">💎</span>
+					<span class="btn-text">LEADERBOARD</span>
+				</button>
+			</div>
+		</div>
+	}
+	else if (currentView == "matchmaking")
+	{
+		<!-- Matchmaking View -->
+		<div class="matchmaking-screen">
+			<div class="searching-animation">
+				<div class="search-ring"></div>
+				<div class="search-icon">⚔</div>
+			</div>
+			@if (isOnlineMatchmaking)
+			{
+				<div class="searching-text">Searching for opponent...</div>
+				<div class="queue-info">@GetPlayersSearching() players in queue</div>
+				<div class="queue-time">@GetQueueTime()</div>
+				<button class="action-btn cancel" onclick=@CancelOnlineSearch>
+					CANCEL
+				</button>
+			}
+			else
+			{
+				<div class="searching-text">Finding opponent...</div>
+			}
+		</div>
+	}
+	else if (currentView == "opponent-found")
+	{
+		<!-- Opponent Found View -->
+		<div class="opponent-screen">
+			<div class="opponent-header">
+				@if (currentOpponent?.IsRealPlayer == true)
+				{
+					<span class="real-player-badge">REAL PLAYER</span>
+				}
+				OPPONENT FOUND
+			</div>
+
+			<div class="matchup">
+				<div class="matchup-side player">
+					<div class="matchup-name">@GetPlayerName()</div>
+					<div class="matchup-rank" style="color: @GetRankColor()">@GetRank()</div>
+					<div class="matchup-team">
+						@foreach (var monster in selectedTeam)
+						{
+							@if (HasSprite(monster))
+							{
+								<img class="matchup-icon" src="@GetIconPath(monster)" />
+							}
+							else
+							{
+								<div class="matchup-icon-placeholder">?</div>
+							}
+						}
+					</div>
+				</div>
+
+				<div class="matchup-vs">VS</div>
+
+				<div class="matchup-side opponent">
+					<div class="matchup-name">@currentOpponent?.Name</div>
+					<div class="matchup-rank" style="color: @CompetitiveManager.GetRankColor(currentOpponent?.Rank ?? "")">
+						@currentOpponent?.Rank
+					</div>
+					<div class="matchup-team">
+						@foreach (var monster in currentOpponent?.Team ?? new())
+						{
+							@if (HasSprite(monster))
+							{
+								<img class="matchup-icon" src="@GetIconPath(monster)" />
+							}
+							else
+							{
+								<div class="matchup-icon-placeholder">?</div>
+							}
+						}
+					</div>
+				</div>
+			</div>
+
+			<div class="opponent-actions">
+				@if (isWaitingForOpponent)
+				{
+					<div class="waiting-indicator">
+						<span class="waiting-text">Waiting for opponent...</span>
+					</div>
+					<button class="action-btn cancel" onclick=@CancelMatch>
+						CANCEL
+					</button>
+				}
+				else
+				{
+					<button class="action-btn battle" onclick=@StartBattle>
+						BEGIN BATTLE
+					</button>
+					<button class="action-btn cancel" onclick=@CancelMatch>
+						CANCEL
+					</button>
+				}
+			</div>
+		</div>
+	}
+	else if (currentView == "battle")
+	{
+		<!-- Battle View -->
+		<BattleView OnBattleEnd=@OnBattleComplete IsArenaBattle=@true />
+	}
+	else if (currentView == "result")
+	{
+		<!-- Result View -->
+		<div class="result-screen @(lastMatchWon ? "victory" : "defeat")">
+			<div class="result-title">@(lastMatchWon ? "VICTORY!" : "DEFEAT")</div>
+
+			<div class="points-change @(lastMatchWon ? "gain" : "loss")">
+				@(pointsChange >= 0 ? "+" : "")@pointsChange Points
+			</div>
+
+			<div class="new-rank">
+				<div class="rank-label">Current Rank</div>
+				<div class="rank-title" style="color: @GetRankColor()">@GetRank()</div>
+				<div class="rank-points">@GetArenaPoints() Points</div>
+			</div>
+
+			<button class="action-btn continue" onclick=@ReturnToLobby>
+				CONTINUE
+			</button>
+		</div>
+	}
+	else if (currentView == "leaderboard")
+	{
+		<!-- Leaderboard View -->
+		<LeaderboardPanel OnBack=@ReturnToLobby />
+	}
+
+	<!-- Team Selection Modal -->
+	@if (showTeamSelect)
+	{
+		<div class="select-overlay" onclick=@CloseTeamSelect>
+			<div class="select-panel" onclick:stopPropagation>
+				<div class="select-header">
+					<div class="select-title">Select Monster</div>
+					<button class="close-btn" onclick=@CloseTeamSelect>×</button>
+				</div>
+				<div class="select-grid">
+					@foreach (var monster in GetAvailableMonsters())
+					{
+						<div class="monster-option @(selectedTeam.Contains(monster) ? "selected" : "")"
+							 onclick=@(() => AddToTeam(monster))>
+							<MonsterCard Monster=@monster IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
+						</div>
+					}
+				</div>
+			</div>
+		</div>
+	}
+</div>
+
+@code {
+	private string currentView = "lobby";
+	private List<Monster> selectedTeam = new();
+	private ArenaOpponent currentOpponent;
+	private bool showTeamSelect = false;
+	private int selectedMonsterIndex = 0;
+	private int selectedSlotIndex = 0;
+
+	private bool lastMatchWon = false;
+	private int pointsChange = 0;
+
+	// Online matchmaking state
+	private bool isOnlineMatchmaking = false;
+	private DateTime queueStartTime;
+	private string matchmakingError = null;
+	private bool isWaitingForOpponent = false; // True when we clicked ready but opponent hasn't
+
+	private void OnPanelClicked()
+	{
+		// When user clicks with mouse, ensure we're in panel mode (not tab navigation)
+		GameHUD.EnterPanel();
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		// Note: Input handling is now done via TickInput() called from GameHUD
+	}
+
+	/// <summary>
+	/// Called by GameHUD to handle keyboard input (child panels don't auto-tick in s&box Razor)
+	/// </summary>
+	public void TickInput()
+	{
+		HandleKeyboardInput();
+	}
+
+	private void HandleKeyboardInput()
+	{
+
+		// Team selection modal
+		if (showTeamSelect)
+		{
+			var monsters = GetAvailableMonsters();
+			if (monsters.Count > 0)
+			{
+				selectedMonsterIndex = Math.Clamp(selectedMonsterIndex, 0, monsters.Count - 1);
+				int columns = 4;
+
+				if (Input.Pressed("Left"))
+				{
+					selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - 1);
+					SoundManager.PlayHover();
+				}
+				else if (Input.Pressed("Right"))
+				{
+					selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + 1);
+					SoundManager.PlayHover();
+				}
+				else if (Input.Pressed("Up"))
+				{
+					// If at top row, close modal instead
+					if (selectedMonsterIndex < columns)
+					{
+						CloseTeamSelect();
+					}
+					else
+					{
+						selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - columns);
+						SoundManager.PlayHover();
+					}
+				}
+				else if (Input.Pressed("Down"))
+				{
+					selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + columns);
+					SoundManager.PlayHover();
+				}
+				else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				{
+					AddToTeam(monsters[selectedMonsterIndex]);
+				}
+			}
+
+			if (Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				CloseTeamSelect();
+			}
+			return;
+		}
+
+		// Lobby view
+		if (currentView == "lobby")
+		{
+			// W/Up to exit to tab navigation
+			if (Input.Pressed("Up"))
+			{
+				GameHUD.ExitPanel();
+				return;
+			}
+
+			// Navigate team slots with Q/E
+			if (Input.Pressed("PrevWeapon") || Input.Pressed("Left"))
+			{
+				selectedSlotIndex = Math.Max(0, selectedSlotIndex - 1);
+				SoundManager.PlayHover();
+			}
+			else if (Input.Pressed("NextWeapon") || Input.Pressed("Right"))
+			{
+				selectedSlotIndex = Math.Min(2, selectedSlotIndex + 1);
+				SoundManager.PlayHover();
+			}
+			// Enter/Down to find opponent or open team select
+			else if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Down"))
+			{
+				if (selectedTeam.Count > 0)
+				{
+					FindOpponent();
+				}
+				else
+				{
+					OpenTeamSelect();
+				}
+			}
+			// Remove from slot with Backspace
+			else if (Input.Pressed("run") && selectedTeam.Count > selectedSlotIndex)
+			{
+				RemoveFromTeam(selectedTeam[selectedSlotIndex]);
+			}
+			// Add to slot with number keys
+			else if (Input.Pressed("Slot1"))
+			{
+				if (selectedTeam.Count > 0) RemoveFromTeam(selectedTeam[0]);
+				else OpenTeamSelect();
+			}
+			else if (Input.Pressed("Slot2"))
+			{
+				if (selectedTeam.Count > 1) RemoveFromTeam(selectedTeam[1]);
+				else if (selectedTeam.Count < 3) OpenTeamSelect();
+			}
+			else if (Input.Pressed("Slot3"))
+			{
+				if (selectedTeam.Count > 2) RemoveFromTeam(selectedTeam[2]);
+				else if (selectedTeam.Count < 3) OpenTeamSelect();
+			}
+			// L for leaderboard
+			else if (Input.Pressed("reload"))
+			{
+				ViewLeaderboard();
+			}
+		}
+		// Opponent found view
+		else if (currentView == "opponent-found")
+		{
+			if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			{
+				StartBattle();
+			}
+			else if (Input.Pressed("Menu") || Input.Pressed("run") || Input.Pressed("Up"))
+			{
+				CancelMatch();
+			}
+		}
+		// Result view
+		else if (currentView == "result")
+		{
+			if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Menu"))
+			{
+				ReturnToLobby();
+			}
+		}
+		// Leaderboard view
+		else if (currentView == "leaderboard")
+		{
+			if (Input.Pressed("Menu") || Input.Pressed("run") || Input.Pressed("Up"))
+			{
+				ReturnToLobby();
+			}
+		}
+	}
+
+	private string GetRank()
+	{
+		return CompetitiveManager.GetRankFromPoints(GetArenaPoints());
+	}
+
+	private string GetRankColor()
+	{
+		return CompetitiveManager.GetRankColor(GetRank());
+	}
+
+	private string GetRankIcon()
+	{
+		return GetRank() switch
+		{
+			"Mythic" => "★",
+			"Legendary" => "◆",
+			"Master" => "♦",
+			"Diamond" => "◇",
+			"Platinum" => "●",
+			"Gold" => "○",
+			"Silver" => "▪",
+			"Bronze" => "▫",
+			_ => "○"
+		};
+	}
+
+	private int GetArenaPoints()
+	{
+		return TamerManager.Instance?.CurrentTamer?.ArenaPoints ?? 0;
+	}
+
+	private int GetWins()
+	{
+		return TamerManager.Instance?.CurrentTamer?.ArenaWins ?? 0;
+	}
+
+	private int GetLosses()
+	{
+		return TamerManager.Instance?.CurrentTamer?.ArenaLosses ?? 0;
+	}
+
+	private int GetWinRate()
+	{
+		var total = GetWins() + GetLosses();
+		if (total == 0) return 0;
+		return (int)((float)GetWins() / total * 100);
+	}
+
+	private string GetPlayerName()
+	{
+		return TamerManager.Instance?.CurrentTamer?.Name ?? "Player";
+	}
+
+	private bool HasSprite(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster?.SpeciesId);
+		if (species == null) return false;
+
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+			return true;
+		if (!string.IsNullOrEmpty(species.IconPath))
+			return true;
+
+		return false;
+	}
+
+	private string GetIconPath(Monster monster)
+	{
+		var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+		return species?.IconPath ?? "";
+	}
+
+	private List<Monster> GetAvailableMonsters()
+	{
+		return MonsterManager.Instance?.OwnedMonsters
+			?.Where(m => !selectedTeam.Contains(m))
+			?.OrderByDescending(m => m.PowerRating)
+			?.ToList() ?? new();
+	}
+
+	private void OpenTeamSelect()
+	{
+		if (selectedTeam.Count < 3)
+		{
+			SoundManager.PlayForward();
+			showTeamSelect = true;
+		}
+	}
+
+	private void CloseTeamSelect()
+	{
+		SoundManager.PlayBack();
+		showTeamSelect = false;
+	}
+
+	private void AddToTeam(Monster monster)
+	{
+		if (selectedTeam.Count < 3 && !selectedTeam.Contains(monster))
+		{
+			SoundManager.PlaySelect();
+			selectedTeam.Add(monster);
+		}
+		showTeamSelect = false;
+	}
+
+	private void RemoveFromTeam(Monster monster)
+	{
+		SoundManager.PlayBack();
+		selectedTeam.Remove(monster);
+	}
+
+	private async void FindOpponent()
+	{
+		if (selectedTeam.Count == 0)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		SoundManager.PlayForward();
+		currentView = "matchmaking";
+		isOnlineMatchmaking = false;
+		CompetitiveManager.Instance?.SetArenaTeam(selectedTeam);
+
+		// Simulate matchmaking delay
+		await Task.Delay(1500);
+
+		CompetitiveManager.Instance?.FindOpponent();
+		currentOpponent = CompetitiveManager.Instance?.CurrentOpponent;
+		SoundManager.PlaySelect();
+		currentView = "opponent-found";
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// ONLINE MATCHMAKING
+	// ═══════════════════════════════════════════════════════════════
+
+	private bool IsOnlineAvailable()
+	{
+		return CompetitiveManager.Instance?.IsNetworkActive ?? false;
+	}
+
+	private int GetPlayersSearching()
+	{
+		return CompetitiveManager.Instance?.PlayersInQueue ?? 0;
+	}
+
+	private string GetQueueTime()
+	{
+		if (!isOnlineMatchmaking) return "";
+		var elapsed = DateTime.UtcNow - queueStartTime;
+		return $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}";
+	}
+
+	private void FindOnlineOpponent()
+	{
+		if (selectedTeam.Count == 0)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		SoundManager.PlayForward();
+		currentView = "matchmaking";
+		isOnlineMatchmaking = true;
+		queueStartTime = DateTime.UtcNow;
+		matchmakingError = null;
+
+		CompetitiveManager.Instance?.SetArenaTeam(selectedTeam);
+
+		// Subscribe to events
+		if (CompetitiveManager.Instance != null)
+		{
+			CompetitiveManager.Instance.OnOpponentFound -= OnOnlineOpponentFound;
+			CompetitiveManager.Instance.OnOpponentFound += OnOnlineOpponentFound;
+			CompetitiveManager.Instance.OnMatchmakingError -= OnMatchmakingError;
+			CompetitiveManager.Instance.OnMatchmakingError += OnMatchmakingError;
+			CompetitiveManager.Instance.OnOpponentDisconnected -= OnOpponentDisconnected;
+			CompetitiveManager.Instance.OnOpponentDisconnected += OnOpponentDisconnected;
+			CompetitiveManager.Instance.OnBothPlayersReady -= OnBothPlayersReady;
+			CompetitiveManager.Instance.OnBothPlayersReady += OnBothPlayersReady;
+		}
+
+		CompetitiveManager.Instance?.JoinOnlineQueue();
+	}
+
+	private void OnOnlineOpponentFound(ArenaOpponent opponent)
+	{
+		currentOpponent = opponent;
+		SoundManager.PlaySelect();
+		currentView = "opponent-found";
+	}
+
+	private void OnMatchmakingError(string error)
+	{
+		matchmakingError = error;
+		SoundManager.PlayDeny();
+		currentView = "lobby";
+		isOnlineMatchmaking = false;
+	}
+
+	private void OnOpponentDisconnected()
+	{
+		SoundManager.PlayDeny();
+		// If in battle, the CompetitiveManager handles awarding the win
+		// Just return to lobby
+		if (currentView == "battle")
+		{
+			// Battle complete will be called by CompetitiveManager
+		}
+		else
+		{
+			currentView = "lobby";
+			currentOpponent = null;
+			isWaitingForOpponent = false;
+		}
+	}
+
+	private void OnBothPlayersReady()
+	{
+		Log.Info( "[ArenaPanel] Both players ready, switching to battle view" );
+		isWaitingForOpponent = false;
+		currentView = "battle";
+	}
+
+	private void CancelOnlineSearch()
+	{
+		SoundManager.PlayBack();
+		CompetitiveManager.Instance?.LeaveOnlineQueue();
+		isOnlineMatchmaking = false;
+		isWaitingForOpponent = false;
+		currentView = "lobby";
+	}
+
+	private void CancelMatch()
+	{
+		SoundManager.PlayBack();
+		if (isOnlineMatchmaking)
+		{
+			CompetitiveManager.Instance?.LeaveOnlineQueue();
+		}
+		isOnlineMatchmaking = false;
+		isWaitingForOpponent = false;
+		currentOpponent = null;
+		currentView = "lobby";
+	}
+
+	private void StartBattle()
+	{
+		Log.Info( $"[ArenaPanel] StartBattle clicked: isOnlineMatchmaking={isOnlineMatchmaking}, IsRealPlayer={currentOpponent?.IsRealPlayer}" );
+		SoundManager.PlayBattleStart();
+
+		if (isOnlineMatchmaking && currentOpponent?.IsRealPlayer == true)
+		{
+			// Signal ready and wait for both players - don't change view yet
+			Log.Info( "[ArenaPanel] Signaling ready for online match" );
+			isWaitingForOpponent = true;
+			CompetitiveManager.Instance?.SignalReady();
+			// View will change when OnBothPlayersReady fires
+		}
+		else
+		{
+			Log.Info( "[ArenaPanel] Starting AI arena battle" );
+			CompetitiveManager.Instance?.StartArenaBattle();
+			currentView = "battle";
+		}
+	}
+
+	private void OnBattleComplete(bool playerWon)
+	{
+		lastMatchWon = playerWon;
+
+		// Calculate points change
+		var tamerBefore = GetArenaPoints();
+
+		if (isOnlineMatchmaking)
+		{
+			CompetitiveManager.Instance?.OnOnlineBattleComplete(playerWon);
+		}
+		else
+		{
+			CompetitiveManager.Instance?.OnBattleComplete(playerWon);
+		}
+
+		pointsChange = GetArenaPoints() - tamerBefore;
+
+		// Play victory/defeat sound
+		if (playerWon)
+			SoundManager.PlayVictory();
+		else
+			SoundManager.PlayDefeat();
+
+		BattleManager.Instance?.ExitBattle();
+		isOnlineMatchmaking = false;
+		isWaitingForOpponent = false;
+		currentView = "result";
+	}
+
+	private void ReturnToLobby()
+	{
+		SoundManager.PlayClick();
+		currentOpponent = null;
+		isOnlineMatchmaking = false;
+		isWaitingForOpponent = false;
+		currentView = "lobby";
+	}
+
+	private void ViewLeaderboard()
+	{
+		SoundManager.PlayForward();
+		currentView = "leaderboard";
+	}
+}

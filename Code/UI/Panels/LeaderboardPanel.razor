@@ -1,0 +1,191 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@inherits Panel
+
+<div class="leaderboard-panel">
+	<div class="leaderboard-header">
+		<button class="back-btn" onclick=@OnBackClicked>Back</button>
+		<div class="leaderboard-title">Leaderboard</div>
+		<button class="refresh-btn" onclick=@RefreshLeaderboard>↻ Refresh</button>
+	</div>
+
+	<div class="player-rank-card">
+		<div class="your-rank">
+			<span class="rank-label">Your Rank</span>
+			<span class="rank-position">#@playerRank</span>
+		</div>
+		<div class="your-stats">
+			<span class="your-points">@GetPlayerPoints() Points</span>
+			<span class="your-tier" style="color: @GetPlayerRankColor()">@GetPlayerRankTitle()</span>
+		</div>
+	</div>
+
+	<div class="leaderboard-list">
+		@if (isLoading)
+		{
+			<div class="loading-state">
+				<div class="loading-spinner"></div>
+				<span>Loading leaderboard...</span>
+			</div>
+		}
+		else if (entries.Count == 0)
+		{
+			<div class="empty-state">
+				<span class="empty-icon">💎</span>
+				<span class="empty-text">No entries yet</span>
+				<span class="empty-hint">Be the first to climb the ranks!</span>
+			</div>
+		}
+		else
+		{
+			@foreach (var entry in entries)
+			{
+				<div class="leaderboard-entry @(entry.Rank <= 3 ? $"top-{entry.Rank}" : "") @(IsPlayerEntry(entry) ? "player" : "")">
+					<div class="entry-rank">
+						@if (entry.Rank == 1)
+						{
+							<span class="rank-medal gold">🥇</span>
+						}
+						else if (entry.Rank == 2)
+						{
+							<span class="rank-medal silver">🥈</span>
+						}
+						else if (entry.Rank == 3)
+						{
+							<span class="rank-medal bronze">🥉</span>
+						}
+						else
+						{
+							<span class="rank-number">#@entry.Rank</span>
+						}
+					</div>
+					<div class="entry-info">
+						<div class="entry-name">@entry.Name</div>
+						<div class="entry-tier" style="color: @CompetitiveManager.GetRankColor(entry.RankTitle)">
+							@entry.RankTitle
+						</div>
+					</div>
+					<div class="entry-score">@entry.Score pts</div>
+				</div>
+			}
+		}
+	</div>
+
+	<div class="rank-tiers">
+		<div class="tiers-title">Rank Tiers</div>
+		<div class="tiers-list">
+			<div class="tier-item">
+				<span class="tier-color" style="background: #ec4899"></span>
+				<span class="tier-name">Mythic</span>
+				<span class="tier-req">5000+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #fbbf24"></span>
+				<span class="tier-name">Legendary</span>
+				<span class="tier-req">3000+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #a855f7"></span>
+				<span class="tier-name">Master</span>
+				<span class="tier-req">2000+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #60a5fa"></span>
+				<span class="tier-name">Diamond</span>
+				<span class="tier-req">1500+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #22d3ee"></span>
+				<span class="tier-name">Platinum</span>
+				<span class="tier-req">1000+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #eab308"></span>
+				<span class="tier-name">Gold</span>
+				<span class="tier-req">700+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #9ca3af"></span>
+				<span class="tier-name">Silver</span>
+				<span class="tier-req">400+</span>
+			</div>
+			<div class="tier-item">
+				<span class="tier-color" style="background: #d97706"></span>
+				<span class="tier-name">Bronze</span>
+				<span class="tier-req">200+</span>
+			</div>
+		</div>
+	</div>
+</div>
+
+@code {
+	public Action OnBack { get; set; }
+
+	private List<LeaderboardEntry> entries = new();
+	private int playerRank = 0;
+	private bool isLoading = true;
+
+	protected override async void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			await LoadLeaderboard();
+		}
+	}
+
+	private async Task LoadLeaderboard()
+	{
+		isLoading = true;
+
+		if (CompetitiveManager.Instance != null)
+		{
+			entries = await CompetitiveManager.Instance.GetLeaderboard(100);
+			playerRank = await CompetitiveManager.Instance.GetPlayerRank();
+		}
+		else
+		{
+			entries = new();
+			playerRank = 0;
+		}
+
+		if (playerRank <= 0)
+		{
+			playerRank = entries.Count + 1;
+		}
+
+		isLoading = false;
+	}
+
+	private async void RefreshLeaderboard()
+	{
+		await LoadLeaderboard();
+	}
+
+	private void OnBackClicked()
+	{
+		OnBack?.Invoke();
+	}
+
+	private int GetPlayerPoints()
+	{
+		return TamerManager.Instance?.CurrentTamer?.ArenaPoints ?? 0;
+	}
+
+	private string GetPlayerRankTitle()
+	{
+		return CompetitiveManager.GetRankFromPoints(GetPlayerPoints());
+	}
+
+	private string GetPlayerRankColor()
+	{
+		return CompetitiveManager.GetRankColor(GetPlayerRankTitle());
+	}
+
+	private bool IsPlayerEntry(LeaderboardEntry entry)
+	{
+		var playerName = TamerManager.Instance?.CurrentTamer?.Name;
+		return entry.Name == playerName;
+	}
+}

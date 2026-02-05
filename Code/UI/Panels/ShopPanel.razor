@@ -1,0 +1,382 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="shop-panel @(IsVisible ? "visible" : "")">
+	<div class="shop-overlay" onclick=@Close></div>
+
+	<div class="shop-modal">
+		<div class="shop-header">
+			<div class="header-left">
+				<span class="shop-icon">🛒</span>
+				<span class="header-title">SHOP</span>
+			</div>
+
+			<!-- Active Boosts Banner (centered at top) -->
+			@if (GetAllBoosts().Count > 0)
+			{
+				<div class="active-boosts-banner">
+					@foreach (var boost in GetAllBoosts())
+					{
+						<div class="boost-badge @(boost.IsServer ? "server" : "personal")">
+							<span class="boost-icon">@GetBoostIcon(boost.Type)</span>
+							<span class="boost-label">@GetBoostLabel(boost.Type)</span>
+							<span class="boost-timer">@FormatTimeRemaining(boost.TimeRemaining)</span>
+							@if (boost.IsServer)
+							{
+								<span class="boost-server-tag">SERVER</span>
+							}
+						</div>
+					}
+				</div>
+			}
+
+			<div class="header-right">
+				<div class="currency gold">
+					<img src="ui/icons/gold.png" />
+					<span>@GetGold()</span>
+				</div>
+				<div class="currency gems">
+					<img src="ui/icons/gem.png" />
+					<span>@GetGems()</span>
+				</div>
+				<button class="close-btn" onclick=@Close>×</button>
+			</div>
+		</div>
+
+		<div class="shop-content">
+			<!-- Category Tabs -->
+			<div class="category-tabs">
+				<button class="category-tab @(currentCategory == "all" ? "active" : "")" onclick=@(() => currentCategory = "all")>All</button>
+				<button class="category-tab @(currentCategory == "supplies" ? "active" : "")" onclick=@(() => currentCategory = "supplies")>Supplies</button>
+				<button class="category-tab @(currentCategory == "boosts" ? "active" : "")" onclick=@(() => currentCategory = "boosts")>Boosts</button>
+				<button class="category-tab @(currentCategory == "premium" ? "active" : "")" onclick=@(() => currentCategory = "premium")>Premium</button>
+			</div>
+
+			<!-- Items Grid -->
+			<div class="items-grid">
+				@foreach (var item in GetFilteredItems())
+				{
+					<div class="shop-item @(CanAfford(item) ? "" : "cant-afford") @(selectedItem?.Id == item.Id ? "selected" : "")"
+						 onclick=@(() => SelectItem(item))>
+						<div class="item-icon-container">
+							<img class="item-icon" src="@item.IconPath" onerror="this.style.display='none'" />
+							@if (item.Quantity > 1)
+							{
+								<span class="item-quantity">x@(item.Quantity)</span>
+							}
+						</div>
+						<div class="item-info">
+							<div class="item-name">@item.Name</div>
+							<div class="item-price @(item.Currency.ToString().ToLower())">
+								@if (item.Currency == CurrencyType.Gold)
+								{
+									<img src="ui/icons/gold.png" />
+								}
+								else
+								{
+									<img src="ui/icons/gem.png" />
+								}
+								<span>@item.Price</span>
+							</div>
+						</div>
+						@if (item.RequiredLevel > GetLevel())
+						{
+							<div class="level-lock">LV @item.RequiredLevel</div>
+						}
+					</div>
+				}
+			</div>
+
+			<!-- Item Detail Panel -->
+			@if (selectedItem != null)
+			{
+				<div class="item-detail">
+					<div class="detail-header">
+						<img class="detail-icon" src="@selectedItem.IconPath" onerror="this.style.display='none'" />
+						<div class="detail-info">
+							<div class="detail-name">@selectedItem.Name</div>
+							@if (selectedItem.Quantity > 1)
+							{
+								<div class="detail-quantity">x@(selectedItem.Quantity)</div>
+							}
+						</div>
+					</div>
+					<div class="detail-desc">@selectedItem.Description</div>
+					@if (selectedItem.BoostDurationMinutes > 0)
+					{
+						<div class="detail-duration">Duration: @GetDurationText(selectedItem.BoostDurationMinutes)</div>
+					}
+					@if (selectedItem.RequiredLevel > 1)
+					{
+						<div class="detail-level @(GetLevel() >= selectedItem.RequiredLevel ? "" : "locked")">
+							Requires Level @selectedItem.RequiredLevel
+						</div>
+					}
+					<div class="detail-footer">
+						<div class="detail-price @(selectedItem.Currency.ToString().ToLower())">
+							@if (selectedItem.Currency == CurrencyType.Gold)
+							{
+								<img src="ui/icons/gold.png" />
+							}
+							else
+							{
+								<img src="ui/icons/gem.png" />
+							}
+							<span>@selectedItem.Price</span>
+						</div>
+						<button class="buy-btn @(CanPurchase(selectedItem) ? "" : "disabled")"
+								onclick=@(() => PurchaseItem(selectedItem))>
+							@if (!CanAfford(selectedItem))
+							{
+								<span>Not Enough</span>
+							}
+							else if (GetLevel() < selectedItem.RequiredLevel)
+							{
+								<span>Level Locked</span>
+							}
+							else if (IsBoostAlreadyActive(selectedItem))
+							{
+								<span>Active</span>
+							}
+							else if (IsAtBoostLimit(selectedItem))
+							{
+								<span>Max Boosts</span>
+							}
+							else if (IsStorageMaxed(selectedItem))
+							{
+								<span>Max Storage</span>
+							}
+							else
+							{
+								<span>Purchase</span>
+							}
+						</button>
+					</div>
+				</div>
+			}
+		</div>
+
+	</div>
+</root>
+
+@code {
+	public static bool IsVisible { get; set; } = false;
+	private string currentCategory = "all";
+	private ShopItem selectedItem;
+	private string purchaseMessage = "";
+
+	public static void Show() => IsVisible = true;
+	public static void Close() => IsVisible = false;
+	public static void Toggle() => IsVisible = !IsVisible;
+
+	private int GetGold() => TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+	private int GetGems() => TamerManager.Instance?.CurrentTamer?.Gems ?? 0;
+	private int GetLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 1;
+
+	private List<ShopItem> GetFilteredItems()
+	{
+		var items = ShopManager.Instance?.GetAvailableItems(100) ?? new List<ShopItem>();
+
+		return currentCategory switch
+		{
+			"supplies" => items.Where(i => i.Type == ShopItemType.ContractInk || i.Type == ShopItemType.Revive).ToList(),
+			"boosts" => items.Where(i =>
+				i.Type == ShopItemType.XPBoost ||
+				i.Type == ShopItemType.TamerXPBoost ||
+				i.Type == ShopItemType.BeastXPBoost ||
+				i.Type == ShopItemType.GoldBoost ||
+				i.Type == ShopItemType.RareEncounter ||
+				i.Type == ShopItemType.LuckyCharm).ToList(),
+			"premium" => items.Where(i => i.Currency == CurrencyType.Gems).ToList(),
+			_ => items
+		};
+	}
+
+	private List<ActiveBoost> GetActiveBoosts()
+	{
+		return ShopManager.Instance?.ActiveBoosts?.Where(b => !b.IsExpired).ToList() ?? new List<ActiveBoost>();
+	}
+
+	private bool CanAfford(ShopItem item)
+	{
+		return item.CanAfford(GetGold(), GetGems());
+	}
+
+	private bool IsBoostItem(ShopItem item)
+	{
+		return item.Type == ShopItemType.TamerXPBoost ||
+			   item.Type == ShopItemType.BeastXPBoost ||
+			   item.Type == ShopItemType.XPBoost ||
+			   item.Type == ShopItemType.GoldBoost ||
+			   item.Type == ShopItemType.RareEncounter ||
+			   item.Type == ShopItemType.LuckyCharm;
+	}
+
+	private bool IsBoostAlreadyActive(ShopItem item)
+	{
+		if (!IsBoostItem(item)) return false;
+		return ShopManager.Instance?.IsBoostActive(item.Type) ?? false;
+	}
+
+	private bool IsAtBoostLimit(ShopItem item)
+	{
+		if (!IsBoostItem(item)) return false;
+
+		// Check if this specific boost type is already active (no stacking)
+		if (IsBoostAlreadyActive(item)) return true;
+
+		// Server boosts don't count toward personal limit
+		if (item.Id.StartsWith("server_"))
+		{
+			return !(ShopManager.Instance?.CanActivateServerBoost(item.Type) ?? true);
+		}
+
+		return !(ShopManager.Instance?.CanActivateBoost(item.Type) ?? true);
+	}
+
+	private bool IsStorageMaxed(ShopItem item)
+	{
+		if (item.Type != ShopItemType.MonsterSlot) return false;
+		return !(MonsterManager.Instance?.CanExpandStorage ?? true);
+	}
+
+	private bool CanPurchase(ShopItem item)
+	{
+		return CanAfford(item) && GetLevel() >= item.RequiredLevel && item.IsInStock && !IsAtBoostLimit(item) && !IsStorageMaxed(item);
+	}
+
+	private void SelectItem(ShopItem item)
+	{
+		selectedItem = item;
+		SoundManager.PlayClick();
+	}
+
+	private void PurchaseItem(ShopItem item)
+	{
+		if (!CanPurchase(item)) return;
+
+		if (ShopManager.Instance?.PurchaseItem(item.Id) == true)
+		{
+			SoundManager.PlayForward();
+			purchaseMessage = $"Purchased {item.Name}!";
+		}
+		else
+		{
+			SoundManager.PlayBack();
+		}
+	}
+
+	private string GetDurationText(int minutes)
+	{
+		if (minutes >= 60)
+		{
+			int hours = minutes / 60;
+			int mins = minutes % 60;
+			return mins > 0 ? $"{hours}h {mins}m" : $"{hours} hour{(hours > 1 ? "s" : "")}";
+		}
+		return $"{minutes} minutes";
+	}
+
+	private string GetBoostName(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.XPBoost => "2x XP",
+			ShopItemType.TamerXPBoost => "2x Tamer XP",
+			ShopItemType.BeastXPBoost => "2x Beast XP",
+			ShopItemType.GoldBoost => "1.5x Gold",
+			ShopItemType.RareEncounter => "Lucky Charm",
+			ShopItemType.LuckyCharm => "Lucky Charm",
+			_ => type.ToString()
+		};
+	}
+
+	private string GetTimeRemaining(ActiveBoost boost)
+	{
+		var time = boost.TimeRemaining;
+		if (time.TotalMinutes >= 60)
+			return $"{(int)time.TotalHours}h {time.Minutes}m";
+		if (time.TotalMinutes >= 1)
+			return $"{(int)time.TotalMinutes}m";
+		return $"{time.Seconds}s";
+	}
+
+	// New methods for the boost banner
+	private List<(ShopItemType Type, float Multiplier, TimeSpan TimeRemaining, bool IsServer, string ActivatedBy)> GetAllBoosts()
+	{
+		return ShopManager.Instance?.GetAllActiveBoosts() ?? new();
+	}
+
+	private string GetBoostIcon(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => "⬆",
+			ShopItemType.BeastXPBoost => "⬆",
+			ShopItemType.XPBoost => "⬆",
+			ShopItemType.GoldBoost => "💰",
+			ShopItemType.RareEncounter => "🍀",
+			ShopItemType.LuckyCharm => "🍀",
+			_ => "✨"
+		};
+	}
+
+	private string GetBoostLabel(ShopItemType type)
+	{
+		return type switch
+		{
+			ShopItemType.TamerXPBoost => "Tamer XP",
+			ShopItemType.BeastXPBoost => "Beast XP",
+			ShopItemType.XPBoost => "XP",
+			ShopItemType.GoldBoost => "Gold",
+			ShopItemType.RareEncounter => "Lucky",
+			ShopItemType.LuckyCharm => "Lucky",
+			_ => type.ToString()
+		};
+	}
+
+	private string FormatTimeRemaining(TimeSpan time)
+	{
+		if (time.TotalMinutes >= 60)
+			return $"{(int)time.TotalHours}h {time.Minutes}m";
+		if (time.TotalMinutes >= 1)
+			return $"{(int)time.TotalMinutes}m";
+		return $"{time.Seconds}s";
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		if (IsVisible && Input.Pressed("Escape"))
+		{
+			Close();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(currentCategory);
+		hash.Add(selectedItem?.Id);
+		hash.Add(GetGold());
+		hash.Add(GetGems());
+		hash.Add(GetActiveBoosts().Count);
+		hash.Add(GetAllBoosts().Count);
+		hash.Add(ShopManager.Instance?.GetRemainingBoostSlots() ?? 0);
+		hash.Add(MonsterManager.Instance?.MaxMonsters ?? 50);
+		hash.Add(MonsterManager.Instance?.CanExpandStorage ?? true);
+		// Add time-based hash for boost timers
+		foreach (var boost in GetAllBoosts())
+		{
+			hash.Add((int)boost.TimeRemaining.TotalSeconds);
+		}
+		return hash.ToHashCode();
+	}
+}

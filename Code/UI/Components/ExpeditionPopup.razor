@@ -1,0 +1,112 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+@if (IsVisible())
+{
+	<div class="expedition-popup">
+		<div class="popup-header">
+			<span class="popup-icon">⚔</span>
+			<span class="popup-title">@GetExpeditionName()</span>
+		</div>
+		<div class="popup-content">
+			<div class="wave-info">
+				<span class="wave-label">Wave</span>
+				<span class="wave-value">@GetCurrentWave() / @GetTotalWaves()</span>
+			</div>
+			<div class="progress-bar">
+				<div class="progress-fill" style="width: @GetProgressPercent()%"></div>
+			</div>
+			<div class="battle-status">
+				@if (IsBattleInProgress())
+				{
+					<span class="status-text fighting">Turn @GetCurrentTurn() - Fighting...</span>
+				}
+				else
+				{
+					<span class="status-text">Preparing next wave</span>
+				}
+			</div>
+		</div>
+		<div class="popup-toggles">
+			<div class="mini-toggle @(GetAutoRetry() ? "active" : "")" onclick=@ToggleAutoRetry>
+				<span class="toggle-label">Retry</span>
+			</div>
+		</div>
+		<div class="popup-buttons">
+			<button class="popup-view-btn" onclick=@OnViewClicked>
+				VIEW
+			</button>
+			<button class="popup-end-btn" onclick=@OnEndClicked>
+				END
+			</button>
+		</div>
+	</div>
+}
+
+@code {
+	public Action OnViewExpedition { get; set; }
+
+	private bool IsVisible()
+	{
+		return ExpeditionManager.Instance?.IsRunningInBackground == true
+			&& ExpeditionManager.Instance?.CurrentExpedition != null
+			&& BattleManager.Instance?.IsInBattle == true;
+	}
+
+	private string GetExpeditionName() => ExpeditionManager.Instance?.CurrentExpedition?.Name ?? "Expedition";
+	private int GetCurrentWave() => ExpeditionManager.Instance?.CurrentWave ?? 0;
+	private int GetTotalWaves() => ExpeditionManager.Instance?.CurrentExpedition?.Waves ?? 1;
+
+	private float GetProgressPercent()
+	{
+		var total = GetTotalWaves();
+		if (total <= 0) return 0;
+		return (float)GetCurrentWave() / total * 100f;
+	}
+
+	private bool IsBattleInProgress() => BattleManager.Instance?.IsInBattle == true;
+	private int GetCurrentTurn() => BattleManager.Instance?.CurrentTurnIndex ?? 0;
+	private bool GetAutoRetry() => ExpeditionManager.Instance?.AutoRetry ?? false;
+
+	private void ToggleAutoRetry()
+	{
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.AutoRetry = !ExpeditionManager.Instance.AutoRetry;
+			if (ExpeditionManager.Instance.AutoRetry)
+				SoundManager.PlayToggleOn();
+			else
+				SoundManager.PlayToggleOff();
+		}
+	}
+
+	private void OnViewClicked()
+	{
+		SoundManager.PlayForward();
+		OnViewExpedition?.Invoke();
+	}
+
+	private void OnEndClicked()
+	{
+		SoundManager.PlayBack();
+		// End the expedition and clean up
+		ExpeditionManager.Instance?.CancelExpedition();
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible());
+		hash.Add(GetCurrentWave());
+		hash.Add(IsBattleInProgress());
+		hash.Add(GetCurrentTurn());
+		hash.Add(GetAutoRetry());
+		hash.Add(ExpeditionManager.Instance?.AccumulatedGold ?? 0);
+		return hash.ToHashCode();
+	}
+}

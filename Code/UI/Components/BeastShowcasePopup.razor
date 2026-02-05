@@ -1,0 +1,199 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+@if (IsVisible && currentMessage != null)
+{
+	<root class="showcase-popup-container">
+		<div class="popup-overlay" onclick=@Close></div>
+		<div class="showcase-popup @currentMessage.ShowcaseElement.ToLower()">
+			<div class="popup-header">
+				<span class="popup-title">@currentMessage.PlayerName's Beast</span>
+				<button class="popup-close" onclick=@Close>✕</button>
+			</div>
+			<div class="popup-content">
+				<!-- Top Section: Portrait and Basic Info -->
+				<div class="popup-top">
+					<div class="popup-portrait @currentMessage.ShowcaseElement.ToLower()">
+						<img class="popup-sprite" src="@GetAnimatedSprite()" />
+					</div>
+					<div class="popup-basic">
+						<div class="popup-name">@currentMessage.ShowcaseNickname</div>
+						<div class="popup-species">@currentMessage.ShowcaseSpeciesName</div>
+						<div class="popup-tags">
+							<span class="popup-element-tag @currentMessage.ShowcaseElement.ToLower()">@currentMessage.ShowcaseElement</span>
+							<span class="popup-rarity-tag @currentMessage.ShowcaseRarity.ToLower()">@currentMessage.ShowcaseRarity</span>
+						</div>
+						<div class="popup-power">
+							<span class="power-label">POWER</span>
+							<span class="power-value">@currentMessage.ShowcasePower</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Stats Section -->
+				<div class="popup-section">
+					<div class="section-title">Stats</div>
+					<div class="stats-grid">
+						<div class="stat-item">
+							<span class="stat-label">LV</span>
+							<span class="stat-value">@currentMessage.ShowcaseLevel</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">HP</span>
+							<span class="stat-value">@currentMessage.ShowcaseHP</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">ATK</span>
+							<span class="stat-value">@currentMessage.ShowcaseATK</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">DEF</span>
+							<span class="stat-value">@currentMessage.ShowcaseDEF</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">SpA</span>
+							<span class="stat-value">@currentMessage.ShowcaseSpA</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">SpD</span>
+							<span class="stat-value">@currentMessage.ShowcaseSpD</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">SPD</span>
+							<span class="stat-value">@currentMessage.ShowcaseSPD</span>
+						</div>
+						<div class="stat-item">
+							<span class="stat-label">GENES</span>
+							<span class="stat-value">@currentMessage.ShowcaseGenes</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- Battle Record Section -->
+				@if (currentMessage.ShowcaseBattles > 0 || !string.IsNullOrEmpty(currentMessage.ShowcaseVeteranRank))
+				{
+					<div class="popup-section">
+						<div class="section-title">Battle Record</div>
+						<div class="record-grid">
+							<div class="record-item">
+								<span class="record-value">@currentMessage.ShowcaseBattles</span>
+								<span class="record-label">Battles</span>
+							</div>
+							<div class="record-item">
+								<span class="record-value">@currentMessage.ShowcaseKnockouts</span>
+								<span class="record-label">KOs</span>
+							</div>
+							<div class="record-item">
+								<span class="record-value">@currentMessage.ShowcaseExpeditions</span>
+								<span class="record-label">Expeditions</span>
+							</div>
+						</div>
+						@if (!string.IsNullOrEmpty(currentMessage.ShowcaseVeteranRank))
+						{
+							<div class="veteran-badge">
+								<span class="veteran-icon">⭐</span>
+								<span class="veteran-rank">@currentMessage.ShowcaseVeteranRank</span>
+							</div>
+						}
+					</div>
+				}
+
+				<!-- Traits Section -->
+				@if (!string.IsNullOrEmpty(currentMessage.ShowcaseTraits))
+				{
+					<div class="popup-section">
+						<div class="section-title">Traits</div>
+						<div class="traits-list">
+							@foreach (var trait in currentMessage.ShowcaseTraits.Split(',', StringSplitOptions.RemoveEmptyEntries))
+							{
+								<span class="trait-tag">@trait.Trim()</span>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	</root>
+}
+
+@code {
+	public static BeastShowcasePopup Instance { get; private set; }
+
+	public bool IsVisible { get; private set; }
+	private ChatMessage currentMessage;
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			Instance = this;
+		}
+	}
+
+	public static void Show(ChatMessage message)
+	{
+		if (Instance != null && message != null)
+		{
+			Instance.currentMessage = message;
+			Instance.IsVisible = true;
+			Instance.StateHasChanged();
+			SoundManager.PlayClick();
+		}
+	}
+
+	public static void Hide()
+	{
+		if (Instance != null)
+		{
+			Instance.IsVisible = false;
+			Instance.currentMessage = null;
+			Instance.StateHasChanged();
+		}
+	}
+
+	private void Close()
+	{
+		SoundManager.PlayBack();
+		Hide();
+	}
+
+	private string GetAnimatedSprite()
+	{
+		if (currentMessage == null) return "";
+
+		// Look up species to get animation frames
+		var species = MonsterManager.Instance?.GetSpecies(currentMessage.ShowcaseSpeciesId);
+		if (species == null) return currentMessage.IconPath ?? "";
+
+		// Check if species has animation frames
+		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+		{
+			int frameIndex = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
+			return species.AnimationFrames[frameIndex];
+		}
+
+		// Fall back to static icon
+		return species.IconPath ?? currentMessage.IconPath ?? "";
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		// Handle Escape to close
+		if (IsVisible && Input.Pressed("Escape"))
+		{
+			Close();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		return HashCode.Combine(IsVisible, currentMessage?.Id, SpriteAnimator.GlobalFrame);
+	}
+}
