@@ -131,7 +131,12 @@
 								}
 							</div>
 							<div class="item-info">
-								<div class="item-name">@item.Name</div>
+								<div class="item-name">@GetBaseName(item.Name)</div>
+								@{ var suffix = GetNameSuffix(item.Name); }
+								@if (suffix != null)
+								{
+									<div class="item-name-sub">@suffix</div>
+								}
 								<div class="item-price gold">
 									<span class="gold-icon">🪙</span>
 									<span>@item.Price.ToString("N0")</span>
@@ -363,7 +368,12 @@
 								<div class="item-type-badge boss-type-consumable">Item</div>
 								<div class="consumable-icon">@item.Icon</div>
 								<div class="item-info">
-									<div class="item-name">@item.Name</div>
+									<div class="item-name">@GetBaseName(item.Name)</div>
+									@{ var bSuffix = GetNameSuffix(item.Name); }
+									@if (bSuffix != null)
+									{
+										<div class="item-name-sub">@bSuffix</div>
+									}
 									<div class="item-price boss">
 										<span class="token-icon">💎</span>
 										<span>@item.Cost.ToString("N0")</span>
@@ -554,33 +564,6 @@
 		</div>
 	}
 
-	<!-- Monster Picker Overlay -->
-	@if (showMonsterPicker)
-	{
-		<div class="monster-picker-overlay" onclick=@CloseMonsterPicker>
-			<div class="picker-content" onclick=@StopPropagation>
-				<div class="picker-header">
-					<div class="picker-title">Select a Monster</div>
-					<div class="picker-subtitle">Choose which monster to use @(pendingConsumable?.Name ?? "item") on</div>
-					<button class="picker-close-btn" onclick=@CloseMonsterPicker>✕</button>
-				</div>
-				<div class="picker-monster-grid">
-					@{
-						var monsters = GetOwnedMonsters();
-						for (int i = 0; i < monsters.Count; i++)
-						{
-							var monster = monsters[i];
-							var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
-							var delay = i * 0.03f;
-							<div class="picker-monster-card" style="animation-delay: @(delay)s;" onclick=@(() => ApplyConsumableToMonster(monster))>
-								<MonsterCard Monster=@monster IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
-							</div>
-						}
-					}
-				</div>
-			</div>
-		</div>
-	}
 </root>
 
 @code {
@@ -600,10 +583,6 @@
 	// Category dropdown state
 	private bool categoryDropdownOpen = false;
 	private bool bossCategoryDropdownOpen = false;
-
-	// Monster picker state
-	private bool showMonsterPicker = false;
-	private BossConsumable pendingConsumable = null;
 
 	// Purchase feedback state (timestamp-based, no OnUpdate needed)
 	private float purchaseFlashUntil = 0f;
@@ -823,6 +802,28 @@
 		return "<1m";
 	}
 
+	/// <summary>
+	/// Gets the base part of an item name (before parentheses).
+	/// e.g. "Tamer XP Boost (30 min)" -> "Tamer XP Boost"
+	/// </summary>
+	private string GetBaseName(string name)
+	{
+		if (string.IsNullOrEmpty(name)) return name;
+		int idx = name.IndexOf('(');
+		return idx > 0 ? name.Substring(0, idx).Trim() : name;
+	}
+
+	/// <summary>
+	/// Gets the parenthetical part of an item name.
+	/// e.g. "Tamer XP Boost (30 min)" -> "(30 min)"
+	/// </summary>
+	private string GetNameSuffix(string name)
+	{
+		if (string.IsNullOrEmpty(name)) return null;
+		int idx = name.IndexOf('(');
+		return idx > 0 ? name.Substring(idx) : null;
+	}
+
 	private string GetItemEmoji(ShopItemType type)
 	{
 		return type switch
@@ -938,196 +939,52 @@
 		};
 	}
 
-	// Boss consumables data (updated prices + new items)
+	// Boss consumables data (IDs match ItemManager registrations for inventory)
 	private List<BossConsumable> consumables = new()
 	{
-		// Existing items (price increases)
-		new BossConsumable { Id = "xp_orb_small", Name = "XP Orb (Small)", Description = "Grants 500 XP to one monster", Icon = "🔮", Cost = 100, Type = "monster-target" },
-		new BossConsumable { Id = "xp_orb_large", Name = "XP Orb (Large)", Description = "Grants 2000 XP to one monster", Icon = "🔮", Cost = 300, Type = "monster-target" },
-		new BossConsumable { Id = "elite_ink", Name = "Elite Contract Ink", Description = "+15% catch rate for 10 minutes", Icon = "✨", Cost = 200, Type = "instant" },
-		new BossConsumable { Id = "contract_ink_bundle", Name = "Contract Ink x5", Description = "5 Contract Ink for capturing monsters", Icon = "🖋️", Cost = 150, Type = "instant" },
+		new BossConsumable { Id = "boss_xp_orb_small", Name = "XP Orb (Small)", Description = "Grants 500 XP to one monster", Icon = "🔮", Cost = 100 },
+		new BossConsumable { Id = "boss_xp_orb_large", Name = "XP Orb (Large)", Description = "Grants 2000 XP to one monster", Icon = "🔮", Cost = 300 },
+		new BossConsumable { Id = "boss_elite_ink", Name = "Elite Contract Ink", Description = "+15% catch rate for 10 minutes", Icon = "✨", Cost = 200 },
+		new BossConsumable { Id = "boss_contract_ink_bundle", Name = "Contract Ink x5", Description = "5 Contract Ink for capturing monsters", Icon = "🖋️", Cost = 150 },
 
-		// New items
-		new BossConsumable { Id = "trait_reroll", Name = "Trait Reroll", Description = "Randomly rerolls one of a monster's traits from its species pool", Icon = "🎲", Cost = 500, Type = "trait-reroll" },
-		new BossConsumable { Id = "gene_booster", Name = "Gene Booster", Description = "Increases a random gene (IV) by +5, max 30", Icon = "🧬", Cost = 600, Type = "gene-booster" },
-		new BossConsumable { Id = "master_ink", Name = "Master Ink", Description = "Guarantees your next capture attempt succeeds", Icon = "🖊️", Cost = 800, Type = "master-ink" },
+		new BossConsumable { Id = "boss_trait_reroll", Name = "Trait Reroll", Description = "Randomly rerolls one of a monster's traits from its species pool", Icon = "🎲", Cost = 500 },
+		new BossConsumable { Id = "boss_gene_booster", Name = "Gene Booster", Description = "Increases a random gene (IV) by +5, max 30", Icon = "🧬", Cost = 600 },
+		new BossConsumable { Id = "boss_master_ink", Name = "Master Ink", Description = "Guarantees your next capture attempt succeeds", Icon = "🖊️", Cost = 800 },
 
 		// Nature Runes
-		new BossConsumable { Id = "rune_ferocious", Name = "Ferocious Rune", Description = "Sets nature to Ferocious (+10% ATK, -10% DEF)", Icon = "🔴", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Ferocious },
-		new BossConsumable { Id = "rune_stalwart", Name = "Stalwart Rune", Description = "Sets nature to Stalwart (+10% DEF, -10% ATK)", Icon = "🔵", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Stalwart },
-		new BossConsumable { Id = "rune_restless", Name = "Restless Rune", Description = "Sets nature to Restless (+10% SPD, -10% HP)", Icon = "🟢", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Restless },
-		new BossConsumable { Id = "rune_enduring", Name = "Enduring Rune", Description = "Sets nature to Enduring (+10% HP, -10% SPD)", Icon = "🟤", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Enduring },
-		new BossConsumable { Id = "rune_reckless", Name = "Reckless Rune", Description = "Sets nature to Reckless (+10% ATK, -10% SPD)", Icon = "🟠", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Reckless },
-		new BossConsumable { Id = "rune_stoic", Name = "Stoic Rune", Description = "Sets nature to Stoic (+10% DEF, -10% SPD)", Icon = "⚪", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Stoic },
-		new BossConsumable { Id = "rune_skittish", Name = "Skittish Rune", Description = "Sets nature to Skittish (+10% SPD, -10% DEF)", Icon = "🔷", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Skittish },
-		new BossConsumable { Id = "rune_vigorous", Name = "Vigorous Rune", Description = "Sets nature to Vigorous (+10% HP, -10% ATK)", Icon = "🍀", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Vigorous },
-		new BossConsumable { Id = "rune_ruthless", Name = "Ruthless Rune", Description = "Sets nature to Ruthless (+10% ATK, -10% HP)", Icon = "🔺", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Ruthless },
-		new BossConsumable { Id = "rune_nimble", Name = "Nimble Rune", Description = "Sets nature to Nimble (+10% SPD, -10% ATK)", Icon = "🪶", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Nimble },
-		new BossConsumable { Id = "rune_mystical", Name = "Mystical Rune", Description = "Sets nature to Mystical (+10% SpA, -10% ATK)", Icon = "🟣", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Mystical },
-		new BossConsumable { Id = "rune_resolute", Name = "Resolute Rune", Description = "Sets nature to Resolute (+10% SpD, -10% SpA)", Icon = "🟡", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Resolute },
-		new BossConsumable { Id = "rune_arcane", Name = "Arcane Rune", Description = "Sets nature to Arcane (+10% SpA, -10% DEF)", Icon = "💜", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Arcane },
-		new BossConsumable { Id = "rune_warded", Name = "Warded Rune", Description = "Sets nature to Warded (+10% SpD, -10% SPD)", Icon = "🟡", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Warded },
-		new BossConsumable { Id = "rune_cunning", Name = "Cunning Rune", Description = "Sets nature to Cunning (+10% SpA, -10% HP)", Icon = "🔮", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Cunning },
-		new BossConsumable { Id = "rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK)", Icon = "🌸", Cost = 400, Type = "nature-rune", TargetNature = NatureType.Serene },
+		new BossConsumable { Id = "boss_rune_ferocious", Name = "Ferocious Rune", Description = "Sets nature to Ferocious (+10% ATK, -10% DEF)", Icon = "🔴", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_stalwart", Name = "Stalwart Rune", Description = "Sets nature to Stalwart (+10% DEF, -10% ATK)", Icon = "🔵", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_restless", Name = "Restless Rune", Description = "Sets nature to Restless (+10% SPD, -10% HP)", Icon = "🟢", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_enduring", Name = "Enduring Rune", Description = "Sets nature to Enduring (+10% HP, -10% SPD)", Icon = "🟤", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_reckless", Name = "Reckless Rune", Description = "Sets nature to Reckless (+10% ATK, -10% SPD)", Icon = "🟠", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_stoic", Name = "Stoic Rune", Description = "Sets nature to Stoic (+10% DEF, -10% SPD)", Icon = "⚪", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_skittish", Name = "Skittish Rune", Description = "Sets nature to Skittish (+10% SPD, -10% DEF)", Icon = "🔷", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_vigorous", Name = "Vigorous Rune", Description = "Sets nature to Vigorous (+10% HP, -10% ATK)", Icon = "🍀", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_ruthless", Name = "Ruthless Rune", Description = "Sets nature to Ruthless (+10% ATK, -10% HP)", Icon = "🔺", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_nimble", Name = "Nimble Rune", Description = "Sets nature to Nimble (+10% SPD, -10% ATK)", Icon = "🪶", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_mystical", Name = "Mystical Rune", Description = "Sets nature to Mystical (+10% SpA, -10% ATK)", Icon = "🟣", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_resolute", Name = "Resolute Rune", Description = "Sets nature to Resolute (+10% SpD, -10% SpA)", Icon = "🟡", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_arcane", Name = "Arcane Rune", Description = "Sets nature to Arcane (+10% SpA, -10% DEF)", Icon = "💜", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_warded", Name = "Warded Rune", Description = "Sets nature to Warded (+10% SpD, -10% SPD)", Icon = "🟡", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_cunning", Name = "Cunning Rune", Description = "Sets nature to Cunning (+10% SpA, -10% HP)", Icon = "🔮", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK)", Icon = "🌸", Cost = 400 },
 	};
 
 	private void PurchaseConsumable(BossConsumable item)
 	{
 		if (GetBossTokens() < item.Cost) return;
 
-		// Items that need monster selection
-		if (item.Type == "nature-rune" || item.Type == "trait-reroll" || item.Type == "gene-booster" || item.Type == "monster-target")
-		{
-			pendingConsumable = item;
-			showMonsterPicker = true;
-			SoundManager.PlayForward();
-			return;
-		}
-
-		// Instant items
-		if (TamerManager.Instance?.SpendBossTokens(item.Cost) == true)
-		{
-			switch (item.Id)
-			{
-				case "contract_ink_bundle":
-					if (TamerManager.Instance?.CurrentTamer != null)
-						TamerManager.Instance.CurrentTamer.ContractInk += 5;
-					break;
-				case "elite_ink":
-					if (TamerManager.Instance?.CurrentTamer != null)
-					{
-						var tamer = TamerManager.Instance.CurrentTamer;
-						var currentExpiry = tamer.EliteInkExpiresAt > DateTime.Now ? tamer.EliteInkExpiresAt : DateTime.Now;
-						tamer.EliteInkExpiresAt = currentExpiry.AddMinutes(10);
-					}
-					break;
-				case "master_ink":
-					if (TamerManager.Instance?.CurrentTamer != null)
-						TamerManager.Instance.CurrentTamer.HasMasterInk = true;
-					break;
-			}
-			TamerManager.Instance?.SaveToCloud();
-			TriggerPurchaseFlash();
-			SoundManager.PlayForward();
-		}
-		else
-		{
-			SoundManager.PlayBack();
-		}
-	}
-
-	// Monster picker methods
-	private List<Monster> GetOwnedMonsters()
-	{
-		return MonsterManager.Instance?.OwnedMonsters?.ToList() ?? new List<Monster>();
-	}
-
-	private void CloseMonsterPicker()
-	{
-		showMonsterPicker = false;
-		pendingConsumable = null;
-		SoundManager.PlayBack();
-	}
-
-	private void StopPropagation()
-	{
-		// Prevents click from closing the overlay
-	}
-
-	private void ApplyConsumableToMonster(Monster monster)
-	{
-		if (pendingConsumable == null || monster == null) return;
-		if (TamerManager.Instance?.SpendBossTokens(pendingConsumable.Cost) != true)
+		if (TamerManager.Instance?.SpendBossTokens(item.Cost) != true)
 		{
 			SoundManager.PlayBack();
 			return;
 		}
 
-		var random = new Random();
-
-		switch (pendingConsumable.Type)
-		{
-			case "nature-rune":
-				if (pendingConsumable.TargetNature.HasValue)
-				{
-					monster.Genetics.Nature = pendingConsumable.TargetNature.Value;
-					MonsterManager.Instance?.RecalculateStats(monster);
-				}
-				break;
-
-			case "trait-reroll":
-				var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
-				if (species?.PossibleTraits != null && species.PossibleTraits.Count > 0 && monster.Traits.Count > 0)
-				{
-					// Find traits the monster doesn't already have
-					var availableTraits = species.PossibleTraits.Where(t => !monster.Traits.Contains(t)).ToList();
-					if (availableTraits.Count > 0)
-					{
-						// Replace a random trait slot with a random available trait
-						int slotToReplace = random.Next(monster.Traits.Count);
-						string newTrait = availableTraits[random.Next(availableTraits.Count)];
-						monster.Traits[slotToReplace] = newTrait;
-					}
-				}
-				break;
-
-			case "gene-booster":
-				// Pick a random gene and add +5 (max 30)
-				int geneIndex = random.Next(6);
-				switch (geneIndex)
-				{
-					case 0: monster.Genetics.HPGene = Math.Min(monster.Genetics.HPGene + 5, 30); break;
-					case 1: monster.Genetics.ATKGene = Math.Min(monster.Genetics.ATKGene + 5, 30); break;
-					case 2: monster.Genetics.DEFGene = Math.Min(monster.Genetics.DEFGene + 5, 30); break;
-					case 3: monster.Genetics.SpAGene = Math.Min(monster.Genetics.SpAGene + 5, 30); break;
-					case 4: monster.Genetics.SpDGene = Math.Min(monster.Genetics.SpDGene + 5, 30); break;
-					case 5: monster.Genetics.SPDGene = Math.Min(monster.Genetics.SPDGene + 5, 30); break;
-				}
-				MonsterManager.Instance?.RecalculateStats(monster);
-				break;
-
-			case "monster-target":
-				// XP orbs - apply XP to the selected monster
-				int xpAmount = pendingConsumable.Id == "xp_orb_large" ? 2000 : 500;
-				bool leveledUp = monster.AddXP(xpAmount);
-				MonsterManager.Instance?.RecalculateStats(monster);
-
-				if (leveledUp)
-				{
-					// Check for new moves learned at this level
-					var learnedMoves = MonsterManager.Instance?.CheckAndLearnNewMoves(monster);
-					if (learnedMoves != null)
-					{
-						foreach (var moveName in learnedMoves)
-						{
-							NotificationManager.Instance?.AddNotification(
-								NotificationType.Success,
-								"New Move Learned!",
-								$"{monster.Nickname} learned {moveName}!"
-							);
-						}
-					}
-
-					// Check for evolution readiness
-					var xpSpecies = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
-					if (xpSpecies != null && monster.CanEvolve(xpSpecies) && !monster.HasBeenNotifiedForEvolution)
-					{
-						monster.HasBeenNotifiedForEvolution = true;
-						var evolvedSpecies = MonsterManager.Instance?.GetSpecies(xpSpecies.EvolvesTo);
-						NotificationManager.Instance?.NotifyEvolutionReady(
-							monster.Nickname,
-							evolvedSpecies?.Name ?? "???"
-						);
-					}
-				}
-				break;
-		}
-
-		MonsterManager.Instance?.SaveMonsters();
+		// Add to inventory instead of applying immediately
+		ItemManager.Instance?.AddItem(item.Id);
+		TamerManager.Instance?.SaveToCloud();
+		TriggerPurchaseFlash();
 		SoundManager.PlayForward();
-
-		showMonsterPicker = false;
-		pendingConsumable = null;
 	}
 
 	// Helper classes
@@ -1138,8 +995,6 @@
 		public string Description { get; set; }
 		public string Icon { get; set; }
 		public int Cost { get; set; }
-		public string Type { get; set; } = "instant";
-		public NatureType? TargetNature { get; set; }
 	}
 
 	protected override int BuildHash()
@@ -1157,10 +1012,8 @@
 		hash.Add(GetActiveBoosts().Count);
 		hash.Add(GetActiveTheme());
 		hash.Add(GetActiveTitle());
-		hash.Add(showMonsterPicker);
 		hash.Add(categoryDropdownOpen);
 		hash.Add(bossCategoryDropdownOpen);
-		hash.Add(pendingConsumable?.Id);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		// Check for currency changes (triggers flash on purchase)
 		CheckCurrencyFlash();

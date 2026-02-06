@@ -818,6 +818,122 @@ public sealed class ItemManager : Component
 			SellPrice = 0
 		} );
 
+		// === BOSS SHOP CONSUMABLES ===
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_xp_orb_small",
+			Name = "XP Orb (Small)",
+			Description = "Grants 500 XP to one monster.",
+			IconPath = "ui/items/consumables/xp_orb_small.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Uncommon,
+			EffectType = ItemEffectType.XPGrant,
+			EffectValue = 500,
+			MaxStack = 99,
+			SellPrice = 0
+		} );
+
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_xp_orb_large",
+			Name = "XP Orb (Large)",
+			Description = "Grants 2000 XP to one monster.",
+			IconPath = "ui/items/consumables/xp_orb_large.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Rare,
+			EffectType = ItemEffectType.XPGrant,
+			EffectValue = 2000,
+			MaxStack = 99,
+			SellPrice = 0
+		} );
+
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_elite_ink",
+			Name = "Elite Contract Ink",
+			Description = "+15% catch rate for 10 minutes.",
+			IconPath = "ui/items/consumables/elite_ink.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Rare,
+			EffectType = ItemEffectType.EliteInkBuff,
+			EffectValue = 15,
+			EffectDuration = 10,
+			MaxStack = 10,
+			SellPrice = 0
+		} );
+
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_contract_ink_bundle",
+			Name = "Contract Ink x5",
+			Description = "5 Contract Ink for capturing monsters.",
+			IconPath = "ui/items/consumables/contract_ink_bundle.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Uncommon,
+			EffectType = ItemEffectType.ContractInkGrant,
+			EffectValue = 5,
+			MaxStack = 20,
+			SellPrice = 0
+		} );
+
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_trait_reroll",
+			Name = "Trait Reroll",
+			Description = "Randomly rerolls one of a monster's traits from its species pool.",
+			IconPath = "ui/items/consumables/trait_reroll.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Epic,
+			EffectType = ItemEffectType.TraitReroll,
+			MaxStack = 10,
+			SellPrice = 0
+		} );
+
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_gene_booster",
+			Name = "Gene Booster",
+			Description = "Increases a random gene (IV) by +5, max 30.",
+			IconPath = "ui/items/consumables/gene_booster.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Epic,
+			EffectType = ItemEffectType.GeneBoost,
+			EffectValue = 5,
+			MaxStack = 10,
+			SellPrice = 0
+		} );
+
+		AddItem( new ItemDefinition
+		{
+			Id = "boss_master_ink",
+			Name = "Master Ink",
+			Description = "Guarantees your next capture attempt succeeds.",
+			IconPath = "ui/items/consumables/master_ink.png",
+			Category = ItemCategory.Consumable,
+			Rarity = ItemRarity.Legendary,
+			EffectType = ItemEffectType.MasterInk,
+			MaxStack = 5,
+			SellPrice = 0
+		} );
+
+		// Nature Runes
+		AddItem( new ItemDefinition { Id = "boss_rune_ferocious", Name = "Ferocious Rune", Description = "Sets nature to Ferocious (+10% ATK, -10% DEF).", IconPath = "ui/items/consumables/rune_ferocious.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Ferocious, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_stalwart", Name = "Stalwart Rune", Description = "Sets nature to Stalwart (+10% DEF, -10% ATK).", IconPath = "ui/items/consumables/rune_stalwart.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Stalwart, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_restless", Name = "Restless Rune", Description = "Sets nature to Restless (+10% SPD, -10% HP).", IconPath = "ui/items/consumables/rune_restless.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Restless, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_enduring", Name = "Enduring Rune", Description = "Sets nature to Enduring (+10% HP, -10% SPD).", IconPath = "ui/items/consumables/rune_enduring.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Enduring, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_reckless", Name = "Reckless Rune", Description = "Sets nature to Reckless (+10% ATK, -10% SPD).", IconPath = "ui/items/consumables/rune_reckless.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Reckless, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_stoic", Name = "Stoic Rune", Description = "Sets nature to Stoic (+10% DEF, -10% SPD).", IconPath = "ui/items/consumables/rune_stoic.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Stoic, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_skittish", Name = "Skittish Rune", Description = "Sets nature to Skittish (+10% SPD, -10% DEF).", IconPath = "ui/items/consumables/rune_skittish.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Skittish, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_vigorous", Name = "Vigorous Rune", Description = "Sets nature to Vigorous (+10% HP, -10% ATK).", IconPath = "ui/items/consumables/rune_vigorous.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Vigorous, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_ruthless", Name = "Ruthless Rune", Description = "Sets nature to Ruthless (+10% ATK, -10% HP).", IconPath = "ui/items/consumables/rune_ruthless.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Ruthless, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_nimble", Name = "Nimble Rune", Description = "Sets nature to Nimble (+10% SPD, -10% ATK).", IconPath = "ui/items/consumables/rune_nimble.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Nimble, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_mystical", Name = "Mystical Rune", Description = "Sets nature to Mystical (+10% SpA, -10% ATK).", IconPath = "ui/items/consumables/rune_mystical.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Mystical, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_resolute", Name = "Resolute Rune", Description = "Sets nature to Resolute (+10% SpD, -10% SpA).", IconPath = "ui/items/consumables/rune_resolute.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Resolute, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_arcane", Name = "Arcane Rune", Description = "Sets nature to Arcane (+10% SpA, -10% DEF).", IconPath = "ui/items/consumables/rune_arcane.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Arcane, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_warded", Name = "Warded Rune", Description = "Sets nature to Warded (+10% SpD, -10% SPD).", IconPath = "ui/items/consumables/rune_warded.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Warded, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_cunning", Name = "Cunning Rune", Description = "Sets nature to Cunning (+10% SpA, -10% HP).", IconPath = "ui/items/consumables/rune_cunning.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Cunning, MaxStack = 10, SellPrice = 0 } );
+		AddItem( new ItemDefinition { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK).", IconPath = "ui/items/consumables/rune_serene.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Serene, MaxStack = 10, SellPrice = 0 } );
+
 		Log.Info( $"Loaded {_itemDatabase.Count} items" );
 	}
 
@@ -1949,7 +2065,117 @@ public sealed class ItemManager : Component
 			case ItemEffectType.XPGrant:
 				if ( target != null )
 				{
-					target.AddXP( (int)item.EffectValue );
+					bool leveledUp = target.AddXP( (int)item.EffectValue );
+					MonsterManager.Instance?.RecalculateStats( target );
+
+					if ( leveledUp )
+					{
+						var learnedMoves = MonsterManager.Instance?.CheckAndLearnNewMoves( target );
+						if ( learnedMoves != null )
+						{
+							foreach ( var moveName in learnedMoves )
+							{
+								NotificationManager.Instance?.AddNotification(
+									NotificationType.Success,
+									"New Move Learned!",
+									$"{target.Nickname} learned {moveName}!"
+								);
+							}
+						}
+
+						var xpSpecies = MonsterManager.Instance?.GetSpecies( target.SpeciesId );
+						if ( xpSpecies != null && target.CanEvolve( xpSpecies ) && !target.HasBeenNotifiedForEvolution )
+						{
+							target.HasBeenNotifiedForEvolution = true;
+							var evolvedSpecies = MonsterManager.Instance?.GetSpecies( xpSpecies.EvolvesTo );
+							NotificationManager.Instance?.NotifyEvolutionReady(
+								target.Nickname,
+								evolvedSpecies?.Name ?? "???"
+							);
+						}
+					}
+
+					MonsterManager.Instance?.SaveMonsters();
+					success = true;
+				}
+				break;
+
+			case ItemEffectType.NatureChange:
+				if ( target != null )
+				{
+					target.Genetics.Nature = (NatureType)(int)item.EffectValue;
+					MonsterManager.Instance?.RecalculateStats( target );
+					MonsterManager.Instance?.SaveMonsters();
+					success = true;
+				}
+				break;
+
+			case ItemEffectType.TraitReroll:
+				if ( target != null )
+				{
+					var species = MonsterManager.Instance?.GetSpecies( target.SpeciesId );
+					if ( species?.PossibleTraits != null && species.PossibleTraits.Count > 0 && target.Traits.Count > 0 )
+					{
+						var random = new Random();
+						var availableTraits = species.PossibleTraits.Where( t => !target.Traits.Contains( t ) ).ToList();
+						if ( availableTraits.Count > 0 )
+						{
+							int slotToReplace = random.Next( target.Traits.Count );
+							string newTrait = availableTraits[random.Next( availableTraits.Count )];
+							target.Traits[slotToReplace] = newTrait;
+							MonsterManager.Instance?.SaveMonsters();
+							success = true;
+						}
+					}
+				}
+				break;
+
+			case ItemEffectType.GeneBoost:
+				if ( target != null )
+				{
+					var rng = new Random();
+					int geneIndex = rng.Next( 6 );
+					int boost = (int)item.EffectValue;
+					switch ( geneIndex )
+					{
+						case 0: target.Genetics.HPGene = Math.Min( target.Genetics.HPGene + boost, 30 ); break;
+						case 1: target.Genetics.ATKGene = Math.Min( target.Genetics.ATKGene + boost, 30 ); break;
+						case 2: target.Genetics.DEFGene = Math.Min( target.Genetics.DEFGene + boost, 30 ); break;
+						case 3: target.Genetics.SpAGene = Math.Min( target.Genetics.SpAGene + boost, 30 ); break;
+						case 4: target.Genetics.SpDGene = Math.Min( target.Genetics.SpDGene + boost, 30 ); break;
+						case 5: target.Genetics.SPDGene = Math.Min( target.Genetics.SPDGene + boost, 30 ); break;
+					}
+					MonsterManager.Instance?.RecalculateStats( target );
+					MonsterManager.Instance?.SaveMonsters();
+					success = true;
+				}
+				break;
+
+			case ItemEffectType.MasterInk:
+				if ( TamerManager.Instance?.CurrentTamer != null )
+				{
+					TamerManager.Instance.CurrentTamer.HasMasterInk = true;
+					TamerManager.Instance?.SaveToCloud();
+					success = true;
+				}
+				break;
+
+			case ItemEffectType.ContractInkGrant:
+				if ( TamerManager.Instance?.CurrentTamer != null )
+				{
+					TamerManager.Instance.CurrentTamer.ContractInk += (int)item.EffectValue;
+					TamerManager.Instance?.SaveToCloud();
+					success = true;
+				}
+				break;
+
+			case ItemEffectType.EliteInkBuff:
+				if ( TamerManager.Instance?.CurrentTamer != null )
+				{
+					var tamer = TamerManager.Instance.CurrentTamer;
+					var currentExpiry = tamer.EliteInkExpiresAt > DateTime.Now ? tamer.EliteInkExpiresAt : DateTime.Now;
+					tamer.EliteInkExpiresAt = currentExpiry.AddMinutes( item.EffectDuration );
+					TamerManager.Instance?.SaveToCloud();
 					success = true;
 				}
 				break;

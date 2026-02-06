@@ -42,6 +42,12 @@ public enum ItemEffectType
 	CatchRateBoost,
 	XPGrant,
 	GoldBoost,
+	NatureChange,      // Set monster nature (EffectValue = (int)NatureType)
+	TraitReroll,       // Reroll a random trait from species pool
+	GeneBoost,         // Boost a random gene (IV) by EffectValue, max 30
+	MasterInk,         // Guarantees next capture succeeds
+	ContractInkGrant,  // Adds (int)EffectValue contract ink
+	EliteInkBuff,      // +catch rate buff for EffectDuration minutes
 
 	// Relic passive effects (tamer-wide)
 	PassiveGoldFind,
@@ -142,6 +148,12 @@ public class ItemDefinition
 			ItemEffectType.CatchRateBoost => $"+{EffectValue}% catch rate for {EffectDuration} attempts",
 			ItemEffectType.XPGrant => $"Grant {EffectValue} XP to a monster",
 			ItemEffectType.GoldBoost => $"+{EffectValue}% gold for {EffectDuration} battles",
+			ItemEffectType.NatureChange => $"Set nature to {(NatureType)(int)EffectValue}",
+			ItemEffectType.TraitReroll => "Randomly reroll one trait from species pool",
+			ItemEffectType.GeneBoost => $"Boost a random gene by +{(int)EffectValue} (max 30)",
+			ItemEffectType.MasterInk => "Guarantees your next capture attempt succeeds",
+			ItemEffectType.ContractInkGrant => $"Grants {(int)EffectValue} Contract Ink",
+			ItemEffectType.EliteInkBuff => $"+{EffectValue}% catch rate for {EffectDuration} minutes",
 			ItemEffectType.PassiveGoldFind => $"+{EffectValue}% gold from all sources",
 			ItemEffectType.PassiveItemFind => $"+{EffectValue}% item drop chance",
 			ItemEffectType.PassiveCatchRate => $"+{EffectValue}% catch rate",

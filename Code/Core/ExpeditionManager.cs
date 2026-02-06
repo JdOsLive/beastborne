@@ -28,6 +28,7 @@ public sealed class ExpeditionManager : Component
 	public bool AutoRetry { get; set; } = false;
 	public bool AutoNegotiate { get; set; } = false;
 	public int AutoNegotiateStrategy { get; set; } = 0; // Index into negotiation options (0-3)
+	public string AutoContractTargetSpecies { get; set; } = null;
 	public bool IsRunningInBackground { get; private set; } = false;
 
 	// Hard Mode (unlocked via Cartographer skill)

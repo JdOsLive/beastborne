@@ -410,6 +410,21 @@
 							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 1 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(1))>FAIR <span class="ink-cost">2🖋️</span></div>
 							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 2 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(2))>STR <span class="ink-cost">1🖋️</span></div>
 							<div class="strategy-chip @(GetAutoNegotiateStrategy() == 3 ? "selected" : "")" onclick=@(() => SetAutoNegotiateStrategy(3))>GOLD <span class="ink-cost">2🖋️</span></div>
+							<div class="strategy-chip target @(GetAutoContractTargetSpecies() != null ? "selected" : "")" onclick=@OpenContractTargetSearch>
+								@if (GetAutoContractTargetSpecies() != null)
+								{
+									var targetName = MonsterManager.Instance?.GetSpecies(GetAutoContractTargetSpecies())?.Name ?? "?";
+									<span>🎯 @targetName</span>
+								}
+								else
+								{
+									<span>🎯 TARGET</span>
+								}
+							</div>
+							@if (GetAutoContractTargetSpecies() != null)
+							{
+								<div class="strategy-chip clear" onclick=@ClearContractTarget>✕</div>
+							}
 						</div>
 					}
 				}
@@ -470,6 +485,35 @@
 									  TargetMonster=@negotiationTarget
 									  IsBossContract=@isBossContract
 									  OnNegotiationComplete=@OnNegotiationComplete />
+		</div>
+	}
+
+	@if (contractTargetSearchOpen)
+	{
+		<div class="contract-search-overlay" onclick=@CloseContractTargetSearch>
+			<div class="contract-search-popup" onclick=@((e) => e.StopPropagation())>
+				<div class="contract-search-header">
+					<span class="contract-search-title">Target Beast</span>
+					<button class="contract-search-close" onclick=@CloseContractTargetSearch>×</button>
+				</div>
+				<div class="contract-search-input-wrapper">
+					<TextEntry class="contract-search-input" @ref="contractTargetSearchInput" Text="@contractTargetSearchText" Placeholder="Type to filter..." />
+				</div>
+				<div class="contract-search-results">
+					@foreach (var species in GetFilteredSpecies())
+					{
+						<div class="contract-search-result @(GetAutoContractTargetSpecies() == species.Id ? "active" : "")" onclick=@(() => SelectContractTarget(species))>
+							<span class="result-number">#@species.BeastiaryNumber</span>
+							<span class="result-element">@GetElementIcon(species.Element)</span>
+							<span class="result-name">@species.Name</span>
+						</div>
+					}
+					@if (GetFilteredSpecies().Count == 0)
+					{
+						<div class="contract-search-empty">No matches found</div>
+					}
+				</div>
+			</div>
 		</div>
 	}
 
@@ -691,6 +735,12 @@
 	{
 		base.Tick();
 
+		// Update contract target search text from input
+		if (contractTargetSearchInput != null && contractTargetSearchOpen)
+		{
+			contractTargetSearchText = contractTargetSearchInput.Text ?? "";
+		}
+
 		// Handle negotiation panel input when overlay is showing
 		if (showNegotiationOverlay && negotiationPanel != null)
 		{
@@ -869,7 +919,15 @@
 				}
 				else
 				{
-					potentialTarget = expMgr.GetRandomCatchableEnemy();
+					var targetSpecies = expMgr.AutoContractTargetSpecies;
+					if (!string.IsNullOrEmpty(targetSpecies))
+					{
+						potentialTarget = expMgr.CatchableEnemies?.FirstOrDefault(e => e.SpeciesId == targetSpecies);
+					}
+					else
+					{
+						potentialTarget = expMgr.GetRandomCatchableEnemy();
+					}
 					potentialIsBoss = false;
 				}
 
@@ -1106,6 +1164,57 @@
 			// Save as new default for future expeditions
 			SettingsManager.Instance?.SetNegotiationStrategy(strategy);
 		}
+	}
+
+	// Contract target search
+	private bool contractTargetSearchOpen = false;
+	private string contractTargetSearchText = "";
+	private TextEntry contractTargetSearchInput;
+
+	private void OpenContractTargetSearch()
+	{
+		SoundManager.PlayForward();
+		contractTargetSearchOpen = true;
+		contractTargetSearchText = "";
+		StateHasChanged();
+	}
+
+	private void CloseContractTargetSearch()
+	{
+		contractTargetSearchOpen = false;
+		contractTargetSearchText = "";
+		SoundManager.PlayBack();
+		StateHasChanged();
+	}
+
+	private void SelectContractTarget(MonsterSpecies species)
+	{
+		if (ExpeditionManager.Instance != null)
+			ExpeditionManager.Instance.AutoContractTargetSpecies = species.Id;
+		contractTargetSearchOpen = false;
+		contractTargetSearchText = "";
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void ClearContractTarget()
+	{
+		if (ExpeditionManager.Instance != null)
+			ExpeditionManager.Instance.AutoContractTargetSpecies = null;
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private string GetAutoContractTargetSpecies() => ExpeditionManager.Instance?.AutoContractTargetSpecies;
+
+	private List<MonsterSpecies> GetFilteredSpecies()
+	{
+		var allSpecies = MonsterManager.Instance?.GetAllSpecies() ?? new List<MonsterSpecies>();
+		if (string.IsNullOrEmpty(contractTargetSearchText))
+			return allSpecies.Take(20).ToList();
+		return allSpecies
+			.Where(s => s.Name.ToLower().Contains(contractTargetSearchText.ToLower()))
+			.Take(20).ToList();
 	}
 
 	private void OnEndExpedition()
@@ -1400,6 +1509,9 @@
 		hash.Add(GetAutoBattle());
 		hash.Add(GetAutoCatch());
 		hash.Add(GetAutoNegotiateStrategy());
+		hash.Add(GetAutoContractTargetSpecies());
+		hash.Add(contractTargetSearchOpen);
+		hash.Add(contractTargetSearchText);
 		hash.Add(isSwapMode);
 		hash.Add(isLogCollapsed);
 		hash.Add(battleLog.Count);

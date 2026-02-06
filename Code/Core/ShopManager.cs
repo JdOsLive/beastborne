@@ -94,7 +94,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/icons/ink.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
-				Price = 2500,
+				Price = 1000,
 				Quantity = 5
 			},
 			new ShopItem
@@ -105,7 +105,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/icons/ink.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
-				Price = 8000,
+				Price = 3000,
 				Quantity = 20
 			},
 			new ShopItem
@@ -116,7 +116,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/icons/ink.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
-				Price = 35000,
+				Price = 12000,
 				Quantity = 100,
 				RequiredLevel = 20
 			},

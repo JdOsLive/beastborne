@@ -109,6 +109,18 @@
 							<span class="item-label">Golden</span>
 							<span class="item-cost">2🖋️+💰</span>
 						</div>
+						<div class="dropdown-divider"></div>
+						<div class="dropdown-item" onclick=@OpenContractTargetSearch>
+							<span class="item-icon">🎯</span>
+							<span class="item-label">@(autoContractTargetSpecies != null ? "Change Target..." : "Target Beast...")</span>
+						</div>
+						@if (autoContractTargetSpecies != null)
+						{
+							<div class="dropdown-item" onclick=@ClearContractTarget>
+								<span class="item-icon">✗</span>
+								<span class="item-label">Clear Target</span>
+							</div>
+						}
 					</div>
 				}
 			</div>
@@ -181,18 +193,16 @@
 					{
 						<div class="cleared-mark">✓</div>
 					}
+
+					@if (selectedExpedition?.Id == expedition.Id)
+					{
+						<button class="card-select-team-btn" onclick=@((e) => { e.StopPropagation(); GoToTeam(); })>
+							SELECT TEAM ▸
+						</button>
+					}
 				</div>
 			}
 		</div>
-
-		@if (selectedExpedition != null)
-		{
-			<div class="action-bar">
-				<button class="btn-primary" onclick=@GoToTeam>
-					SELECT TEAM
-				</button>
-			</div>
-		}
 
 		@if (showMonstersPopup && monstersPopupExpedition != null)
 		{
@@ -441,6 +451,35 @@
 				</div>
 			</div>
 		}
+
+		@if (contractTargetSearchOpen)
+		{
+			<div class="monsters-popup-overlay contract-search-overlay" onclick=@CloseContractTargetSearch>
+				<div class="contract-search-popup" onclick=@((e) => e.StopPropagation())>
+					<div class="contract-search-header">
+						<span class="contract-search-title">Target Beast</span>
+						<button class="contract-search-close" onclick=@CloseContractTargetSearch>×</button>
+					</div>
+					<div class="contract-search-input-wrapper">
+						<TextEntry class="contract-search-input" @ref="contractTargetSearchInput" Text="@contractTargetSearchText" Placeholder="Type to filter..." />
+					</div>
+					<div class="contract-search-results">
+						@foreach (var species in GetFilteredSpecies())
+						{
+							<div class="contract-search-result @(autoContractTargetSpecies == species.Id ? "active" : "")" onclick=@(() => SelectContractTarget(species))>
+								<span class="result-number">#@species.BeastiaryNumber</span>
+								<span class="result-element">@GetElementIcon(species.Element)</span>
+								<span class="result-name">@species.Name</span>
+							</div>
+						}
+						@if (GetFilteredSpecies().Count == 0)
+						{
+							<div class="contract-search-empty">No matches found</div>
+						}
+					</div>
+				</div>
+			</div>
+		}
 	}
 	else if (currentView == "team")
 	{
@@ -675,6 +714,7 @@
 			}
 		</div>
 	}
+
 </div>
 
 @code {
@@ -688,11 +728,21 @@
 	private bool isTransitioningToBattle = false;
 	private bool isTransitioningToList = false;
 	private int autoNegotiateStrategy = 0;
+	private string autoContractTargetSpecies
+	{
+		get => ExpeditionManager.Instance?.AutoContractTargetSpecies;
+		set { if (ExpeditionManager.Instance != null) ExpeditionManager.Instance.AutoContractTargetSpecies = value; }
+	}
 	private bool hasAnimatedCards = false;
 
 	// Dropdown states
 	private bool difficultyDropdownOpen = false;
 	private bool catchDropdownOpen = false;
+
+	// Contract target search popup
+	private bool contractTargetSearchOpen = false;
+	private string contractTargetSearchText = "";
+	private TextEntry contractTargetSearchInput;
 
 	private bool lastBattleWon = false;
 	private int currentWave = 0;
@@ -776,6 +826,12 @@
 	public override void Tick()
 	{
 		base.Tick();
+
+		// Update contract target search text from input
+		if (contractTargetSearchInput != null && contractTargetSearchOpen)
+		{
+			contractTargetSearchText = contractTargetSearchInput.Text ?? "";
+		}
 
 		// Check if we need to sync with a running expedition
 		// This handles returning from background mode
@@ -1316,7 +1372,7 @@
 	private string GetCatchStrategyLabel()
 	{
 		if (!autoNegotiate) return "Off";
-		return autoNegotiateStrategy switch
+		var label = autoNegotiateStrategy switch
 		{
 			-1 => "Skip",
 			0 => "Generous",
@@ -1325,6 +1381,57 @@
 			3 => "Golden",
 			_ => "Fair"
 		};
+		if (autoContractTargetSpecies != null)
+		{
+			var targetName = MonsterManager.Instance?.GetSpecies(autoContractTargetSpecies)?.Name ?? "?";
+			label += $" ({targetName})";
+		}
+		return label;
+	}
+
+	// Contract target search methods
+	private void OpenContractTargetSearch()
+	{
+		catchDropdownOpen = false;
+		contractTargetSearchOpen = true;
+		contractTargetSearchText = "";
+		SoundManager.PlayForward();
+	}
+
+	private void CloseContractTargetSearch()
+	{
+		contractTargetSearchOpen = false;
+		contractTargetSearchText = "";
+		SoundManager.PlayBack();
+	}
+
+	private void SelectContractTarget(MonsterSpecies species)
+	{
+		autoContractTargetSpecies = species.Id;
+		contractTargetSearchOpen = false;
+		contractTargetSearchText = "";
+		SoundManager.PlaySelect();
+	}
+
+	private void ClearContractTarget()
+	{
+		autoContractTargetSpecies = null;
+		catchDropdownOpen = false;
+		SoundManager.PlaySelect();
+	}
+
+	private List<MonsterSpecies> GetFilteredSpecies()
+	{
+		var allSpecies = MonsterManager.Instance?.GetAllSpecies() ?? new List<MonsterSpecies>();
+		var sorted = allSpecies.Where(s => s.IsCatchable).OrderBy(s => s.BeastiaryNumber).ToList();
+
+		if (string.IsNullOrEmpty(contractTargetSearchText))
+			return sorted.Take(20).ToList();
+
+		return sorted
+			.Where(s => s.Name.ToLower().Contains(contractTargetSearchText.ToLower()))
+			.Take(20)
+			.ToList();
 	}
 
 	private void SetExpeditionFilter(string filter)
@@ -1638,7 +1745,17 @@
 				var random = new Random();
 				if (random.NextDouble() < 0.10f)
 				{
-					var autoTarget = ExpeditionManager.Instance.GetRandomCatchableEnemy();
+					Monster autoTarget;
+					if (!string.IsNullOrEmpty(autoContractTargetSpecies))
+					{
+						// Only target the specific species the player wants
+						autoTarget = ExpeditionManager.Instance.CatchableEnemies
+							.FirstOrDefault(e => e.SpeciesId == autoContractTargetSpecies);
+					}
+					else
+					{
+						autoTarget = ExpeditionManager.Instance.GetRandomCatchableEnemy();
+					}
 					if (autoTarget != null)
 					{
 						TryAutoNegotiate(autoTarget, currentAutoNegotiateStrategy);
@@ -2043,6 +2160,9 @@
 		hash.Add(difficultyDropdownOpen);
 		hash.Add(catchDropdownOpen);
 		hash.Add(hardModeEnabled);
+		hash.Add(contractTargetSearchOpen);
+		hash.Add(contractTargetSearchText);
+		hash.Add(autoContractTargetSpecies);
 		return hash.ToHashCode();
 	}
 }
