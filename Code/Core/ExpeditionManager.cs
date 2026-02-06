@@ -1587,6 +1587,16 @@ public sealed class ExpeditionManager : Component
 		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f);
 		finalCatchRate = Math.Min( 0.95f, finalCatchRate ); // Max 95% catch rate
 
+		// Master Ink guarantees capture
+		bool hasMasterInk = TamerManager.Instance?.CurrentTamer?.HasMasterInk == true;
+		if ( hasMasterInk )
+		{
+			finalCatchRate = 1.0f;
+			TamerManager.Instance.CurrentTamer.HasMasterInk = false;
+			TamerManager.Instance.SaveToCloud();
+			Log.Info( "Master Ink used! Guaranteed capture." );
+		}
+
 		var random = _sharedRandom;
 		bool caught = random.NextDouble() < finalCatchRate;
 

@@ -61,7 +61,7 @@ public sealed class BattleManager : Component
 	// Skip animations state - execute all turns instantly, then delay before result
 	private bool skipAnimationsPending = false;
 	private float skipAnimationsTimer = 0f;
-	private const float SKIP_ANIMATIONS_DELAY = 1.0f; // Brief pause so player sees final state
+	private const float SKIP_ANIMATIONS_DELAY = 1.0f; // Pause so player sees final state before next wave
 
 	// Boss state for phase tracking
 	public ActiveBossState CurrentBossState { get; private set; }
@@ -362,7 +362,7 @@ public sealed class BattleManager : Component
 			// Already executed all turns, waiting for delay
 			if ( skipAnimationsPending )
 			{
-				skipAnimationsTimer -= delta;
+				skipAnimationsTimer -= delta * PlaybackSpeed;
 				if ( skipAnimationsTimer <= 0 )
 				{
 					skipAnimationsPending = false;

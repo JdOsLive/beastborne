@@ -28,6 +28,7 @@ public class Tamer
 	public int ContractInk { get; set; } = 10;
 	public int BossTokens { get; set; } = 0;
 	public DateTime EliteInkExpiresAt { get; set; } = DateTime.MinValue;
+	public bool HasMasterInk { get; set; } = false;
 
 	// Boss progression
 	public List<string> ClearedBosses { get; set; } = new();

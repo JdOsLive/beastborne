@@ -402,6 +402,11 @@
 
 	private float _bgDebugTimer = 0;
 
+	// Delay between background waves so battles don't complete instantly
+	private bool _bgWaveEndPending = false;
+	private float _bgWaveEndTimer = 0f;
+	private BattleResult _bgPendingResult = null;
+
 	/// <summary>
 	/// Tick background expedition battles. Called from OnUpdate which runs reliably.
 	/// </summary>
@@ -417,6 +422,23 @@
 			// Don't tick expedition battles while in online/arena mode - arena manages its own battles
 			if ( GameManager.Instance?.CurrentState == GameState.InArena ) return;
 			if ( currentTab == "online" ) return;
+
+			// If waiting for wave-end delay, count down before processing next wave
+			if ( _bgWaveEndPending )
+			{
+				_bgWaveEndTimer -= RealTime.Delta;
+				if ( _bgWaveEndTimer <= 0 )
+				{
+					_bgWaveEndPending = false;
+					var pendingResult = _bgPendingResult;
+					_bgPendingResult = null;
+					if ( pendingResult != null )
+					{
+						HandleBackgroundBattleEnd( pendingResult );
+					}
+				}
+				return;
+			}
 
 			// Debug log every 2 seconds
 			_bgDebugTimer += RealTime.Delta;
@@ -434,9 +456,11 @@
 				// Check if battle is complete (all turns executed)
 				if ( result != null && BattleManager.Instance.CurrentTurnIndex >= result.Turns.Count )
 				{
-					// Battle is done - handle it directly since event subscription isn't working
-					Log.Info( $"[GameHUD] Battle complete! PlayerWon={result.PlayerWon}, Wave={ExpeditionManager.Instance.CurrentWave}" );
-					HandleBackgroundBattleEnd( result );
+					// Don't handle immediately — add a delay between waves
+					Log.Info( $"[GameHUD] Battle complete! PlayerWon={result.PlayerWon}, Wave={ExpeditionManager.Instance.CurrentWave}, waiting before next wave..." );
+					_bgWaveEndPending = true;
+					_bgWaveEndTimer = 0.75f;
+					_bgPendingResult = result;
 					return;
 				}
 
