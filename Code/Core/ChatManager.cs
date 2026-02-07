@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Sandbox;
 using Sandbox.Network;
+using Sandbox.Services;
 using Beastborne.Data;
 
 namespace Beastborne.Core;
@@ -22,6 +23,10 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	// Events for UI updates
 	public Action<ChatMessage> OnMessageReceived;
 	public Action OnMessagesCleared;
+
+	// Player profiles (synced across network for displaying avatars/backgrounds)
+	public Dictionary<string, PlayerProfileData> PlayerProfiles { get; private set; } = new();
+	public Action OnProfilesUpdated;
 
 	// Network state
 	public bool IsConnected => GameNetworkSystem.IsActive;
@@ -87,6 +92,15 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		// Limit message length
 		content = content.Length > 500 ? content.Substring( 0, 500 ) : content;
 
+		// Track chat message stats
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer != null )
+		{
+			tamer.ChatMessagesSent++;
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ChatMessagesSent, tamer.ChatMessagesSent );
+			Stats.SetValue( "chat-sent", tamer.ChatMessagesSent );
+		}
+
 		// Add message locally
 		var message = new ChatMessage
 		{
@@ -149,6 +163,9 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	public void SendBeastShowcase( Monster monster, MonsterSpecies species )
 	{
 		if ( monster == null || species == null ) return;
+
+		// Track beast showcase achievement
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BeastShowcased, 1 );
 
 		var nickname = string.IsNullOrEmpty( monster.Nickname ) ? species.Name : monster.Nickname;
 		var genes = monster.Genetics != null
@@ -263,6 +280,115 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	}
 
 	/// <summary>
+	/// Show off your tamer card in chat
+	/// </summary>
+	public void SendTamerCardShowcase()
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return;
+
+		var achievementCount = tamer.Achievements?.Values.Count( p => p.IsUnlocked ) ?? 0;
+		var title = GetTamerTitle( tamer.Level );
+
+		var message = new ChatMessage
+		{
+			SteamId = LocalSteamId,
+			PlayerName = LocalPlayerName,
+			Content = $"{LocalPlayerName} shared their Tamer Card!",
+			Type = ChatMessageType.TamerCardShowcase,
+			CardName = tamer.Name,
+			CardLevel = tamer.Level,
+			CardTitle = title,
+			CardArenaRank = tamer.ArenaRank ?? "Unranked",
+			CardArenaPoints = tamer.ArenaPoints,
+			CardFavoriteSpeciesId = tamer.FavoriteMonsterSpeciesId ?? "",
+			CardAchievementCount = achievementCount,
+			CardWinRate = tamer.WinRate,
+			CardGender = tamer.Gender.ToString(),
+			CardFavoriteExpeditionId = tamer.FavoriteExpeditionId ?? "",
+			CardArenaWins = tamer.ArenaWins,
+			CardArenaLosses = tamer.ArenaLosses,
+			CardMonstersCaught = tamer.TotalMonstersCaught,
+			CardBattlesWon = tamer.ArenaWins,
+			CardMonstersBred = tamer.TotalMonstersBred,
+			CardMonstersEvolved = tamer.TotalMonstersEvolved,
+			CardHighestExpedition = tamer.HighestExpeditionCleared
+		};
+		AddMessage( message );
+
+		if ( GameNetworkSystem.IsActive )
+		{
+			BroadcastTamerCardShowcase(
+				LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName,
+				tamer.Name, tamer.Level, title,
+				tamer.ArenaRank ?? "Unranked", tamer.ArenaPoints,
+				tamer.FavoriteMonsterSpeciesId ?? "", achievementCount,
+				tamer.WinRate, tamer.Gender.ToString(),
+				tamer.FavoriteExpeditionId ?? "",
+				tamer.ArenaWins, tamer.ArenaLosses,
+				tamer.TotalMonstersCaught, tamer.ArenaWins,
+				tamer.TotalMonstersBred, tamer.TotalMonstersEvolved,
+				tamer.HighestExpeditionCleared,
+				message.Timestamp.Ticks
+			);
+		}
+	}
+
+	[Rpc.Broadcast]
+	public void BroadcastTamerCardShowcase(
+		string senderConnectionId, long steamId, string playerName,
+		string cardName, int cardLevel, string cardTitle,
+		string arenaRank, int arenaPoints,
+		string favoriteSpeciesId, int achievementCount,
+		float winRate, string gender,
+		string favoriteExpeditionId,
+		int arenaWins, int arenaLosses,
+		int monstersCaught, int battlesWon,
+		int monstersBred, int monstersEvolved,
+		int highestExpedition,
+		long timestampTicks )
+	{
+		if ( senderConnectionId == LocalConnectionId.ToString() ) return;
+
+		var message = new ChatMessage
+		{
+			SteamId = steamId,
+			PlayerName = playerName,
+			Content = $"{playerName} shared their Tamer Card!",
+			Type = ChatMessageType.TamerCardShowcase,
+			CardName = cardName,
+			CardLevel = cardLevel,
+			CardTitle = cardTitle,
+			CardArenaRank = arenaRank,
+			CardArenaPoints = arenaPoints,
+			CardFavoriteSpeciesId = favoriteSpeciesId,
+			CardAchievementCount = achievementCount,
+			CardWinRate = winRate,
+			CardGender = gender,
+			CardFavoriteExpeditionId = favoriteExpeditionId,
+			CardArenaWins = arenaWins,
+			CardArenaLosses = arenaLosses,
+			CardMonstersCaught = monstersCaught,
+			CardBattlesWon = battlesWon,
+			CardMonstersBred = monstersBred,
+			CardMonstersEvolved = monstersEvolved,
+			CardHighestExpedition = highestExpedition,
+			Timestamp = new DateTime( timestampTicks, DateTimeKind.Utc )
+		};
+		AddMessage( message );
+	}
+
+	private static string GetTamerTitle( int level )
+	{
+		if ( level >= 80 ) return "Legendary Tamer";
+		if ( level >= 60 ) return "Master Tamer";
+		if ( level >= 40 ) return "Expert Tamer";
+		if ( level >= 20 ) return "Skilled Tamer";
+		if ( level >= 10 ) return "Apprentice Tamer";
+		return "Novice Tamer";
+	}
+
+	/// <summary>
 	/// Broadcast message to other players via RPC
 	/// </summary>
 	[Rpc.Broadcast]
@@ -339,6 +465,140 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		return _messages.TakeLast( count ).ToList();
 	}
 
+	// ═══════════════════════════════════════════════════════════════
+	// PLAYER PROFILE SYNC
+	// ═══════════════════════════════════════════════════════════════
+
+	/// <summary>
+	/// Broadcast local player's profile (gender, favorite expedition) to all players.
+	/// Called when player loads a save and enters the game.
+	/// </summary>
+	public void SendPlayerProfile()
+	{
+		if ( !GameNetworkSystem.IsActive ) return;
+
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return;
+
+		var gender = tamer.Gender.ToString();
+		var favExpId = tamer.FavoriteExpeditionId ?? "";
+		var title = GetDisplayTitle( tamer );
+		var titleColor = GetDisplayTitleColor( tamer );
+		var level = tamer.Level;
+		var favMonster = tamer.FavoriteMonsterSpeciesId ?? "";
+		var arenaRank = CompetitiveManager.GetRankFromPoints( tamer.ArenaPoints );
+		var arenaPoints = tamer.ArenaPoints;
+		var arenaWins = tamer.ArenaWins;
+		var arenaLosses = tamer.ArenaLosses;
+		var monstersCaught = tamer.TotalMonstersCaught;
+		var highestExp = tamer.HighestExpeditionCleared;
+		var battlesWon = tamer.TotalBattlesWon;
+		var monstersBred = tamer.TotalMonstersBred;
+		var monstersEvolved = tamer.TotalMonstersEvolved;
+		var totalExp = tamer.TotalExpeditionsCompleted;
+		var totalTrades = tamer.TotalTradesCompleted;
+		var playTime = (int)tamer.TotalPlayTime.TotalMinutes;
+		var achCount = tamer.Achievements?.Values.Count( p => p.IsUnlocked ) ?? 0;
+
+		// Store locally
+		var connId = LocalConnectionId.ToString();
+		PlayerProfiles[connId] = new PlayerProfileData
+		{
+			Gender = gender,
+			FavoriteExpeditionId = favExpId,
+			Title = title,
+			TitleColor = titleColor,
+			Level = level,
+			FavoriteMonsterSpeciesId = favMonster,
+			ArenaRank = arenaRank,
+			ArenaPoints = arenaPoints,
+			ArenaWins = arenaWins,
+			ArenaLosses = arenaLosses,
+			MonstersCaught = monstersCaught,
+			HighestExpedition = highestExp,
+			BattlesWon = battlesWon,
+			MonstersBred = monstersBred,
+			MonstersEvolved = monstersEvolved,
+			TotalExpeditionsCompleted = totalExp,
+			TotalTradesCompleted = totalTrades,
+			TotalPlayTimeMinutes = playTime,
+			AchievementCount = achCount
+		};
+
+		// Broadcast to all
+		BroadcastPlayerProfile( connId, gender, favExpId, title, titleColor, level, favMonster, arenaRank, arenaPoints,
+			arenaWins, arenaLosses, monstersCaught, highestExp, battlesWon, monstersBred, monstersEvolved, totalExp, totalTrades, playTime, achCount );
+	}
+
+	[Rpc.Broadcast]
+	public void BroadcastPlayerProfile( string senderConnectionId, string gender, string favoriteExpeditionId, string title, string titleColor,
+		int level = 0, string favoriteMonsterSpeciesId = "", string arenaRank = "Unranked", int arenaPoints = 0, int arenaWins = 0, int arenaLosses = 0, int monstersCaught = 0, int highestExpedition = 0,
+		int battlesWon = 0, int monstersBred = 0, int monstersEvolved = 0, int totalExpeditionsCompleted = 0, int totalTradesCompleted = 0, int totalPlayTimeMinutes = 0, int achievementCount = 0 )
+	{
+		// Store the profile (including our own, which we already stored locally)
+		PlayerProfiles[senderConnectionId] = new PlayerProfileData
+		{
+			Gender = gender,
+			FavoriteExpeditionId = favoriteExpeditionId,
+			Title = title ?? "Tamer",
+			TitleColor = titleColor ?? "#a78bfa",
+			Level = level,
+			FavoriteMonsterSpeciesId = favoriteMonsterSpeciesId ?? "",
+			ArenaRank = arenaRank ?? "Unranked",
+			ArenaPoints = arenaPoints,
+			ArenaWins = arenaWins,
+			ArenaLosses = arenaLosses,
+			MonstersCaught = monstersCaught,
+			HighestExpedition = highestExpedition,
+			BattlesWon = battlesWon,
+			MonstersBred = monstersBred,
+			MonstersEvolved = monstersEvolved,
+			TotalExpeditionsCompleted = totalExpeditionsCompleted,
+			TotalTradesCompleted = totalTradesCompleted,
+			TotalPlayTimeMinutes = totalPlayTimeMinutes,
+			AchievementCount = achievementCount
+		};
+
+		OnProfilesUpdated?.Invoke();
+	}
+
+	private string GetDisplayTitle( Tamer tamer )
+	{
+		if ( !string.IsNullOrEmpty( tamer.ActiveTitleId ) )
+		{
+			var cosmetic = CosmeticDatabase.GetTitle( tamer.ActiveTitleId );
+			if ( cosmetic != null ) return cosmetic.Title;
+		}
+		if ( !string.IsNullOrEmpty( tamer.ActiveLevelTitle ) )
+			return tamer.ActiveLevelTitle;
+		var level = tamer.Level;
+		if ( level >= 80 ) return "Legendary Tamer";
+		if ( level >= 60 ) return "Master Tamer";
+		if ( level >= 40 ) return "Expert Tamer";
+		if ( level >= 20 ) return "Skilled Tamer";
+		if ( level >= 10 ) return "Apprentice Tamer";
+		return "Tamer";
+	}
+
+	private string GetDisplayTitleColor( Tamer tamer )
+	{
+		if ( !string.IsNullOrEmpty( tamer.ActiveTitleId ) )
+		{
+			var cosmetic = CosmeticDatabase.GetTitle( tamer.ActiveTitleId );
+			if ( cosmetic != null ) return cosmetic.TitleColor;
+		}
+		return "#a78bfa";
+	}
+
+	/// <summary>
+	/// Look up a player's profile data by their connection ID string.
+	/// </summary>
+	public PlayerProfileData GetProfileByConnectionId( string connectionId )
+	{
+		if ( string.IsNullOrEmpty( connectionId ) ) return null;
+		return PlayerProfiles.TryGetValue( connectionId, out var profile ) ? profile : null;
+	}
+
 	// INetworkListener implementation
 	void INetworkListener.OnActive( Connection connection )
 	{
@@ -347,10 +607,45 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		{
 			AddSystemMessage( $"{connection.DisplayName} joined the game.", ChatMessageType.Join );
 		}
+
+		// Re-broadcast our profile so the new player gets it
+		SendPlayerProfile();
 	}
 
 	void INetworkListener.OnDisconnected( Connection connection )
 	{
-		// Player left - don't announce to avoid spam
+		// Clean up disconnected player's profile
+		var connId = connection.Id.ToString();
+		if ( PlayerProfiles.ContainsKey( connId ) )
+		{
+			PlayerProfiles.Remove( connId );
+			OnProfilesUpdated?.Invoke();
+		}
 	}
+}
+
+/// <summary>
+/// Profile data synced across the network for player tiles
+/// </summary>
+public class PlayerProfileData
+{
+	public string Gender { get; set; } = "Male";
+	public string FavoriteExpeditionId { get; set; } = "";
+	public string Title { get; set; } = "Tamer";
+	public string TitleColor { get; set; } = "#a78bfa";
+	public int Level { get; set; }
+	public string FavoriteMonsterSpeciesId { get; set; } = "";
+	public string ArenaRank { get; set; } = "Unranked";
+	public int ArenaPoints { get; set; }
+	public int ArenaWins { get; set; }
+	public int ArenaLosses { get; set; }
+	public int MonstersCaught { get; set; }
+	public int HighestExpedition { get; set; }
+	public int BattlesWon { get; set; }
+	public int MonstersBred { get; set; }
+	public int MonstersEvolved { get; set; }
+	public int TotalExpeditionsCompleted { get; set; }
+	public int TotalTradesCompleted { get; set; }
+	public int TotalPlayTimeMinutes { get; set; }
+	public int AchievementCount { get; set; }
 }

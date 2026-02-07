@@ -2,6 +2,60 @@
 
 ---
 
+## Version 0.5.1 - Beast & Balance Update
+
+*"Backwards feet, flame-red hair, and a bad attitude toward poachers."*
+
+### New Content
+
+#### New Beast: Curublast (#82)
+- Replaces Funharden — a jungle guardian inspired by the **Curupira** of Brazilian folklore
+- **Nature element**, Uncommon rarity
+- Found in the **Overgrown Heart** expedition
+- Learns Pollen Burst, Nature Shield, and Bloom Burst
+
+#### New Music
+- **Moonlight Meadows** — new Chill FM track
+- **Fangs and Fury** — new Battle FM track
+
+#### Extended Movesets
+- New moves added for every element: Fire, Water, Earth, Wind, Electric, Ice, Nature, Metal, Shadow, Spirit, and Neutral
+- Cleaned up duplicate move entries and renamed moves for clarity
+
+### Balance Changes
+
+#### Genetics Rework
+- Inherited genes now **average both parents** instead of heavily favoring the higher one
+- **Diminishing returns** kick in as genes approach max — no more snowballing to perfect 31s
+- Mutations are now 60/40 positive/negative (was 90/10), base chance 10% (was 15%)
+- Gene Surge skill has diminishing returns at high gene values
+- Flat gene bonuses capped when genes are already high
+
+#### Starter BST Rebalance
+- Every starter evolution line received a stat pass for more meaningful early choices
+
+### New Features
+
+#### Move Swapping
+- **Swap moves directly** from both Monster Detail and Roster panels
+- Tap any move slot to open the move picker
+- Shows available learned moves not currently equipped
+- Empty slots show "+ Learn Move" when moves are available
+- Badge shows count of available moves
+
+### UI & Quality of Life
+
+- **Gold abbreviation** — large numbers display as K/M/B in the HUD
+- **Bestiary** — slide-in entrance animation and background image
+- **Filter bar** — dropdown icon alignment fixes
+- **Expedition panel** — styling cleanup
+- **Scroll fixes** — various overflow issues resolved across panels
+
+### Technical
+- Version bumped to v0.5.1 across MainMenu, GameHUD, and CreditsPanel
+
+---
+
 ## Version 0.3.0 - The Expedition Update
 
 *"The journey is just as important as the destination... but the loot helps."*

@@ -224,10 +224,6 @@ public static class BossPoolDatabase
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Primordius stirs from eternal sleep!", ATKMultiplier = 1.4f, DEFMultiplier = 1.3f, Ability = BossAbilityType.Enrage },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Primordius awakens fully!", ATKMultiplier = 1.7f, Ability = BossAbilityType.AreaDamage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Primordius transcends!", ATKMultiplier = 2.0f, DEFMultiplier = 1.5f, SPDMultiplier = 1.3f, Ability = BossAbilityType.Enrage } ),
-					CreateBoss( "chromedragon", BossTier.Elite, 6, 25,
-						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Chromedragon shifts elements!", Ability = BossAbilityType.ElementalShift },
-						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Chromedragon unleashes elemental fury!", ATKMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage },
-						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Chromedragon enters ultimate form!", ATKMultiplier = 1.7f, DEFMultiplier = 1.3f, Ability = BossAbilityType.Enrage } ),
 					CreateBoss( "ashenmare", BossTier.Elite, 6, 25,
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Ashenmare blazes with fury!", ATKMultiplier = 1.4f, Ability = BossAbilityType.Enrage },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Ashenmare ignites everything!", ATKMultiplier = 1.6f, Ability = BossAbilityType.AreaDamage } ),
@@ -320,9 +316,6 @@ public static class BossPoolDatabase
 				Bosses = new List<BossData>
 				{
 					// === ELITE TIER (Weight 4) - More common "lieutenant" bosses ===
-					CreateBoss( "chromedragon", BossTier.Elite, 8, 35,
-						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Chromedragon shifts elements!", Ability = BossAbilityType.ElementalShift },
-						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Chromedragon unleashes elemental fury!", ATKMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage } ),
 					CreateBoss( "raijura", BossTier.Elite, 8, 35,
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Raijura splits the sky!", Ability = BossAbilityType.ElementalShift },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Raijura unleashes prismatic thunder!", ATKMultiplier = 1.6f, Ability = BossAbilityType.AreaDamage } ),

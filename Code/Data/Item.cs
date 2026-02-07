@@ -145,7 +145,7 @@ public class ItemDefinition
 			ItemEffectType.BoostSpA => $"+{EffectValue}% SpA for {EffectDuration} battles",
 			ItemEffectType.BoostSpD => $"+{EffectValue}% SpD for {EffectDuration} battles",
 			ItemEffectType.BoostCrit => $"+{EffectValue}% crit chance for {EffectDuration} battles",
-			ItemEffectType.CatchRateBoost => $"+{EffectValue}% catch rate for {EffectDuration} attempts",
+			ItemEffectType.CatchRateBoost => EffectDuration > 0 ? $"+{EffectValue}% catch rate for {EffectDuration} attempts" : $"+{EffectValue}% catch rate",
 			ItemEffectType.XPGrant => $"Grant {EffectValue} XP to a monster",
 			ItemEffectType.GoldBoost => $"+{EffectValue}% gold for {EffectDuration} battles",
 			ItemEffectType.NatureChange => $"Set nature to {(NatureType)(int)EffectValue}",

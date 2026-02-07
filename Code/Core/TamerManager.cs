@@ -58,6 +58,12 @@ public sealed class TamerManager : Component
 
 	protected override void OnUpdate()
 	{
+		// Track playtime
+		if ( CurrentTamer != null )
+		{
+			CurrentTamer.TotalPlayTime += TimeSpan.FromSeconds( Time.Delta );
+		}
+
 		// Periodic auto-save
 		if ( Time.Now - lastSaveTime > SAVE_INTERVAL )
 		{
@@ -105,7 +111,24 @@ public sealed class TamerManager : Component
 			TotalMonstersEvolved = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}evolved" ), 0 ),
 			BossTokens = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}boss-tokens" ), 0 ),
 			ActiveThemeId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-theme" ), "default" ),
-			ActiveTitleId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-title" ), null )
+			ActiveTitleId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-title" ), null ),
+			ActiveLevelTitle = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-level-title" ), null ),
+			// Online update fields (safe defaults for existing saves)
+			TotalGoldEarned = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}gold-earned" ), 0 ),
+			TotalItemsBought = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}items-bought" ), 0 ),
+			TotalExpeditionsCompleted = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}expeditions-completed" ), 0 ),
+			TotalTradesCompleted = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}trades-completed" ), 0 ),
+			TotalMiniGamesPlayed = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}minigames-played" ), 0 ),
+			ChatMessagesSent = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}chat-sent" ), 0 ),
+			BossTokensSpent = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}boss-tokens-spent" ), 0 ),
+			TotalDamageDealt = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}total-damage" ), 0 ),
+			TotalKnockouts = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}total-knockouts" ), 0 ),
+			ArenaWinStreak = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-streak" ), 0 ),
+			ArenaSetsCompleted = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-sets" ), 0 ),
+			FavoriteMonsterSpeciesId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}fav-monster" ), null ),
+			FavoriteExpeditionId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}fav-expedition" ), null ),
+			HasMasterInk = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}master-ink" ), 0 ) == 1,
+			TotalPlayTime = TimeSpan.FromMinutes( Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}playtime-minutes" ), 0 ) )
 		};
 
 		// Load skill ranks from cookie (Dictionary<string, int>)
@@ -223,6 +246,50 @@ public sealed class TamerManager : Component
 			CurrentTamer.ActiveBoosts = new();
 		}
 
+		// Load achievement progress from cookie (Dictionary<string, AchievementProgress>)
+		var achievementsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}achievements" ), "{}" );
+		try
+		{
+			CurrentTamer.Achievements = JsonSerializer.Deserialize<Dictionary<string, AchievementProgress>>( achievementsJson ) ?? new();
+		}
+		catch
+		{
+			CurrentTamer.Achievements = new();
+		}
+
+		// Load collected tamer cards from cookie
+		var cardsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}tamer-cards" ), "[]" );
+		try
+		{
+			CurrentTamer.CollectedCards = JsonSerializer.Deserialize<List<CollectedTamerCard>>( cardsJson ) ?? new();
+		}
+		catch
+		{
+			CurrentTamer.CollectedCards = new();
+		}
+
+		// Load match history from cookie
+		var matchHistoryJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}match-history" ), "[]" );
+		try
+		{
+			CurrentTamer.MatchHistory = JsonSerializer.Deserialize<List<MatchHistoryEntry>>( matchHistoryJson ) ?? new();
+		}
+		catch
+		{
+			CurrentTamer.MatchHistory = new();
+		}
+
+		// Load card badges from cookie
+		var badgesJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}card-badges" ), "[]" );
+		try
+		{
+			CurrentTamer.CardBadges = JsonSerializer.Deserialize<List<string>>( badgesJson ) ?? new();
+		}
+		catch
+		{
+			CurrentTamer.CardBadges = new();
+		}
+
 		CurrentTamer.LastLogin = DateTime.UtcNow;
 
 		Log.Info( $"Loaded tamer: {CurrentTamer.Name}, Level {CurrentTamer.Level}, XP {CurrentTamer.TotalXP}" );
@@ -267,6 +334,43 @@ public sealed class TamerManager : Component
 			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}boss-tokens" ), CurrentTamer.BossTokens );
 			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-theme" ), CurrentTamer.ActiveThemeId ?? "default" );
 			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-title" ), CurrentTamer.ActiveTitleId ?? "" );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-level-title" ), CurrentTamer.ActiveLevelTitle ?? "" );
+
+			// Online update fields
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}gold-earned" ), CurrentTamer.TotalGoldEarned );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}items-bought" ), CurrentTamer.TotalItemsBought );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}expeditions-completed" ), CurrentTamer.TotalExpeditionsCompleted );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}trades-completed" ), CurrentTamer.TotalTradesCompleted );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}minigames-played" ), CurrentTamer.TotalMiniGamesPlayed );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}chat-sent" ), CurrentTamer.ChatMessagesSent );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}boss-tokens-spent" ), CurrentTamer.BossTokensSpent );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}total-damage" ), CurrentTamer.TotalDamageDealt );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}total-knockouts" ), CurrentTamer.TotalKnockouts );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-streak" ), CurrentTamer.ArenaWinStreak );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-sets" ), CurrentTamer.ArenaSetsCompleted );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}fav-monster" ), CurrentTamer.FavoriteMonsterSpeciesId ?? "" );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}fav-expedition" ), CurrentTamer.FavoriteExpeditionId ?? "" );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}master-ink" ), CurrentTamer.HasMasterInk ? 1 : 0 );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}playtime-minutes" ), (int)CurrentTamer.TotalPlayTime.TotalMinutes );
+
+			// Save achievement progress
+			var achievementsJson = JsonSerializer.Serialize( CurrentTamer.Achievements ?? new() );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}achievements" ), achievementsJson );
+
+			// Save collected tamer cards
+			var cardsJson = JsonSerializer.Serialize( CurrentTamer.CollectedCards ?? new() );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}tamer-cards" ), cardsJson );
+
+			// Save match history
+			var historyJson = JsonSerializer.Serialize( CurrentTamer.MatchHistory ?? new() );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}match-history" ), historyJson );
+
+			// Save card badges
+			var badgesJson = JsonSerializer.Serialize( CurrentTamer.CardBadges ?? new() );
+			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}card-badges" ), badgesJson );
+
+			// Submit playtime to leaderboard
+			Stats.SetValue( "total-playtime", (int)CurrentTamer.TotalPlayTime.TotalMinutes );
 
 			// Save skill ranks to cookie (Dictionary<string, int>)
 			var skillsJson = JsonSerializer.Serialize( CurrentTamer.SkillRanks );
@@ -322,7 +426,10 @@ public sealed class TamerManager : Component
 		}
 
 		CurrentTamer.Gold += amount;
+		CurrentTamer.TotalGoldEarned += amount;
 		OnGoldChanged?.Invoke( CurrentTamer.Gold );
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalGoldEarned, CurrentTamer.TotalGoldEarned );
+		Stats.SetValue( "total-gold", CurrentTamer.TotalGoldEarned );
 	}
 
 	public bool SpendGold( int amount )
@@ -366,7 +473,10 @@ public sealed class TamerManager : Component
 	{
 		if ( CurrentTamer.BossTokens < amount ) return false;
 		CurrentTamer.BossTokens -= amount;
+		CurrentTamer.BossTokensSpent += amount;
 		OnBossTokensChanged?.Invoke( CurrentTamer.BossTokens );
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BossTokensSpent, CurrentTamer.BossTokensSpent );
+		Stats.SetValue( "boss-tokens-spent", CurrentTamer.BossTokensSpent );
 		return true;
 	}
 
@@ -453,6 +563,8 @@ public sealed class TamerManager : Component
 		if ( CurrentTamer.AddXP( boostedAmount ) )
 		{
 			OnLevelUp?.Invoke( CurrentTamer.Level );
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TamerLevel, CurrentTamer.Level );
+			Stats.SetValue( "tamer-level", CurrentTamer.Level );
 		}
 	}
 
@@ -523,6 +635,13 @@ public sealed class TamerManager : Component
 		CurrentTamer.SkillRanks[skillId] = currentRank + 1;
 
 		OnSkillUnlocked?.Invoke( skillId );
+
+		// Achievement hooks for skills
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.SkillsUnlocked, CurrentTamer.SkillRanks.Count );
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.SkillPointsInvested, GetTotalSkillPointsSpent() );
+		Stats.SetValue( "skills-unlocked", CurrentTamer.SkillRanks.Count );
+		Stats.SetValue( "skill-points", GetTotalSkillPointsSpent() );
+
 		SaveToCloud();
 
 		return true;
@@ -594,6 +713,7 @@ public sealed class TamerManager : Component
 			ActiveBoosts = new(),
 			ActiveThemeId = "default",
 			ActiveTitleId = null,
+			ActiveLevelTitle = null,
 			LastLogin = DateTime.UtcNow
 		};
 
@@ -679,5 +799,78 @@ public sealed class TamerManager : Component
 	public int GetMaxPossibleRanks()
 	{
 		return SkillTree?.AllNodes?.Sum( n => n.MaxRank ) ?? 0;
+	}
+
+	/// <summary>
+	/// Collect or update another player's tamer card
+	/// </summary>
+	public void CollectTamerCard( long steamId, string name, int level, string arenaRank, int arenaPoints, string favoriteSpeciesId, int achievementCount, float winRate,
+		string gender = null, string favoriteExpeditionId = null, string title = null, string titleColor = null, int arenaWins = 0, int arenaLosses = 0, int highestExpedition = 0, int monstersCaught = 0, int totalPlayTimeMinutes = 0,
+		int battlesWon = 0, int monstersBred = 0, int monstersEvolved = 0, int totalExpeditionsCompleted = 0, int totalTradesCompleted = 0 )
+	{
+		if ( CurrentTamer == null || steamId == 0 ) return;
+
+		var existing = CurrentTamer.CollectedCards.FirstOrDefault( c => c.SteamId == steamId );
+		if ( existing != null )
+		{
+			// Update existing card (only overwrite with non-default values)
+			existing.Name = name;
+			if ( level > 0 ) existing.Level = level;
+			existing.ArenaRank = arenaRank ?? existing.ArenaRank ?? "Unranked";
+			if ( arenaPoints > 0 ) existing.ArenaPoints = arenaPoints;
+			if ( !string.IsNullOrEmpty( favoriteSpeciesId ) ) existing.FavoriteMonsterSpeciesId = favoriteSpeciesId;
+			if ( achievementCount > 0 ) existing.AchievementCount = achievementCount;
+			if ( winRate > 0 ) existing.WinRate = winRate;
+			if ( !string.IsNullOrEmpty( gender ) ) existing.Gender = gender;
+			if ( !string.IsNullOrEmpty( favoriteExpeditionId ) ) existing.FavoriteExpeditionId = favoriteExpeditionId;
+			if ( !string.IsNullOrEmpty( title ) ) existing.Title = title;
+			if ( !string.IsNullOrEmpty( titleColor ) ) existing.TitleColor = titleColor;
+			if ( arenaWins > 0 ) existing.ArenaWins = arenaWins;
+			if ( arenaLosses > 0 ) existing.ArenaLosses = arenaLosses;
+			if ( highestExpedition > 0 ) existing.HighestExpedition = highestExpedition;
+			if ( monstersCaught > 0 ) existing.MonstersCaught = monstersCaught;
+			if ( totalPlayTimeMinutes > 0 ) existing.TotalPlayTimeMinutes = totalPlayTimeMinutes;
+			if ( battlesWon > 0 ) existing.BattlesWon = battlesWon;
+			if ( monstersBred > 0 ) existing.MonstersBred = monstersBred;
+			if ( monstersEvolved > 0 ) existing.MonstersEvolved = monstersEvolved;
+			if ( totalExpeditionsCompleted > 0 ) existing.TotalExpeditionsCompleted = totalExpeditionsCompleted;
+			if ( totalTradesCompleted > 0 ) existing.TotalTradesCompleted = totalTradesCompleted;
+			existing.LastUpdated = DateTime.UtcNow;
+		}
+		else
+		{
+			// Add new card
+			CurrentTamer.CollectedCards.Add( new CollectedTamerCard
+			{
+				SteamId = steamId,
+				Name = name,
+				Level = level,
+				ArenaRank = arenaRank ?? "Unranked",
+				ArenaPoints = arenaPoints,
+				FavoriteMonsterSpeciesId = favoriteSpeciesId,
+				AchievementCount = achievementCount,
+				WinRate = winRate,
+				Gender = gender ?? "Male",
+				FavoriteExpeditionId = favoriteExpeditionId,
+				Title = title,
+				TitleColor = titleColor ?? "#a78bfa",
+				ArenaWins = arenaWins,
+				ArenaLosses = arenaLosses,
+				HighestExpedition = highestExpedition,
+				MonstersCaught = monstersCaught,
+				TotalPlayTimeMinutes = totalPlayTimeMinutes,
+				BattlesWon = battlesWon,
+				MonstersBred = monstersBred,
+				MonstersEvolved = monstersEvolved,
+				TotalExpeditionsCompleted = totalExpeditionsCompleted,
+				TotalTradesCompleted = totalTradesCompleted,
+				CollectedAt = DateTime.UtcNow,
+				LastUpdated = DateTime.UtcNow
+			} );
+
+			// Achievement check for collecting cards
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TamerCardsCollected, CurrentTamer.CollectedCards.Count );
+			Stats.SetValue( "cards-collected", CurrentTamer.CollectedCards.Count );
+		}
 	}
 }

@@ -1,0 +1,247 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@inherits Panel
+
+<root>
+	<div class="tamer-card @GetRankClass()">
+		<div class="card-border @GetRankClass()">
+			<!-- Expedition Background -->
+			@{
+				var expBg = GetExpeditionBackground();
+			}
+			@if ( !string.IsNullOrEmpty( expBg ) )
+			{
+				<div class="card-exp-bg" style="background-image: url(@expBg)"></div>
+			}
+
+			<!-- Card Header -->
+			<div class="card-header">
+				<div class="card-avatar">
+					<div class="avatar-img" style="background-image: url(@GetPortraitPath())"></div>
+				</div>
+				<div class="card-identity">
+					<div class="card-name">@GetName()</div>
+					<div class="card-title">@GetTitle()</div>
+				</div>
+				<div class="card-level">
+					<span class="level-num">@GetLevel()</span>
+					<span class="level-label">LV</span>
+				</div>
+			</div>
+
+			<!-- Favorite Monster -->
+			@if ( !string.IsNullOrEmpty( GetFavoriteSpeciesId() ) )
+			{
+				<div class="card-favorite">
+					@{
+						var favSpecies = MonsterManager.Instance?.GetSpecies( GetFavoriteSpeciesId() );
+					}
+					@if ( favSpecies != null )
+					{
+						<img class="fav-sprite" src="@favSpecies.IconPath" />
+						<span class="fav-name">@favSpecies.Name</span>
+					}
+				</div>
+			}
+
+			<!-- Arena Rank -->
+			<div class="card-rank-section">
+				<span class="rank-badge" style="color: @GetRankColor()">@GetArenaRank()</span>
+				<span class="rank-points">@GetArenaPoints().ToString("N0") pts</span>
+			</div>
+
+			<!-- Stats Grid -->
+			<div class="card-stats">
+				<div class="stat-item">
+					<span class="stat-value">@GetArenaWins()</span>
+					<span class="stat-label">Wins</span>
+				</div>
+				<div class="stat-item">
+					<span class="stat-value">@GetWinRate()</span>
+					<span class="stat-label">Win%</span>
+				</div>
+				<div class="stat-item">
+					<span class="stat-value">@GetAchievements()</span>
+					<span class="stat-label">Achv</span>
+				</div>
+				<div class="stat-item">
+					<span class="stat-value">@GetPlayTime()</span>
+					<span class="stat-label">Time</span>
+				</div>
+			</div>
+
+			<!-- Card Footer -->
+			<div class="card-footer">
+				@if ( CollectedCard != null )
+				{
+					<span class="collected-date">Collected @FormatDate( CollectedCard.CollectedAt )</span>
+				}
+				else
+				{
+					<span class="card-badge">YOUR CARD</span>
+				}
+			</div>
+		</div>
+	</div>
+</root>
+
+@code {
+	/// <summary>
+	/// Show a collected tamer card (from another player)
+	/// </summary>
+	public CollectedTamerCard CollectedCard { get; set; }
+
+	/// <summary>
+	/// If true, shows the local player's own card
+	/// </summary>
+	public bool ShowOwnCard { get; set; } = false;
+
+	private Tamer GetTamer() => TamerManager.Instance?.CurrentTamer;
+
+	private string GetName()
+	{
+		if ( CollectedCard != null ) return CollectedCard.Name ?? "Unknown";
+		return GetTamer()?.Name ?? "Unknown Tamer";
+	}
+
+	private int GetLevel()
+	{
+		if ( CollectedCard != null ) return CollectedCard.Level;
+		return GetTamer()?.Level ?? 1;
+	}
+
+	private string GetTitle()
+	{
+		// Use stored title if available
+		if ( CollectedCard != null && !string.IsNullOrEmpty( CollectedCard.Title ) )
+			return CollectedCard.Title;
+
+		// Use own active title
+		if ( CollectedCard == null )
+		{
+			var tamer = GetTamer();
+			if ( tamer != null && !string.IsNullOrEmpty( tamer.ActiveTitleId ) )
+			{
+				var titleItem = ItemManager.Instance?.GetItem( tamer.ActiveTitleId );
+				if ( titleItem != null ) return titleItem.Name;
+			}
+		}
+
+		// Fallback to level-based title
+		var level = GetLevel();
+		if ( level >= 80 ) return "Legendary Tamer";
+		if ( level >= 60 ) return "Master Tamer";
+		if ( level >= 40 ) return "Expert Tamer";
+		if ( level >= 20 ) return "Skilled Tamer";
+		if ( level >= 10 ) return "Apprentice Tamer";
+		return "Novice Tamer";
+	}
+
+	private string GetPortraitPath()
+	{
+		if ( CollectedCard != null )
+		{
+			// Use gender from collected card data
+			var gender = CollectedCard.Gender?.ToLower() ?? "male";
+			return gender == "female"
+				? "ui/characters/female/female_tamer.png"
+				: "ui/characters/male/male_tamer.png";
+		}
+		return GetTamer()?.Gender == TamerGender.Female
+			? "ui/characters/female/female_tamer.png"
+			: "ui/characters/male/male_tamer.png";
+	}
+
+	private string GetExpeditionBackground()
+	{
+		string expId = null;
+		if ( CollectedCard != null )
+			expId = CollectedCard.FavoriteExpeditionId;
+		else
+			expId = GetTamer()?.FavoriteExpeditionId;
+
+		if ( string.IsNullOrEmpty( expId ) ) return null;
+		var expedition = ExpeditionManager.Instance?.GetExpedition( expId );
+		return expedition?.BackgroundImage;
+	}
+
+	private string GetArenaRank()
+	{
+		if ( CollectedCard != null ) return CollectedCard.ArenaRank ?? "Unranked";
+		return GetTamer()?.ArenaRank ?? "Unranked";
+	}
+
+	private int GetArenaPoints()
+	{
+		if ( CollectedCard != null ) return CollectedCard.ArenaPoints;
+		return GetTamer()?.ArenaPoints ?? 0;
+	}
+
+	private int GetArenaWins()
+	{
+		if ( CollectedCard != null ) return CollectedCard.ArenaWins;
+		return GetTamer()?.ArenaWins ?? 0;
+	}
+
+	private string GetWinRate()
+	{
+		if ( CollectedCard != null )
+			return $"{(int)(CollectedCard.WinRate * 100)}%";
+		var tamer = GetTamer();
+		if ( tamer == null ) return "0%";
+		return $"{(int)(tamer.WinRate * 100)}%";
+	}
+
+	private string GetAchievements()
+	{
+		if ( CollectedCard != null ) return $"{CollectedCard.AchievementCount}";
+		var tamer = GetTamer();
+		if ( tamer == null ) return "0";
+		var count = tamer.Achievements?.Values.Count( p => p.IsUnlocked ) ?? 0;
+		return $"{count}";
+	}
+
+	private string GetPlayTime()
+	{
+		int minutes = 0;
+		if ( CollectedCard != null )
+			minutes = CollectedCard.TotalPlayTimeMinutes;
+		else
+		{
+			var time = GetTamer()?.TotalPlayTime ?? TimeSpan.Zero;
+			minutes = (int)time.TotalMinutes;
+		}
+
+		if ( minutes <= 0 ) return "-";
+		if ( minutes < 60 ) return $"{minutes}m";
+		int hours = minutes / 60;
+		if ( hours < 24 ) return $"{hours}h";
+		int days = hours / 24;
+		return $"{days}d";
+	}
+
+	private string GetFavoriteSpeciesId()
+	{
+		if ( CollectedCard != null ) return CollectedCard.FavoriteMonsterSpeciesId;
+		return GetTamer()?.FavoriteMonsterSpeciesId;
+	}
+
+	private string GetRankColor()
+	{
+		return CompetitiveManager.GetRankColor( GetArenaRank() );
+	}
+
+	private string GetRankClass()
+	{
+		var rank = GetArenaRank()?.ToLower() ?? "unranked";
+		return $"rank-{rank}";
+	}
+
+	private string FormatDate( DateTime date )
+	{
+		return date.ToLocalTime().ToString( "MMM d, yyyy" );
+	}
+}

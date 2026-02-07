@@ -25,13 +25,15 @@
 					<div class="section-header">
 						<span class="section-icon">⬆</span>
 						<span class="section-title">Boosts</span>
-						<span class="section-count">@GetActiveBoosts().Count</span>
+						<span class="section-count">@GetBoostSectionCount()</span>
 					</div>
 					<div class="section-items">
 						@{
 							var boosts = GetActiveBoosts();
+							var hasEliteInk = HasEliteInk();
+							var hasMasterInk = HasMasterInk();
 						}
-						@if (boosts.Count == 0)
+						@if (boosts.Count == 0 && !hasEliteInk && !hasMasterInk)
 						{
 							<div class="no-effects">No active boosts</div>
 						}
@@ -56,6 +58,32 @@
 									{
 										<div class="server-badge">SERVER</div>
 									}
+								</div>
+							}
+
+							@if (hasEliteInk)
+							{
+								<div class="effect-item personal">
+									<div class="effect-icon">✨</div>
+									<div class="effect-info">
+										<div class="effect-name">Elite Contract Ink</div>
+										<div class="effect-desc">+15% catch rate</div>
+									</div>
+									<div class="effect-timer @(GetEliteInkRemaining().TotalMinutes < 5 ? "expiring" : "")">
+										@FormatBoostTime(GetEliteInkRemaining())
+									</div>
+								</div>
+							}
+
+							@if (hasMasterInk)
+							{
+								<div class="effect-item personal">
+									<div class="effect-icon">🖋</div>
+									<div class="effect-info">
+										<div class="effect-name">Master Ink</div>
+										<div class="effect-desc">Next capture guaranteed</div>
+									</div>
+									<div class="effect-timer">1 use</div>
 								</div>
 							}
 						}
@@ -158,7 +186,30 @@
 
 	private int GetTotalEffectCount()
 	{
-		return GetActiveBoosts().Count + GetEquippedRelics().Count;
+		return GetBoostSectionCount() + GetEquippedRelics().Count;
+	}
+
+	private int GetBoostSectionCount()
+	{
+		return GetActiveBoosts().Count + (HasEliteInk() ? 1 : 0) + (HasMasterInk() ? 1 : 0);
+	}
+
+	private bool HasEliteInk()
+	{
+		return TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt > DateTime.Now;
+	}
+
+	private bool HasMasterInk()
+	{
+		return TamerManager.Instance?.CurrentTamer?.HasMasterInk == true
+			|| ItemManager.Instance?.HasItem("boss_master_ink") == true;
+	}
+
+	private TimeSpan GetEliteInkRemaining()
+	{
+		var expiry = TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt ?? DateTime.MinValue;
+		if (expiry <= DateTime.Now) return TimeSpan.Zero;
+		return expiry - DateTime.Now;
 	}
 
 	private List<(ShopItemType Type, float Multiplier, TimeSpan TimeRemaining, bool IsServer, string ActivatedBy)> GetActiveBoosts()
@@ -342,6 +393,12 @@
 		{
 			hash.Add((int)boost.TimeRemaining.TotalSeconds);
 		}
+
+		// Add elite ink and master ink state
+		hash.Add(HasEliteInk());
+		if (HasEliteInk())
+			hash.Add((int)GetEliteInkRemaining().TotalSeconds);
+		hash.Add(HasMasterInk());
 
 		// Add equipped relics
 		var relics = GetEquippedRelics();

@@ -1,4 +1,5 @@
 using Sandbox;
+using Sandbox.Services;
 using Beastborne.Data;
 using Beastborne.Systems;
 using System;
@@ -287,7 +288,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom", "branchling" },
 			Element = ElementType.Neutral,
 			GoldReward = 75,
-			XPReward = 50
+			XPReward = 50,
+			BackgroundImage = "ui/locations/whispering_woods_background.png"
 		} );
 
 		// Level 5 - Fire
@@ -302,7 +304,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "embrik", "cinderscale", "blazefang", "magmite", "smolderpup", "emberhound", "hinobi", "enkong" },
 			Element = ElementType.Fire,
 			GoldReward = 150,
-			XPReward = 200
+			XPReward = 200,
+			BackgroundImage = "ui/locations/ember_cavern_background.png"
 		} );
 
 		// Level 10 - Water
@@ -317,7 +320,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "droskul", "puddlejaw", "mirrorpond", "weepfin", "streamling", "rivercrest", "bubblite", "coralheim" },
 			Element = ElementType.Water,
 			GoldReward = 175,
-			XPReward = 250
+			XPReward = 250,
+			BackgroundImage = "ui/locations/lake_of_tears_background.png"
 		} );
 
 		// Level 15 - Wind
@@ -332,7 +336,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "wispryn", "driftmote", "galeclaw", "whistleshade", "zephyrmite", "cyclonyx", "featherwisp", "vortexel", "dandepuff" },
 			Element = ElementType.Wind,
 			GoldReward = 225,
-			XPReward = 350
+			XPReward = 350,
+			BackgroundImage = "ui/locations/echo_canyon_background.png"
 		} );
 
 		// Level 20 - Electric
@@ -347,7 +352,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "sparklet", "voltweave", "staticling", "joltpaw", "thundermane", "zapfin", "boltgeist", "circuitsprite" },
 			Element = ElementType.Electric,
 			GoldReward = 250,
-			XPReward = 400
+			XPReward = 400,
+			BackgroundImage = "ui/locations/storm_spire_background.png"
 		} );
 
 		// Level 25 - Earth
@@ -362,7 +368,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "rootling", "cragmaw", "rubblekin", "pebblit", "boulderon", "quartzite", "dustback", "terraclops", "terracub" },
 			Element = ElementType.Earth,
 			GoldReward = 275,
-			XPReward = 500
+			XPReward = 500,
+			BackgroundImage = "ui/locations/ancient_ruins_background.png"
 		} );
 
 		// Level 30 - Ice
@@ -377,7 +384,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "frostling", "glacimaw", "shivershard", "snowmite", "blizzardian", "iciclaw", "frostwisp", "sleethorn" },
 			Element = ElementType.Ice,
 			GoldReward = 325,
-			XPReward = 600
+			XPReward = 600,
+			BackgroundImage = "ui/locations/frozen_vale_background.png"
 		} );
 
 		// Level 35 - Nature
@@ -389,10 +397,11 @@ public sealed class ExpeditionManager : Component
 			RequiredLevel = 35,
 			Waves = 6,
 			BaseEnemyLevel = 35,
-			PossibleSpecies = new() { "sproutkin", "thornveil", "mosswhisper", "pollenpuff", "bloomguard", "vinewhip", "fungrowth", "willowwisp" },
+			PossibleSpecies = new() { "sproutkin", "thornveil", "mosswhisper", "pollenpuff", "bloomguard", "vinewhip", "fungrowth", "willowwisp", "curublast" },
 			Element = ElementType.Nature,
 			GoldReward = 375,
-			XPReward = 700
+			XPReward = 700,
+			BackgroundImage = "ui/locations/overgrown_heart_background.png"
 		} );
 
 		// Level 40 - Metal
@@ -407,7 +416,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "coglet", "ironclad", "corrode", "scrapper", "junktitan", "bladefly", "bellguard", "chainlink" },
 			Element = ElementType.Metal,
 			GoldReward = 425,
-			XPReward = 850
+			XPReward = 850,
+			BackgroundImage = "ui/locations/rusted_foundry_background.png"
 		} );
 
 		// Level 45 - Spirit
@@ -422,7 +432,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "dawnmote", "haloveil", "echomind", "wishling", "hopebringer", "memoryveil", "solmara", "soulflare", "dreamspark" },
 			Element = ElementType.Spirit,
 			GoldReward = 500,
-			XPReward = 1000
+			XPReward = 1000,
+			BackgroundImage = "ui/locations/spirit_sanctum_background.png"
 		} );
 
 		// Level 50 - Shadow
@@ -437,7 +448,8 @@ public sealed class ExpeditionManager : Component
 			PossibleSpecies = new() { "murkmaw", "voidweep", "gloomling", "nightcrawl", "duskstalker", "fearling", "umbralynx", "secretkeeper" },
 			Element = ElementType.Shadow,
 			GoldReward = 550,
-			XPReward = 1250
+			XPReward = 1250,
+			BackgroundImage = "ui/locations/shadow_depths_background.png"
 		} );
 
 		// Level 55 - Elemental Champions (strongest evolved form of each element)
@@ -449,12 +461,13 @@ public sealed class ExpeditionManager : Component
 			RequiredLevel = 55,
 			Waves = 7,
 			BaseEnemyLevel = 55,
-			PossibleSpecies = new() { "ashenmare", "infernowarg", "tidehollow", "oceanmaw", "vexstorm", "voltweave", "thundermane", "monoleth", "permafrost", "glacierback", "verdantis", "eldergrove", "forgeborn", "chromedragon", "solmara", "nullgrave" },
+			PossibleSpecies = new() { "ashenmare", "infernowarg", "tidehollow", "oceanmaw", "vexstorm", "voltweave", "thundermane", "monoleth", "permafrost", "glacierback", "verdantis", "eldergrove", "forgeborn", "solmara", "nullgrave" },
 			Element = ElementType.Neutral,
 			GoldReward = 600,
 			XPReward = 3500,
 			HasBoss = true,
-			BossSpeciesId = "primordius"
+			BossSpeciesId = "primordius",
+			BackgroundImage = "ui/locations/elemental_nexus_background.png"
 		} );
 
 		// Level 65 - Primordial Rift (reality-warping creatures only)
@@ -471,7 +484,8 @@ public sealed class ExpeditionManager : Component
 			GoldReward = 750,
 			XPReward = 5000,
 			HasBoss = true,
-			BossSpeciesId = "voiddragon"
+			BossSpeciesId = "voiddragon",
+			BackgroundImage = "ui/locations/primordial_rift_background.png"
 		} );
 
 		// Level 75 - Garden of Origins (pure Nature primordial creatures)
@@ -488,7 +502,8 @@ public sealed class ExpeditionManager : Component
 			GoldReward = 1000,
 			XPReward = 7500,
 			HasBoss = true,
-			BossSpeciesId = "songborne"
+			BossSpeciesId = "songborne",
+			BackgroundImage = "ui/locations/garden_of_origins_background.png"
 		} );
 
 		// Level 85 - Mythweaver's Realm (Epic/Legendary beasts only)
@@ -505,7 +520,8 @@ public sealed class ExpeditionManager : Component
 			GoldReward = 1750,
 			XPReward = 12500,
 			HasBoss = true,
-			BossSpeciesId = "mythweaver"
+			BossSpeciesId = "mythweaver",
+			BackgroundImage = "ui/locations/mythweavers_realm_background.png"
 		} );
 
 		// Level 100 - Ultimate challenge: Boss Gauntlet (3 boss fights in a row)
@@ -672,7 +688,12 @@ public sealed class ExpeditionManager : Component
 				if ( expeditionIndex >= tamer.HighestExpeditionCleared )
 				{
 					tamer.HighestExpeditionCleared = expeditionIndex + 1;
+					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
+					Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
 				}
+				tamer.TotalExpeditionsCompleted++;
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
+				Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
 			}
 
 			// Award expedition completion rewards (accumulated battle rewards already given per-wave)
@@ -828,7 +849,12 @@ public sealed class ExpeditionManager : Component
 				if ( expeditionIndex >= tamer.HighestExpeditionCleared )
 				{
 					tamer.HighestExpeditionCleared = expeditionIndex + 1;
+					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
+					Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
 				}
+				tamer.TotalExpeditionsCompleted++;
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
+				Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
 			}
 
 			if ( AutoRetry )
@@ -1334,7 +1360,12 @@ public sealed class ExpeditionManager : Component
 				if ( expeditionIndex >= tamer.HighestExpeditionCleared )
 				{
 					tamer.HighestExpeditionCleared = expeditionIndex + 1;
+					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
+					Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
 				}
+				tamer.TotalExpeditionsCompleted++;
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
+				Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
 			}
 
 			// Award expedition completion rewards (accumulated battle rewards already given per-wave)
@@ -1585,7 +1616,17 @@ public sealed class ExpeditionManager : Component
 		// Relic catch rate bonus
 		float relicCatchBonus = ItemManager.Instance?.GetRelicBonus( ItemEffectType.PassiveCatchRate ) ?? 0;
 
-		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f);
+		// Held item catch rate bonus (e.g. Contract Seal) - check all team monsters
+		float heldCatchBonus = 0;
+		if ( ItemManager.Instance != null )
+		{
+			foreach ( var monster in SelectedTeam )
+			{
+				heldCatchBonus += ItemManager.Instance.GetHeldItemBonus( monster, ItemEffectType.CatchRateBoost );
+			}
+		}
+
+		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + heldCatchBonus / 100f);
 		finalCatchRate = Math.Min( 0.95f, finalCatchRate ); // Max 95% catch rate
 
 		// Master Ink guarantees capture
@@ -1607,8 +1648,8 @@ public sealed class ExpeditionManager : Component
 			var caughtMonster = MonsterManager.Instance?.CreateMonster( target.SpeciesId, isBred: false, target.Genetics );
 			if ( caughtMonster != null )
 			{
-				// Set level to match the wild monster's level
-				caughtMonster.Level = target.Level;
+				// Set level to match the wild monster's level (capped at 100)
+				caughtMonster.Level = Math.Min( target.Level, 100 );
 				MonsterManager.Instance?.RecalculateStats( caughtMonster );
 
 				// Refresh moves to match the correct level (CreateMonster uses level 1)
@@ -1618,6 +1659,48 @@ public sealed class ExpeditionManager : Component
 				caughtMonster.FullHeal();
 
 				OnMonsterCaught?.Invoke( caughtMonster );
+
+				// Update catch stats & achievements
+				if ( TamerManager.Instance?.CurrentTamer != null )
+				{
+					TamerManager.Instance.CurrentTamer.TotalMonstersCaught++;
+					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersCaught, TamerManager.Instance.CurrentTamer.TotalMonstersCaught );
+					Stats.SetValue( "monsters-caught", TamerManager.Instance.CurrentTamer.TotalMonstersCaught );
+
+					// Check element-specific catch achievements
+					var caughtSpecies = MonsterManager.Instance?.GetSpecies( caughtMonster.SpeciesId );
+					if ( caughtSpecies != null )
+					{
+						var elementReq = caughtSpecies.Element switch
+						{
+							Data.ElementType.Fire => Data.AchievementRequirement.CaughtElementFire,
+							Data.ElementType.Water => Data.AchievementRequirement.CaughtElementWater,
+							Data.ElementType.Earth => Data.AchievementRequirement.CaughtElementEarth,
+							Data.ElementType.Wind => Data.AchievementRequirement.CaughtElementWind,
+							Data.ElementType.Electric => Data.AchievementRequirement.CaughtElementElectric,
+							Data.ElementType.Ice => Data.AchievementRequirement.CaughtElementIce,
+							Data.ElementType.Nature => Data.AchievementRequirement.CaughtElementNature,
+							Data.ElementType.Metal => Data.AchievementRequirement.CaughtElementMetal,
+							Data.ElementType.Shadow => Data.AchievementRequirement.CaughtElementShadow,
+							Data.ElementType.Spirit => Data.AchievementRequirement.CaughtElementSpirit,
+							Data.ElementType.Neutral => Data.AchievementRequirement.CaughtElementNeutral,
+							_ => (Data.AchievementRequirement?)null
+						};
+						if ( elementReq.HasValue )
+							AchievementManager.Instance?.CheckProgress( elementReq.Value, 1 );
+
+						// Check rarity catch achievements
+						if ( caughtSpecies.BaseRarity >= Data.Rarity.Rare )
+							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityRare, 1 );
+						if ( caughtSpecies.BaseRarity >= Data.Rarity.Epic )
+							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityEpic, 1 );
+						if ( caughtSpecies.BaseRarity >= Data.Rarity.Legendary )
+							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityLegendary, 1 );
+						if ( caughtSpecies.BaseRarity >= Data.Rarity.Mythic )
+							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityMythic, 1 );
+					}
+				}
+
 				Log.Info( $"Caught {caughtMonster.Nickname} at level {caughtMonster.Level}!" );
 			}
 		}

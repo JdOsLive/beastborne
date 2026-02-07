@@ -63,10 +63,26 @@
 				</div>
 			</div>
 
-			<!-- Stamps Counter -->
-			<div class="stamp-counter">
-				<div class="stamp-label">Stamps Available:</div>
-				<div class="stamp-value">@GetStampCount()</div>
+			<!-- Ink Info Row -->
+			<div class="ink-info-row">
+				<div class="stamp-counter">
+					<div class="stamp-label">Ink Available:</div>
+					<div class="stamp-value">@GetStampCount()</div>
+				</div>
+				@if (HasMasterInk())
+				{
+					<div class="master-ink-toggle @(useMasterInk ? "active" : "")" onclick=@ToggleMasterInk>
+						<div class="toggle-slider"></div>
+						<span class="toggle-label">Master Ink</span>
+					</div>
+				}
+				else
+				{
+					<div class="master-ink-toggle disabled">
+						<div class="toggle-slider"></div>
+						<span class="toggle-label">No Master Ink</span>
+					</div>
+				}
 			</div>
 
 			<!-- Elite Ink Indicator -->
@@ -78,7 +94,7 @@
 				</div>
 			}
 
-			<!-- Negotiation Options -->
+				<!-- Negotiation Options -->
 			<div class="negotiation-options">
 				@if (negotiationOptions != null)
 				{
@@ -90,7 +106,7 @@
 						<div class="option-card @(isSelected ? "selected" : "") @(!canAfford ? "cant-afford" : "")"
 							 onclick=@(() => SelectOption(opt))>
 							<div class="option-name">@opt.Name</div>
-							<div class="option-chance" style="color: @opt.GetSuccessColor()">@opt.GetSuccessText()</div>
+							<div class="option-chance" style="color: @(useMasterInk ? "#4ade80" : opt.GetSuccessColor())">@(useMasterInk ? "100%" : opt.GetSuccessText())</div>
 							<div class="option-description">@opt.Description</div>
 
 							@if (opt.GoldCost > 0)
@@ -160,6 +176,7 @@
 	private List<NegotiationOption> negotiationOptions;
 	private NegotiationOption selectedOption;
 	private int selectedOptionIndex = 0;
+	private bool useMasterInk = false;
 
 	protected override void OnAfterTreeRender(bool firstTime)
 	{
@@ -175,6 +192,7 @@
 		currentState = NegotiationState.Selecting;
 		selectedOption = null;
 		selectedOptionIndex = 0;
+		useMasterInk = false;
 		GenerateOptions();
 		IsVisible = true;
 		StateHasChanged();
@@ -284,8 +302,31 @@
 
 		SoundManager.PlayClick();
 
-		// Attempt the negotiation
-		bool success = ContractGenerator.AttemptNegotiation(selectedOption);
+		// Master Ink guarantees capture
+		bool success;
+		if (useMasterInk && HasMasterInk())
+		{
+			// Spend gold if needed
+			if (selectedOption.GoldCost > 0)
+				TamerManager.Instance.SpendGold(selectedOption.GoldCost);
+
+			success = true;
+
+			// If it's in inventory but not yet activated, use it from inventory
+			if (HasMasterInkInInventory())
+			{
+				ItemManager.Instance?.UseItem("boss_master_ink", null);
+			}
+			// Consume the active flag
+			TamerManager.Instance.CurrentTamer.HasMasterInk = false;
+			TamerManager.Instance.SaveToCloud();
+			Log.Info("Master Ink used! Guaranteed contract negotiation.");
+		}
+		else
+		{
+			// Normal negotiation attempt
+			success = ContractGenerator.AttemptNegotiation(selectedOption);
+		}
 
 		if (success)
 		{
@@ -402,6 +443,25 @@
 		return $"{remaining.Seconds}s";
 	}
 
+	private bool HasMasterInk()
+	{
+		// Check both the active flag AND inventory
+		return TamerManager.Instance?.CurrentTamer?.HasMasterInk == true
+			|| HasMasterInkInInventory();
+	}
+
+	private bool HasMasterInkInInventory()
+	{
+		return ItemManager.Instance?.HasItem("boss_master_ink") == true;
+	}
+
+	private void ToggleMasterInk()
+	{
+		useMasterInk = !useMasterInk;
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
 	private string GetResultClass()
 	{
 		return currentState switch
@@ -422,6 +482,8 @@
 		hash.Add(TamerManager.Instance?.CurrentTamer?.Gold ?? 0);
 		hash.Add(TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0);
 		hash.Add(HasEliteInk());
+		hash.Add(HasMasterInk());
+		hash.Add(useMasterInk);
 		return hash.ToHashCode();
 	}
 }

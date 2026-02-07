@@ -44,6 +44,29 @@
 			</div>
 		</div>
 
+		@if (IsArenaBattle)
+		{
+			<div class="arena-score-bar">
+				<span class="arena-score-name">@ArenaPlayerName</span>
+				<div class="arena-score-pips">
+					@for (int i = 0; i < 2; i++)
+					{
+						var won = ArenaPlayerWins > i;
+						<div class="arena-pip @(won ? "won" : "")"></div>
+					}
+				</div>
+				<span class="arena-score-game">Game @ArenaGameNumber</span>
+				<div class="arena-score-pips">
+					@for (int i = 0; i < 2; i++)
+					{
+						var won = ArenaOpponentWins > i;
+						<div class="arena-pip opponent @(won ? "won" : "")"></div>
+					}
+				</div>
+				<span class="arena-score-name">@ArenaOpponentName</span>
+			</div>
+		}
+
 		<!-- Turn Order Display (hidden in arena to not reveal speed) -->
 		@if (!IsArenaBattle)
 		{
@@ -387,9 +410,9 @@
 				</button>
 			}
 
-			<div class="toggle-group">
-				@if (!IsArenaBattle)
-				{
+			@if (!IsArenaBattle)
+			{
+				<div class="toggle-group">
 					<div class="toggle-item @(GetAutoBattle() ? "active" : "")" onclick=@ToggleAutoBattle>
 						<div class="toggle-switch"></div>
 						<span class="toggle-label">AUTO-BATTLE</span>
@@ -427,15 +450,35 @@
 							}
 						</div>
 					}
-				}
-			</div>
+				</div>
 
-			@if (!IsArenaBattle)
-			{
 				<button class="control-btn end-btn" onclick=@OnEndExpedition>
 					<span class="btn-icon">✕</span>
 					<span class="btn-label">END</span>
 				</button>
+			}
+
+			@if (IsArenaBattle)
+			{
+				@if (showRetireConfirm)
+				{
+					<div class="retire-confirm">
+						<span class="retire-confirm-text">Retire from this match? This forfeits the match.</span>
+						<button class="control-btn retire-yes" onclick=@OnRetireConfirmed>
+							<span class="btn-label">YES, RETIRE</span>
+						</button>
+						<button class="control-btn retire-no" onclick=@(() => showRetireConfirm = false)>
+							<span class="btn-label">CANCEL</span>
+						</button>
+					</div>
+				}
+				else
+				{
+					<button class="control-btn retire-btn" onclick=@(() => showRetireConfirm = true)>
+						<span class="btn-icon">🚪</span>
+						<span class="btn-label">RETIRE</span>
+					</button>
+				}
 			}
 		</div>
 
@@ -524,6 +567,12 @@
 	public Action OnExpeditionCancelled { get; set; }
 	public string ExpeditionId { get; set; } = "";
 	public bool IsArenaBattle { get; set; } = false;
+	public Action OnArenaRetire { get; set; }
+	public string ArenaPlayerName { get; set; } = "";
+	public string ArenaOpponentName { get; set; } = "";
+	public int ArenaPlayerWins { get; set; } = 0;
+	public int ArenaOpponentWins { get; set; } = 0;
+	public int ArenaGameNumber { get; set; } = 1;
 
 	private bool isSubscribed = false;
 	private BattleTurn lastTurn = null;
@@ -555,6 +604,7 @@
 	private bool isBossContract = false;
 	private ContractNegotiationPanel negotiationPanel;
 	private bool lastBattleWon = false;
+	private bool showRetireConfirm = false;
 
 	private void SetHoveredMove(string moveId)
 	{
@@ -573,6 +623,10 @@
 
 	private string GetBackgroundStyle()
 	{
+		// Arena battles use transparent background to show arena panel behind
+		if (IsArenaBattle)
+			return "background-color: transparent";
+
 		var bgPath = ExpeditionId switch
 		{
 			"forest_entrance" => "/ui/locations/whispering_woods_background.png",
@@ -876,6 +930,14 @@
 		// 	SoundManager.PlayVictory();
 		// else
 		// 	SoundManager.PlayDefeat();
+
+		if (IsArenaBattle)
+		{
+			// Arena battles skip negotiation — go straight to game result
+			Log.Info($"[BattleView] Arena battle ended, invoking OnBattleEnd");
+			OnBattleEnd?.Invoke(result?.PlayerWon ?? false);
+			return;
+		}
 
 		if (ExpeditionManager.Instance?.IsRunningInBackground != true)
 		{
@@ -1222,6 +1284,13 @@
 		SoundManager.PlayBack();
 		ExpeditionManager.Instance?.CancelExpedition();
 		OnExpeditionCancelled?.Invoke();
+	}
+
+	private void OnRetireConfirmed()
+	{
+		showRetireConfirm = false;
+		SoundManager.PlayBack();
+		OnArenaRetire?.Invoke();
 	}
 
 	private List<string> GetMonsterStatuses(Monster monster)

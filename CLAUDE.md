@@ -125,6 +125,25 @@ If the existing description doesn't work visually:
 
 ---
 
+## s&box Razor UI — CSS Quirks & Gotchas
+
+s&box uses a custom CSS engine that behaves differently from browsers. Keep these rules in mind:
+
+| Issue | Details |
+|-------|---------|
+| **line-height must be extremely high** | For large font sizes (30px+), `line-height` needs to be 18–24+ or the text gets clipped. Normal values like 1.2 or 2 are not enough. Example: `font-size: 42px` needs `line-height: 24` to render fully. |
+| **`overflow: hidden` collapses flex children** | Setting `overflow: hidden` on a flex child can cause it to shrink to zero width/height, making content invisible. Avoid it on flex children. |
+| **`flex-wrap: wrap` miscalculates height** | The container won't compute its height correctly when children wrap. Use explicit row containers instead (e.g., two `.stats-row` divs instead of one flex-wrap grid). |
+| **Bare text renders vertically** | Text not wrapped in a `<span>` or other element inside flex containers may render character-by-character vertically. Always wrap text in elements. |
+| **`flex: 1` can fail with multiple siblings** | When a flex container has 3+ children, `flex: 1` may not distribute space correctly. Use explicit `width` values instead. |
+| **`inline-flex` not supported** | Use `display: flex` only. |
+| **`background: none` not supported** | Use `background-color: transparent` instead. |
+| **URL quotes in `background-image` not supported** | Use `url(@variable)` not `url('@variable')` in inline styles — s&box doesn't need quotes around URLs. |
+| **Empty divs render as visible panels** | Empty `<div>` elements may render as gray rectangles or scrollbar artifacts. Remove wrapper divs that have no content. |
+| **`text-overflow: ellipsis` with `overflow: hidden`** | This combination can collapse the element in s&box flex layouts. Avoid using `overflow: hidden` on text elements inside flex containers. |
+
+---
+
 ## Discord Patch Notes Style Guide
 
 When writing patch notes for Discord announcements, follow this format:

@@ -1,0 +1,345 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Achievement = Beastborne.Data.Achievement;
+@inherits Panel
+
+<root class="achievement-panel @(IsVisible ? "visible" : "")">
+	<div class="achievement-overlay" onclick=@Close></div>
+
+	<div class="achievement-modal">
+		<div class="achievement-header">
+			<div class="header-left">
+				<span class="header-title">ACHIEVEMENTS</span>
+			</div>
+			<div class="header-right">
+				<div class="achievement-counter">
+					<span class="counter-current">@GetUnlockedCount()</span>
+					<span class="counter-separator">/</span>
+					<span class="counter-total">@GetTotalCount()</span>
+				</div>
+				<button class="close-btn" onclick=@Close>x</button>
+			</div>
+		</div>
+
+		<!-- Overall Progress Bar -->
+		<div class="overall-progress">
+			<div class="progress-bar-bg">
+				<div class="progress-bar-fill" style="width: @(GetOverallPercent())%"></div>
+			</div>
+			<span class="progress-text">@(GetOverallPercent())% Complete</span>
+		</div>
+
+		<!-- Category Tabs -->
+		<div class="category-tabs">
+			<button class="category-tab @(currentCategory == "all" ? "active" : "")"
+					onclick=@(() => SetCategory("all"))>
+				<span>All @GetTotalCount()</span>
+			</button>
+			<button class="category-tab @(currentCategory == "collection" ? "active" : "")"
+					onclick=@(() => SetCategory("collection"))>
+				<span>Collection</span>
+			</button>
+			<button class="category-tab @(currentCategory == "battle" ? "active" : "")"
+					onclick=@(() => SetCategory("battle"))>
+				<span>Battle</span>
+			</button>
+			<button class="category-tab @(currentCategory == "expedition" ? "active" : "")"
+					onclick=@(() => SetCategory("expedition"))>
+				<span>Expedition</span>
+			</button>
+			<button class="category-tab @(currentCategory == "breeding" ? "active" : "")"
+					onclick=@(() => SetCategory("breeding"))>
+				<span>Fusing</span>
+			</button>
+			<button class="category-tab @(currentCategory == "economy" ? "active" : "")"
+					onclick=@(() => SetCategory("economy"))>
+				<span>Economy</span>
+			</button>
+			<button class="category-tab @(currentCategory == "arena" ? "active" : "")"
+					onclick=@(() => SetCategory("arena"))>
+				<span>Arena</span>
+			</button>
+			<button class="category-tab @(currentCategory == "social" ? "active" : "")"
+					onclick=@(() => SetCategory("social"))>
+				<span>Social</span>
+			</button>
+			<button class="category-tab @(currentCategory == "mastery" ? "active" : "")"
+					onclick=@(() => SetCategory("mastery"))>
+				<span>Mastery</span>
+			</button>
+			<button class="category-tab @(currentCategory == "secret" ? "active" : "")"
+					onclick=@(() => SetCategory("secret"))>
+				<span>Secret</span>
+			</button>
+		</div>
+
+		<!-- Unclaimed Banner -->
+		@{
+			var unclaimedCount = GetUnclaimedCount();
+		}
+		@if (unclaimedCount > 0)
+		{
+			<div class="unclaimed-banner">
+				<span class="unclaimed-icon">&#127873;</span>
+				<span class="unclaimed-text">@unclaimedCount reward@(unclaimedCount > 1 ? "s" : "") ready to claim!</span>
+				<button class="claim-all-btn" onclick=@ClaimAll><span>Claim All</span></button>
+			</div>
+		}
+
+		<!-- Achievements Grid -->
+		<div class="achievements-content">
+			<div class="achievements-grid">
+				@foreach (var achievement in GetFilteredAchievements())
+				{
+					var progress = GetProgress(achievement.Id);
+					var isUnlocked = progress?.IsUnlocked ?? false;
+					var isClaimed = progress?.IsClaimed ?? false;
+					var isSecret = achievement.IsSecret && !isUnlocked;
+					var canClaim = isUnlocked && !isClaimed;
+
+					<div class="achievement-item @(isUnlocked ? "unlocked" : "locked") @(canClaim ? "claimable" : "") @(isClaimed ? "claimed" : "")">
+
+						<div class="item-status">
+							@if (isClaimed)
+							{
+								<div class="status-icon claimed-icon">&#10003;</div>
+							}
+							else if (canClaim)
+							{
+								<div class="status-icon claimable-icon">&#127873;</div>
+							}
+							else
+							{
+								<div class="status-icon locked-icon">&#128274;</div>
+							}
+						</div>
+
+						<div class="item-info">
+							<div class="item-name">@(isSecret ? "???" : achievement.Name)</div>
+							<div class="item-desc">@(isSecret ? "This is a secret achievement." : achievement.Description)</div>
+
+							@if (!isUnlocked && !isSecret)
+							{
+								var percent = GetAchievementPercent(achievement.Id);
+								<div class="item-progress">
+									<div class="item-progress-bar">
+										<div class="item-progress-fill" style="width: @(percent)%"></div>
+									</div>
+									<span class="item-progress-text">@GetProgressText(achievement, progress)</span>
+								</div>
+							}
+
+							<!-- Inline Rewards Preview -->
+							@if (!isSecret && achievement.Rewards?.Count > 0)
+							{
+								<div class="item-rewards">
+									@foreach (var reward in achievement.Rewards)
+									{
+										<div class="item-reward-pill @(isClaimed ? "collected" : "")">
+											<span class="pill-icon">@GetRewardIcon(reward)</span>
+											<span class="pill-text">@GetRewardText(reward)</span>
+										</div>
+									}
+								</div>
+							}
+						</div>
+
+						@if (canClaim)
+						{
+							<button class="claim-btn" onclick=@(() => ClaimReward(achievement.Id))>
+								<span>CLAIM</span>
+							</button>
+						}
+						else if (isClaimed)
+						{
+							<div class="claimed-badge"><span>CLAIMED</span></div>
+						}
+					</div>
+				}
+
+				@if (GetFilteredAchievements().Count == 0)
+				{
+					<div class="empty-state">
+						<div class="empty-text">No achievements in this category yet.</div>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+</root>
+
+@code {
+	public static bool IsVisible { get; set; } = false;
+	private string currentCategory = "all";
+
+	public static void Show() => IsVisible = true;
+	public static void Close() => IsVisible = false;
+	public static void Toggle() => IsVisible = !IsVisible;
+
+	private void SetCategory(string category)
+	{
+		SoundManager.PlayClick();
+		currentCategory = category;
+	}
+
+	private void ClaimReward(string achievementId)
+	{
+		if (AchievementManager.Instance?.ClaimReward(achievementId) == true)
+		{
+			SoundManager.PlaySelect();
+		}
+	}
+
+	private void ClaimAll()
+	{
+		if (AchievementManager.Instance == null) return;
+
+		int claimed = 0;
+		foreach (var achievement in AchievementManager.Instance.AllAchievements)
+		{
+			if (AchievementManager.Instance.ClaimReward(achievement.Id))
+				claimed++;
+		}
+
+		if (claimed > 0)
+		{
+			SoundManager.PlaySelect();
+			NotificationManager.Instance?.AddNotification(
+				NotificationType.Success,
+				"Rewards Claimed!",
+				$"Collected rewards from {claimed} achievement{(claimed > 1 ? "s" : "")}!"
+			);
+		}
+	}
+
+	private int GetUnlockedCount()
+	{
+		return AchievementManager.Instance?.GetUnlockedCount() ?? 0;
+	}
+
+	private int GetTotalCount()
+	{
+		return AchievementManager.Instance?.GetTotalCount() ?? 0;
+	}
+
+	private int GetUnclaimedCount()
+	{
+		return AchievementManager.Instance?.GetUnclaimedCount() ?? 0;
+	}
+
+	private int GetOverallPercent()
+	{
+		var total = GetTotalCount();
+		if (total == 0) return 0;
+		return (int)((float)GetUnlockedCount() / total * 100);
+	}
+
+	private AchievementProgress GetProgress(string achievementId)
+	{
+		return AchievementManager.Instance?.GetProgress(achievementId);
+	}
+
+	private float GetAchievementPercent(string achievementId)
+	{
+		return (AchievementManager.Instance?.GetProgressPercent(achievementId) ?? 0) * 100;
+	}
+
+	private List<Achievement> GetFilteredAchievements()
+	{
+		if (AchievementManager.Instance == null) return new();
+
+		if (currentCategory == "all")
+		{
+			// Sort: claimable first, then in-progress, then claimed
+			return AchievementManager.Instance.AllAchievements
+				.OrderByDescending(a => {
+					var p = GetProgress(a.Id);
+					if (p?.IsUnlocked == true && p?.IsClaimed != true) return 2; // claimable first
+					if (p?.IsUnlocked != true) return 1; // in-progress
+					return 0; // claimed last
+				})
+				.ThenBy(a => a.Order)
+				.ToList();
+		}
+
+		var category = currentCategory switch
+		{
+			"collection" => AchievementCategory.Collection,
+			"battle" => AchievementCategory.Battle,
+			"expedition" => AchievementCategory.Expedition,
+			"breeding" => AchievementCategory.Breeding,
+			"economy" => AchievementCategory.Economy,
+			"arena" => AchievementCategory.Arena,
+			"social" => AchievementCategory.Social,
+			"mastery" => AchievementCategory.Mastery,
+			"secret" => AchievementCategory.Secret,
+			_ => AchievementCategory.Collection
+		};
+
+		return AchievementManager.Instance.GetByCategory(category);
+	}
+
+	private string GetProgressText(Achievement achievement, AchievementProgress progress)
+	{
+		if (progress == null) return $"0 / {achievement.RequiredValue:N0}";
+		if (progress.IsUnlocked) return "Complete!";
+		return $"{progress.CurrentValue:N0} / {achievement.RequiredValue:N0}";
+	}
+
+	private string GetRewardIcon(AchievementReward reward)
+	{
+		return reward.Type switch
+		{
+			AchievementRewardType.Gold => "🪙",
+			AchievementRewardType.Gems => "💎",
+			AchievementRewardType.BossTokens => "💎",
+			AchievementRewardType.ContractInk => "🖋",
+			AchievementRewardType.Title => "🏆",
+			AchievementRewardType.Theme => "🎨",
+			AchievementRewardType.Item => "🎁",
+			AchievementRewardType.Monster => "🐾",
+			_ => "✨"
+		};
+	}
+
+	private string GetRewardText(AchievementReward reward)
+	{
+		return reward.Type switch
+		{
+			AchievementRewardType.Gold => $"{reward.Value:N0} Gold",
+			AchievementRewardType.Gems => $"{reward.Value} Gems",
+			AchievementRewardType.BossTokens => $"{reward.Value} Boss Tokens",
+			AchievementRewardType.ContractInk => $"{reward.Value} Contract Ink",
+			AchievementRewardType.Title => $"Title: {reward.ItemId}",
+			AchievementRewardType.Theme => $"Theme: {reward.ItemId}",
+			AchievementRewardType.Item => $"Item: {reward.ItemId}",
+			AchievementRewardType.Monster => $"Monster: {reward.SpeciesId}",
+			_ => "Unknown Reward"
+		};
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		if (IsVisible && Input.Pressed("Escape"))
+		{
+			Close();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add(IsVisible);
+		hash.Add(currentCategory);
+		hash.Add(GetUnlockedCount());
+		hash.Add(GetTotalCount());
+		hash.Add(GetUnclaimedCount());
+		return hash.ToHashCode();
+	}
+}

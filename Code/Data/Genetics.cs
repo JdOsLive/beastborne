@@ -44,10 +44,24 @@ public class Genetics
 	public int SpDGene { get; set; }  // Special Defense gene
 	public int SPDGene { get; set; }  // Speed gene
 
+	/// <summary>
+	/// Returns the gene value clamped to 0-30 range
+	/// </summary>
+	public int GetGene( string stat ) => Math.Clamp( stat switch
+	{
+		"HP" => HPGene,
+		"ATK" => ATKGene,
+		"DEF" => DEFGene,
+		"SpA" => SpAGene,
+		"SpD" => SpDGene,
+		"SPD" => SPDGene,
+		_ => 0
+	}, 0, MaxGeneValue );
+
 	public NatureType Nature { get; set; }
 
-	// Calculate total genetic value (max 186)
-	public int TotalValue => HPGene + ATKGene + DEFGene + SpAGene + SpDGene + SPDGene;
+	// Calculate total genetic value (max 180)
+	public int TotalValue => GetGene( "HP" ) + GetGene( "ATK" ) + GetGene( "DEF" ) + GetGene( "SpA" ) + GetGene( "SpD" ) + GetGene( "SPD" );
 
 	// Quality rating based on total genes
 	public string QualityRating

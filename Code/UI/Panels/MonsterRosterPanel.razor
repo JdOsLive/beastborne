@@ -284,11 +284,71 @@
 										<span class="info-label">Loyalty</span>
 										<span class="info-value @(SelectedMonster.IsLoyal ? "loyal" : "contracted")">@(SelectedMonster.IsLoyal ? "Loyal" : "Contract")</span>
 									</div>
+									@if (!string.IsNullOrEmpty(SelectedMonster.OriginalTrainerName))
+									{
+										<div class="info-row">
+											<span class="info-label">OT</span>
+											<span class="info-value">@SelectedMonster.OriginalTrainerName</span>
+										</div>
+									}
 									<div class="info-row">
 										<span class="info-label">Obtained</span>
 										<span class="info-value">@SelectedMonster.CaughtAt.ToString("MMM d")</span>
 									</div>
 								</div>
+							</div>
+						</div>
+
+						<!-- Moves Section -->
+						<div class="moves-section">
+							<div class="section-title">
+								Moves
+								@if (GetAvailableMovesCount() > 0)
+								{
+									<span class="moves-available-badge">@GetAvailableMovesCount() available</span>
+								}
+							</div>
+							<div class="moves-grid">
+								@{
+									var moves = SelectedMonster.Moves ?? new List<MonsterMove>();
+									for (int i = 0; i < 4; i++)
+									{
+										var slotIndex = i;
+										if (i < moves.Count)
+										{
+											var move = moves[i];
+											var moveDef = MoveDatabase.GetMove(move.MoveId);
+											if (moveDef != null)
+											{
+												var elementClass = moveDef.Element.ToString().ToLower();
+												<div class="move-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "")" onclick="@(() => OpenMoveSwap(slotIndex))">
+													<div class="move-info">
+														<span class="move-element-icon">@GetMoveElementIcon(moveDef.Element)</span>
+														<span class="move-name">@moveDef.Name</span>
+														@if (GetAvailableMovesCount() > 0)
+														{
+															<span class="swap-hint">SWAP</span>
+														}
+													</div>
+													<div class="move-details">
+														<span class="move-category @moveDef.Category.ToString().ToLower()">@moveDef.Category</span>
+														@if (moveDef.BasePower > 0)
+														{
+															<span class="move-power">PWR @moveDef.BasePower</span>
+														}
+														<span class="move-pp">PP @move.CurrentPP/@moveDef.MaxPP</span>
+													</div>
+												</div>
+											}
+										}
+										else
+										{
+											<div class="move-slot empty @(GetAvailableMovesCount() > 0 ? "swappable" : "")" onclick="@(() => OpenMoveSwap(slotIndex))">
+												<span class="empty-slot-text">@(GetAvailableMovesCount() > 0 ? "+ Learn Move" : "---")</span>
+											</div>
+										}
+									}
+								}
 							</div>
 						</div>
 
@@ -852,6 +912,85 @@
 		</div>
 	}
 
+	<!-- Move Picker Modal (at root level for full coverage) -->
+	@if (showMovePicker && SelectedMonster != null)
+	{
+		<div class="move-picker-overlay" onclick=@CloseMoveSwap>
+			<div class="move-picker-modal" onclick:stopPropagation>
+				<div class="move-picker-header">
+					<span class="picker-title">@(selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0) ? "Swap Move" : "Learn Move")</span>
+					<button class="picker-close-btn" onclick=@CloseMoveSwap>×</button>
+				</div>
+				@if (selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0))
+				{
+					var currentMove = SelectedMonster.Moves[selectedMoveSlot];
+					var currentDef = MoveDatabase.GetMove(currentMove.MoveId);
+					@if (currentDef != null)
+					{
+						<div class="current-move-section">
+							<span class="section-label">Replacing</span>
+							<div class="current-move @currentDef.Element.ToString().ToLower()">
+								<span class="move-element-icon">@GetMoveElementIcon(currentDef.Element)</span>
+								<div class="move-info-col">
+									<span class="move-name">@currentDef.Name</span>
+									<div class="move-meta">
+										<span class="move-category @currentDef.Category.ToString().ToLower()">@currentDef.Category</span>
+										@if (currentDef.BasePower > 0)
+										{
+											<span class="move-power">PWR @currentDef.BasePower</span>
+										}
+										<span class="move-pp">PP @currentDef.MaxPP</span>
+									</div>
+								</div>
+							</div>
+						</div>
+					}
+				}
+				<div class="move-picker-content">
+					<span class="section-label">Available Moves (@GetAvailableMovesForPicker().Count)</span>
+					<div class="moves-list">
+						@foreach (var lm in GetAvailableMovesForPicker())
+						{
+							var moveDef = MoveDatabase.GetMove(lm.MoveId);
+							if (moveDef != null)
+							{
+								<div class="move-option @moveDef.Element.ToString().ToLower()" onclick="@(() => SwapMoveSlot(lm.MoveId))">
+									<span class="move-element-icon">@GetMoveElementIcon(moveDef.Element)</span>
+									<div class="move-info-col">
+										<label class="move-name">@moveDef.Name</label>
+										<div class="move-desc-wrap">
+											<label class="move-desc">@moveDef.Description</label>
+										</div>
+										<div class="move-meta">
+											<span class="move-category @moveDef.Category.ToString().ToLower()">@moveDef.Category</span>
+											@if (moveDef.BasePower > 0)
+											{
+												<span class="move-power">PWR @moveDef.BasePower</span>
+											}
+											@if (moveDef.Accuracy < 100)
+											{
+												<span class="move-acc">ACC @moveDef.Accuracy%</span>
+											}
+											<span class="move-pp">PP @moveDef.MaxPP</span>
+										</div>
+									</div>
+									<span class="move-level">Lv @lm.LearnLevel</span>
+								</div>
+							}
+						}
+						@if (GetAvailableMovesForPicker().Count == 0)
+						{
+							<div class="no-moves">
+								<span class="no-moves-icon">⚔</span>
+								<span class="no-moves-text">No other moves available</span>
+							</div>
+						}
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+
 	<!-- Item Picker Modal (at root level for full coverage) -->
 	@if (showItemPicker && SelectedMonster != null)
 	{
@@ -1087,6 +1226,10 @@
 
 	// Item picker modal state
 	private bool showItemPicker = false;
+
+	// Move picker state
+	private bool showMovePicker = false;
+	private int selectedMoveSlot = -1;
 
 	// Track if keyboard navigation is active (vs mouse)
 	private bool isKeyboardNavigationActive = false;
@@ -1520,7 +1663,8 @@
 	{
 		if (SelectedMonster?.Genetics == null) return 0;
 		return SelectedMonster.Genetics.HPGene + SelectedMonster.Genetics.ATKGene +
-			   SelectedMonster.Genetics.DEFGene + SelectedMonster.Genetics.SPDGene;
+			   SelectedMonster.Genetics.DEFGene + SelectedMonster.Genetics.SpAGene +
+			   SelectedMonster.Genetics.SpDGene + SelectedMonster.Genetics.SPDGene;
 	}
 
 	private string GetEvolutionName(string speciesId)
@@ -2904,7 +3048,10 @@
 		hash.Add(showBulkReleaseConfirm);
 		hash.Add(showJournalModal);
 		hash.Add(showItemPicker);
+		hash.Add(showMovePicker);
+		hash.Add(selectedMoveSlot);
 		hash.Add(SelectedMonster?.HeldItemId);
+		hash.Add(SelectedMonster?.Moves?.Count);
 		hash.Add(isTransitioningView);
 		hash.Add(slideDirection);
 		hash.Add(isEvolving);
@@ -3096,5 +3243,94 @@
 		if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
 		if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
 		return timestamp.ToString("MMM d");
+	}
+
+	// Move swap helpers
+	private string GetMoveElementIcon(ElementType element)
+	{
+		return element switch
+		{
+			ElementType.Fire => "🔥",
+			ElementType.Water => "💧",
+			ElementType.Earth => "🪨",
+			ElementType.Wind => "💨",
+			ElementType.Electric => "⚡",
+			ElementType.Ice => "❄️",
+			ElementType.Nature => "🌿",
+			ElementType.Metal => "⚙️",
+			ElementType.Shadow => "🌑",
+			ElementType.Spirit => "✨",
+			_ => "⚪"
+		};
+	}
+
+	private void OpenMoveSwap(int slot)
+	{
+		if (SelectedMonster == null) return;
+		var available = MonsterManager.Instance?.GetAvailableMoves(SelectedMonster);
+		if (available == null || available.Count == 0)
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+		selectedMoveSlot = slot;
+		showMovePicker = true;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseMoveSwap()
+	{
+		showMovePicker = false;
+		selectedMoveSlot = -1;
+	}
+
+	private void SwapMoveSlot(string newMoveId)
+	{
+		if (SelectedMonster == null) return;
+
+		var moves = SelectedMonster.Moves ?? new List<MonsterMove>();
+		if (selectedMoveSlot >= moves.Count)
+		{
+			// Learning into an empty slot
+			var moveDef = MoveDatabase.GetMove(newMoveId);
+			if (moveDef == null) return;
+			SelectedMonster.Moves ??= new List<MonsterMove>();
+			SelectedMonster.Moves.Add(new MonsterMove { MoveId = newMoveId, CurrentPP = moveDef.MaxPP });
+			MonsterManager.Instance?.SaveMonsters();
+			MonsterManager.Instance?.OnMonsterUpdated?.Invoke(SelectedMonster);
+			SoundManager.PlayNotification();
+			var name = string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname;
+			NotificationManager.Instance?.AddNotification(NotificationType.Success, "Move Learned!", $"{name} learned {moveDef.Name}!");
+		}
+		else
+		{
+			var success = MonsterManager.Instance?.SwapMove(SelectedMonster, selectedMoveSlot, newMoveId) ?? false;
+			if (success)
+			{
+				SoundManager.PlayNotification();
+				var moveDef = MoveDatabase.GetMove(newMoveId);
+				var name = string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname;
+				NotificationManager.Instance?.AddNotification(NotificationType.Success, "Move Swapped!", $"{name} learned {moveDef?.Name ?? "a new move"}!");
+			}
+			else
+			{
+				SoundManager.PlayDeny();
+			}
+		}
+
+		showMovePicker = false;
+		selectedMoveSlot = -1;
+	}
+
+	private int GetAvailableMovesCount()
+	{
+		if (SelectedMonster == null) return 0;
+		return MonsterManager.Instance?.GetAvailableMoves(SelectedMonster)?.Count ?? 0;
+	}
+
+	private List<LearnableMove> GetAvailableMovesForPicker()
+	{
+		if (SelectedMonster == null) return new List<LearnableMove>();
+		return MonsterManager.Instance?.GetAvailableMoves(SelectedMonster) ?? new List<LearnableMove>();
 	}
 }

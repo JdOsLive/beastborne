@@ -38,6 +38,7 @@ public class Tamer
 	public List<string> UnlockedTitles { get; set; } = new();
 	public string ActiveThemeId { get; set; } = "default";
 	public string ActiveTitleId { get; set; } = null;
+	public string ActiveLevelTitle { get; set; } = null;
 
 	// Skill tree state (skill ID -> rank invested)
 	public Dictionary<string, int> SkillRanks { get; set; } = new();
@@ -86,6 +87,33 @@ public class Tamer
 	public int TotalMonstersCaught { get; set; } = 0;
 	public int TotalMonstersBred { get; set; } = 0;
 	public int TotalMonstersEvolved { get; set; } = 0;
+
+	// Extended stats tracking (for achievements & leaderboards)
+	public int TotalGoldEarned { get; set; } = 0;
+	public int TotalItemsBought { get; set; } = 0;
+	public int TotalExpeditionsCompleted { get; set; } = 0;
+	public int TotalTradesCompleted { get; set; } = 0;
+	public int TotalMiniGamesPlayed { get; set; } = 0;
+	public int ChatMessagesSent { get; set; } = 0;
+	public int BossTokensSpent { get; set; } = 0;
+	public int TotalDamageDealt { get; set; } = 0;
+	public int TotalKnockouts { get; set; } = 0;
+	public int ArenaWinStreak { get; set; } = 0;
+	public int ArenaSetsCompleted { get; set; } = 0;
+	public int ArenaPlacementMatchesPlayed { get; set; } = 0;
+	public int CurrentSeason { get; set; } = 1;
+
+	// Achievement system
+	public Dictionary<string, AchievementProgress> Achievements { get; set; } = new();
+
+	// Match history (last 20 sets)
+	public List<MatchHistoryEntry> MatchHistory { get; set; } = new();
+
+	// Tamer card
+	public string FavoriteMonsterSpeciesId { get; set; }
+	public string FavoriteExpeditionId { get; set; }
+	public List<string> CardBadges { get; set; } = new();
+	public List<CollectedTamerCard> CollectedCards { get; set; } = new();
 
 	// Timestamps
 	public DateTime LastLogin { get; set; } = DateTime.UtcNow;
@@ -217,4 +245,52 @@ public class Tamer
 			return total > 0 ? (float)ArenaWins / total : 0;
 		}
 	}
+}
+
+/// <summary>
+/// Record of a ranked set result (Bo3)
+/// </summary>
+public class MatchHistoryEntry
+{
+	public string OpponentName { get; set; }
+	public int OpponentArenaPoints { get; set; }
+	public bool Won { get; set; }
+	public int GamesWon { get; set; }
+	public int GamesLost { get; set; }
+	public int PointsChange { get; set; }
+	public DateTime PlayedAt { get; set; } = DateTime.UtcNow;
+	public bool IsRanked { get; set; } = true;
+}
+
+/// <summary>
+/// Snapshot of another tamer's card collected through interaction
+/// </summary>
+public class CollectedTamerCard
+{
+	public long SteamId { get; set; }
+	public string Name { get; set; }
+	public int Level { get; set; }
+	public string ArenaRank { get; set; }
+	public int ArenaPoints { get; set; }
+	public string FavoriteMonsterSpeciesId { get; set; }
+	public int AchievementCount { get; set; }
+	public float WinRate { get; set; }
+	public DateTime CollectedAt { get; set; } = DateTime.UtcNow;
+	public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+
+	// Extended card data
+	public string Gender { get; set; } = "Male";
+	public string FavoriteExpeditionId { get; set; }
+	public string Title { get; set; }
+	public string TitleColor { get; set; }
+	public int ArenaWins { get; set; }
+	public int ArenaLosses { get; set; }
+	public int HighestExpedition { get; set; }
+	public int MonstersCaught { get; set; }
+	public int TotalPlayTimeMinutes { get; set; }
+	public int BattlesWon { get; set; }
+	public int MonstersBred { get; set; }
+	public int MonstersEvolved { get; set; }
+	public int TotalExpeditionsCompleted { get; set; }
+	public int TotalTradesCompleted { get; set; }
 }

@@ -1,4 +1,5 @@
 using Sandbox;
+using Sandbox.Services;
 using Beastborne.Data;
 using Beastborne.Systems;
 using System.Text.Json;
@@ -99,11 +100,40 @@ public sealed class MonsterManager : Component
 		}
 	}
 
+	private bool _otBackfillDone = false;
+
 	protected override void OnStart()
 	{
 		LoadSpeciesDatabase();
 		LoadMonsters();
 		LoadMaxMonsters();
+	}
+
+	protected override void OnUpdate()
+	{
+		// Deferred OT backfill: wait until TamerManager is ready so we get the real name
+		if ( !_otBackfillDone && TamerManager.Instance?.CurrentTamer != null )
+		{
+			_otBackfillDone = true;
+			var tamer = TamerManager.Instance.CurrentTamer;
+			bool needsSave = false;
+
+			foreach ( var monster in OwnedMonsters )
+			{
+				if ( string.IsNullOrEmpty( monster.OriginalTrainerName ) || monster.OriginalTrainerName == "Unknown" )
+				{
+					monster.OriginalTrainerName = tamer.Name ?? "Unknown";
+					monster.OriginalTrainerId = Connection.Local?.SteamId ?? 0;
+					needsSave = true;
+				}
+			}
+
+			if ( needsSave )
+			{
+				Log.Info( $"Backfilled OT for {OwnedMonsters.Count} monsters as {tamer.Name}" );
+				SaveMonsters();
+			}
+		}
 	}
 
 	public static void EnsureInstance( Scene scene )
@@ -210,8 +240,8 @@ public sealed class MonsterManager : Component
 			Name = "Ashenmare",
 			Description = "A beast of obsidian and eternal flame, born when a volcano's heart broke. Its hooves leave glass flowers that bloom into fire.",
 			IconPath = "ui/monsters/ashenmare/idle/ashenmare_idle_01.png",
-			BaseHP = 87, BaseATK = 112, BaseDEF = 68, BaseSpA = 63, BaseSpD = 62, BaseSPD = 88,
-			HPGrowth = 6, ATKGrowth = 9, DEFGrowth = 5, SpAGrowth = 5, SpDGrowth = 4, SPDGrowth = 6,
+			BaseHP = 92, BaseATK = 118, BaseDEF = 72, BaseSpA = 70, BaseSpD = 68, BaseSPD = 95,
+			HPGrowth = 6, ATKGrowth = 9, DEFGrowth = 5, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 7,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "charrow",
@@ -317,8 +347,8 @@ public sealed class MonsterManager : Component
 			Name = "Tidehollow",
 			Description = "The abyss given form. It is said to be where the ocean goes to forget. Ships that enter its presence simply cease to have ever existed.",
 			IconPath = "ui/monsters/tidehollow/idle/tidehollow_idle_01.png",
-			BaseHP = 102, BaseATK = 83, BaseDEF = 107, BaseSpA = 93, BaseSpD = 112, BaseSPD = 73,
-			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 8, SpAGrowth = 6, SpDGrowth = 8, SPDGrowth = 5,
+			BaseHP = 98, BaseATK = 78, BaseDEF = 95, BaseSpA = 85, BaseSpD = 98, BaseSPD = 68,
+			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 7, SpAGrowth = 6, SpDGrowth = 7, SPDGrowth = 5,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "luracoil",
@@ -433,7 +463,7 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrameRate = 6f,
 			BaseHP = 73, BaseATK = 97, BaseDEF = 63, BaseSpA = 92, BaseSpD = 68, BaseSPD = 122,
-			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 10,
+			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 8,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "hollowgale",
@@ -445,6 +475,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
+				new LearnableMove { MoveId = "gale_slam", LearnLevel = 32 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 38 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 50 }
 			},
@@ -481,7 +512,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			EvolvesTo = "branchling",
-			EvolutionLevel = 14,
+			EvolutionLevel = 18,
 			BaseCatchRate = 0.7f,
 			PossibleTraits = new() { "verdant_power", "wild_harden", "barbed_hide" },
 			LearnableMoves = new()
@@ -489,7 +520,9 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 1 },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "intimidate", LearnLevel = 5 },
-				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 10 }
+				new LearnableMove { MoveId = "harden", LearnLevel = 8 },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 10 },
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 18 }
 			},
 			BeastiaryNumber = 10
 		} );
@@ -507,8 +540,8 @@ public sealed class MonsterManager : Component
 				"ui/monsters/branchling/idle/branchling_idle_03.png",
 				"ui/monsters/branchling/idle/branchling_idle_04.png"
 			},
-			BaseHP = 67, BaseATK = 48, BaseDEF = 72, BaseSpA = 38, BaseSpD = 77, BaseSPD = 43,
-			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 6, SpAGrowth = 3, SpDGrowth = 6, SPDGrowth = 3,
+			BaseHP = 72, BaseATK = 55, BaseDEF = 78, BaseSpA = 45, BaseSpD = 82, BaseSPD = 53,
+			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 6, SpAGrowth = 3, SpDGrowth = 6, SPDGrowth = 4,
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "twigsnap",
@@ -519,6 +552,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 1, EvolvesFrom = "thorn_lash" },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 16 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 20 },
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 22 },
 				new LearnableMove { MoveId = "root_bind", LearnLevel = 28 }
 			},
@@ -538,8 +572,8 @@ public sealed class MonsterManager : Component
 				"ui/monsters/dewdrop/idle/dewdrop_idle_03.png",
 				"ui/monsters/dewdrop/idle/dewdrop_idle_04.png"
 			},
-			BaseHP = 33, BaseATK = 32, BaseDEF = 37, BaseSpA = 47, BaseSpD = 38, BaseSPD = 48,
-			HPGrowth = 3, ATKGrowth = 2, DEFGrowth = 3, SpAGrowth = 4, SpDGrowth = 3, SPDGrowth = 5,
+			BaseHP = 45, BaseATK = 38, BaseDEF = 45, BaseSpA = 58, BaseSpD = 48, BaseSPD = 56,
+			HPGrowth = 3, ATKGrowth = 2, DEFGrowth = 3, SpAGrowth = 5, SpDGrowth = 3, SPDGrowth = 5,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.7f,
@@ -548,8 +582,10 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 5 },
 				new LearnableMove { MoveId = "deep_slumber", LearnLevel = 8 },
-				new LearnableMove { MoveId = "froth_barrage", LearnLevel = 15 }
+				new LearnableMove { MoveId = "froth_barrage", LearnLevel = 15 },
+				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 20 }
 			},
 			BeastiaryNumber = 12
 		} );
@@ -567,13 +603,15 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "flickermoth",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
-			PossibleTraits = new() { "kindle_heart", "phantom_step", "momentum" },
+			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "kindle", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
+				new LearnableMove { MoveId = "intimidate", LearnLevel = 5 },
 				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 8 },
-				new LearnableMove { MoveId = "searing_rush", LearnLevel = 15 }
+				new LearnableMove { MoveId = "searing_rush", LearnLevel = 15 },
+				new LearnableMove { MoveId = "cinders_curse", LearnLevel = 18 }
 			},
 			AnimationFrames = new()
 			{
@@ -598,7 +636,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "dustling",
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "kindle_heart", "phantom_step", "momentum" },
+			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "searing_rush", LearnLevel = 1, EvolvesFrom = "kindle" },
@@ -624,12 +662,12 @@ public sealed class MonsterManager : Component
 			Name = "Mosscreep",
 			Description = "A slow creature covered in ancient moss. It remkindles every footstep that has passed over it and dreams of all the places it cannot go.",
 			IconPath = "ui/monsters/mosscreep/idle/mosscreep_idle_01.png",
-			BaseHP = 57, BaseATK = 28, BaseDEF = 62, BaseSpA = 23, BaseSpD = 67, BaseSPD = 18,
-			HPGrowth = 5, ATKGrowth = 2, DEFGrowth = 6, SpAGrowth = 2, SpDGrowth = 6, SPDGrowth = 1,
+			BaseHP = 62, BaseATK = 33, BaseDEF = 65, BaseSpA = 28, BaseSpD = 70, BaseSPD = 32,
+			HPGrowth = 5, ATKGrowth = 2, DEFGrowth = 6, SpAGrowth = 2, SpDGrowth = 6, SPDGrowth = 2,
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.65f,
-			PossibleTraits = new() { "terra_force", "hardened_resolve", "enduring_will" },
+			PossibleTraits = new() { "terra_force", "last_stand", "barbed_hide" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "mud_hurl", LearnLevel = 1 },
@@ -670,7 +708,7 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "galefox",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
-			PossibleTraits = new() { "gale_spirit", "phantom_step", "trickster" },
+			PossibleTraits = new() { "gale_spirit", "subtle_arts", "vital_recovery" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 1 },
@@ -702,7 +740,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "whiskerwind",
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "gale_spirit", "phantom_step", "trickster" },
+			PossibleTraits = new() { "gale_spirit", "brutal_force", "trickster" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "razor_gale", LearnLevel = 1, EvolvesFrom = "breeze_cut" },
@@ -739,8 +777,10 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 1 },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "deep_slumber", LearnLevel = 8 },
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 15 },
-				new LearnableMove { MoveId = "root_bind", LearnLevel = 22 }
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 22 },
+				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 28 }
 			},
 			BeastiaryNumber = 18
 		} );
@@ -822,12 +862,12 @@ public sealed class MonsterManager : Component
 			Name = "Magmite",
 			Description = "A tiny spirit that lives in the gaps between cooling lava. It believes it can keep volcanoes from dying if it works hard enough.",
 			IconPath = "ui/monsters/magmite/idle/magmite_idle_01.png",
-			BaseHP = 57, BaseATK = 68, BaseDEF = 52, BaseSpA = 58, BaseSpD = 47, BaseSPD = 38,
+			BaseHP = 60, BaseATK = 72, BaseDEF = 55, BaseSpA = 65, BaseSpD = 52, BaseSPD = 46,
 			HPGrowth = 4, ATKGrowth = 6, DEFGrowth = 4, SpAGrowth = 5, SpDGrowth = 4, SPDGrowth = 3,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
-			PossibleTraits = new() { "kindle_heart", "hardened_resolve", "barbed_hide" },
+			PossibleTraits = new() { "kindle_heart", "ember_heart", "barbed_hide" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "kindle", LearnLevel = 1 },
@@ -922,7 +962,7 @@ public sealed class MonsterManager : Component
 			Name = "Infernowarg",
 			Description = "A massive wolf wreathed in eternal flame. Ancient stories say it was once a star that fell to earth and chose to run with the wolves rather than return to the sky.",
 			IconPath = "ui/monsters/infernowarg/idle/infernowarg_idle_01.png",
-			BaseHP = 88, BaseATK = 107, BaseDEF = 68, BaseSpA = 67, BaseSpD = 58, BaseSPD = 97,
+			BaseHP = 95, BaseATK = 110, BaseDEF = 78, BaseSpA = 72, BaseSpD = 68, BaseSPD = 107,
 			HPGrowth = 6, ATKGrowth = 8, DEFGrowth = 5, SpAGrowth = 5, SpDGrowth = 4, SPDGrowth = 7,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Rare,
@@ -992,7 +1032,7 @@ public sealed class MonsterManager : Component
 			Name = "Mirrorpond",
 			Description = "A creature that is simultaneously the tidal_slamace and depth of still water. Those who gaze into it see not themselves, but who they were afraid to become.",
 			IconPath = "ui/monsters/mirrorpond/idle/mirrorpond_idle_01.png",
-			BaseHP = 82, BaseATK = 63, BaseDEF = 87, BaseSpA = 78, BaseSpD = 92, BaseSPD = 53,
+			BaseHP = 78, BaseATK = 58, BaseDEF = 82, BaseSpA = 72, BaseSpD = 88, BaseSPD = 52,
 			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 7, SpAGrowth = 6, SpDGrowth = 7, SPDGrowth = 4,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Uncommon,
@@ -1029,11 +1069,12 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
-			PossibleTraits = new() { "torrent_soul", "phantom_step", "vital_recovery" },
+			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
+				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 8 },
 				new LearnableMove { MoveId = "froth_barrage", LearnLevel = 10 },
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 15 },
 				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 22 }
@@ -1167,12 +1208,13 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "foamwraith",
 			EvolutionLevel = 24,
 			BaseCatchRate = 0.55f,
-			PossibleTraits = new() { "torrent_soul", "phantom_step", "barbed_hide" },
+			PossibleTraits = new() { "torrent_soul", "hunters_focus", "trickster" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 6 },
+				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 8 },
 				new LearnableMove { MoveId = "froth_barrage", LearnLevel = 12 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 18 }
 			},
@@ -1198,12 +1240,13 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "bubblite",
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "torrent_soul", "phantom_step", "barbed_hide" },
+			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "froth_barrage", LearnLevel = 1, EvolvesFrom = "splash_jet" },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 28 },
 				new LearnableMove { MoveId = "deluge", LearnLevel = 36 },
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 42 }
@@ -1225,11 +1268,11 @@ public sealed class MonsterManager : Component
 				"ui/monsters/coralheim/idle/coralheim_idle_04.png"
 			},
 			BaseHP = 80, BaseATK = 55, BaseDEF = 90, BaseSpA = 48, BaseSpD = 95, BaseSPD = 25,
-			HPGrowth = 7, ATKGrowth = 4, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 2,
+			HPGrowth = 7, ATKGrowth = 4, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 3,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
-			PossibleTraits = new() { "torrent_soul", "hardened_resolve", "barbed_hide" },
+			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "barbed_hide" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
@@ -1304,6 +1347,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 22 },
+				new LearnableMove { MoveId = "gale_slam", LearnLevel = 22 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 28 },
 				new LearnableMove { MoveId = "tempest", LearnLevel = 38 }
 			},
@@ -1323,7 +1367,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/whistleshade/idle/whistleshade_idle_03.png",
 				"ui/monsters/whistleshade/idle/whistleshade_idle_04.png"
 			},
-			BaseHP = 35, BaseATK = 55, BaseDEF = 30, BaseSpA = 68, BaseSpD = 42, BaseSPD = 80,
+			BaseHP = 45, BaseATK = 60, BaseDEF = 38, BaseSpA = 78, BaseSpD = 48, BaseSPD = 86,
 			HPGrowth = 3, ATKGrowth = 5, DEFGrowth = 2, SpAGrowth = 6, SpDGrowth = 3, SPDGrowth = 7,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
@@ -1362,7 +1406,7 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "cyclonyx",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
-			PossibleTraits = new() { "gale_spirit", "skyborne", "momentum" },
+			PossibleTraits = new() { "gale_spirit", "skyborne", "hunters_focus" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 1 },
@@ -1395,7 +1439,7 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "tempestking",
 			EvolutionLevel = 38,
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "gale_spirit", "skyborne", "momentum" },
+			PossibleTraits = new() { "gale_spirit", "skyborne", "brutal_force" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "razor_gale", LearnLevel = 1, EvolvesFrom = "breeze_cut" },
@@ -1426,12 +1470,13 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "cyclonyx",
 			BaseCatchRate = 0.12f,
-			PossibleTraits = new() { "gale_spirit", "skyborne", "momentum" },
+			PossibleTraits = new() { "gale_spirit", "skyborne", "precision_hunter" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "tempest", LearnLevel = 1, EvolvesFrom = "razor_gale" },
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
+				new LearnableMove { MoveId = "gale_slam", LearnLevel = 30 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 42 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 50 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 58 }
@@ -1491,12 +1536,13 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "featherwisp",
 			BaseCatchRate = 0.25f,
-			PossibleTraits = new() { "gale_spirit", "phantom_step", "skyborne" },
+			PossibleTraits = new() { "gale_spirit", "brutal_force", "reckless_charge" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "razor_gale", LearnLevel = 1, EvolvesFrom = "breeze_cut" },
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
+				new LearnableMove { MoveId = "gale_slam", LearnLevel = 24 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 26 },
 				new LearnableMove { MoveId = "tempest", LearnLevel = 36 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 46 }
@@ -1522,7 +1568,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
-			PossibleTraits = new() { "gale_spirit", "momentum", "reckless_charge" },
+			PossibleTraits = new() { "gale_spirit", "brutal_force", "reckless_charge" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 1 },
@@ -1564,8 +1610,10 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "static_jolt", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
+				new LearnableMove { MoveId = "intimidate", LearnLevel = 5 },
 				new LearnableMove { MoveId = "nerve_lock", LearnLevel = 6 },
-				new LearnableMove { MoveId = "volt_charge", LearnLevel = 12 }
+				new LearnableMove { MoveId = "volt_charge", LearnLevel = 12 },
+				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 18 }
 			},
 			BeastiaryNumber = 46
 		} );
@@ -1617,7 +1665,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/temporal/idle/temporal_idle_04.png"
 			},
 			BaseHP = 70, BaseATK = 110, BaseDEF = 65, BaseSpA = 125, BaseSpD = 68, BaseSPD = 130,
-			HPGrowth = 5, ATKGrowth = 9, DEFGrowth = 5, SpAGrowth = 10, SpDGrowth = 5, SPDGrowth = 10,
+			HPGrowth = 5, ATKGrowth = 9, DEFGrowth = 5, SpAGrowth = 8, SpDGrowth = 5, SPDGrowth = 8,
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "voltweave",
@@ -1628,6 +1676,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 1, EvolvesFrom = "volt_charge" },
 				new LearnableMove { MoveId = "nerve_lock", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
+				new LearnableMove { MoveId = "thunder_fang", LearnLevel = 35 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 40 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 48 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 }
@@ -1686,7 +1735,7 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "thundermane",
 			EvolutionLevel = 24,
 			BaseCatchRate = 0.55f,
-			PossibleTraits = new() { "static_charge", "phantom_step", "barbed_hide" },
+			PossibleTraits = new() { "static_charge", "hunters_focus", "reckless_charge" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "static_jolt", LearnLevel = 1 },
@@ -1711,19 +1760,20 @@ public sealed class MonsterManager : Component
 				"ui/monsters/thundermane/idle/thundermane_idle_03.png",
 				"ui/monsters/thundermane/idle/thundermane_idle_04.png"
 			},
-			BaseHP = 70, BaseATK = 90, BaseDEF = 55, BaseSpA = 105, BaseSpD = 58, BaseSPD = 100,
-			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 4, SpAGrowth = 8, SpDGrowth = 4, SPDGrowth = 8,
+			BaseHP = 65, BaseATK = 80, BaseDEF = 50, BaseSpA = 95, BaseSpD = 55, BaseSPD = 85,
+			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 4, SpAGrowth = 8, SpDGrowth = 4, SPDGrowth = 7,
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "joltpaw",
 			BaseCatchRate = 0.25f,
-			PossibleTraits = new() { "static_charge", "phantom_step", "barbed_hide" },
+			PossibleTraits = new() { "static_charge", "brutal_force", "barbed_hide" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "volt_charge", LearnLevel = 1, EvolvesFrom = "static_jolt" },
 				new LearnableMove { MoveId = "nerve_lock", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 28 },
+				new LearnableMove { MoveId = "thunder_fang", LearnLevel = 28 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 34 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 44 }
 			},
@@ -1780,7 +1830,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
-			PossibleTraits = new() { "static_charge", "phantom_step", "fortunate_strike" },
+			PossibleTraits = new() { "static_charge", "last_stand", "fortunate_strike" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "static_jolt", LearnLevel = 1 },
@@ -1811,7 +1861,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.45f,
-			PossibleTraits = new() { "static_charge", "momentum", "iron_will" },
+			PossibleTraits = new() { "static_charge", "hunters_focus", "iron_will" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "static_jolt", LearnLevel = 1 },
@@ -1842,20 +1892,21 @@ public sealed class MonsterManager : Component
 				"ui/monsters/rootling/idle/rootling_idle_04.png"
 			},
 			BaseHP = 55, BaseATK = 45, BaseDEF = 60, BaseSpA = 38, BaseSpD = 65, BaseSPD = 30,
-			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 6, SpAGrowth = 3, SpDGrowth = 6, SPDGrowth = 2,
+			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 6, SpAGrowth = 3, SpDGrowth = 6, SPDGrowth = 3,
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			EvolvesTo = "cragmaw",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.65f,
-			PossibleTraits = new() { "terra_force", "hardened_resolve", "enduring_will" },
+			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "mud_hurl", LearnLevel = 1 },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 6 },
 				new LearnableMove { MoveId = "boulder_toss", LearnLevel = 10 },
-				new LearnableMove { MoveId = "earthrend", LearnLevel = 16 }
+				new LearnableMove { MoveId = "earthrend", LearnLevel = 16 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 20 }
 			},
 			BeastiaryNumber = 55,
 			IconOffsetX = 4f,
@@ -1876,20 +1927,22 @@ public sealed class MonsterManager : Component
 				"ui/monsters/cragmaw/idle/cragmaw_idle_04.png"
 			},
 			BaseHP = 90, BaseATK = 70, BaseDEF = 90, BaseSpA = 55, BaseSpD = 95, BaseSPD = 40,
-			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 3,
+			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 4,
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "rootling",
 			EvolvesTo = "monoleth",
 			EvolutionLevel = 34,
 			BaseCatchRate = 0.35f,
-			PossibleTraits = new() { "terra_force", "hardened_resolve", "enduring_will" },
+			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "earthrend", LearnLevel = 1, EvolvesFrom = "mud_hurl" },
 				new LearnableMove { MoveId = "boulder_toss", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
 				new LearnableMove { MoveId = "seismic_crash", LearnLevel = 22 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 22 },
+				new LearnableMove { MoveId = "stone_wall", LearnLevel = 26 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 28 },
 				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 32 }
 			},
@@ -1909,20 +1962,20 @@ public sealed class MonsterManager : Component
 				"ui/monsters/monoleth/idle/monoleth_idle_03.png",
 				"ui/monsters/monoleth/idle/monoleth_idle_04.png"
 			},
-			BaseHP = 130, BaseATK = 95, BaseDEF = 120, BaseSpA = 72, BaseSpD = 125, BaseSPD = 45,
-			HPGrowth = 9, ATKGrowth = 7, DEFGrowth = 10, SpAGrowth = 5, SpDGrowth = 10, SPDGrowth = 3,
+			BaseHP = 120, BaseATK = 90, BaseDEF = 115, BaseSpA = 70, BaseSpD = 115, BaseSPD = 45,
+			HPGrowth = 9, ATKGrowth = 7, DEFGrowth = 10, SpAGrowth = 5, SpDGrowth = 10, SPDGrowth = 4,
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "cragmaw",
 			BaseCatchRate = 0.15f,
-			PossibleTraits = new() { "terra_force", "hardened_resolve", "enduring_will" },
+			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 1, EvolvesFrom = "earthrend" },
 				new LearnableMove { MoveId = "seismic_crash", LearnLevel = 1 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 1 },
+				new LearnableMove { MoveId = "stone_wall", LearnLevel = 30 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 40 },
-				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 48 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 }
 			},
 			BeastiaryNumber = 57
@@ -1968,13 +2021,14 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "boulderon",
 			EvolutionLevel = 26,
 			BaseCatchRate = 0.6f,
-			PossibleTraits = new() { "terra_force", "enduring_will", "reckless_charge" },
+			PossibleTraits = new() { "terra_force", "last_stand", "reckless_charge" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
 				new LearnableMove { MoveId = "boulder_toss", LearnLevel = 8 },
 				new LearnableMove { MoveId = "earthrend", LearnLevel = 14 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 18 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 22 }
 			},
 			BeastiaryNumber = 59
@@ -1987,8 +2041,8 @@ public sealed class MonsterManager : Component
 			Description = "A massive rolling stone that gained wisdom from its journey. It has traveled so far that it no longer remkindles where it started, and that makes it sad.",
 			IconPath = "ui/monsters/boulderon/idle/boulderon_idle_01.png",
 			AnimationFrames = new() { "ui/monsters/boulderon/idle/boulderon_idle_01.png", "ui/monsters/boulderon/idle/boulderon_idle_02.png", "ui/monsters/boulderon/idle/boulderon_idle_03.png", "ui/monsters/boulderon/idle/boulderon_idle_04.png" },
-			BaseHP = 95, BaseATK = 75, BaseDEF = 100, BaseSpA = 58, BaseSpD = 105, BaseSPD = 40,
-			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 3,
+			BaseHP = 85, BaseATK = 68, BaseDEF = 92, BaseSpA = 50, BaseSpD = 95, BaseSPD = 40,
+			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 4,
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "pebblit",
@@ -1999,9 +2053,10 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "earthrend", LearnLevel = 1, EvolvesFrom = "boulder_toss" },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 20 },
+				new LearnableMove { MoveId = "stone_wall", LearnLevel = 24 },
 				new LearnableMove { MoveId = "seismic_crash", LearnLevel = 30 },
-				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 38 },
-				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 46 }
+				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 38 }
 			},
 			BeastiaryNumber = 60
 		} );
@@ -2040,17 +2095,19 @@ public sealed class MonsterManager : Component
 			IconPath = "ui/monsters/dustback/idle/dustback_idle_01.png",
 			AnimationFrames = new() { "ui/monsters/dustback/idle/dustback_idle_01.png", "ui/monsters/dustback/idle/dustback_idle_02.png", "ui/monsters/dustback/idle/dustback_idle_03.png", "ui/monsters/dustback/idle/dustback_idle_04.png" },
 			BaseHP = 70, BaseATK = 45, BaseDEF = 85, BaseSpA = 38, BaseSpD = 90, BaseSPD = 20,
-			HPGrowth = 6, ATKGrowth = 3, DEFGrowth = 7, SpAGrowth = 3, SpDGrowth = 7, SPDGrowth = 1,
+			HPGrowth = 6, ATKGrowth = 3, DEFGrowth = 7, SpAGrowth = 3, SpDGrowth = 7, SPDGrowth = 3,
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
-			PossibleTraits = new() { "terra_force", "enduring_will", "hardened_resolve" },
+			PossibleTraits = new() { "terra_force", "last_stand", "hardened_resolve" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "mud_hurl", LearnLevel = 1 },
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 6 },
 				new LearnableMove { MoveId = "earthrend", LearnLevel = 14 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 16 },
+				new LearnableMove { MoveId = "stone_wall", LearnLevel = 20 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 22 },
 				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 32 }
 			},
@@ -2100,7 +2157,7 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "glacimaw",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
-			PossibleTraits = new() { "frost_core", "thermal_hide", "hardened_resolve" },
+			PossibleTraits = new() { "frost_core", "thermal_hide", "hunters_focus" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "frost_breath", LearnLevel = 1 },
@@ -2146,8 +2203,8 @@ public sealed class MonsterManager : Component
 			Description = "The memory of a world that died of cold, walking. It is what remains when even stars forget how to burn. Patient. Inevitable. Waiting.",
 			IconPath = "ui/monsters/permafrost/idle/permafrost_idle_01.png",
 			AnimationFrames = new() { "ui/monsters/permafrost/idle/permafrost_idle_01.png", "ui/monsters/permafrost/idle/permafrost_idle_02.png", "ui/monsters/permafrost/idle/permafrost_idle_03.png", "ui/monsters/permafrost/idle/permafrost_idle_04.png" },
-			BaseHP = 95, BaseATK = 85, BaseDEF = 115, BaseSpA = 102, BaseSpD = 118, BaseSPD = 65,
-			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 9, SpAGrowth = 8, SpDGrowth = 9, SPDGrowth = 5,
+			BaseHP = 90, BaseATK = 80, BaseDEF = 112, BaseSpA = 100, BaseSpD = 115, BaseSPD = 63,
+			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 9, SpAGrowth = 7, SpDGrowth = 9, SPDGrowth = 4,
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "glacimaw",
@@ -2158,7 +2215,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 1, EvolvesFrom = "permafrost_ray" },
 				new LearnableMove { MoveId = "temper", LearnLevel = 1 },
 				new LearnableMove { MoveId = "winter_veil", LearnLevel = 1 },
-				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 42 },
+				new LearnableMove { MoveId = "frost_crush", LearnLevel = 32 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 48 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 }
 			},
@@ -2205,7 +2262,7 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "blizzardian",
 			EvolutionLevel = 26,
 			BaseCatchRate = 0.6f,
-			PossibleTraits = new() { "frost_core", "phantom_step", "momentum" },
+			PossibleTraits = new() { "frost_core", "hunters_focus", "cleansing_retreat" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "frost_breath", LearnLevel = 1 },
@@ -2224,20 +2281,20 @@ public sealed class MonsterManager : Component
 			Description = "When enough Snowmites gather together, they form a Blizzardian - a walking snowstorm that remembers being thousands of unique individuals.",
 			IconPath = "ui/monsters/blizzardian/idle/blizzardian_idle_01.png",
 			AnimationFrames = new() { "ui/monsters/blizzardian/idle/blizzardian_idle_01.png", "ui/monsters/blizzardian/idle/blizzardian_idle_02.png", "ui/monsters/blizzardian/idle/blizzardian_idle_03.png", "ui/monsters/blizzardian/idle/blizzardian_idle_04.png" },
-			BaseHP = 70, BaseATK = 75, BaseDEF = 70, BaseSpA = 88, BaseSpD = 72, BaseSPD = 80,
+			BaseHP = 66, BaseATK = 70, BaseDEF = 66, BaseSpA = 83, BaseSpD = 68, BaseSPD = 77,
 			HPGrowth = 5, ATKGrowth = 6, DEFGrowth = 5, SpAGrowth = 7, SpDGrowth = 5, SPDGrowth = 6,
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "snowmite",
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "frost_core", "phantom_step", "momentum" },
+			PossibleTraits = new() { "frost_core", "precision_hunter", "cleansing_retreat" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "permafrost_ray", LearnLevel = 1, EvolvesFrom = "frost_breath" },
 				new LearnableMove { MoveId = "winter_veil", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
+				new LearnableMove { MoveId = "frost_crush", LearnLevel = 24 },
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 30 },
-				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 40 },
 				new LearnableMove { MoveId = "tempest", LearnLevel = 48 }
 			},
 			BeastiaryNumber = 70
@@ -2281,7 +2338,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
-			PossibleTraits = new() { "frost_core", "phantom_step", "trickster" },
+			PossibleTraits = new() { "frost_core", "subtle_arts", "trickster" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "frost_breath", LearnLevel = 1 },
@@ -2326,8 +2383,8 @@ public sealed class MonsterManager : Component
 			Description = "A massive creature that carries an actual glacier on its shell. Entire ecosystems of ice-dwelling creatures live on its back without knowing they're mobile.",
 			IconPath = "ui/monsters/glacierback/idle/glacierback_idle_01.png",
 			AnimationFrames = new() { "ui/monsters/glacierback/idle/glacierback_idle_01.png", "ui/monsters/glacierback/idle/glacierback_idle_02.png", "ui/monsters/glacierback/idle/glacierback_idle_03.png", "ui/monsters/glacierback/idle/glacierback_idle_04.png" },
-			BaseHP = 100, BaseATK = 60, BaseDEF = 95, BaseSpA = 52, BaseSpD = 98, BaseSPD = 15,
-			HPGrowth = 8, ATKGrowth = 4, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 1,
+			BaseHP = 105, BaseATK = 65, BaseDEF = 95, BaseSpA = 60, BaseSpD = 100, BaseSPD = 55,
+			HPGrowth = 8, ATKGrowth = 4, DEFGrowth = 8, SpAGrowth = 4, SpDGrowth = 8, SPDGrowth = 3,
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.2f,
@@ -2339,6 +2396,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "harden", LearnLevel = 8 },
 				new LearnableMove { MoveId = "permafrost_ray", LearnLevel = 18 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 28 },
+				new LearnableMove { MoveId = "frost_crush", LearnLevel = 28 },
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 40 }
 			},
 			BeastiaryNumber = 74
@@ -2393,11 +2451,10 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 1, EvolvesFrom = "thorn_lash" },
-				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 1, EvolvesFrom = "soul_siphon" },
 				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 1 },
 				new LearnableMove { MoveId = "nature_shield", LearnLevel = 1 },
 				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 24 },
-				new LearnableMove { MoveId = "leech_seed", LearnLevel = 30 }
+				new LearnableMove { MoveId = "parasite_spore", LearnLevel = 30 }
 			},
 			BeastiaryNumber = 76
 		} );
@@ -2421,8 +2478,8 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 1, EvolvesFrom = "vitality_burst" },
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1, EvolvesFrom = "vitality_burst" },
 				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 1 },
-				new LearnableMove { MoveId = "leech_seed", LearnLevel = 1 },
-				new LearnableMove { MoveId = "wood_hammer", LearnLevel = 42 },
+				new LearnableMove { MoveId = "parasite_spore", LearnLevel = 1 },
+				new LearnableMove { MoveId = "timber_slam", LearnLevel = 42 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 50 }
 			},
 			BeastiaryNumber = 77
@@ -2439,14 +2496,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
-			PossibleTraits = new() { "verdant_power", "phantom_step", "menacing_aura" },
+			PossibleTraits = new() { "verdant_power", "wild_growth", "menacing_aura" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
 				new LearnableMove { MoveId = "intimidate", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 8 },
-				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 14 },
-				new LearnableMove { MoveId = "terror_visions", LearnLevel = 20 }
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 14 }
 			},
 			AnimationFrames = new()
 			{
@@ -2472,13 +2528,13 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "bloomguard",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.6f,
-			PossibleTraits = new() { "verdant_power", "phantom_step", "adrenaline_rush" },
+			PossibleTraits = new() { "verdant_power", "wild_growth", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 7 },
-				new LearnableMove { MoveId = "cotton_guard", LearnLevel = 12 },
+				new LearnableMove { MoveId = "floral_guard", LearnLevel = 12 },
 				new LearnableMove { MoveId = "pollen_burst", LearnLevel = 18 }
 			},
 			AnimationFrames = new()
@@ -2503,14 +2559,15 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "pollenpuff",
 			BaseCatchRate = 0.35f,
-			PossibleTraits = new() { "verdant_power", "phantom_step", "adrenaline_rush" },
+			PossibleTraits = new() { "verdant_power", "wild_growth", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "petal_dance", LearnLevel = 1, EvolvesFrom = "pollen_burst" },
+				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 1, EvolvesFrom = "pollen_burst" },
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 1, EvolvesFrom = "soul_siphon" },
-				new LearnableMove { MoveId = "cotton_guard", LearnLevel = 1 },
+				new LearnableMove { MoveId = "floral_guard", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
-				new LearnableMove { MoveId = "leaf_blade", LearnLevel = 28 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 22 },
+				new LearnableMove { MoveId = "verdant_edge", LearnLevel = 28 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 35 }
 			},
 			AnimationFrames = new()
@@ -2540,9 +2597,7 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 1 },
 				new LearnableMove { MoveId = "root_bind", LearnLevel = 1 },
-				new LearnableMove { MoveId = "harden", LearnLevel = 8 },
-				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 16 },
-				new LearnableMove { MoveId = "root_bind", LearnLevel = 22 }
+				new LearnableMove { MoveId = "harden", LearnLevel = 8 }
 			},
 			AnimationFrames = new()
 			{
@@ -2556,30 +2611,28 @@ public sealed class MonsterManager : Component
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "funharden",
-			Name = "Funharden",
-			Description = "A mushroom creature that communicates through underground networks. It knows what every plant within a mile is feeling but has no way to express itself.",
-			IconPath = "ui/monsters/funharden/idle/funharden_idle_01.png",
+			Id = "curublast",
+			Name = "Curublast",
+			Description = "A small jungle guardian with wild flame-red hair and feet that face backwards. It leads those who harm the forest in circles until they lose their minds, but guides the kind-hearted safely through.",
+			IconPath = "ui/monsters/curublast/idle/curublast_idle_01.png",
 			BaseHP = 65, BaseATK = 45, BaseDEF = 60, BaseSpA = 70, BaseSpD = 75, BaseSPD = 35,
 			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 6, SPDGrowth = 3,
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.45f,
-			PossibleTraits = new() { "verdant_power", "hardened_resolve", "menacing_aura" },
+			PossibleTraits = new() { "verdant_power", "wild_growth", "menacing_aura" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
-				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
-				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 10 },
-				new LearnableMove { MoveId = "terror_visions", LearnLevel = 18 },
-				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 26 }
+				new LearnableMove { MoveId = "pollen_burst", LearnLevel = 1 },
+				new LearnableMove { MoveId = "nature_shield", LearnLevel = 1 },
+				new LearnableMove { MoveId = "bloom_burst", LearnLevel = 10 }
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/funharden/idle/funharden_idle_01.png",
-				"ui/monsters/funharden/idle/funharden_idle_02.png",
-				"ui/monsters/funharden/idle/funharden_idle_03.png",
-				"ui/monsters/funharden/idle/funharden_idle_04.png"
+				"ui/monsters/curublast/idle/curublast_idle_01.png",
+				"ui/monsters/curublast/idle/curublast_idle_02.png",
+				"ui/monsters/curublast/idle/curublast_idle_03.png",
+				"ui/monsters/curublast/idle/curublast_idle_04.png"
 			},
 			BeastiaryNumber = 82
 		} );
@@ -2595,7 +2648,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
-			PossibleTraits = new() { "verdant_power", "phantom_step", "trickster" },
+			PossibleTraits = new() { "verdant_power", "subtle_arts", "trickster" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 1 },
@@ -2620,17 +2673,17 @@ public sealed class MonsterManager : Component
 			Name = "Verdantis",
 			Description = "A creature that is spring itself given form. Where it walks, flowers bloom out of season and dormant seeds spontaneously sprout.",
 			IconPath = "ui/monsters/verdantis/idle/verdantis_idle_01.png",
-			BaseHP = 80, BaseATK = 70, BaseDEF = 70, BaseSpA = 85, BaseSpD = 75, BaseSPD = 70,
-			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 5,
+			BaseHP = 85, BaseATK = 75, BaseDEF = 75, BaseSpA = 95, BaseSpD = 80, BaseSPD = 80,
+			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 5, SpAGrowth = 7, SpDGrowth = 5, SPDGrowth = 5,
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.2f,
-			PossibleTraits = new() { "verdant_power", "wild_harden", "elemental_mastery" },
+			PossibleTraits = new() { "verdant_power", "wild_harden", "wild_growth" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
-				new LearnableMove { MoveId = "petal_dance", LearnLevel = 15 },
+				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 15 },
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 25 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 35 }
 			},
@@ -2661,14 +2714,14 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "ironclad",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
-			PossibleTraits = new() { "iron_will", "hardened_resolve", "momentum" },
+			PossibleTraits = new() { "iron_will", "brutal_force", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
 				new LearnableMove { MoveId = "steel_rake", LearnLevel = 8 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 14 },
-				new LearnableMove { MoveId = "gear_grind", LearnLevel = 18 }
+				new LearnableMove { MoveId = "cog_crush", LearnLevel = 18 }
 			},
 			AnimationFrames = new()
 			{
@@ -2694,15 +2747,15 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "forgeborn",
 			EvolutionLevel = 38,
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "iron_will", "hardened_resolve", "momentum" },
+			PossibleTraits = new() { "iron_will", "hardened_resolve", "brutal_force" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "iron_rush", LearnLevel = 1, EvolvesFrom = "steel_rake" },
-				new LearnableMove { MoveId = "gear_grind", LearnLevel = 1 },
+				new LearnableMove { MoveId = "cog_crush", LearnLevel = 1 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
-				new LearnableMove { MoveId = "heavy_slam", LearnLevel = 26 },
-				new LearnableMove { MoveId = "metal_burst", LearnLevel = 34 }
+				new LearnableMove { MoveId = "titan_drop", LearnLevel = 26 },
+				new LearnableMove { MoveId = "iron_rebound", LearnLevel = 34 }
 			},
 			AnimationFrames = new()
 			{
@@ -2726,13 +2779,14 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "ironclad",
 			BaseCatchRate = 0.12f,
-			PossibleTraits = new() { "iron_will", "hardened_resolve", "momentum" },
+			PossibleTraits = new() { "iron_will", "hardened_resolve", "precision_hunter" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "meteor_mash", LearnLevel = 1, EvolvesFrom = "iron_rush" },
-				new LearnableMove { MoveId = "heavy_slam", LearnLevel = 1 },
-				new LearnableMove { MoveId = "metal_burst", LearnLevel = 1 },
+				new LearnableMove { MoveId = "starfall_strike", LearnLevel = 1, EvolvesFrom = "iron_rush" },
+				new LearnableMove { MoveId = "titan_drop", LearnLevel = 1 },
+				new LearnableMove { MoveId = "iron_rebound", LearnLevel = 1 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 1 },
+				new LearnableMove { MoveId = "meltdown_beam", LearnLevel = 36 },
 				new LearnableMove { MoveId = "gleaming_ray", LearnLevel = 45 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 52 }
 			},
@@ -2757,7 +2811,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesTo = "oxidrake",
-			EvolutionLevel = 30,
+			EvolutionLevel = 32,
 			BaseCatchRate = 0.4f,
 			PossibleTraits = new() { "iron_will", "barbed_hide", "menacing_aura" },
 			LearnableMoves = new()
@@ -2765,7 +2819,6 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
 				new LearnableMove { MoveId = "steel_rake", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 12 },
-				new LearnableMove { MoveId = "void_sphere", LearnLevel = 18 },
 				new LearnableMove { MoveId = "iron_rush", LearnLevel = 26 }
 			},
 			AnimationFrames = new()
@@ -2784,7 +2837,7 @@ public sealed class MonsterManager : Component
 			Name = "Oxidrake",
 			Description = "A dragon made of every rusted sword, every fallen crown, every abandoned machine. It is the graveyard of human ambition given wings.",
 			IconPath = "ui/monsters/oxidrake/idle/oxidrake_idle_01.png",
-			BaseHP = 87, BaseATK = 98, BaseDEF = 72, BaseSpA = 93, BaseSpD = 68, BaseSPD = 77,
+			BaseHP = 90, BaseATK = 102, BaseDEF = 75, BaseSpA = 98, BaseSpD = 72, BaseSPD = 83,
 			HPGrowth = 6, ATKGrowth = 8, DEFGrowth = 5, SpAGrowth = 7, SpDGrowth = 5, SPDGrowth = 6,
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Rare,
@@ -2797,6 +2850,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "iron_rush", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
+				new LearnableMove { MoveId = "meltdown_beam", LearnLevel = 32 },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 36 },
 				new LearnableMove { MoveId = "corrosive_breath", LearnLevel = 44 }
 			},
@@ -2822,7 +2876,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Common,
 			EvolvesTo = "junktitan",
-			EvolutionLevel = 28,
+			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
 			PossibleTraits = new() { "iron_will", "reckless_charge", "titanic_might" },
 			LearnableMoves = new()
@@ -2850,7 +2904,7 @@ public sealed class MonsterManager : Component
 			Description = "A massive construct assembled from an entire junkyard's worth of metal. It finally achieved its dream of becoming mighty, but now worries about being dismantled for parts.",
 			IconPath = "ui/monsters/junktitan/idle/junktitan_idle_01.png",
 			BaseHP = 98, BaseATK = 88, BaseDEF = 92, BaseSpA = 45, BaseSpD = 78, BaseSPD = 38,
-			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 7, SpAGrowth = 3, SpDGrowth = 6, SPDGrowth = 3,
+			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 7, SpAGrowth = 3, SpDGrowth = 6, SPDGrowth = 4,
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "scrapper",
@@ -2858,11 +2912,11 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "iron_will", "reckless_charge", "titanic_might" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "heavy_slam", LearnLevel = 1, EvolvesFrom = "iron_rush" },
+				new LearnableMove { MoveId = "titan_drop", LearnLevel = 1, EvolvesFrom = "iron_rush" },
 				new LearnableMove { MoveId = "steel_rake", LearnLevel = 1 },
 				new LearnableMove { MoveId = "magnet_rise", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
-				new LearnableMove { MoveId = "gyro_ball", LearnLevel = 34 },
+				new LearnableMove { MoveId = "spin_crash", LearnLevel = 34 },
 				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 42 }
 			},
 			AnimationFrames = new()
@@ -2890,11 +2944,11 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "iron_will", "barbed_hide", "fortunate_strike" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "fury_cutter", LearnLevel = 1 },
+				new LearnableMove { MoveId = "rapid_shear", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "steel_rake", LearnLevel = 9 },
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 16 },
-				new LearnableMove { MoveId = "steel_wing", LearnLevel = 23 }
+				new LearnableMove { MoveId = "chrome_wing", LearnLevel = 23 }
 			},
 			AnimationFrames = new()
 			{
@@ -2913,18 +2967,19 @@ public sealed class MonsterManager : Component
 			Description = "A creature that formed inside an old church bell. It rings itself to warn of danger and is confused when people run away from the warning instead of toward it.",
 			IconPath = "ui/monsters/bellguard/idle/bellguard_idle_01.png",
 			BaseHP = 73, BaseATK = 52, BaseDEF = 84, BaseSpA = 67, BaseSpD = 88, BaseSPD = 28,
-			HPGrowth = 6, ATKGrowth = 4, DEFGrowth = 7, SpAGrowth = 5, SpDGrowth = 7, SPDGrowth = 2,
+			HPGrowth = 6, ATKGrowth = 4, DEFGrowth = 7, SpAGrowth = 5, SpDGrowth = 7, SPDGrowth = 3,
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
-			PossibleTraits = new() { "iron_will", "hardened_resolve", "enduring_will" },
+			PossibleTraits = new() { "iron_will", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "intimidate", LearnLevel = 1 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 10 },
 				new LearnableMove { MoveId = "gleaming_ray", LearnLevel = 18 },
-				new LearnableMove { MoveId = "heal_bell", LearnLevel = 26 }
+				new LearnableMove { MoveId = "resonance_bell", LearnLevel = 26 },
+				new LearnableMove { MoveId = "meltdown_beam", LearnLevel = 28 }
 			},
 			AnimationFrames = new()
 			{
@@ -2947,14 +3002,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.45f,
-			PossibleTraits = new() { "iron_will", "phantom_step", "hardened_resolve" },
+			PossibleTraits = new() { "iron_will", "brutal_force", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "root_bind", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
-				new LearnableMove { MoveId = "root_bind", LearnLevel = 8 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 15 },
-				new LearnableMove { MoveId = "gyro_ball", LearnLevel = 22 }
+				new LearnableMove { MoveId = "spin_crash", LearnLevel = 22 }
 			},
 			AnimationFrames = new()
 			{
@@ -2977,14 +3031,15 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.15f,
-			PossibleTraits = new() { "iron_will", "precision_hunter", "elemental_mastery" },
+			PossibleTraits = new() { "iron_will", "precision_hunter", "brutal_force" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "steel_rake", LearnLevel = 1 },
 				new LearnableMove { MoveId = "blazing_wrath", LearnLevel = 1 },
 				new LearnableMove { MoveId = "gleaming_ray", LearnLevel = 18 },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 28 },
-				new LearnableMove { MoveId = "meteor_mash", LearnLevel = 38 }
+				new LearnableMove { MoveId = "meltdown_beam", LearnLevel = 34 },
+				new LearnableMove { MoveId = "starfall_strike", LearnLevel = 38 }
 			},
 			AnimationFrames = new()
 			{
@@ -3024,11 +3079,10 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "ethereal_blessing", "phantom_step", "vital_recovery" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "fairy_wind", LearnLevel = 1 },
+				new LearnableMove { MoveId = "spirit_breeze", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 8 },
-				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 14 },
-				new LearnableMove { MoveId = "light_screen", LearnLevel = 18 }
+				new LearnableMove { MoveId = "luminous_wall", LearnLevel = 18 }
 			},
 			BeastiaryNumber = 97
 		} );
@@ -3060,9 +3114,10 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 1, EvolvesFrom = "aether_pulse" },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
-				new LearnableMove { MoveId = "light_screen", LearnLevel = 1 },
+				new LearnableMove { MoveId = "luminous_wall", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 1 },
-				new LearnableMove { MoveId = "calm_mind", LearnLevel = 28 },
+				new LearnableMove { MoveId = "spectral_rush", LearnLevel = 26 },
+				new LearnableMove { MoveId = "inner_focus", LearnLevel = 28 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 34 }
 			},
 			BeastiaryNumber = 98
@@ -3088,13 +3143,14 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Epic,
 			EvolvesFrom = "haloveil",
 			BaseCatchRate = 0.1f,
-			PossibleTraits = new() { "ethereal_blessing", "phantom_step", "vital_recovery" },
+			PossibleTraits = new() { "ethereal_blessing", "precision_hunter", "vital_recovery" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "prismatic_ray", LearnLevel = 1, EvolvesFrom = "lunar_radiance" },
-				new LearnableMove { MoveId = "calm_mind", LearnLevel = 1 },
+				new LearnableMove { MoveId = "inner_focus", LearnLevel = 1 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 1 },
-				new LearnableMove { MoveId = "light_screen", LearnLevel = 1 },
+				new LearnableMove { MoveId = "luminous_wall", LearnLevel = 1 },
+				new LearnableMove { MoveId = "spectral_rush", LearnLevel = 34 },
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 48 },
 				new LearnableMove { MoveId = "divine_light", LearnLevel = 56 }
 			},
@@ -3124,10 +3180,9 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
-				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 16 },
-				new LearnableMove { MoveId = "calm_mind", LearnLevel = 22 },
-				new LearnableMove { MoveId = "dream_eater", LearnLevel = 28 }
+				new LearnableMove { MoveId = "inner_focus", LearnLevel = 22 },
+				new LearnableMove { MoveId = "dream_feast", LearnLevel = 28 }
 			},
 			BeastiaryNumber = 100
 		} );
@@ -3157,11 +3212,11 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "ethereal_blessing", "vital_recovery", "trickster" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "fairy_wind", LearnLevel = 1 },
-				new LearnableMove { MoveId = "helping_hand", LearnLevel = 1 },
+				new LearnableMove { MoveId = "spirit_breeze", LearnLevel = 1 },
+				new LearnableMove { MoveId = "bolster", LearnLevel = 1 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 10 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 16 },
-				new LearnableMove { MoveId = "lucky_chant", LearnLevel = 22 }
+				new LearnableMove { MoveId = "warding_hymn", LearnLevel = 22 }
 			},
 			BeastiaryNumber = 101
 		} );
@@ -3180,7 +3235,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/hopebringer/idle/hopebringer_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BaseHP = 78, BaseATK = 52, BaseDEF = 72, BaseSpA = 85, BaseSpD = 82, BaseSPD = 88,
+			BaseHP = 72, BaseATK = 48, BaseDEF = 68, BaseSpA = 80, BaseSpD = 78, BaseSPD = 84,
 			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 6, SPDGrowth = 7,
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Uncommon,
@@ -3191,9 +3246,8 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 1, EvolvesFrom = "aether_pulse" },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 1 },
-				new LearnableMove { MoveId = "lucky_chant", LearnLevel = 1 },
-				new LearnableMove { MoveId = "helping_hand", LearnLevel = 1 },
-				new LearnableMove { MoveId = "divine_grace", LearnLevel = 32 },
+				new LearnableMove { MoveId = "warding_hymn", LearnLevel = 1 },
+				new LearnableMove { MoveId = "bolster", LearnLevel = 1 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 38 }
 			},
 			BeastiaryNumber = 102
@@ -3219,13 +3273,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
-			PossibleTraits = new() { "ethereal_blessing", "phantom_step", "hardened_resolve" },
+			PossibleTraits = new() { "ethereal_blessing", "cleansing_retreat", "subtle_arts" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 12 },
-				new LearnableMove { MoveId = "dream_eater", LearnLevel = 20 },
+				new LearnableMove { MoveId = "dream_feast", LearnLevel = 20 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 28 }
 			},
 			BeastiaryNumber = 103
@@ -3250,12 +3304,12 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
-			PossibleTraits = new() { "ethereal_blessing", "trickster", "phantom_step" },
+			PossibleTraits = new() { "ethereal_blessing", "trickster", "hunters_focus" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
-				new LearnableMove { MoveId = "dream_eater", LearnLevel = 14 },
+				new LearnableMove { MoveId = "dream_feast", LearnLevel = 14 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 20 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 26 }
 			},
@@ -3281,13 +3335,12 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
-			PossibleTraits = new() { "ethereal_blessing", "fortunate_strike", "momentum" },
+			PossibleTraits = new() { "ethereal_blessing", "fortunate_strike", "subtle_arts" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 1 },
-				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 14 },
-				new LearnableMove { MoveId = "calm_mind", LearnLevel = 22 },
+				new LearnableMove { MoveId = "inner_focus", LearnLevel = 22 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 30 }
 			},
 			BeastiaryNumber = 105
@@ -3312,14 +3365,15 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.15f,
-			PossibleTraits = new() { "ethereal_blessing", "elemental_mastery", "enduring_will" },
+			PossibleTraits = new() { "ethereal_blessing", "subtle_arts", "enduring_will" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "ancient_power", LearnLevel = 1 },
+				new LearnableMove { MoveId = "primeval_force", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 1 },
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 22 },
+				new LearnableMove { MoveId = "spectral_rush", LearnLevel = 30 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 32 },
-				new LearnableMove { MoveId = "future_sight", LearnLevel = 42 }
+				new LearnableMove { MoveId = "fate_glimpse", LearnLevel = 42 }
 			},
 			BeastiaryNumber = 106
 		} );
@@ -3342,7 +3396,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/murkmaw/idle/murkmaw_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BaseHP = 47, BaseATK = 62, BaseDEF = 47, BaseSpA = 55, BaseSpD = 42, BaseSPD = 57,
+			BaseHP = 42, BaseATK = 55, BaseDEF = 42, BaseSpA = 50, BaseSpD = 38, BaseSPD = 53,
 			HPGrowth = 4, ATKGrowth = 5, DEFGrowth = 4, SpAGrowth = 4, SpDGrowth = 3, SPDGrowth = 5,
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Common,
@@ -3355,7 +3409,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "rend", LearnLevel = 1 },
 				new LearnableMove { MoveId = "intimidate", LearnLevel = 1 },
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 8 },
-				new LearnableMove { MoveId = "night_shade", LearnLevel = 14 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 14 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 20 }
 			},
 			BeastiaryNumber = 107
@@ -3383,14 +3437,14 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "nullgrave",
 			EvolutionLevel = 40,
 			BaseCatchRate = 0.3f,
-			PossibleTraits = new() { "dark_presence", "phantom_step", "bloodlust" },
+			PossibleTraits = new() { "dark_presence", "last_stand", "bloodlust" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1, EvolvesFrom = "nightmare_wave" },
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 1 },
-				new LearnableMove { MoveId = "night_shade", LearnLevel = 1 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 1 },
 				new LearnableMove { MoveId = "rend", LearnLevel = 1 },
-				new LearnableMove { MoveId = "nasty_plot", LearnLevel = 28 },
+				new LearnableMove { MoveId = "dark_scheme", LearnLevel = 28 },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 36 }
 			},
 			BeastiaryNumber = 108
@@ -3416,15 +3470,15 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Epic,
 			EvolvesFrom = "voidweep",
 			BaseCatchRate = 0.08f,
-			PossibleTraits = new() { "dark_presence", "phantom_step", "bloodlust" },
+			PossibleTraits = new() { "dark_presence", "brutal_force", "bloodlust" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "void_pulse", LearnLevel = 1, EvolvesFrom = "void_sphere" },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 1 },
-				new LearnableMove { MoveId = "nasty_plot", LearnLevel = 1 },
-				new LearnableMove { MoveId = "night_shade", LearnLevel = 1 },
-				new LearnableMove { MoveId = "destiny_bond", LearnLevel = 48 },
-				new LearnableMove { MoveId = "oblivion_wing", LearnLevel = 56 }
+				new LearnableMove { MoveId = "dark_scheme", LearnLevel = 1 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 1 },
+				new LearnableMove { MoveId = "fated_curse", LearnLevel = 48 },
+				new LearnableMove { MoveId = "void_wings", LearnLevel = 56 }
 			},
 			BeastiaryNumber = 109
 		} );
@@ -3452,8 +3506,7 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 1 },
-				new LearnableMove { MoveId = "shade_step", LearnLevel = 1 },
-				new LearnableMove { MoveId = "night_shade", LearnLevel = 10 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 10 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 18 },
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 26 }
 			},
@@ -3488,7 +3541,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "intimidate", LearnLevel = 1 },
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 8 },
-				new LearnableMove { MoveId = "feint_attack", LearnLevel = 14 },
+				new LearnableMove { MoveId = "sly_strike", LearnLevel = 14 },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 20 }
 			},
 			BeastiaryNumber = 111
@@ -3519,10 +3572,9 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 1, EvolvesFrom = "umbral_claw" },
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 1 },
-				new LearnableMove { MoveId = "feint_attack", LearnLevel = 1 },
+				new LearnableMove { MoveId = "sly_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
-				new LearnableMove { MoveId = "sucker_punch", LearnLevel = 30 },
-				new LearnableMove { MoveId = "shade_step", LearnLevel = 38 }
+				new LearnableMove { MoveId = "shadow_lunge", LearnLevel = 30 }
 			},
 			BeastiaryNumber = 112
 		} );
@@ -3551,9 +3603,9 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 1 },
-				new LearnableMove { MoveId = "scary_face", LearnLevel = 1 },
+				new LearnableMove { MoveId = "dread_gaze", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 10 },
-				new LearnableMove { MoveId = "night_shade", LearnLevel = 16 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 16 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 22 }
 			},
 			BeastiaryNumber = 113
@@ -3584,8 +3636,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "rend", LearnLevel = 1 },
 				new LearnableMove { MoveId = "shade_step", LearnLevel = 1 },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 14 },
-				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 22 },
-				new LearnableMove { MoveId = "sucker_punch", LearnLevel = 30 }
+				new LearnableMove { MoveId = "shadow_lunge", LearnLevel = 30 }
 			},
 			BeastiaryNumber = 114
 		} );
@@ -3609,14 +3660,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
-			PossibleTraits = new() { "dark_presence", "hardened_resolve", "trickster" },
+			PossibleTraits = new() { "dark_presence", "last_stand", "trickster" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
-				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
-				new LearnableMove { MoveId = "night_shade", LearnLevel = 12 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 12 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 20 },
-				new LearnableMove { MoveId = "nasty_plot", LearnLevel = 28 }
+				new LearnableMove { MoveId = "dark_scheme", LearnLevel = 28 }
 			},
 			BeastiaryNumber = 115
 		} );
@@ -3640,13 +3690,14 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.2f,
-			PossibleTraits = new() { "dark_presence", "phantom_step", "elemental_mastery" },
+			PossibleTraits = new() { "dark_presence", "phantom_step", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 1 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 18 },
-				new LearnableMove { MoveId = "calm_mind", LearnLevel = 28 },
+				new LearnableMove { MoveId = "inner_focus", LearnLevel = 28 },
+				new LearnableMove { MoveId = "abyssal_torrent", LearnLevel = 34 },
 				new LearnableMove { MoveId = "eclipse_ray", LearnLevel = 38 }
 			},
 			BeastiaryNumber = 116
@@ -3671,14 +3722,14 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.12f,
-			PossibleTraits = new() { "dark_presence", "bloodlust", "elemental_mastery" },
+			PossibleTraits = new() { "dark_presence", "bloodlust", "brutal_force" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 1 },
-				new LearnableMove { MoveId = "dream_eater", LearnLevel = 18 },
+				new LearnableMove { MoveId = "dream_feast", LearnLevel = 18 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 28 },
-				new LearnableMove { MoveId = "terror_visions", LearnLevel = 40 }
+				new LearnableMove { MoveId = "abyssal_torrent", LearnLevel = 34 }
 			},
 			BeastiaryNumber = 117
 		} );
@@ -3702,17 +3753,17 @@ public sealed class MonsterManager : Component
 				"ui/monsters/primbloom/idle/primbloom_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BaseHP = 82, BaseATK = 68, BaseDEF = 83, BaseSpA = 98, BaseSpD = 92, BaseSPD = 72,
-			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 7, SpDGrowth = 7, SPDGrowth = 5,
+			BaseHP = 88, BaseATK = 68, BaseDEF = 88, BaseSpA = 108, BaseSpD = 98, BaseSPD = 80,
+			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 8, SpDGrowth = 7, SPDGrowth = 5,
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.1f,
-			PossibleTraits = new() { "verdant_power", "wild_harden", "elemental_mastery" },
+			PossibleTraits = new() { "verdant_power", "wild_harden", "wild_growth" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 1 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 1 },
-				new LearnableMove { MoveId = "petal_dance", LearnLevel = 20 },
+				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 20 },
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 32 },
 				new LearnableMove { MoveId = "bloom_burst", LearnLevel = 45 }
 			},
@@ -3743,9 +3794,9 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "blazing_wrath", LearnLevel = 1 },
-				new LearnableMove { MoveId = "sunny_day", LearnLevel = 1 },
+				new LearnableMove { MoveId = "solar_reign", LearnLevel = 1 },
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 24 },
-				new LearnableMove { MoveId = "heat_wave", LearnLevel = 36 },
+				new LearnableMove { MoveId = "scorching_gust", LearnLevel = 36 },
 				new LearnableMove { MoveId = "solar_flare", LearnLevel = 48 }
 			},
 			BeastiaryNumber = 119
@@ -3777,7 +3828,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 1 },
 				new LearnableMove { MoveId = "winter_veil", LearnLevel = 1 },
 				new LearnableMove { MoveId = "permafrost_ray", LearnLevel = 22 },
-				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 38 },
+				new LearnableMove { MoveId = "frost_crush", LearnLevel = 36 },
 				new LearnableMove { MoveId = "absolute_zero", LearnLevel = 50 }
 			},
 			BeastiaryNumber = 120
@@ -3809,6 +3860,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 1 },
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 22 },
+				new LearnableMove { MoveId = "thunder_fang", LearnLevel = 36 },
 				new LearnableMove { MoveId = "tempest", LearnLevel = 36 },
 				new LearnableMove { MoveId = "storm_surge", LearnLevel = 48 }
 			},
@@ -3838,10 +3890,9 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "elemental_mastery", "enduring_will", "titanic_might" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "ancient_power", LearnLevel = 1 },
-				new LearnableMove { MoveId = "cosmic_power", LearnLevel = 1 },
+				new LearnableMove { MoveId = "primeval_force", LearnLevel = 1 },
+				new LearnableMove { MoveId = "astral_ward", LearnLevel = 1 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 30 },
-				new LearnableMove { MoveId = "annihilate", LearnLevel = 50 },
 				new LearnableMove { MoveId = "genesis_wave", LearnLevel = 70 }
 			},
 			BeastiaryNumber = 122
@@ -3872,7 +3923,6 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 1 },
-				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 28 },
 				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 42 },
 				new LearnableMove { MoveId = "world_crush", LearnLevel = 60 }
 			},
@@ -3905,7 +3955,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_pulse", LearnLevel = 1 },
 				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 32 },
-				new LearnableMove { MoveId = "oblivion_wing", LearnLevel = 48 },
+				new LearnableMove { MoveId = "void_wings", LearnLevel = 48 },
 				new LearnableMove { MoveId = "cosmic_erasure", LearnLevel = 65 }
 			},
 			BeastiaryNumber = 124
@@ -3935,8 +3985,8 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "elemental_mastery", "enduring_will", "titanic_might" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "cosmic_power", LearnLevel = 1 },
-				new LearnableMove { MoveId = "ancient_power", LearnLevel = 1 },
+				new LearnableMove { MoveId = "astral_ward", LearnLevel = 1 },
+				new LearnableMove { MoveId = "primeval_force", LearnLevel = 1 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 40 },
 				new LearnableMove { MoveId = "genesis_wave", LearnLevel = 60 },
 				new LearnableMove { MoveId = "creation_burst", LearnLevel = 80 }
@@ -3956,7 +4006,7 @@ public sealed class MonsterManager : Component
 			Name = "Genisoul",
 			Description = "The very first consciousness to emerge from the void. It remembers a time before time, when existence was merely a suggestion waiting to be spoken.",
 			IconPath = "ui/monsters/genisoul/idle/genisoul_idle_01.png",
-			BaseHP = 128, BaseATK = 85, BaseDEF = 112, BaseSpA = 125, BaseSpD = 118, BaseSPD = 118,
+			BaseHP = 130, BaseATK = 85, BaseDEF = 115, BaseSpA = 128, BaseSpD = 120, BaseSPD = 122,
 			HPGrowth = 8, ATKGrowth = 6, DEFGrowth = 7, SpAGrowth = 8, SpDGrowth = 8, SPDGrowth = 8,
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Mythic,
@@ -3966,9 +4016,9 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 1 },
-				new LearnableMove { MoveId = "cosmic_power", LearnLevel = 1 },
+				new LearnableMove { MoveId = "astral_ward", LearnLevel = 1 },
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 28 },
-				new LearnableMove { MoveId = "future_sight", LearnLevel = 42 },
+				new LearnableMove { MoveId = "fate_glimpse", LearnLevel = 42 },
 				new LearnableMove { MoveId = "genesis_thought", LearnLevel = 60 }
 			},
 			AnimationFrames = new()
@@ -3994,13 +4044,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.05f,
-			PossibleTraits = new() { "kindle_heart", "infernal_rage", "elemental_mastery" },
+			PossibleTraits = new() { "kindle_heart", "infernal_rage", "ember_heart" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "blazing_wrath", LearnLevel = 1 },
 				new LearnableMove { MoveId = "cinders_curse", LearnLevel = 1 },
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 26 },
-				new LearnableMove { MoveId = "heat_wave", LearnLevel = 38 },
+				new LearnableMove { MoveId = "scorching_gust", LearnLevel = 38 },
 				new LearnableMove { MoveId = "primordial_flame", LearnLevel = 50 }
 			},
 			AnimationFrames = new()
@@ -4026,13 +4076,14 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.05f,
-			PossibleTraits = new() { "dark_presence", "phantom_step", "elemental_mastery" },
+			PossibleTraits = new() { "dark_presence", "last_stand", "brutal_force" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
-				new LearnableMove { MoveId = "petal_dance", LearnLevel = 1 },
+				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 1 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 24 },
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 36 },
+				new LearnableMove { MoveId = "abyssal_torrent", LearnLevel = 38 },
 				new LearnableMove { MoveId = "void_bloom", LearnLevel = 48 }
 			},
 			AnimationFrames = new()
@@ -4060,17 +4111,18 @@ public sealed class MonsterManager : Component
 				"ui/monsters/edenseed/idle/edenseed_idle_03.png",
 				"ui/monsters/edenseed/idle/edenseed_idle_04.png"
 			},
-			BaseHP = 82, BaseATK = 52, BaseDEF = 92, BaseSpA = 78, BaseSpD = 95, BaseSPD = 58,
+			BaseHP = 84, BaseATK = 52, BaseDEF = 92, BaseSpA = 80, BaseSpD = 97, BaseSPD = 60,
 			HPGrowth = 6, ATKGrowth = 4, DEFGrowth = 7, SpAGrowth = 5, SpDGrowth = 7, SPDGrowth = 4,
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.1f,
-			PossibleTraits = new() { "verdant_power", "vital_recovery", "enduring_will" },
+			PossibleTraits = new() { "verdant_power", "vital_recovery", "wild_growth" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 16 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 24 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 26 },
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 38 }
 			},
@@ -4100,8 +4152,8 @@ public sealed class MonsterManager : Component
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
-				new LearnableMove { MoveId = "aqua_ring", LearnLevel = 1 },
-				new LearnableMove { MoveId = "water_pulse", LearnLevel = 16 },
+				new LearnableMove { MoveId = "mist_veil", LearnLevel = 1 },
+				new LearnableMove { MoveId = "tidal_pulse", LearnLevel = 16 },
 				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 28 },
 				new LearnableMove { MoveId = "deluge", LearnLevel = 40 }
 			},
@@ -4128,14 +4180,14 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.25f,
 			EvolvesTo = "arcferron",
+			EvolutionLevel = 18,
 			PossibleTraits = new() { "static_charge", "momentum", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "static_jolt", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 1 },
 				new LearnableMove { MoveId = "volt_charge", LearnLevel = 10 },
-				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 22 },
-				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 32 }
+				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 22 }
 			},
 			BeastiaryNumber = 130
 		} );
@@ -4159,14 +4211,14 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.25f,
-			PossibleTraits = new() { "terra_force", "hardened_resolve", "enduring_will" },
+			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "boulder_toss", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
 				new LearnableMove { MoveId = "seismic_crash", LearnLevel = 14 },
-				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 26 },
-				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 36 }
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 15 },
+				new LearnableMove { MoveId = "jagged_spike", LearnLevel = 26 }
 			},
 			BeastiaryNumber = 61
 		} );
@@ -4190,14 +4242,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.25f,
-			PossibleTraits = new() { "gale_spirit", "phantom_step", "skyborne" },
+			PossibleTraits = new() { "gale_spirit", "wild_growth", "skyborne" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 14 },
-				new LearnableMove { MoveId = "tempest", LearnLevel = 26 },
-				new LearnableMove { MoveId = "tempest", LearnLevel = 38 }
+				new LearnableMove { MoveId = "tempest", LearnLevel = 26 }
 			},
 			BeastiaryNumber = 39
 		} );
@@ -4222,18 +4273,17 @@ public sealed class MonsterManager : Component
 				"ui/monsters/raijura/idle/raijura_idle_03.png",
 				"ui/monsters/raijura/idle/raijura_idle_04.png"
 			},
-			BaseHP = 82, BaseATK = 73, BaseDEF = 67, BaseSpA = 108, BaseSpD = 72, BaseSPD = 113,
-			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 4, SpAGrowth = 8, SpDGrowth = 5, SPDGrowth = 8,
+			BaseHP = 90, BaseATK = 78, BaseDEF = 75, BaseSpA = 118, BaseSpD = 80, BaseSPD = 124,
+			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 5, SpAGrowth = 8, SpDGrowth = 5, SPDGrowth = 8,
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.06f,
 			EvolvesFrom = "arcferron",
-			PossibleTraits = new() { "static_charge", "momentum", "elemental_mastery" },
+			PossibleTraits = new() { "static_charge", "precision_hunter", "elemental_mastery" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 1 },
 				new LearnableMove { MoveId = "brace", LearnLevel = 1 },
-				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 24 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 38 },
 				new LearnableMove { MoveId = "dimensional_rift", LearnLevel = 50 }
 			},
@@ -4261,13 +4311,15 @@ public sealed class MonsterManager : Component
 			BaseCatchRate = 0.12f,
 			EvolvesFrom = "prismite",
 			EvolvesTo = "raijura",
-			PossibleTraits = new() { "static_charge", "phantom_step", "trickster" },
+			EvolutionLevel = 36,
+			PossibleTraits = new() { "static_charge", "precision_hunter", "trickster" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "volt_charge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "phantom_double", LearnLevel = 1 },
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 18 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 28 },
+				new LearnableMove { MoveId = "thunder_fang", LearnLevel = 30 },
 				new LearnableMove { MoveId = "quantum_flux", LearnLevel = 40 }
 			},
 			BeastiaryNumber = 131
@@ -4297,8 +4349,8 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
 				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 1 },
-				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 18 },
-				new LearnableMove { MoveId = "nasty_plot", LearnLevel = 28 },
+				new LearnableMove { MoveId = "dark_scheme", LearnLevel = 28 },
+				new LearnableMove { MoveId = "abyssal_torrent", LearnLevel = 30 },
 				new LearnableMove { MoveId = "void_tear", LearnLevel = 40 }
 			},
 			BeastiaryNumber = 133
@@ -4323,7 +4375,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.2f,
-			PossibleTraits = new() { "gale_spirit", "phantom_step", "skyborne" },
+			PossibleTraits = new() { "gale_spirit", "subtle_arts", "skyborne" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 1 },
@@ -4354,13 +4406,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.2f,
-			PossibleTraits = new() { "kindle_heart", "momentum", "reckless_charge" },
+			PossibleTraits = new() { "kindle_heart", "ember_heart", "reckless_charge" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "kindle", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 1 },
 				new LearnableMove { MoveId = "searing_rush", LearnLevel = 12 },
-				new LearnableMove { MoveId = "fire_spin", LearnLevel = 20 },
+				new LearnableMove { MoveId = "flame_vortex", LearnLevel = 20 },
 				new LearnableMove { MoveId = "rift_flame", LearnLevel = 30 }
 			},
 			BeastiaryNumber = 135
@@ -4394,10 +4446,9 @@ public sealed class MonsterManager : Component
 			PossibleTraits = new() { "enduring_will", "titanic_might", "elemental_mastery" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "ancient_power", LearnLevel = 1 },
-				new LearnableMove { MoveId = "cosmic_power", LearnLevel = 1 },
+				new LearnableMove { MoveId = "primeval_force", LearnLevel = 1 },
+				new LearnableMove { MoveId = "astral_ward", LearnLevel = 1 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 32 },
-				new LearnableMove { MoveId = "annihilate", LearnLevel = 48 },
 				new LearnableMove { MoveId = "primordial_surge", LearnLevel = 65 }
 			},
 			BeastiaryNumber = 136
@@ -4422,12 +4473,13 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.05f,
-			PossibleTraits = new() { "dark_presence", "phantom_step", "elemental_mastery" },
+			PossibleTraits = new() { "dark_presence", "brutal_force", "last_stand" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 1 },
-				new LearnableMove { MoveId = "nasty_plot", LearnLevel = 1 },
+				new LearnableMove { MoveId = "dark_scheme", LearnLevel = 1 },
 				new LearnableMove { MoveId = "terror_visions", LearnLevel = 26 },
+				new LearnableMove { MoveId = "abyssal_torrent", LearnLevel = 38 },
 				new LearnableMove { MoveId = "void_pulse", LearnLevel = 38 },
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 50 }
 			},
@@ -4441,18 +4493,18 @@ public sealed class MonsterManager : Component
 			Name = "Songborne",
 			Description = "The first voice that ever spoke, still singing. Reality ripples outward from its song — every sound ever heard is an echo of its endless melody.",
 			IconPath = "ui/monsters/songborne/idle/songborne_idle_01.png",
-			BaseHP = 102, BaseATK = 78, BaseDEF = 98, BaseSpA = 103, BaseSpD = 102, BaseSPD = 92,
-			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 7, SpAGrowth = 7, SpDGrowth = 7, SPDGrowth = 6,
+			BaseHP = 120, BaseATK = 88, BaseDEF = 112, BaseSpA = 130, BaseSpD = 125, BaseSPD = 115,
+			HPGrowth = 8, ATKGrowth = 6, DEFGrowth = 7, SpAGrowth = 8, SpDGrowth = 8, SPDGrowth = 7,
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Mythic,
 			BaseCatchRate = 0.01f,
 			PossibleTraits = new() { "ethereal_blessing", "enduring_will", "elemental_mastery" },
 			LearnableMoves = new()
 			{
-				new LearnableMove { MoveId = "cosmic_power", LearnLevel = 1 },
+				new LearnableMove { MoveId = "astral_ward", LearnLevel = 1 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 1 },
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 24 },
-				new LearnableMove { MoveId = "future_sight", LearnLevel = 36 },
+				new LearnableMove { MoveId = "fate_glimpse", LearnLevel = 36 },
 				new LearnableMove { MoveId = "universe_burst", LearnLevel = 50 }
 			},
 			AnimationFrames = new()
@@ -4485,7 +4537,7 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
-			PossibleTraits = new() { "verdant_power", "hardened_resolve", "vital_recovery" },
+			PossibleTraits = new() { "verdant_power", "wild_growth", "vital_recovery" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "soul_siphon", LearnLevel = 1 },
@@ -4518,14 +4570,14 @@ public sealed class MonsterManager : Component
 			BaseCatchRate = 0.55f,
 			EvolvesTo = "enkong",
 			EvolutionLevel = 22,
-			PossibleTraits = new() { "kindle_heart", "phantom_step", "momentum" },
+			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "kindle", LearnLevel = 6 },
 				new LearnableMove { MoveId = "searing_rush", LearnLevel = 14 },
-				new LearnableMove { MoveId = "fire_spin", LearnLevel = 20 }
+				new LearnableMove { MoveId = "flame_vortex", LearnLevel = 20 }
 			},
 			AnimationFrames = new()
 			{
@@ -4551,13 +4603,13 @@ public sealed class MonsterManager : Component
 			IsCatchable = true,
 			BaseCatchRate = 0.25f,
 			EvolvesFrom = "hinobi",
-			PossibleTraits = new() { "kindle_heart", "phantom_step", "momentum" },
+			PossibleTraits = new() { "kindle_heart", "ember_heart", "brutal_force" },
 			LearnableMoves = new()
 			{
 				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "searing_rush", LearnLevel = 1, EvolvesFrom = "kindle" },
-				new LearnableMove { MoveId = "fire_spin", LearnLevel = 20 },
+				new LearnableMove { MoveId = "flame_vortex", LearnLevel = 20 },
 				new LearnableMove { MoveId = "blazing_wrath", LearnLevel = 30 },
 				new LearnableMove { MoveId = "inferno_blitz", LearnLevel = 40 }
 			},
@@ -4596,11 +4648,19 @@ public sealed class MonsterManager : Component
 		{
 			if ( MigrateMonsterToV2( monster ) )
 				needsSave = true;
+
+			// Cap monster level at 100
+			if ( monster.Level > 100 )
+			{
+				monster.Level = 100;
+				needsSave = true;
+			}
+
 		}
 
 		if ( needsSave )
 		{
-			Log.Info( "Migrated monsters to v2 format with SpA/SpD and moves" );
+			Log.Info( "Migrated monsters (genetics/stats/moves)" );
 			SaveMonsters();
 		}
 
@@ -4622,6 +4682,18 @@ public sealed class MonsterManager : Component
 		if ( monster.Genetics == null )
 		{
 			monster.Genetics = Genetics.GenerateRandom();
+			migrated = true;
+		}
+
+		// Fix for old saves with zeroed-out core genes (HP/ATK/DEF/SPD all 0)
+		if ( monster.Genetics.HPGene == 0 && monster.Genetics.ATKGene == 0
+			&& monster.Genetics.DEFGene == 0 && monster.Genetics.SPDGene == 0 )
+		{
+			var random = new Random();
+			monster.Genetics.HPGene = random.Next( 0, Genetics.MaxGeneValue + 1 );
+			monster.Genetics.ATKGene = random.Next( 0, Genetics.MaxGeneValue + 1 );
+			monster.Genetics.DEFGene = random.Next( 0, Genetics.MaxGeneValue + 1 );
+			monster.Genetics.SPDGene = random.Next( 0, Genetics.MaxGeneValue + 1 );
 			migrated = true;
 		}
 
@@ -4664,24 +4736,36 @@ public sealed class MonsterManager : Component
 			migrated = true;
 		}
 
-		// Validate moves exist in MoveDatabase - fix old/invalid move IDs
+		// Migrate renamed move IDs and validate moves exist in MoveDatabase
 		if ( monster.Moves != null && monster.Moves.Count > 0 )
 		{
-			bool hasInvalidMoves = false;
+			bool hasUnresolvable = false;
 			foreach ( var move in monster.Moves )
 			{
-				if ( move != null && MoveDatabase.GetMove( move.MoveId ) == null )
+				if ( move == null ) continue;
+				if ( MoveDatabase.GetMove( move.MoveId ) != null ) continue;
+
+				// Try migrating old renamed move ID
+				var newId = MigrateOldMoveId( move.MoveId );
+				if ( newId != null && MoveDatabase.GetMove( newId ) != null )
 				{
-					Log.Warning( $"Monster {monster.Nickname ?? monster.SpeciesId} has invalid move: {move.MoveId}" );
-					hasInvalidMoves = true;
-					break;
+					Log.Info( $"Migrated move '{move.MoveId}' → '{newId}' for {monster.Nickname ?? monster.SpeciesId}" );
+					move.MoveId = newId;
+					var def = MoveDatabase.GetMove( newId );
+					move.CurrentPP = def.MaxPP;
+					migrated = true;
+				}
+				else
+				{
+					Log.Warning( $"Monster {monster.Nickname ?? monster.SpeciesId} has unresolvable move: {move.MoveId}" );
+					hasUnresolvable = true;
 				}
 			}
 
-			// If any moves are invalid, regenerate the entire moveset
-			if ( hasInvalidMoves )
+			// Only regenerate if moves couldn't be migrated
+			if ( hasUnresolvable )
 			{
-				Log.Info( $"Regenerating moves for {monster.Nickname ?? monster.SpeciesId} due to invalid move IDs" );
+				Log.Info( $"Regenerating moves for {monster.Nickname ?? monster.SpeciesId} due to unresolvable move IDs" );
 				monster.Moves = GetStartingMoves( monster, species );
 				migrated = true;
 			}
@@ -4730,6 +4814,51 @@ public sealed class MonsterManager : Component
 	/// <summary>
 	/// Convert old trait display names to new trait IDs
 	/// </summary>
+	private static readonly Dictionary<string, string> OldMoveIdMap = new( StringComparer.OrdinalIgnoreCase )
+	{
+		{ "fire_spin", "flame_vortex" },
+		{ "heat_wave", "scorching_gust" },
+		{ "sunny_day", "solar_reign" },
+		{ "water_pulse", "tidal_pulse" },
+		{ "aqua_ring", "mist_veil" },
+		{ "ancient_power", "primeval_force" },
+		{ "calm_mind", "inner_focus" },
+		{ "cosmic_power", "astral_ward" },
+		{ "cotton_guard", "floral_guard" },
+		{ "destiny_bond", "fated_curse" },
+		{ "dream_eater", "dream_feast" },
+		{ "fairy_wind", "spirit_breeze" },
+		{ "feint_attack", "sly_strike" },
+		{ "fury_cutter", "rapid_shear" },
+		{ "future_sight", "fate_glimpse" },
+		{ "gear_grind", "cog_crush" },
+		{ "gyro_ball", "spin_crash" },
+		{ "heal_bell", "resonance_bell" },
+		{ "heavy_slam", "titan_drop" },
+		{ "helping_hand", "bolster" },
+		{ "leaf_blade", "verdant_edge" },
+		{ "leech_seed", "parasite_spore" },
+		{ "light_screen", "luminous_wall" },
+		{ "lucky_chant", "warding_hymn" },
+		{ "metal_burst", "iron_rebound" },
+		{ "meteor_mash", "starfall_strike" },
+		{ "nasty_plot", "dark_scheme" },
+		{ "night_shade", "dusk_bolt" },
+		{ "oblivion_wing", "void_wings" },
+		{ "petal_dance", "blossom_frenzy" },
+		{ "scary_face", "dread_gaze" },
+		{ "steel_wing", "chrome_wing" },
+		{ "sucker_punch", "shadow_lunge" },
+		{ "wood_hammer", "timber_slam" },
+	};
+
+	private string MigrateOldMoveId( string oldId )
+	{
+		if ( OldMoveIdMap.TryGetValue( oldId, out var newId ) )
+			return newId;
+		return null;
+	}
+
 	private string ConvertOldTraitToId( string trait )
 	{
 		// If trait already exists in TraitDatabase, return as-is
@@ -4990,6 +5119,10 @@ public sealed class MonsterManager : Component
 
 	public Monster AddMonster( Monster monster )
 	{
+		// Cap monster level at 100
+		if ( monster.Level > 100 )
+			monster.Level = 100;
+
 		Log.Info( $"AddMonster: OwnedMonsters.Count={OwnedMonsters.Count}, MaxMonsters={MaxMonsters}" );
 		if ( OwnedMonsters.Count >= MaxMonsters )
 		{
@@ -5057,7 +5190,9 @@ public sealed class MonsterManager : Component
 			SpeciesId = speciesId,
 			Nickname = species.Name,
 			Genetics = genetics ?? Genetics.GenerateRandom(),
-			Level = 1
+			Level = 1,
+			OriginalTrainerName = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown",
+			OriginalTrainerId = Connection.Local?.SteamId ?? 0
 		};
 
 		// Calculate initial stats
@@ -5101,6 +5236,7 @@ public sealed class MonsterManager : Component
 		// Offspring starts at average level of parents (minimum 1)
 		int averageLevel = Math.Max( 1, (parent1.Level + parent2.Level) / 2 );
 
+		var tamer = TamerManager.Instance?.CurrentTamer;
 		var offspring = new Monster
 		{
 			SpeciesId = offspringSpeciesId,
@@ -5110,7 +5246,9 @@ public sealed class MonsterManager : Component
 			Parent1Id = parent1.Id,
 			Parent2Id = parent2.Id,
 			Generation = Math.Max( parent1.Generation, parent2.Generation ) + 1,
-			Contract = null  // Bred monsters are loyal
+			Contract = null,  // Bred monsters are loyal
+			OriginalTrainerName = tamer?.Name ?? "Unknown",
+			OriginalTrainerId = Connection.Local?.SteamId ?? 0
 		};
 
 		RecalculateStats( offspring );
@@ -5175,6 +5313,19 @@ public sealed class MonsterManager : Component
 		if ( TamerManager.Instance?.CurrentTamer != null )
 		{
 			TamerManager.Instance.CurrentTamer.TotalMonstersBred++;
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersBred, TamerManager.Instance.CurrentTamer.TotalMonstersBred );
+			Stats.SetValue( "monsters-bred", TamerManager.Instance.CurrentTamer.TotalMonstersBred );
+
+			// Check breeding-specific achievements
+			int totalGenes = (offspring.Genetics?.HPGene ?? 0) + (offspring.Genetics?.ATKGene ?? 0) +
+				(offspring.Genetics?.DEFGene ?? 0) + (offspring.Genetics?.SpAGene ?? 0) +
+				(offspring.Genetics?.SpDGene ?? 0) + (offspring.Genetics?.SPDGene ?? 0);
+			if ( totalGenes >= 25 )
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BredHighGenes, 1 );
+			if ( (offspring.Genetics?.HPGene ?? 0) == 31 || (offspring.Genetics?.ATKGene ?? 0) == 31 ||
+				(offspring.Genetics?.DEFGene ?? 0) == 31 || (offspring.Genetics?.SpAGene ?? 0) == 31 ||
+				(offspring.Genetics?.SpDGene ?? 0) == 31 || (offspring.Genetics?.SPDGene ?? 0) == 31 )
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BredPerfectGene, 1 );
 		}
 
 		// Remove parent monsters (fusion consumes them)
@@ -5457,6 +5608,8 @@ public sealed class MonsterManager : Component
 		if ( TamerManager.Instance?.CurrentTamer != null )
 		{
 			TamerManager.Instance.CurrentTamer.TotalMonstersEvolved++;
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.MonstersEvolved, TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
+			Stats.SetValue( "monsters-evolved", TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
 		}
 
 		return true;
@@ -5515,6 +5668,83 @@ public sealed class MonsterManager : Component
 		}
 
 		return learnedMoves;
+	}
+
+	/// <summary>
+	/// Get all moves available to a monster at its current level (including ones not equipped)
+	/// Returns moves the monster qualifies for but doesn't currently have equipped
+	/// </summary>
+	public List<LearnableMove> GetAvailableMoves( Monster monster )
+	{
+		var available = new List<LearnableMove>();
+		var species = GetSpecies( monster.SpeciesId );
+		if ( species == null || species.LearnableMoves == null )
+			return available;
+
+		var equippedMoveIds = new HashSet<string>( monster.Moves?.Select( m => m.MoveId ) ?? Array.Empty<string>() );
+
+		foreach ( var lm in species.LearnableMoves )
+		{
+			// Skip moves already equipped
+			if ( equippedMoveIds.Contains( lm.MoveId ) )
+				continue;
+
+			// Skip if level requirement not met
+			if ( monster.Level < lm.LearnLevel )
+				continue;
+
+			// Include evolution moves if the monster has already evolved past them
+			var moveDef = MoveDatabase.GetMove( lm.MoveId );
+			if ( moveDef == null )
+				continue;
+
+			available.Add( lm );
+		}
+
+		return available;
+	}
+
+	/// <summary>
+	/// Swap an equipped move with a new one from the available pool
+	/// </summary>
+	public bool SwapMove( Monster monster, int moveSlot, string newMoveId )
+	{
+		if ( monster == null || monster.Moves == null )
+			return false;
+
+		if ( moveSlot < 0 || moveSlot >= monster.Moves.Count )
+			return false;
+
+		var moveDef = MoveDatabase.GetMove( newMoveId );
+		if ( moveDef == null )
+			return false;
+
+		// Verify the monster can learn this move
+		var species = GetSpecies( monster.SpeciesId );
+		if ( species == null )
+			return false;
+
+		bool canLearn = species.LearnableMoves.Any( lm => lm.MoveId == newMoveId && monster.Level >= lm.LearnLevel );
+		if ( !canLearn )
+			return false;
+
+		// Verify the monster doesn't already have this move in another slot
+		if ( monster.Moves.Any( m => m.MoveId == newMoveId ) )
+			return false;
+
+		// Perform the swap
+		var oldMove = monster.Moves[moveSlot];
+		Log.Info( $"Swapping move {oldMove.MoveId} for {newMoveId} in slot {moveSlot}" );
+
+		monster.Moves[moveSlot] = new MonsterMove
+		{
+			MoveId = newMoveId,
+			CurrentPP = moveDef.MaxPP
+		};
+
+		SaveMonsters();
+		OnMonsterUpdated?.Invoke( monster );
+		return true;
 	}
 
 	/// <summary>

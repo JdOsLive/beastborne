@@ -61,6 +61,8 @@ public sealed class GameManager : Component
 		NotificationManager.EnsureInstance( Scene );
 		TutorialManager.EnsureInstance( Scene );
 		SettingsManager.EnsureInstance( Scene );
+		AchievementManager.EnsureInstance( Scene );
+		TradingManager.EnsureInstance( Scene );
 	}
 
 	public void ChangeState( GameState newState )
@@ -83,6 +85,12 @@ public sealed class GameManager : Component
 		{
 			TutorialManager.Instance.StartTutorial();
 		}
+
+		// Run retroactive achievement check for existing players
+		AchievementManager.Instance?.RetroactiveCheck();
+
+		// Broadcast player profile to other online players (gender, favorite expedition)
+		ChatManager.Instance?.SendPlayerProfile();
 	}
 
 	public void ReturnToMainMenu()

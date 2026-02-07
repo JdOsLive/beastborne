@@ -60,6 +60,10 @@ public class Monster
 	public bool HasBeenNotifiedForEvolution { get; set; }
 	public DateTime ObtainedAt { get; set; } = DateTime.UtcNow;
 
+	// Original Trainer (preserved through trades)
+	public string OriginalTrainerName { get; set; }
+	public long OriginalTrainerId { get; set; }
+
 	// Veteran tracking - battles, damage, KOs
 	public int BattlesFought { get; set; } = 0;
 	public int TotalDamageDealt { get; set; } = 0;

@@ -1,0 +1,209 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+<root class="@(IsVisible ? "visible" : "")">
+	<div class="collection-overlay" onclick=@Close></div>
+
+	<div class="collection-window">
+		<div class="collection-header">
+			<div class="header-left">
+				<span class="collection-title">Tamer Cards</span>
+				<span class="collection-count">@GetCollectedCount() collected</span>
+			</div>
+			<button class="collection-close" onclick=@Close>&#10005;</button>
+		</div>
+
+		<div class="collection-content">
+			<!-- Your Card -->
+			<div class="your-card-section">
+				<div class="section-title">YOUR CARD</div>
+				<div class="your-card-container">
+					<TamerCardComponent ShowOwnCard=@true />
+
+					<!-- Favorite Monster Selector -->
+					<div class="fav-selector">
+						<span class="fav-label">Favorite Beast</span>
+						@if ( showFavSelector )
+						{
+							<div class="fav-dropdown">
+								<button class="fav-option" onclick=@(() => SetFavoriteMonster( null ))>
+									<span class="fav-opt-name">None</span>
+								</button>
+								@{
+									var ownedMonsters = MonsterManager.Instance?.OwnedMonsters?
+										.OrderByDescending( m => m.Level );
+									if ( ownedMonsters != null )
+									{
+										foreach ( var m in ownedMonsters )
+										{
+											var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
+											<button class="fav-option" onclick=@(() => SetFavoriteMonster( m.SpeciesId ))>
+												@if ( species != null && !string.IsNullOrEmpty( species.IconPath ) )
+												{
+													<img class="fav-opt-icon" src="@species.IconPath" />
+												}
+												<span class="fav-opt-name">@(species?.Name ?? m.SpeciesId)</span>
+											</button>
+										}
+									}
+								}
+							</div>
+						}
+						else
+						{
+							<button class="fav-change-btn" onclick=@(() => showFavSelector = true)>
+								@GetFavoriteName()
+							</button>
+						}
+					</div>
+
+					<button class="showcase-btn" onclick=@ShowcaseCard>Share in Chat</button>
+				</div>
+			</div>
+
+			<!-- Collected Cards -->
+			<div class="collected-section">
+				<div class="section-title">COLLECTED CARDS (@GetCollectedCount())</div>
+
+				@if ( GetCollectedCards().Count == 0 )
+				{
+					<div class="empty-collection">
+						<span class="empty-text">No cards collected yet</span>
+						<span class="empty-hint">Trade or battle with other players to collect their cards!</span>
+					</div>
+				}
+				else
+				{
+					<div class="card-grid">
+						@foreach ( var card in GetCollectedCards() )
+						{
+							<div class="collected-card-wrapper" onclick=@(() => SelectCard( card ))>
+								<TamerCardComponent CollectedCard=@card />
+							</div>
+						}
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+
+	<!-- Card Detail View -->
+	@if ( selectedCard != null )
+	{
+		<div class="detail-overlay" onclick=@(() => selectedCard = null)></div>
+		<div class="detail-modal">
+			<div class="detail-header">
+				<span class="detail-title">@selectedCard.Name's Card</span>
+				<button class="detail-close" onclick=@(() => selectedCard = null)>&#10005;</button>
+			</div>
+			<div class="detail-content">
+				<TamerCardComponent CollectedCard=@selectedCard />
+				<div class="detail-info">
+					<div class="detail-row">
+						<span class="detail-label">Collected</span>
+						<span class="detail-value">@selectedCard.CollectedAt.ToLocalTime().ToString( "MMM d, yyyy" )</span>
+					</div>
+					<div class="detail-row">
+						<span class="detail-label">Last Updated</span>
+						<span class="detail-value">@selectedCard.LastUpdated.ToLocalTime().ToString( "MMM d, yyyy" )</span>
+					</div>
+					<div class="detail-row">
+						<span class="detail-label">Arena Rank</span>
+						<span class="detail-value" style="color: @CompetitiveManager.GetRankColor( selectedCard.ArenaRank ?? "Unranked" )">@(selectedCard.ArenaRank ?? "Unranked")</span>
+					</div>
+					<div class="detail-row">
+						<span class="detail-label">Arena Points</span>
+						<span class="detail-value">@selectedCard.ArenaPoints.ToString("N0")</span>
+					</div>
+					<div class="detail-row">
+						<span class="detail-label">Achievements</span>
+						<span class="detail-value">@selectedCard.AchievementCount</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	}
+</root>
+
+@code {
+	public static bool IsVisible { get; set; } = false;
+	private CollectedTamerCard selectedCard = null;
+	private bool showFavSelector = false;
+
+	public static void Show() => IsVisible = true;
+	public static void Close()
+	{
+		IsVisible = false;
+	}
+	public static void Toggle() => IsVisible = !IsVisible;
+
+	private List<CollectedTamerCard> GetCollectedCards()
+	{
+		return TamerManager.Instance?.CurrentTamer?.CollectedCards?
+			.OrderByDescending( c => c.LastUpdated )
+			.ToList() ?? new();
+	}
+
+	private int GetCollectedCount()
+	{
+		return TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0;
+	}
+
+	private void SelectCard( CollectedTamerCard card )
+	{
+		selectedCard = card;
+	}
+
+	private string GetFavoriteName()
+	{
+		var speciesId = TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId;
+		if ( string.IsNullOrEmpty( speciesId ) ) return "Select...";
+		var species = MonsterManager.Instance?.GetSpecies( speciesId );
+		return species?.Name ?? speciesId;
+	}
+
+	private void SetFavoriteMonster( string speciesId )
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer != null )
+		{
+			tamer.FavoriteMonsterSpeciesId = speciesId;
+			TamerManager.Instance?.SaveToCloud();
+		}
+		showFavSelector = false;
+	}
+
+	private void ShowcaseCard()
+	{
+		ChatManager.Instance?.SendTamerCardShowcase();
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		if ( IsVisible && Input.Pressed( "Escape" ) )
+		{
+			if ( selectedCard != null )
+				selectedCard = null;
+			else if ( showFavSelector )
+				showFavSelector = false;
+			else
+				Close();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( IsVisible );
+		hash.Add( GetCollectedCount() );
+		hash.Add( selectedCard?.SteamId ?? 0 );
+		hash.Add( showFavSelector );
+		return hash.ToHashCode();
+	}
+}

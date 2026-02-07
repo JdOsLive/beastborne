@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Sandbox;
 using Sandbox.Network;
+using Sandbox.Services;
 using Beastborne.Data;
 
 namespace Beastborne.Core;
@@ -130,7 +131,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/items/boosts/tamer_xp_scroll.png",
 				Type = ShopItemType.TamerXPBoost,
 				Currency = CurrencyType.Gold,
-				Price = 25000,
+				Price = 12000,
 				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 30,
 				RequiredLevel = 5
@@ -143,7 +144,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/items/boosts/tamer_xp_scroll.png",
 				Type = ShopItemType.TamerXPBoost,
 				Currency = CurrencyType.Gold,
-				Price = 85000,
+				Price = 40000,
 				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 120,
 				RequiredLevel = 15
@@ -158,7 +159,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/items/boosts/beast_xp_tome.png",
 				Type = ShopItemType.BeastXPBoost,
 				Currency = CurrencyType.Gold,
-				Price = 25000,
+				Price = 12000,
 				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 30,
 				RequiredLevel = 5
@@ -171,7 +172,7 @@ public sealed class ShopManager : Component
 				IconPath = "ui/items/boosts/beast_xp_tome.png",
 				Type = ShopItemType.BeastXPBoost,
 				Currency = CurrencyType.Gold,
-				Price = 85000,
+				Price = 40000,
 				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 120,
 				RequiredLevel = 15
@@ -431,6 +432,13 @@ public sealed class ShopManager : Component
 			}
 		}
 
+		// Pre-check for monster slot items: prevent purchase if already at max
+		if ( item.Type == ShopItemType.MonsterSlot && MonsterManager.Instance?.MaxMonsters >= 500 )
+		{
+			Log.Info( $"Cannot purchase {item.Name}: already at max monster storage" );
+			return false;
+		}
+
 		// Check and spend currency (apply shop discount for gold purchases)
 		int finalPrice = GetDiscountedPrice( item );
 		bool purchased = item.Currency switch
@@ -463,6 +471,14 @@ public sealed class ShopManager : Component
 		if ( item.MaxStock > 0 )
 		{
 			item.CurrentStock--;
+		}
+
+		// Track purchase stats for achievements
+		if ( tamer != null )
+		{
+			tamer.TotalItemsBought++;
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalItemsBought, tamer.TotalItemsBought );
+			Stats.SetValue( "items-bought", tamer.TotalItemsBought );
 		}
 
 		OnItemPurchased?.Invoke( item );
@@ -734,6 +750,9 @@ public sealed class ShopManager : Component
 		};
 		_serverBoosts.Add( serverBoost );
 		OnServerBoostActivated?.Invoke( serverBoost );
+
+		// Track server boost achievement
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.UsedServerBoost, 1 );
 
 		// Broadcast to chat
 		var boostName = type switch

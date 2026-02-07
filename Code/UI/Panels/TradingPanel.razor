@@ -1,0 +1,747 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.UI.Components;
+@using System.Linq;
+@inherits Panel
+
+<root class="@(IsVisible ? "visible" : "")">
+	<div class="trade-overlay" onclick=@Close></div>
+
+	@if ( showTradeRequest )
+	{
+		<!-- Incoming Trade Request Popup -->
+		<div class="trade-request-popup">
+			<div class="request-title">Trade Request</div>
+			<div class="request-message">@pendingPlayerName wants to trade with you!</div>
+			<div class="request-buttons">
+				<button class="btn-accept" onclick=@AcceptRequest>Accept</button>
+				<button class="btn-decline" onclick=@DeclineRequest>Decline</button>
+			</div>
+		</div>
+	}
+	else if ( TradingManager.Instance?.IsInTrade == true || showTradeComplete )
+	{
+		<div class="trade-window">
+			<!-- Header -->
+			<div class="trade-header">
+				<div class="trade-trader">
+					<div class="trader-avatar @GetTamerGender()">
+						<img src="@GetGenderAvatar()" />
+					</div>
+					<div class="trader-info">
+						<span class="trader-name">@GetLocalName()</span>
+						<span class="trader-role">YOU</span>
+					</div>
+				</div>
+				<div class="trade-header-center">
+					<div class="trade-brand">
+						<span class="trade-brand-icon">&#x21C4;</span>
+						<span class="trade-brand-text">TRADE</span>
+					</div>
+					<span class="trade-status">@GetStatusText()</span>
+				</div>
+				<div class="trade-trader">
+					<div class="trader-info right">
+						<span class="trader-name">@GetPartnerName()</span>
+						<span class="trader-role">PARTNER</span>
+					</div>
+					<div class="trader-avatar partner-av">
+						<img src="ui/characters/male/male_tamer.png" />
+					</div>
+				</div>
+				<button class="trade-close" onclick=@CancelTrade>&#10005;</button>
+			</div>
+
+			<!-- Body: 2/3 My Side + 1/3 Partner Side -->
+			<div class="trade-body">
+				<!-- ═══════════════════════════════════ -->
+				<!-- MY SIDE (2/3) -->
+				<!-- ═══════════════════════════════════ -->
+				<div class="my-side">
+					@{
+						var myOffer = GetMyOffer();
+					}
+
+					<!-- Offer Summary Bar -->
+					<div class="my-offer-bar">
+						<div class="offer-bar-left">
+							<span class="offer-bar-label">YOUR OFFER</span>
+							<div class="offer-bar-beasts">
+								@if ( myOffer?.OfferedMonsterIds.Count > 0 )
+								{
+									foreach ( var monsterId in myOffer.OfferedMonsterIds )
+									{
+										var monster = TradingManager.Instance?.GetMyOfferedMonster( monsterId );
+										var species = MonsterManager.Instance?.GetSpecies( monster?.SpeciesId );
+										@if ( species != null )
+										{
+											<div class="offer-thumb" onclick=@(() => RemoveMyMonster( monsterId ))>
+												<img src="@species.IconPath" />
+												@if ( !isReady )
+												{
+													<span class="offer-thumb-remove">&#10005;</span>
+												}
+											</div>
+										}
+									}
+								}
+								<span class="offer-beast-count">@(myOffer?.OfferedMonsterIds.Count ?? 0)/3</span>
+							</div>
+						</div>
+						<button class="btn-ready @(isReady ? "ready" : "")" onclick=@ToggleReady>
+							@(isReady ? "READY \u2713" : "READY UP")
+						</button>
+					</div>
+
+					<!-- Filter Bar -->
+					<div class="trade-filter-bar">
+						<FilterBar CurrentElement=@currentFilter
+								   CurrentSort=@currentSort
+								   CurrentRarity=@currentRarity
+								   SortAscending=@sortAscending
+								   ShowRarityFilter=@true
+								   OnElementChanged=@OnElementChanged
+								   OnSortChanged=@OnSortChanged
+								   OnRarityChanged=@OnRarityChanged
+								   OnNameFilterChanged=@OnNameFilterChanged
+								   OnSortDirectionChanged=@OnSortDirectionChanged
+								   AvailableNames=@GetMonsterNames() />
+					</div>
+
+					<!-- Beast Collection Area -->
+					<div class="my-collection @(selectedMonster != null ? "with-detail" : "")">
+						<!-- Beast Grid -->
+						<div class="my-beast-grid @(isReady ? "locked" : "")">
+							@{
+								var availableMonsters = GetFilteredMonsters();
+							}
+							@if ( availableMonsters != null )
+							{
+								foreach ( var monster in availableMonsters )
+								{
+									var isOffered = IsMonsterOffered( monster.Id );
+									var isSelected = selectedMonster?.Id == monster.Id;
+									<div class="beast-grid-slot @(isOffered ? "offered" : "") @(isSelected ? "selected" : "")"
+										 onclick=@(() => SelectBeast( monster ))>
+										<MonsterCard Monster=@monster
+													 IsCompact=@true
+													 UseStaticImage=@true />
+										@if ( isOffered )
+										{
+											<div class="offered-badge">&#10003;</div>
+										}
+									</div>
+								}
+							}
+						</div>
+
+						<!-- Detail Sidebar -->
+						@if ( selectedMonster != null )
+						{
+							var selSpecies = MonsterManager.Instance?.GetSpecies( selectedMonster.SpeciesId );
+							var selOffered = IsMonsterOffered( selectedMonster.Id );
+							<div class="detail-sidebar">
+								<div class="detail-header">
+									<span class="detail-title">Beast Details</span>
+									<button class="detail-close" onclick=@(() => selectedMonster = null)>&#10005;</button>
+								</div>
+								<div class="detail-scroll">
+									<!-- Portrait -->
+									<div class="detail-portrait">
+										<div class="detail-sprite @GetRarityClass( selSpecies?.BaseRarity ?? Rarity.Common )">
+											@if ( selSpecies != null )
+											{
+												<img src="@selSpecies.IconPath" />
+											}
+										</div>
+										@if ( selSpecies != null )
+										{
+											<span class="detail-element @selSpecies.Element.ToString().ToLower()">@selSpecies.Element</span>
+										}
+									</div>
+									<div class="detail-name">@selectedMonster.Nickname</div>
+									<div class="detail-sub">@(selSpecies?.Name ?? selectedMonster.SpeciesId)</div>
+									<div class="detail-badges">
+										<span class="detail-badge">LV @selectedMonster.Level</span>
+										<span class="detail-badge">PWR @selectedMonster.PowerRating</span>
+										@if ( selSpecies != null )
+										{
+											<span class="detail-badge rarity @GetRarityClass( selSpecies.BaseRarity )">@selSpecies.BaseRarity</span>
+										}
+									</div>
+
+									<!-- Stats -->
+									<div class="detail-stats">
+										<div class="dstat"><span class="dstat-label">HP</span><div class="dstat-bar"><div class="dstat-fill hp" style="width: @GetStatPct( selectedMonster.MaxHP )%"></div></div><span class="dstat-val">@selectedMonster.MaxHP</span></div>
+										<div class="dstat"><span class="dstat-label">ATK</span><div class="dstat-bar"><div class="dstat-fill atk" style="width: @GetStatPct( selectedMonster.ATK )%"></div></div><span class="dstat-val">@selectedMonster.ATK</span></div>
+										<div class="dstat"><span class="dstat-label">DEF</span><div class="dstat-bar"><div class="dstat-fill def" style="width: @GetStatPct( selectedMonster.DEF )%"></div></div><span class="dstat-val">@selectedMonster.DEF</span></div>
+										<div class="dstat"><span class="dstat-label">SpA</span><div class="dstat-bar"><div class="dstat-fill spa" style="width: @GetStatPct( selectedMonster.SpA )%"></div></div><span class="dstat-val">@selectedMonster.SpA</span></div>
+										<div class="dstat"><span class="dstat-label">SpD</span><div class="dstat-bar"><div class="dstat-fill spd-def" style="width: @GetStatPct( selectedMonster.SpD )%"></div></div><span class="dstat-val">@selectedMonster.SpD</span></div>
+										<div class="dstat"><span class="dstat-label">SPD</span><div class="dstat-bar"><div class="dstat-fill spd" style="width: @GetStatPct( selectedMonster.SPD )%"></div></div><span class="dstat-val">@selectedMonster.SPD</span></div>
+									</div>
+
+									<!-- Genetics -->
+									<div class="detail-info-row">
+										<span class="detail-info-label">Genetics</span>
+										<span class="detail-info-value @GetGeneticsClass( selectedMonster.Genetics?.QualityRating )">@(selectedMonster.Genetics?.QualityRating ?? "?")</span>
+									</div>
+									<div class="detail-info-row">
+										<span class="detail-info-label">Nature</span>
+										<span class="detail-info-value">@(selectedMonster.Genetics?.Nature.ToString() ?? "?")</span>
+									</div>
+									@if ( selectedMonster.Genetics != null )
+									{
+										<div class="gene-breakdown">
+											<div class="gene-row"><span class="gene-label">HP</span><span class="gene-val">@(selectedMonster.Genetics.GetGene("HP"))/30</span></div>
+											<div class="gene-row"><span class="gene-label">ATK</span><span class="gene-val">@(selectedMonster.Genetics.GetGene("ATK"))/30</span></div>
+											<div class="gene-row"><span class="gene-label">DEF</span><span class="gene-val">@(selectedMonster.Genetics.GetGene("DEF"))/30</span></div>
+											<div class="gene-row"><span class="gene-label">SpA</span><span class="gene-val">@(selectedMonster.Genetics.GetGene("SpA"))/30</span></div>
+											<div class="gene-row"><span class="gene-label">SpD</span><span class="gene-val">@(selectedMonster.Genetics.GetGene("SpD"))/30</span></div>
+											<div class="gene-row"><span class="gene-label">SPD</span><span class="gene-val">@(selectedMonster.Genetics.GetGene("SPD"))/30</span></div>
+										</div>
+									}
+									@if ( selectedMonster.Traits?.Count > 0 )
+									{
+										<div class="detail-info-row">
+											<span class="detail-info-label">Traits</span>
+											<span class="detail-info-value">@string.Join( ", ", selectedMonster.Traits.Select( FormatTraitName ) )</span>
+										</div>
+									}
+
+									<!-- Offer Button -->
+									@if ( !isReady )
+									{
+										<button class="detail-offer-btn @(selOffered ? "remove" : "")"
+												onclick=@(() => ToggleOffer( selectedMonster.Id ))>
+											@(selOffered ? "REMOVE FROM OFFER" : "ADD TO OFFER")
+										</button>
+									}
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+
+				<!-- ═══════════════════════════════════ -->
+				<!-- PARTNER SIDE (1/3) -->
+				<!-- ═══════════════════════════════════ -->
+				<div class="partner-side">
+					<div class="partner-header">
+						<span class="partner-header-label">@GetPartnerName().ToUpper()'S OFFER</span>
+						<div class="partner-ready-state @(GetPartnerOffer()?.IsReady == true ? "ready" : "")">
+							@(GetPartnerOffer()?.IsReady == true ? "READY \u2713" : "NOT READY")
+						</div>
+					</div>
+
+					<div class="partner-scroll">
+						<!-- Partner Beasts -->
+						<div class="partner-section">
+							<div class="partner-section-label">BEASTS</div>
+							<div class="partner-beast-grid">
+								@{
+									var partnerPreviews = TradingManager.Instance?.PartnerMonsterPreviews;
+								}
+								@if ( partnerPreviews?.Count > 0 )
+								{
+									foreach ( var preview in partnerPreviews )
+									{
+										var pSpecies = MonsterManager.Instance?.GetSpecies( preview.S );
+										<div class="partner-beast-card @GetRarityClass( pSpecies?.BaseRarity ?? Rarity.Common )">
+											<div class="beast-sprite">
+												@if ( pSpecies != null )
+												{
+													<img src="@pSpecies.IconPath" />
+												}
+											</div>
+											<div class="beast-info">
+												<div class="beast-name-row">
+													<span class="beast-name">@(preview.N ?? pSpecies?.Name ?? preview.S)</span>
+													<span class="beast-level">Lv.@preview.Lv</span>
+												</div>
+												<div class="beast-meta">
+													@if ( pSpecies != null )
+													{
+														<span class="beast-element @pSpecies.Element.ToString().ToLower()">@GetElementShort( pSpecies.Element )</span>
+														<span class="beast-rarity @GetRarityClass( pSpecies.BaseRarity )">@pSpecies.BaseRarity</span>
+													}
+													<span class="beast-pwr">PWR @GetPreviewPowerRating( preview )</span>
+												</div>
+												<div class="beast-stats">
+													<div class="bstat"><span class="bstat-label">HP</span><div class="bstat-bar"><div class="bstat-fill hp" style="width: @GetStatPct( preview.HP )%"></div></div><span class="bstat-val">@preview.HP</span></div>
+													<div class="bstat"><span class="bstat-label">ATK</span><div class="bstat-bar"><div class="bstat-fill atk" style="width: @GetStatPct( preview.Atk )%"></div></div><span class="bstat-val">@preview.Atk</span></div>
+													<div class="bstat"><span class="bstat-label">DEF</span><div class="bstat-bar"><div class="bstat-fill def" style="width: @GetStatPct( preview.Def )%"></div></div><span class="bstat-val">@preview.Def</span></div>
+													<div class="bstat"><span class="bstat-label">SpA</span><div class="bstat-bar"><div class="bstat-fill spa" style="width: @GetStatPct( preview.SpA )%"></div></div><span class="bstat-val">@preview.SpA</span></div>
+													<div class="bstat"><span class="bstat-label">SpD</span><div class="bstat-bar"><div class="bstat-fill spd-def" style="width: @GetStatPct( preview.SpD )%"></div></div><span class="bstat-val">@preview.SpD</span></div>
+													<div class="bstat"><span class="bstat-label">SPD</span><div class="bstat-bar"><div class="bstat-fill spd" style="width: @GetStatPct( preview.Spe )%"></div></div><span class="bstat-val">@preview.Spe</span></div>
+												</div>
+												<div class="beast-extras">
+													<span class="beast-genes @GetGeneticsClass( GetPreviewGeneticsQuality( preview ) )">Genes: @GetPreviewGeneticsQuality( preview )</span>
+													<span class="beast-nature">@GetPreviewNature( preview )</span>
+												</div>
+												<div class="gene-breakdown">
+													<div class="gene-row"><span class="gene-label">HP</span><span class="gene-val">@(ClampGene(preview.GHP))/30</span></div>
+													<div class="gene-row"><span class="gene-label">ATK</span><span class="gene-val">@(ClampGene(preview.GAtk))/30</span></div>
+													<div class="gene-row"><span class="gene-label">DEF</span><span class="gene-val">@(ClampGene(preview.GDef))/30</span></div>
+													<div class="gene-row"><span class="gene-label">SpA</span><span class="gene-val">@(ClampGene(preview.GSpA))/30</span></div>
+													<div class="gene-row"><span class="gene-label">SpD</span><span class="gene-val">@(ClampGene(preview.GSpD))/30</span></div>
+													<div class="gene-row"><span class="gene-label">SPD</span><span class="gene-val">@(ClampGene(preview.GSpe))/30</span></div>
+												</div>
+												@if ( preview.T?.Count > 0 )
+												{
+													<div class="beast-traits">@string.Join( ", ", preview.T.Select( FormatTraitName ) )</div>
+												}
+											</div>
+										</div>
+									}
+								}
+								else
+								{
+									<div class="empty-offer">Waiting for offer...</div>
+								}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- Lock-in Countdown Overlay -->
+			@if ( TradingManager.Instance?.CurrentTrade?.State == TradeState.Locked )
+			{
+				<div class="lock-overlay">
+					<div class="lock-ring"></div>
+					<div class="lock-ring ring-2"></div>
+					<div class="lock-display">
+						<span class="lock-icon">&#x1F512;</span>
+						<span class="lock-text">LOCKING IN</span>
+						<span class="lock-timer">@($"{TradingManager.Instance.LockCountdown:F1}s")</span>
+						<span class="lock-hint">Trade will finalize when timer ends</span>
+					</div>
+				</div>
+			}
+
+			<!-- Trade Complete Overlay -->
+			@if ( showTradeComplete )
+			{
+				<div class="complete-overlay">
+					<div class="complete-display">
+						<span class="complete-icon">&#x2714;</span>
+						<span class="complete-title">TRADE COMPLETE</span>
+						<span class="complete-sub">Beasts have been exchanged!</span>
+					</div>
+				</div>
+			}
+		</div>
+
+	}
+</root>
+
+@code {
+	private bool showTradeRequest = false;
+	private string pendingPlayerName = "";
+	private bool isReady = false;
+	private bool _subscribed = false;
+	private Monster selectedMonster = null;
+	private bool showTradeComplete = false;
+	private RealTimeSince timeSinceComplete;
+
+	// Filter/Sort state
+	private string currentFilter = "all";
+	private string currentSort = "power";
+	private string currentRarity = "all";
+	private string currentNameFilter = "";
+	private bool sortAscending = false;
+
+	private string localConnectionId => Connection.Local?.Id.ToString() ?? "";
+
+	private TradeOffer GetMyOffer() => TradingManager.Instance?.CurrentTrade?.GetMyOffer( localConnectionId );
+	private TradeOffer GetPartnerOffer() => TradingManager.Instance?.CurrentTrade?.GetPartnerOffer( localConnectionId );
+
+	public bool IsVisible { get; private set; } = false;
+
+	public static TradingPanel Instance { get; private set; }
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			Instance = this;
+			SubscribeEvents();
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		if ( !_subscribed )
+			SubscribeEvents();
+
+		// Force UI refresh during lock countdown so timer updates every frame
+		if ( TradingManager.Instance?.CurrentTrade?.State == TradeState.Locked )
+			StateHasChanged();
+
+		// Auto-close after trade complete animation
+		if ( showTradeComplete && timeSinceComplete > 2.5f )
+		{
+			showTradeComplete = false;
+			IsVisible = false;
+			StateHasChanged();
+		}
+	}
+
+	private void SubscribeEvents()
+	{
+		if ( _subscribed || TradingManager.Instance == null ) return;
+
+		TradingManager.Instance.OnTradeRequestReceived += OnTradeRequest;
+		TradingManager.Instance.OnTradeOpened += OnTradeOpened;
+		TradingManager.Instance.OnTradeUpdated += OnTradeUpdated;
+		TradingManager.Instance.OnTradeCompleted += OnTradeCompleted;
+		TradingManager.Instance.OnTradeCancelled += OnTradeCancelled;
+		_subscribed = true;
+	}
+
+	private void OnTradeRequest( string connectionId, string playerName )
+	{
+		pendingPlayerName = playerName;
+		showTradeRequest = true;
+		IsVisible = true;
+		StateHasChanged();
+	}
+
+	private void OnTradeOpened()
+	{
+		showTradeRequest = false;
+		isReady = false;
+		selectedMonster = null;
+		currentFilter = "all";
+		currentSort = "power";
+		currentRarity = "all";
+		currentNameFilter = "";
+		sortAscending = false;
+		IsVisible = true;
+		StateHasChanged();
+	}
+
+	private void OnTradeUpdated()
+	{
+		StateHasChanged();
+	}
+
+	private void OnTradeCompleted( bool success )
+	{
+		isReady = false;
+
+		if ( success )
+		{
+			showTradeComplete = true;
+			timeSinceComplete = 0;
+			StateHasChanged();
+		}
+		else
+		{
+			IsVisible = false;
+			StateHasChanged();
+		}
+	}
+
+	private void OnTradeCancelled( string reason )
+	{
+		IsVisible = false;
+		isReady = false;
+		showTradeRequest = false;
+		StateHasChanged();
+
+		NotificationManager.Instance?.AddNotification(
+			NotificationType.Info,
+			"Trade Cancelled",
+			reason,
+			5f
+		);
+	}
+
+	private void AcceptRequest()
+	{
+		TradingManager.Instance?.AcceptTradeRequest();
+	}
+
+	private void DeclineRequest()
+	{
+		TradingManager.Instance?.DeclineTradeRequest();
+		showTradeRequest = false;
+		IsVisible = false;
+	}
+
+	private void CancelTrade()
+	{
+		TradingManager.Instance?.CancelTrade();
+	}
+
+	// ═══════════════════════════════════════
+	// Beast Selection & Offer
+	// ═══════════════════════════════════════
+
+	private void SelectBeast( Monster monster )
+	{
+		if ( selectedMonster?.Id == monster.Id )
+			selectedMonster = null;
+		else
+			selectedMonster = monster;
+	}
+
+	private void ToggleOffer( Guid monsterId )
+	{
+		if ( isReady ) return;
+
+		if ( IsMonsterOffered( monsterId ) )
+		{
+			TradingManager.Instance?.RemoveMonsterFromOffer( monsterId );
+		}
+		else
+		{
+			var myOffer = GetMyOffer();
+			if ( (myOffer?.OfferedMonsterIds.Count ?? 0) >= 3 ) return;
+			TradingManager.Instance?.AddMonsterToOffer( monsterId );
+		}
+	}
+
+	private bool IsMonsterOffered( Guid monsterId )
+	{
+		return GetMyOffer()?.OfferedMonsterIds.Contains( monsterId ) ?? false;
+	}
+
+	private void RemoveMyMonster( Guid monsterId )
+	{
+		if ( isReady ) return;
+		TradingManager.Instance?.RemoveMonsterFromOffer( monsterId );
+	}
+
+	private void ToggleReady()
+	{
+		isReady = !isReady;
+		TradingManager.Instance?.SetReady( isReady );
+	}
+
+	private void Close()
+	{
+		if ( TradingManager.Instance?.IsInTrade == true )
+		{
+			CancelTrade();
+		}
+		else
+		{
+			showTradeRequest = false;
+			IsVisible = false;
+		}
+	}
+
+	private string GetPartnerName()
+	{
+		return TradingManager.Instance?.CurrentTrade?.GetPartnerName( localConnectionId ) ?? "Partner";
+	}
+
+	private string GetLocalName()
+	{
+		return Connection.Local?.DisplayName ?? "You";
+	}
+
+	private string GetStatusText()
+	{
+		var state = TradingManager.Instance?.CurrentTrade?.State ?? TradeState.Open;
+		return state switch
+		{
+			TradeState.Open => "Select beasts to offer, then Ready Up",
+			TradeState.Locked => "Locking in...",
+			TradeState.Completed => "Trade complete!",
+			_ => ""
+		};
+	}
+
+	// ═══════════════════════════════════════
+	// Filter / Sort
+	// ═══════════════════════════════════════
+
+	private void OnElementChanged( string element ) => currentFilter = element;
+	private void OnSortChanged( string sort ) => currentSort = sort;
+	private void OnRarityChanged( string rarity ) => currentRarity = rarity;
+	private void OnSortDirectionChanged( bool ascending ) => sortAscending = ascending;
+	private void OnNameFilterChanged( string name )
+	{
+		currentNameFilter = name;
+		currentSort = "name";
+	}
+
+	private List<string> GetMonsterNames()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters ?? new List<Monster>();
+		var names = new HashSet<string>();
+		foreach ( var monster in monsters )
+		{
+			if ( !string.IsNullOrEmpty( monster.Nickname ) )
+				names.Add( monster.Nickname );
+			var species = MonsterManager.Instance?.GetSpecies( monster.SpeciesId );
+			if ( species != null && !string.IsNullOrEmpty( species.Name ) )
+				names.Add( species.Name );
+		}
+		return names.OrderBy( n => n ).ToList();
+	}
+
+	private IEnumerable<Monster> GetFilteredMonsters()
+	{
+		var monsters = MonsterManager.Instance?.OwnedMonsters?
+			.Where( m => !m.IsInExpedition && !m.IsInArenaTeam )
+			.ToList() ?? new List<Monster>();
+
+		// Element filter
+		if ( currentFilter != "all" )
+		{
+			monsters = monsters.Where( m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
+				return species?.Element.ToString().ToLower() == currentFilter;
+			} ).ToList();
+		}
+
+		// Rarity filter
+		if ( currentRarity != "all" )
+		{
+			monsters = monsters.Where( m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
+				return species?.BaseRarity.ToString().ToLower() == currentRarity;
+			} ).ToList();
+		}
+
+		// Name filter
+		if ( currentSort == "name" && !string.IsNullOrEmpty( currentNameFilter ) )
+		{
+			monsters = monsters.Where( m =>
+			{
+				var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
+				return (m.Nickname?.Equals( currentNameFilter, StringComparison.OrdinalIgnoreCase ) == true)
+					|| (species?.Name?.Equals( currentNameFilter, StringComparison.OrdinalIgnoreCase ) == true);
+			} ).ToList();
+		}
+
+		// Sort — offered monsters always first
+		IEnumerable<Monster> sorted = currentSort switch
+		{
+			"level" => sortAscending
+				? monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenBy( m => m.Level )
+				: monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenByDescending( m => m.Level ),
+			"genes" => sortAscending
+				? monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenBy( m => m.Genetics?.TotalValue ?? 0 )
+				: monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenByDescending( m => m.Genetics?.TotalValue ?? 0 ),
+			"basestats" => sortAscending
+				? monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenBy( m => GetBaseStatTotal( m ) )
+				: monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenByDescending( m => GetBaseStatTotal( m ) ),
+			_ => sortAscending
+				? monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenBy( m => m.PowerRating )
+				: monsters.OrderByDescending( m => IsMonsterOffered( m.Id ) ? 1 : 0 ).ThenByDescending( m => m.PowerRating ),
+		};
+
+		return sorted;
+	}
+
+	private int GetBaseStatTotal( Monster m )
+	{
+		var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
+		if ( species == null ) return 0;
+		return species.BaseHP + species.BaseATK + species.BaseDEF + species.BaseSpA + species.BaseSpD + species.BaseSPD;
+	}
+
+	// ═══════════════════════════════════════
+	// Helpers
+	// ═══════════════════════════════════════
+
+	private int GetStatPct( int val ) => Math.Min( 100, (int)(val / 14f) );
+
+	private string FormatTraitName( string trait ) =>
+		string.Join( " ", trait.Split( '_' ).Select( w => w.Length > 0 ? char.ToUpper( w[0] ) + w.Substring( 1 ) : w ) );
+
+	private string GetElementShort( ElementType el ) => el switch
+	{
+		ElementType.Fire => "FIR",
+		ElementType.Water => "WTR",
+		ElementType.Earth => "ERT",
+		ElementType.Wind => "WND",
+		ElementType.Electric => "ELC",
+		ElementType.Ice => "ICE",
+		ElementType.Nature => "NAT",
+		ElementType.Metal => "MTL",
+		ElementType.Shadow => "SHD",
+		ElementType.Spirit => "SPR",
+		_ => "NEU"
+	};
+
+	private string GetRarityClass( Rarity r ) => r.ToString().ToLower();
+
+	private string GetGeneticsClass( string quality ) => quality?.ToLower() switch
+	{
+		"perfect" => "genetics-perfect",
+		"excellent" => "genetics-excellent",
+		"great" => "genetics-great",
+		"good" => "genetics-good",
+		"average" => "genetics-average",
+		_ => "genetics-poor"
+	};
+
+	private int ClampGene( int val ) => Math.Clamp( val, 0, 30 );
+
+	private string GetPreviewGeneticsQuality( TradeMonsterData p )
+	{
+		int total = ClampGene( p.GHP ) + ClampGene( p.GAtk ) + ClampGene( p.GDef ) + ClampGene( p.GSpA ) + ClampGene( p.GSpD ) + ClampGene( p.GSpe );
+		float pct = total / 180f;
+		if ( pct >= 0.9f ) return "Perfect";
+		if ( pct >= 0.75f ) return "Excellent";
+		if ( pct >= 0.6f ) return "Great";
+		if ( pct >= 0.4f ) return "Good";
+		if ( pct >= 0.2f ) return "Average";
+		return "Poor";
+	}
+
+	private string GetPreviewNature( TradeMonsterData p ) => ((NatureType)p.Nat).ToString();
+
+	private int GetPreviewPowerRating( TradeMonsterData p ) =>
+		(p.HP / 10) + p.Atk + p.Def + p.SpA + p.SpD + (p.Spe / 2) + (p.Lv * 5);
+
+	private string GetTamerGender() =>
+		(TamerManager.Instance?.CurrentTamer?.Gender ?? TamerGender.Male) == TamerGender.Female ? "female" : "male";
+
+	private string GetGenderAvatar()
+	{
+		var gender = TamerManager.Instance?.CurrentTamer?.Gender ?? TamerGender.Male;
+		return gender == TamerGender.Female
+			? "ui/characters/female/female_tamer.png"
+			: "ui/characters/male/male_tamer.png";
+	}
+
+	public static void RequestTrade( string connectionId, string playerName )
+	{
+		TradingManager.Instance?.SendTradeRequest( connectionId, playerName );
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( IsVisible );
+		hash.Add( showTradeRequest );
+		hash.Add( showTradeComplete );
+		hash.Add( isReady );
+		hash.Add( TradingManager.Instance?.CurrentTrade?.State );
+		hash.Add( GetMyOffer()?.OfferedMonsterIds.Count );
+		hash.Add( GetPartnerOffer()?.IsReady );
+		hash.Add( TradingManager.Instance?.PartnerMonsterPreviews?.Count );
+		hash.Add( MonsterManager.Instance?.OwnedMonsters?.Count );
+		hash.Add( selectedMonster?.Id );
+		hash.Add( currentFilter );
+		hash.Add( currentSort );
+		hash.Add( currentRarity );
+		hash.Add( sortAscending );
+		hash.Add( currentNameFilter );
+		return hash.ToHashCode();
+	}
+}

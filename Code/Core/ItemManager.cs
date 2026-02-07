@@ -893,13 +893,13 @@ public sealed class ItemManager : Component
 		{
 			Id = "boss_gene_booster",
 			Name = "Gene Booster",
-			Description = "Increases a random gene (IV) by +5, max 30.",
+			Description = "Increases a random gene (IV) by +3, max 30.",
 			IconPath = "ui/items/consumables/gene_booster.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Epic,
 			EffectType = ItemEffectType.GeneBoost,
-			EffectValue = 5,
-			MaxStack = 10,
+			EffectValue = 3,
+			MaxStack = 5,
 			SellPrice = 0
 		} );
 
@@ -907,12 +907,12 @@ public sealed class ItemManager : Component
 		{
 			Id = "boss_master_ink",
 			Name = "Master Ink",
-			Description = "Guarantees your next capture attempt succeeds.",
+			Description = "Guarantees your next capture attempt succeeds. Limited to 1.",
 			IconPath = "ui/items/consumables/master_ink.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Legendary,
 			EffectType = ItemEffectType.MasterInk,
-			MaxStack = 5,
+			MaxStack = 1,
 			SellPrice = 0
 		} );
 
@@ -2273,6 +2273,12 @@ public sealed class ItemManager : Component
 		relics.Add( itemId );
 		RemoveItem( itemId, 1 );
 		OnRelicEquipped?.Invoke( itemId );
+
+		// Check relic equip achievement (3 relics at once)
+		if ( relics.Count >= 3 )
+		{
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.EquippedThreeRelics, 1 );
+		}
 
 		Log.Info( $"Equipped relic: {item.Name}" );
 		return true;

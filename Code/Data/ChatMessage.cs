@@ -48,9 +48,28 @@ public class ChatMessage
 	public int ShowcaseSPD { get; set; }  // Speed
 	public string ShowcaseTraits { get; set; } // Comma-separated trait names
 
+	// For tamer card showcase messages
+	public string CardName { get; set; }
+	public int CardLevel { get; set; }
+	public string CardTitle { get; set; }
+	public string CardArenaRank { get; set; }
+	public int CardArenaPoints { get; set; }
+	public string CardFavoriteSpeciesId { get; set; }
+	public int CardAchievementCount { get; set; }
+	public float CardWinRate { get; set; }
+	public string CardGender { get; set; }
+	public string CardFavoriteExpeditionId { get; set; }
+	public int CardArenaWins { get; set; }
+	public int CardArenaLosses { get; set; }
+	public int CardMonstersCaught { get; set; }
+	public int CardBattlesWon { get; set; }
+	public int CardMonstersBred { get; set; }
+	public int CardMonstersEvolved { get; set; }
+	public int CardHighestExpedition { get; set; }
+
 	// Display helpers
 	public string FormattedTime => Timestamp.ToLocalTime().ToString( "HH:mm" );
-	public bool IsSystem => Type != ChatMessageType.Player && Type != ChatMessageType.BeastShowcase;
+	public bool IsSystem => Type != ChatMessageType.Player && Type != ChatMessageType.BeastShowcase && Type != ChatMessageType.TamerCardShowcase;
 	public bool IsDeveloper => DeveloperSteamIds.Contains( SteamId );
 }
 
@@ -61,5 +80,6 @@ public enum ChatMessageType
 	Achievement,   // Player achievement (caught monster, etc.)
 	Join,          // Player joined
 	Leave,         // Player left
-	BeastShowcase  // Player showing off a beast
+	BeastShowcase,      // Player showing off a beast
+	TamerCardShowcase   // Player showing off their tamer card
 }

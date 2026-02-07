@@ -116,6 +116,7 @@ public static class RadioManager
 				new Track { Name = "Evening Glow", FilePath = "music/chillfm/evening_glow.sound" },
 				new Track { Name = "Fireside Tales", FilePath = "music/chillfm/fireside_tales.sound" },
 				new Track { Name = "Tamer's Rest", FilePath = "music/chillfm/tamers_rest.sound" },
+				new Track { Name = "Moonlight Meadows", FilePath = "music/chillfm/Moonlight_Meadows.sound" },
 			}
 		} );
 
@@ -131,6 +132,7 @@ public static class RadioManager
 				new Track { Name = "Heart of the Storm", FilePath = "music/battlefm/Heart_of_the_Storm.sound" },
 				new Track { Name = "Steel and Spirit", FilePath = "music/battlefm/Steel_and_Spirit.sound" },
 				new Track { Name = "Unbroken Will", FilePath = "music/battlefm/Unbroken_Will.sound" },
+				new Track { Name = "Fangs and Fury", FilePath = "music/battlefm/Fangs_and_Fury.sound" },
 			}
 		} );
 

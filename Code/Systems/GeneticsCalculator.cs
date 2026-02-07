@@ -60,47 +60,60 @@ public static class GeneticsCalculator
 		}
 		else
 		{
-			// Get skill bonus for gene inheritance (increases chance to pick the better gene)
+			// Get skill bonus for gene inheritance (slight bias toward higher gene)
 			float geneBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneticInheritanceBonus ) ?? 0;
 
-			// Base: 70% chance to pick higher gene
-			// With skills: even more biased toward the higher gene
-			float higherChance = 0.7f + (geneBonus / 300f);
-			higherChance = Math.Clamp( higherChance, 0.7f, 0.95f ); // Cap at 95%
+			// Base: average of both parents (not biased toward higher)
+			float average = (gene1 + gene2) / 2f;
 
-			if ( gene1 == gene2 )
-			{
-				inheritedValue = gene1;
-			}
-			else if ( gene1 > gene2 )
-			{
-				inheritedValue = random.NextDouble() < higherChance ? gene1 : gene2;
-			}
-			else
-			{
-				inheritedValue = random.NextDouble() < higherChance ? gene2 : gene1;
-			}
+			// Skill bonus adds a small weight toward the higher parent (up to 20% of the difference)
+			int higher = Math.Max( gene1, gene2 );
+			int lower = Math.Min( gene1, gene2 );
+			float skillBias = (geneBonus / 500f) * (higher - lower); // Very small bias
+			skillBias = Math.Clamp( skillBias, 0f, 3f ); // Cap at +3
+
+			inheritedValue = (int)Math.Round( average + skillBias );
 		}
 
-		// Small positive variance (0 to +2) - no longer penalizes
-		int variance = random.Next( 0, 3 );
-		inheritedValue += variance;
+		// Small random bonus (+1 to +3)
+		int bonus = random.Next( 1, 4 );
 
-		// Mutation chance (15% base)
-		float mutationChance = 0.15f;
+		// Diminishing returns: the closer to max, the smaller the bonus
+		if ( inheritedValue >= 27 )
+			bonus = Math.Min( bonus, 1 ); // Genes 27+ only get +1 max
+		else if ( inheritedValue >= 25 )
+			bonus = Math.Min( bonus, 2 ); // Genes 25-26 get +2 max
+		// Below 25: full +1 to +3 bonus
+
+		inheritedValue += bonus;
+
+		// Mutation chance (10% base, reduced from 15%)
+		float mutationChance = 0.10f;
 		float mutationBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.MutationChance ) ?? 0;
 		mutationChance += mutationBonus / 100f;
 
 		if ( random.NextDouble() < mutationChance )
 		{
-			// Mutations are mostly positive (90% positive, 10% small negative)
-			int mutation = random.NextDouble() < 0.9 ? random.Next( 2, 6 ) : random.Next( -2, 0 );
+			// Mutations can be positive or negative (60% positive, 40% negative)
+			int mutation = random.NextDouble() < 0.6 ? random.Next( 1, 4 ) : random.Next( -3, 0 );
+
+			// Diminishing returns on positive mutations too
+			if ( mutation > 0 && inheritedValue >= 25 )
+				mutation = Math.Min( mutation, 1 );
+
 			inheritedValue += mutation;
 		}
 
-		// Apply flat gene bonus from skills (Gene Surge)
+		// Apply flat gene bonus from skills (Gene Surge) - reduced impact
 		float geneBonusFlat = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneBonusFlat ) ?? 0;
-		inheritedValue += (int)geneBonusFlat;
+		if ( geneBonusFlat > 0 && inheritedValue < Genetics.MaxGeneValue )
+		{
+			int flatBonus = (int)geneBonusFlat;
+			// Diminishing returns on flat bonus too
+			if ( inheritedValue >= 25 )
+				flatBonus = Math.Min( flatBonus, 1 );
+			inheritedValue += flatBonus;
+		}
 
 		// Clamp to valid range
 		return Math.Clamp( inheritedValue, 0, Genetics.MaxGeneValue );
@@ -215,16 +228,19 @@ public static class GeneticsCalculator
 	/// </summary>
 	private static int CalculateExpectedGene( int gene1, int gene2, float higherWeight )
 	{
-		int higher = Math.Max( gene1, gene2 );
-		int lower = Math.Min( gene1, gene2 );
+		// New system: average of parents + small bonus
+		float average = (gene1 + gene2) / 2f;
 
-		// Expected value = higher * higherWeight + lower * (1 - higherWeight)
-		float expected = (higher * higherWeight) + (lower * (1f - higherWeight));
+		// Expected bonus is ~+2 (average of 1-3 range)
+		float expectedBonus = 2f;
 
-		// Add positive bias from variance (avg +1) and mutation potential
-		expected += 1.5f;
+		// Diminishing returns reduce expected bonus at high values
+		if ( average >= 27 )
+			expectedBonus = 1f;
+		else if ( average >= 25 )
+			expectedBonus = 1.5f;
 
-		return (int)Math.Round( expected );
+		return (int)Math.Round( average + expectedBonus );
 	}
 
 	/// <summary>

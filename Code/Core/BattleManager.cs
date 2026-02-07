@@ -1,4 +1,5 @@
 using Sandbox;
+using Sandbox.Services;
 using Beastborne.Data;
 using Beastborne.Systems;
 using System.Threading.Tasks;
@@ -597,13 +598,20 @@ public sealed class BattleManager : Component
 
 	private void DistributeRewards()
 	{
+		// Track veteran stats from battle turns (always, including arena)
+		TrackVeteranStats();
+
+		// Arena mode: no gold/XP/level rewards — rating is handled by CompetitiveManager
+		if ( CurrentBattleState?.IsArenaMode == true )
+		{
+			MonsterManager.Instance?.SaveMonsters();
+			return;
+		}
+
 		// Give gold and tamer XP
 		TamerManager.Instance?.AddGold( CurrentResult.TotalGold );
 		TamerManager.Instance?.AddXP( CurrentResult.TotalXP );
 		Log.Info( $"[Battle] DistributeRewards: Awarded {CurrentResult.TotalGold} gold, {CurrentResult.TotalXP} XP to tamer" );
-
-		// Track veteran stats from battle turns
-		TrackVeteranStats();
 
 		// Distribute XP to all party monsters, split evenly
 		int xpPerMonster = PlayerTeam.Count > 0 ? CurrentResult.TotalXP / PlayerTeam.Count : 0;
@@ -650,6 +658,8 @@ public sealed class BattleManager : Component
 		if ( TamerManager.Instance?.CurrentTamer != null )
 		{
 			TamerManager.Instance.CurrentTamer.TotalBattlesWon++;
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalBattlesWon, TamerManager.Instance.CurrentTamer.TotalBattlesWon );
+			Stats.SetValue( "battles-won", TamerManager.Instance.CurrentTamer.TotalBattlesWon );
 		}
 
 		// Update contract satisfaction for participating monsters
@@ -824,6 +834,26 @@ public sealed class BattleManager : Component
 					$"{ownedMonster.Nickname} is now a {newRank}! (+{(int)(ownedMonster.GetVeteranBonusPercent() * 100)}% stats)"
 				);
 			}
+		}
+
+		// Accumulate tamer-level damage/knockout totals for leaderboards
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer != null )
+		{
+			int battleDamage = damageByMonster.Values.Sum();
+			int battleKOs = kosByMonster.Values.Sum();
+			tamer.TotalDamageDealt += battleDamage;
+			tamer.TotalKnockouts += battleKOs;
+
+			// Submit to leaderboards
+			if ( battleDamage > 0 )
+				Stats.SetValue( "total-damage", tamer.TotalDamageDealt );
+			if ( battleKOs > 0 )
+				Stats.SetValue( "total-knockouts", tamer.TotalKnockouts );
+
+			// Check damage/knockout achievements
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalDamageDealt, tamer.TotalDamageDealt );
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalKnockouts, tamer.TotalKnockouts );
 		}
 	}
 

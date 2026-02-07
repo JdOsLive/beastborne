@@ -1,189 +1,327 @@
 @namespace Beastborne.UI.Panels
+@using System;
+@using System.Linq;
+@using System.Collections.Generic;
+@using System.Threading.Tasks;
 @using Sandbox;
+@using Sandbox.Services;
 @using Sandbox.UI;
 @using Beastborne.Core;
+@using Beastborne.Systems;
 @inherits Panel
 
 <div class="leaderboard-panel">
 	<div class="leaderboard-header">
-		<button class="back-btn" onclick=@OnBackClicked>Back</button>
-		<div class="leaderboard-title">Leaderboard</div>
-		<button class="refresh-btn" onclick=@RefreshLeaderboard>↻ Refresh</button>
-	</div>
-
-	<div class="player-rank-card">
-		<div class="your-rank">
-			<span class="rank-label">Your Rank</span>
-			<span class="rank-position">#@playerRank</span>
+		<div class="header-left">
+			<div class="leaderboard-title">Leaderboards</div>
+			<div class="leaderboard-subtitle">Compare your stats against other tamers</div>
 		</div>
-		<div class="your-stats">
-			<span class="your-points">@GetPlayerPoints() Points</span>
-			<span class="your-tier" style="color: @GetPlayerRankColor()">@GetPlayerRankTitle()</span>
+		<div class="header-right">
+			<button class="refresh-btn" onclick=@RefreshAll><span>Refresh</span></button>
+			<button class="lb-back-btn" onclick=@OnBackClicked><span>Back</span></button>
 		</div>
 	</div>
 
-	<div class="leaderboard-list">
-		@if (isLoading)
+	<div class="leaderboard-scroll @(FilterMode == "arena" ? "arena-filter" : "")">
+		@if ( isLoading )
 		{
 			<div class="loading-state">
 				<div class="loading-spinner"></div>
-				<span>Loading leaderboard...</span>
-			</div>
-		}
-		else if (entries.Count == 0)
-		{
-			<div class="empty-state">
-				<span class="empty-icon">💎</span>
-				<span class="empty-text">No entries yet</span>
-				<span class="empty-hint">Be the first to climb the ranks!</span>
+				<span>Loading leaderboards...</span>
 			</div>
 		}
 		else
 		{
-			@foreach (var entry in entries)
+			@foreach ( var cat in GetVisibleCategories() )
 			{
-				<div class="leaderboard-entry @(entry.Rank <= 3 ? $"top-{entry.Rank}" : "") @(IsPlayerEntry(entry) ? "player" : "")">
-					<div class="entry-rank">
-						@if (entry.Rank == 1)
-						{
-							<span class="rank-medal gold">🥇</span>
-						}
-						else if (entry.Rank == 2)
-						{
-							<span class="rank-medal silver">🥈</span>
-						}
-						else if (entry.Rank == 3)
-						{
-							<span class="rank-medal bronze">🥉</span>
-						}
-						else
-						{
-							<span class="rank-number">#@entry.Rank</span>
-						}
-					</div>
-					<div class="entry-info">
-						<div class="entry-name">@entry.Name</div>
-						<div class="entry-tier" style="color: @CompetitiveManager.GetRankColor(entry.RankTitle)">
-							@entry.RankTitle
+				var catEntries = GetEntries( cat.Key );
+				var rank = GetPlayerRank( cat.Key );
+				var playerValue = GetPlayerValue( cat.Key );
+				var isExpanded = expanded.ContainsKey( cat.Key ) && expanded[cat.Key];
+				var displayEntries = isExpanded ? catEntries.Take( 20 ) : catEntries.Take( 10 );
+
+				<div class="lb-section" style="border-color: @ColorWithAlpha( cat.Color, 0.25 ); box-shadow: 0 4px 20px @ColorWithAlpha( cat.Color, 0.1 )">
+					<!-- Section Header -->
+					<div class="lb-section-header" style="border-left: 4px solid @cat.Color; background-color: @ColorWithAlpha( cat.Color, 0.12 )">
+						<div class="lb-section-left">
+							<span class="lb-section-icon" style="color: @cat.Color">@cat.Icon</span>
+							<span class="lb-section-name">@cat.Label</span>
+						</div>
+						<div class="lb-section-right">
+							<span class="lb-section-value" style="color: @cat.Color">@FormatValue( playerValue, cat.Key )</span>
+							@if ( cat.Key == "arena-score" )
+							{
+								<span class="lb-section-tier" style="color: @GetPlayerRankColor()">@GetPlayerRankTitle()</span>
+							}
+							<div class="lb-rank-pill" style="background-color: @ColorWithAlpha( cat.Color, 0.3 ); border-color: @cat.Color">
+								<span class="lb-rank-label">Rank</span>
+								<span class="lb-rank-number">#@rank</span>
+							</div>
 						</div>
 					</div>
-					<div class="entry-score">@entry.Score pts</div>
+
+					<!-- Entries -->
+					@if ( catEntries.Count == 0 )
+					{
+						<div class="lb-empty">No entries yet</div>
+					}
+					else
+					{
+						<div class="lb-entries">
+							@foreach ( var entry in displayEntries )
+							{
+								<div class="lb-entry @(entry.Rank <= 3 ? $"top-{entry.Rank}" : "") @(IsPlayerEntry( entry ) ? "player" : "")">
+									<div class="lb-entry-rank">
+										@if ( entry.Rank == 1 )
+										{
+											<span class="rank-medal gold">🥇</span>
+										}
+										else if ( entry.Rank == 2 )
+										{
+											<span class="rank-medal silver">🥈</span>
+										}
+										else if ( entry.Rank == 3 )
+										{
+											<span class="rank-medal bronze">🥉</span>
+										}
+										else
+										{
+											<span class="rank-number">#@entry.Rank</span>
+										}
+									</div>
+									<div class="lb-entry-name">@entry.Name</div>
+									@if ( cat.Key == "arena-score" && !string.IsNullOrEmpty( entry.RankTitle ) )
+									{
+										<div class="lb-entry-tier" style="color: @CompetitiveManager.GetRankColor( entry.RankTitle )">
+											@entry.RankTitle
+										</div>
+									}
+									<div class="lb-entry-score" style="color: @cat.Color">@FormatValue( entry.Score, cat.Key )</div>
+								</div>
+							}
+						</div>
+
+						@if ( catEntries.Count > 10 )
+						{
+							<button class="lb-expand-btn" onclick=@(() => ToggleExpand( cat.Key ))>
+								@(isExpanded ? "Show Less" : $"Show Top 20")
+							</button>
+						}
+					}
 				</div>
 			}
 		}
-	</div>
-
-	<div class="rank-tiers">
-		<div class="tiers-title">Rank Tiers</div>
-		<div class="tiers-list">
-			<div class="tier-item">
-				<span class="tier-color" style="background: #ec4899"></span>
-				<span class="tier-name">Mythic</span>
-				<span class="tier-req">5000+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #fbbf24"></span>
-				<span class="tier-name">Legendary</span>
-				<span class="tier-req">3000+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #a855f7"></span>
-				<span class="tier-name">Master</span>
-				<span class="tier-req">2000+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #60a5fa"></span>
-				<span class="tier-name">Diamond</span>
-				<span class="tier-req">1500+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #22d3ee"></span>
-				<span class="tier-name">Platinum</span>
-				<span class="tier-req">1000+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #eab308"></span>
-				<span class="tier-name">Gold</span>
-				<span class="tier-req">700+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #9ca3af"></span>
-				<span class="tier-name">Silver</span>
-				<span class="tier-req">400+</span>
-			</div>
-			<div class="tier-item">
-				<span class="tier-color" style="background: #d97706"></span>
-				<span class="tier-name">Bronze</span>
-				<span class="tier-req">200+</span>
-			</div>
-		</div>
 	</div>
 </div>
 
 @code {
 	public Action OnBack { get; set; }
+	public string FilterMode { get; set; } = "all"; // "all" or "arena"
 
-	private List<LeaderboardEntry> entries = new();
-	private int playerRank = 0;
+	private Dictionary<string, List<LeaderboardEntry>> allEntries = new();
+	private Dictionary<string, int> playerRanks = new();
+	private Dictionary<string, bool> expanded = new();
 	private bool isLoading = true;
 
-	protected override async void OnAfterTreeRender(bool firstTime)
+	private record CategoryInfo( string Key, string LeaderboardName, string Label, string Icon, string Unit, string Color );
+
+	private static readonly CategoryInfo[] Categories = new[]
 	{
-		if (firstTime)
+		new CategoryInfo( "arena-score", "beastborne-arena", "Arena Rating", "⚔", "pts", "#fbbf24" ),
+		new CategoryInfo( "arena-wins", "beastborne-arena-wins", "Arena Wins", "🏆", "wins", "#facc15" ),
+		new CategoryInfo( "expedition-highest", "beastborne-expedition", "Expedition", "🗺", "", "#34d399" ),
+		new CategoryInfo( "monsters-caught", "beastborne-caught", "Caught", "🐾", "", "#60a5fa" ),
+		new CategoryInfo( "monsters-bred", "beastborne-bred", "Bred", "🥚", "", "#f472b6" ),
+		new CategoryInfo( "monsters-evolved", "beastborne-evolved", "Evolved", "🔮", "", "#c084fc" ),
+		new CategoryInfo( "battles-won", "beastborne-battles", "Battles Won", "🛡", "", "#f87171" ),
+		new CategoryInfo( "total-damage", "beastborne-damage", "Damage", "💥", "dmg", "#fb923c" ),
+		new CategoryInfo( "total-knockouts", "beastborne-knockouts", "Knockouts", "💀", "KOs", "#cbd5e1" ),
+		new CategoryInfo( "total-gold", "beastborne-gold", "Gold Earned", "💰", "", "#fcd34d" ),
+		new CategoryInfo( "expeditions-completed", "beastborne-expeditions", "Expeditions", "🏕", "", "#5eead4" ),
+		new CategoryInfo( "total-playtime", "beastborne-playtime", "Playtime", "⏰", "", "#a78bfa" )
+	};
+
+	private CategoryInfo[] GetVisibleCategories()
+	{
+		if ( FilterMode == "arena" )
 		{
-			await LoadLeaderboard();
+			return Categories.Where( c => c.Key == "arena-score" || c.Key == "arena-wins" ).ToArray();
+		}
+		return Categories;
+	}
+
+	protected override async void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			await LoadAllLeaderboards();
 		}
 	}
 
-	private async Task LoadLeaderboard()
+	private async Task LoadAllLeaderboards()
 	{
 		isLoading = true;
+		allEntries = new();
+		playerRanks = new();
 
-		if (CompetitiveManager.Instance != null)
+		var tasks = Categories.Select( async cat =>
 		{
-			entries = await CompetitiveManager.Instance.GetLeaderboard(100);
-			playerRank = await CompetitiveManager.Instance.GetPlayerRank();
-		}
-		else
-		{
-			entries = new();
-			playerRank = 0;
-		}
+			try
+			{
+				var board = Leaderboards.Get( cat.LeaderboardName );
+				board.MaxEntries = 100;
+				await board.Refresh();
 
-		if (playerRank <= 0)
-		{
-			playerRank = entries.Count + 1;
-		}
+				var entries = board.Entries.Select( ( e, index ) => new LeaderboardEntry
+				{
+					Rank = index + 1,
+					Name = e.DisplayName,
+					Score = (int)e.Value,
+					RankTitle = cat.Key == "arena-score"
+						? CompetitiveManager.GetRankFromPoints( (int)e.Value )
+						: ""
+				} ).ToList();
 
+				var myEntry = board.Entries.Select( ( e, index ) => new { Entry = e, Index = index + 1 } )
+					.FirstOrDefault( x => x.Entry.Me );
+				var rank = myEntry?.Index ?? (entries.Count + 1);
+
+				lock ( allEntries )
+				{
+					allEntries[cat.Key] = entries;
+					playerRanks[cat.Key] = rank;
+				}
+
+				Log.Info( $"Fetched {entries.Count} entries for '{cat.LeaderboardName}'" );
+			}
+			catch ( Exception e )
+			{
+				Log.Warning( $"Failed to fetch '{cat.LeaderboardName}': {e.Message}" );
+				lock ( allEntries )
+				{
+					allEntries[cat.Key] = new();
+					playerRanks[cat.Key] = 0;
+				}
+			}
+		} );
+
+		await Task.WhenAll( tasks );
 		isLoading = false;
+		StateHasChanged();
 	}
 
-	private async void RefreshLeaderboard()
+	private async void RefreshAll()
 	{
-		await LoadLeaderboard();
+		SoundManager.PlayClick();
+		await LoadAllLeaderboards();
 	}
 
 	private void OnBackClicked()
 	{
+		SoundManager.PlayBack();
 		OnBack?.Invoke();
 	}
 
-	private int GetPlayerPoints()
+	private void ToggleExpand( string key )
 	{
-		return TamerManager.Instance?.CurrentTamer?.ArenaPoints ?? 0;
+		SoundManager.PlayClick();
+		if ( expanded.ContainsKey( key ) )
+			expanded[key] = !expanded[key];
+		else
+			expanded[key] = true;
+	}
+
+	private List<LeaderboardEntry> GetEntries( string key )
+	{
+		return allEntries.ContainsKey( key ) ? allEntries[key] : new();
+	}
+
+	private int GetPlayerRank( string key )
+	{
+		return playerRanks.ContainsKey( key ) ? playerRanks[key] : 0;
+	}
+
+	private int GetPlayerValue( string key )
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return 0;
+
+		return key switch
+		{
+			"arena-score" => tamer.ArenaPoints,
+			"arena-wins" => tamer.ArenaWins,
+			"expedition-highest" => tamer.HighestExpeditionCleared,
+			"monsters-caught" => tamer.TotalMonstersCaught,
+			"monsters-bred" => tamer.TotalMonstersBred,
+			"monsters-evolved" => tamer.TotalMonstersEvolved,
+			"battles-won" => tamer.TotalBattlesWon,
+			"total-damage" => tamer.TotalDamageDealt,
+			"total-knockouts" => tamer.TotalKnockouts,
+			"total-gold" => tamer.TotalGoldEarned,
+			"expeditions-completed" => tamer.TotalExpeditionsCompleted,
+			"total-playtime" => (int)tamer.TotalPlayTime.TotalMinutes,
+			_ => 0
+		};
+	}
+
+	private string FormatValue( int value, string category )
+	{
+		return category switch
+		{
+			"arena-score" => $"{value:N0} pts",
+			"arena-wins" => $"{value:N0}",
+			"expedition-highest" => value > 0 ? $"Stage {value}" : "None",
+			"monsters-caught" => $"{value:N0}",
+			"monsters-bred" => $"{value:N0}",
+			"monsters-evolved" => $"{value:N0}",
+			"battles-won" => $"{value:N0}",
+			"total-damage" => FormatLargeNumber( value ),
+			"total-knockouts" => $"{value:N0}",
+			"total-gold" => FormatLargeNumber( value ),
+			"expeditions-completed" => $"{value:N0}",
+			"total-playtime" => FormatPlaytime( value ),
+			_ => $"{value:N0}"
+		};
+	}
+
+	private string FormatLargeNumber( int value )
+	{
+		if ( value >= 1000000 ) return $"{value / 1000000f:F1}M";
+		if ( value >= 1000 ) return $"{value / 1000f:F1}K";
+		return $"{value:N0}";
+	}
+
+	private string FormatPlaytime( int minutes )
+	{
+		if ( minutes < 60 ) return $"{minutes}m";
+		int hours = minutes / 60;
+		int mins = minutes % 60;
+		if ( hours < 24 ) return $"{hours}h {mins}m";
+		int days = hours / 24;
+		hours = hours % 24;
+		return $"{days}d {hours}h";
+	}
+
+	private string ColorWithAlpha( string hex, double alpha )
+	{
+		if ( string.IsNullOrEmpty( hex ) || hex.Length < 7 ) return $"rgba(139, 92, 246, {alpha})";
+		int r = Convert.ToInt32( hex.Substring( 1, 2 ), 16 );
+		int g = Convert.ToInt32( hex.Substring( 3, 2 ), 16 );
+		int b = Convert.ToInt32( hex.Substring( 5, 2 ), 16 );
+		return $"rgba({r}, {g}, {b}, {alpha})";
 	}
 
 	private string GetPlayerRankTitle()
 	{
-		return CompetitiveManager.GetRankFromPoints(GetPlayerPoints());
+		return CompetitiveManager.GetRankFromPoints( TamerManager.Instance?.CurrentTamer?.ArenaPoints ?? 0 );
 	}
 
 	private string GetPlayerRankColor()
 	{
-		return CompetitiveManager.GetRankColor(GetPlayerRankTitle());
+		return CompetitiveManager.GetRankColor( GetPlayerRankTitle() );
 	}
 
-	private bool IsPlayerEntry(LeaderboardEntry entry)
+	private bool IsPlayerEntry( LeaderboardEntry entry )
 	{
 		var playerName = TamerManager.Instance?.CurrentTamer?.Name;
 		return entry.Name == playerName;
