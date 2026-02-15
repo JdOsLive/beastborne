@@ -17,7 +17,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	// CONSTANTS
 	// ═══════════════════════════════════════════════════════════════
 
-	private const string LEADERBOARD_NAME = "beastborne-arena";
+	private const string LEADERBOARD_NAME = "arena-score";
 	private const int RANKED_LEVEL = 50;
 	private const int BETWEEN_GAMES_SECONDS = 10;
 	private const float MATCH_TIMEOUT_SECONDS = 90f;
@@ -1364,14 +1364,14 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 
 		try
 		{
-			var board = Leaderboards.Get( LEADERBOARD_NAME );
+			var board = Leaderboards.GetFromStat( "publicsquare.beastborne", LEADERBOARD_NAME );
 			board.MaxEntries = count;
 
 			await board.Refresh();
 
-			_leaderboardCache = board.Entries.Select( ( e, index ) => new LeaderboardEntry
+			_leaderboardCache = board.Entries.Select( e => new LeaderboardEntry
 			{
-				Rank = index + 1,
+				Rank = (int)e.Rank,
 				Name = e.DisplayName,
 				Score = (int)e.Value,
 				RankTitle = GetRankFromPoints( (int)e.Value )
@@ -1392,11 +1392,11 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	{
 		try
 		{
-			var board = Leaderboards.Get( LEADERBOARD_NAME );
+			var board = Leaderboards.GetFromStat( "publicsquare.beastborne", LEADERBOARD_NAME );
 			await board.Refresh();
-			var myEntry = board.Entries.Select( ( e, index ) => new { Entry = e, Index = index + 1 } )
-				.FirstOrDefault( x => x.Entry.Me );
-			return myEntry?.Index ?? -1;
+			var myName = Connection.Local?.DisplayName;
+			var myEntry = board.Entries.FirstOrDefault( x => x.DisplayName == myName );
+			return myEntry.DisplayName == myName ? (int)myEntry.Rank : -1;
 		}
 		catch
 		{
