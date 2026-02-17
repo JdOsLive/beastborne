@@ -17,7 +17,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	// CONSTANTS
 	// ═══════════════════════════════════════════════════════════════
 
-	private const string LEADERBOARD_NAME = "arena-score";
+	private const string LEADERBOARD_NAME = "arena-score-s0";
 	private const int RANKED_LEVEL = 50;
 	private const int BETWEEN_GAMES_SECONDS = 10;
 	private const float MATCH_TIMEOUT_SECONDS = 90f;
@@ -1346,7 +1346,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	{
 		try
 		{
-			Stats.SetValue( "arena-score", score );
+			Stats.SetValue( LEADERBOARD_NAME, score );
 			Log.Info( $"Submitted arena score: {score}" );
 		}
 		catch ( Exception e )

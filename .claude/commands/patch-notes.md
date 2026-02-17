@@ -4,26 +4,28 @@ Generate Discord patch notes for Beastborne.
 2. Read the changed files to understand what was actually modified
 3. Group changes by what matters most to players — lead with the biggest gameplay impact
 
+Output the patch notes inside a single markdown code block (```...```) so the user can copy-paste it directly into Discord.
+
 Format as Discord markdown. Use this structure as a guide, but adapt it naturally to fit the actual changes:
 
 ```
-# Beastborne [VERSION] — [Update Name]
+# 🎮 BEASTBORNE [VERSION] — [Update Name]
 
 [Short punchy summary of what this update brings]
 
 ---
 
-## [Feature Name]
+## [Emoji] [Feature Name]
 [What changed and why it matters, written like a dev talking to their players]
 
 - **[Detail]** — [What it does]
 
-## Fixes & Improvements
+## 🔧 Fixes & Improvements
 - [Fix or change, written plainly]
 
 ---
 
-*Thanks for playing — drop feedback in #suggestions*
+*Thanks for playing Beastborne! Drop feedback in #suggestions* 🐉
 ```
 
 Writing guidelines:

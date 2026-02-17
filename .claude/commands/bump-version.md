@@ -8,7 +8,7 @@ Then update ALL of these locations with the new version:
    Change to `ALPHA v{VERSION}`
 
 2. **MainMenu.razor** — Splash text array entry that contains the current version:
-   Change to `v{VERSION} - {UPDATE_NAME}!`
+   Change to `v{VERSION} - {UPDATE_NAME}`
 
 3. **GameHUD.razor** — Version number display (line with `class="version-number"`):
    Change to `v{VERSION}`

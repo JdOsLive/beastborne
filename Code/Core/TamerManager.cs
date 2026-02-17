@@ -325,9 +325,45 @@ public sealed class TamerManager : Component
 		}
 	}
 
+	/// <summary>
+	/// Clamp stats to reasonable maximums to prevent inflated/corrupted values from reaching leaderboards.
+	/// </summary>
+	private void ClampStats()
+	{
+		if ( CurrentTamer == null ) return;
+
+		// Expedition highest: capped at number of expeditions (currently 16)
+		int maxExpeditions = ExpeditionManager.Instance?.Expeditions?.Count ?? 16;
+		CurrentTamer.HighestExpeditionCleared = Math.Clamp( CurrentTamer.HighestExpeditionCleared, 0, maxExpeditions );
+
+		// Level: capped at 100
+		CurrentTamer.Level = Math.Clamp( CurrentTamer.Level, 1, 100 );
+
+		// Playtime: cap at 90 days (in minutes) - game hasn't existed longer than that
+		int maxPlaytimeMinutes = 90 * 24 * 60; // 90 days
+		if ( CurrentTamer.TotalPlayTime.TotalMinutes > maxPlaytimeMinutes )
+			CurrentTamer.TotalPlayTime = TimeSpan.FromMinutes( maxPlaytimeMinutes );
+
+		// Gold: prevent negative values (overflow already handled in AddGold)
+		if ( CurrentTamer.Gold < 0 ) CurrentTamer.Gold = 0;
+		if ( CurrentTamer.TotalGoldEarned < 0 ) CurrentTamer.TotalGoldEarned = 0;
+
+		// Prevent negative counts on all stats
+		if ( CurrentTamer.TotalExpeditionsCompleted < 0 ) CurrentTamer.TotalExpeditionsCompleted = 0;
+		if ( CurrentTamer.TotalMonstersCaught < 0 ) CurrentTamer.TotalMonstersCaught = 0;
+		if ( CurrentTamer.TotalMonstersBred < 0 ) CurrentTamer.TotalMonstersBred = 0;
+		if ( CurrentTamer.TotalMonstersEvolved < 0 ) CurrentTamer.TotalMonstersEvolved = 0;
+		if ( CurrentTamer.TotalBattlesWon < 0 ) CurrentTamer.TotalBattlesWon = 0;
+		if ( CurrentTamer.TotalDamageDealt < 0 ) CurrentTamer.TotalDamageDealt = 0;
+		if ( CurrentTamer.TotalKnockouts < 0 ) CurrentTamer.TotalKnockouts = 0;
+	}
+
 	public void SaveToCloud()
 	{
 		if ( CurrentTamer == null ) return;
+
+		// Validate stats before saving
+		ClampStats();
 
 		try
 		{

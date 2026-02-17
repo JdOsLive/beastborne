@@ -665,6 +665,27 @@ public sealed class ExpeditionManager : Component
 	}
 
 	/// <summary>
+	/// Update expedition tracking stats (highest cleared + total completed).
+	/// Shared by RetryExpedition, OnBattleEndBackground (auto-retry), and CompleteExpedition.
+	/// </summary>
+	private void UpdateExpeditionStats()
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null || CurrentExpedition == null ) return;
+
+		int expeditionIndex = _expeditions.IndexOf( CurrentExpedition );
+		if ( expeditionIndex >= 0 && expeditionIndex >= tamer.HighestExpeditionCleared )
+		{
+			tamer.HighestExpeditionCleared = Math.Min( expeditionIndex + 1, _expeditions.Count );
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
+			Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
+		}
+		tamer.TotalExpeditionsCompleted++;
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
+		Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
+	}
+
+	/// <summary>
 	/// Retry the current expedition from wave 1, optionally awarding completion rewards first.
 	/// Does NOT reset the player's active monster index.
 	/// </summary>
@@ -680,21 +701,7 @@ public sealed class ExpeditionManager : Component
 
 		if ( awardCompletionRewards )
 		{
-			// Update highest cleared
-			var tamer = TamerManager.Instance?.CurrentTamer;
-			if ( tamer != null )
-			{
-				int expeditionIndex = _expeditions.IndexOf( CurrentExpedition );
-				if ( expeditionIndex >= tamer.HighestExpeditionCleared )
-				{
-					tamer.HighestExpeditionCleared = expeditionIndex + 1;
-					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
-					Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
-				}
-				tamer.TotalExpeditionsCompleted++;
-				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
-				Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
-			}
+			UpdateExpeditionStats();
 
 			// Award expedition completion rewards (accumulated battle rewards already given per-wave)
 			// Apply skill bonuses and hard mode multiplier to rewards
@@ -830,35 +837,22 @@ public sealed class ExpeditionManager : Component
 		{
 			Log.Info( $"[BG] Player completed all waves! AutoRetry={AutoRetry}" );
 
-			// Give expedition completion rewards (accumulated battle rewards already given per-wave)
-			// Apply skill bonuses and hard mode multiplier to rewards
-			float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
-			float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
-			float hardModeMultiplier = GetRewardMultiplier();
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * hardModeMultiplier);
-			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
-			TamerManager.Instance?.AddGold( finalGold );
-			TamerManager.Instance?.AddXP( finalXP );
-			Log.Info( $"[BG] Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
-
-			// Update highest cleared
-			var tamer = TamerManager.Instance?.CurrentTamer;
-			if ( tamer != null )
-			{
-				int expeditionIndex = _expeditions.IndexOf( CurrentExpedition );
-				if ( expeditionIndex >= tamer.HighestExpeditionCleared )
-				{
-					tamer.HighestExpeditionCleared = expeditionIndex + 1;
-					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
-					Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
-				}
-				tamer.TotalExpeditionsCompleted++;
-				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
-				Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
-			}
-
 			if ( AutoRetry )
 			{
+				// Give expedition completion rewards (accumulated battle rewards already given per-wave)
+				// Apply skill bonuses and hard mode multiplier to rewards
+				float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
+				float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
+				float hardModeMultiplier = GetRewardMultiplier();
+				int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * hardModeMultiplier);
+				int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
+				TamerManager.Instance?.AddGold( finalGold );
+				TamerManager.Instance?.AddXP( finalXP );
+				Log.Info( $"[BG] Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
+
+				// Update highest cleared (only here since CompleteExpedition won't be called)
+				UpdateExpeditionStats();
+
 				// Award Boss Tokens before auto-retry resets (otherwise they're lost!)
 				if ( SelectedBoss != null )
 				{
@@ -880,7 +874,7 @@ public sealed class ExpeditionManager : Component
 			}
 			else
 			{
-				// No auto-retry: complete and exit
+				// No auto-retry: complete and exit (CompleteExpedition handles rewards + stats)
 				CompleteExpedition( true );
 			}
 		}
@@ -1352,21 +1346,7 @@ public sealed class ExpeditionManager : Component
 
 		if ( success )
 		{
-			// Update highest cleared
-			var tamer = TamerManager.Instance?.CurrentTamer;
-			if ( tamer != null )
-			{
-				int expeditionIndex = _expeditions.IndexOf( CurrentExpedition );
-				if ( expeditionIndex >= tamer.HighestExpeditionCleared )
-				{
-					tamer.HighestExpeditionCleared = expeditionIndex + 1;
-					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
-					Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
-				}
-				tamer.TotalExpeditionsCompleted++;
-				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
-				Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
-			}
+			UpdateExpeditionStats();
 
 			// Award expedition completion rewards (accumulated battle rewards already given per-wave)
 			// Apply skill bonuses and hard mode multiplier to rewards
@@ -1658,54 +1638,33 @@ public sealed class ExpeditionManager : Component
 				// Full heal after stat recalculation
 				caughtMonster.FullHeal();
 
-				OnMonsterCaught?.Invoke( caughtMonster );
-
-				// Update catch stats & achievements
-				if ( TamerManager.Instance?.CurrentTamer != null )
-				{
-					TamerManager.Instance.CurrentTamer.TotalMonstersCaught++;
-					AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersCaught, TamerManager.Instance.CurrentTamer.TotalMonstersCaught );
-					Stats.SetValue( "monsters-caught", TamerManager.Instance.CurrentTamer.TotalMonstersCaught );
-
-					// Check element-specific catch achievements
-					var caughtSpecies = MonsterManager.Instance?.GetSpecies( caughtMonster.SpeciesId );
-					if ( caughtSpecies != null )
-					{
-						var elementReq = caughtSpecies.Element switch
-						{
-							Data.ElementType.Fire => Data.AchievementRequirement.CaughtElementFire,
-							Data.ElementType.Water => Data.AchievementRequirement.CaughtElementWater,
-							Data.ElementType.Earth => Data.AchievementRequirement.CaughtElementEarth,
-							Data.ElementType.Wind => Data.AchievementRequirement.CaughtElementWind,
-							Data.ElementType.Electric => Data.AchievementRequirement.CaughtElementElectric,
-							Data.ElementType.Ice => Data.AchievementRequirement.CaughtElementIce,
-							Data.ElementType.Nature => Data.AchievementRequirement.CaughtElementNature,
-							Data.ElementType.Metal => Data.AchievementRequirement.CaughtElementMetal,
-							Data.ElementType.Shadow => Data.AchievementRequirement.CaughtElementShadow,
-							Data.ElementType.Spirit => Data.AchievementRequirement.CaughtElementSpirit,
-							Data.ElementType.Neutral => Data.AchievementRequirement.CaughtElementNeutral,
-							_ => (Data.AchievementRequirement?)null
-						};
-						if ( elementReq.HasValue )
-							AchievementManager.Instance?.CheckProgress( elementReq.Value, 1 );
-
-						// Check rarity catch achievements
-						if ( caughtSpecies.BaseRarity >= Data.Rarity.Rare )
-							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityRare, 1 );
-						if ( caughtSpecies.BaseRarity >= Data.Rarity.Epic )
-							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityEpic, 1 );
-						if ( caughtSpecies.BaseRarity >= Data.Rarity.Legendary )
-							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityLegendary, 1 );
-						if ( caughtSpecies.BaseRarity >= Data.Rarity.Mythic )
-							AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.CaughtRarityMythic, 1 );
-					}
-				}
+				RecordMonsterCatch( caughtMonster );
 
 				Log.Info( $"Caught {caughtMonster.Nickname} at level {caughtMonster.Level}!" );
 			}
 		}
 
 		return caught;
+	}
+
+	/// <summary>
+	/// Records a monster catch: increments stats, updates leaderboard, checks achievements, and fires the event.
+	/// All catch paths (TryCatchMonster, negotiation, auto-catch) should call this.
+	/// </summary>
+	public void RecordMonsterCatch( Monster caughtMonster )
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return;
+
+		tamer.TotalMonstersCaught++;
+		Stats.SetValue( "monsters-caught", tamer.TotalMonstersCaught );
+
+		BeastiaryManager.Instance?.DiscoverSpecies( caughtMonster.SpeciesId );
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersCaught, tamer.TotalMonstersCaught );
+
+		OnMonsterCaught?.Invoke( caughtMonster );
+
+		TamerManager.Instance?.SaveToCloud();
 	}
 }
 

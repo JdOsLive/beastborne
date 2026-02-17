@@ -137,7 +137,7 @@ A 512x512 flat solid blue #3B82F6 square with perfectly sharp 90-degree corners,
 
 ### 25. win_1 — First Victory
 ```
-A 512x512 flat solid red #EF4444 square with perfectly sharp 90-degree corners, no rounded corners at all. In the center, a white upright sword silhouette filling 65% of the square. Completely flat colors only, zero shadows, zero gradients, zero lighting effects, zero depth. Only two colors: #EF4444 red and pure white. Vector graphic style, no 3D, no bevels, no gloss.
+A 512x512 flat solid red #ef4444 square with perfectly sharp 90-degree corners, no rounded corners at all. In the center, a white upright sword silhouette filling 65% of the square. Completely flat colors only, zero shadows, zero gradients, zero lighting effects, zero depth. Only two colors: #EF4444 red and pure white. Vector graphic style, no 3D, no bevels, no gloss.
 ```
 
 ### 26. win_10 — Getting Good

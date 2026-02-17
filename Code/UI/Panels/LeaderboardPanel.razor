@@ -120,6 +120,7 @@
 
 	private Dictionary<string, List<LeaderboardEntry>> allEntries = new();
 	private Dictionary<string, int> playerRanks = new();
+	private Dictionary<string, int> playerBoardValues = new();
 	private Dictionary<string, bool> expanded = new();
 	private bool isLoading = true;
 
@@ -127,11 +128,11 @@
 
 	private static readonly CategoryInfo[] Categories = new[]
 	{
-		new CategoryInfo( "arena-score", "arena-score", "Arena Rating", "⚔", "pts", "#fbbf24" ),
+		new CategoryInfo( "arena-score", "arena-score-s0", "Arena Rating", "⚔", "pts", "#fbbf24" ),
 		new CategoryInfo( "arena-wins", "arena-wins", "Arena Wins", "🏆", "wins", "#facc15" ),
 		new CategoryInfo( "expedition-highest", "expedition-highest", "Expedition", "🗺", "", "#34d399" ),
-		new CategoryInfo( "monsters-caught", "monsters-caught", "Caught", "🐾", "", "#60a5fa" ),
-		new CategoryInfo( "monsters-bred", "monsters-bred", "Bred", "🥚", "", "#f472b6" ),
+		new CategoryInfo( "monsters-caught", "monsters-caught", "Contracted", "📜", "", "#60a5fa" ),
+		new CategoryInfo( "monsters-bred", "monsters-bred", "Fused", "🔥", "", "#f472b6" ),
 		new CategoryInfo( "monsters-evolved", "monsters-evolved", "Evolved", "🔮", "", "#c084fc" ),
 		new CategoryInfo( "battles-won", "battles-won", "Battles Won", "🛡", "", "#f87171" ),
 		new CategoryInfo( "total-damage", "total-damage", "Damage", "💥", "dmg", "#fb923c" ),
@@ -185,11 +186,13 @@
 				var myName = Connection.Local?.DisplayName;
 				var myEntry = entries.FirstOrDefault( x => x.Name == myName );
 				var rank = myEntry != null ? myEntry.Rank : (entries.Count + 1);
+				var boardValue = myEntry?.Score ?? 0;
 
 				lock ( allEntries )
 				{
 					allEntries[cat.Key] = entries;
 					playerRanks[cat.Key] = rank;
+					playerBoardValues[cat.Key] = boardValue;
 				}
 
 				Log.Info( $"Fetched {entries.Count} entries for '{cat.LeaderboardName}'" );
@@ -246,11 +249,13 @@
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return 0;
 
-		return key switch
+		int maxExpeditions = ExpeditionManager.Instance?.Expeditions?.Count ?? 16;
+
+		var localValue = key switch
 		{
 			"arena-score" => tamer.ArenaPoints,
 			"arena-wins" => tamer.ArenaWins,
-			"expedition-highest" => tamer.HighestExpeditionCleared,
+			"expedition-highest" => Math.Min( tamer.HighestExpeditionCleared, maxExpeditions ),
 			"monsters-caught" => tamer.TotalMonstersCaught,
 			"monsters-bred" => tamer.TotalMonstersBred,
 			"monsters-evolved" => tamer.TotalMonstersEvolved,
@@ -262,10 +267,17 @@
 			"total-playtime" => (int)tamer.TotalPlayTime.TotalMinutes,
 			_ => 0
 		};
+
+		// Use the higher of local tamer value or leaderboard API value to stay consistent with board entries
+		var boardValue = playerBoardValues.ContainsKey( key ) ? playerBoardValues[key] : 0;
+		return Math.Max( 0, Math.Max( localValue, boardValue ) );
 	}
 
 	private string FormatValue( int value, string category )
 	{
+		// Clamp to sane maximums for display
+		value = ClampForDisplay( value, category );
+
 		return category switch
 		{
 			"arena-score" => $"{value:N0} pts",
@@ -281,6 +293,23 @@
 			"expeditions-completed" => $"{value:N0}",
 			"total-playtime" => FormatPlaytime( value ),
 			_ => $"{value:N0}"
+		};
+	}
+
+	/// <summary>
+	/// Clamp leaderboard values to reasonable maximums to filter out corrupted/cheated entries.
+	/// </summary>
+	private int ClampForDisplay( int value, string category )
+	{
+		if ( value < 0 ) return 0;
+
+		int maxExpeditions = ExpeditionManager.Instance?.Expeditions?.Count ?? 16;
+
+		return category switch
+		{
+			"expedition-highest" => Math.Min( value, maxExpeditions ),
+			"total-playtime" => Math.Min( value, 90 * 24 * 60 ), // 90 days in minutes
+			_ => value
 		};
 	}
 
