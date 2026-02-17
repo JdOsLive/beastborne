@@ -131,6 +131,23 @@ public sealed class TamerManager : Component
 			TotalPlayTime = TimeSpan.FromMinutes( Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}playtime-minutes" ), 0 ) )
 		};
 
+		// Fix overflow damage: if gold went negative from int32 overflow, restore to max
+		if ( CurrentTamer.Gold < 0 )
+		{
+			Log.Warning( $"Overflow recovery: Gold was {CurrentTamer.Gold}, restoring to {int.MaxValue}" );
+			CurrentTamer.Gold = int.MaxValue;
+		}
+		if ( CurrentTamer.TotalGoldEarned < 0 )
+		{
+			Log.Warning( $"Overflow recovery: TotalGoldEarned was {CurrentTamer.TotalGoldEarned}, restoring to {int.MaxValue}" );
+			CurrentTamer.TotalGoldEarned = int.MaxValue;
+		}
+		if ( CurrentTamer.TotalDamageDealt < 0 )
+		{
+			Log.Warning( $"Overflow recovery: TotalDamageDealt was {CurrentTamer.TotalDamageDealt}, restoring to {int.MaxValue}" );
+			CurrentTamer.TotalDamageDealt = int.MaxValue;
+		}
+
 		// Load skill ranks from cookie (Dictionary<string, int>)
 		var skillsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}skill-ranks" ), "{}" );
 		try
@@ -425,8 +442,13 @@ public sealed class TamerManager : Component
 			amount = (int)(amount * (1 + goldBonus / 100f));
 		}
 
-		CurrentTamer.Gold += amount;
-		CurrentTamer.TotalGoldEarned += amount;
+		// Prevent int32 overflow (cap at int.MaxValue)
+		long newGold = (long)CurrentTamer.Gold + amount;
+		CurrentTamer.Gold = (int)Math.Min( newGold, int.MaxValue );
+
+		long newTotal = (long)CurrentTamer.TotalGoldEarned + amount;
+		CurrentTamer.TotalGoldEarned = (int)Math.Min( newTotal, int.MaxValue );
+
 		OnGoldChanged?.Invoke( CurrentTamer.Gold );
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalGoldEarned, CurrentTamer.TotalGoldEarned );
 		Stats.SetValue( "total-gold", CurrentTamer.TotalGoldEarned );

@@ -1,0 +1,384 @@
+@namespace Beastborne.UI.Components
+@using System;
+@using System.Linq;
+@using System.Collections.Generic;
+@using System.Threading.Tasks;
+@using Sandbox;
+@using Sandbox.UI;
+@using Sandbox.Network;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+@* HUD Widget: Compact voice panel when in a voice channel *@
+@if ( Mode == "widget" )
+{
+	<div class="voice-widget @(vcm?.IsInRoom == true ? "" : "hidden")">
+		@if ( vcm?.IsInRoom == true )
+		{
+			@if ( isMinimized )
+			{
+				<!-- Minimized: compact button like RadioWidget -->
+				<button class="vw-mini-btn" onclick=@ToggleMinimize>
+					<span class="vw-mini-icon">🔊</span>
+					<span class="vw-mini-name">@vcm.CurrentRoom.RoomName</span>
+					<span class="vw-mini-count">@vcm.CurrentRoom.Members.Count</span>
+				</button>
+			}
+			else
+			{
+				<!-- Expanded: full voice panel -->
+				<div class="vw-panel">
+					<!-- Header -->
+					<div class="vw-panel-header">
+						<span class="vw-panel-title">Voice Chat</span>
+						<button class="vw-minimize-btn" onclick=@ToggleMinimize>
+							<span>—</span>
+						</button>
+					</div>
+
+					<!-- Room info -->
+					<div class="vw-room-bar">
+						<span class="vw-room-icon">🔊</span>
+						<span class="vw-room-name">@vcm.CurrentRoom.RoomName</span>
+						<span class="vw-member-count">@vcm.CurrentRoom.Members.Count</span>
+					</div>
+
+					<!-- Members -->
+					<div class="vw-section-label"><span>MEMBERS</span></div>
+					<div class="vw-members">
+						@foreach ( var member in vcm.CurrentRoom.Members )
+						{
+							var isLocal = member.ConnectionId == localConnId;
+							var isMuted = !isLocal && vcm.IsPlayerMuted( member.ConnectionId );
+							var isSpeaking = isLocal && vcm.IsLocalSpeaking;
+							var isMicOff = isLocal && !vcm.IsMicActive;
+
+							<div class="vw-member @(isMuted ? "muted" : "") @(isLocal ? "local" : "") @(isSpeaking ? "speaking" : "")">
+								<div class="vw-member-avatar @(isSpeaking ? "speaking" : "") @(isMicOff || isMuted ? "off" : "")">
+									<span class="vw-avatar-letter">@(member.PlayerName?.Length > 0 ? member.PlayerName[0].ToString().ToUpper() : "?")</span>
+								</div>
+								<span class="vw-member-name">@(isLocal ? "You" : member.PlayerName)</span>
+								@if ( isMicOff || isMuted )
+								{
+									<span class="vw-mic-off-icon">🔇</span>
+								}
+								@if ( !isLocal )
+								{
+									<button class="vw-mute-btn" onclick=@(() => ToggleMute( member.ConnectionId ))>
+										<span>@(isMuted ? "Unmute" : "Mute")</span>
+									</button>
+								}
+								@if ( !isLocal && vcm.IsRoomOwner && !vcm.IsInLobby )
+								{
+									<button class="vw-kick-btn" onclick=@(() => KickPlayer( member.ConnectionId ))>
+										<span>Kick</span>
+									</button>
+								}
+							</div>
+						}
+					</div>
+
+					<!-- Controls -->
+					<div class="vw-controls">
+						<button class="vw-mic-btn @(vcm.IsMicActive ? "active" : "off")" onclick=@ToggleMic>
+							<span class="vw-mic-icon">@(vcm.IsMicActive ? "🎙" : "🔇")</span>
+							<span class="vw-mic-label">@(vcm.IsMicActive ? "Mic On" : "Muted")</span>
+						</button>
+						<button class="vw-leave-btn" onclick=@LeaveRoom>
+							<span class="vw-leave-icon">📞</span>
+						</button>
+					</div>
+				</div>
+			}
+		}
+	</div>
+}
+
+@* Browser Mode: Room list for Online Hub *@
+@if ( Mode == "browser" )
+{
+	<div class="voice-browser">
+		<!-- Lobby Card -->
+		@{
+			var lobby = vcm?.Rooms?.FirstOrDefault( r => r.IsLobby );
+			var isInLobby = vcm?.IsInLobby == true;
+		}
+		@if ( lobby != null )
+		{
+			<div class="vb-lobby-card @(isInLobby ? "joined" : "")">
+				<div class="vb-lobby-top">
+					<div class="vb-lobby-left">
+						<div class="vb-lobby-dot-wrap">
+							<span class="vb-lobby-dot"></span>
+						</div>
+						<div class="vb-lobby-info">
+							<span class="vb-lobby-name">Open Lobby</span>
+							<span class="vb-lobby-desc">Talk with everyone — always open</span>
+						</div>
+					</div>
+					<div class="vb-lobby-right">
+						<span class="vb-lobby-count">@lobby.Members.Count</span>
+						<span class="vb-lobby-count-label">online</span>
+					</div>
+				</div>
+
+				<!-- Lobby members preview -->
+				@if ( lobby.Members.Count > 0 )
+				{
+					<div class="vb-lobby-members">
+						@foreach ( var m in lobby.Members.Take( 6 ) )
+						{
+							<div class="vb-member-pip">
+								<span class="vb-pip-letter">@(m.PlayerName?.Length > 0 ? m.PlayerName[0].ToString().ToUpper() : "?")</span>
+							</div>
+						}
+						@if ( lobby.Members.Count > 6 )
+						{
+							<span class="vb-members-more">+@(lobby.Members.Count - 6)</span>
+						}
+					</div>
+				}
+
+				<div class="vb-lobby-action">
+					@if ( isInLobby )
+					{
+						<button class="vb-leave-btn" onclick=@LeaveRoom><span>Leave Lobby</span></button>
+					}
+					else if ( vcm?.IsInRoom != true )
+					{
+						<button class="vb-join-btn lobby" onclick=@JoinLobby><span>Join Lobby</span></button>
+					}
+					else
+					{
+						<span class="vb-in-room-hint">Leave current room to join</span>
+					}
+				</div>
+			</div>
+		}
+
+		<!-- Divider -->
+		<div class="vb-divider">
+			<div class="vb-divider-line"></div>
+			<span class="vb-divider-text">OR</span>
+			<div class="vb-divider-line"></div>
+		</div>
+
+		<!-- Create Room -->
+		@if ( vcm?.IsInRoom != true )
+		{
+			<div class="vb-create-section">
+				<span class="vb-create-label">CREATE A ROOM</span>
+				<div class="vb-create-row">
+					<TextEntry @ref="roomNameInput" class="vb-create-input" placeholder="Room name..." />
+					<button class="vb-create-btn" onclick=@CreateRoom><span>Create</span></button>
+				</div>
+			</div>
+		}
+
+		<!-- Room List -->
+		@{
+			var customRooms = vcm?.Rooms?.Where( r => !r.IsLobby ).ToList() ?? new();
+		}
+		@if ( customRooms.Count > 0 )
+		{
+			<div class="vb-rooms-header">
+				<span class="vb-rooms-label">ACTIVE ROOMS</span>
+				<span class="vb-rooms-count">@customRooms.Count</span>
+			</div>
+
+			<div class="vb-room-list">
+				@foreach ( var room in customRooms )
+				{
+					var isInThisRoom = vcm?.CurrentRoom?.RoomId == room.RoomId;
+					var isFull = room.Members.Count >= room.MaxMembers;
+
+					<div class="vb-room-card @(isInThisRoom ? "joined" : "") @(isFull ? "full" : "")">
+						<div class="vb-room-top">
+							<div class="vb-room-left">
+								<span class="vb-room-icon">🔊</span>
+								<div class="vb-room-info">
+									<span class="vb-room-name">@room.RoomName</span>
+									<span class="vb-room-host">Hosted by @room.OwnerName</span>
+								</div>
+							</div>
+							<div class="vb-room-right">
+								<div class="vb-room-capacity">
+									<span class="vb-room-count">@room.Members.Count</span>
+									<span class="vb-room-sep">/</span>
+									<span class="vb-room-max">@room.MaxMembers</span>
+								</div>
+								@if ( isInThisRoom )
+								{
+									<button class="vb-leave-btn" onclick=@LeaveRoom><span>Leave</span></button>
+								}
+								else if ( vcm?.IsInRoom != true && !isFull )
+								{
+									<button class="vb-join-btn" onclick=@(() => JoinRoom( room.RoomId ))><span>Join</span></button>
+								}
+								else if ( isFull )
+								{
+									<span class="vb-full-label">Full</span>
+								}
+							</div>
+						</div>
+
+						<!-- Room members preview -->
+						@if ( room.Members.Count > 0 )
+						{
+							<div class="vb-room-members">
+								@foreach ( var m in room.Members.Take( 4 ) )
+								{
+									<div class="vb-member-pip">
+										<span class="vb-pip-letter">@(m.PlayerName?.Length > 0 ? m.PlayerName[0].ToString().ToUpper() : "?")</span>
+									</div>
+								}
+								@if ( room.Members.Count > 4 )
+								{
+									<span class="vb-members-more">+@(room.Members.Count - 4)</span>
+								}
+							</div>
+						}
+					</div>
+				}
+			</div>
+		}
+		else if ( vcm?.IsInRoom != true )
+		{
+			<div class="vb-empty">
+				<span class="vb-empty-icon">🎙</span>
+				<span class="vb-empty-text">No voice rooms yet</span>
+				<span class="vb-empty-hint">Create one above or join the lobby</span>
+			</div>
+		}
+
+		<!-- Kicked notification -->
+		@if ( showKickedMessage )
+		{
+			<div class="vb-kicked">
+				<span class="vb-kicked-text">@kickedMessage</span>
+			</div>
+		}
+	</div>
+}
+
+@code {
+	/// <summary>
+	/// "widget" = floating HUD overlay showing active room, "browser" = room list for Online Hub
+	/// </summary>
+	public string Mode { get; set; } = "widget";
+
+	private VoiceChatManager vcm => VoiceChatManager.Instance;
+	private string localConnId => Connection.Local?.Id.ToString() ?? "";
+
+	private TextEntry roomNameInput;
+	private bool showKickedMessage = false;
+	private string kickedMessage = "";
+	private bool isMinimized = false;
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			if ( vcm != null )
+			{
+				vcm.OnRoomsUpdated += OnVoiceStateChanged;
+				vcm.OnCurrentRoomUpdated += OnVoiceStateChanged;
+				vcm.OnKickedFromRoom += OnKicked;
+			}
+		}
+	}
+
+	private void OnVoiceStateChanged()
+	{
+		StateHasChanged();
+	}
+
+	private async void OnKicked( string message )
+	{
+		kickedMessage = message;
+		showKickedMessage = true;
+		StateHasChanged();
+
+		await Task.Delay( 5000 );
+		showKickedMessage = false;
+		StateHasChanged();
+	}
+
+	private void ToggleMinimize()
+	{
+		SoundManager.PlayClick();
+		isMinimized = !isMinimized;
+	}
+
+	// Actions
+	private void JoinLobby()
+	{
+		SoundManager.PlayClick();
+		vcm?.JoinLobby();
+	}
+
+	private void JoinRoom( string roomId )
+	{
+		SoundManager.PlayClick();
+		vcm?.JoinRoom( roomId );
+	}
+
+	private void LeaveRoom()
+	{
+		SoundManager.PlayBack();
+		vcm?.LeaveRoom();
+	}
+
+	private void CreateRoom()
+	{
+		SoundManager.PlayForward();
+		var name = roomNameInput?.Text;
+		if ( string.IsNullOrWhiteSpace( name ) ) name = null;
+		if ( vcm?.CreateRoom( name ) == true )
+		{
+			if ( roomNameInput != null ) roomNameInput.Text = "";
+		}
+	}
+
+	private void ToggleMic()
+	{
+		SoundManager.PlayClick();
+		vcm?.ToggleMic();
+	}
+
+	private void ToggleMute( string connectionId )
+	{
+		SoundManager.PlayClick();
+		vcm?.ToggleMutePlayer( connectionId );
+	}
+
+	private void KickPlayer( string connectionId )
+	{
+		SoundManager.PlayClick();
+		vcm?.KickPlayer( connectionId );
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( Mode );
+		hash.Add( vcm?.IsInRoom ?? false );
+		hash.Add( vcm?.IsMicActive ?? false );
+		hash.Add( vcm?.IsLocalSpeaking ?? false );
+		hash.Add( vcm?.CurrentRoom?.Members?.Count ?? 0 );
+		hash.Add( vcm?.Rooms?.Count ?? 0 );
+		hash.Add( showKickedMessage );
+		hash.Add( isMinimized );
+		if ( vcm?.CurrentRoom != null )
+		{
+			foreach ( var m in vcm.CurrentRoom.Members )
+			{
+				hash.Add( m.ConnectionId );
+				hash.Add( vcm.IsPlayerMuted( m.ConnectionId ) );
+			}
+		}
+		return hash.ToHashCode();
+	}
+}

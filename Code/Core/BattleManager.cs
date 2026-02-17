@@ -842,8 +842,8 @@ public sealed class BattleManager : Component
 		{
 			int battleDamage = damageByMonster.Values.Sum();
 			int battleKOs = kosByMonster.Values.Sum();
-			tamer.TotalDamageDealt += battleDamage;
-			tamer.TotalKnockouts += battleKOs;
+			tamer.TotalDamageDealt = (int)Math.Min( (long)tamer.TotalDamageDealt + battleDamage, int.MaxValue );
+			tamer.TotalKnockouts = (int)Math.Min( (long)tamer.TotalKnockouts + battleKOs, int.MaxValue );
 
 			// Submit to leaderboards
 			if ( battleDamage > 0 )

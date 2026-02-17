@@ -63,6 +63,7 @@ public sealed class GameManager : Component
 		SettingsManager.EnsureInstance( Scene );
 		AchievementManager.EnsureInstance( Scene );
 		TradingManager.EnsureInstance( Scene );
+		VoiceChatManager.EnsureInstance( Scene );
 	}
 
 	public void ChangeState( GameState newState )
