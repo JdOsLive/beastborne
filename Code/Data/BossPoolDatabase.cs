@@ -78,7 +78,11 @@ public static class BossPoolDatabase
 					CreateBoss( "mirrorpond", BossTier.Normal, 1, 5,
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Mirrorpond reflects your attacks!", DEFMultiplier = 1.4f, Ability = BossAbilityType.Shield } ),
 					CreateBoss( "coralheim", BossTier.Normal, 1, 5,
-						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Coralheim regenerates!", Ability = BossAbilityType.Regenerate } )
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Coralheim regenerates!", Ability = BossAbilityType.Regenerate } ),
+					CreateBoss( "namashira", BossTier.Mythic, 15, 60,
+						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "The ocean floor trembles!", DEFMultiplier = 1.5f, Ability = BossAbilityType.Shield },
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Namashira awakens! Tides reverse!", ATKMultiplier = 1.7f, Ability = BossAbilityType.AreaDamage },
+						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Namashira reshapes the coastline!", ATKMultiplier = 2.0f, DEFMultiplier = 1.5f, SPDMultiplier = 1.3f, Ability = BossAbilityType.Enrage } )
 				}
 			},
 
@@ -93,7 +97,11 @@ public static class BossPoolDatabase
 					CreateBoss( "galeclaw", BossTier.Normal, 1, 6,
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Galeclaw screeches!", ATKMultiplier = 1.3f, Ability = BossAbilityType.AreaDamage } ),
 					CreateBoss( "vortexel", BossTier.Normal, 1, 6,
-						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Vortexel spins faster!", SPDMultiplier = 1.5f, ATKMultiplier = 1.2f, Ability = BossAbilityType.Enrage } )
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Vortexel spins faster!", SPDMultiplier = 1.5f, ATKMultiplier = 1.2f, Ability = BossAbilityType.Enrage } ),
+					CreateBoss( "fujinara", BossTier.Mythic, 15, 60,
+						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "The wind sack trembles!", SPDMultiplier = 1.5f, Ability = BossAbilityType.SpeedBoost },
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Fujinara opens the sack! Storms are born!", ATKMultiplier = 1.7f, Ability = BossAbilityType.AreaDamage },
+						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Fujinara laughs! Hurricanes follow!", ATKMultiplier = 2.0f, SPDMultiplier = 1.8f, Ability = BossAbilityType.Enrage } )
 				}
 			},
 
@@ -138,7 +146,11 @@ public static class BossPoolDatabase
 					CreateBoss( "blizzardian", BossTier.Normal, 2, 10,
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Blizzardian summons a blizzard!", SPDMultiplier = 0.8f, ATKMultiplier = 1.3f, Ability = BossAbilityType.AreaDamage } ),
 					CreateBoss( "permafrost", BossTier.Normal, 2, 10,
-						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Permafrost's ice shield forms!", DEFMultiplier = 1.5f, Ability = BossAbilityType.Shield } )
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Permafrost's ice shield forms!", DEFMultiplier = 1.5f, Ability = BossAbilityType.Shield } ),
+					CreateBoss( "bluffrost", BossTier.Mythic, 15, 60,
+						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Bluffrost puffs up trying to look scary!", DEFMultiplier = 1.4f, Ability = BossAbilityType.Shield },
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Bluffrost is actually getting angry now!", ATKMultiplier = 1.7f, SPDMultiplier = 1.4f, Ability = BossAbilityType.SpeedBoost },
+						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Bluffrost sneezes! ...Wait, that was an actual blizzard!", ATKMultiplier = 2.0f, SPDMultiplier = 1.8f, Ability = BossAbilityType.AreaDamage } )
 				}
 			},
 
@@ -171,7 +183,11 @@ public static class BossPoolDatabase
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Forgeborn enters overdrive!", ATKMultiplier = 1.5f, SPDMultiplier = 1.2f, Ability = BossAbilityType.AreaDamage } ),
 					CreateBoss( "junktitan", BossTier.Elite, 4, 15,
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Junktitan absorbs scrap!", DEFMultiplier = 1.4f, Ability = BossAbilityType.Shield },
-						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Junktitan unleashes stored energy!", ATKMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage } )
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Junktitan unleashes stored energy!", ATKMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage } ),
+					CreateBoss( "chalkodon", BossTier.Mythic, 15, 60,
+						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Chalkodon's body rings like a war bell!", DEFMultiplier = 1.6f, Ability = BossAbilityType.Shield },
+						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Molten ichor surges through Chalkodon!", ATKMultiplier = 1.7f, Ability = BossAbilityType.Enrage },
+						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Chalkodon enters guardian protocol!", ATKMultiplier = 2.0f, DEFMultiplier = 1.6f, Ability = BossAbilityType.AreaDamage } )
 				}
 			},
 

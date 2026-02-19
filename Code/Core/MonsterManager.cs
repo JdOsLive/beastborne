@@ -4623,6 +4623,138 @@ public sealed class MonsterManager : Component
 			BeastiaryNumber = 23
 		} );
 
+		// Mythic Water - Inspired by Namazu (鯰), the giant earthquake catfish of Japanese mythology
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "namashira",
+			Name = "Namashira",
+			Description = "A colossal catfish from deep beneath the ocean floor, inspired by the Namazu of Japanese legend. Glowing fault lines crack across its ancient hide, and its long whiskers trail like seismic waves. When it stirs, coastlines reshape and tides reverse.",
+			IconPath = "ui/monsters/namashira/idle/namashira_idle_01.png",
+			BaseHP = 132, BaseATK = 125, BaseDEF = 128, BaseSpA = 98, BaseSpD = 115, BaseSPD = 78,
+			HPGrowth = 8, ATKGrowth = 8, DEFGrowth = 8, SpAGrowth = 6, SpDGrowth = 7, SPDGrowth = 5,
+			Element = ElementType.Water,
+			BaseRarity = Rarity.Mythic,
+			IsCatchable = true,
+			BaseCatchRate = 0.01f,
+			PossibleTraits = new() { "torrent_soul", "titanic_might", "enduring_will" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 1 },
+				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 1 },
+				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 1 },
+				new LearnableMove { MoveId = "deluge", LearnLevel = 40 },
+				new LearnableMove { MoveId = "seismic_surge", LearnLevel = 60 }
+			},
+			AnimationFrames = new()
+			{
+				"ui/monsters/namashira/idle/namashira_idle_01.png",
+				"ui/monsters/namashira/idle/namashira_idle_02.png",
+				"ui/monsters/namashira/idle/namashira_idle_03.png",
+				"ui/monsters/namashira/idle/namashira_idle_04.png"
+			},
+			AnimationFrameRate = 8f,
+			BeastiaryNumber = 140
+		} );
+
+		// Mythic Metal - Inspired by Talos (Τάλως), the giant bronze automaton of Greek mythology who guarded Crete
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "chalkodon",
+			Name = "Chalkodon",
+			Description = "A towering automaton forged from living metal, inspired by the bronze guardian Talos of Greek legend. Molten ichor flows through a single vein from head to ankle, and its hollow body rings like a war bell with every step.",
+			IconPath = "ui/monsters/chalkodon/idle/chalkodon_idle_01.png",
+			BaseHP = 128, BaseATK = 130, BaseDEF = 135, BaseSpA = 78, BaseSpD = 118, BaseSPD = 82,
+			HPGrowth = 8, ATKGrowth = 8, DEFGrowth = 9, SpAGrowth = 5, SpDGrowth = 7, SPDGrowth = 5,
+			Element = ElementType.Metal,
+			BaseRarity = Rarity.Mythic,
+			IsCatchable = true,
+			BaseCatchRate = 0.01f,
+			PossibleTraits = new() { "titanic_might", "enduring_will", "elemental_mastery" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "iron_rush", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 1 },
+				new LearnableMove { MoveId = "titan_drop", LearnLevel = 40 },
+				new LearnableMove { MoveId = "molten_vein", LearnLevel = 60 }
+			},
+			AnimationFrames = new()
+			{
+				"ui/monsters/chalkodon/idle/chalkodon_idle_01.png",
+				"ui/monsters/chalkodon/idle/chalkodon_idle_02.png",
+				"ui/monsters/chalkodon/idle/chalkodon_idle_03.png",
+				"ui/monsters/chalkodon/idle/chalkodon_idle_04.png"
+			},
+			AnimationFrameRate = 8f,
+			BeastiaryNumber = 141
+		} );
+
+		// Mythic Wind - Inspired by Fujin (風神), the Japanese god of wind who carries storms in a great sack
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "fujinara",
+			Name = "Fujinara",
+			Description = "A wild spirit that carries the world's winds in a great swirling sack upon its back, inspired by Fujin of Japanese legend. When it opens the sack, storms are born. When it laughs, hurricanes follow.",
+			IconPath = "ui/monsters/fujinara/idle/fujinara_idle_01.png",
+			BaseHP = 115, BaseATK = 88, BaseDEF = 98, BaseSpA = 132, BaseSpD = 110, BaseSPD = 130,
+			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 8, SpDGrowth = 7, SPDGrowth = 9,
+			Element = ElementType.Wind,
+			BaseRarity = Rarity.Mythic,
+			IsCatchable = true,
+			BaseCatchRate = 0.01f,
+			PossibleTraits = new() { "sky_forsaker", "elemental_mastery", "enduring_will" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "razor_gale", LearnLevel = 1 },
+				new LearnableMove { MoveId = "tempest", LearnLevel = 1 },
+				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "gale_slam", LearnLevel = 40 },
+				new LearnableMove { MoveId = "tempest_unleash", LearnLevel = 60 }
+			},
+			AnimationFrames = new()
+			{
+				"ui/monsters/fujinara/idle/fujinara_idle_01.png",
+				"ui/monsters/fujinara/idle/fujinara_idle_02.png",
+				"ui/monsters/fujinara/idle/fujinara_idle_03.png",
+				"ui/monsters/fujinara/idle/fujinara_idle_04.png"
+			},
+			AnimationFrameRate = 8f,
+			BeastiaryNumber = 142
+		} );
+
+		// Mythic Ice - Inspired by Yuki-onna (雪女) storms of Japanese legend, reimagined as a bumbling ice spirit
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "bluffrost",
+			Name = "Bluffrost",
+			Description = "A bumbling ice spirit inspired by the storms of the Yuki-onna legend. It wraps itself in snowfall like a cloak and tries to look menacing, but its round body and stubby arms make it look like an angry snowdrift. It huffs icy breath to seem fearsome, then sneezes and freezes itself solid.",
+			IconPath = "ui/monsters/bluffrost/idle/bluffrost_idle_01.png",
+			BaseHP = 118, BaseATK = 75, BaseDEF = 105, BaseSpA = 132, BaseSpD = 115, BaseSPD = 125,
+			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 9, SpDGrowth = 7, SPDGrowth = 8,
+			Element = ElementType.Ice,
+			BaseRarity = Rarity.Mythic,
+			IsCatchable = true,
+			BaseCatchRate = 0.01f,
+			PossibleTraits = new() { "frozen_heart", "elemental_mastery", "enduring_will" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "frost_breath", LearnLevel = 1 },
+				new LearnableMove { MoveId = "glacial_bite", LearnLevel = 1 },
+				new LearnableMove { MoveId = "permafrost_ray", LearnLevel = 1 },
+				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 40 },
+				new LearnableMove { MoveId = "cold_shoulder", LearnLevel = 60 }
+			},
+			AnimationFrames = new()
+			{
+				"ui/monsters/bluffrost/idle/bluffrost_idle_01.png",
+				"ui/monsters/bluffrost/idle/bluffrost_idle_02.png",
+				"ui/monsters/bluffrost/idle/bluffrost_idle_03.png",
+				"ui/monsters/bluffrost/idle/bluffrost_idle_04.png"
+			},
+			AnimationFrameRate = 8f,
+			BeastiaryNumber = 143
+		} );
+
 	}
 
 	private void AddSpecies( MonsterSpecies species )

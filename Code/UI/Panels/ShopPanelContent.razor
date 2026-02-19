@@ -95,25 +95,6 @@
 			</div>
 		</div>
 
-		<!-- Active Boosts Banner -->
-		@{
-			var activeBoosts = GetActiveBoosts();
-		}
-		@if (activeBoosts.Count > 0)
-		{
-			<div class="active-boosts-bar">
-				<span class="boosts-label">Active</span>
-				@foreach (var boost in activeBoosts)
-				{
-					<div class="boost-pill">
-						<span class="boost-pill-icon">@GetBoostIcon(boost.Type)</span>
-						<span class="boost-pill-name">@GetBoostName(boost.Type)</span>
-						<span class="boost-pill-time">@GetRemainingTime(boost)</span>
-					</div>
-				}
-			</div>
-		}
-
 		<div class="shop-layout">
 			<!-- Left Side: Items -->
 			<div class="shop-left">
@@ -121,13 +102,18 @@
 					@foreach (var item in GetFilteredItems())
 					{
 						<div class="shop-item @GetItemTypeClass(item.Type) @(CanAfford(item) ? "" : "cant-afford") @(selectedItem?.Id == item.Id ? "selected" : "")"
-							 onclick=@(() => SelectItem(item))>
+							 onclick=@(() => SelectItem(item))
+							>
 							<div class="item-type-badge @GetItemTypeClass(item.Type)">@GetItemCategory(item.Type)</div>
 							<div class="item-icon-container">
-								<span class="item-emoji">@GetItemEmoji(item.Type)</span>
+								<img class="item-icon" src=@($"/{item.IconPath}") />
 								@if (item.Quantity > 1)
 								{
 									<span class="item-quantity">x@(item.Quantity)</span>
+								}
+								@if (item.BoostDurationMinutes > 0)
+								{
+									<span class="item-boost-badge">@GetShortDuration(item.BoostDurationMinutes)</span>
 								}
 							</div>
 							<div class="item-info">
@@ -146,6 +132,17 @@
 							{
 								<div class="level-lock">LV @item.RequiredLevel</div>
 							}
+							<div class="shop-item-tooltip">
+								<div class="tooltip-desc">@item.Description</div>
+								@if (item.BoostDurationMinutes > 0)
+								{
+									<div class="tooltip-duration">@GetBoostLabel(item) for @GetDurationText(item.BoostDurationMinutes)</div>
+								}
+								@if (item.RequiredLevel > 1)
+								{
+									<div class="tooltip-level @(GetLevel() >= item.RequiredLevel ? "" : "locked")">Requires Level @item.RequiredLevel</div>
+								}
+							</div>
 						</div>
 					}
 				</div>
@@ -158,7 +155,7 @@
 					<div class="item-detail">
 						<div class="detail-accent @GetItemTypeClass(selectedItem.Type)"></div>
 						<div class="detail-header">
-							<span class="detail-emoji">@GetItemEmoji(selectedItem.Type)</span>
+							<img class="detail-icon" src=@($"/{selectedItem.IconPath}") />
 							<div class="detail-info">
 								<div class="detail-name">@selectedItem.Name</div>
 								<div class="detail-category-tag @GetItemTypeClass(selectedItem.Type)">@GetItemCategory(selectedItem.Type)</div>
@@ -211,18 +208,9 @@
 				else
 				{
 					<div class="no-selection">
-						@if (activeBoosts.Count > 0)
-						{
-							<span class="no-selection-icon">⚡</span>
-							<span class="no-selection-text">@activeBoosts.Count boost@(activeBoosts.Count > 1 ? "s" : "") active</span>
-							<span class="no-selection-hint">Select an item to purchase</span>
-						}
-						else
-						{
-							<span class="no-selection-icon">🛒</span>
-							<span class="no-selection-text">Select an item</span>
-							<span class="no-selection-hint">Browse items on the left</span>
-						}
+						<span class="no-selection-icon">🛒</span>
+						<span class="no-selection-text">Select an item</span>
+						<span class="no-selection-hint">Browse items on the left</span>
 					</div>
 				}
 			</div>
@@ -366,7 +354,7 @@
 							<div class="shop-item boss-item boss-type-consumable @(!canAfford ? "cant-afford" : "") @(selectedConsumable?.Id == item.Id ? "selected" : "")"
 								 onclick=@(() => SelectConsumable(item))>
 								<div class="item-type-badge boss-type-consumable">Item</div>
-								<div class="consumable-icon">@item.Icon</div>
+								<div class="consumable-icon"><img src=@item.Icon /></div>
 								<div class="item-info">
 									<div class="item-name">@GetBaseName(item.Name)</div>
 									@{ var bSuffix = GetNameSuffix(item.Name); }
@@ -520,7 +508,7 @@
 					<div class="item-detail boss-detail">
 						<div class="detail-accent boss-type-consumable"></div>
 						<div class="detail-header">
-							<div class="consumable-icon-large">@selectedConsumable.Icon</div>
+							<div class="consumable-icon-large"><img src=@selectedConsumable.Icon /></div>
 							<div class="detail-info">
 								<div class="detail-name">@selectedConsumable.Name</div>
 								<div class="detail-category-tag boss-type-consumable">Item</div>
@@ -708,7 +696,7 @@
 		return currentCategory switch
 		{
 			"supplies" => items.Where(i => i.Type == ShopItemType.ContractInk).ToList(),
-			"boosts" => items.Where(i => i.Type == ShopItemType.XPBoost || i.Type == ShopItemType.GoldBoost || i.Type == ShopItemType.RareEncounter).ToList(),
+			"boosts" => items.Where(i => i.Type == ShopItemType.XPBoost || i.Type == ShopItemType.TamerXPBoost || i.Type == ShopItemType.BeastXPBoost || i.Type == ShopItemType.GoldBoost || i.Type == ShopItemType.RareEncounter || i.Type == ShopItemType.LuckyCharm).ToList(),
 			"storage" => items.Where(i => i.Type == ShopItemType.MonsterSlot).ToList(),
 			_ => items
 		};
@@ -742,6 +730,18 @@
 			SoundManager.PlayBack();
 	}
 
+	private string GetBoostLabel(ShopItem item)
+	{
+		return item.Type switch
+		{
+			ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost => "2x XP",
+			ShopItemType.GoldBoost => "2x Gold",
+			ShopItemType.RareEncounter => "2x Rare Encounters",
+			ShopItemType.LuckyCharm => "2x Rare Drops",
+			_ => ""
+		};
+	}
+
 	private string GetDurationText(int minutes)
 	{
 		if (minutes >= 60)
@@ -753,6 +753,16 @@
 		return $"{minutes} minutes";
 	}
 
+	private string GetShortDuration(int minutes)
+	{
+		if (minutes >= 60)
+		{
+			int hours = minutes / 60;
+			return $"{hours}h";
+		}
+		return $"{minutes}m";
+	}
+
 	private string GetBoostName(ShopItemType type)
 	{
 		return type switch
@@ -760,8 +770,9 @@
 			ShopItemType.XPBoost => "2x XP",
 			ShopItemType.TamerXPBoost => "2x Tamer XP",
 			ShopItemType.BeastXPBoost => "2x Beast XP",
-			ShopItemType.GoldBoost => "1.5x Gold",
-			ShopItemType.RareEncounter or ShopItemType.LuckyCharm => "Lucky Charm",
+			ShopItemType.GoldBoost => "2x Gold",
+			ShopItemType.RareEncounter => "Rare Radar",
+			ShopItemType.LuckyCharm => "Lucky Charm",
 			_ => type.ToString()
 		};
 	}
@@ -942,32 +953,32 @@
 	// Boss consumables data (IDs match ItemManager registrations for inventory)
 	private List<BossConsumable> consumables = new()
 	{
-		new BossConsumable { Id = "boss_xp_orb_small", Name = "XP Orb (Small)", Description = "Grants 500 XP to one monster", Icon = "🔮", Cost = 100 },
-		new BossConsumable { Id = "boss_xp_orb_large", Name = "XP Orb (Large)", Description = "Grants 2000 XP to one monster", Icon = "🔮", Cost = 300 },
-		new BossConsumable { Id = "boss_elite_ink", Name = "Elite Contract Ink", Description = "+15% catch rate for 10 minutes", Icon = "✨", Cost = 200 },
-		new BossConsumable { Id = "boss_contract_ink_bundle", Name = "Contract Ink x5", Description = "5 Contract Ink for capturing monsters", Icon = "🖋️", Cost = 150 },
+		new BossConsumable { Id = "boss_xp_orb_small", Name = "XP Orb (Small)", Description = "Grants 500 XP to one monster", Icon = "/ui/items/consumables/xp_orb_small.png", Cost = 100 },
+		new BossConsumable { Id = "boss_xp_orb_large", Name = "XP Orb (Large)", Description = "Grants 2000 XP to one monster", Icon = "/ui/items/consumables/xp_orb_large.png", Cost = 300 },
+		new BossConsumable { Id = "boss_elite_ink", Name = "Elite Contract Ink", Description = "+15% catch rate for 10 minutes", Icon = "/ui/items/consumables/elite_ink.png", Cost = 200 },
+		new BossConsumable { Id = "boss_contract_ink_bundle", Name = "Contract Ink x5", Description = "5 Contract Ink for capturing monsters", Icon = "/ui/items/consumables/contract_ink_bundle.png", Cost = 150 },
 
-		new BossConsumable { Id = "boss_trait_reroll", Name = "Trait Reroll", Description = "Randomly rerolls one of a monster's traits from its species pool", Icon = "🎲", Cost = 500 },
-		new BossConsumable { Id = "boss_gene_booster", Name = "Gene Booster", Description = "Increases a random gene (IV) by +3, max 30", Icon = "🧬", Cost = 1000 },
-		new BossConsumable { Id = "boss_master_ink", Name = "Master Ink", Description = "Guarantees your next capture attempt succeeds (limit 1)", Icon = "🖊️", Cost = 1200 },
+		new BossConsumable { Id = "boss_trait_reroll", Name = "Trait Reroll", Description = "Randomly rerolls one of a monster's traits from its species pool", Icon = "/ui/items/consumables/trait_reroll.png", Cost = 500 },
+		new BossConsumable { Id = "boss_gene_booster", Name = "Gene Booster", Description = "Increases a random gene (IV) by +3, max 30", Icon = "/ui/items/consumables/gene_booster.png", Cost = 1000 },
+		new BossConsumable { Id = "boss_master_ink", Name = "Master Ink", Description = "Guarantees your next capture attempt succeeds (limit 1)", Icon = "/ui/items/consumables/master_ink.png", Cost = 1200 },
 
 		// Nature Runes
-		new BossConsumable { Id = "boss_rune_ferocious", Name = "Ferocious Rune", Description = "Sets nature to Ferocious (+10% ATK, -10% DEF)", Icon = "🔴", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_stalwart", Name = "Stalwart Rune", Description = "Sets nature to Stalwart (+10% DEF, -10% ATK)", Icon = "🔵", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_restless", Name = "Restless Rune", Description = "Sets nature to Restless (+10% SPD, -10% HP)", Icon = "🟢", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_enduring", Name = "Enduring Rune", Description = "Sets nature to Enduring (+10% HP, -10% SPD)", Icon = "🟤", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_reckless", Name = "Reckless Rune", Description = "Sets nature to Reckless (+10% ATK, -10% SPD)", Icon = "🟠", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_stoic", Name = "Stoic Rune", Description = "Sets nature to Stoic (+10% DEF, -10% SPD)", Icon = "⚪", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_skittish", Name = "Skittish Rune", Description = "Sets nature to Skittish (+10% SPD, -10% DEF)", Icon = "🔷", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_vigorous", Name = "Vigorous Rune", Description = "Sets nature to Vigorous (+10% HP, -10% ATK)", Icon = "🍀", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_ruthless", Name = "Ruthless Rune", Description = "Sets nature to Ruthless (+10% ATK, -10% HP)", Icon = "🔺", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_nimble", Name = "Nimble Rune", Description = "Sets nature to Nimble (+10% SPD, -10% ATK)", Icon = "🪶", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_mystical", Name = "Mystical Rune", Description = "Sets nature to Mystical (+10% SpA, -10% ATK)", Icon = "🟣", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_resolute", Name = "Resolute Rune", Description = "Sets nature to Resolute (+10% SpD, -10% SpA)", Icon = "🟡", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_arcane", Name = "Arcane Rune", Description = "Sets nature to Arcane (+10% SpA, -10% DEF)", Icon = "💜", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_warded", Name = "Warded Rune", Description = "Sets nature to Warded (+10% SpD, -10% SPD)", Icon = "🟡", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_cunning", Name = "Cunning Rune", Description = "Sets nature to Cunning (+10% SpA, -10% HP)", Icon = "🔮", Cost = 400 },
-		new BossConsumable { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK)", Icon = "🌸", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_ferocious", Name = "Ferocious Rune", Description = "Sets nature to Ferocious (+10% ATK, -10% DEF)", Icon = "/ui/items/consumables/rune_ferocious.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_stalwart", Name = "Stalwart Rune", Description = "Sets nature to Stalwart (+10% DEF, -10% ATK)", Icon = "/ui/items/consumables/rune_stalwart.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_restless", Name = "Restless Rune", Description = "Sets nature to Restless (+10% SPD, -10% HP)", Icon = "/ui/items/consumables/rune_restless.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_enduring", Name = "Enduring Rune", Description = "Sets nature to Enduring (+10% HP, -10% SPD)", Icon = "/ui/items/consumables/rune_enduring.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_reckless", Name = "Reckless Rune", Description = "Sets nature to Reckless (+10% ATK, -10% SPD)", Icon = "/ui/items/consumables/rune_reckless.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_stoic", Name = "Stoic Rune", Description = "Sets nature to Stoic (+10% DEF, -10% SPD)", Icon = "/ui/items/consumables/rune_stoic.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_skittish", Name = "Skittish Rune", Description = "Sets nature to Skittish (+10% SPD, -10% DEF)", Icon = "/ui/items/consumables/rune_skittish.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_vigorous", Name = "Vigorous Rune", Description = "Sets nature to Vigorous (+10% HP, -10% ATK)", Icon = "/ui/items/consumables/rune_vigorous.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_ruthless", Name = "Ruthless Rune", Description = "Sets nature to Ruthless (+10% ATK, -10% HP)", Icon = "/ui/items/consumables/rune_ruthless.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_nimble", Name = "Nimble Rune", Description = "Sets nature to Nimble (+10% SPD, -10% ATK)", Icon = "/ui/items/consumables/rune_nimble.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_mystical", Name = "Mystical Rune", Description = "Sets nature to Mystical (+10% SpA, -10% ATK)", Icon = "/ui/items/consumables/rune_mystical.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_resolute", Name = "Resolute Rune", Description = "Sets nature to Resolute (+10% SpD, -10% SpA)", Icon = "/ui/items/consumables/rune_resolute.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_arcane", Name = "Arcane Rune", Description = "Sets nature to Arcane (+10% SpA, -10% DEF)", Icon = "/ui/items/consumables/rune_arcane.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_warded", Name = "Warded Rune", Description = "Sets nature to Warded (+10% SpD, -10% SPD)", Icon = "/ui/items/consumables/rune_warded.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_cunning", Name = "Cunning Rune", Description = "Sets nature to Cunning (+10% SpA, -10% HP)", Icon = "/ui/items/consumables/rune_cunning.png", Cost = 400 },
+		new BossConsumable { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK)", Icon = "/ui/items/consumables/rune_serene.png", Cost = 400 },
 	};
 
 	private void PurchaseConsumable(BossConsumable item)

@@ -1424,19 +1424,19 @@ public sealed class ItemManager : Component
 			SellPrice = 0
 		} );
 
-		// Lucky Charm Boosts
+		// Lucky Charm Boosts (rare item drops)
 		AddItem( new ItemDefinition
 		{
 			Id = "boost_lucky_1h",
 			Name = "Lucky Charm (1h)",
-			Description = "+25% catch rate for 1 hour. Server-wide!",
+			Description = "2x rare item drop rate for 1 hour. Server-wide!",
 			IconPath = "ui/items/boosts/lucky_clover.png",
 			Category = ItemCategory.Boost,
 			Rarity = ItemRarity.Rare,
 			IsStackable = true,
 			MaxStack = 10,
 			EffectType = ItemEffectType.ServerLuckyCharm,
-			EffectValue = 25f,
+			EffectValue = 50f,
 			BoostDurationMinutes = 60,
 			BuyPrice = 0,
 			SellPrice = 0
@@ -1446,25 +1446,25 @@ public sealed class ItemManager : Component
 		{
 			Id = "boost_lucky_2h",
 			Name = "Lucky Charm (2h)",
-			Description = "+25% catch rate for 2 hours. Server-wide!",
+			Description = "2x rare item drop rate for 2 hours. Server-wide!",
 			IconPath = "ui/items/boosts/lucky_clover.png",
 			Category = ItemCategory.Boost,
 			Rarity = ItemRarity.Epic,
 			IsStackable = true,
 			MaxStack = 10,
 			EffectType = ItemEffectType.ServerLuckyCharm,
-			EffectValue = 25f,
+			EffectValue = 50f,
 			BoostDurationMinutes = 120,
 			BuyPrice = 0,
 			SellPrice = 0
 		} );
 
-		// Rare Encounter Boosts
+		// Rare Radar Boosts (rare beast encounters)
 		AddItem( new ItemDefinition
 		{
 			Id = "boost_rare_1h",
 			Name = "Rare Radar (1h)",
-			Description = "+50% rare encounter chance for 1 hour. Server-wide!",
+			Description = "2x rare beast encounter rate for 1 hour. Server-wide!",
 			IconPath = "ui/items/boosts/rare_radar.png",
 			Category = ItemCategory.Boost,
 			Rarity = ItemRarity.Rare,
@@ -1481,7 +1481,7 @@ public sealed class ItemManager : Component
 		{
 			Id = "boost_rare_2h",
 			Name = "Rare Radar (2h)",
-			Description = "+50% rare encounter chance for 2 hours. Server-wide!",
+			Description = "2x rare beast encounter rate for 2 hours. Server-wide!",
 			IconPath = "ui/items/boosts/rare_radar.png",
 			Category = ItemCategory.Boost,
 			Rarity = ItemRarity.Epic,
@@ -2539,6 +2539,13 @@ public sealed class ItemManager : Component
 		float itemFindBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ItemFindBonus ) ?? 0;
 		float rareItemBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.RareItemChance ) ?? 0;
 		float doubleDropChance = TamerManager.Instance?.GetSkillBonus( SkillEffectType.DoubleDropChance ) ?? 0;
+
+		// Apply Lucky Charm boost (increases rare item drop chance)
+		float luckyCharmMultiplier = ShopManager.Instance?.GetBoostMultiplier( Data.ShopItemType.LuckyCharm ) ?? 1.0f;
+		if ( luckyCharmMultiplier > 1.0f )
+		{
+			rareItemBonus += (luckyCharmMultiplier - 1.0f) * 100f; // 2x multiplier = +100% rare item bonus
+		}
 
 		// Apply relic bonuses
 		itemFindBonus += GetRelicBonus( ItemEffectType.PassiveItemFind );

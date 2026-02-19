@@ -336,8 +336,8 @@ public sealed class TamerManager : Component
 		int maxExpeditions = ExpeditionManager.Instance?.Expeditions?.Count ?? 16;
 		CurrentTamer.HighestExpeditionCleared = Math.Clamp( CurrentTamer.HighestExpeditionCleared, 0, maxExpeditions );
 
-		// Level: capped at 100
-		CurrentTamer.Level = Math.Clamp( CurrentTamer.Level, 1, 100 );
+		// Level: capped at MaxLevel
+		CurrentTamer.Level = Math.Clamp( CurrentTamer.Level, 1, Tamer.MaxLevel );
 
 		// Playtime: cap at 90 days (in minutes) - game hasn't existed longer than that
 		int maxPlaytimeMinutes = 90 * 24 * 60; // 90 days

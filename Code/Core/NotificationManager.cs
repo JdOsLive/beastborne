@@ -31,10 +31,12 @@ public class Notification
 	public string Title { get; set; }
 	public string Message { get; set; }
 	public string Icon { get; set; }
+	public string IconPath { get; set; } // Image path for pixel art icons (overrides emoji Icon)
 	public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 	public float Duration { get; set; } = 5f; // seconds
 	public bool IsExpired => (DateTime.UtcNow - CreatedAt).TotalSeconds >= Duration;
 	public float Progress => Math.Clamp( 1f - (float)(DateTime.UtcNow - CreatedAt).TotalSeconds / Duration, 0f, 1f );
+	public bool HasImageIcon => !string.IsNullOrEmpty( IconPath );
 }
 
 /// <summary>
@@ -129,7 +131,8 @@ public sealed class NotificationManager : Component
 		if ( boost.ActivatedBySteamId == mySteamId ) return;
 
 		string boostName = GetBoostName( boost.Type );
-		NotifyServerBoost( boost.ActivatedBy ?? "Someone", boostName );
+		string iconPath = GetBoostIconPath( boost.Type );
+		NotifyServerBoost( boost.ActivatedBy ?? "Someone", boostName, iconPath );
 	}
 
 	private void OnPlayerSearchingRanked( string playerName )
@@ -184,10 +187,24 @@ public sealed class NotificationManager : Component
 			Data.ShopItemType.TamerXPBoost => "2x Tamer XP",
 			Data.ShopItemType.BeastXPBoost => "2x Beast XP",
 			Data.ShopItemType.XPBoost => "2x XP",
-			Data.ShopItemType.GoldBoost => "1.5x Gold",
-			Data.ShopItemType.RareEncounter => "Lucky Charm",
+			Data.ShopItemType.GoldBoost => "2x Gold",
+			Data.ShopItemType.RareEncounter => "Rare Radar",
 			Data.ShopItemType.LuckyCharm => "Lucky Charm",
 			_ => type.ToString()
+		};
+	}
+
+	private string GetBoostIconPath( Data.ShopItemType type )
+	{
+		return type switch
+		{
+			Data.ShopItemType.TamerXPBoost => "/ui/items/boosts/tamer_xp_scroll.png",
+			Data.ShopItemType.BeastXPBoost => "/ui/items/boosts/beast_xp_tome.png",
+			Data.ShopItemType.XPBoost => "/ui/items/boosts/tamer_xp_scroll.png",
+			Data.ShopItemType.GoldBoost => "/ui/items/boosts/gold_multiplier.png",
+			Data.ShopItemType.RareEncounter => "/ui/items/boosts/rare_radar.png",
+			Data.ShopItemType.LuckyCharm => "/ui/items/boosts/lucky_clover.png",
+			_ => null
 		};
 	}
 
@@ -214,7 +231,7 @@ public sealed class NotificationManager : Component
 	/// <summary>
 	/// Add a new notification
 	/// </summary>
-	public void AddNotification( NotificationType type, string title, string message, float duration = 5f )
+	public void AddNotification( NotificationType type, string title, string message, float duration = 5f, string iconPath = null )
 	{
 		var notification = new Notification
 		{
@@ -222,6 +239,7 @@ public sealed class NotificationManager : Component
 			Title = title,
 			Message = message,
 			Icon = GetIconForType( type ),
+			IconPath = iconPath,
 			Duration = duration
 		};
 
@@ -264,13 +282,14 @@ public sealed class NotificationManager : Component
 	/// <summary>
 	/// Notify that a server boost was activated
 	/// </summary>
-	public void NotifyServerBoost( string activatedBy, string boostName )
+	public void NotifyServerBoost( string activatedBy, string boostName, string iconPath = null )
 	{
 		AddNotification(
 			NotificationType.ServerBoost,
 			"Server Boost Activated!",
 			$"{activatedBy} activated {boostName} for everyone!",
-			10f
+			10f,
+			iconPath
 		);
 	}
 

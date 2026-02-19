@@ -4,7 +4,9 @@
 
 When the user asks for AI art prompts for any monster, follow these guidelines:
 
-### Core Principle: Description First
+### Core Principle: Mythology & Description First
+
+**Every beast should be based on or inspired by real-world mythology, folklore, or legends.** When creating new beasts, research the source myth and let it inform the creature's design, description, and visual identity.
 
 **The monster's description in MonsterManager.cs is the primary source for visuals.**
 - Read the description carefully

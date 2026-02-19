@@ -1948,6 +1948,62 @@ public static class MoveDatabase
 			MaxPP = 5,
 			Effects = new() { new MoveEffect { Type = MoveEffectType.Recharge } }
 		} );
+
+		// ============================================
+		// MYTHIC SIGNATURE MOVES
+		// ============================================
+
+		AddMove( new MoveDefinition
+		{
+			Id = "seismic_surge",
+			Name = "Seismic Surge",
+			Description = "The ocean floor splits apart. Massive physical water attack that lowers the target's DEF.",
+			Element = ElementType.Water,
+			Category = MoveCategory.Physical,
+			BasePower = 120,
+			Accuracy = 85,
+			MaxPP = 5,
+			Effects = new() { new MoveEffect { Type = MoveEffectType.LowerDEF, Chance = 1.0f, Value = 1 } }
+		} );
+
+		AddMove( new MoveDefinition
+		{
+			Id = "molten_vein",
+			Name = "Molten Vein",
+			Description = "Channels the living ichor that sustains its bronze form. Drains HP from the target.",
+			Element = ElementType.Metal,
+			Category = MoveCategory.Physical,
+			BasePower = 115,
+			Accuracy = 90,
+			MaxPP = 5,
+			Effects = new() { new MoveEffect { Type = MoveEffectType.Drain, Value = 30 } }
+		} );
+
+		AddMove( new MoveDefinition
+		{
+			Id = "tempest_unleash",
+			Name = "Tempest Unleash",
+			Description = "Opens the wind sack fully, releasing every storm at once. Raises user SPD.",
+			Element = ElementType.Wind,
+			Category = MoveCategory.Special,
+			BasePower = 120,
+			Accuracy = 85,
+			MaxPP = 5,
+			Effects = new() { new MoveEffect { Type = MoveEffectType.RaiseSPD, Value = 1, TargetsSelf = true } }
+		} );
+
+		AddMove( new MoveDefinition
+		{
+			Id = "cold_shoulder",
+			Name = "Cold Shoulder",
+			Description = "Turns away in a dramatic huff, blasting the target with icy disdain. Lowers target SpA.",
+			Element = ElementType.Ice,
+			Category = MoveCategory.Special,
+			BasePower = 115,
+			Accuracy = 90,
+			MaxPP = 5,
+			Effects = new() { new MoveEffect { Type = MoveEffectType.LowerSpA, Chance = 1.0f, Value = 1 } }
+		} );
 	}
 
 	private static void AddMove( MoveDefinition move )

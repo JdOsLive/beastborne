@@ -911,6 +911,7 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.SkillPointsInvested => tamer.SkillRanks?.Values.Sum() ?? 0,
 			AchievementRequirement.TamerCardsCollected => tamer.CollectedCards?.Count ?? 0,
 			AchievementRequirement.ArenaRankReached => GetRankNumericValue( tamer.ArenaRank ),
+			AchievementRequirement.BeastiaryCompleted => BeastiaryManager.Instance != null && BeastiaryManager.Instance.GetDiscoveryCount() >= BeastiaryManager.Instance.GetTotalSpeciesCount() && BeastiaryManager.Instance.GetTotalSpeciesCount() > 0 ? 1 : 0,
 			_ => 0
 		};
 	}

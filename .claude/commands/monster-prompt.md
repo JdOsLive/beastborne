@@ -17,5 +17,6 @@ Rules:
 - Ensure visual progression makes sense across evolution lines (base=smaller/cuter, mid=more defined, final=majestic/powerful)
 - Include: 128x128, 4-frame idle, facing left, dark background
 - If the user provides a monster name as an argument, use that. Otherwise ask which monster.
+- Every beast should be based on or inspired by real-world mythology, folklore, or legends. Research the myth and note it in the description/concept.
 
 $ARGUMENTS

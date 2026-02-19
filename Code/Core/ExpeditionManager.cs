@@ -952,9 +952,10 @@ public sealed class ExpeditionManager : Component
 		// Check for rare boss spawn (level 50+ only)
 		if ( pool.RareBossChance > 0 && pool.RareBosses?.Count > 0 )
 		{
-			// Apply Lucky Charm bonus to rare boss chance
-			float luckyBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.RareEncounterChance ) ?? 0;
-			float rareBossChance = pool.RareBossChance * (1 + luckyBonus / 100f);
+			// Apply Rare Radar bonus to rare boss chance (skill tree + shop boost)
+			float skillBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.RareEncounterChance ) ?? 0;
+			float rareRadarMultiplier = ShopManager.Instance?.GetBoostMultiplier( Data.ShopItemType.RareEncounter ) ?? 1.0f;
+			float rareBossChance = pool.RareBossChance * (1 + skillBonus / 100f) * rareRadarMultiplier;
 
 			if ( random.NextDouble() < rareBossChance )
 			{
@@ -1443,13 +1444,13 @@ public sealed class ExpeditionManager : Component
 			Log.Info( $"Token Collector bonus: +{bonusTokens} tokens (+{tokenBonus}%)" );
 		}
 
-		// Lucky Charm bonus (applies to tokens too)
-		float luckyBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.RareEncounterChance ) ?? 0;
-		if ( luckyBonus > 0 )
+		// Rare Radar bonus (applies to tokens too)
+		float rareRadarBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.RareEncounterChance ) ?? 0;
+		if ( rareRadarBonus > 0 )
 		{
-			int bonusTokens = (int)(totalTokens * luckyBonus / 100f);
+			int bonusTokens = (int)(totalTokens * rareRadarBonus / 100f);
 			totalTokens += bonusTokens;
-			Log.Info( $"Lucky Charm bonus: +{bonusTokens} tokens" );
+			Log.Info( $"Rare Radar skill bonus: +{bonusTokens} tokens" );
 		}
 
 		TamerManager.Instance?.AddBossTokens( totalTokens );

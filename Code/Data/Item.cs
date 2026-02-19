@@ -94,8 +94,8 @@ public enum ItemEffectType
 	ServerTamerXPBoost,    // Tamer XP multiplier
 	ServerBeastXPBoost,    // Monster XP multiplier
 	ServerGoldBoost,       // Gold multiplier
-	ServerLuckyCharm,      // Increased catch/rare chance
-	ServerRareEncounter    // Increased rare encounter chance
+	ServerLuckyCharm,      // Increased rare item drop rate
+	ServerRareEncounter    // Increased rare beast encounter rate
 }
 
 /// <summary>
@@ -190,8 +190,8 @@ public class ItemDefinition
 			ItemEffectType.ServerTamerXPBoost => $"{EffectValue}x Tamer XP for {BoostDurationMinutes / 60}h (Server-wide)",
 			ItemEffectType.ServerBeastXPBoost => $"{EffectValue}x Beast XP for {BoostDurationMinutes / 60}h (Server-wide)",
 			ItemEffectType.ServerGoldBoost => $"{EffectValue}x Gold for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerLuckyCharm => $"+{EffectValue}% Catch Rate for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerRareEncounter => $"+{EffectValue}% Rare Encounters for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerLuckyCharm => $"+{EffectValue}% Rare Item Drops for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerRareEncounter => $"+{EffectValue}% Rare Beast Encounters for {BoostDurationMinutes / 60}h (Server-wide)",
 			_ => Description
 		};
 

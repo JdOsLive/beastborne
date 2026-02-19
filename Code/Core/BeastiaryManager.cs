@@ -158,6 +158,13 @@ public sealed class BeastiaryManager : Component
 				);
 			}
 		}
+
+		// Check bestiary completion achievement
+		int total = GetTotalSpeciesCount();
+		if ( total > 0 && DiscoveredSpecies.Count >= total )
+		{
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BeastiaryCompleted, 1 );
+		}
 	}
 
 	public bool IsDiscovered( string speciesId )

@@ -92,7 +92,7 @@ public sealed class ShopManager : Component
 				Id = "ink_small",
 				Name = "Contract Ink (5)",
 				Description = "Used to capture wild monsters. Each capture attempt uses 1 ink.",
-				IconPath = "ui/icons/ink.png",
+				IconPath = "ui/icons/ink_small.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
 				Price = 1000,
@@ -103,7 +103,7 @@ public sealed class ShopManager : Component
 				Id = "ink_large",
 				Name = "Contract Ink (20)",
 				Description = "A bulk pack of contract ink for serious tamers.",
-				IconPath = "ui/icons/ink.png",
+				IconPath = "ui/icons/ink_medium.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
 				Price = 3000,
@@ -114,7 +114,7 @@ public sealed class ShopManager : Component
 				Id = "ink_mega",
 				Name = "Contract Ink (100)",
 				Description = "A massive stockpile of contract ink. For those who catch them all!",
-				IconPath = "ui/icons/ink.png",
+				IconPath = "ui/icons/ink_large.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
 				Price = 12000,
@@ -211,12 +211,12 @@ public sealed class ShopManager : Component
 			{
 				Id = "gold_boost_30",
 				Name = "Gold Boost (30 min)",
-				Description = "50% more gold from battles for 30 minutes.",
+				Description = "2x gold from battles for 30 minutes.",
 				IconPath = "ui/items/boosts/gold_multiplier.png",
 				Type = ShopItemType.GoldBoost,
 				Currency = CurrencyType.Gold,
 				Price = 20000,
-				BoostMultiplier = 1.5f,
+				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 30,
 				RequiredLevel = 5
 			},
@@ -224,12 +224,12 @@ public sealed class ShopManager : Component
 			{
 				Id = "gold_boost_60",
 				Name = "Gold Boost (1 hour)",
-				Description = "50% more gold from battles for 1 hour.",
+				Description = "2x gold from battles for 1 hour.",
 				IconPath = "ui/items/boosts/gold_multiplier.png",
 				Type = ShopItemType.GoldBoost,
 				Currency = CurrencyType.Gold,
 				Price = 35000,
-				BoostMultiplier = 1.5f,
+				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 60,
 				RequiredLevel = 10
 			},
@@ -239,23 +239,23 @@ public sealed class ShopManager : Component
 			{
 				Id = "server_gold_boost_60",
 				Name = "Server Gold Boost (1 hour)",
-				Description = "50% more gold for ALL players for 1 hour! Be a hero!",
+				Description = "2x gold for ALL players for 1 hour! Be a hero!",
 				IconPath = "ui/items/boosts/gold_multiplier.png",
 				Type = ShopItemType.GoldBoost,
 				Currency = CurrencyType.Gold,
 				Price = 400000,
-				BoostMultiplier = 1.5f,
+				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 60,
 				RequiredLevel = 20
 			},
 
-			// Rare Encounter Boost
+			// Rare Radar (increases rate of rarer beasts spawning)
 			new ShopItem
 			{
 				Id = "rare_boost",
-				Name = "Lucky Charm (1 hour)",
-				Description = "Increased chance to encounter rare monsters.",
-				IconPath = "ui/items/boosts/lucky_clover.png",
+				Name = "Rare Radar (1 hour)",
+				Description = "Increases the chance to encounter rarer beasts like Legendaries and Mythics.",
+				IconPath = "ui/items/boosts/rare_radar.png",
 				Type = ShopItemType.RareEncounter,
 				Currency = CurrencyType.Gold,
 				Price = 50000,
@@ -266,25 +266,68 @@ public sealed class ShopManager : Component
 			new ShopItem
 			{
 				Id = "rare_boost_long",
-				Name = "Lucky Charm (3 hours)",
-				Description = "Greatly increased chance to encounter rare monsters for 3 hours.",
-				IconPath = "ui/items/boosts/lucky_clover.png",
+				Name = "Rare Radar (3 hours)",
+				Description = "2x chance to encounter rarer beasts for 3 hours.",
+				IconPath = "ui/items/boosts/rare_radar.png",
 				Type = ShopItemType.RareEncounter,
 				Currency = CurrencyType.Gold,
 				Price = 125000,
-				BoostMultiplier = 2.5f,
+				BoostMultiplier = 2.0f,
 				BoostDurationMinutes = 180,
 				RequiredLevel = 20
+			},
+
+			// Lucky Charm (increases rate of rarer items dropping)
+			new ShopItem
+			{
+				Id = "lucky_charm_60",
+				Name = "Lucky Charm (1 hour)",
+				Description = "Increases the chance of finding rare and epic item drops.",
+				IconPath = "ui/items/boosts/lucky_clover.png",
+				Type = ShopItemType.LuckyCharm,
+				Currency = CurrencyType.Gold,
+				Price = 50000,
+				BoostMultiplier = 2.0f,
+				BoostDurationMinutes = 60,
+				RequiredLevel = 10
+			},
+			new ShopItem
+			{
+				Id = "lucky_charm_180",
+				Name = "Lucky Charm (3 hours)",
+				Description = "2x chance of finding rare item drops for 3 hours.",
+				IconPath = "ui/items/boosts/lucky_clover.png",
+				Type = ShopItemType.LuckyCharm,
+				Currency = CurrencyType.Gold,
+				Price = 125000,
+				BoostMultiplier = 2.0f,
+				BoostDurationMinutes = 180,
+				RequiredLevel = 20
+			},
+
+			// Server-wide Rare Radar
+			new ShopItem
+			{
+				Id = "server_rare_boost_60",
+				Name = "Server Rare Radar (1 hour)",
+				Description = "Increased rare beast encounter rate for ALL players for 1 hour! Be a hero!",
+				IconPath = "ui/items/boosts/rare_radar.png",
+				Type = ShopItemType.RareEncounter,
+				Currency = CurrencyType.Gold,
+				Price = 600000,
+				BoostMultiplier = 2.0f,
+				BoostDurationMinutes = 60,
+				RequiredLevel = 25
 			},
 
 			// Server-wide Lucky Charm
 			new ShopItem
 			{
-				Id = "server_rare_boost_60",
+				Id = "server_lucky_charm_60",
 				Name = "Server Lucky Charm (1 hour)",
-				Description = "Increased rare encounter chance for ALL players for 1 hour! Be a hero!",
+				Description = "Increased rare item drop rate for ALL players for 1 hour! Be a hero!",
 				IconPath = "ui/items/boosts/lucky_clover.png",
-				Type = ShopItemType.RareEncounter,
+				Type = ShopItemType.LuckyCharm,
 				Currency = CurrencyType.Gold,
 				Price = 600000,
 				BoostMultiplier = 2.0f,
@@ -298,7 +341,7 @@ public sealed class ShopManager : Component
 				Id = "monster_slot_medium",
 				Name = "Storage Expansion (+50)",
 				Description = "Expand your monster box by 50 slots. For the growing collection!",
-				IconPath = "ui/icons/slot.png",
+				IconPath = "ui/icons/slot_small.png",
 				Type = ShopItemType.MonsterSlot,
 				Currency = CurrencyType.Gold,
 				Price = 175000,
@@ -310,7 +353,7 @@ public sealed class ShopManager : Component
 				Id = "monster_slot_large",
 				Name = "Storage Expansion (+100)",
 				Description = "Massively expand your monster box by 100 slots. Best value for collectors!",
-				IconPath = "ui/icons/slot.png",
+				IconPath = "ui/icons/slot_large.png",
 				Type = ShopItemType.MonsterSlot,
 				Currency = CurrencyType.Gold,
 				Price = 300000,
@@ -507,23 +550,16 @@ public sealed class ShopManager : Component
 			case ShopItemType.GoldBoost:
 			case ShopItemType.RareEncounter:
 			case ShopItemType.LuckyCharm:
-				if ( isServerBoost )
+				// Add boost to inventory - activated from inventory panel
+				var boostItemId = GetInventoryItemIdForBoost( item.Type, item.BoostDurationMinutes, isServerBoost );
+				if ( boostItemId != null )
 				{
-					// Add boost to inventory instead of activating immediately
-					var inventoryItemId = GetInventoryItemIdForBoost( item.Type, item.BoostDurationMinutes );
-					if ( inventoryItemId != null )
-					{
-						ItemManager.Instance?.AddItem( inventoryItemId, 1 );
-						TamerManager.Instance?.SaveToCloud();
-						Log.Info( $"Added server boost to inventory: {inventoryItemId}" );
-						return true;
-					}
-					return false;
+					ItemManager.Instance?.AddItem( boostItemId, 1 );
+					TamerManager.Instance?.SaveToCloud();
+					Log.Info( $"Added boost to inventory: {boostItemId}" );
+					return true;
 				}
-				else
-				{
-					return AddBoost( item.Type, item.BoostMultiplier, item.BoostDurationMinutes );
-				}
+				return false;
 
 			case ShopItemType.SkillReset:
 				ResetSkills();
@@ -547,18 +583,20 @@ public sealed class ShopManager : Component
 	/// <summary>
 	/// Map a shop boost type to an inventory item ID
 	/// </summary>
-	private string GetInventoryItemIdForBoost( ShopItemType type, int durationMinutes )
+	private string GetInventoryItemIdForBoost( ShopItemType type, int durationMinutes, bool isServerBoost = false )
 	{
 		// Determine duration suffix (1h or 2h)
 		var durationSuffix = durationMinutes <= 60 ? "1h" : "2h";
+		// All boosts use the same inventory items (they all activate as server boosts)
+		var prefix = "boost";
 
 		return type switch
 		{
-			ShopItemType.TamerXPBoost => $"boost_tamer_xp_{durationSuffix}",
-			ShopItemType.BeastXPBoost => $"boost_beast_xp_{durationSuffix}",
-			ShopItemType.GoldBoost => $"boost_gold_{durationSuffix}",
-			ShopItemType.LuckyCharm => $"boost_lucky_{durationSuffix}",
-			ShopItemType.RareEncounter => $"boost_rare_{durationSuffix}",
+			ShopItemType.TamerXPBoost => $"{prefix}_tamer_xp_{durationSuffix}",
+			ShopItemType.BeastXPBoost => $"{prefix}_beast_xp_{durationSuffix}",
+			ShopItemType.GoldBoost => $"{prefix}_gold_{durationSuffix}",
+			ShopItemType.LuckyCharm => $"{prefix}_lucky_{durationSuffix}",
+			ShopItemType.RareEncounter => $"{prefix}_rare_{durationSuffix}",
 			_ => null
 		};
 	}
@@ -721,7 +759,7 @@ public sealed class ShopManager : Component
 				ShopItemType.TamerXPBoost => "Tamer XP Boost",
 				ShopItemType.BeastXPBoost => "Beast XP Boost",
 				ShopItemType.GoldBoost => "Gold Boost",
-				ShopItemType.RareEncounter => "Lucky Charm",
+				ShopItemType.RareEncounter => "Rare Radar",
 				ShopItemType.LuckyCharm => "Lucky Charm",
 				_ => "Boost"
 			};
@@ -760,7 +798,7 @@ public sealed class ShopManager : Component
 			ShopItemType.TamerXPBoost => "Tamer XP Boost",
 			ShopItemType.BeastXPBoost => "Beast XP Boost",
 			ShopItemType.GoldBoost => "Gold Boost",
-			ShopItemType.RareEncounter => "Lucky Charm",
+			ShopItemType.RareEncounter => "Rare Radar",
 			ShopItemType.LuckyCharm => "Lucky Charm",
 			_ => "Boost"
 		};
