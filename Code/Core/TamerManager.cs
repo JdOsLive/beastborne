@@ -607,6 +607,10 @@ public sealed class TamerManager : Component
 		SaveToCloud();
 	}
 
+	// 2x Tamer XP Event — ends Feb 23, 2026 at 10:00 UTC
+	public static readonly DateTime EventXPEnd = new DateTime( 2026, 2, 23, 10, 0, 0, DateTimeKind.Utc );
+	public static bool IsDoubleXPActive => DateTime.UtcNow < EventXPEnd;
+
 	// XP and leveling
 	public void AddXP( int amount )
 	{
@@ -616,7 +620,10 @@ public sealed class TamerManager : Component
 		// Apply relic tamer XP bonus
 		float relicTamerXP = ItemManager.Instance?.GetRelicBonus( ItemEffectType.PassiveTamerXP ) ?? 0;
 
-		int boostedAmount = (int)(amount * tamerXPBoost * (1 + relicTamerXP / 100f));
+		// Apply 2x event bonus
+		float eventMultiplier = IsDoubleXPActive ? 2.0f : 1.0f;
+
+		int boostedAmount = (int)(amount * tamerXPBoost * (1 + relicTamerXP / 100f) * eventMultiplier);
 
 		if ( CurrentTamer.AddXP( boostedAmount ) )
 		{
