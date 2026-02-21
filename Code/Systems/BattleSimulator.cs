@@ -423,7 +423,7 @@ public static class BattleSimulator
 		if ( species == null ) return 10;
 
 		// Base XP from level and rarity
-		int baseXP = defeated.Level * 5;
+		int baseXP = defeated.Level * 3;
 		float rarityMultiplier = species.BaseRarity switch
 		{
 			Rarity.Uncommon => 1.25f,
@@ -459,7 +459,7 @@ public static class BattleSimulator
 		var species = MonsterManager.Instance?.GetSpecies( defeated.SpeciesId );
 		if ( species == null ) return 5;
 
-		int baseGold = 5 + (defeated.Level * 2);
+		int baseGold = 3 + (int)(defeated.Level * 1.3f);
 		float rarityMultiplier = species.BaseRarity switch
 		{
 			Rarity.Uncommon => 1.25f,

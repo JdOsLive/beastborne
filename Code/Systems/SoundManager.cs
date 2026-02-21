@@ -18,6 +18,7 @@ public static class SoundManager
 	private const string UI_TOGGLE_OFF = "sounds/ui/close.sound";
 	private const string UI_NOTIFICATION = "sounds/ui/notification.sound";
 	private const string UI_POPUP = "sounds/ui/popup.sound";
+	private const string UI_POPDOWN = "sounds/ui/popdown.sound";
 	private const string UI_SUCCESS = "sounds/ui/success.sound";
 	private const string UI_MAXIMIZE = "sounds/ui/maximize.sound";
 	private const string UI_MINIMIZE = "sounds/ui/minimize.sound";
@@ -173,6 +174,14 @@ public static class SoundManager
 	public static void PlayPopup()
 	{
 		PlaySound( UI_POPUP, _uiVolume * 0.7f );
+	}
+
+	/// <summary>
+	/// Play when a popup/modal closes.
+	/// </summary>
+	public static void PlayPopdown()
+	{
+		PlaySound( UI_POPDOWN, _uiVolume * 0.7f );
 	}
 
 	/// <summary>

@@ -7,97 +7,137 @@
 @inherits Panel
 
 <root class="@(isExpanded ? "expanded" : "collapsed") @(hasUnread ? "has-unread" : "")">
-	<!-- Collapsed: Small chat button -->
-	@if (!isExpanded)
-	{
-		<div class="chat-button" onclick=@ToggleChat>
-			<span class="chat-button-icon">💬</span>
-			<span class="chat-button-text">CHAT</span>
-			@if (hasUnread)
-			{
-				<span class="chat-button-badge">@unreadCount</span>
-			}
-		</div>
-	}
-
-	<!-- Expanded: Full chat overlay -->
-	@if (isExpanded)
-	{
-		<div class="chat-overlay">
+	<div class="chat-overlay @(isExpanded ? "open" : "")">
+			<div class="bg-scroll"><img src="ui/bg-patterns/bg-chat.svg" /></div>
+			<!-- Header -->
 			<div class="chat-header">
 				<div class="header-left">
-					<span class="chat-icon">💬</span>
+					<img class="chat-icon" src="ui/icons/buttons/chat.svg" />
 					<span class="chat-title">CHAT</span>
 				</div>
 				<div class="header-right">
-					<span class="online-count">@GetOnlineCount() online</span>
-					<button class="close-btn" onclick=@ToggleChat>✕</button>
+					<div class="online-badge">
+						<div class="online-dot"><span> </span></div>
+						<span class="online-count">@GetOnlineCount() online</span>
+					</div>
+					<button class="close-btn" onclick=@ToggleChat><img class="close-icon" src="ui/icons/buttons/close.svg" /><img class="close-icon-anim" src="ui/icons/animated/close.webp" /></button>
 				</div>
 			</div>
 
-			<div class="chat-content">
-				<!-- Messages List -->
-				<div class="messages-container" @ref="messagesContainer">
-					@foreach (var message in GetMessages())
+			<!-- Channel Tabs -->
+			<div class="channel-tabs">
+				<div class="ch-tab @(currentChannel == "global" ? "active" : "")" onclick=@(() => SetChannel("global"))><span>Global</span></div>
+				<div class="ch-tab @(currentChannel == "guild" ? "active" : "") disabled"><span>Guild</span></div>
+				<div class="ch-tab @(currentChannel == "trade" ? "active" : "") disabled"><span>Trade</span></div>
+				<div class="ch-tab @(currentChannel == "help" ? "active" : "") disabled"><span>Help</span></div>
+			</div>
+
+			<!-- Messages -->
+			<div class="chat-messages" @ref="messagesContainer">
+				@foreach (var message in GetMessages())
+				{
+					@if (message.Type == ChatMessageType.Player)
 					{
-						@if (message.Type == ChatMessageType.BeastShowcase)
-						{
-							<div class="message showcase-message" onclick=@(() => ShowShowcasePopup(message))>
-								<span class="message-time">@message.FormattedTime</span>
-								<div class="showcase-card @message.ShowcaseElement.ToLower()">
-									<div class="showcase-header">
-										@if (message.IsDeveloper)
-										{
-											<span class="dev-tag">DEV</span>
-										}
-										<span class="showcase-title">@message.PlayerName is showing off</span>
-									</div>
-									<div class="showcase-content">
+						<!-- Player Message -->
+						<div class="msg">
+							<div class="msg-avatar av-@message.ResolvedNameColor">
+								<img src="avatar:@message.SteamId" />
+								@{
+									var playerLevel = GetPlayerLevel(message);
+								}
+								@if (playerLevel > 0)
+								{
+									<div class="lv-pip"><span>@playerLevel</span></div>
+								}
+							</div>
+							<div class="msg-body">
+								<div class="msg-top">
+									@if (message.IsDeveloper)
+									{
+										<span class="role-pill dev">DEV</span>
+									}
+									<span class="msg-name c-@message.ResolvedNameColor">@message.PlayerName</span>
+									<span class="msg-time">@message.FormattedTime</span>
+								</div>
+								<span class="msg-text">@message.Content</span>
+							</div>
+						</div>
+					}
+					else if (message.Type == ChatMessageType.BeastShowcase)
+					{
+						@{
+							var beSpecies = !string.IsNullOrEmpty(message.ShowcaseSpeciesId)
+								? MonsterManager.Instance?.GetSpecies(message.ShowcaseSpeciesId)
+								: null;
+							var beOffsetX = beSpecies?.IconOffsetX ?? 0f;
+							var beOffsetY = beSpecies?.IconOffsetY ?? 0f;
+						}
+						<!-- Beast Showcase -->
+						<div class="msg">
+							<div class="msg-avatar av-@message.ResolvedNameColor">
+								<img src="avatar:@message.SteamId" />
+							</div>
+							<div class="msg-body">
+								<div class="msg-top">
+									@if (message.IsDeveloper)
+									{
+										<span class="role-pill dev">DEV</span>
+									}
+									<span class="msg-name c-@message.ResolvedNameColor">@message.PlayerName</span>
+									<span class="msg-time">@message.FormattedTime</span>
+								</div>
+								<div class="beast-embed @message.ShowcaseElement.ToLower()" onclick=@(() => ShowShowcasePopup(message))>
+									<div class="be-art">
 										@if (!string.IsNullOrEmpty(message.IconPath))
 										{
-											<img class="showcase-sprite" src="@message.IconPath" />
+											<img src="@message.IconPath" style="margin-left: @(beOffsetX - 18)px; margin-top: @(beOffsetY)px" />
 										}
-										<div class="showcase-info">
-											<div class="showcase-name">@message.ShowcaseNickname</div>
-											<div class="showcase-species">@message.ShowcaseSpeciesName</div>
-											<div class="showcase-stats">
-												<span class="showcase-level">Lv.@message.ShowcaseLevel</span>
-												<span class="showcase-power">@message.ShowcasePower PWR</span>
-											</div>
-											<div class="showcase-extra">
-												<span class="showcase-rarity @message.ShowcaseRarity.ToLower()">@message.ShowcaseRarity</span>
-												@if (!string.IsNullOrEmpty(message.ShowcaseVeteranRank))
-												{
-													<span class="showcase-rank">@message.ShowcaseVeteranRank</span>
-												}
-											</div>
-										</div>
 									</div>
-									<div class="showcase-footer">
-										<span class="click-hint">Click to view details</span>
+									<div class="be-info">
+										<span class="be-name">@message.ShowcaseNickname</span>
+										<div class="be-stats">
+											<span class="be-stat">LV @message.ShowcaseLevel</span>
+											<span class="be-sep">·</span>
+											<span class="be-stat">PWR @message.ShowcasePower</span>
+											<span class="be-sep">·</span>
+											<span class="be-rarity @message.ShowcaseRarity.ToLower()">@message.ShowcaseRarity.ToUpper()</span>
+										</div>
 									</div>
 								</div>
 							</div>
+						</div>
+					}
+					else if (message.Type == ChatMessageType.TamerCardShowcase)
+					{
+						@{
+							var tcGenderClass = (message.CardGender?.ToLower() ?? "male") == "female" ? "female" : "male";
+							var tcAvatarPath = tcGenderClass == "female"
+								? "ui/characters/female/female_tamer.png"
+								: "ui/characters/male/male_tamer.png";
+							var tcExpBg = !string.IsNullOrEmpty( message.CardFavoriteExpeditionId )
+								? ExpeditionManager.Instance?.GetExpedition( message.CardFavoriteExpeditionId )?.BackgroundImage
+								: null;
+							var tcFavSpecies = !string.IsNullOrEmpty( message.CardFavoriteSpeciesId )
+								? MonsterManager.Instance?.GetSpecies( message.CardFavoriteSpeciesId )
+								: null;
+							var tcRankColor = CompetitiveManager.GetRankColor( message.CardArenaRank ?? "Unranked" );
 						}
-						else if (message.Type == ChatMessageType.TamerCardShowcase)
-						{
-							@{
-								var tcGenderClass = (message.CardGender?.ToLower() ?? "male") == "female" ? "female" : "male";
-								var tcAvatarPath = tcGenderClass == "female"
-									? "ui/characters/female/female_tamer.png"
-									: "ui/characters/male/male_tamer.png";
-								var tcExpBg = !string.IsNullOrEmpty( message.CardFavoriteExpeditionId )
-									? ExpeditionManager.Instance?.GetExpedition( message.CardFavoriteExpeditionId )?.BackgroundImage
-									: null;
-								var tcFavSpecies = !string.IsNullOrEmpty( message.CardFavoriteSpeciesId )
-									? MonsterManager.Instance?.GetSpecies( message.CardFavoriteSpeciesId )
-									: null;
-								var tcRankColor = CompetitiveManager.GetRankColor( message.CardArenaRank ?? "Unranked" );
-							}
-							<div class="message showcase-message" onclick=@(() => ShowTamerCardPopup(message))>
-								<span class="message-time">@message.FormattedTime</span>
-								<span class="tc-shared-text">@message.PlayerName shared their Tamer Card</span>
-								<div class="tc-showcase">
+						<!-- Tamer Card Showcase -->
+						<div class="msg">
+							<div class="msg-avatar av-@message.ResolvedNameColor">
+								<img src="avatar:@message.SteamId" />
+							</div>
+							<div class="msg-body">
+								<div class="msg-top">
+									@if (message.IsDeveloper)
+									{
+										<span class="role-pill dev">DEV</span>
+									}
+									<span class="msg-name c-@message.ResolvedNameColor">@message.PlayerName</span>
+									<span class="msg-time">@message.FormattedTime</span>
+								</div>
+								<span class="tc-shared-text">shared their Tamer Card</span>
+								<div class="tc-showcase" onclick=@(() => ShowTamerCardPopup(message))>
 									@if ( tcExpBg != null )
 									{
 										<div class="tc-showcase-bg" style="background-image: url(@tcExpBg)"></div>
@@ -110,7 +150,7 @@
 											<div class="tc-showcase-name-row">
 												@if (message.IsDeveloper)
 												{
-													<span class="dev-tag">DEV</span>
+													<span class="role-pill dev">DEV</span>
 												}
 												<span class="tc-showcase-name">@message.CardName</span>
 											</div>
@@ -128,60 +168,86 @@
 									}
 								</div>
 							</div>
-						}
-						else
-						{
-							<div class="message @GetMessageClass(message)">
-								@if (message.Type == ChatMessageType.Player)
-								{
-									<span class="message-time">@message.FormattedTime</span>
-									@if (message.IsDeveloper)
-									{
-										<span class="dev-tag">DEV</span>
-									}
-									<span class="message-author">@message.PlayerName:</span>
-									<span class="message-text">@message.Content</span>
-								}
-								else
-								{
-									<span class="message-time">@message.FormattedTime</span>
-									@if (!string.IsNullOrEmpty(message.IconPath))
-									{
-										<img class="message-icon" src="@message.IconPath" />
-									}
-									<span class="message-text system">@message.Content</span>
-								}
-							</div>
-						}
+						</div>
 					}
-				</div>
+					else if (message.Type == ChatMessageType.Join)
+					{
+						<!-- Join Message -->
+						<div class="msg-join">
+							<span class="arrow-in">→</span>
+							<span class="jn">@message.PlayerName</span>
+							<span class="join-text">joined the server</span>
+						</div>
+					}
+					else if (message.Type == ChatMessageType.Leave)
+					{
+						<!-- Leave Message -->
+						<div class="msg-join">
+							<span class="arrow-out">←</span>
+							<span class="jn">@message.PlayerName</span>
+							<span class="join-text">left the server</span>
+						</div>
+					}
+					else if (message.Type == ChatMessageType.Achievement)
+					{
+						<!-- Achievement Message -->
+						<div class="msg-achievement">
+							@if (!string.IsNullOrEmpty(message.IconPath))
+							{
+								<img class="sys-icon-img" src="@message.IconPath" />
+							}
+							else
+							{
+								<img class="sys-icon" src="ui/icons/buttons/info.svg" />
+							}
+							<span class="sys-text">@message.Content</span>
+						</div>
+					}
+					else
+					{
+						<!-- System Message -->
+						<div class="msg-system">
+							<img class="sys-icon" src="ui/icons/buttons/info.svg" />
+							<span class="sys-text">@message.Content</span>
+						</div>
+					}
+				}
+			</div>
 
-				<!-- Input Area -->
-				<div class="input-area">
+			<!-- Input Area -->
+			<div class="chat-input-area">
+				<div class="input-row">
 					<ChatInputBox @ref="chatInputBox" OnSubmit=@OnSendMessage />
 					<button class="send-btn" onclick=@OnSendMessage>
-						<span>➤</span>
+						<img class="send-icon" src="ui/icons/buttons/send.svg" />
 					</button>
 				</div>
 			</div>
 		</div>
-	}
-
+	</div>
 </root>
 
 @code {
 	private bool isExpanded = false;
 	private bool hasUnread = false;
 	private int unreadCount = 0;
+	private string currentChannel = "global";
 	private Panel messagesContainer;
 	private ChatInputBox chatInputBox;
+
+	// Static instance for external access (bottom bar toggle)
+	public static ChatPanel Instance { get; private set; }
 
 	// Track if we're focused on chat input
 	public static bool IsChatFocused { get; set; } = false;
 
+	/// <summary>
+	/// Get unread message count for badge display
+	/// </summary>
+	public static int UnreadMessageCount => Instance?.unreadCount ?? 0;
+
 	private void ShowShowcasePopup(ChatMessage message)
 	{
-		// Use the separate popup component for full-screen display
 		BeastShowcasePopup.Show(message);
 	}
 
@@ -194,7 +260,8 @@
 	{
 		if (firstTime)
 		{
-			// Subscribe to chat events
+			Instance = this;
+
 			if (ChatManager.Instance != null)
 			{
 				ChatManager.Instance.OnMessageReceived += OnMessageReceived;
@@ -205,7 +272,6 @@
 
 	public override void OnDeleted()
 	{
-		// Unsubscribe from events
 		if (ChatManager.Instance != null)
 		{
 			ChatManager.Instance.OnMessageReceived -= OnMessageReceived;
@@ -216,7 +282,6 @@
 
 	private void OnMessageReceived(ChatMessage message)
 	{
-		// If chat is collapsed, show unread indicator
 		if (!isExpanded)
 		{
 			hasUnread = true;
@@ -224,7 +289,6 @@
 		}
 		else
 		{
-			// Scroll to bottom when receiving new message while open
 			_ = ScrollToBottomDelayed();
 		}
 
@@ -238,23 +302,21 @@
 		StateHasChanged();
 	}
 
-	private void ToggleChat()
+	public void ToggleChat()
 	{
 		isExpanded = !isExpanded;
-		SoundManager.PlayClick();
 
 		if (isExpanded)
 		{
-			// Clear unread when opening
+			SoundManager.PlayPopup();
 			hasUnread = false;
 			unreadCount = 0;
-
-			// Focus input and scroll to bottom after a small delay
 			_ = FocusInputDelayed();
 			_ = ScrollToBottomDelayed();
 		}
 		else
 		{
+			SoundManager.PlayPopdown();
 			IsChatFocused = false;
 		}
 	}
@@ -268,7 +330,6 @@
 
 	private async Task ScrollToBottomDelayed()
 	{
-		// Wait for UI to render
 		await Task.Delay(50);
 		if (messagesContainer != null)
 		{
@@ -284,8 +345,6 @@
 		ChatManager.Instance?.SendMessage(text);
 		chatInputBox?.ClearText();
 		SoundManager.PlayForward();
-
-		// Refocus input
 		chatInputBox?.FocusInput();
 	}
 
@@ -299,46 +358,48 @@
 		return ChatManager.Instance?.OnlinePlayerCount ?? 1;
 	}
 
-	private string GetMessageClass(ChatMessage message)
+	private void SetChannel(string channel)
 	{
-		return message.Type switch
+		currentChannel = channel;
+		SoundManager.PlayClick();
+	}
+
+	private int GetPlayerLevel(ChatMessage message)
+	{
+		// Local player — get from current tamer
+		if (message.SteamId == (ChatManager.Instance?.LocalSteamId ?? 0))
 		{
-			ChatMessageType.Player => "player-message",
-			ChatMessageType.System => "system-message",
-			ChatMessageType.Achievement => "achievement-message",
-			ChatMessageType.Join => "join-message",
-			ChatMessageType.Leave => "leave-message",
-			ChatMessageType.BeastShowcase => "showcase-message",
-			ChatMessageType.TamerCardShowcase => "showcase-message",
-			_ => ""
-		};
+			return TamerManager.Instance?.CurrentTamer?.Level ?? 0;
+		}
+
+		// Remote players — card showcase messages carry level data
+		if (message.CardLevel > 0) return message.CardLevel;
+
+		return 0;
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
 
-		// Handle keyboard shortcuts
 		if (isExpanded)
 		{
-			// Escape to close chat
 			if (Input.Pressed("Escape"))
 			{
 				isExpanded = false;
 				IsChatFocused = false;
-				SoundManager.PlayBack();
+				SoundManager.PlayPopdown();
 			}
 		}
 		else
 		{
-			// T or Enter to open chat (when not already focused)
 			if (Input.Pressed("Chat") || Input.Pressed("Enter"))
 			{
 				isExpanded = true;
 				hasUnread = false;
 				unreadCount = 0;
 				_ = FocusInputDelayed();
-				SoundManager.PlayClick();
+				SoundManager.PlayPopup();
 			}
 		}
 	}
@@ -349,6 +410,7 @@
 		hash.Add(isExpanded);
 		hash.Add(hasUnread);
 		hash.Add(unreadCount);
+		hash.Add(currentChannel);
 		hash.Add(chatInputBox?.GetText());
 		hash.Add(ChatManager.Instance?.Messages?.Count ?? 0);
 		hash.Add(GetOnlineCount());

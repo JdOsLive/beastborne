@@ -1,4 +1,5 @@
 @namespace Beastborne.UI.Components
+@using System.Linq;
 @using Sandbox;
 @using Sandbox.UI;
 @using Beastborne.Core;
@@ -6,69 +7,91 @@
 @inherits Panel
 
 <div class="notification-panel @(isExpanded ? "expanded" : "")">
-	@if (isExpanded)
-	{
-		<!-- Expanded History View -->
-		<div class="notification-history">
-			<div class="notification-history-header">
-				<div class="header-left">
-					<span class="history-icon">🔔</span>
-					<span class="history-title">NOTIFICATIONS</span>
+	<!-- Expanded History View — always rendered, animated via CSS -->
+	<div class="notification-history @(isExpanded ? "open" : "")">
+			<div class="bg-scroll"><img src="ui/bg-patterns/bg-notifications.svg" /></div>
+			<!-- Header -->
+			<div class="notif-header">
+				<div class="notif-header-left">
+					<img class="notif-icon" src="ui/icons/buttons/notification.svg" />
+					<span class="notif-title">NOTIFICATIONS</span>
 				</div>
-				<div class="history-actions">
-					@if (GetHistory().Count > 0)
-					{
-						<button class="clear-btn" onclick=@ClearHistory>Clear All</button>
+				<div class="notif-header-right">
+					@{
+						var unread = GetUnreadCount();
 					}
-					<button class="close-btn" onclick=@ToggleExpanded>×</button>
+					@if (unread > 0)
+					{
+						<span class="notif-badge">@unread new</span>
+					}
+					<button class="close-btn" onclick=@ToggleExpanded><img class="close-icon" src="ui/icons/buttons/close.svg" /><img class="close-icon-anim" src="ui/icons/animated/close.webp" /></button>
 				</div>
 			</div>
-			<div class="notification-history-list">
+
+			<!-- Filter Tabs -->
+			<div class="notif-filter">
+				<div class="nf-pill @(currentFilter == "all" ? "active" : "")" onclick=@(() => SetFilter("all"))><span>All</span></div>
+				<div class="nf-pill @(currentFilter == "game" ? "active" : "")" onclick=@(() => SetFilter("game"))><span>Game</span></div>
+				<div class="nf-pill @(currentFilter == "social" ? "active" : "")" onclick=@(() => SetFilter("social"))><span>Social</span></div>
+				<div class="nf-pill @(currentFilter == "system" ? "active" : "")" onclick=@(() => SetFilter("system"))><span>System</span></div>
+			</div>
+
+			<!-- Notification List -->
+			<div class="notif-list">
 				@{
-					var history = GetHistory();
+					var filtered = GetFilteredHistory();
 				}
-				@if (history.Count == 0)
+				@if (filtered.Count == 0)
 				{
-					<div class="no-notifications">No notifications yet</div>
+					<div class="no-notifications"><span>No notifications yet</span></div>
 				}
 				else
 				{
-					@foreach (var notification in history)
+					@foreach (var notification in filtered)
 					{
-						<div class="notification-history-item @GetTypeClass(notification.Type)">
-							<div class="notification-icon">
+						<div class="notif-msg @GetTypeClass(notification.Type)">
+							<div class="ni @GetTypeClass(notification.Type)">
 								@if (notification.HasImageIcon)
 								{
-									<img class="notification-icon-img" src=@notification.IconPath />
+									<img class="ni-img" src=@notification.IconPath />
 								}
 								else
 								{
 									<span>@notification.Icon</span>
 								}
 							</div>
-							<div class="notification-content">
-								<div class="notification-title">@notification.Title</div>
-								<div class="notification-message">@notification.Message</div>
-								<div class="notification-time">@GetTimeAgo(notification.CreatedAt)</div>
+							<div class="nc">
+								<span class="nt @GetTypeClass(notification.Type)">@notification.Title</span>
+								<span class="ns">@notification.Message</span>
 							</div>
+							<span class="ntime">@GetTimeAgo(notification.CreatedAt)</span>
 						</div>
 					}
 				}
 			</div>
-		</div>
-	}
-	else
-	{
-		<!-- Expand Button (at top) -->
-		<button class="notification-expand-btn @(GetUnreadCount() > 0 ? "has-unread" : "")" onclick=@ToggleExpanded>
-			<span class="notification-btn-icon">🔔</span>
-			<span class="notification-btn-text">NOTIFICATIONS</span>
-			@if (GetUnreadCount() > 0)
-			{
-				<span class="unread-badge">@GetUnreadCount()</span>
-			}
-		</button>
 
+			<!-- Clear All -->
+			@if (GetHistory().Count > 0)
+			{
+				<div class="notif-clear">
+					<div class="notif-clear-btn" onclick=@ClearHistory><span>Clear All Notifications</span></div>
+				</div>
+			}
+		</div>
+
+	<!-- Expand Button (always visible) -->
+	<button class="notification-expand-btn @(GetUnreadCount() > 0 ? "has-unread" : "")" onclick=@ToggleExpanded>
+		<img class="notification-btn-icon" src="ui/icons/buttons/notification.svg" />
+		<img class="notification-btn-icon-anim" src="ui/icons/animated/notification.webp" />
+		<span class="notification-btn-text">NOTIFICATIONS</span>
+		@if (GetUnreadCount() > 0)
+		{
+			<span class="unread-badge">@GetUnreadCount()</span>
+		}
+	</button>
+
+	@if (!isExpanded)
+	{
 		<!-- Toast Notifications (below button) -->
 		@foreach (var notification in GetNotifications())
 		{
@@ -87,7 +110,7 @@
 					<div class="notification-title">@notification.Title</div>
 					<div class="notification-message">@notification.Message</div>
 				</div>
-				<div class="notification-close">×</div>
+				<div class="notification-close"><img class="close-icon" src="ui/icons/buttons/close.svg" /></div>
 				<div class="notification-progress">
 					<div class="notification-progress-bar" style="width: @(notification.Progress * 100)%"></div>
 				</div>
@@ -98,8 +121,9 @@
 
 @code {
 	private bool isExpanded = false;
+	private string currentFilter = "all";
 
-	// Static property so other components (like RadioWidget) can check if notifications are open
+	// Static property so other components can check if notifications are open
 	public static bool IsNotificationsExpanded { get; private set; } = false;
 
 	private List<Notification> GetNotifications()
@@ -110,6 +134,26 @@
 	private List<Notification> GetHistory()
 	{
 		return NotificationManager.Instance?.NotificationHistory?.ToList() ?? new();
+	}
+
+	private List<Notification> GetFilteredHistory()
+	{
+		var history = GetHistory();
+		if (currentFilter == "all") return history;
+		return history.Where(n => GetFilterCategory(n.Type) == currentFilter).ToList();
+	}
+
+	private string GetFilterCategory(NotificationType type)
+	{
+		return type switch
+		{
+			NotificationType.Evolution => "game",
+			NotificationType.Catch => "game",
+			NotificationType.ServerBoost => "game",
+			NotificationType.ExpeditionUnlock => "game",
+			NotificationType.RankedBattle => "social",
+			_ => "system"
+		};
 	}
 
 	private int GetUnreadCount()
@@ -129,6 +173,7 @@
 			NotificationType.RankedBattle => "ranked-battle",
 			NotificationType.Catch => "catch",
 			NotificationType.TamerLevelUp => "tamer-level-up",
+			NotificationType.ExpeditionUnlock => "expedition-unlock",
 			_ => "info"
 		};
 	}
@@ -137,9 +182,15 @@
 	{
 		var diff = DateTime.UtcNow - time;
 		if (diff.TotalSeconds < 60) return "Just now";
-		if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
-		if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
-		return $"{(int)diff.TotalDays}d ago";
+		if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m";
+		if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h";
+		return $"{(int)diff.TotalDays}d";
+	}
+
+	private void SetFilter(string filter)
+	{
+		currentFilter = filter;
+		SoundManager.PlayClick();
 	}
 
 	private void DismissNotification(Guid id)
@@ -151,12 +202,16 @@
 	private void ToggleExpanded()
 	{
 		isExpanded = !isExpanded;
-		IsNotificationsExpanded = isExpanded; // Update static property for other components
+		IsNotificationsExpanded = isExpanded;
 		if (isExpanded)
 		{
 			NotificationManager.Instance?.MarkAllRead();
+			SoundManager.PlayPopup();
 		}
-		SoundManager.PlayClick();
+		else
+		{
+			SoundManager.PlayPopdown();
+		}
 	}
 
 	private void ClearHistory()
@@ -169,6 +224,7 @@
 	{
 		var hash = new HashCode();
 		hash.Add(isExpanded);
+		hash.Add(currentFilter);
 		hash.Add(GetNotifications().Count);
 		hash.Add(GetHistory().Count);
 		hash.Add(GetUnreadCount());

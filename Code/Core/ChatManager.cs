@@ -421,6 +421,12 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	/// </summary>
 	private void AddMessage( ChatMessage message )
 	{
+		// Assign deterministic name color if not already set
+		if ( string.IsNullOrEmpty( message.NameColor ) )
+		{
+			message.NameColor = ChatMessage.GetColorForSteamId( message.SteamId );
+		}
+
 		_messages.Add( message );
 
 		// Trim old messages if we exceed the limit

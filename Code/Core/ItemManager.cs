@@ -2271,7 +2271,6 @@ public sealed class ItemManager : Component
 			return false;
 
 		relics.Add( itemId );
-		RemoveItem( itemId, 1 );
 		OnRelicEquipped?.Invoke( itemId );
 
 		// Check relic equip achievement (3 relics at once)
@@ -2297,7 +2296,6 @@ public sealed class ItemManager : Component
 			return false;
 
 		relics.Remove( itemId );
-		AddItem( itemId, 1 );
 		OnRelicUnequipped?.Invoke( itemId );
 
 		Log.Info( $"Unequipped relic: {item.Name}" );

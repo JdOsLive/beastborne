@@ -16,7 +16,7 @@
 				<span class="arena-section-title">Arena</span>
 				<span class="arena-section-subtitle">Battle other tamers in ranked matches</span>
 			</div>
-			<button class="arena-back-btn" onclick=@OnBackToHub><span>Back</span></button>
+			<button class="back-btn" onclick=@OnBackToHub><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
 		</div>
 
 		<!-- Mode Select Screen -->
@@ -92,7 +92,7 @@
 		<!-- Team Selection Screen (Expedition-style) -->
 		<div class="team-select-screen">
 			<div class="team-select-header">
-				<button class="back-btn" onclick=@BackToModeSelect>&#8592;</button>
+				<button class="back-btn" onclick=@BackToModeSelect><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
 				<div class="header-titles">
 					<span class="team-select-title">SELECT YOUR TEAM</span>
 					<span class="team-select-subtitle">@(selectedMode == CompetitiveManager.ArenaMode.Ranked ? "Ranked" : "Quick Play") — Best of 3</span>
@@ -537,7 +537,7 @@
 			<div class="history-header">
 				<span class="history-title">MATCH HISTORY</span>
 				<button class="close-btn" onclick=@ReturnToModeSelect>
-					<span class="close-text">x</span>
+					<img class="close-icon" src="ui/icons/buttons/close.svg" />
 				</button>
 			</div>
 			<div class="history-list">
@@ -570,7 +570,7 @@
 			<div class="rules-header">
 				<span class="rules-title">ARENA RULES</span>
 				<button class="close-btn" onclick=@ReturnToModeSelect>
-					<span class="close-text">x</span>
+					<img class="close-icon" src="ui/icons/buttons/close.svg" />
 				</button>
 			</div>
 
@@ -629,6 +629,22 @@
 			</div>
 		</div>
 	}
+
+	@if (showExpeditionWarning)
+	{
+		<div class="confirm-overlay" onclick=@CancelExpeditionWarning>
+			<div class="confirm-panel" onclick:stopPropagation>
+				<div class="confirm-title">Expedition In Progress</div>
+				<div class="confirm-content">
+					<div class="confirm-warning">Joining an arena match will end your current expedition. Any progress will be lost.</div>
+				</div>
+				<div class="confirm-buttons">
+					<button class="confirm-btn cancel" onclick=@CancelExpeditionWarning>Cancel</button>
+					<button class="confirm-btn release" onclick=@ConfirmExpeditionWarning>Continue</button>
+				</div>
+			</div>
+		</div>
+	}
 </div>
 
 @code {
@@ -651,6 +667,10 @@
 	private DateTime queueStartTime;
 	private string matchmakingError = null;
 	private bool isWaitingForOpponent = false;
+
+	// Expedition warning state
+	private bool showExpeditionWarning = false;
+	private Action pendingArenaAction = null;
 
 	// Team selection state (expedition-style)
 	private string arenaFilter = "all";
@@ -1067,6 +1087,20 @@
 			return;
 		}
 
+		if (ExpeditionManager.Instance?.CurrentExpedition != null)
+		{
+			pendingArenaAction = () => FindAIOpponentInternal();
+			showExpeditionWarning = true;
+			SoundManager.PlayClick();
+			StateHasChanged();
+			return;
+		}
+
+		FindAIOpponentInternal();
+	}
+
+	private async void FindAIOpponentInternal()
+	{
 		SoundManager.PlayForward();
 		currentView = "matchmaking";
 		isOnlineMatchmaking = false;
@@ -1084,9 +1118,9 @@
 		await Task.Delay(3000);
 		if (currentView == "vs-splash")
 		{
-			CompetitiveManager.Instance?.StartArenaSet();
 			currentView = "battle";
 			StateHasChanged();
+			CompetitiveManager.Instance?.StartArenaSet();
 		}
 	}
 
@@ -1112,6 +1146,20 @@
 			return;
 		}
 
+		if (ExpeditionManager.Instance?.CurrentExpedition != null)
+		{
+			pendingArenaAction = () => FindOnlineOpponentInternal();
+			showExpeditionWarning = true;
+			SoundManager.PlayClick();
+			StateHasChanged();
+			return;
+		}
+
+		FindOnlineOpponentInternal();
+	}
+
+	private void FindOnlineOpponentInternal()
+	{
 		SoundManager.PlayForward();
 		currentView = "matchmaking";
 		isOnlineMatchmaking = true;
@@ -1180,14 +1228,15 @@
 	private void OnBetweenGamesStart()
 	{
 		Log.Info("[ArenaPanel] Between games");
-		BattleManager.Instance?.ExitBattle();
 		currentView = "between-games";
+		StateHasChanged();
 	}
 
 	private void OnNextGameStartEvent()
 	{
 		Log.Info("[ArenaPanel] Next game starting");
 		currentView = "battle";
+		StateHasChanged();
 	}
 
 	private void OnSetCompleteEvent(bool won, int pointsChange)
@@ -1229,8 +1278,9 @@
 		}
 		else
 		{
-			CompetitiveManager.Instance?.StartArenaSet();
 			currentView = "battle";
+			StateHasChanged();
+			CompetitiveManager.Instance?.StartArenaSet();
 		}
 	}
 
@@ -1259,6 +1309,23 @@
 		isOnlineMatchmaking = false;
 		isWaitingForOpponent = false;
 		currentView = "team-select";
+	}
+
+	private void CancelExpeditionWarning()
+	{
+		SoundManager.PlayBack();
+		showExpeditionWarning = false;
+		pendingArenaAction = null;
+	}
+
+	private void ConfirmExpeditionWarning()
+	{
+		SoundManager.PlayForward();
+		showExpeditionWarning = false;
+		ExpeditionManager.Instance?.CancelExpedition();
+		var action = pendingArenaAction;
+		pendingArenaAction = null;
+		action?.Invoke();
 	}
 
 	private void CancelMatch()

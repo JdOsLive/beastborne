@@ -135,6 +135,7 @@ s&box uses a custom CSS engine that behaves differently from browsers. Keep thes
 |-------|---------|
 | **line-height must be extremely high** | For large font sizes (30px+), `line-height` needs to be 18–24+ or the text gets clipped. Normal values like 1.2 or 2 are not enough. Example: `font-size: 42px` needs `line-height: 24` to render fully. |
 | **`overflow: hidden` collapses flex children** | Setting `overflow: hidden` on a flex child can cause it to shrink to zero width/height, making content invisible. Avoid it on flex children. |
+| **Scroll containers need flat children** | s&box cannot correctly calculate scroll height when a scrollable container has nested flex containers. Scrollable items must be **direct children** of the `overflow-y: scroll` element — do NOT wrap them in an intermediate div. Follow the roster-grid pattern: parent with `display: flex; flex-direction: column; overflow: hidden; height: Xpx;` and scroll child with `flex: 1 1 0; min-height: 0; overflow-y: scroll;` with items as direct children. |
 | **`flex-wrap: wrap` miscalculates height** | The container won't compute its height correctly when children wrap. Use explicit row containers instead (e.g., two `.stats-row` divs instead of one flex-wrap grid). |
 | **Bare text renders vertically** | Text not wrapped in a `<span>` or other element inside flex containers may render character-by-character vertically. Always wrap text in elements. |
 | **`flex: 1` can fail with multiple siblings** | When a flex container has 3+ children, `flex: 1` may not distribute space correctly. Use explicit `width` values instead. |
@@ -143,6 +144,8 @@ s&box uses a custom CSS engine that behaves differently from browsers. Keep thes
 | **URL quotes in `background-image` not supported** | Use `url(@variable)` not `url('@variable')` in inline styles — s&box doesn't need quotes around URLs. |
 | **Empty divs render as visible panels** | Empty `<div>` elements may render as gray rectangles or scrollbar artifacts. Remove wrapper divs that have no content. |
 | **`text-overflow: ellipsis` with `overflow: hidden`** | This combination can collapse the element in s&box flex layouts. Avoid using `overflow: hidden` on text elements inside flex containers. |
+| **Duplicate UI across panels** | Some UI components (like move-picker, confirm dialogs) are duplicated in both `MonsterRosterPanel` and `MonsterDetailPanel`. When fixing styles, check BOTH `.razor.scss` files. The roster panel is the primary one used in-game. |
+| **Custom fonts must be in `Assets/fonts/` root** | s&box only discovers font files placed **directly** in `Assets/fonts/` — NOT in subdirectories. Place TTF files like `Assets/fonts/Exo2-Bold.ttf`, not `Assets/fonts/Exo2/Exo2-Bold.ttf`. Register in SCSS with `Exo2 { font-family: url("fonts/Exo2-Bold.ttf"); }` and use `font-family: Exo2;` (the embedded font family name from TTF metadata, no space). Resources in `.sbproj` must include `fonts/*`. |
 
 ---
 
@@ -211,3 +214,23 @@ When writing patch notes for Discord announcements, follow this format:
 | UI/UX | 🎨 |
 | Performance | ⚡ |
 | Warning/Important | ⚠️ |
+
+---
+
+## Animated Icon Workflow (SVG → WebP)
+
+s&box does NOT support animated SVGs or CSS `@keyframes`. To create animated icons:
+
+1. **Create animated SVGs** with CSS `@keyframes` animations (user does this manually or with a tool)
+2. **Place animated SVGs** in `Assets/ui/icons/animated/` with `-animated.svg` suffix
+3. **Convert to animated WebP** using Playwright (headless Chromium renders CSS animations frame-by-frame):
+   - Install: `pip install playwright Pillow && python -m playwright install chromium`
+   - Load each SVG inline in a headless browser page
+   - Screenshot each frame at 50ms intervals (20fps) with transparent background
+   - Stitch frames into lossless animated WebP using Pillow
+   - Output at **128x128px** resolution for quality when scaled down
+4. **Reference the `.webp` files** in Razor, NOT the `.svg` files
+5. **CSS hover swap pattern**: Both static SVG and animated WebP `<img>` tags sit in the same container. The animated one is `position: absolute; opacity: 0;` and becomes `opacity: 1;` on `:hover`. No state management needed — pure CSS.
+
+### Button icons still need animated SVGs
+The 7 bottom-bar button icons (menu, inventory, chat, effects, music, settings, notification) still have Pillow-generated placeholder WebPs. When ready, create animated SVGs for these and convert them using the same Playwright workflow above. Their static SVGs are in `Assets/ui/icons/buttons/`.

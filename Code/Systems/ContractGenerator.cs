@@ -221,7 +221,11 @@ public static class ContractGenerator
 		bool hasEliteInk = TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt > DateTime.Now;
 		float eliteInkBonus = hasEliteInk ? 15f : 0f;
 
-		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus) / 100f);
+		// Previously caught bonus - easier to re-catch species you've already contracted
+		bool previouslyCaught = BeastiaryManager.Instance?.IsDiscovered( species.Id ) ?? false;
+		float previousCatchBonus = previouslyCaught ? 15f : 0f;
+
+		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus + previousCatchBonus) / 100f);
 
 		// Boss contract bonus - makes rare bosses much more catchable
 		if ( isRareBoss )

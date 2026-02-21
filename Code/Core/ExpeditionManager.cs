@@ -231,7 +231,7 @@ public sealed class ExpeditionManager : Component
 			return; // This is a player monster, not an enemy
 
 		// Calculate Tamer XP based on defeated monster's level
-		int baseXP = 2 + (defeatedMonster.Level / 2);
+		int baseXP = 1 + (defeatedMonster.Level / 3);
 
 		// Apply expedition XP bonus from tamer skills
 		float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
@@ -287,8 +287,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 1,
 			PossibleSpecies = new() { "twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom", "branchling" },
 			Element = ElementType.Neutral,
-			GoldReward = 75,
-			XPReward = 50,
+			GoldReward = 50,
+			XPReward = 35,
 			BackgroundImage = "ui/locations/whispering_woods_background.png"
 		} );
 
@@ -303,8 +303,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 5,
 			PossibleSpecies = new() { "embrik", "cinderscale", "blazefang", "magmite", "smolderpup", "emberhound", "hinobi", "enkong" },
 			Element = ElementType.Fire,
-			GoldReward = 150,
-			XPReward = 200,
+			GoldReward = 100,
+			XPReward = 130,
 			BackgroundImage = "ui/locations/ember_cavern_background.png"
 		} );
 
@@ -319,8 +319,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 10,
 			PossibleSpecies = new() { "droskul", "puddlejaw", "mirrorpond", "weepfin", "streamling", "rivercrest", "bubblite", "coralheim" },
 			Element = ElementType.Water,
-			GoldReward = 175,
-			XPReward = 250,
+			GoldReward = 115,
+			XPReward = 165,
 			BackgroundImage = "ui/locations/lake_of_tears_background.png"
 		} );
 
@@ -335,8 +335,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 15,
 			PossibleSpecies = new() { "wispryn", "driftmote", "galeclaw", "whistleshade", "zephyrmite", "cyclonyx", "featherwisp", "vortexel", "dandepuff" },
 			Element = ElementType.Wind,
-			GoldReward = 225,
-			XPReward = 350,
+			GoldReward = 150,
+			XPReward = 230,
 			BackgroundImage = "ui/locations/echo_canyon_background.png"
 		} );
 
@@ -351,8 +351,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 20,
 			PossibleSpecies = new() { "sparklet", "voltweave", "staticling", "joltpaw", "thundermane", "zapfin", "boltgeist", "circuitsprite" },
 			Element = ElementType.Electric,
-			GoldReward = 250,
-			XPReward = 400,
+			GoldReward = 165,
+			XPReward = 260,
 			BackgroundImage = "ui/locations/storm_spire_background.png"
 		} );
 
@@ -367,8 +367,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 25,
 			PossibleSpecies = new() { "rootling", "cragmaw", "rubblekin", "pebblit", "boulderon", "quartzite", "dustback", "terraclops", "terracub" },
 			Element = ElementType.Earth,
-			GoldReward = 275,
-			XPReward = 500,
+			GoldReward = 180,
+			XPReward = 325,
 			BackgroundImage = "ui/locations/ancient_ruins_background.png"
 		} );
 
@@ -383,8 +383,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 30,
 			PossibleSpecies = new() { "frostling", "glacimaw", "shivershard", "snowmite", "blizzardian", "iciclaw", "frostwisp", "sleethorn" },
 			Element = ElementType.Ice,
-			GoldReward = 325,
-			XPReward = 600,
+			GoldReward = 215,
+			XPReward = 390,
 			BackgroundImage = "ui/locations/frozen_vale_background.png"
 		} );
 
@@ -399,8 +399,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 35,
 			PossibleSpecies = new() { "sproutkin", "thornveil", "mosswhisper", "pollenpuff", "bloomguard", "vinewhip", "fungrowth", "willowwisp", "curublast" },
 			Element = ElementType.Nature,
-			GoldReward = 375,
-			XPReward = 700,
+			GoldReward = 245,
+			XPReward = 455,
 			BackgroundImage = "ui/locations/overgrown_heart_background.png"
 		} );
 
@@ -415,8 +415,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 40,
 			PossibleSpecies = new() { "coglet", "ironclad", "corrode", "scrapper", "junktitan", "bladefly", "bellguard", "chainlink" },
 			Element = ElementType.Metal,
-			GoldReward = 425,
-			XPReward = 850,
+			GoldReward = 280,
+			XPReward = 555,
 			BackgroundImage = "ui/locations/rusted_foundry_background.png"
 		} );
 
@@ -431,8 +431,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 45,
 			PossibleSpecies = new() { "dawnmote", "haloveil", "echomind", "wishling", "hopebringer", "memoryveil", "solmara", "soulflare", "dreamspark" },
 			Element = ElementType.Spirit,
-			GoldReward = 500,
-			XPReward = 1000,
+			GoldReward = 325,
+			XPReward = 650,
 			BackgroundImage = "ui/locations/spirit_sanctum_background.png"
 		} );
 
@@ -447,8 +447,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 50,
 			PossibleSpecies = new() { "murkmaw", "voidweep", "gloomling", "nightcrawl", "duskstalker", "fearling", "umbralynx", "secretkeeper" },
 			Element = ElementType.Shadow,
-			GoldReward = 550,
-			XPReward = 1250,
+			GoldReward = 360,
+			XPReward = 815,
 			BackgroundImage = "ui/locations/shadow_depths_background.png"
 		} );
 
@@ -463,8 +463,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 55,
 			PossibleSpecies = new() { "ashenmare", "infernowarg", "tidehollow", "oceanmaw", "vexstorm", "voltweave", "thundermane", "monoleth", "permafrost", "glacierback", "verdantis", "eldergrove", "forgeborn", "solmara", "nullgrave" },
 			Element = ElementType.Neutral,
-			GoldReward = 600,
-			XPReward = 3500,
+			GoldReward = 390,
+			XPReward = 2275,
 			HasBoss = true,
 			BossSpeciesId = "primordius",
 			BackgroundImage = "ui/locations/elemental_nexus_background.png"
@@ -481,8 +481,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 65,
 			PossibleSpecies = new() { "raijura", "arcferron", "devorah", "pucling", "scaldnip", "temporal", "eternawing", "nightmarex" },
 			Element = ElementType.Neutral,
-			GoldReward = 750,
-			XPReward = 5000,
+			GoldReward = 490,
+			XPReward = 3250,
 			HasBoss = true,
 			BossSpeciesId = "voiddragon",
 			BackgroundImage = "ui/locations/primordial_rift_background.png"
@@ -499,8 +499,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 75,
 			PossibleSpecies = new() { "eldergrove", "primbloom", "thornveil", "verdantis", "bloomguard", "edenseed" },
 			Element = ElementType.Nature,
-			GoldReward = 1000,
-			XPReward = 7500,
+			GoldReward = 650,
+			XPReward = 4875,
 			HasBoss = true,
 			BossSpeciesId = "songborne",
 			BackgroundImage = "ui/locations/garden_of_origins_background.png"
@@ -517,8 +517,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 85,
 			PossibleSpecies = new() { "sunforged", "absolutezero", "stormtyrant", "primbloom", "eclipsara", "primeflare", "voidbloom", "aquagenesis" },
 			Element = ElementType.Neutral,
-			GoldReward = 1750,
-			XPReward = 12500,
+			GoldReward = 1140,
+			XPReward = 8125,
 			HasBoss = true,
 			BossSpeciesId = "mythweaver",
 			BackgroundImage = "ui/locations/mythweavers_realm_background.png"
@@ -535,8 +535,8 @@ public sealed class ExpeditionManager : Component
 			BaseEnemyLevel = 100,
 			PossibleSpecies = new(), // No regular species - boss gauntlet only
 			Element = ElementType.Neutral,
-			GoldReward = 5000,
-			XPReward = 35000,
+			GoldReward = 3250,
+			XPReward = 22750,
 			HasBoss = true,
 			BossSpeciesId = "genesis",
 			BackgroundImage = "ui/locations/the_origin_void_background.png",
@@ -1607,7 +1607,11 @@ public sealed class ExpeditionManager : Component
 			}
 		}
 
-		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + heldCatchBonus / 100f);
+		// Previously caught bonus - easier to re-catch species you've already contracted
+		bool previouslyCaught = BeastiaryManager.Instance?.IsDiscovered( target.SpeciesId ) ?? false;
+		float previousCatchBonus = previouslyCaught ? 15f : 0f;
+
+		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + heldCatchBonus / 100f) * (1 + previousCatchBonus / 100f);
 		finalCatchRate = Math.Min( 0.95f, finalCatchRate ); // Max 95% catch rate
 
 		// Master Ink guarantees capture

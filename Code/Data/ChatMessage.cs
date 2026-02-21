@@ -67,10 +67,28 @@ public class ChatMessage
 	public int CardMonstersEvolved { get; set; }
 	public int CardHighestExpedition { get; set; }
 
+	// Name color for chat display (deterministic per player)
+	public string NameColor { get; set; } = "";
+
 	// Display helpers
 	public string FormattedTime => Timestamp.ToLocalTime().ToString( "HH:mm" );
 	public bool IsSystem => Type != ChatMessageType.Player && Type != ChatMessageType.BeastShowcase && Type != ChatMessageType.TamerCardShowcase;
 	public bool IsDeveloper => DeveloperSteamIds.Contains( SteamId );
+
+	// Deterministic color assignment from SteamId
+	private static readonly string[] NameColors = { "purple", "cyan", "green", "amber", "pink", "teal" };
+
+	public static string GetColorForSteamId( long steamId )
+	{
+		if ( steamId == 0 ) return "purple";
+		var index = (int)(Math.Abs( steamId ) % NameColors.Length);
+		return NameColors[index];
+	}
+
+	/// <summary>
+	/// Get the resolved name color — developer override takes priority
+	/// </summary>
+	public string ResolvedNameColor => IsDeveloper ? "red" : (string.IsNullOrEmpty( NameColor ) ? GetColorForSteamId( SteamId ) : NameColor);
 }
 
 public enum ChatMessageType

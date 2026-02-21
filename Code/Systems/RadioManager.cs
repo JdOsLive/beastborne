@@ -48,13 +48,20 @@ public static class RadioManager
 	public static int CurrentStationIndex { get; private set; } = 0;
 	public static int CurrentTrackIndex { get; private set; } = 0;
 	public static bool IsPlaying { get; private set; } = false;
-	public static float Volume { get; set; } = 0.5f;
+	public static float Volume { get; set; } = 0.3f;
+	public static bool IsShuffle { get; set; } = false;
+	public static bool IsRepeat { get; set; } = false;
 	public static RadioContext CurrentContext { get; private set; } = RadioContext.Menu;
 
 	// Current music handle
 	private static SoundHandle _currentMusic;
 	private static bool _initialized = false;
 	private static bool _userPaused = false; // Track if user manually paused - persists across context switches
+
+	// Track progress using SoundHandle.Time and SoundFile.Duration
+	private static float _trackDuration = 0f;
+	public static float TrackPosition => _currentMusic.IsValid() ? _currentMusic.Time : 0f;
+	public static float TrackDuration => _trackDuration;
 
 	// Events
 	public static Action OnTrackChanged;
@@ -213,6 +220,7 @@ public static class RadioManager
 		if ( CurrentTrack == null ) return;
 
 		Stop();
+		_trackDuration = 0f;
 
 		try
 		{
@@ -233,6 +241,20 @@ public static class RadioManager
 		catch ( Exception e )
 		{
 			Log.Warning( $"RadioManager: Failed to play track '{CurrentTrack.Name}': {e.Message}" );
+		}
+
+		// Try to get track duration separately so it never breaks playback
+		try
+		{
+			var soundFile = SoundFile.Load( CurrentTrack.FilePath );
+			if ( soundFile != null )
+			{
+				_trackDuration = soundFile.Duration;
+			}
+		}
+		catch ( Exception )
+		{
+			// Duration unavailable — progress bar will just show 0:00
 		}
 	}
 
@@ -266,13 +288,47 @@ public static class RadioManager
 	}
 
 	/// <summary>
+	/// Toggle shuffle mode.
+	/// </summary>
+	public static void ToggleShuffle()
+	{
+		IsShuffle = !IsShuffle;
+	}
+
+	/// <summary>
+	/// Toggle repeat mode.
+	/// </summary>
+	public static void ToggleRepeat()
+	{
+		IsRepeat = !IsRepeat;
+	}
+
+	/// <summary>
 	/// Skip to the next track in the current station.
 	/// </summary>
 	public static void NextTrack()
 	{
 		if ( CurrentStation == null || CurrentStation.Tracks.Count == 0 ) return;
 
-		CurrentTrackIndex = (CurrentTrackIndex + 1) % CurrentStation.Tracks.Count;
+		if ( IsShuffle )
+		{
+			int newIndex;
+			if ( CurrentStation.Tracks.Count > 1 )
+			{
+				do { newIndex = Random.Shared.Next( CurrentStation.Tracks.Count ); }
+				while ( newIndex == CurrentTrackIndex );
+			}
+			else
+			{
+				newIndex = 0;
+			}
+			CurrentTrackIndex = newIndex;
+		}
+		else
+		{
+			CurrentTrackIndex = (CurrentTrackIndex + 1) % CurrentStation.Tracks.Count;
+		}
+
 		Play();
 		OnTrackChanged?.Invoke();
 		SoundManager.PlayForward();
@@ -469,7 +525,32 @@ public static class RadioManager
 	{
 		if ( CurrentStation == null || CurrentStation.Tracks.Count == 0 ) return;
 
-		CurrentTrackIndex = (CurrentTrackIndex + 1) % CurrentStation.Tracks.Count;
+		if ( IsRepeat )
+		{
+			// Repeat: replay current track
+			Play();
+			return;
+		}
+
+		if ( IsShuffle )
+		{
+			int newIndex;
+			if ( CurrentStation.Tracks.Count > 1 )
+			{
+				do { newIndex = Random.Shared.Next( CurrentStation.Tracks.Count ); }
+				while ( newIndex == CurrentTrackIndex );
+			}
+			else
+			{
+				newIndex = 0;
+			}
+			CurrentTrackIndex = newIndex;
+		}
+		else
+		{
+			CurrentTrackIndex = (CurrentTrackIndex + 1) % CurrentStation.Tracks.Count;
+		}
+
 		Play();
 		OnTrackChanged?.Invoke();
 	}
