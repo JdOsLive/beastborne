@@ -505,6 +505,8 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		var totalTrades = tamer.TotalTradesCompleted;
 		var playTime = (int)tamer.TotalPlayTime.TotalMinutes;
 		var achCount = tamer.Achievements?.Values.Count( p => p.IsUnlocked ) ?? 0;
+		var guildTag = GuildManager.Instance?.Membership?.GuildTag ?? "";
+		var guildName = GuildManager.Instance?.Membership?.GuildName ?? "";
 
 		// Store locally
 		var connId = LocalConnectionId.ToString();
@@ -528,18 +530,21 @@ public sealed class ChatManager : Component, Component.INetworkListener
 			TotalExpeditionsCompleted = totalExp,
 			TotalTradesCompleted = totalTrades,
 			TotalPlayTimeMinutes = playTime,
-			AchievementCount = achCount
+			AchievementCount = achCount,
+			GuildTag = guildTag,
+			GuildName = guildName
 		};
 
 		// Broadcast to all
 		BroadcastPlayerProfile( connId, gender, favExpId, title, titleColor, level, favMonster, arenaRank, arenaPoints,
-			arenaWins, arenaLosses, monstersCaught, highestExp, battlesWon, monstersBred, monstersEvolved, totalExp, totalTrades, playTime, achCount );
+			arenaWins, arenaLosses, monstersCaught, highestExp, battlesWon, monstersBred, monstersEvolved, totalExp, totalTrades, playTime, achCount, guildTag, guildName );
 	}
 
 	[Rpc.Broadcast]
 	public void BroadcastPlayerProfile( string senderConnectionId, string gender, string favoriteExpeditionId, string title, string titleColor,
 		int level = 0, string favoriteMonsterSpeciesId = "", string arenaRank = "Unranked", int arenaPoints = 0, int arenaWins = 0, int arenaLosses = 0, int monstersCaught = 0, int highestExpedition = 0,
-		int battlesWon = 0, int monstersBred = 0, int monstersEvolved = 0, int totalExpeditionsCompleted = 0, int totalTradesCompleted = 0, int totalPlayTimeMinutes = 0, int achievementCount = 0 )
+		int battlesWon = 0, int monstersBred = 0, int monstersEvolved = 0, int totalExpeditionsCompleted = 0, int totalTradesCompleted = 0, int totalPlayTimeMinutes = 0, int achievementCount = 0,
+		string guildTag = "", string guildName = "" )
 	{
 		// Store the profile (including our own, which we already stored locally)
 		PlayerProfiles[senderConnectionId] = new PlayerProfileData
@@ -562,10 +567,53 @@ public sealed class ChatManager : Component, Component.INetworkListener
 			TotalExpeditionsCompleted = totalExpeditionsCompleted,
 			TotalTradesCompleted = totalTradesCompleted,
 			TotalPlayTimeMinutes = totalPlayTimeMinutes,
-			AchievementCount = achievementCount
+			AchievementCount = achievementCount,
+			GuildTag = guildTag ?? "",
+			GuildName = guildName ?? ""
 		};
 
 		OnProfilesUpdated?.Invoke();
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// GUILD CHAT
+	// ═══════════════════════════════════════════════════════════════
+
+	public void SendGuildMessage( string content )
+	{
+		if ( !GameNetworkSystem.IsActive ) return;
+		if ( string.IsNullOrWhiteSpace( content ) ) return;
+
+		var guild = GuildManager.Instance;
+		if ( guild == null || !guild.IsInGuild ) return;
+
+		var steamId = Connection.Local?.SteamId ?? 0;
+		var name = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown";
+		var connId = Connection.Local?.Id.ToString() ?? "";
+		var guildId = guild.Guild.Id;
+
+		BroadcastGuildChat( connId, steamId, name, content, guildId, DateTime.UtcNow.Ticks );
+	}
+
+	[Rpc.Broadcast]
+	public void BroadcastGuildChat( string senderConnectionId, long steamId, string playerName,
+		string content, string guildId, long timestampTicks )
+	{
+		// Only show to guild members of the same guild
+		var guild = GuildManager.Instance;
+		if ( guild == null || !guild.IsInGuild || guild.Guild.Id != guildId ) return;
+
+		var msg = new ChatMessage
+		{
+			SteamId = steamId,
+			PlayerName = playerName,
+			Content = content,
+			Type = ChatMessageType.GuildChat,
+			Timestamp = new DateTime( timestampTicks, DateTimeKind.Utc ),
+			NameColor = "#a855f7"
+		};
+
+		AddMessage( msg );
 	}
 
 	private string GetDisplayTitle( Tamer tamer )
@@ -654,4 +702,6 @@ public class PlayerProfileData
 	public int TotalTradesCompleted { get; set; }
 	public int TotalPlayTimeMinutes { get; set; }
 	public int AchievementCount { get; set; }
+	public string GuildTag { get; set; } = "";
+	public string GuildName { get; set; } = "";
 }

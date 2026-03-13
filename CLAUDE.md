@@ -146,6 +146,7 @@ s&box uses a custom CSS engine that behaves differently from browsers. Keep thes
 | **`text-overflow: ellipsis` with `overflow: hidden`** | This combination can collapse the element in s&box flex layouts. Avoid using `overflow: hidden` on text elements inside flex containers. |
 | **Duplicate UI across panels** | Some UI components (like move-picker, confirm dialogs) are duplicated in both `MonsterRosterPanel` and `MonsterDetailPanel`. When fixing styles, check BOTH `.razor.scss` files. The roster panel is the primary one used in-game. |
 | **Custom fonts must be in `Assets/fonts/` root** | s&box only discovers font files placed **directly** in `Assets/fonts/` — NOT in subdirectories. Place TTF files like `Assets/fonts/Exo2-Bold.ttf`, not `Assets/fonts/Exo2/Exo2-Bold.ttf`. Register in SCSS with `Exo2 { font-family: url("fonts/Exo2-Bold.ttf"); }` and use `font-family: Exo2;` (the embedded font family name from TTF metadata, no space). Resources in `.sbproj` must include `fonts/*`. |
+| **`flex: unset` not supported** | s&box CSS parser cannot parse `flex: unset` — throws "expected a float or length". Use `flex: 0 0 auto` instead. |
 
 ---
 

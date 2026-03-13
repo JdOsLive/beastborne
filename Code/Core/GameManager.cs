@@ -64,6 +64,7 @@ public sealed class GameManager : Component
 		AchievementManager.EnsureInstance( Scene );
 		TradingManager.EnsureInstance( Scene );
 		VoiceChatManager.EnsureInstance( Scene );
+		GuildManager.EnsureInstance( Scene );
 	}
 
 	public void ChangeState( GameState newState )

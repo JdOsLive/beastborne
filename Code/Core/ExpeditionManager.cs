@@ -708,11 +708,16 @@ public sealed class ExpeditionManager : Component
 			float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
 			float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
 			float hardModeMultiplier = GetRewardMultiplier();
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * hardModeMultiplier);
+			float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardModeMultiplier);
 			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
 			Log.Info( $"RetryExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
+
+			// Guild XP for expedition completion
+			GuildManager.Instance?.AddGuildXP( 20 );
+			GuildManager.Instance?.IncrementAchievement( "expedition" );
 
 			// Award Boss Tokens if a boss was defeated
 			if ( SelectedBoss != null )
@@ -844,7 +849,8 @@ public sealed class ExpeditionManager : Component
 				float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
 				float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
 				float hardModeMultiplier = GetRewardMultiplier();
-				int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * hardModeMultiplier);
+				float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardModeMultiplier);
 				int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
 				TamerManager.Instance?.AddGold( finalGold );
 				TamerManager.Instance?.AddXP( finalXP );
@@ -1354,7 +1360,8 @@ public sealed class ExpeditionManager : Component
 			float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
 			float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
 			float hardModeMultiplier = GetRewardMultiplier();
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * hardModeMultiplier);
+			float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardModeMultiplier);
 			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
@@ -1611,7 +1618,10 @@ public sealed class ExpeditionManager : Component
 		bool previouslyCaught = BeastiaryManager.Instance?.IsDiscovered( target.SpeciesId ) ?? false;
 		float previousCatchBonus = previouslyCaught ? 15f : 0f;
 
-		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + heldCatchBonus / 100f) * (1 + previousCatchBonus / 100f);
+		// Guild catch rate bonus (Lv6: +5%)
+		float guildCatchBonus = GuildManager.Instance?.GetCatchRateBonus() ?? 0f;
+
+		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + heldCatchBonus / 100f) * (1 + previousCatchBonus / 100f) * (1 + guildCatchBonus / 100f);
 		finalCatchRate = Math.Min( 0.95f, finalCatchRate ); // Max 95% catch rate
 
 		// Master Ink guarantees capture
@@ -1663,6 +1673,10 @@ public sealed class ExpeditionManager : Component
 
 		tamer.TotalMonstersCaught++;
 		Stats.SetValue( "monsters-caught", tamer.TotalMonstersCaught );
+
+		// Guild XP for monster catch
+		GuildManager.Instance?.AddGuildXP( 10 );
+		GuildManager.Instance?.IncrementAchievement( "catch" );
 
 		BeastiaryManager.Instance?.DiscoverSpecies( caughtMonster.SpeciesId );
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersCaught, tamer.TotalMonstersCaught );

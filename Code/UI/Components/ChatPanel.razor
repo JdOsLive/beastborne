@@ -1,5 +1,6 @@
 @using Sandbox;
 @using Sandbox.UI;
+@using System.Linq;
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
@@ -27,7 +28,10 @@
 			<!-- Channel Tabs -->
 			<div class="channel-tabs">
 				<div class="ch-tab @(currentChannel == "global" ? "active" : "")" onclick=@(() => SetChannel("global"))><span>Global</span></div>
-				<div class="ch-tab @(currentChannel == "guild" ? "active" : "") disabled"><span>Guild</span></div>
+				@if ( GuildManager.Instance?.IsInGuild == true )
+				{
+					<div class="ch-tab @(currentChannel == "guild" ? "active" : "")" onclick=@(() => SetChannel("guild"))><span>Guild</span></div>
+				}
 				<div class="ch-tab @(currentChannel == "trade" ? "active" : "") disabled"><span>Trade</span></div>
 				<div class="ch-tab @(currentChannel == "help" ? "active" : "") disabled"><span>Help</span></div>
 			</div>
@@ -36,9 +40,9 @@
 			<div class="chat-messages" @ref="messagesContainer">
 				@foreach (var message in GetMessages())
 				{
-					@if (message.Type == ChatMessageType.Player)
+					@if (message.Type == ChatMessageType.Player || message.Type == ChatMessageType.GuildChat)
 					{
-						<!-- Player Message -->
+						<!-- Player / Guild Message -->
 						<div class="msg">
 							<div class="msg-avatar av-@message.ResolvedNameColor">
 								<img src="avatar:@message.SteamId" />
@@ -55,6 +59,10 @@
 									@if (message.IsDeveloper)
 									{
 										<span class="role-pill dev">DEV</span>
+									}
+									@if (message.Type == ChatMessageType.GuildChat)
+									{
+										<span class="role-pill guild">GUILD</span>
 									}
 									<span class="msg-name c-@message.ResolvedNameColor">@message.PlayerName</span>
 									<span class="msg-time">@message.FormattedTime</span>
@@ -342,7 +350,11 @@
 		var text = chatInputBox?.GetText() ?? "";
 		if (string.IsNullOrWhiteSpace(text)) return;
 
-		ChatManager.Instance?.SendMessage(text);
+		if (currentChannel == "guild")
+			ChatManager.Instance?.SendGuildMessage(text);
+		else
+			ChatManager.Instance?.SendMessage(text);
+
 		chatInputBox?.ClearText();
 		SoundManager.PlayForward();
 		chatInputBox?.FocusInput();
@@ -350,7 +362,10 @@
 
 	private List<ChatMessage> GetMessages()
 	{
-		return ChatManager.Instance?.GetRecentMessages(50) ?? new List<ChatMessage>();
+		var messages = ChatManager.Instance?.GetRecentMessages(100) ?? new List<ChatMessage>();
+		if (currentChannel == "guild")
+			return messages.Where(m => m.Type == ChatMessageType.GuildChat).TakeLast(50).ToList();
+		return messages.Where(m => m.Type != ChatMessageType.GuildChat).TakeLast(50).ToList();
 	}
 
 	private int GetOnlineCount()

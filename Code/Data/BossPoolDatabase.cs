@@ -435,10 +435,10 @@ public static class BossPoolDatabase
 				new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Worldserpent swallows the world!", ATKMultiplier = 2.3f, DEFMultiplier = 1.7f, Ability = BossAbilityType.Enrage } ),
 
 			// Mythic rare boss
-			CreateBoss( "voiddragon", BossTier.Mythic, 30, 100,
-				new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Voiddragon emerges from nothingness!", SPDMultiplier = 1.5f, Ability = BossAbilityType.SpeedBoost },
-				new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Voiddragon breathes the void!", ATKMultiplier = 1.9f, Ability = BossAbilityType.AreaDamage },
-				new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Voiddragon becomes entropy!", ATKMultiplier = 2.4f, SPDMultiplier = 1.7f, Ability = BossAbilityType.Enrage } )
+			CreateBoss( "nihilex", BossTier.Mythic, 30, 100,
+				new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Nihilex embraces nothing!", DEFMultiplier = 1.6f, Ability = BossAbilityType.Shield },
+				new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Nihilex becomes the void!", ATKMultiplier = 1.9f, Ability = BossAbilityType.AreaDamage },
+				new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Nihilex erases everything!", ATKMultiplier = 2.4f, SPDMultiplier = 1.7f, Ability = BossAbilityType.Enrage } )
 		};
 	}
 }

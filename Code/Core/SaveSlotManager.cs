@@ -125,6 +125,8 @@ public sealed class SaveSlotManager : Component
 			Gender = tamer.Gender,
 			MonsterCount = monsterCount,
 			HighestExpedition = tamer.HighestExpeditionCleared,
+			Gold = tamer.Gold,
+			BossTokens = tamer.BossTokens,
 			LastPlayed = DateTime.UtcNow
 		};
 
@@ -273,5 +275,7 @@ public class SaveSlotInfo
 	public Data.TamerGender Gender { get; set; }
 	public int MonsterCount { get; set; }
 	public int HighestExpedition { get; set; }
+	public int Gold { get; set; }
+	public int BossTokens { get; set; }
 	public DateTime LastPlayed { get; set; }
 }

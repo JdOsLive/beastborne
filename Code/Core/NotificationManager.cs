@@ -18,7 +18,9 @@ public enum NotificationType
 	RankedBattle,
 	Catch,
 	TamerLevelUp,
-	ExpeditionUnlock
+	ExpeditionUnlock,
+	GuildInvite,
+	GuildMemberJoined
 }
 
 /// <summary>

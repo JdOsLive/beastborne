@@ -423,7 +423,7 @@ public sealed class TamerManager : Component
 			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}card-badges" ), badgesJson );
 
 			// Submit playtime to leaderboard
-			Stats.SetValue( "total-playtime", (int)CurrentTamer.TotalPlayTime.TotalMinutes );
+			Stats.SetValue( "total-playtime-v2", (int)CurrentTamer.TotalPlayTime.TotalMinutes );
 
 			// Save skill ranks to cookie (Dictionary<string, int>)
 			var skillsJson = JsonSerializer.Serialize( CurrentTamer.SkillRanks );
@@ -477,6 +477,10 @@ public sealed class TamerManager : Component
 		{
 			amount = (int)(amount * (1 + goldBonus / 100f));
 		}
+
+		// Apply guild gold perk (Lv8: +10%, Lv15: +25%)
+		float guildGoldMultiplier = GuildManager.Instance?.GetGoldMultiplier() ?? 1.0f;
+		amount = (int)(amount * guildGoldMultiplier);
 
 		// Prevent int32 overflow (cap at int.MaxValue)
 		long newGold = (long)CurrentTamer.Gold + amount;
@@ -607,8 +611,8 @@ public sealed class TamerManager : Component
 		SaveToCloud();
 	}
 
-	// 2x Tamer XP Event — ends Feb 23, 2026 at 10:00 UTC
-	public static readonly DateTime EventXPEnd = new DateTime( 2026, 2, 23, 10, 0, 0, DateTimeKind.Utc );
+	// 2x Tamer XP Event — ends Mar 16, 2026 at 10:00 UTC
+	public static readonly DateTime EventXPEnd = new DateTime( 2026, 3, 16, 10, 0, 0, DateTimeKind.Utc );
 	public static bool IsDoubleXPActive => DateTime.UtcNow < EventXPEnd;
 
 	// XP and leveling
@@ -623,7 +627,10 @@ public sealed class TamerManager : Component
 		// Apply 2x event bonus
 		float eventMultiplier = IsDoubleXPActive ? 2.0f : 1.0f;
 
-		int boostedAmount = (int)(amount * tamerXPBoost * (1 + relicTamerXP / 100f) * eventMultiplier);
+		// Apply guild XP perk (Lv4: +5%, Lv10: +15%)
+		float guildXPMultiplier = GuildManager.Instance?.GetTamerXPMultiplier() ?? 1.0f;
+
+		int boostedAmount = (int)(amount * tamerXPBoost * (1 + relicTamerXP / 100f) * eventMultiplier * guildXPMultiplier);
 
 		if ( CurrentTamer.AddXP( boostedAmount ) )
 		{

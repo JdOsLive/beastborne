@@ -1,0 +1,1872 @@
+@namespace Beastborne.UI.Panels
+@using System
+@using System.Linq
+@using System.Collections.Generic
+@using Sandbox
+@using Sandbox.UI
+@using Beastborne.Core
+@using Beastborne.Data
+@using Beastborne.Systems
+@using Beastborne.UI.Components
+@inherits Panel
+
+<div class="guild-panel">
+
+@if ( guildView == "landing" )
+{
+	<!-- GUILD LANDING PAGE -->
+	<div class="guild-header-bar">
+		<div class="guild-header-left">
+			<span class="guild-header-title">Guild</span>
+			<span class="guild-header-sub">Team up with other tamers</span>
+		</div>
+		<div class="guild-header-right">
+			<button class="back-btn" onclick=@OnBackClicked><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
+		</div>
+	</div>
+	<div class="guild-content-card">
+	<div class="guild-landing">
+
+		<!-- Hero Crest -->
+		<div class="landing-hero">
+			<div class="landing-hero-crest">
+				<img class="landing-hero-icon" src="ui/icons/animated/guild.webp" />
+			</div>
+			<span class="landing-hero-title">Guilds</span>
+			<span class="landing-hero-sub">Join forces with other tamers</span>
+		</div>
+
+		<!-- PENDING INVITES (shown on landing if any) -->
+		@if ( (GuildManager.Instance?.PendingInvites?.Count ?? 0) > 0 )
+		{
+			<div class="guild-section-card">
+				<span class="section-title">Pending Invites</span>
+				@foreach ( var invite in GuildManager.Instance.PendingInvites )
+				{
+					<div class="invite-row">
+						<div class="invite-info">
+							<span class="invite-guild">[@invite.GuildTag] @invite.GuildName</span>
+							<span class="invite-from">from @invite.InviterName</span>
+						</div>
+						<div class="invite-actions">
+							<div class="guild-btn accept-btn" onclick=@(() => { AcceptInvite( invite ); SoundManager.PlaySelect(); })><span>Accept</span></div>
+							<div class="guild-btn deny-btn" onclick=@(() => { DeclineInvite( invite ); SoundManager.PlayDeny(); })><span>Deny</span></div>
+						</div>
+					</div>
+				}
+			</div>
+		}
+
+		<div class="landing-cards">
+			<!-- PENDING INVITES CARD -->
+			<div class="landing-card invites-card @(hoveredLandingCard == "invites" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
+				 onmouseover=@(() => { if (hoveredLandingCard != "invites") { hoveredLandingCard = "invites"; SoundManager.PlayHover(); } })
+				 onmouseout=@(() => hoveredLandingCard = null)
+				 onclick=@(() => { SoundManager.PlayClick(); })>
+								<div class="landing-card-icon-wrap">
+					<img class="landing-card-webp" src="ui/icons/animated/guild-invites.webp" />
+				</div>
+				<span class="landing-card-title">Invites</span>
+				<span class="landing-card-desc">Pending guild invites</span>
+				@{
+					var inviteCount = GuildManager.Instance?.PendingInvites?.Count ?? 0;
+				}
+				@if ( inviteCount > 0 )
+				{
+					<span class="landing-card-badge">@inviteCount pending</span>
+				}
+				else
+				{
+					<span class="landing-card-none">None</span>
+				}
+			</div>
+
+			<!-- BROWSE GUILDS CARD -->
+			<div class="landing-card browse-landing-card @(hoveredLandingCard == "browse" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
+				 onmouseover=@(() => { if (hoveredLandingCard != "browse") { hoveredLandingCard = "browse"; SoundManager.PlayHover(); } })
+				 onmouseout=@(() => hoveredLandingCard = null)
+				 onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; errorMessage = ""; viewingGuild = null; LoadGuildsFromApi(); })>
+								<div class="landing-card-icon-wrap">
+					<img class="landing-card-webp" src="ui/icons/animated/guild-browse.webp" />
+				</div>
+				<span class="landing-card-title">Browse Guilds</span>
+				<span class="landing-card-desc">View guilds in Beastborne</span>
+				@{
+					var guildCount = GetVisibleGuilds().Count;
+				}
+				@if ( guildCount > 0 )
+				{
+					<span class="landing-card-badge">@guildCount found</span>
+				}
+			</div>
+
+			<!-- MY GUILD / CREATE CARD -->
+			<div class="landing-card myguild-landing-card @(hoveredLandingCard == "myguild" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
+				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
+				 onmouseout=@(() => hoveredLandingCard = null)
+				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
+								@if ( GuildManager.Instance?.IsInGuild ?? false )
+				{
+					<div class="landing-card-emblem shape-@(GuildManager.Instance.Guild?.EmblemShape ?? "square")" style="background-color: @(GuildManager.Instance.Guild?.EmblemColor ?? "#7c3aed")">
+						<span class="landing-card-emblem-icon">@GetEmblemEmoji( GuildManager.Instance.Guild?.EmblemIcon ?? "dragon" )</span>
+					</div>
+					<span class="landing-card-title">@(GuildManager.Instance.Guild?.Name ?? "My Guild")</span>
+					<span class="landing-card-desc">[@(GuildManager.Instance.Guild?.Tag ?? "")] · @(GuildManager.Instance.Members?.Count ?? 0) members</span>
+				}
+				else
+				{
+					<div class="landing-card-icon-wrap">
+						<img class="landing-card-webp" src="ui/icons/animated/guild-myguild.webp" />
+					</div>
+					<span class="landing-card-title">Create a Guild</span>
+					<span class="landing-card-desc">Start your own guild</span>
+				}
+			</div>
+		</div>
+
+		<!-- Level gate warning -->
+		@if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN )
+		{
+			<div class="guild-level-gate">
+				<span class="gate-icon">🔒</span>
+				<span class="gate-text">Requires Level @GuildManager.MIN_LEVEL_TO_JOIN to create or join a guild</span>
+				<span class="gate-sub">You are Level @GetTamerLevel()</span>
+			</div>
+		}
+
+		<!-- Hop cooldown -->
+		@if ( GuildManager.Instance?.IsOnHopCooldown() ?? false )
+		{
+			<div class="hop-cooldown-notice">
+				<span class="cooldown-text">You can join another guild in @FormatCooldown()</span>
+			</div>
+		}
+
+	</div>
+	</div>
+}
+else if ( guildView == "browse" )
+{
+	<!-- BROWSE GUILDS VIEW -->
+	<div class="guild-header-bar">
+		<div class="guild-header-left">
+			<span class="guild-header-title">Browse Guilds</span>
+			<span class="guild-header-sub">Guilds in Beastborne</span>
+		</div>
+		<div class="guild-header-right">
+			<button class="back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; viewingGuild = null; errorMessage = ""; })><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
+		</div>
+	</div>
+	<div class="guild-content-card">
+	<div class="guild-browse-view">
+
+		@if ( viewingGuild != null )
+		{
+			<!-- GUILD DETAIL -->
+			<div class="guild-detail">
+				<div class="detail-header">
+					<div class="detail-emblem" style="background-color: @viewingGuild.EmblemColor">
+						<span class="detail-emblem-icon">@GetEmblemEmoji( viewingGuild.EmblemIcon )</span>
+					</div>
+					<div class="detail-header-info">
+						<div class="detail-name-row">
+							<span class="detail-name">@viewingGuild.GuildName</span>
+							<span class="detail-level-badge">Lv @viewingGuild.Level</span>
+							<span class="detail-tag">[@viewingGuild.GuildTag]</span>
+						</div>
+						<span class="detail-owner">Founded by @viewingGuild.OwnerName</span>
+					</div>
+				</div>
+
+				@if ( !string.IsNullOrEmpty( viewingGuild.Description ) )
+				{
+					<div class="detail-description">
+						<span class="detail-desc-text">@viewingGuild.Description</span>
+					</div>
+				}
+
+				<div class="detail-stats-row">
+					<div class="detail-stat">
+						<span class="detail-stat-value">@viewingGuild.MemberCount</span>
+						<span class="detail-stat-label">Members</span>
+					</div>
+					<div class="detail-stat">
+						<span class="detail-stat-value">@viewingGuild.OnlineCount</span>
+						<span class="detail-stat-label">Online</span>
+					</div>
+					<div class="detail-stat">
+						<span class="detail-stat-value">@($"{viewingGuild.TotalRP:N0}")</span>
+						<span class="detail-stat-label">Total RP</span>
+					</div>
+				</div>
+
+				<div class="detail-requirements">
+					<span class="detail-req-title">Requirements</span>
+					<div class="detail-req-row">
+						<span class="detail-req-item">Join: @viewingGuild.JoinMode</span>
+						<span class="detail-req-item">Min Level: @(viewingGuild.MinLevel > 1 ? $"Lv {viewingGuild.MinLevel}" : "None")</span>
+						<span class="detail-req-item">Min Rank: @viewingGuild.MinRank</span>
+					</div>
+				</div>
+
+				<div class="detail-actions">
+					@if ( !(GuildManager.Instance?.IsInGuild ?? false) )
+					{
+						@if ( viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly )
+						{
+							<span class="detail-locked">This guild is invite only</span>
+						}
+						else
+						{
+							<div class="guild-btn join-btn detail-join-btn" onclick=@(() => { RequestJoin( viewingGuild ); SoundManager.PlaySelect(); viewingGuild = null; })>
+								<span>@(viewingGuild.JoinMode == GuildJoinMode.Open ? "Join Guild" : "Request to Join")</span>
+							</div>
+						}
+					}
+					<div class="guild-btn secondary-btn detail-back-btn" onclick=@(() => { SoundManager.PlayBack(); viewingGuild = null; })>
+						<span>Back to List</span>
+					</div>
+				</div>
+			</div>
+		}
+		else
+		{
+			<!-- GUILD LIST -->
+			@if ( isLoadingGuilds )
+			{
+				<span class="browse-loading">Loading guilds...</span>
+			}
+			@{
+				var guilds = GetVisibleGuilds();
+			}
+			@if ( guilds.Count == 0 && !isLoadingGuilds )
+			{
+				<span class="browse-empty">No guilds found</span>
+			}
+			@foreach ( var guild in guilds )
+			{
+				<div class="browse-row" onclick=@(() => ViewGuildDetail( guild ))>
+					<div class="browse-emblem" style="background-color: @guild.EmblemColor">
+						<span class="browse-emblem-icon">@GetEmblemEmoji( guild.EmblemIcon )</span>
+					</div>
+					<div class="browse-info">
+						<span class="browse-name">[@guild.GuildTag] @guild.GuildName</span>
+						<span class="browse-stats">Lv @guild.Level · @guild.MemberCount members · @guild.TotalRP RP</span>
+					</div>
+					<div class="browse-actions">
+						@if ( guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly )
+						{
+							<span class="browse-locked">Invite Only</span>
+						}
+						else if ( !(GuildManager.Instance?.IsInGuild ?? false) )
+						{
+							<div class="guild-btn join-btn" onclick=@(() => { RequestJoin( guild ); SoundManager.PlaySelect(); })>
+								<span>@(guild.JoinMode == GuildJoinMode.Open ? "Join" : "Request")</span>
+							</div>
+						}
+					</div>
+				</div>
+			}
+		}
+	</div>
+	</div>
+}
+else if ( guildView == "myguild" )
+{
+	@if ( !(GuildManager.Instance?.IsInGuild ?? false) )
+	{
+		<!-- NO GUILD - CREATE -->
+		<div class="guild-header-bar">
+			<div class="guild-header-left">
+				<span class="guild-header-title">Create a Guild</span>
+				<span class="guild-header-sub">Start your own guild and recruit tamers</span>
+			</div>
+			<div class="guild-header-right">
+				<button class="back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; errorMessage = ""; })><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
+			</div>
+		</div>
+		<div class="guild-content-card">
+		<div class="guild-no-guild">
+
+			@if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN )
+			{
+				<div class="guild-level-gate">
+					<span class="gate-icon">🔒</span>
+					<span class="gate-text">Requires Level @GuildManager.MIN_LEVEL_TO_JOIN to create or join a guild</span>
+					<span class="gate-sub">You are Level @GetTamerLevel()</span>
+				</div>
+			}
+			else
+			{
+				<div class="guild-create-layout">
+					<!-- Form Side -->
+					<div class="guild-create-form">
+						<div class="guild-create-card">
+							<span class="create-title">Guild Identity</span>
+							<div class="create-inputs">
+								<div class="create-field">
+									<span class="field-label">Guild Name (3-24 chars)</span>
+									<TextEntry class="guild-input" @ref="createNameInput" Text=@createName />
+								</div>
+								<div class="create-field">
+									<span class="field-label">Tag (2-5 chars, uppercase)</span>
+									<TextEntry class="guild-input tag-input" @ref="createTagInput" Text=@createTag />
+								</div>
+							</div>
+						</div>
+
+						<!-- Emblem pickers in create form -->
+						<div class="guild-create-card">
+							<span class="create-title">Emblem</span>
+							<div class="emblem-section">
+								<span class="emblem-section-label">Color</span>
+								<div class="emblem-picker-row">
+									@foreach ( var chunk in ChunkArray( EmblemColors, 4 ) )
+									{
+										<div class="emblem-picker-row-inner">
+											@foreach ( var color in chunk )
+											{
+												<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
+											}
+										</div>
+									}
+								</div>
+							</div>
+							<div class="emblem-section">
+								<span class="emblem-section-label">Icon</span>
+								<div class="emblem-picker-row">
+									@foreach ( var chunk in ChunkArray( EmblemIcons.ToArray(), 5 ) )
+									{
+										<div class="emblem-picker-row-inner">
+											@foreach ( var icon in chunk )
+											{
+												<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
+													<span>@icon.Value</span>
+												</div>
+											}
+										</div>
+									}
+								</div>
+							</div>
+							<div class="emblem-section">
+								<span class="emblem-section-label">Shape</span>
+								<div class="emblem-picker-row">
+									@foreach ( var chunk in ChunkArray( EmblemShapes.ToArray(), 5 ) )
+									{
+										<div class="emblem-picker-row-inner">
+											@foreach ( var shape in chunk )
+											{
+												<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
+													<span>@shape.Value</span>
+												</div>
+											}
+										</div>
+									}
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Preview Side -->
+					<div class="guild-create-preview">
+						<div class="preview-emblem-wrap">
+							<div class="preview-emblem shape-@emblemShape" style="background-color: @emblemColor">
+								<span class="preview-emblem-icon">@GetEmblemEmoji( emblemIcon )</span>
+							</div>
+						</div>
+						<span class="preview-name">@(string.IsNullOrEmpty( createNameInput?.Text ) ? "Guild Name" : createNameInput.Text)</span>
+						<span class="preview-tag">[@(string.IsNullOrEmpty( createTagInput?.Text ) ? "TAG" : createTagInput.Text)]</span>
+						<div class="preview-cost-banner">
+							<span class="preview-cost-text">Cost: @($"{GuildManager.GUILD_CREATION_COST:N0}") gold</span>
+						</div>
+						<div class="guild-btn create-btn" onclick=@OnCreateGuild><span>Create Guild</span></div>
+						@if ( !string.IsNullOrEmpty( errorMessage ) )
+						{
+							<span class="error-msg">@errorMessage</span>
+						}
+					</div>
+				</div>
+
+				@if ( GuildManager.Instance?.IsOnHopCooldown() ?? false )
+				{
+					<div class="hop-cooldown-notice">
+						<span class="cooldown-text">You can join another guild in @FormatCooldown()</span>
+					</div>
+				}
+			}
+		</div>
+		</div>
+	}
+	else
+	{
+		@{
+			var gm = GuildManager.Instance;
+			var guild = gm?.Guild;
+			var members = gm?.Members ?? new List<GuildMemberInfo>();
+		}
+
+		<!-- GUILD HUB HEADER -->
+		<div class="guild-header-bar">
+			<div class="guild-header-left">
+				<span class="guild-header-title">@guild.Name</span>
+				<span class="guild-header-sub">[@guild.Tag] · Lv @guild.Level</span>
+			</div>
+			<div class="guild-header-right">
+				@if ( gm.IsOfficer )
+				{
+					<div class="guild-btn invite-header-btn" onclick=@OnInviteClicked><span>Invite</span></div>
+				}
+				<button class="back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; errorMessage = ""; })><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
+			</div>
+		</div>
+
+		<!-- GUILD HUB: SIDEBAR + MAIN -->
+		<div class="guild-hub-layout">
+			<!-- SIDEBAR -->
+			<div class="guild-sidebar">
+				<!-- Emblem + Name -->
+				<div class="sidebar-emblem-wrap">
+					<div class="sidebar-emblem shape-@guild.EmblemShape" style="background-color: @guild.EmblemColor">
+						<span class="sidebar-emblem-icon">@GetEmblemEmoji( guild.EmblemIcon )</span>
+					</div>
+					<span class="sidebar-guild-name">@guild.Name</span>
+					<span class="sidebar-guild-tag">[@guild.Tag]</span>
+					<span class="sidebar-level-badge">Lv @guild.Level</span>
+				</div>
+
+				<!-- XP Bar -->
+				<div class="sidebar-xp-section">
+					<div class="xp-progress-bar">
+						<div class="xp-bar-fill" style="width: @GetGuildXPPercent()%"></div>
+					</div>
+					<span class="xp-bar-text">@($"{guild.GuildXP:N0}") / @($"{GuildManager.GetXPForGuildLevel( guild.Level ):N0}") XP</span>
+				</div>
+
+				<!-- Member/Online Stats -->
+				<div class="sidebar-stats">
+					<div class="sidebar-stat-pill">
+						<span class="sidebar-stat-value">@members.Count</span>
+						<span class="sidebar-stat-label">Members</span>
+					</div>
+					<div class="sidebar-stat-pill">
+						<span class="sidebar-stat-value online-val">@gm.OnlineCount</span>
+						<span class="sidebar-stat-label">Online</span>
+					</div>
+				</div>
+
+				<!-- MOTD -->
+				@if ( !string.IsNullOrEmpty( guild.Motd ) || gm.IsOfficer )
+				{
+					<div class="sidebar-motd">
+						<span class="motd-label">📢</span>
+						@if ( editingMotd )
+						{
+							<TextEntry class="motd-input" @ref="motdDraftInput" Text=@motdDraft />
+							<div class="guild-btn motd-save-btn" onclick=@(() => { SaveMotd(); SoundManager.PlaySuccess(); })><span>Save</span></div>
+							<div class="guild-btn secondary-btn motd-cancel-btn" onclick=@CancelMotd><span>Cancel</span></div>
+						}
+						else
+						{
+							<span class="motd-text">@(string.IsNullOrEmpty( guild.Motd ) ? "No announcement set" : guild.Motd)</span>
+							@if ( gm.IsOfficer )
+							{
+								<div class="guild-btn motd-edit-btn" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })><span>Edit</span></div>
+							}
+						}
+					</div>
+				}
+
+				<!-- About -->
+				<div class="sidebar-about">
+					<span class="sidebar-about-title">About</span>
+					<span class="about-text">@(string.IsNullOrEmpty( guild.Description ) ? "No description set." : guild.Description)</span>
+				</div>
+
+				<!-- Guild Rank -->
+				<div class="sidebar-rank">
+					<span class="sidebar-rank-label">Rank:</span>
+					<span class="sidebar-rank-value" style="color: @GuildManager.GetGuildRankColor( gm.GuildRankTier )">@gm.GuildRankTier</span>
+				</div>
+
+				<!-- Danger Zone -->
+				<div class="sidebar-danger">
+					<span class="danger-title">Danger Zone</span>
+					@if ( gm.IsLeader && members.Count > 1 )
+					{
+						<div class="guild-btn danger-btn" onclick=@OnTransferOwnership><span>Transfer Ownership</span></div>
+					}
+					@if ( gm.CanClaimLeadership() )
+					{
+						<div class="guild-btn claim-btn" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })><span>Claim Leadership</span></div>
+					}
+					<div class="guild-btn danger-btn" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })><span>Leave Guild</span></div>
+					@if ( gm.IsLeader )
+					{
+						<div class="guild-btn danger-btn disband-btn" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })><span>Disband Guild</span></div>
+					}
+				</div>
+			</div>
+
+			<!-- MAIN CONTENT -->
+			<div class="guild-main">
+				<!-- TABS -->
+				<div class="guild-tabs">
+					<div class="guild-tab @(activeTab == "members" ? "active" : "")" onclick=@(() => SetTab( "members" ))><span>Members</span></div>
+					<div class="guild-tab @(activeTab == "perks" ? "active" : "")" onclick=@(() => SetTab( "perks" ))><span>Perks</span></div>
+					<div class="guild-tab @(activeTab == "raids" ? "active" : "")" onclick=@(() => SetTab( "raids" ))><span>Raids</span></div>
+					<div class="guild-tab @(activeTab == "emblem" ? "active" : "")" onclick=@(() => SetTab( "emblem" ))><span>Emblem</span></div>
+					<div class="guild-tab @(activeTab == "settings" ? "active" : "")" onclick=@(() => SetTab( "settings" ))><span>Settings</span></div>
+					<div class="guild-tab @(activeTab == "logs" ? "active" : "")" onclick=@(() => SetTab( "logs" ))><span>Logs</span></div>
+					@if ( gm.IsOfficer )
+					{
+						<div class="guild-tab @(activeTab == "requests" ? "active" : "")" onclick=@(() => SetTab( "requests" ))>
+							<span>Requests</span>
+							@if ( (gm.JoinRequests?.Count ?? 0) > 0 )
+							{
+								<span class="tab-badge">@gm.JoinRequests.Count</span>
+							}
+						</div>
+					}
+				</div>
+
+				<!-- TAB CONTENT -->
+				<div class="guild-body">
+
+					@if ( activeTab == "members" )
+					{
+						<!-- MEMBERS TAB -->
+						<div class="members-layout">
+							<div class="members-search-row">
+								<TextEntry class="member-search-input" @ref="memberSearchInput" Text=@memberSearch Placeholder="Search members..." />
+							</div>
+							<div class="members-scroll">
+								@{
+									var filtered = GetFilteredMembers();
+									var grouped = filtered.GroupBy( m => m.Role ).OrderByDescending( g => g.Key );
+								}
+								@foreach ( var group in grouped )
+								{
+									<div class="role-header">
+										<span class="role-icon">@GuildManager.GetRoleIcon( group.Key )</span>
+										<span class="role-name">@GuildManager.GetRoleDisplayName( group.Key )</span>
+										<span class="role-count">@group.Count()</span>
+									</div>
+									@foreach ( var member in group.OrderByDescending( m => m.ArenaPoints ) )
+									{
+										<div class="member-row @(member.IsOnline ? "online" : "offline") @(IsInactive( member ) ? "inactive" : "")">
+											<div class="member-avatar">
+												<span class="avatar-emoji">@GetAvatarEmoji( member )</span>
+												<div class="status-dot @(member.IsOnline ? "dot-online" : "dot-offline")"></div>
+											</div>
+											<div class="member-info">
+												<div class="member-name-row">
+													<span class="member-name">@member.Name</span>
+													<span class="member-role-badge" style="color: @GuildManager.GetRoleColor( member.Role )">@GuildManager.GetRoleDisplayName( member.Role )</span>
+												</div>
+												<div class="member-detail-row">
+													<span class="member-level">Lv @member.Level</span>
+													<span class="member-rank">@member.ArenaRank</span>
+													@if ( !member.IsOnline && (DateTime.UtcNow - member.LastSeen).TotalDays >= 3 )
+													{
+														<span class="member-lastseen">@FormatLastSeen( member.LastSeen )</span>
+													}
+												</div>
+											</div>
+											<div class="member-rp">
+												<span class="rp-value">@member.ArenaPoints</span>
+												<span class="rp-label">RP</span>
+											</div>
+											@if ( gm.IsOfficer && member.SteamId != (Connection.Local?.SteamId ?? 0) && member.Role < gm.Membership.Role )
+											{
+												<div class="member-actions">
+													@if ( gm.IsLeader && member.Role < GuildRole.Warden )
+													{
+														<div class="action-btn promote-btn" onclick=@(() => { gm.PromoteMember( member.SteamId ); SoundManager.PlaySelect(); })><span>▲</span></div>
+													}
+													@if ( gm.IsLeader && member.Role > GuildRole.Wanderer && member.Role < GuildRole.Beastlord )
+													{
+														<div class="action-btn demote-btn" onclick=@(() => { gm.DemoteMember( member.SteamId ); SoundManager.PlayClick(); })><span>▼</span></div>
+													}
+													<div class="action-btn kick-btn" onclick=@(() => { ConfirmKick( member ); SoundManager.PlayPopup(); })><span>✕</span></div>
+												</div>
+											}
+										</div>
+									}
+								}
+							</div>
+						</div>
+					}
+
+					@if ( activeTab == "perks" )
+					{
+						<!-- PERKS TAB -->
+						<div class="perks-content">
+							<div class="xp-progress-bar">
+								<div class="xp-bar-fill" style="width: @GetGuildXPPercent()%"></div>
+							</div>
+							<span class="xp-bar-text">Guild XP: @($"{guild.GuildXP:N0}") / @($"{GuildManager.GetXPForGuildLevel( guild.Level ):N0}")</span>
+							<div class="perks-grid">
+								@{
+									var perkList = GetPerkList();
+								}
+								@for ( int i = 0; i < perkList.Count; i += 2 )
+								{
+									<div class="perks-row">
+										@{
+											var perk = perkList[i];
+										}
+										<div class="perk-card @(guild.Level >= perk.Level ? "unlocked" : "locked")">
+											<div class="perk-card-header">
+												<div class="perk-level-badge"><span>Lv @perk.Level</span></div>
+												@if ( guild.Level < perk.Level )
+												{
+													<span class="perk-locked-label">🔒 Locked</span>
+												}
+												else
+												{
+													<span class="perk-active-label">✓ Active</span>
+												}
+											</div>
+											<div class="perk-name-row"><span class="perk-name">@perk.Name</span></div>
+											<div class="perk-desc-row"><span class="perk-desc">@perk.Description</span></div>
+										</div>
+										@if ( i + 1 < perkList.Count )
+										{
+											@{
+												var perk2 = perkList[i + 1];
+											}
+											<div class="perk-card @(guild.Level >= perk2.Level ? "unlocked" : "locked")">
+												<div class="perk-card-header">
+													<div class="perk-level-badge"><span>Lv @perk2.Level</span></div>
+													@if ( guild.Level < perk2.Level )
+													{
+														<span class="perk-locked-label">🔒 Locked</span>
+													}
+													else
+													{
+														<span class="perk-active-label">✓ Active</span>
+													}
+												</div>
+												<div class="perk-name-row"><span class="perk-name">@perk2.Name</span></div>
+												<div class="perk-desc-row"><span class="perk-desc">@perk2.Description</span></div>
+											</div>
+										}
+									</div>
+								}
+							</div>
+
+							<!-- Guild Achievements -->
+							<div class="section-divider-row"><span class="section-divider-title">Guild Achievements</span></div>
+							<div class="achievements-grid">
+								@{
+									var achList = GuildManager.AllAchievements?.ToList() ?? new List<GuildAchievement>();
+								}
+								@for ( int i = 0; i < achList.Count; i += 2 )
+								{
+									<div class="achievements-row">
+										@{
+											var ach = achList[i];
+											var progress = gm.GetAchievementProgress( ach.Id );
+											var complete = gm.IsAchievementComplete( ach.Id );
+										}
+										<div class="achievement-card @(complete ? "complete" : "")">
+											<div class="ach-name-row"><span class="ach-name">@ach.Name</span></div>
+											<div class="ach-desc-row"><span class="ach-desc">@ach.Description</span></div>
+											<div class="ach-progress-bar">
+												<div class="ach-bar-fill" style="width: @(Math.Min( 100, (float)progress / ach.Requirement * 100 ))%"></div>
+											</div>
+											<div class="ach-footer-row">
+												<span class="ach-progress-text">@progress / @ach.Requirement</span>
+												<span class="ach-reward">+@($"{ach.GuildXPReward:N0}") Guild XP</span>
+											</div>
+										</div>
+										@if ( i + 1 < achList.Count )
+										{
+											@{
+												var ach2 = achList[i + 1];
+												var progress2 = gm.GetAchievementProgress( ach2.Id );
+												var complete2 = gm.IsAchievementComplete( ach2.Id );
+											}
+											<div class="achievement-card @(complete2 ? "complete" : "")">
+												<div class="ach-name-row"><span class="ach-name">@ach2.Name</span></div>
+												<div class="ach-desc-row"><span class="ach-desc">@ach2.Description</span></div>
+												<div class="ach-progress-bar">
+													<div class="ach-bar-fill" style="width: @(Math.Min( 100, (float)progress2 / ach2.Requirement * 100 ))%"></div>
+												</div>
+												<div class="ach-footer-row">
+													<span class="ach-progress-text">@progress2 / @ach2.Requirement</span>
+													<span class="ach-reward">+@($"{ach2.GuildXPReward:N0}") Guild XP</span>
+												</div>
+											</div>
+										}
+									</div>
+								}
+							</div>
+						</div>
+					}
+
+					@if ( activeTab == "raids" )
+					{
+						@{
+							var raid = gm.CurrentRaidBoss;
+						}
+						@if ( showRaidTeamSelect )
+						{
+							<!-- RAID TEAM SELECTION -->
+							<div class="raid-team-selection">
+								<div class="raid-select-header">
+									<div class="raid-select-boss">
+										<span class="raid-select-boss-name">VS @(raid?.BossName)</span>
+										<div class="raid-select-boss-detail">
+											<span>@(raid?.BossElement)</span>
+											<span class="raid-detail-sep">·</span>
+											<span>Lv @(raid?.BossLevel)</span>
+											<span class="raid-detail-sep">·</span>
+											<span>Until KO</span>
+										</div>
+									</div>
+									<div class="raid-select-counter">
+										<span class="raid-select-counter-num">@raidTeamSelection.Count</span>
+										<span class="raid-select-counter-sep">/</span>
+										<span class="raid-select-counter-max">3</span>
+									</div>
+								</div>
+
+								<div class="raid-select-body">
+									<div class="raid-select-grid">
+										@foreach ( var monster in GetRaidAvailableMonsters() )
+										{
+											var m = monster;
+											var inTeam = raidTeamSelection.Contains( m );
+											<div class="raid-select-option @(inTeam ? "in-team" : "")">
+												<MonsterCard Monster=@m IsCompact=@true AnimateOnHover=@true AnimationFrame=@SpriteAnimator.GlobalFrame
+															 ClickAction=@(() => ToggleRaidTeamMember( m )) />
+											</div>
+										}
+									</div>
+
+									<div class="raid-select-sidebar">
+										<span class="raid-sidebar-label">Raid Team</span>
+										<div class="raid-sidebar-slots">
+											@for ( int slotIdx = 0; slotIdx < 3; slotIdx++ )
+											{
+												var idx = slotIdx;
+												var slotMonster = raidTeamSelection.Count > idx ? raidTeamSelection[idx] : null;
+												<div class="raid-sidebar-slot @(slotMonster != null ? "filled" : "empty")"
+													 onclick=@(() => { if ( slotMonster != null ) { raidTeamSelection.Remove( slotMonster ); SoundManager.PlayBack(); } })>
+													@if ( slotMonster != null )
+													{
+														<MonsterCard Monster=@slotMonster IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
+													}
+													else
+													{
+														<div class="raid-slot-empty">
+															<span class="raid-slot-number">@(idx + 1)</span>
+															<span class="raid-slot-label">Empty</span>
+														</div>
+													}
+												</div>
+											}
+										</div>
+
+										@{
+											var comboPreview = GetRaidComboPreview();
+										}
+										<div class="raid-combo-preview @(comboPreview.Multiplier > 1f ? "active" : "")">
+											<span class="raid-combo-label">Combo</span>
+											@if ( comboPreview.Multiplier > 1f )
+											{
+												<span class="raid-combo-name">@comboPreview.ComboName</span>
+												<span class="raid-combo-mult">@($"{comboPreview.Multiplier:F1}")x</span>
+											}
+											else if ( raidTeamSelection.Count < 3 )
+											{
+												<span class="raid-combo-hint">Pick 3 to see combo</span>
+											}
+											else
+											{
+												<span class="raid-combo-hint">No combo bonus</span>
+											}
+										</div>
+
+										<div class="guild-btn raid-attack-btn @(raidTeamSelection.Count < 3 ? "disabled" : "")" onclick=@(() => { if ( raidTeamSelection.Count == 3 ) StartRaidBattle(); })>
+											<span>Attack Boss</span>
+										</div>
+										<div class="guild-btn secondary-btn" onclick=@(() => { showRaidTeamSelect = false; raidTeamSelection.Clear(); SoundManager.PlayBack(); })>
+											<span>Cancel</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						}
+						else if ( raid != null )
+						{
+							<div class="raids-content">
+								@{
+									var elementColor = GetElementAccentColor();
+								}
+
+								<!-- Boss Showcase Hero -->
+								<div class="raid-boss-hero" style="border-color: @(elementColor)40">
+									<div class="raid-hero-top">
+										<div class="raid-hero-sprite-col">
+											<div class="raid-boss-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
+										</div>
+										<div class="raid-hero-info-col">
+											<span class="raid-boss-name" style="color: @elementColor">@raid.BossName</span>
+											<div class="raid-boss-tags">
+												<div class="raid-tag element-tag" style="background-color: @(elementColor)20; border-color: @(elementColor)40">
+													<span style="color: @elementColor">@raid.BossElement</span>
+												</div>
+												<div class="raid-tag level-tag">
+													<span>Lv @raid.BossLevel</span>
+												</div>
+												<div class="raid-tag rarity-tag">
+													<span>@GetRaidBossRarity()</span>
+												</div>
+											</div>
+											<div class="raid-desc-row">
+												<span class="raid-boss-desc">@GetRaidBossDescription()</span>
+											</div>
+											<div class="raid-boss-meta">
+												<span class="raid-meta-text">Period @raid.PeriodNumber</span>
+												<span class="raid-meta-sep">·</span>
+												<span class="raid-meta-text">Until KO</span>
+											</div>
+										</div>
+									</div>
+									<div class="raid-hero-timer">
+										<span class="raid-timer-label">Rotates in</span>
+										<span class="raid-timer-value">@FormatRaidTimer()</span>
+									</div>
+								</div>
+
+								<!-- Action Bar -->
+								<div class="raid-action-bar">
+									<div class="raid-attempts-info">
+										<div class="raid-attempt-pips">
+											@for ( int i = 0; i < GuildManager.MAX_RAID_ATTEMPTS_PER_DAY; i++ )
+											{
+												var used = i < gm.GetRaidAttemptsToday();
+												<div class="raid-pip @(used ? "used" : "available")" style="@(!used ? $"border-color: {elementColor}; box-shadow: 0 0 6px {elementColor}40" : "")"></div>
+											}
+										</div>
+										<span class="raid-attempts-label">@(gm.GetRaidAttemptsToday()) of @GuildManager.MAX_RAID_ATTEMPTS_PER_DAY used</span>
+									</div>
+									@if ( gm.CanAttemptRaid() )
+									{
+										<div class="guild-btn raid-attack-btn" onclick=@OnAttackRaidBoss><span>Attack Boss</span></div>
+									}
+									else
+									{
+										<span class="attempts-exhausted">No attempts remaining</span>
+									}
+								</div>
+
+								<!-- Two-Column: Combos + Personal Best -->
+								<div class="raid-info-columns">
+									<div class="raid-combos-card">
+										<span class="raid-section-title">Combo Bonuses</span>
+										<div class="combo-entry"><span class="combo-icon">⚔️</span><span class="combo-label">Type Advantage</span><span class="combo-mult">1.5x</span></div>
+										<div class="combo-entry"><span class="combo-icon">📉</span><span class="combo-label">Underdog</span><span class="combo-mult">1.5x</span></div>
+										<div class="combo-entry"><span class="combo-icon">🔗</span><span class="combo-label">Evolution Chain</span><span class="combo-mult">1.4x</span></div>
+										<div class="combo-entry"><span class="combo-icon">🔮</span><span class="combo-label">Elemental Unity</span><span class="combo-mult">1.3x</span></div>
+										<div class="combo-entry"><span class="combo-icon">💎</span><span class="combo-label">Rarity Rush</span><span class="combo-mult">1.25x</span></div>
+										<div class="combo-entry"><span class="combo-icon">🌈</span><span class="combo-label">Diversity</span><span class="combo-mult">1.2x</span></div>
+									</div>
+									<div class="raid-personal-card">
+										<span class="raid-section-title">Your Best</span>
+										@{
+											var myBest = GetMyBestRaidScore();
+										}
+										@if ( myBest != null )
+										{
+											<span class="personal-score" style="color: @elementColor">@($"{myBest.TotalScore:N0}")</span>
+											<div class="personal-detail-row">
+												<span class="personal-detail-label">Raw Damage</span>
+												<span class="personal-detail-value">@($"{myBest.RawDamage:N0}")</span>
+											</div>
+											<div class="personal-detail-row">
+												<span class="personal-detail-label">Combo</span>
+												<span class="personal-detail-value">@($"{myBest.ComboMultiplier:F1}")x</span>
+											</div>
+											<div class="personal-detail-row">
+												<span class="personal-detail-label">Rounds Survived</span>
+												<span class="personal-detail-value">@myBest.RoundsUsed</span>
+											</div>
+										}
+										else
+										{
+											<div class="personal-empty">
+												<span class="personal-empty-icon">🎯</span>
+												<span class="personal-empty-text">No attempts yet</span>
+												<span class="personal-empty-hint">Attack the boss to set your score!</span>
+											</div>
+										}
+									</div>
+								</div>
+
+								<!-- Guild Leaderboard -->
+								<div class="raid-leaderboard-card">
+									<div class="raid-lb-header">
+										<span class="raid-section-title">Guild Leaderboard</span>
+										<span class="raid-lb-total">Total: @($"{raid.GuildTotalScore:N0}")</span>
+									</div>
+									@{
+										var scores = raid.BestScores.Values.OrderByDescending( s => s.TotalScore ).ToList();
+									}
+									@if ( scores.Count > 0 )
+									{
+										<div class="raid-lb-list">
+											@foreach ( var score in scores )
+											{
+												var rank = scores.IndexOf( score ) + 1;
+												var rankClass = rank == 1 ? "gold" : rank == 2 ? "silver" : rank == 3 ? "bronze" : "";
+												<div class="raid-lb-row">
+													<span class="raid-lb-rank @rankClass">@rank</span>
+													<span class="raid-lb-name">@score.PlayerName</span>
+													<span class="raid-lb-combo">@($"{score.ComboMultiplier:F1}")x</span>
+													<span class="raid-lb-score">@($"{score.TotalScore:N0}")</span>
+												</div>
+											}
+										</div>
+									}
+									else
+									{
+										<span class="raid-lb-empty">No scores yet this period</span>
+									}
+								</div>
+							</div>
+						}
+						else
+						{
+							<div class="raids-content">
+								<span class="raid-loading">Loading raid boss...</span>
+							</div>
+						}
+					}
+
+					@if ( activeTab == "emblem" )
+					{
+						<!-- EMBLEM TAB -->
+						<div class="emblem-content">
+							<div class="emblem-preview-wrap">
+								<div class="emblem-preview shape-@emblemShape" style="background-color: @emblemColor">
+									<span class="emblem-preview-icon">@GetEmblemEmoji( emblemIcon )</span>
+								</div>
+							</div>
+
+							<div class="emblem-section">
+								<span class="emblem-section-label">Color</span>
+								<div class="emblem-picker-row">
+									@foreach ( var chunk in ChunkArray( EmblemColors, 4 ) )
+									{
+										<div class="emblem-picker-row-inner">
+											@foreach ( var color in chunk )
+											{
+												<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
+											}
+										</div>
+									}
+								</div>
+							</div>
+
+							<div class="emblem-section">
+								<span class="emblem-section-label">Icon</span>
+								<div class="emblem-picker-row">
+									@foreach ( var chunk in ChunkArray( EmblemIcons.ToArray(), 5 ) )
+									{
+										<div class="emblem-picker-row-inner">
+											@foreach ( var icon in chunk )
+											{
+												<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
+													<span>@icon.Value</span>
+												</div>
+											}
+										</div>
+									}
+								</div>
+							</div>
+
+							<div class="emblem-section">
+								<span class="emblem-section-label">Shape</span>
+								<div class="emblem-picker-row">
+									@foreach ( var chunk in ChunkArray( EmblemShapes.ToArray(), 5 ) )
+									{
+										<div class="emblem-picker-row-inner">
+											@foreach ( var shape in chunk )
+											{
+												<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
+													<span>@shape.Value</span>
+												</div>
+											}
+										</div>
+									}
+								</div>
+							</div>
+
+							@if ( gm.IsOfficer )
+							{
+								<div class="guild-btn save-emblem-btn" onclick=@SaveEmblem><span>Save Changes</span></div>
+							}
+						</div>
+					}
+
+					@if ( activeTab == "settings" )
+					{
+						<!-- SETTINGS TAB -->
+						<div class="settings-content">
+							<div class="setting-row">
+								<span class="setting-label">Description</span>
+								<TextEntry class="setting-desc-input" @ref="settingsDescInput" Text=@settingsDescription></TextEntry>
+							</div>
+							<div class="setting-row">
+								<span class="setting-label">Join Mode</span>
+								<div class="setting-options">
+									@foreach ( GuildJoinMode mode in Enum.GetValues( typeof( GuildJoinMode ) ) )
+									{
+										<div class="setting-option @(settingsJoinMode == mode ? "selected" : "")" onclick=@(() => { settingsJoinMode = mode; SoundManager.PlayClick(); })>
+											<span>@mode.ToString()</span>
+										</div>
+									}
+								</div>
+							</div>
+							<div class="setting-row">
+								<span class="setting-label">Min Level</span>
+								<div class="setting-options">
+									@foreach ( var lvl in new[] { 1, 10, 25, 50 } )
+									{
+										<div class="setting-option @(settingsMinLevel == lvl ? "selected" : "")" onclick=@(() => { settingsMinLevel = lvl; SoundManager.PlayClick(); })>
+											<span>@(lvl == 1 ? "None" : $"Lv {lvl}")</span>
+										</div>
+									}
+								</div>
+							</div>
+							<div class="setting-row">
+								<span class="setting-label">Min Rank</span>
+								<div class="setting-options">
+									@foreach ( var rank in new[] { "Unranked", "Bronze", "Silver", "Gold" } )
+									{
+										<div class="setting-option @(settingsMinRank == rank ? "selected" : "")" onclick=@(() => { settingsMinRank = rank; SoundManager.PlayClick(); })>
+											<span>@rank</span>
+										</div>
+									}
+								</div>
+							</div>
+							<div class="setting-row">
+								<span class="setting-label">Auto-Kick Inactive</span>
+								<div class="setting-toggle @(settingsAutoKick ? "active" : "")" onclick=@(() => { settingsAutoKick = !settingsAutoKick; SoundManager.PlayClick(); })>
+									<span>@(settingsAutoKick ? "ON" : "OFF")</span>
+								</div>
+							</div>
+							@if ( settingsAutoKick )
+							{
+								<div class="setting-row">
+									<span class="setting-label">Inactive Days</span>
+									<div class="setting-options">
+										@foreach ( var days in new[] { 3, 7, 14, 30 } )
+										{
+											<div class="setting-option @(settingsInactiveDays == days ? "selected" : "")" onclick=@(() => { settingsInactiveDays = days; SoundManager.PlayClick(); })>
+												<span>@days days</span>
+											</div>
+										}
+									</div>
+								</div>
+							}
+
+							@if ( gm.IsOfficer )
+							{
+								<div class="guild-btn save-settings-btn" onclick=@SaveSettings><span>Save Settings</span></div>
+							}
+
+							<!-- Permission Matrix -->
+							<div class="permission-matrix">
+								<span class="perm-title">Role Permissions</span>
+								<div class="perm-header-row">
+									<span class="perm-action-header">Action</span>
+									<span class="perm-role-header">👑</span>
+									<span class="perm-role-header">⭐</span>
+									<span class="perm-role-header">💎</span>
+									<span class="perm-role-header">👤</span>
+								</div>
+								@foreach ( var perm in GetPermissionMatrix() )
+								{
+									<div class="perm-row">
+										<span class="perm-action">@perm.Action</span>
+										<span class="perm-check @(perm.Beastlord ? "yes" : "no")">@(perm.Beastlord ? "✓" : "—")</span>
+										<span class="perm-check @(perm.Warden ? "yes" : "no")">@(perm.Warden ? "✓" : "—")</span>
+										<span class="perm-check @(perm.Tamer ? "yes" : "no")">@(perm.Tamer ? "✓" : "—")</span>
+										<span class="perm-check @(perm.Wanderer ? "yes" : "no")">@(perm.Wanderer ? "✓" : "—")</span>
+									</div>
+								}
+							</div>
+						</div>
+					}
+
+					@if ( activeTab == "logs" )
+					{
+						<!-- LOGS TAB -->
+						<div class="logs-content">
+							@{
+								var logs = gm.ActivityLog ?? new List<GuildLogEntry>();
+							}
+							@if ( logs.Count == 0 )
+							{
+								<span class="logs-empty">No activity yet</span>
+							}
+							@foreach ( var log in logs )
+							{
+								<div class="log-entry">
+									<span class="log-icon">@GetLogIcon( log.Action )</span>
+									<span class="log-text">@log.Details</span>
+									<span class="log-time">@FormatLogTime( log.Timestamp )</span>
+								</div>
+							}
+						</div>
+					}
+
+					@if ( activeTab == "requests" )
+					{
+						<!-- REQUESTS TAB -->
+						<div class="requests-content">
+							@{
+								var requests = gm.JoinRequests ?? new List<GuildJoinRequest>();
+							}
+							@if ( requests.Count == 0 )
+							{
+								<span class="requests-empty">No pending requests</span>
+							}
+							@foreach ( var req in requests )
+							{
+								<div class="request-row">
+									<div class="request-info">
+										<span class="request-name">@req.PlayerName</span>
+										<span class="request-stats">Lv @req.Level · @req.ArenaRank · @req.ArenaPoints RP</span>
+									</div>
+									<div class="request-actions">
+										<div class="guild-btn accept-btn" onclick=@(() => { gm.ApproveJoinRequest( req ); SoundManager.PlaySelect(); })><span>Accept</span></div>
+										<div class="guild-btn deny-btn" onclick=@(() => { gm.DenyJoinRequest( req ); SoundManager.PlayDeny(); })><span>Deny</span></div>
+									</div>
+								</div>
+							}
+						</div>
+					}
+
+				</div>
+			</div>
+		</div>
+
+		<!-- Raid Battle Overlay -->
+		@if ( showRaidBattle )
+		{
+			<div class="raid-battle-container">
+				<BattleView IsRaidBattle=@true OnBattleEnd=@OnRaidBattleComplete />
+			</div>
+		}
+
+		<!-- Confirm Dialog -->
+		@if ( showConfirmDialog )
+		{
+			<div class="confirm-overlay" onclick=@(() => showConfirmDialog = false)>
+				<div class="confirm-dialog">
+					<span class="confirm-text">@confirmMessage</span>
+					<div class="confirm-actions">
+						<div class="guild-btn confirm-yes-btn" onclick=@ConfirmAction><span>Yes</span></div>
+						<div class="guild-btn confirm-no-btn" onclick=@(() => showConfirmDialog = false)><span>Cancel</span></div>
+					</div>
+				</div>
+			</div>
+		}
+
+		<!-- Raid Results Overlay -->
+		@if ( showRaidResults )
+		{
+			<div class="confirm-overlay">
+				<div class="raid-results-card">
+					<span class="raid-results-title">Raid Complete!</span>
+					<div class="raid-result-row">
+						<span class="raid-result-label">Raw Damage</span>
+						<span class="raid-result-value">@($"{raidResultDamage:N0}")</span>
+					</div>
+					<div class="raid-result-row">
+						<span class="raid-result-label">Combo: @raidResultComboName</span>
+						<span class="raid-result-value">@($"{raidResultComboMultiplier:F1}")x</span>
+					</div>
+					<div class="raid-result-total">
+						<span class="raid-result-label">Total Score</span>
+						<span class="raid-result-score">@($"{raidResultScore:N0}")</span>
+					</div>
+					<div class="guild-btn raid-attack-btn" onclick=@(() => showRaidResults = false)>
+						<span>Continue</span>
+					</div>
+				</div>
+			</div>
+		}
+
+		<!-- Picker Overlay -->
+		@if ( showPicker )
+		{
+			<div class="confirm-overlay" onclick=@(() => { showPicker = false; })>
+				<div class="picker-dialog">
+					<span class="picker-title">@pickerTitle</span>
+					<div class="picker-list">
+						@if ( pickerMode == "invite" )
+						{
+							@foreach ( var conn in Connection.All.Where( c => c != Connection.Local ) )
+							{
+								var connId = conn.Id.ToString();
+								var name = conn.DisplayName ?? "Unknown";
+								var targetSteamId = conn.SteamId;
+								var isMember = GuildManager.Instance?.Members?.Any( m => m.SteamId == conn.SteamId ) ?? false;
+								@if ( !isMember )
+								{
+									<div class="picker-item" onclick=@(() => { GuildManager.Instance?.InvitePlayer( connId, name, targetSteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+										<img class="picker-avatar" src="avatar:@conn.SteamId" />
+										<span class="picker-name">@name</span>
+									</div>
+								}
+							}
+						}
+						else if ( pickerMode == "transfer" )
+						{
+							@foreach ( var member in GuildManager.Instance?.Members?.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) && m.Role >= GuildRole.Tamer ) ?? Enumerable.Empty<GuildMemberInfo>() )
+							{
+								<div class="picker-item" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+									<span class="picker-name">@member.Name</span>
+									<span class="picker-role">@member.Role</span>
+								</div>
+							}
+						}
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+@if ( !string.IsNullOrEmpty( errorMessage ) && guildView == "myguild" )
+{
+	<div class="guild-error-toast">
+		<span>@errorMessage</span>
+	</div>
+}
+
+</div>
+
+@code {
+	public Action OnBack { get; set; }
+
+	// State
+	private string guildView = "landing"; // "landing", "browse", "myguild"
+	private string hoveredLandingCard = null;
+	private string activeTab = "members";
+	private string memberSearch = "";
+	private string createName = "";
+	private string createTag = "";
+	private string errorMessage = "";
+
+	// TextEntry refs
+	private TextEntry createNameInput;
+	private TextEntry createTagInput;
+	private TextEntry motdDraftInput;
+	private TextEntry memberSearchInput;
+
+	// Browse detail
+	private GuildAdvertisement viewingGuild = null;
+
+	// MOTD editing
+	private bool editingMotd = false;
+	private string motdDraft = "";
+
+	// Emblem editing
+	private string emblemColor = "#7c3aed";
+	private string emblemIcon = "dragon";
+	private string emblemShape = "square";
+
+	// Settings editing
+	private GuildJoinMode settingsJoinMode = GuildJoinMode.Request;
+	private int settingsMinLevel = 1;
+	private string settingsMinRank = "Unranked";
+	private bool settingsAutoKick = false;
+	private int settingsInactiveDays = 3;
+	private string settingsDescription = "";
+	private TextEntry settingsDescInput;
+
+	// Confirm dialog
+	private bool showConfirmDialog = false;
+	private string confirmMessage = "";
+	private Action confirmAction;
+
+	// Picker overlay
+	private bool showPicker = false;
+	private string pickerTitle = "";
+	private string pickerMode = "";
+	private List<Monster> raidTeamSelection = new();
+	private bool showRaidTeamSelect = false;
+
+	// Raid battle
+	private bool showRaidBattle = false;
+	private bool showRaidResults = false;
+	private int raidResultDamage = 0;
+	private string raidResultComboName = "";
+	private float raidResultComboMultiplier = 1f;
+	private int raidResultScore = 0;
+
+	// Emblem options
+	private static readonly string[] EmblemColors = new[]
+	{
+		"#7c3aed", "#ef4444", "#f59e0b", "#10b981",
+		"#3b82f6", "#ec4899", "#6366f1", "#14b8a6"
+	};
+
+	private static readonly Dictionary<string, string> EmblemIcons = new()
+	{
+		{ "dragon", "🐉" }, { "swords", "⚔️" }, { "star", "⭐" },
+		{ "flame", "🔥" }, { "crown", "👑" }, { "shield", "🛡️" },
+		{ "wolf", "🐺" }, { "phoenix", "🦅" }, { "anchor", "⚓" }, { "skull", "💀" }
+	};
+
+	private static readonly Dictionary<string, string> EmblemShapes = new()
+	{
+		{ "square", "⬛" }, { "circle", "⭕" }
+	};
+
+	private static IEnumerable<T[]> ChunkArray<T>( T[] source, int size )
+	{
+		for ( int i = 0; i < source.Length; i += size )
+		{
+			var chunk = new T[Math.Min( size, source.Length - i )];
+			Array.Copy( source, i, chunk, 0, chunk.Length );
+			yield return chunk;
+		}
+	}
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			if ( GuildManager.Instance != null )
+			{
+				GuildManager.Instance.OnGuildUpdated += OnRefresh;
+				GuildManager.Instance.OnMembersUpdated += OnRefresh;
+				GuildManager.Instance.OnLogUpdated += OnRefresh;
+				GuildManager.Instance.OnGuildError += OnError;
+
+				// Init emblem editor with current values
+				if ( GuildManager.Instance.Guild != null )
+				{
+					emblemColor = GuildManager.Instance.Guild.EmblemColor;
+					emblemIcon = GuildManager.Instance.Guild.EmblemIcon;
+					emblemShape = GuildManager.Instance.Guild.EmblemShape;
+
+					settingsJoinMode = GuildManager.Instance.Guild.JoinMode;
+					settingsMinLevel = GuildManager.Instance.Guild.MinLevel;
+					settingsMinRank = GuildManager.Instance.Guild.MinRank;
+					settingsAutoKick = GuildManager.Instance.Guild.AutoKickInactive;
+					settingsInactiveDays = GuildManager.Instance.Guild.InactiveDays;
+					settingsDescription = GuildManager.Instance.Guild.Description ?? "";
+				}
+			}
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		SpriteAnimator.Update();
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( SpriteAnimator.GlobalFrame );
+		hash.Add( guildView );
+		hash.Add( activeTab );
+		hash.Add( showRaidTeamSelect );
+		hash.Add( showRaidBattle );
+		hash.Add( showRaidResults );
+		hash.Add( showConfirmDialog );
+		hash.Add( showPicker );
+		return hash.ToHashCode();
+	}
+
+	public override void OnDeleted()
+	{
+		if ( GuildManager.Instance != null )
+		{
+			GuildManager.Instance.OnGuildUpdated -= OnRefresh;
+			GuildManager.Instance.OnMembersUpdated -= OnRefresh;
+			GuildManager.Instance.OnLogUpdated -= OnRefresh;
+			GuildManager.Instance.OnGuildError -= OnError;
+		}
+	}
+
+	private void OnRefresh()
+	{
+		var guild = GuildManager.Instance?.Guild;
+		if ( guild != null )
+		{
+			emblemColor = guild.EmblemColor;
+			emblemIcon = guild.EmblemIcon;
+			emblemShape = guild.EmblemShape;
+			settingsJoinMode = guild.JoinMode;
+			settingsMinLevel = guild.MinLevel;
+			settingsMinRank = guild.MinRank;
+			settingsAutoKick = guild.AutoKickInactive;
+			settingsInactiveDays = guild.InactiveDays;
+			settingsDescription = guild.Description ?? "";
+		}
+		else
+		{
+			settingsJoinMode = GuildJoinMode.Request;
+			settingsMinLevel = 1;
+			settingsMinRank = "Unranked";
+			settingsAutoKick = false;
+			settingsInactiveDays = 3;
+			settingsDescription = "";
+			guildView = "landing";
+		}
+		editingMotd = false;
+		errorMessage = "";
+	}
+	private void OnError( string msg )
+	{
+		errorMessage = msg;
+		SoundManager.PlayDeny();
+	}
+
+	// Navigation
+	private void OnBackClicked()
+	{
+		SoundManager.PlayBack();
+		OnBack?.Invoke();
+	}
+
+	private void SetTab( string tab )
+	{
+		activeTab = tab;
+		errorMessage = "";
+		SoundManager.PlayClick();
+	}
+
+	// Helpers
+	private int GetTamerLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 0;
+
+	private void ViewGuildDetail( GuildAdvertisement guild )
+	{
+		SoundManager.PlayForward();
+		viewingGuild = guild;
+	}
+
+	private List<GuildAdvertisement> apiGuilds = new();
+	private bool isLoadingGuilds = false;
+
+	private List<GuildAdvertisement> GetVisibleGuilds()
+	{
+		// Combine RPC-discovered guilds (nearby) with API-fetched guilds (all)
+		var rpcGuilds = GuildManager.Instance?.VisibleGuilds?.Values?.ToList() ?? new();
+		var combined = new Dictionary<string, GuildAdvertisement>();
+
+		// API guilds first (more complete data)
+		foreach ( var g in apiGuilds )
+			combined[g.GuildId] = g;
+
+		// RPC guilds override (more up-to-date online counts)
+		foreach ( var g in rpcGuilds )
+			combined[g.GuildId] = g;
+
+		return combined.Values.ToList();
+	}
+
+	private async void LoadGuildsFromApi()
+	{
+		if ( isLoadingGuilds ) return;
+		isLoadingGuilds = true;
+
+		var result = await (GuildManager.Instance?.BrowseGuildsFromApi() ?? Task.FromResult( new List<GuildAdvertisement>() ));
+		apiGuilds = result;
+		isLoadingGuilds = false;
+	}
+
+	private List<GuildMemberInfo> GetFilteredMembers()
+	{
+		var members = GuildManager.Instance?.Members ?? new List<GuildMemberInfo>();
+		memberSearch = memberSearchInput?.Text ?? "";
+		if ( string.IsNullOrWhiteSpace( memberSearch ) )
+			return members;
+		return members.Where( m => m.Name.Contains( memberSearch, StringComparison.OrdinalIgnoreCase ) ).ToList();
+	}
+
+	private bool IsInactive( GuildMemberInfo member )
+	{
+		var days = GuildManager.Instance?.Guild?.InactiveDays ?? 7;
+		return !member.IsOnline && (DateTime.UtcNow - member.LastSeen).TotalDays >= days;
+	}
+
+	// Create guild
+	private void OnCreateGuild()
+	{
+		errorMessage = "";
+		createName = createNameInput?.Text ?? "";
+		createTag = createTagInput?.Text ?? "";
+		var result = GuildManager.Instance?.CreateGuild( createName, createTag ) ?? false;
+		if ( result )
+			SoundManager.PlaySuccess();
+		else if ( string.IsNullOrEmpty( errorMessage ) )
+			errorMessage = "Failed to create guild.";
+	}
+
+	// Invites
+	private void AcceptInvite( GuildInvite invite )
+	{
+		GuildManager.Instance?.AcceptInvite( invite );
+	}
+
+	private void DeclineInvite( GuildInvite invite )
+	{
+		GuildManager.Instance?.DeclineInvite( invite );
+	}
+
+	private void RequestJoin( GuildAdvertisement guild )
+	{
+		GuildManager.Instance?.RequestToJoin( guild );
+	}
+
+	private void OnInviteClicked()
+	{
+		pickerTitle = "Invite Player";
+		pickerMode = "invite";
+		showPicker = true;
+		SoundManager.PlayForward();
+	}
+
+	// MOTD
+	private void StartEditMotd()
+	{
+		motdDraft = GuildManager.Instance?.Guild?.Motd ?? "";
+		editingMotd = true;
+	}
+
+	private void SaveMotd()
+	{
+		motdDraft = motdDraftInput?.Text ?? "";
+		GuildManager.Instance?.UpdateMotd( motdDraft );
+		editingMotd = false;
+	}
+
+	private void CancelMotd()
+	{
+		editingMotd = false;
+	}
+
+	// Emblem
+	private void SaveEmblem()
+	{
+		GuildManager.Instance?.UpdateEmblem( emblemColor, emblemIcon, emblemShape );
+		SoundManager.PlaySuccess();
+	}
+
+	// Settings
+	private void SaveSettings()
+	{
+		settingsDescription = settingsDescInput?.Text ?? settingsDescription;
+		GuildManager.Instance?.UpdateGuildSettings( settingsJoinMode, settingsMinLevel, settingsMinRank, settingsAutoKick, settingsInactiveDays,
+			settingsDescription );
+		SoundManager.PlaySuccess();
+	}
+
+	// Danger Zone
+	private void OnLeaveGuild()
+	{
+		confirmMessage = "Are you sure you want to leave this guild? You can't rejoin for 24 hours.";
+		confirmAction = () => { GuildManager.Instance?.LeaveGuild(); showConfirmDialog = false; };
+		showConfirmDialog = true;
+	}
+
+	private void OnDisbandGuild()
+	{
+		confirmMessage = "Are you sure you want to disband this guild? This cannot be undone.";
+		confirmAction = () => { GuildManager.Instance?.DisbandGuild(); showConfirmDialog = false; };
+		showConfirmDialog = true;
+	}
+
+	private void OnTransferOwnership()
+	{
+		pickerTitle = "Transfer Ownership";
+		pickerMode = "transfer";
+		showPicker = true;
+		SoundManager.PlayForward();
+	}
+
+	private void OnClaimLeadership()
+	{
+		confirmMessage = "Claim leadership of this guild? The current leader has been inactive for 30+ days.";
+		confirmAction = () => { GuildManager.Instance?.ClaimLeadership(); showConfirmDialog = false; };
+		showConfirmDialog = true;
+	}
+
+	private void ConfirmKick( GuildMemberInfo member )
+	{
+		confirmMessage = $"Kick {member.Name}? They won't be able to rejoin for 24 hours.";
+		confirmAction = () => { GuildManager.Instance?.KickMember( member.SteamId ); showConfirmDialog = false; };
+		showConfirmDialog = true;
+	}
+
+	private void ConfirmAction()
+	{
+		confirmAction?.Invoke();
+		confirmAction = null;
+		confirmMessage = "";
+		showConfirmDialog = false;
+	}
+
+	// Raids — helpers
+	private string GetRaidBossSpritePath()
+	{
+		var raid = GuildManager.Instance?.CurrentRaidBoss;
+		if ( raid == null ) return "";
+		var species = MonsterManager.Instance?.GetSpecies( raid.BossSpeciesId );
+		if ( species?.AnimationFrames?.Count > 0 )
+		{
+			int frame = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
+			return species.AnimationFrames[frame];
+		}
+		return species?.IconPath ?? "";
+	}
+
+	private string GetElementAccentColor()
+	{
+		var raid = GuildManager.Instance?.CurrentRaidBoss;
+		if ( raid == null ) return "#a855f7";
+		return raid.BossElement switch
+		{
+			ElementType.Fire => "#ef4444",
+			ElementType.Water => "#3b82f6",
+			ElementType.Earth => "#b45309",
+			ElementType.Wind => "#22c55e",
+			ElementType.Electric => "#facc15",
+			ElementType.Ice => "#93c5fd",
+			ElementType.Nature => "#22c55e",
+			ElementType.Metal => "#9ca3af",
+			ElementType.Shadow => "#8b5cf6",
+			ElementType.Spirit => "#ec4899",
+			_ => "#a855f7"
+		};
+	}
+
+	private string GetRaidBossDescription()
+	{
+		var raid = GuildManager.Instance?.CurrentRaidBoss;
+		if ( raid == null ) return "";
+		var species = MonsterManager.Instance?.GetSpecies( raid.BossSpeciesId );
+		return species?.Description ?? "";
+	}
+
+	private string GetRaidBossRarity()
+	{
+		var raid = GuildManager.Instance?.CurrentRaidBoss;
+		if ( raid == null ) return "Legendary";
+		var species = MonsterManager.Instance?.GetSpecies( raid.BossSpeciesId );
+		return species?.BaseRarity.ToString() ?? "Legendary";
+	}
+
+	private RaidAttemptResult GetMyBestRaidScore()
+	{
+		var raid = GuildManager.Instance?.CurrentRaidBoss;
+		if ( raid?.BestScores == null ) return null;
+		long steamId = (long)(Connection.Local?.SteamId ?? 0);
+		raid.BestScores.TryGetValue( steamId, out var myBest );
+		return myBest;
+	}
+
+	private void OnAttackRaidBoss()
+	{
+		raidTeamSelection = new List<Monster>();
+		showRaidTeamSelect = true;
+		SoundManager.PlayForward();
+	}
+
+	private void ToggleRaidTeamMember( Monster monster )
+	{
+		if ( raidTeamSelection.Contains( monster ) )
+			raidTeamSelection.Remove( monster );
+		else if ( raidTeamSelection.Count < 3 )
+			raidTeamSelection.Add( monster );
+		SoundManager.PlayClick();
+	}
+
+	private List<Monster> GetRaidAvailableMonsters()
+	{
+		return MonsterManager.Instance?.OwnedMonsters
+			?.OrderByDescending( m => m.Level ).ToList() ?? new List<Monster>();
+	}
+
+	private (string ComboName, float Multiplier) GetRaidComboPreview()
+	{
+		if ( raidTeamSelection.Count != 3 ) return ("None", 1f);
+		return GuildManager.Instance?.CalculateComboBonus( raidTeamSelection ) ?? ("None", 1f);
+	}
+
+	private void StartRaidBattle()
+	{
+		if ( raidTeamSelection.Count == 0 ) return;
+		showRaidTeamSelect = false;
+
+		var gm = GuildManager.Instance;
+		if ( gm == null || gm.CurrentRaidBoss == null ) return;
+
+		var bossSpecies = MonsterManager.Instance?.GetSpecies( gm.CurrentRaidBoss.BossSpeciesId );
+		if ( bossSpecies == null ) return;
+
+		var raidBoss = new Monster
+		{
+			SpeciesId = gm.CurrentRaidBoss.BossSpeciesId,
+			Nickname = gm.CurrentRaidBoss.BossName,
+			Level = gm.CurrentRaidBoss.BossLevel
+		};
+		MonsterManager.Instance?.RecalculateStats( raidBoss );
+		raidBoss.CurrentHP = 999999;
+		raidBoss.MaxHP = 999999;
+
+		// Start interactive raid battle via BattleManager
+		BattleManager.Instance?.StartRaidBattle( raidTeamSelection, raidBoss, gm.CurrentRaidBoss.MaxRounds );
+		showRaidBattle = true;
+	}
+
+	private void OnRaidBattleComplete( bool playerWon )
+	{
+		showRaidBattle = false;
+
+		var bm = BattleManager.Instance;
+		var gm = GuildManager.Instance;
+		if ( bm == null || gm == null ) return;
+
+		int rawDamage = bm.RaidDamageDealt;
+		int roundsUsed = bm.RaidCurrentRound;
+
+		var combo = gm.CalculateComboBonus( raidTeamSelection );
+
+		gm.CompleteRaidAttempt( rawDamage, combo.Multiplier, combo.ComboName, roundsUsed );
+
+		raidResultDamage = rawDamage;
+		raidResultComboName = combo.ComboName;
+		raidResultComboMultiplier = combo.Multiplier;
+		raidResultScore = (int)(rawDamage * combo.Multiplier);
+		showRaidResults = true;
+
+		bm.ExitBattle();
+		raidTeamSelection.Clear();
+	}
+
+	// Formatting
+	private string FormatCooldown()
+	{
+		var remaining = GuildManager.Instance?.GetHopCooldownRemaining() ?? TimeSpan.Zero;
+		if ( remaining.TotalHours >= 1 )
+			return $"{(int)remaining.TotalHours}h {remaining.Minutes}m";
+		return $"{remaining.Minutes}m";
+	}
+
+	private string FormatRaidTimer()
+	{
+		var end = GuildManager.Instance?.GetPeriodEndDate() ?? DateTime.UtcNow;
+		var remaining = end - DateTime.UtcNow;
+		if ( remaining.TotalDays >= 1 )
+			return $"{(int)remaining.TotalDays}d {remaining.Hours}h";
+		return $"{remaining.Hours}h {remaining.Minutes}m";
+	}
+
+	private string FormatLastSeen( DateTime lastSeen )
+	{
+		var days = (int)(DateTime.UtcNow - lastSeen).TotalDays;
+		if ( days == 0 ) return "today";
+		if ( days == 1 ) return "1d ago";
+		return $"{days}d ago";
+	}
+
+	private string FormatLogTime( DateTime timestamp )
+	{
+		var diff = DateTime.UtcNow - timestamp;
+		if ( diff.TotalMinutes < 60 ) return $"{(int)diff.TotalMinutes}m ago";
+		if ( diff.TotalHours < 24 ) return $"{(int)diff.TotalHours}h ago";
+		return $"{(int)diff.TotalDays}d ago";
+	}
+
+	private float GetGuildXPPercent()
+	{
+		var guild = GuildManager.Instance?.Guild;
+		if ( guild == null ) return 0;
+		var needed = GuildManager.GetXPForGuildLevel( guild.Level );
+		if ( needed <= 0 ) return 100;
+		return Math.Min( 100, (float)guild.GuildXP / needed * 100f );
+	}
+
+	private string GetEmblemEmoji( string icon )
+	{
+		return EmblemIcons.TryGetValue( icon, out var emoji ) ? emoji : "🛡️";
+	}
+
+	private string GetAvatarEmoji( GuildMemberInfo member )
+	{
+		return member.Role switch
+		{
+			GuildRole.Beastlord => "👑",
+			GuildRole.Warden => "⭐",
+			_ => "🧑"
+		};
+	}
+
+	private string GetLogIcon( string action )
+	{
+		return action switch
+		{
+			"joined" => "➕",
+			"left" => "➖",
+			"promoted" => "⬆️",
+			"kicked" => "🚫",
+			"created" => "🏛️",
+			"updated" => "✏️",
+			"invited" => "📧",
+			"approved" => "✅",
+			"succession" => "👑",
+			_ => "📋"
+		};
+	}
+
+	// Perk list
+	private record PerkInfo( int Level, string Name, string Description );
+
+	private List<PerkInfo> GetPerkList()
+	{
+		return new List<PerkInfo>
+		{
+			new( 2, "+5% Expedition Gold", "Gold from expeditions increased by 5%" ),
+			new( 4, "+5% Tamer XP", "Tamer XP from all sources increased by 5%" ),
+			new( 6, "+5% Catch Rate", "Monster catch rate bonus of 5%" ),
+			new( 8, "+10% Gold (All)", "Gold from all sources increased by 10%" ),
+			new( 10, "+10% Tamer XP", "Additional 10% Tamer XP (total +15%)" ),
+			new( 12, "+10% Beast XP", "Monster XP gain increased by 10%" ),
+			new( 15, "+15% Gold (All)", "Additional 15% gold from all sources (total +25%)" ),
+			new( 20, "Exclusive Title", "Unlock an exclusive guild master title" )
+		};
+	}
+
+	// Permission matrix
+	private record PermissionInfo( string Action, bool Beastlord, bool Warden, bool Tamer, bool Wanderer );
+
+	private List<PermissionInfo> GetPermissionMatrix()
+	{
+		return new List<PermissionInfo>
+		{
+			new( "Invite players", true, true, false, false ),
+			new( "Approve requests", true, true, false, false ),
+			new( "Kick members", true, true, false, false ),
+			new( "Promote/Demote", true, false, false, false ),
+			new( "Edit MOTD", true, true, false, false ),
+			new( "Edit Settings", true, true, false, false ),
+			new( "Edit Emblem", true, true, false, false ),
+			new( "Transfer Ownership", true, false, false, false ),
+			new( "Disband Guild", true, false, false, false )
+		};
+	}
+}

@@ -64,6 +64,12 @@ public sealed class BattleManager : Component
 	private float skipAnimationsTimer = 0f;
 	private const float SKIP_ANIMATIONS_DELAY = 1.0f; // Pause so player sees final state before next wave
 
+	// Raid mode state
+	public bool IsRaidMode { get; set; } = false;
+	public int RaidMaxRounds { get; set; } = 10;
+	public int RaidDamageDealt { get; set; } = 0;
+	public int RaidCurrentRound { get; set; } = 0;
+
 	// Boss state for phase tracking
 	public ActiveBossState CurrentBossState { get; private set; }
 
@@ -868,6 +874,10 @@ public sealed class BattleManager : Component
 		IsTransitioning = false;
 		isPlayingBackManualTurns = false;
 		pendingManualBattleEnd = false;
+		IsRaidMode = false;
+		RaidDamageDealt = 0;
+		RaidCurrentRound = 0;
+		RaidMaxRounds = 10;
 		PlayerTeam.Clear();
 		EnemyTeam.Clear();
 		CurrentResult = null;
@@ -1211,6 +1221,80 @@ public sealed class BattleManager : Component
 	}
 
 	/// <summary>
+	/// Start a raid boss battle in manual mode (player selects moves, boss has infinite HP, fixed rounds)
+	/// </summary>
+	public void StartRaidBattle( List<Monster> playerTeam, Monster raidBoss, int maxRounds = 10 )
+	{
+		Log.Info( $"StartRaidBattle called: playerTeam={playerTeam?.Count ?? 0}, maxRounds={maxRounds}" );
+
+		if ( IsInBattle && !IsTransitioning )
+		{
+			Log.Warning( "Already in battle!" );
+			return;
+		}
+
+		IsTransitioning = false;
+
+		if ( playerTeam == null || playerTeam.Count == 0 )
+		{
+			Log.Warning( "Cannot start raid: No player team!" );
+			return;
+		}
+
+		if ( raidBoss == null )
+		{
+			Log.Warning( "Cannot start raid: No raid boss!" );
+			return;
+		}
+
+		// Create copies of the teams
+		PlayerTeam = new List<Monster>( playerTeam );
+		EnemyTeam = new List<Monster> { raidBoss };
+
+		// Heal player team to full
+		foreach ( var monster in PlayerTeam )
+		{
+			monster?.FullHeal();
+		}
+
+		// Set boss to infinite HP
+		raidBoss.CurrentHP = 999999;
+		raidBoss.MaxHP = 999999;
+
+		// Initialize battle state (arena mode = 1v1 with swaps)
+		CurrentBattleState = new BattleState();
+		CurrentBattleState.IsArenaMode = true;
+		foreach ( var m in PlayerTeam.Concat( EnemyTeam ) )
+		{
+			if ( m != null )
+				CurrentBattleState.InitializeMonster( m.Id );
+		}
+
+		// Initialize raid mode state
+		IsRaidMode = true;
+		RaidMaxRounds = maxRounds;
+		RaidDamageDealt = 0;
+		RaidCurrentRound = 0;
+
+		// Create result container for manual mode
+		CurrentResult = new BattleResult();
+		CurrentResult.Turns = new List<BattleTurn>();
+		manualModeTurns.Clear();
+
+		CurrentTurnIndex = 0;
+		IsInBattle = true;
+		IsPlaying = false;
+		IsWaitingForPlayerInput = true;
+		isPlayingBackManualTurns = false;
+		pendingManualBattleEnd = false;
+		skipAnimationsPending = false;
+		TurnTimer = 0;
+
+		OnBattleStart?.Invoke();
+		Log.Info( $"Raid battle started: {PlayerTeam.Count} vs boss, maxRounds={maxRounds}" );
+	}
+
+	/// <summary>
 	/// Execute the player's chosen move and continue the battle
 	/// </summary>
 	public void ExecutePlayerMove( string moveId )
@@ -1361,6 +1445,52 @@ public sealed class BattleManager : Component
 		}
 
 		isPlayingBackManualTurns = false;
+
+		// Raid mode: track damage and end when player team is wiped
+		if ( IsRaidMode )
+		{
+			// Track damage dealt to boss from player attacks
+			foreach ( var turn in turns )
+			{
+				if ( turn.IsPlayerAttacker && turn.Damage > 0 )
+					RaidDamageDealt += turn.Damage;
+			}
+			RaidCurrentRound++;
+			Log.Info( $"PlaybackManualTurns (Raid): Round {RaidCurrentRound}, TotalDamage={RaidDamageDealt}" );
+
+			bool raidEnded = false;
+
+			// Check if player team is wiped
+			if ( BattleSimulator.IsTeamDefeated( PlayerTeam ) )
+			{
+				Log.Info( "Raid: Player team defeated" );
+				raidEnded = true;
+			}
+
+			if ( raidEnded )
+			{
+				CurrentResult.PlayerWon = true; // Raids always count as "won" (score attack)
+				CurrentResult.TotalTurns = RaidCurrentRound;
+				IsWaitingForPlayerInput = false;
+				IsPlaying = true;
+				pendingManualBattleEnd = true;
+				manualBattleEndTimer = MANUAL_BATTLE_END_DELAY;
+				return;
+			}
+
+			// Reset boss HP for next round (infinite HP concept)
+			var boss = EnemyTeam.FirstOrDefault();
+			if ( boss != null )
+			{
+				boss.CurrentHP = 999999;
+				boss.MaxHP = 999999;
+			}
+
+			// Continue to next round
+			IsPlaying = false;
+			IsWaitingForPlayerInput = true;
+			return;
+		}
 
 		// Check if battle is over (all enemies defeated)
 		bool battleOver = BattleSimulator.IsBattleOver( PlayerTeam, EnemyTeam );

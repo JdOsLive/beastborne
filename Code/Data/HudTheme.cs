@@ -249,7 +249,106 @@ public static class CosmeticDatabase
 			Description = "Defeat all bosses at least once",
 			TokenCost = 2500,
 			TitleColor = "#06b6d4"
-		}
+		},
+
+		// === Achievement-granted titles (TokenCost = 0, earned via achievements) ===
+
+		// Collection
+		new TamerTitle { Id = "Collector", Title = "Collector", Description = "Collect 10 unique beasts", TitleColor = "#4ade80" },
+		new TamerTitle { Id = "Master Tamer", Title = "Master Tamer", Description = "Collect 30 unique beasts", TitleColor = "#22d3ee" },
+		new TamerTitle { Id = "Beast Wrangler", Title = "Beast Wrangler", Description = "Collect 60 unique beasts", TitleColor = "#a78bfa" },
+		new TamerTitle { Id = "Living Legend", Title = "Living Legend", Description = "Collect 100 unique beasts", TitleColor = "#fbbf24" },
+
+		// Rarity hunting
+		new TamerTitle { Id = "Legend Hunter", Title = "Legend Hunter", Description = "Catch a Legendary beast", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Mythic Hunter", Title = "Mythic Hunter", Description = "Catch a Mythic beast", TitleColor = "#ec4899" },
+		new TamerTitle { Id = "Beastborne Master", Title = "Beastborne Master", Description = "Complete the full collection", TitleColor = "#f59e0b" },
+
+		// Battle
+		new TamerTitle { Id = "Veteran Fighter", Title = "Veteran Fighter", Description = "Win 50 battles", TitleColor = "#94a3b8" },
+		new TamerTitle { Id = "Warborn", Title = "Warborn", Description = "Win 200 battles", TitleColor = "#ef4444" },
+		new TamerTitle { Id = "Unbreakable", Title = "Unbreakable", Description = "Win 500 battles", TitleColor = "#f97316" },
+
+		// Damage
+		new TamerTitle { Id = "Devastator", Title = "Devastator", Description = "Deal massive total damage", TitleColor = "#ef4444" },
+		new TamerTitle { Id = "Cataclysm", Title = "Cataclysm", Description = "Deal catastrophic total damage", TitleColor = "#dc2626" },
+
+		// KOs
+		new TamerTitle { Id = "Executioner", Title = "Executioner", Description = "KO many enemy beasts", TitleColor = "#b91c1c" },
+		new TamerTitle { Id = "Annihilator", Title = "Annihilator", Description = "KO a huge number of enemy beasts", TitleColor = "#991b1b" },
+
+		// Flawless & Elements
+		new TamerTitle { Id = "Flawless", Title = "Flawless", Description = "Win battles without losing a beast", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Elemental Master", Title = "Elemental Master", Description = "Win with every element type", TitleColor = "#8b5cf6" },
+
+		// Expedition
+		new TamerTitle { Id = "Conqueror", Title = "Conqueror", Description = "Complete many expeditions", TitleColor = "#10b981" },
+		new TamerTitle { Id = "Iron Explorer", Title = "Iron Explorer", Description = "Complete expeditions without failures", TitleColor = "#6b7280" },
+		new TamerTitle { Id = "Unbreakable Explorer", Title = "Unbreakable Explorer", Description = "Survive the toughest expeditions", TitleColor = "#f97316" },
+		new TamerTitle { Id = "Absolute Legend", Title = "Absolute Legend", Description = "Master all expedition content", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Expedition Veteran", Title = "Expedition Veteran", Description = "Complete a huge number of expeditions", TitleColor = "#059669" },
+		new TamerTitle { Id = "Endless Explorer", Title = "Endless Explorer", Description = "Never stop exploring", TitleColor = "#14b8a6" },
+		new TamerTitle { Id = "Boss Slayer", Title = "Boss Slayer", Description = "Defeat expedition bosses", TitleColor = "#fbbf24" },
+
+		// Fusion
+		new TamerTitle { Id = "Beast Fuser", Title = "Beast Fuser", Description = "Fuse beasts together", TitleColor = "#a855f7" },
+		new TamerTitle { Id = "Genetics Expert", Title = "Genetics Expert", Description = "Perform many fusions", TitleColor = "#7c3aed" },
+		new TamerTitle { Id = "Master Fuser", Title = "Master Fuser", Description = "Master the art of fusion", TitleColor = "#6d28d9" },
+		new TamerTitle { Id = "Perfectionist", Title = "Perfectionist", Description = "Achieve perfect fusion results", TitleColor = "#fbbf24" },
+
+		// Economy
+		new TamerTitle { Id = "Wealthy", Title = "Wealthy", Description = "Accumulate significant gold", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Millionaire", Title = "Millionaire", Description = "Accumulate a million gold", TitleColor = "#f59e0b" },
+		new TamerTitle { Id = "Billionaire", Title = "Billionaire", Description = "Accumulate a billion gold", TitleColor = "#d97706" },
+		new TamerTitle { Id = "Big Spender", Title = "Big Spender", Description = "Spend a lot of gold", TitleColor = "#fbbf24" },
+
+		// Arena
+		new TamerTitle { Id = "Arena Warrior", Title = "Arena Warrior", Description = "Win arena battles", TitleColor = "#ef4444" },
+		new TamerTitle { Id = "Arena Champion", Title = "Arena Champion", Description = "Dominate the arena", TitleColor = "#f59e0b" },
+		new TamerTitle { Id = "Arena Legend", Title = "Arena Legend", Description = "Become an arena legend", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "On Fire", Title = "On Fire", Description = "Achieve a long win streak", TitleColor = "#ef4444" },
+		new TamerTitle { Id = "Unstoppable", Title = "Unstoppable", Description = "Achieve an incredible win streak", TitleColor = "#dc2626" },
+		new TamerTitle { Id = "Giant Killer", Title = "Giant Killer", Description = "Defeat higher-ranked opponents", TitleColor = "#10b981" },
+		new TamerTitle { Id = "Arena Veteran", Title = "Arena Veteran", Description = "Fight many arena battles", TitleColor = "#6b7280" },
+		new TamerTitle { Id = "Comeback King", Title = "Comeback King", Description = "Win from behind", TitleColor = "#8b5cf6" },
+
+		// Ranked titles
+		new TamerTitle { Id = "Bronze Champion", Title = "Bronze Champion", Description = "Reach Bronze rank", TitleColor = "#cd7f32" },
+		new TamerTitle { Id = "Silver Champion", Title = "Silver Champion", Description = "Reach Silver rank", TitleColor = "#c0c0c0" },
+		new TamerTitle { Id = "Gold Champion", Title = "Gold Champion", Description = "Reach Gold rank", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Platinum Champion", Title = "Platinum Champion", Description = "Reach Platinum rank", TitleColor = "#06b6d4" },
+		new TamerTitle { Id = "Diamond Champion", Title = "Diamond Champion", Description = "Reach Diamond rank", TitleColor = "#60a5fa" },
+		new TamerTitle { Id = "Master Champion", Title = "Master Champion", Description = "Reach Master rank", TitleColor = "#a855f7" },
+		new TamerTitle { Id = "Legendary Champion", Title = "Legendary Champion", Description = "Reach Legendary rank", TitleColor = "#f59e0b" },
+		new TamerTitle { Id = "Mythic Champion", Title = "Mythic Champion", Description = "Reach Mythic rank", TitleColor = "#ec4899" },
+
+		// Trading
+		new TamerTitle { Id = "Merchant", Title = "Merchant", Description = "Complete trades", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Trade Baron", Title = "Trade Baron", Description = "Master of trading", TitleColor = "#f59e0b" },
+
+		// Social
+		new TamerTitle { Id = "Chatterbox", Title = "Chatterbox", Description = "Send many chat messages", TitleColor = "#60a5fa" },
+		new TamerTitle { Id = "Social Network", Title = "Social Network", Description = "Add many friends", TitleColor = "#34d399" },
+
+		// Tamer level
+		new TamerTitle { Id = "Expert", Title = "Expert", Description = "Reach a high tamer level", TitleColor = "#22d3ee" },
+		new TamerTitle { Id = "Centurion", Title = "Centurion", Description = "Reach tamer level 100", TitleColor = "#6366f1" },
+		new TamerTitle { Id = "Grand Tamer", Title = "Grand Tamer", Description = "Reach a very high tamer level", TitleColor = "#8b5cf6" },
+		new TamerTitle { Id = "Legendary Tamer", Title = "Legendary Tamer", Description = "Reach an elite tamer level", TitleColor = "#fbbf24" },
+		new TamerTitle { Id = "Transcendent", Title = "Transcendent", Description = "Reach the highest tamer level", TitleColor = "#f59e0b" },
+
+		// Misc progression
+		new TamerTitle { Id = "Skill Master", Title = "Skill Master", Description = "Master beast skills", TitleColor = "#8b5cf6" },
+		new TamerTitle { Id = "Darwin's Heir", Title = "Darwin's Heir", Description = "Evolve many beasts", TitleColor = "#10b981" },
+		new TamerTitle { Id = "Evolution Master", Title = "Evolution Master", Description = "Master beast evolution", TitleColor = "#059669" },
+		new TamerTitle { Id = "Battle Hardened", Title = "Battle Hardened", Description = "Survive many tough battles", TitleColor = "#94a3b8" },
+		new TamerTitle { Id = "Point Master", Title = "Point Master", Description = "Earn many stat points", TitleColor = "#a855f7" },
+
+		// Secret achievements
+		new TamerTitle { Id = "Night Owl", Title = "Night Owl", Description = "Play during the late hours", TitleColor = "#6366f1" },
+		new TamerTitle { Id = "Full House", Title = "Full House", Description = "Fill your roster completely", TitleColor = "#f59e0b" },
+		new TamerTitle { Id = "Naturalist", Title = "Naturalist", Description = "Discover Nature-type beasts", TitleColor = "#22c55e" },
+		new TamerTitle { Id = "Mono Master", Title = "Mono Master", Description = "Win with a single-element team", TitleColor = "#ec4899" },
 	};
 
 	/// <summary>

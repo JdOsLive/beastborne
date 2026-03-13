@@ -8,7 +8,7 @@ namespace Beastborne.Systems;
 public static class SoundManager
 {
 	// UI Sounds (custom)
-	private const string UI_HOVER = "sounds/ui/littleswoosh1b.sound";
+	private const string UI_HOVER = "sounds/ui/hover.sound";
 	private const string UI_CLICK = "sounds/ui/button.sound";
 	private const string UI_BACK = "sounds/ui/close.sound";
 	private const string UI_FORWARD = "sounds/ui/open.sound";
@@ -22,6 +22,12 @@ public static class SoundManager
 	private const string UI_SUCCESS = "sounds/ui/success.sound";
 	private const string UI_MAXIMIZE = "sounds/ui/maximize.sound";
 	private const string UI_MINIMIZE = "sounds/ui/minimize.sound";
+
+	// Guild Sounds (reuse existing)
+	private const string GUILD_JOIN = "sounds/ui/success.sound";
+	private const string GUILD_INVITE = "sounds/ui/notification.sound";
+	private const string GUILD_LEVEL_UP = "sounds/ui/maximize.sound";
+	private const string RAID_COMPLETE = "sounds/ui/success.sound";
 
 	// Battle Sounds (s&box built-in)
 	private const string BATTLE_HIT = "player.attack.hit";
@@ -206,6 +212,30 @@ public static class SoundManager
 	public static void PlayMinimize()
 	{
 		PlaySound( UI_MINIMIZE, _uiVolume * 0.6f );
+	}
+
+	// ==========================================
+	// Guild Sound Methods
+	// ==========================================
+
+	public static void PlayGuildJoin()
+	{
+		PlaySound( GUILD_JOIN, _uiVolume * 0.8f );
+	}
+
+	public static void PlayGuildInvite()
+	{
+		PlaySound( GUILD_INVITE, _uiVolume * 0.7f );
+	}
+
+	public static void PlayGuildLevelUp()
+	{
+		PlaySound( GUILD_LEVEL_UP, _sfxVolume );
+	}
+
+	public static void PlayRaidComplete()
+	{
+		PlaySound( RAID_COMPLETE, _sfxVolume * 0.9f );
 	}
 
 	// ==========================================

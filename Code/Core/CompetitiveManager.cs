@@ -569,6 +569,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			return;
 		}
 
+		PlayerProfileData matchProfile = null;
+		ChatManager.Instance?.PlayerProfiles?.TryGetValue( _matchedOpponent.ConnectionId, out matchProfile );
+
 		CurrentOpponent = new ArenaOpponent
 		{
 			Name = _matchedOpponent.PlayerName,
@@ -577,7 +580,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			Team = opponentTeam,
 			IsRealPlayer = true,
 			ConnectionId = _matchedOpponent.ConnectionId,
-			SteamId = _matchedOpponent.SteamId
+			SteamId = _matchedOpponent.SteamId,
+			GuildTag = matchProfile?.GuildTag,
+			GuildName = matchProfile?.GuildName
 		};
 
 		// Reset set state
@@ -772,7 +777,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		{
 			SubmitScore( tamer.ArenaPoints );
 		}
-		Stats.SetValue( "arena-wins", tamer.ArenaWins );
+		Stats.SetValue( "arena-wins-total", tamer.ArenaWins );
 
 		// Save
 		TamerManager.Instance?.SaveToCloud();
@@ -781,6 +786,12 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		Log.Info( $"[Arena] Set complete: {(playerWon ? "WIN" : "LOSS")} ({SetScorePlayer}-{SetScoreOpponent}), {pointsChange:+#;-#;0} points" );
 
 		OnSetComplete?.Invoke( playerWon, pointsChange );
+
+		// Guild XP for arena set completion
+		GuildManager.Instance?.AddGuildXP( 50 );
+		GuildManager.Instance?.IncrementAchievement( "arena" );
+		if ( pointsChange > 0 )
+			GuildManager.Instance?.AddWeeklyRP( pointsChange );
 	}
 
 	/// <summary>
@@ -1174,6 +1185,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		_playersInQueue.RemoveAll( p => p.ConnectionId == senderConnectionId || p.ConnectionId == LocalConnectionId.ToString() );
 
 		var opponentTeam = DeserializeTeam( senderTeamData );
+		PlayerProfileData opProfile1 = null;
+		ChatManager.Instance?.PlayerProfiles?.TryGetValue( senderConnectionId, out opProfile1 );
+
 		CurrentOpponent = new ArenaOpponent
 		{
 			Name = senderName,
@@ -1182,7 +1196,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			Team = opponentTeam,
 			IsRealPlayer = true,
 			ConnectionId = senderConnectionId,
-			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0
+			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0,
+			GuildTag = opProfile1?.GuildTag,
+			GuildName = opProfile1?.GuildName
 		};
 
 		CurrentState = ArenaState.MatchFound;
@@ -1202,6 +1218,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		Log.Info( $"[Arena] Match accepted by {senderName}" );
 
 		var opponentTeam = DeserializeTeam( senderTeamData );
+		PlayerProfileData opProfile2 = null;
+		ChatManager.Instance?.PlayerProfiles?.TryGetValue( senderConnectionId, out opProfile2 );
+
 		CurrentOpponent = new ArenaOpponent
 		{
 			Name = senderName,
@@ -1210,7 +1229,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			Team = opponentTeam,
 			IsRealPlayer = true,
 			ConnectionId = senderConnectionId,
-			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0
+			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0,
+			GuildTag = opProfile2?.GuildTag,
+			GuildName = opProfile2?.GuildName
 		};
 
 		_playersInQueue.RemoveAll( p => p.ConnectionId == senderConnectionId || p.ConnectionId == LocalConnectionId.ToString() );
@@ -1515,6 +1536,8 @@ public class ArenaOpponent
 	public bool IsRealPlayer { get; set; } = false;
 	public string ConnectionId { get; set; }
 	public long SteamId { get; set; }
+	public string GuildTag { get; set; }
+	public string GuildName { get; set; }
 }
 
 /// <summary>

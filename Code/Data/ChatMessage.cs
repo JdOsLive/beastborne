@@ -72,7 +72,7 @@ public class ChatMessage
 
 	// Display helpers
 	public string FormattedTime => Timestamp.ToLocalTime().ToString( "HH:mm" );
-	public bool IsSystem => Type != ChatMessageType.Player && Type != ChatMessageType.BeastShowcase && Type != ChatMessageType.TamerCardShowcase;
+	public bool IsSystem => Type != ChatMessageType.Player && Type != ChatMessageType.BeastShowcase && Type != ChatMessageType.TamerCardShowcase && Type != ChatMessageType.GuildChat;
 	public bool IsDeveloper => DeveloperSteamIds.Contains( SteamId );
 
 	// Deterministic color assignment from SteamId
@@ -99,5 +99,6 @@ public enum ChatMessageType
 	Join,          // Player joined
 	Leave,         // Player left
 	BeastShowcase,      // Player showing off a beast
-	TamerCardShowcase   // Player showing off their tamer card
+	TamerCardShowcase,  // Player showing off their tamer card
+	GuildChat           // Guild-only chat message
 }

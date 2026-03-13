@@ -626,6 +626,195 @@ public static class BattleSimulator
 	}
 
 	// ============================================
+	// RAID BOSS BATTLE (Score Attack Mode)
+	// ============================================
+
+	/// <summary>
+	/// Simulate a raid boss battle. The boss has effectively infinite HP.
+	/// Battle runs until all player beasts faint. Returns total damage dealt by the player team.
+	/// Uses the move-based combat system.
+	/// </summary>
+	public static RaidBattleResult SimulateRaidBattle( List<Monster> playerTeam, Monster raidBoss, int maxRounds = 10 )
+	{
+		Log.Info( $"[BattleSimulator] SimulateRaidBattle: players={playerTeam?.Count}, boss={raidBoss?.Nickname}" );
+
+		var raidResult = new RaidBattleResult();
+
+		if ( playerTeam == null || playerTeam.Count == 0 || raidBoss == null )
+			return raidResult;
+
+		// Clone player team
+		var players = playerTeam.Where( m => m != null ).Select( m => m.Clone() ).ToList();
+
+		// Clone boss with massive HP so it won't die
+		var boss = raidBoss.Clone();
+		boss.CurrentHP = 999999;
+		boss.MaxHP = 999999;
+		var enemies = new List<Monster> { boss };
+
+		var state = new BattleState();
+
+		// Initialize all monsters
+		foreach ( var m in players.Concat( enemies ) )
+		{
+			state.InitializeMonster( m.Id );
+		}
+
+		int totalDamage = 0;
+
+		while ( !IsTeamDefeated( players ) )
+		{
+			state.TurnNumber++;
+
+			// Get player's active monster
+			var playerActive = GetActiveMonster( players, state.PlayerActiveIndex );
+			if ( playerActive == null )
+				break;
+
+			// Boss is always the single enemy
+			if ( boss.CurrentHP <= 0 )
+			{
+				// Reset boss HP each round (infinite HP concept)
+				boss.CurrentHP = 999999;
+			}
+
+			// Build action list
+			var actions = new List<(MoveChoice choice, Monster actor, Monster target, bool isPlayer)>();
+
+			// Player's action
+			var playerChoice = BattleAI.SelectAction( playerActive, boss, state, players, true );
+			actions.Add( (playerChoice, playerActive, boss, true) );
+
+			// Boss attacks player
+			var bossChoice = BattleAI.SelectAction( boss, playerActive, state, enemies, false );
+			actions.Add( (bossChoice, boss, playerActive, false) );
+
+			// Sort by priority then speed
+			actions.Sort( ( a, b ) =>
+			{
+				int priorityCompare = b.choice.Priority.CompareTo( a.choice.Priority );
+				if ( priorityCompare != 0 ) return priorityCompare;
+				return b.choice.Speed.CompareTo( a.choice.Speed );
+			} );
+
+			// Execute actions
+			foreach ( var (choice, actor, target, isPlayer) in actions )
+			{
+				if ( actor.CurrentHP <= 0 ) continue;
+				if ( target.CurrentHP <= 0 && !isPlayer ) continue; // Boss can't attack fainted player
+				if ( IsTeamDefeated( players ) ) break;
+
+				// Handle swap
+				if ( choice.ActionType == BattleActionType.Swap && isPlayer )
+				{
+					var switchOutEffects = ApplyOnSwitchOutEffects( actor, state );
+					state.PlayerActiveIndex = choice.SwapToIndex;
+					var newActive = players[choice.SwapToIndex];
+					raidResult.Turns.Add( new BattleTurn
+					{
+						TurnNumber = state.TurnNumber,
+						AttackerId = actor.Id,
+						AttackerName = actor.Nickname,
+						DefenderId = newActive.Id,
+						DefenderName = newActive.Nickname,
+						IsPlayerAttacker = isPlayer,
+						IsSwap = true,
+						SwapToName = newActive.Nickname,
+						EffectMessages = switchOutEffects
+					} );
+					continue;
+				}
+
+				var move = MoveDatabase.GetMove( choice.MoveId );
+				if ( move == null ) continue;
+
+				// Check accuracy
+				if ( move.Accuracy < 100 )
+				{
+					float hitChance = move.Accuracy / 100f;
+					if ( CurrentRandom.NextDouble() > hitChance )
+					{
+						raidResult.Turns.Add( new BattleTurn
+						{
+							TurnNumber = state.TurnNumber,
+							AttackerId = actor.Id,
+							AttackerName = actor.Nickname,
+							DefenderId = target.Id,
+							DefenderName = target.Nickname,
+							IsPlayerAttacker = isPlayer,
+							IsMiss = true,
+							MoveName = move.Name,
+							MoveElement = move.Element
+						} );
+						continue;
+					}
+				}
+
+				// Calculate and apply damage
+				var damageResult = CalculateDamage( actor, target, move, state );
+				int hpBefore = target.CurrentHP;
+
+				if ( damageResult.Damage > 0 )
+				{
+					ApplyDamage( target, damageResult.Damage );
+
+					// Track damage dealt to boss by player team
+					if ( isPlayer && target == boss )
+					{
+						totalDamage += damageResult.Damage;
+					}
+				}
+
+				// Apply move effects
+				var effectMessages = ApplyMoveEffects( actor, target, move, damageResult, state );
+
+				raidResult.Turns.Add( new BattleTurn
+				{
+					TurnNumber = state.TurnNumber,
+					AttackerId = actor.Id,
+					AttackerName = actor.Nickname,
+					DefenderId = target.Id,
+					DefenderName = target.Nickname,
+					Damage = damageResult.Damage,
+					IsCritical = damageResult.IsCritical,
+					IsSuperEffective = damageResult.IsSuperEffective,
+					IsResisted = damageResult.IsResisted,
+					DefenderHPAfter = target.CurrentHP,
+					IsPlayerAttacker = isPlayer,
+					MoveName = damageResult.MoveName,
+					MoveElement = damageResult.MoveElement,
+					HasSTAB = damageResult.HasSTAB,
+					EffectMessages = effectMessages
+				} );
+
+				// Auto-swap fainted player monsters
+				if ( isPlayer == false && target.CurrentHP <= 0 && !IsTeamDefeated( players ) )
+				{
+					var nextAlive = players.FindIndex( m => m.CurrentHP > 0 );
+					if ( nextAlive >= 0 )
+					{
+						state.PlayerActiveIndex = nextAlive;
+					}
+				}
+			}
+
+			// Apply end-of-turn effects (poison, burn, etc.)
+			foreach ( var m in players.Concat( enemies ).Where( m => m.CurrentHP > 0 ) )
+			{
+				ProcessStatusDamage( m, state );
+			}
+			state.ProcessEndOfTurn();
+		}
+
+		raidResult.TotalDamageDealt = totalDamage;
+		raidResult.RoundsCompleted = state.TurnNumber;
+
+		Log.Info( $"[BattleSimulator] Raid battle complete: {totalDamage} total damage in {state.TurnNumber} rounds" );
+
+		return raidResult;
+	}
+
+	// ============================================
 	// NEW MOVE-BASED BATTLE SYSTEM
 	// ============================================
 
@@ -2408,6 +2597,16 @@ public class BattleTurn
 	public string SwapToName { get; set; }
 	public string StatusMessage { get; set; }
 	public List<string> EffectMessages { get; set; }
+}
+
+/// <summary>
+/// Result of a raid boss battle (score attack mode)
+/// </summary>
+public class RaidBattleResult
+{
+	public int TotalDamageDealt { get; set; }
+	public int RoundsCompleted { get; set; }
+	public List<BattleTurn> Turns { get; set; } = new();
 }
 
 /// <summary>

@@ -10,7 +10,7 @@
 
 <root class="battle-view @(IsBossWave() ? "boss-battle" : "")" style="@GetBackgroundStyle()">
 	<!-- Dark overlay for readability -->
-	<div class="background-overlay @(IsBossWave() ? "boss-overlay" : "")"></div>
+	<div class="background-overlay @(IsBossWave() ? "boss-overlay" : "") @(IsRaidBattle ? "raid-overlay" : "")"></div>
 
 	<!-- Boss Battle Banner -->
 	@if (IsBossWave() && !IsArenaBattle)
@@ -31,17 +31,34 @@
 	<!-- Top Bar: Wave/Turn Info + Turn Order -->
 	<div class="battle-top-bar">
 		<div class="battle-info">
-			@if (!IsArenaBattle)
+			@if (IsRaidBattle)
+			{
+				<div class="info-badge raid-badge">
+					<span class="badge-label">RAID</span>
+				</div>
+				<div class="info-badge round-badge">
+					<span class="badge-label">ROUND</span>
+					<span class="badge-value">@(GetRaidRound() + 1)</span>
+				</div>
+				<div class="raid-damage-counter">
+					<span class="raid-dmg-label">DMG</span>
+					<span class="raid-dmg-value">@($"{GetRaidDamage():N0}")</span>
+				</div>
+			}
+			else if (!IsArenaBattle)
 			{
 				<div class="info-badge wave-badge @(IsBossWave() ? "boss-wave" : "")">
 					<span class="badge-label">@(IsBossWave() ? "BOSS" : "WAVE")</span>
 					<span class="badge-value">@GetCurrentWave()</span>
 				</div>
 			}
-			<div class="info-badge turn-badge">
-				<span class="badge-label">TURN</span>
-				<span class="badge-value">@GetCurrentTurn()</span>
-			</div>
+			@if (!IsRaidBattle)
+			{
+				<div class="info-badge turn-badge">
+					<span class="badge-label">TURN</span>
+					<span class="badge-value">@GetCurrentTurn()</span>
+				</div>
+			}
 		</div>
 
 		@if (IsArenaBattle)
@@ -67,8 +84,8 @@
 			</div>
 		}
 
-		<!-- Turn Order Display (hidden in arena to not reveal speed) -->
-		@if (!IsArenaBattle)
+		<!-- Turn Order Display (hidden in arena/raid) -->
+		@if (!IsArenaBattle && !IsRaidBattle)
 		{
 			<div class="turn-order">
 				<span class="turn-order-label">NEXT</span>
@@ -89,8 +106,8 @@
 			</div>
 		}
 
-		<!-- Speed Controls (Expedition only) -->
-		@if (!IsArenaBattle)
+		<!-- Speed Controls (Expedition only, hidden in arena/raid) -->
+		@if (!IsArenaBattle && !IsRaidBattle)
 		{
 			<div class="speed-controls">
 				<div class="speed-indicator">
@@ -161,10 +178,13 @@
 									</div>
 									<div class="stats-row">
 										<span class="hp-text">@monster.CurrentHP / @monster.MaxHP</span>
-										<div class="xp-bar">
-											<div class="xp-fill" style="width: @(GetXPPercent(monster))%"></div>
-										</div>
-										<span class="xp-text">@monster.CurrentXP / @monster.XPForNextLevel</span>
+										@if (!IsRaidBattle)
+										{
+											<div class="xp-bar">
+												<div class="xp-fill" style="width: @(GetXPPercent(monster))%"></div>
+											</div>
+											<span class="xp-text">@monster.CurrentXP / @monster.XPForNextLevel</span>
+										}
 									</div>
 									@{
 										var statuses = GetMonsterStatuses(monster);
@@ -370,7 +390,7 @@
 									<div class="hp-bar">
 										<div class="hp-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
 									</div>
-									<div class="hp-text">@monster.CurrentHP / @monster.MaxHP</div>
+									<div class="hp-text">@(IsRaidBattle ? "RAID BOSS" : $"{monster.CurrentHP} / {monster.MaxHP}")</div>
 									@{
 										var enemyStatuses = GetMonsterStatuses(monster);
 										var enemyStatStages = GetStatStageIndicators(monster);
@@ -403,14 +423,14 @@
 	<!-- Bottom Action Bar -->
 	<div class="action-bar">
 		<div class="auto-controls">
-			@if (!IsArenaBattle)
+			@if (!IsArenaBattle && !IsRaidBattle)
 			{
 				<button class="control-btn play-btn @(IsPlaying() ? "playing" : "")" onclick=@OnPlayPause>
 					<span class="btn-icon">@(IsPlaying() ? "⏸" : "▶")</span>
 				</button>
 			}
 
-			@if (!IsArenaBattle)
+			@if (!IsArenaBattle && !IsRaidBattle)
 			{
 				<div class="toggle-group">
 					<div class="toggle-item @(GetAutoBattle() ? "active" : "")" onclick=@ToggleAutoBattle>
@@ -452,10 +472,13 @@
 					}
 				</div>
 
-				<button class="control-btn end-btn" onclick=@OnEndExpedition>
-					<span class="btn-icon">✕</span>
-					<span class="btn-label">END</span>
-				</button>
+				@if (!IsRaidBattle)
+				{
+					<button class="control-btn end-btn" onclick=@OnEndExpedition>
+						<span class="btn-icon">✕</span>
+						<span class="btn-label">END</span>
+					</button>
+				}
 			}
 
 			@if (IsArenaBattle)
@@ -567,6 +590,7 @@
 	public Action OnExpeditionCancelled { get; set; }
 	public string ExpeditionId { get; set; } = "";
 	public bool IsArenaBattle { get; set; } = false;
+	public bool IsRaidBattle { get; set; } = false;
 	public Action OnArenaRetire { get; set; }
 	public string ArenaPlayerName { get; set; } = "";
 	public string ArenaOpponentName { get; set; } = "";
@@ -611,6 +635,7 @@
 		if (hoveredMoveId != moveId)
 		{
 			hoveredMoveId = moveId;
+			if (moveId != null) SoundManager.PlayHover();
 			StateHasChanged();
 		}
 	}
@@ -626,6 +651,10 @@
 		// Arena battles use transparent background to show arena panel behind
 		if (IsArenaBattle)
 			return "background-color: transparent";
+
+		// Raid battles use the guild background pattern
+		if (IsRaidBattle)
+			return "background-image: url(/ui/bg-patterns/bg-guild.svg)";
 
 		var bgPath = ExpeditionId switch
 		{
@@ -931,10 +960,10 @@
 		// else
 		// 	SoundManager.PlayDefeat();
 
-		if (IsArenaBattle)
+		if (IsArenaBattle || IsRaidBattle)
 		{
-			// Arena battles skip negotiation — go straight to game result
-			Log.Info($"[BattleView] Arena battle ended, invoking OnBattleEnd");
+			// Arena and raid battles skip negotiation — go straight to result
+			Log.Info($"[BattleView] {(IsRaidBattle ? "Raid" : "Arena")} battle ended, invoking OnBattleEnd");
 			OnBattleEnd?.Invoke(result?.PlayerWon ?? false);
 			return;
 		}
@@ -979,17 +1008,15 @@
 					potentialTarget = expMgr.CatchableEnemies?.FirstOrDefault(m => m.IsBoss);
 					potentialIsBoss = true;
 				}
+				else if (autoNegotiate && !string.IsNullOrEmpty(expMgr.AutoContractTargetSpecies))
+				{
+					// Only use target species filter when auto-negotiate is enabled
+					potentialTarget = expMgr.CatchableEnemies?.FirstOrDefault(e => e.SpeciesId == expMgr.AutoContractTargetSpecies);
+					potentialIsBoss = false;
+				}
 				else
 				{
-					var targetSpecies = expMgr.AutoContractTargetSpecies;
-					if (!string.IsNullOrEmpty(targetSpecies))
-					{
-						potentialTarget = expMgr.CatchableEnemies?.FirstOrDefault(e => e.SpeciesId == targetSpecies);
-					}
-					else
-					{
-						potentialTarget = expMgr.GetRandomCatchableEnemy();
-					}
+					potentialTarget = expMgr.GetRandomCatchableEnemy();
 					potentialIsBoss = false;
 				}
 
@@ -1039,6 +1066,11 @@
 	}
 
 	private int GetCurrentWave() => ExpeditionManager.Instance?.CurrentWave ?? 1;
+
+	// Raid helpers
+	private int GetRaidRound() => BattleManager.Instance?.RaidCurrentRound ?? 0;
+	private int GetRaidMaxRounds() => BattleManager.Instance?.RaidMaxRounds ?? 10;
+	private int GetRaidDamage() => BattleManager.Instance?.RaidDamageDealt ?? 0;
 
 	// Boss detection helpers
 	private bool IsBossWave() => ExpeditionManager.Instance?.IsBossWave ?? false;

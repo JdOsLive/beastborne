@@ -225,7 +225,10 @@ public static class ContractGenerator
 		bool previouslyCaught = BeastiaryManager.Instance?.IsDiscovered( species.Id ) ?? false;
 		float previousCatchBonus = previouslyCaught ? 15f : 0f;
 
-		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus + previousCatchBonus) / 100f);
+		// Guild catch rate perk (Lv6: +5%)
+		float guildCatchBonus = GuildManager.Instance?.GetCatchRateBonus() ?? 0f;
+
+		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus + previousCatchBonus + guildCatchBonus) / 100f);
 
 		// Boss contract bonus - makes rare bosses much more catchable
 		if ( isRareBoss )
