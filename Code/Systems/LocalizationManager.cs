@@ -8,11 +8,10 @@ namespace Beastborne.Systems;
 /// <summary>
 /// Manages language localization for the game.
 /// Loads translations from JSON files and provides lookup methods.
+/// Works statically — no Component instance required.
 /// </summary>
-public sealed class LocalizationManager : Component
+public static class LocalizationManager
 {
-	public static LocalizationManager Instance { get; private set; }
-
 	/// <summary>
 	/// Currently active language code ("en", "fr", etc.)
 	/// </summary>
@@ -29,22 +28,36 @@ public sealed class LocalizationManager : Component
 	// English fallback (always loaded)
 	private static Dictionary<string, string> _fallback = new();
 
+	private static bool _initialized = false;
+
 	private static readonly string[] SupportedLanguages = { "en", "fr" };
 
-	protected override void OnAwake()
+	/// <summary>
+	/// Ensure translations are loaded. Called lazily on first Get().
+	/// </summary>
+	private static void EnsureInitialized()
 	{
-		Instance = this;
-		GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+		if ( _initialized ) return;
+		_initialized = true;
 
 		// Load English as fallback
 		_fallback = LoadLanguageFile( "en" );
 		_translations = _fallback;
 
 		// Load saved language preference
-		var savedLang = Game.Cookies.Get( "language", "en" );
-		if ( savedLang != "en" )
+		try
 		{
-			SetLanguage( savedLang, notify: false );
+			var savedLang = Cookie.Get( "beastborne.language", "en" );
+			if ( savedLang != "en" )
+			{
+				CurrentLanguage = savedLang;
+				var loaded = LoadLanguageFile( savedLang );
+				_translations = loaded.Count > 0 ? loaded : _fallback;
+			}
+		}
+		catch
+		{
+			// Cookies might not be available yet
 		}
 
 		Log.Info( $"LocalizationManager initialized. Language: {CurrentLanguage}, Keys: {_translations.Count}" );
@@ -55,6 +68,8 @@ public sealed class LocalizationManager : Component
 	/// </summary>
 	public static string Get( string key )
 	{
+		EnsureInitialized();
+
 		if ( string.IsNullOrEmpty( key ) ) return "";
 
 		// Try current language
@@ -91,13 +106,15 @@ public sealed class LocalizationManager : Component
 	/// </summary>
 	public static void SetLanguage( string langCode, bool notify = true )
 	{
+		EnsureInitialized();
+
 		if ( string.IsNullOrEmpty( langCode ) ) return;
 		langCode = langCode.ToLower();
 
 		if ( CurrentLanguage == langCode ) return;
 
 		CurrentLanguage = langCode;
-		Game.Cookies.Set( "language", langCode );
+		Cookie.Set( "beastborne.language", langCode );
 
 		if ( langCode == "en" )
 		{
@@ -135,26 +152,38 @@ public sealed class LocalizationManager : Component
 	/// </summary>
 	private static Dictionary<string, string> LoadLanguageFile( string langCode )
 	{
-		try
+		// Try multiple possible paths
+		string[] paths = new[]
 		{
-			var path = $"localization/{langCode}.json";
-			var content = FileSystem.Mounted.ReadAllText( path );
+			$"localization/{langCode}.json",
+			$"Assets/localization/{langCode}.json",
+			$"/localization/{langCode}.json"
+		};
 
-			if ( string.IsNullOrEmpty( content ) )
+		foreach ( var path in paths )
+		{
+			try
 			{
-				Log.Warning( $"Language file empty or not found: {path}" );
-				return new Dictionary<string, string>();
+				var content = FileSystem.Mounted.ReadAllText( path );
+				if ( !string.IsNullOrEmpty( content ) )
+				{
+					var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
+						new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
+
+					if ( dict != null && dict.Count > 0 )
+					{
+						Log.Info( $"Loaded language file: {path} ({dict.Count} keys)" );
+						return dict;
+					}
+				}
 			}
-
-			var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
-				new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
-
-			return dict ?? new Dictionary<string, string>();
+			catch
+			{
+				// Try next path
+			}
 		}
-		catch ( Exception e )
-		{
-			Log.Warning( $"Failed to load language file '{langCode}': {e.Message}" );
-			return new Dictionary<string, string>();
-		}
+
+		Log.Warning( $"Could not load language file for '{langCode}' from any path" );
+		return new Dictionary<string, string>();
 	}
 }
