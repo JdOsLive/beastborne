@@ -213,7 +213,6 @@ public static class BossPoolDatabase
 			["shadow_depths"] = new BossPool
 			{
 				ExpeditionId = "shadow_depths",
-				RareBossChance = 0.01f, // 1% - Legendary/Mythic rare bosses are extremely rare
 				Bosses = new List<BossData>
 				{
 					CreateBoss( "voidweep", BossTier.Elite, 5, 20,
@@ -225,15 +224,13 @@ public static class BossPoolDatabase
 					CreateBoss( "duskstalker", BossTier.Elite, 5, 20,
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Duskstalker fades into shadow!", SPDMultiplier = 1.5f, Ability = BossAbilityType.SpeedBoost },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Duskstalker strikes from the dark!", ATKMultiplier = 1.6f, Ability = BossAbilityType.Enrage } )
-				},
-				RareBosses = CreateRareBosses()
+				}
 			},
 
 			// Level 55 - Elemental Nexus (Mythic tier - Primordius as main boss)
 			["elemental_nexus"] = new BossPool
 			{
 				ExpeditionId = "elemental_nexus",
-				RareBossChance = 0.015f, // 1.5% - Legendary/Mythic rare bosses are extremely rare
 				Bosses = new List<BossData>
 				{
 					CreateBoss( "primordius", BossTier.Mythic, 15, 60,
@@ -246,8 +243,7 @@ public static class BossPoolDatabase
 					CreateBoss( "tidehollow", BossTier.Elite, 6, 25,
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Tidehollow summons the depths!", DEFMultiplier = 1.4f, Ability = BossAbilityType.Shield },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Tidehollow crashes like a wave!", ATKMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage } )
-				},
-				RareBosses = CreateRareBosses()
+				}
 			},
 
 			// Level 65 - Primordial Rift (Mythic tier - Voiddragon as main boss)
@@ -273,8 +269,7 @@ public static class BossPoolDatabase
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Genisoul recalls the first thought!", DEFMultiplier = 1.4f, Ability = BossAbilityType.Shield },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Genisoul channels primordial spirit!", ATKMultiplier = 1.7f, Ability = BossAbilityType.Regenerate },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Genisoul awakens its true consciousness!", ATKMultiplier = 2.0f, DEFMultiplier = 1.5f, Ability = BossAbilityType.Enrage } )
-				},
-				RareBosses = CreateRareBosses()
+				}
 			},
 
 			// Level 75 - Garden of Origins (Mythic tier - Songborne as main boss)
@@ -296,15 +291,13 @@ public static class BossPoolDatabase
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Primbloom's petals unfurl!", DEFMultiplier = 1.3f, Ability = BossAbilityType.Shield },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Primbloom releases ancient spores!", ATKMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Primbloom enters eternal bloom!", ATKMultiplier = 1.7f, Ability = BossAbilityType.Regenerate } )
-				},
-				RareBosses = CreateRareBosses()
+				}
 			},
 
 			// Level 85 - Mythweaver's Realm (Mythic tier)
 			["mythweavers_realm"] = new BossPool
 			{
 				ExpeditionId = "mythweavers_realm",
-				RareBossChance = 0.04f, // 4% - Legendary/Mythic rare bosses are extremely rare
 				Bosses = new List<BossData>
 				{
 					CreateBoss( "mythweaver", BossTier.Mythic, 18, 70,
@@ -319,8 +312,7 @@ public static class BossPoolDatabase
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Stormtyrant commands the skies!", SPDMultiplier = 1.5f, Ability = BossAbilityType.SpeedBoost },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Stormtyrant calls down thunder!", ATKMultiplier = 1.7f, Ability = BossAbilityType.AreaDamage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Stormtyrant becomes the storm!", ATKMultiplier = 2.0f, SPDMultiplier = 1.8f, Ability = BossAbilityType.Enrage } )
-				},
-				RareBosses = CreateRareBosses()
+				}
 			},
 
 			// Level 100 - Origin Void (Mixed tiers - ultimate boss gauntlet)
@@ -393,8 +385,7 @@ public static class BossPoolDatabase
 						new BossPhase { HPThreshold = 0.75f, TransitionMessage = "Voiddragon breathes oblivion!", ATKMultiplier = 1.6f, Ability = BossAbilityType.AreaDamage },
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Voiddragon tears through dimensions!", ATKMultiplier = 1.9f, SPDMultiplier = 1.4f, Ability = BossAbilityType.Enrage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Voiddragon becomes entropy!", ATKMultiplier = 2.4f, DEFMultiplier = 1.5f, Ability = BossAbilityType.AreaDamage } )
-				},
-				RareBosses = CreateRareBosses()
+				}
 			}
 		};
 	}

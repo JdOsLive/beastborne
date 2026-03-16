@@ -989,27 +989,29 @@ public sealed class ExpeditionManager : Component
 	}
 
 	/// <summary>
-	/// Boss tier weights for weighted selection (non-Mythic tiers only).
-	/// Mythic bosses are handled separately with a flat 1% chance.
+	/// Boss tier weights for weighted selection (Normal/Elite tiers only).
+	/// Legendary and Mythic bosses are handled separately with flat chances.
 	/// </summary>
 	private static int GetBossTierWeight( BossTier tier ) => tier switch
 	{
 		BossTier.Normal => 10,
 		BossTier.Elite => 6,
-		BossTier.Legendary => 2,
 		_ => 1
 	};
 
 	private const float MYTHIC_BOSS_CHANCE = 0.01f; // 1% chance for a Mythic boss
+	private const float LEGENDARY_BOSS_CHANCE = 0.05f; // 5% chance for a Legendary boss
 
 	/// <summary>
-	/// Select a single boss from the pool. Mythic bosses have a flat 1% chance.
-	/// If Mythic doesn't proc, picks from non-Mythic bosses using weighted selection.
+	/// Select a single boss from the pool.
+	/// Mythic bosses have a flat 1% chance, Legendary bosses have a flat 5% chance.
+	/// If neither procs, picks from Normal/Elite bosses using weighted selection.
 	/// </summary>
 	private BossData SelectWeightedBoss( List<BossData> pool, Random random )
 	{
 		var mythicBosses = pool.Where( b => b.Tier == BossTier.Mythic ).ToList();
-		var nonMythicBosses = pool.Where( b => b.Tier != BossTier.Mythic ).ToList();
+		var legendaryBosses = pool.Where( b => b.Tier == BossTier.Legendary ).ToList();
+		var baseBosses = pool.Where( b => b.Tier != BossTier.Mythic && b.Tier != BossTier.Legendary ).ToList();
 
 		// 1% chance: roll for a Mythic boss
 		if ( mythicBosses.Count > 0 && random.NextDouble() < MYTHIC_BOSS_CHANCE )
@@ -1017,8 +1019,14 @@ public sealed class ExpeditionManager : Component
 			return mythicBosses[random.Next( mythicBosses.Count )];
 		}
 
-		// 99%: pick from non-Mythic bosses using weighted selection
-		var pickPool = nonMythicBosses.Count > 0 ? nonMythicBosses : pool;
+		// 5% chance: roll for a Legendary boss
+		if ( legendaryBosses.Count > 0 && random.NextDouble() < LEGENDARY_BOSS_CHANCE )
+		{
+			return legendaryBosses[random.Next( legendaryBosses.Count )];
+		}
+
+		// Remaining: pick from Normal/Elite bosses using weighted selection
+		var pickPool = baseBosses.Count > 0 ? baseBosses : pool;
 		int totalWeight = pickPool.Sum( b => GetBossTierWeight( b.Tier ) );
 		int roll = random.Next( totalWeight );
 

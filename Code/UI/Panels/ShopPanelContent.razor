@@ -313,7 +313,7 @@
 					}
 					@if (bossCategory == "all" || bossCategory == "titles")
 					{
-						@foreach (var title in CosmeticDatabase.Titles)
+						@foreach (var title in CosmeticDatabase.Titles.Where(t => t.TokenCost > 0))
 						{
 							bool owned = HasTitle(title.Id);
 							bool canAfford = GetBossTokens() >= title.TokenCost;
@@ -524,11 +524,15 @@
 								<span class="token-icon"><img src="ui/icons/currency/token.svg" /></span>
 								<span>@selectedConsumable.Cost.ToString("N0")</span>
 							</div>
-							<button class="buy-btn @(IsPurchaseFlash ? "purchased" : "") @(GetBossTokens() >= selectedConsumable.Cost ? "" : "disabled")"
+							<button class="buy-btn @(IsPurchaseFlash ? "purchased" : "") @(GetBossTokens() >= selectedConsumable.Cost && !IsConsumableMaxed(selectedConsumable) ? "" : "disabled")"
 									onclick=@(() => PurchaseConsumable(selectedConsumable))>
 								@if (IsPurchaseFlash)
 								{
 									<span>Purchased!</span>
+								}
+								else if (IsConsumableMaxed(selectedConsumable))
+								{
+									<span>Max Owned</span>
 								}
 								else if (GetBossTokens() < selectedConsumable.Cost)
 								{
@@ -983,9 +987,33 @@
 		new BossConsumable { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK)", Icon = "/ui/items/consumables/rune_serene.png", Cost = 400 },
 	};
 
+	private int GetConsumableMaxStack(string itemId)
+	{
+		var itemDef = ItemManager.Instance?.GetItem(itemId);
+		if (itemDef != null && itemDef.MaxStack > 0) return itemDef.MaxStack;
+		return 99; // Default max stack for consumables
+	}
+
+	private int GetConsumableOwned(string itemId)
+	{
+		return TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault(itemId, 0) ?? 0;
+	}
+
+	private bool IsConsumableMaxed(BossConsumable item)
+	{
+		return GetConsumableOwned(item.Id) >= GetConsumableMaxStack(item.Id);
+	}
+
 	private void PurchaseConsumable(BossConsumable item)
 	{
 		if (GetBossTokens() < item.Cost) return;
+
+		// Check max stack
+		if (IsConsumableMaxed(item))
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
 
 		if (TamerManager.Instance?.SpendBossTokens(item.Cost) != true)
 		{

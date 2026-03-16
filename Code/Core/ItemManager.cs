@@ -907,12 +907,12 @@ public sealed class ItemManager : Component
 		{
 			Id = "boss_master_ink",
 			Name = "Master Ink",
-			Description = "Guarantees your next capture attempt succeeds. Limited to 1.",
+			Description = "Guarantees your next capture attempt succeeds. Limited to 5.",
 			IconPath = "ui/items/consumables/master_ink.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Legendary,
 			EffectType = ItemEffectType.MasterInk,
-			MaxStack = 1,
+			MaxStack = 5,
 			SellPrice = 0
 		} );
 

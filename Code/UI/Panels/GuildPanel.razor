@@ -61,7 +61,6 @@
 			<!-- PENDING INVITES CARD -->
 			<div class="landing-card invites-card @(hoveredLandingCard == "invites" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
 				 onmouseover=@(() => { if (hoveredLandingCard != "invites") { hoveredLandingCard = "invites"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredLandingCard = null)
 				 onclick=@(() => { SoundManager.PlayClick(); })>
 								<div class="landing-card-icon-wrap">
 					<img class="landing-card-webp" src="ui/icons/animated/guild-invites.webp" />
@@ -84,7 +83,6 @@
 			<!-- BROWSE GUILDS CARD -->
 			<div class="landing-card browse-landing-card @(hoveredLandingCard == "browse" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
 				 onmouseover=@(() => { if (hoveredLandingCard != "browse") { hoveredLandingCard = "browse"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredLandingCard = null)
 				 onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; errorMessage = ""; viewingGuild = null; LoadGuildsFromApi(); })>
 								<div class="landing-card-icon-wrap">
 					<img class="landing-card-webp" src="ui/icons/animated/guild-browse.webp" />
@@ -103,7 +101,6 @@
 			<!-- MY GUILD / CREATE CARD -->
 			<div class="landing-card myguild-landing-card @(hoveredLandingCard == "myguild" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
 				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredLandingCard = null)
 				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
 								@if ( GuildManager.Instance?.IsInGuild ?? false )
 				{
@@ -207,6 +204,31 @@ else if ( guildView == "browse" )
 						<span class="detail-req-item">Min Level: @(viewingGuild.MinLevel > 1 ? $"Lv {viewingGuild.MinLevel}" : "None")</span>
 						<span class="detail-req-item">Min Rank: @viewingGuild.MinRank</span>
 					</div>
+				</div>
+
+				<div class="detail-members-section">
+					<span class="detail-members-title">@($"Members ({viewingGuildMembers.Count})")</span>
+					@if ( isLoadingMembers )
+					{
+						<span class="detail-members-loading">Loading members...</span>
+					}
+					else if ( viewingGuildMembers.Count > 0 )
+					{
+						<div class="detail-members-list">
+							@foreach ( var member in viewingGuildMembers )
+							{
+								<div class="detail-member-chip">
+									<span class="chip-role">@GuildManager.GetRoleIcon( (GuildRole)member.Role )</span>
+									<span class="chip-name">@member.Name</span>
+									<span class="chip-level">@($"{member.Level}")</span>
+								</div>
+							}
+						</div>
+					}
+					else
+					{
+						<span class="detail-members-loading">No members found</span>
+					}
 				</div>
 
 				<div class="detail-actions">
@@ -1452,10 +1474,32 @@ else if ( guildView == "myguild" )
 	// Helpers
 	private int GetTamerLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 0;
 
-	private void ViewGuildDetail( GuildAdvertisement guild )
+	private List<MemberApiData> viewingGuildMembers = new();
+	private bool isLoadingMembers = false;
+
+	private async void ViewGuildDetail( GuildAdvertisement guild )
 	{
 		SoundManager.PlayForward();
 		viewingGuild = guild;
+		viewingGuildMembers = new();
+		isLoadingMembers = true;
+
+		try
+		{
+			var detail = await GuildApiClient.GetAsync<GuildDetailResponse>( $"guilds/{guild.GuildId}" );
+			if ( detail?.Members != null )
+			{
+				viewingGuildMembers = detail.Members.OrderBy( m => m.Role ).ThenBy( m => m.Name ).ToList();
+			}
+		}
+		catch ( Exception e )
+		{
+			Log.Warning( $"Failed to load guild members: {e.Message}" );
+		}
+		finally
+		{
+			isLoadingMembers = false;
+		}
 	}
 
 	private List<GuildAdvertisement> apiGuilds = new();
