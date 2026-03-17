@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Sandbox;
+using Beastborne.Systems;
 
 namespace Beastborne.Core;
 
@@ -275,8 +276,8 @@ public sealed class NotificationManager : Component
 	{
 		AddNotification(
 			NotificationType.Evolution,
-			"Evolution Ready!",
-			$"{monsterName} can evolve to {evolvesTo}",
+			LocalizationManager.Get( "notify.evolution_ready" ),
+			LocalizationManager.Get( "notify.can_evolve", monsterName, evolvesTo ),
 			8f
 		);
 	}
@@ -288,8 +289,8 @@ public sealed class NotificationManager : Component
 	{
 		AddNotification(
 			NotificationType.ServerBoost,
-			"Server Boost Activated!",
-			$"{activatedBy} activated {boostName} for everyone!",
+			LocalizationManager.Get( "notify.server_boost" ),
+			LocalizationManager.Get( "notify.server_boost_desc", activatedBy, boostName ),
 			10f,
 			iconPath
 		);
@@ -302,8 +303,8 @@ public sealed class NotificationManager : Component
 	{
 		AddNotification(
 			NotificationType.RankedBattle,
-			"Ranked Battle",
-			$"{playerName} is searching for a ranked match",
+			LocalizationManager.Get( "notify.ranked_battle" ),
+			LocalizationManager.Get( "notify.ranked_search", playerName ),
 			6f
 		);
 	}
@@ -315,8 +316,8 @@ public sealed class NotificationManager : Component
 	{
 		AddNotification(
 			NotificationType.Catch,
-			"Monster Caught!",
-			$"You caught {monsterName}!",
+			LocalizationManager.Get( "notify.monster_caught" ),
+			LocalizationManager.Get( "notify.you_caught", monsterName ),
 			5f
 		);
 	}
@@ -332,8 +333,8 @@ public sealed class NotificationManager : Component
 
 		AddNotification(
 			NotificationType.TamerLevelUp,
-			"Level Up!",
-			$"You reached Tamer Level {newLevel}!",
+			LocalizationManager.Get( "notify.level_up" ),
+			LocalizationManager.Get( "notify.reached_level", newLevel ),
 			6f
 		);
 	}
@@ -345,8 +346,8 @@ public sealed class NotificationManager : Component
 	{
 		AddNotification(
 			NotificationType.ExpeditionUnlock,
-			"New Area Unlocked!",
-			$"{expeditionName} is now available!",
+			LocalizationManager.Get( "notify.new_area" ),
+			LocalizationManager.Get( "notify.area_available", expeditionName ),
 			8f
 		);
 	}
