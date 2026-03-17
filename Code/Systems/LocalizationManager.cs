@@ -40,14 +40,25 @@ public static class LocalizationManager
 		if ( _initialized ) return;
 		_initialized = true;
 
-		// Load English as fallback
-		_fallback = LoadLanguageFile( "en" );
-		_translations = _fallback;
+		Log.Info( "[L10N] Starting initialization..." );
+
+		try
+		{
+			// Load English as fallback
+			_fallback = LoadLanguageFile( "en" );
+			_translations = _fallback;
+			Log.Info( $"[L10N] English loaded: {_fallback.Count} keys" );
+		}
+		catch ( Exception e )
+		{
+			Log.Warning( $"[L10N] Failed to load English: {e.Message}" );
+		}
 
 		// Load saved language preference
 		try
 		{
 			var savedLang = Cookie.Get( "beastborne.language", "en" );
+			Log.Info( $"[L10N] Saved language: {savedLang}" );
 			if ( savedLang != "en" )
 			{
 				CurrentLanguage = savedLang;
@@ -55,12 +66,12 @@ public static class LocalizationManager
 				_translations = loaded.Count > 0 ? loaded : _fallback;
 			}
 		}
-		catch
+		catch ( Exception e )
 		{
-			// Cookies might not be available yet
+			Log.Warning( $"[L10N] Cookie/language load failed: {e.Message}" );
 		}
 
-		Log.Info( $"LocalizationManager initialized. Language: {CurrentLanguage}, Keys: {_translations.Count}" );
+		Log.Info( $"[L10N] Initialized. Language: {CurrentLanguage}, Keys: {_translations.Count}" );
 	}
 
 	/// <summary>
