@@ -152,91 +152,103 @@ public static class LocalizationManager
 	/// </summary>
 	private static Dictionary<string, string> LoadLanguageFile( string langCode )
 	{
-		// Try multiple file systems and paths
-		string[] paths = new[]
+		// Try every possible way to load the file
+		string[] mountedPaths = new[]
 		{
 			$"localization/{langCode}.json",
 			$"Assets/localization/{langCode}.json",
-			$"/localization/{langCode}.json"
+			$"/localization/{langCode}.json",
+			$"localization/{langCode}",
+			$"{langCode}.json"
 		};
 
-		// Try FileSystem.Mounted first
-		foreach ( var path in paths )
+		// 1. Try FileSystem.Mounted
+		foreach ( var path in mountedPaths )
 		{
 			try
 			{
-				if ( FileSystem.Mounted.FileExists( path ) )
-				{
-					var content = FileSystem.Mounted.ReadAllText( path );
-					if ( !string.IsNullOrEmpty( content ) )
-					{
-						var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
-							new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
-						if ( dict != null && dict.Count > 0 )
-						{
-							Log.Info( $"Loaded language file from Mounted: {path} ({dict.Count} keys)" );
-							return dict;
-						}
-					}
-				}
-			}
-			catch ( Exception e )
-			{
-				Log.Info( $"Mounted read failed for {path}: {e.Message}" );
-			}
-		}
-
-		// Try FileSystem.Data
-		foreach ( var path in paths )
-		{
-			try
-			{
-				if ( FileSystem.Data.FileExists( path ) )
-				{
-					var content = FileSystem.Data.ReadAllText( path );
-					if ( !string.IsNullOrEmpty( content ) )
-					{
-						var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
-							new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
-						if ( dict != null && dict.Count > 0 )
-						{
-							Log.Info( $"Loaded language file from Data: {path} ({dict.Count} keys)" );
-							return dict;
-						}
-					}
-				}
-			}
-			catch ( Exception e )
-			{
-				Log.Info( $"Data read failed for {path}: {e.Message}" );
-			}
-		}
-
-		// Try direct file system as last resort
-		try
-		{
-			var projectPath = $"Assets/localization/{langCode}.json";
-			if ( System.IO.File.Exists( projectPath ) )
-			{
-				var content = System.IO.File.ReadAllText( projectPath );
+				var content = FileSystem.Mounted.ReadAllText( path );
 				if ( !string.IsNullOrEmpty( content ) )
 				{
-					var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
-						new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
-					if ( dict != null && dict.Count > 0 )
+					var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content );
+					if ( dict?.Count > 0 )
 					{
-						Log.Info( $"Loaded language file from IO: {projectPath} ({dict.Count} keys)" );
+						Log.Info( $"[L10N] Loaded from Mounted: {path} ({dict.Count} keys)" );
 						return dict;
 					}
 				}
 			}
-		}
-		catch ( Exception e )
-		{
-			Log.Info( $"IO read failed: {e.Message}" );
+			catch { }
 		}
 
-		Log.Warning( $"Could not load language file for '{langCode}' from any source. Tried Mounted, Data, and IO." );
+		// 2. Try FileSystem.Data
+		foreach ( var path in mountedPaths )
+		{
+			try
+			{
+				var content = FileSystem.Data.ReadAllText( path );
+				if ( !string.IsNullOrEmpty( content ) )
+				{
+					var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content );
+					if ( dict?.Count > 0 )
+					{
+						Log.Info( $"[L10N] Loaded from Data: {path} ({dict.Count} keys)" );
+						return dict;
+					}
+				}
+			}
+			catch { }
+		}
+
+		// 3. Try FileSystem.OrganizationData
+		foreach ( var path in mountedPaths )
+		{
+			try
+			{
+				var content = FileSystem.OrganizationData.ReadAllText( path );
+				if ( !string.IsNullOrEmpty( content ) )
+				{
+					var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content );
+					if ( dict?.Count > 0 )
+					{
+						Log.Info( $"[L10N] Loaded from OrganizationData: {path} ({dict.Count} keys)" );
+						return dict;
+					}
+				}
+			}
+			catch { }
+		}
+
+		// 4. Try absolute paths via System.IO
+		string[] absolutePaths = new[]
+		{
+			System.IO.Path.Combine( System.AppDomain.CurrentDomain.BaseDirectory, $"localization/{langCode}.json" ),
+			System.IO.Path.Combine( System.AppDomain.CurrentDomain.BaseDirectory, $"Assets/localization/{langCode}.json" ),
+			$"C:/users/jscho/documents/s&box projects/megarougelite/Assets/localization/{langCode}.json"
+		};
+
+		foreach ( var path in absolutePaths )
+		{
+			try
+			{
+				if ( System.IO.File.Exists( path ) )
+				{
+					var content = System.IO.File.ReadAllText( path );
+					if ( !string.IsNullOrEmpty( content ) )
+					{
+						var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content );
+						if ( dict?.Count > 0 )
+						{
+							Log.Info( $"[L10N] Loaded from IO: {path} ({dict.Count} keys)" );
+							return dict;
+						}
+					}
+				}
+			}
+			catch { }
+		}
+
+		Log.Warning( $"[L10N] FAILED to load '{langCode}' from any source" );
 		return new Dictionary<string, string>();
 	}
 }
