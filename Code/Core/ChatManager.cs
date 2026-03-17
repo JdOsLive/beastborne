@@ -47,27 +47,12 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		Log.Info( $"ChatManager initialized (IsProxy: {IsProxy}, NetworkMode: {GameObject.NetworkMode})" );
 	}
 
-	// System tip rotation
-	private static readonly string[] SystemTips = new[]
+	// System tip keys (loaded from localization)
+	private static readonly string[] SystemTipKeys = new[]
 	{
-		"Tip: You can click on enemy beasts during battle to target them with your attacks!",
-		"Tip: Hold items can give your beasts powerful stat boosts — check the Item button on your beast's page.",
-		"Tip: Set a contract target in Auto Contract to only catch the species you want.",
-		"Tip: Fusing two beasts of the same species can create a stronger offspring with better genes!",
-		"Tip: Each expedition has a unique boss pool — check the boss preview before starting.",
-		"Tip: Arena wins earn you ranking points. Climb the leaderboard to earn exclusive titles!",
-		"Tip: Some beasts only appear as rare bosses in high-level expeditions.",
-		"Tip: Use the Skill Tree to unlock passive bonuses like extra XP, gold, and catch rate.",
-		"Tip: You can share your beast or tamer card in chat — show off your progress!",
-		"Tip: Nature Runes from the Boss Token shop let you pick your beast's nature.",
-		"Tip: Gene Boosters increase a random IV by +3 — great for perfecting your best beasts.",
-		"Tip: Join a guild to participate in raid battles and earn guild perks!",
-		"Tip: Hard Mode expeditions give bonus XP and gold but enemies are 10 levels higher.",
-		"Tip: You can change your tamer's title from the Profile panel — unlock more through achievements.",
-		"Join our Discord for updates, feedback, and community events! discord.gg/dJTTyCqKru",
-		"Tip: Elite Contract Ink from the Boss Token shop gives +15% catch rate for 10 minutes.",
-		"Tip: Your beasts earn Veteran Ranks as they fight more battles, gaining bonus stats!",
-		"Tip: Check the Beastiary to track which species you've discovered and caught.",
+		"tip.0", "tip.1", "tip.2", "tip.3", "tip.4", "tip.5",
+		"tip.6", "tip.7", "tip.8", "tip.9", "tip.10", "tip.11",
+		"tip.12", "tip.13", "tip.14", "tip.15", "tip.16", "tip.17"
 	};
 
 	private float _systemTipTimer = 0f;
@@ -77,10 +62,10 @@ public sealed class ChatManager : Component, Component.INetworkListener
 
 	protected override void OnStart()
 	{
-		// Add welcome messages
-		AddSystemMessage( "Welcome to Beastborne! Type to chat with other players.", ChatMessageType.System );
-		AddSystemMessage( "Join our Discord for updates, feedback, and community events! discord.gg/dJTTyCqKru", ChatMessageType.System );
-		_systemTipTimer = SystemTipInterval; // First random tip after 3 minutes
+		// Add welcome messages (localized)
+		AddSystemMessage( Beastborne.Systems.LocalizationManager.Get( "tip.welcome" ), ChatMessageType.System );
+		AddSystemMessage( Beastborne.Systems.LocalizationManager.Get( "tip.discord" ), ChatMessageType.System );
+		_systemTipTimer = SystemTipInterval;
 	}
 
 	protected override void OnUpdate()
@@ -95,16 +80,16 @@ public sealed class ChatManager : Component, Component.INetworkListener
 
 	private void SendRandomTip()
 	{
-		if ( SystemTips.Length == 0 ) return;
+		if ( SystemTipKeys.Length == 0 ) return;
 
 		int index;
 		do
 		{
-			index = _tipRandom.Next( SystemTips.Length );
-		} while ( index == _lastTipIndex && SystemTips.Length > 1 );
+			index = _tipRandom.Next( SystemTipKeys.Length );
+		} while ( index == _lastTipIndex && SystemTipKeys.Length > 1 );
 
 		_lastTipIndex = index;
-		AddSystemMessage( SystemTips[index], ChatMessageType.System );
+		AddSystemMessage( Beastborne.Systems.LocalizationManager.Get( SystemTipKeys[index] ), ChatMessageType.System );
 	}
 
 	public static void EnsureInstance( Scene scene )
