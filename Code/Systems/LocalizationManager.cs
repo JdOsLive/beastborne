@@ -219,34 +219,15 @@ public static class LocalizationManager
 			catch { }
 		}
 
-		// 4. Try absolute paths via System.IO
-		string[] absolutePaths = new[]
+		// Log all mounted files for debugging
+		try
 		{
-			System.IO.Path.Combine( System.AppDomain.CurrentDomain.BaseDirectory, $"localization/{langCode}.json" ),
-			System.IO.Path.Combine( System.AppDomain.CurrentDomain.BaseDirectory, $"Assets/localization/{langCode}.json" ),
-			$"C:/users/jscho/documents/s&box projects/megarougelite/Assets/localization/{langCode}.json"
-		};
-
-		foreach ( var path in absolutePaths )
-		{
-			try
-			{
-				if ( System.IO.File.Exists( path ) )
-				{
-					var content = System.IO.File.ReadAllText( path );
-					if ( !string.IsNullOrEmpty( content ) )
-					{
-						var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content );
-						if ( dict?.Count > 0 )
-						{
-							Log.Info( $"[L10N] Loaded from IO: {path} ({dict.Count} keys)" );
-							return dict;
-						}
-					}
-				}
-			}
-			catch { }
+			var files = FileSystem.Mounted.FindFile( "/", "*.json", true );
+			Log.Info( $"[L10N] All mounted .json files:" );
+			foreach ( var f in files )
+				Log.Info( $"[L10N]   - {f}" );
 		}
+		catch { }
 
 		Log.Warning( $"[L10N] FAILED to load '{langCode}' from any source" );
 		return new Dictionary<string, string>();
