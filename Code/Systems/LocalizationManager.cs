@@ -152,7 +152,7 @@ public static class LocalizationManager
 	/// </summary>
 	private static Dictionary<string, string> LoadLanguageFile( string langCode )
 	{
-		// Try multiple possible paths
+		// Try multiple file systems and paths
 		string[] paths = new[]
 		{
 			$"localization/{langCode}.json",
@@ -160,30 +160,83 @@ public static class LocalizationManager
 			$"/localization/{langCode}.json"
 		};
 
+		// Try FileSystem.Mounted first
 		foreach ( var path in paths )
 		{
 			try
 			{
-				var content = FileSystem.Mounted.ReadAllText( path );
+				if ( FileSystem.Mounted.FileExists( path ) )
+				{
+					var content = FileSystem.Mounted.ReadAllText( path );
+					if ( !string.IsNullOrEmpty( content ) )
+					{
+						var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
+							new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
+						if ( dict != null && dict.Count > 0 )
+						{
+							Log.Info( $"Loaded language file from Mounted: {path} ({dict.Count} keys)" );
+							return dict;
+						}
+					}
+				}
+			}
+			catch ( Exception e )
+			{
+				Log.Info( $"Mounted read failed for {path}: {e.Message}" );
+			}
+		}
+
+		// Try FileSystem.Data
+		foreach ( var path in paths )
+		{
+			try
+			{
+				if ( FileSystem.Data.FileExists( path ) )
+				{
+					var content = FileSystem.Data.ReadAllText( path );
+					if ( !string.IsNullOrEmpty( content ) )
+					{
+						var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
+							new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
+						if ( dict != null && dict.Count > 0 )
+						{
+							Log.Info( $"Loaded language file from Data: {path} ({dict.Count} keys)" );
+							return dict;
+						}
+					}
+				}
+			}
+			catch ( Exception e )
+			{
+				Log.Info( $"Data read failed for {path}: {e.Message}" );
+			}
+		}
+
+		// Try direct file system as last resort
+		try
+		{
+			var projectPath = $"Assets/localization/{langCode}.json";
+			if ( System.IO.File.Exists( projectPath ) )
+			{
+				var content = System.IO.File.ReadAllText( projectPath );
 				if ( !string.IsNullOrEmpty( content ) )
 				{
 					var dict = JsonSerializer.Deserialize<Dictionary<string, string>>( content,
 						new JsonSerializerOptions { PropertyNameCaseInsensitive = true } );
-
 					if ( dict != null && dict.Count > 0 )
 					{
-						Log.Info( $"Loaded language file: {path} ({dict.Count} keys)" );
+						Log.Info( $"Loaded language file from IO: {projectPath} ({dict.Count} keys)" );
 						return dict;
 					}
 				}
 			}
-			catch
-			{
-				// Try next path
-			}
+		}
+		catch ( Exception e )
+		{
+			Log.Info( $"IO read failed: {e.Message}" );
 		}
 
-		Log.Warning( $"Could not load language file for '{langCode}' from any path" );
+		Log.Warning( $"Could not load language file for '{langCode}' from any source. Tried Mounted, Data, and IO." );
 		return new Dictionary<string, string>();
 	}
 }
