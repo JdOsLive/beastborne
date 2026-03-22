@@ -1,0 +1,457 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="daily-panel-root @(IsVisible ? "visible" : "")">
+	<div class="daily-overlay" onclick=@Close></div>
+
+	<div class="daily-modal">
+		<div class="daily-header">
+			<div class="header-left">
+				<img class="panel-title-icon" src="ui/icons/sort/star.svg" />
+				<span class="daily-title">@L("ui.daily.title")</span>
+			</div>
+			<div class="header-filters">
+				<div class="sort-btn @(activeTab == "streak" ? "active" : "")"
+					 onclick=@(() => { SoundManager.PlayClick(); activeTab = "streak"; })
+					 onmouseover=@(() => SoundManager.PlayHover())>
+					<span class="pill-label">@L("ui.daily.login_streak")</span>
+				</div>
+				<div class="sort-btn @(activeTab == "missions" ? "active" : "")"
+					 onclick=@(() => { SoundManager.PlayClick(); activeTab = "missions"; })
+					 onmouseover=@(() => SoundManager.PlayHover())>
+					<span class="pill-label">@L("ui.daily.missions")</span>
+				</div>
+			</div>
+			<div class="header-right">
+				<div class="refresh-timer">
+					<span class="timer-label">@L("ui.daily.refresh_in")</span>
+					<span class="timer-value">@GetRefreshTime()</span>
+				</div>
+				<button class="close-btn" onclick=@Close>
+					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+				</button>
+			</div>
+		</div>
+
+		@if (activeTab == "streak")
+		{
+			<!-- LOGIN STREAK VIEW -->
+			<div class="streak-content">
+				<!-- Streak counter -->
+				<div class="streak-header-card">
+					<div class="streak-info">
+						<span class="streak-fire">&#128293;</span>
+						<span class="streak-count">Day @GetStreakDay()</span>
+						<span class="streak-total">(@GetTotalDays() total)</span>
+					</div>
+					<div class="shield-status">
+						<span class="shield-label">Shield:</span>
+						<span class="shield-value @(IsShieldReady() ? "ready" : "used")">
+							@(IsShieldReady() ? "Ready" : "Used")
+						</span>
+					</div>
+				</div>
+
+				<!-- 7-day calendar -->
+				<div class="streak-calendar">
+					@for (int d = 1; d <= 7; d++)
+					{
+						var day = d;
+						var isCompleted = day < GetStreakDayInCycle();
+						var isToday = day == GetStreakDayInCycle();
+						var isFuture = day > GetStreakDayInCycle();
+						var dayReward = GetDayReward(day);
+						<div class="calendar-day @(isCompleted ? "completed" : "") @(isToday ? "today" : "") @(isFuture ? "future" : "") @(day == 7 ? "day-seven" : "")">
+							<span class="day-number">Day @day</span>
+							<div class="day-rewards">
+								<span class="day-gold">@($"{dayReward.Gold:N0}")</span>
+								@if (dayReward.Gems > 0)
+								{
+									<span class="day-gems">@dayReward.Gems G</span>
+								}
+							</div>
+							@if (isCompleted)
+							{
+								<span class="day-check">&#10003;</span>
+							}
+							else if (isToday)
+							{
+								<span class="day-indicator">&#11044;</span>
+							}
+							@if (day == 7)
+							{
+								<span class="day-legendary">Legendary</span>
+							}
+						</div>
+					}
+				</div>
+
+				<!-- Today's reward -->
+				<div class="today-reward-card">
+					<span class="reward-title">Today's Reward</span>
+					<div class="reward-items">
+						@{
+							var reward = GetTodayReward();
+						}
+						<span class="reward-item gold">@($"{reward.Gold:N0}") Gold</span>
+						@if (reward.Gems > 0)
+						{
+							<span class="reward-item gems">@reward.Gems Gems</span>
+						}
+						@if (reward.Ink > 0)
+						{
+							<span class="reward-item ink">@reward.Ink Ink</span>
+						}
+						@if (reward.IsDay7)
+						{
+							<span class="reward-item legendary">Random Legendary Beast!</span>
+						}
+					</div>
+					@{
+						var multiplier = GetWeekMultiplier();
+					}
+					@if (multiplier > 1.0f)
+					{
+						<span class="week-bonus">Week Bonus: @($"{multiplier:0.#}")x Gold</span>
+					}
+					@if (!IsTodayClaimed())
+					{
+						<button class="claim-btn" onclick=@ClaimDailyReward onmouseover=@(() => SoundManager.PlayHover())>
+							<span>CLAIM</span>
+						</button>
+					}
+					else
+					{
+						<div class="claimed-badge">
+							<span>&#10003; Claimed</span>
+						</div>
+					}
+				</div>
+
+				<!-- Next milestone -->
+				@{
+					var nextMs = GetNextMilestone();
+				}
+				@if (nextMs > 0)
+				{
+					<div class="milestone-card">
+						<span class="milestone-title">Next Milestone: Day @nextMs</span>
+						<div class="milestone-progress">
+							<div class="milestone-bar">
+								<div class="milestone-fill" style="width: @GetMilestonePercent()%"></div>
+							</div>
+							<span class="milestone-text">@GetTotalDays() / @nextMs</span>
+						</div>
+						@if (IsMilestoneClaimable(nextMs))
+						{
+							<button class="claim-btn small" onclick=@(() => ClaimMilestone(nextMs)) onmouseover=@(() => SoundManager.PlayHover())>
+								<span>CLAIM MILESTONE</span>
+							</button>
+						}
+					</div>
+				}
+			</div>
+		}
+		else
+		{
+			<!-- MISSIONS VIEW -->
+			<div class="missions-content">
+				<!-- Daily Missions Section -->
+				<div class="mission-section">
+					<div class="mission-section-header">
+						<span class="section-title">Daily Missions</span>
+						@if (AreAllDailiesComplete())
+						{
+							<span class="bonus-label">All Complete: +10K +5 Gems</span>
+						}
+					</div>
+					@foreach (var mission in GetDailyMissions())
+					{
+						<div class="mission-card @(mission.Claimed ? "claimed" : "") @(mission.Completed ? "completed" : "")">
+							<div class="mission-left">
+								<img class="mission-icon" src="ui/icons/@GetMissionIcon(mission)" />
+								<div class="mission-info">
+									<span class="mission-name">@GetMissionName(mission)</span>
+									<div class="mission-progress-bar">
+										<div class="mission-progress-fill" style="width: @GetMissionPercent(mission)%"></div>
+									</div>
+								</div>
+							</div>
+							<div class="mission-right">
+								@if (mission.Claimed)
+								{
+									<span class="mission-claimed">&#10003;</span>
+								}
+								else if (mission.Completed)
+								{
+									<button class="claim-btn small" onclick=@(() => ClaimMission(mission.MissionId)) onmouseover=@(() => SoundManager.PlayHover())>
+										<span>CLAIM</span>
+									</button>
+								}
+								else
+								{
+									<span class="mission-target">@mission.Progress / @GetMissionTarget(mission)</span>
+								}
+								<span class="mission-reward">@GetMissionRewardText(mission)</span>
+							</div>
+						</div>
+					}
+				</div>
+
+				<!-- Weekly Missions Section -->
+				<div class="mission-section">
+					<div class="mission-section-header">
+						<span class="section-title">Weekly Missions</span>
+						@if (AreAllWeekliesComplete())
+						{
+							<span class="bonus-label">All Complete: +50K +10 Gems</span>
+						}
+					</div>
+					@foreach (var mission in GetWeeklyMissions())
+					{
+						<div class="mission-card @(mission.Claimed ? "claimed" : "") @(mission.Completed ? "completed" : "")">
+							<div class="mission-left">
+								<img class="mission-icon" src="ui/icons/@GetMissionIcon(mission)" />
+								<div class="mission-info">
+									<span class="mission-name">@GetMissionName(mission)</span>
+									<div class="mission-progress-bar">
+										<div class="mission-progress-fill" style="width: @GetMissionPercent(mission)%"></div>
+									</div>
+								</div>
+							</div>
+							<div class="mission-right">
+								@if (mission.Claimed)
+								{
+									<span class="mission-claimed">&#10003;</span>
+								}
+								else if (mission.Completed)
+								{
+									<button class="claim-btn small" onclick=@(() => ClaimMission(mission.MissionId)) onmouseover=@(() => SoundManager.PlayHover())>
+										<span>CLAIM</span>
+									</button>
+								}
+								else
+								{
+									<span class="mission-target">@mission.Progress / @GetMissionTarget(mission)</span>
+								}
+								<span class="mission-reward">@GetMissionRewardText(mission)</span>
+							</div>
+						</div>
+					}
+				</div>
+
+				<!-- Monthly Challenge -->
+				@if (GetMonthlyMission() != null)
+				{
+					<div class="mission-section monthly">
+						<div class="mission-section-header">
+							<span class="section-title">Monthly Challenge</span>
+						</div>
+						@{
+							var monthly = GetMonthlyMission();
+						}
+						<div class="mission-card monthly-card @(monthly.Claimed ? "claimed" : "") @(monthly.Completed ? "completed" : "")">
+							<div class="mission-left">
+								<img class="mission-icon" src="ui/icons/@GetMissionIcon(monthly)" />
+								<div class="mission-info">
+									<span class="mission-name">@GetMissionName(monthly)</span>
+									<div class="mission-progress-bar">
+										<div class="mission-progress-fill" style="width: @GetMissionPercent(monthly)%"></div>
+									</div>
+								</div>
+							</div>
+							<div class="mission-right">
+								@if (monthly.Claimed)
+								{
+									<span class="mission-claimed">&#10003;</span>
+								}
+								else if (monthly.Completed)
+								{
+									<button class="claim-btn small" onclick=@(() => ClaimMission(monthly.MissionId)) onmouseover=@(() => SoundManager.PlayHover())>
+										<span>CLAIM</span>
+									</button>
+								}
+								else
+								{
+									<span class="mission-target">@monthly.Progress / @GetMissionTarget(monthly)</span>
+								}
+								<span class="mission-reward">@GetMissionRewardText(monthly)</span>
+							</div>
+						</div>
+					</div>
+				}
+			</div>
+		}
+	</div>
+</root>
+
+@code {
+	// Localization helper
+	private string L( string key ) => LocalizationManager.Get( key );
+	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
+
+	public static bool IsVisible { get; set; } = false;
+	private string activeTab = "streak";
+
+	public static void Show() { IsVisible = true; SoundManager.PlayPopup(); }
+	public static void Close() { IsVisible = false; SoundManager.PlayPopdown(); }
+	public static void Toggle()
+	{
+		IsVisible = !IsVisible;
+		if ( IsVisible ) SoundManager.PlayPopup();
+		else SoundManager.PlayPopdown();
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// STREAK HELPERS (delegate to DailyRewardManager)
+	// ═══════════════════════════════════════════════════════════════
+
+	private int GetStreakDay() => DailyRewardManager.Instance?.DailyStreak ?? 0;
+	private int GetStreakDayInCycle() => DailyRewardManager.Instance?.GetStreakDay() ?? 1;
+	private int GetTotalDays() => DailyRewardManager.Instance?.TotalLoginDays ?? 0;
+	private bool IsShieldReady() => DailyRewardManager.Instance?.IsShieldActive() ?? false;
+	private bool IsTodayClaimed() => DailyRewardManager.Instance?.TodayRewardClaimed ?? false;
+	private float GetWeekMultiplier() => DailyRewardManager.Instance?.GetWeekMultiplier() ?? 1.0f;
+
+	private (int Gold, int Gems, int Ink, bool IsDay7) GetTodayReward()
+	{
+		if ( DailyRewardManager.Instance == null ) return (2000, 0, 5, false);
+
+		var (gold, gems, ink) = DailyRewardManager.Instance.GetTodayReward();
+		var day = GetStreakDayInCycle();
+		return (gold, gems, ink, day == 7);
+	}
+
+	private (int Gold, int Gems, int Ink) GetDayReward( int day )
+	{
+		return DailyRewardManager.Instance?.GetDayReward( day ) ?? (2000, 0, 5);
+	}
+
+	private void ClaimDailyReward()
+	{
+		SoundManager.PlaySuccess();
+		DailyRewardManager.Instance?.ClaimDailyReward();
+	}
+
+	private int GetNextMilestone()
+	{
+		return DailyRewardManager.Instance?.GetNextMilestone() ?? 7;
+	}
+
+	private bool IsMilestoneClaimable( int milestone )
+	{
+		return DailyRewardManager.Instance?.IsMilestoneClaimable( milestone ) ?? false;
+	}
+
+	private void ClaimMilestone( int milestone )
+	{
+		SoundManager.PlaySuccess();
+		DailyRewardManager.Instance?.ClaimMilestone( milestone );
+	}
+
+	private float GetMilestonePercent()
+	{
+		var total = GetTotalDays();
+		var next = GetNextMilestone();
+		if ( next <= 0 ) return 100;
+		return Math.Min( 100, (float)total / next * 100f );
+	}
+
+	private string GetRefreshTime()
+	{
+		var now = DateTime.UtcNow;
+		var midnight = now.Date.AddDays( 1 );
+		var diff = midnight - now;
+		return $"{diff.Hours}h {diff.Minutes}m";
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// MISSION HELPERS (delegate to MissionManager)
+	// ═══════════════════════════════════════════════════════════════
+
+	private List<MissionState> GetDailyMissions() => MissionManager.Instance?.ActiveDailyMissions ?? new();
+	private List<MissionState> GetWeeklyMissions() => MissionManager.Instance?.ActiveWeeklyMissions ?? new();
+	private MissionState GetMonthlyMission() => MissionManager.Instance?.ActiveMonthlyChallenge;
+	private bool AreAllDailiesComplete() => MissionManager.Instance?.AreAllDailiesComplete() ?? false;
+	private bool AreAllWeekliesComplete() => MissionManager.Instance?.AreAllWeekliesComplete() ?? false;
+
+	private string GetMissionName( MissionState state )
+	{
+		var def = MissionManager.Instance?.GetDefinition( state.MissionId );
+		return def?.Name ?? state.MissionId;
+	}
+
+	private string GetMissionIcon( MissionState state )
+	{
+		var def = MissionManager.Instance?.GetDefinition( state.MissionId );
+		return def?.Icon ?? "sort/star.svg";
+	}
+
+	private int GetMissionTarget( MissionState state )
+	{
+		var def = MissionManager.Instance?.GetDefinition( state.MissionId );
+		return def?.Target ?? 1;
+	}
+
+	private float GetMissionPercent( MissionState state )
+	{
+		var target = GetMissionTarget( state );
+		if ( target <= 0 ) return 100;
+		return Math.Min( 100, (float)state.Progress / target * 100f );
+	}
+
+	private string GetMissionRewardText( MissionState state )
+	{
+		var def = MissionManager.Instance?.GetDefinition( state.MissionId );
+		if ( def == null ) return "";
+		var parts = new List<string>();
+		if ( def.GoldReward > 0 ) parts.Add( $"{def.GoldReward / 1000f:0.#}K" );
+		if ( def.GemReward > 0 ) parts.Add( $"{def.GemReward} Gems" );
+		if ( def.XPReward > 0 ) parts.Add( $"{def.XPReward} XP" );
+		return string.Join( " + ", parts );
+	}
+
+	private void ClaimMission( string missionId )
+	{
+		SoundManager.PlaySuccess();
+		MissionManager.Instance?.ClaimReward( missionId );
+	}
+
+	/// <summary>
+	/// Returns total unclaimed rewards across daily + missions for badge display.
+	/// </summary>
+	public static int GetTotalUnclaimedCount()
+	{
+		int count = 0;
+		count += DailyRewardManager.Instance?.GetUnclaimedCount() ?? 0;
+		count += MissionManager.Instance?.GetUnclaimedCount() ?? 0;
+		return count;
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+
+		if ( IsVisible && Input.Pressed( "Escape" ) )
+		{
+			Close();
+		}
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( IsVisible );
+		hash.Add( activeTab );
+		hash.Add( GetStreakDay() );
+		hash.Add( GetTotalDays() );
+		hash.Add( IsTodayClaimed() );
+		hash.Add( MissionManager.Instance?.GetUnclaimedCount() ?? 0 );
+		return hash.ToHashCode();
+	}
+}
