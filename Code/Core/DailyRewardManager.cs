@@ -169,6 +169,12 @@ public sealed class DailyRewardManager : Component
 	/// Check if today is a new day and update the streak accordingly.
 	/// Handles shield activation, streak reset, and new-day detection.
 	/// </summary>
+	private async Task OpenDailyPanelDelayed()
+	{
+		await Task.Delay( 2000 );
+		Beastborne.UI.Panels.DailyPanel.Show();
+	}
+
 	public void CheckLoginStreak()
 	{
 		ShieldSavedStreak = false;
@@ -233,6 +239,19 @@ public sealed class DailyRewardManager : Component
 		OnStreakUpdated?.Invoke();
 
 		SaveToCookies();
+
+		// Show streak popup notification
+		var dayInCycle = GetStreakDay();
+		var streakText = DailyStreak == 1 ? "Welcome back!" : $"Day {dayInCycle} — {DailyStreak} day streak!";
+		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Daily Login", streakText, 5f );
+
+		if ( ShieldSavedStreak )
+		{
+			NotificationManager.Instance?.AddNotification( NotificationType.Info, "Streak Saved!", "Your streak shield protected you!", 5f );
+		}
+
+		// Auto-open the daily panel after a brief delay
+		_ = OpenDailyPanelDelayed();
 
 		Log.Info( $"[DailyReward] Login check complete — Day {GetStreakDay()}, Streak {DailyStreak}, Total {TotalLoginDays}" );
 	}
