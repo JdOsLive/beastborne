@@ -524,6 +524,9 @@ public sealed class ShopManager : Component
 			Stats.SetValue( "items-bought", tamer.TotalItemsBought );
 		}
 
+		// Track mission progress for shop purchase
+		MissionManager.Instance?.TrackShopPurchase( finalPrice );
+
 		OnItemPurchased?.Invoke( item );
 		Log.Info( $"Purchased {item.Name}" );
 		return true;

@@ -461,6 +461,9 @@ public sealed class TradingManager : Component, Component.INetworkListener
 		TamerManager.Instance?.SaveToCloud();
 		OnTradeCompleted?.Invoke( true );
 
+		// Track mission progress for trade completion
+		MissionManager.Instance?.TrackTradeComplete();
+
 		CurrentTrade = null;
 		Log.Info( "[Trade] Trade executed successfully" );
 	}

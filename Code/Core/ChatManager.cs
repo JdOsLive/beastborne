@@ -138,6 +138,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 			tamer.ChatMessagesSent++;
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ChatMessagesSent, tamer.ChatMessagesSent );
 			Stats.SetValue( "chat-sent", tamer.ChatMessagesSent );
+			MissionManager.Instance?.TrackChatMessage();
 		}
 
 		// Add message locally
@@ -205,6 +206,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 
 		// Track beast showcase achievement
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BeastShowcased, 1 );
+		MissionManager.Instance?.TrackBeastShared();
 
 		var nickname = string.IsNullOrEmpty( monster.Nickname ) ? species.Name : monster.Nickname;
 		var genes = monster.Genetics != null

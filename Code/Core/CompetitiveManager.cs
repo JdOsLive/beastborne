@@ -787,6 +787,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 
 		OnSetComplete?.Invoke( playerWon, pointsChange );
 
+		// Track mission progress for arena set completion
+		MissionManager.Instance?.TrackArenaSet( won: playerWon );
+
 		// Guild XP for arena set completion
 		GuildManager.Instance?.AddGuildXP( 50 );
 		GuildManager.Instance?.IncrementAchievement( "arena" );

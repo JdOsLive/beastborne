@@ -1150,6 +1150,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	public void AddGuildXP( int amount )
 	{
 		if ( !IsInGuild || Guild == null ) return;
+		MissionManager.Instance?.TrackGuildXP( amount );
 		_ = AddGuildXPAsync( amount );
 	}
 

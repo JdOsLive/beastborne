@@ -595,6 +595,10 @@ public sealed class BattleManager : Component
 		{
 			// Award XP and gold
 			DistributeRewards();
+
+			// Track mission progress for battle win
+			bool flawless = PlayerTeam?.All( m => m != null && m.CurrentHP > 0 ) ?? false;
+			MissionManager.Instance?.TrackBattleWin( flawless: flawless );
 		}
 
 		var result = CurrentResult;
@@ -842,6 +846,12 @@ public sealed class BattleManager : Component
 			}
 		}
 
+		// Track boss defeat mission (once per battle, not per monster)
+		if ( CurrentBossState != null && CurrentResult.PlayerWon )
+		{
+			MissionManager.Instance?.TrackBossDefeated();
+		}
+
 		// Accumulate tamer-level damage/knockout totals for leaderboards
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer != null )
@@ -860,6 +870,12 @@ public sealed class BattleManager : Component
 			// Check damage/knockout achievements
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalDamageDealt, tamer.TotalDamageDealt );
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalKnockouts, tamer.TotalKnockouts );
+
+			// Track mission progress for damage and knockouts
+			if ( battleDamage > 0 )
+				MissionManager.Instance?.TrackDamageDealt( battleDamage );
+			if ( battleKOs > 0 )
+				MissionManager.Instance?.TrackKnockouts( battleKOs );
 		}
 	}
 
@@ -1570,6 +1586,10 @@ public sealed class BattleManager : Component
 		if ( CurrentResult.PlayerWon )
 		{
 			DistributeRewards();
+
+			// Track mission progress for battle win
+			bool flawless = PlayerTeam?.All( m => m != null && m.CurrentHP > 0 ) ?? false;
+			MissionManager.Instance?.TrackBattleWin( flawless: flawless );
 		}
 
 		Log.Info( $"EndBattleManual: Invoking OnBattleEnd with PlayerWon={CurrentResult.PlayerWon}" );

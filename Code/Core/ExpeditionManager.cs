@@ -724,6 +724,9 @@ public sealed class ExpeditionManager : Component
 			{
 				AwardBossTokens();
 			}
+
+			// Track mission progress for expedition completion (retry path)
+			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
 		}
 
 		// Award accumulated item drops to inventory before resetting
@@ -835,12 +838,14 @@ public sealed class ExpeditionManager : Component
 		if ( playerWon && CurrentWave < CurrentExpedition.Waves )
 		{
 			Log.Info( $"[BG] Player won wave {CurrentWave}, continuing to next wave" );
+			MissionManager.Instance?.TrackWaveCleared();
 			OnWaveCompleted?.Invoke( CurrentWave, CurrentExpedition.Waves );
 			_ = StartNextWaveDelayed();
 		}
 		else if ( playerWon && CurrentWave >= CurrentExpedition.Waves )
 		{
 			Log.Info( $"[BG] Player completed all waves! AutoRetry={AutoRetry}" );
+			MissionManager.Instance?.TrackWaveCleared();
 
 			if ( AutoRetry )
 			{
@@ -867,6 +872,9 @@ public sealed class ExpeditionManager : Component
 
 				// Award accumulated items before auto-retry resets them
 				AwardAccumulatedItems();
+
+				// Track mission progress for expedition completion (auto-retry path)
+				MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
 
 				// Auto-retry: reset to wave 1 and continue
 				Log.Info( $"[BG] Auto-retry enabled, restarting expedition from wave 1" );
@@ -1396,6 +1404,9 @@ public sealed class ExpeditionManager : Component
 			{
 				AwardBossTokens();
 			}
+
+			// Track mission progress for expedition completion
+			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
 		}
 
 		// Award accumulated item drops to inventory
@@ -1686,8 +1697,14 @@ public sealed class ExpeditionManager : Component
 		GuildManager.Instance?.AddGuildXP( 10 );
 		GuildManager.Instance?.IncrementAchievement( "catch" );
 
+		bool isNewDiscovery = !(BeastiaryManager.Instance?.IsDiscovered( caughtMonster.SpeciesId ) ?? true);
 		BeastiaryManager.Instance?.DiscoverSpecies( caughtMonster.SpeciesId );
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersCaught, tamer.TotalMonstersCaught );
+
+		// Track mission progress for monster catch
+		var caughtSpecies = MonsterManager.Instance?.GetSpecies( caughtMonster.SpeciesId );
+		bool isRareOrHigher = caughtSpecies != null && caughtSpecies.BaseRarity >= Rarity.Rare;
+		MissionManager.Instance?.TrackMonsterCaught( isRareOrHigher: isRareOrHigher, isNewDiscovery: isNewDiscovery );
 
 		OnMonsterCaught?.Invoke( caughtMonster );
 

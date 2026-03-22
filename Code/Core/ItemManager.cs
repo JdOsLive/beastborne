@@ -2208,6 +2208,9 @@ public sealed class ItemManager : Component
 		{
 			RemoveItem( itemId, 1 );
 			OnItemUsed?.Invoke( item );
+
+			// Track mission progress for item usage
+			MissionManager.Instance?.TrackItemUsed();
 		}
 
 		return success;
@@ -2272,6 +2275,9 @@ public sealed class ItemManager : Component
 
 		relics.Add( itemId );
 		OnRelicEquipped?.Invoke( itemId );
+
+		// Track mission progress for relic equipping
+		MissionManager.Instance?.TrackRelicsEquipped( relics.Count );
 
 		// Check relic equip achievement (3 relics at once)
 		if ( relics.Count >= 3 )
@@ -2474,6 +2480,9 @@ public sealed class ItemManager : Component
 
 		// Save inventory
 		TamerManager.Instance?.SaveToCloud();
+
+		// Track mission progress for boost activation
+		MissionManager.Instance?.TrackBoostActivated();
 
 		Log.Info( $"Used server boost: {item.Name}" );
 		return (true, $"Activated {item.Name}!");
