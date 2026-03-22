@@ -1549,6 +1549,7 @@ public class LeaderboardEntry
 	public string Name { get; set; }
 	public int Score { get; set; }
 	public string RankTitle { get; set; }
+	public long SteamId { get; set; }
 }
 
 /// <summary>

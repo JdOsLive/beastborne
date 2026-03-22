@@ -491,7 +491,7 @@ public sealed class TamerManager : Component
 
 		OnGoldChanged?.Invoke( CurrentTamer.Gold );
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalGoldEarned, CurrentTamer.TotalGoldEarned );
-		Stats.SetValue( "total-gold", CurrentTamer.TotalGoldEarned );
+		Stats.SetValue( "total-gold-v2", (int)(CurrentTamer.TotalGoldEarned / 1000) );
 	}
 
 	public bool SpendGold( int amount )
