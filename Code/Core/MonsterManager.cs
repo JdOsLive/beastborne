@@ -7505,6 +7505,9 @@ public sealed class MonsterManager : Component
 				(offspring.Genetics?.DEFGene ?? 0) == 31 || (offspring.Genetics?.SpAGene ?? 0) == 31 ||
 				(offspring.Genetics?.SpDGene ?? 0) == 31 || (offspring.Genetics?.SPDGene ?? 0) == 31 )
 				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BredPerfectGene, 1 );
+
+			// Track mission progress for fusion
+			MissionManager.Instance?.TrackFusion( totalGenes: totalGenes );
 		}
 
 		// Remove parent monsters (fusion consumes them)
@@ -7790,6 +7793,9 @@ public sealed class MonsterManager : Component
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.MonstersEvolved, TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
 			Stats.SetValue( "monsters-evolved", TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
 		}
+
+		// Track mission progress for evolution
+		MissionManager.Instance?.TrackEvolution();
 
 		return true;
 	}
