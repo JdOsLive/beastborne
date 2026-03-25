@@ -40,9 +40,9 @@ public sealed class BattleSceneController : Component
 
 	private Vector3[] GetEnemyPositions() => new[]
 	{
-		new Vector3( 120f, -90f, 25f ),   // Active (top-right, further from camera)
-		new Vector3( 140f, -110f, 25f ),  // Benched 1
-		new Vector3( 140f, -70f, 25f ),   // Benched 2
+		new Vector3( 60f, -70f, 25f ),    // Active (top-right, moderately far)
+		new Vector3( 80f, -90f, 25f ),    // Benched 1
+		new Vector3( 80f, -50f, 25f ),    // Benched 2
 	};
 
 	protected override void OnAwake()
