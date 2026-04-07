@@ -37,6 +37,7 @@ public sealed class BattleArena : Component
 	{
 		groundPlane = new GameObject( true, "BattleGround" );
 		groundPlane.Parent = GameObject;
+		groundPlane.Tags.Add( "ground" );
 
 		var renderer = groundPlane.Components.Create<ModelRenderer>();
 		renderer.Model = Model.Load( "models/dev/plane.vmdl" );

@@ -33,6 +33,23 @@ public sealed class BattleCameraController : Component
 	private Rotation targetRotation;
 	private bool isEnabled;
 
+	// Idle sway
+	private float swayTime;
+	private float swayAmplitudeX = 8f;
+	private float swayAmplitudeY = 5f;
+	private float swayAmplitudeZ = 3f;
+	private float swaySpeed = 0.4f;
+
+	// Camera focus mode: "default" | "player" | "enemies"
+	private string focusMode = "default";
+	private float focusLerpSpeed = 3f;
+
+	// Focus offsets (subtle shifts, not dramatic zooms)
+	private Vector3 PlayerFocusOffset = new Vector3( 15f, 12f, -3f );
+	private Vector3 EnemyFocusOffset = new Vector3( 60f, -40f, -5f );
+	private Vector3 PlayerFocusLookOffset = new Vector3( -60f, 20f, 0f );
+	private Vector3 EnemyFocusLookOffset = new Vector3( 40f, -40f, 0f );
+
 	/// <summary>
 	/// Enable — find the scene's main camera and take it over
 	/// </summary>
@@ -110,17 +127,44 @@ public sealed class BattleCameraController : Component
 	{
 		var dt = hitstopTimer > 0f ? Time.Delta * 0.05f : Time.Delta;
 
-		// Continuously update target from properties so we can tweak live via MCP
-		targetPosition = DefaultPosition;
-		targetRotation = Rotation.LookAt( DefaultLookTarget - DefaultPosition, Vector3.Up );
+		// Idle sway — gentle orbiting motion
+		swayTime += dt * swaySpeed;
+		var swayOffset = new Vector3(
+			MathF.Sin( swayTime ) * swayAmplitudeX,
+			MathF.Cos( swayTime * 0.7f ) * swayAmplitudeY,
+			MathF.Sin( swayTime * 0.5f + 1f ) * swayAmplitudeZ
+		);
 
+		// Focus mode position and look target offsets
+		var posOffset = Vector3.Zero;
+		var lookOffset = Vector3.Zero;
+
+		if ( focusMode == "player" )
+		{
+			posOffset = PlayerFocusOffset;
+			lookOffset = PlayerFocusLookOffset;
+		}
+		else if ( focusMode == "enemies" )
+		{
+			posOffset = EnemyFocusOffset;
+			lookOffset = EnemyFocusLookOffset;
+		}
+
+		// Calculate target position with sway and focus
+		var desiredPos = DefaultPosition + swayOffset + posOffset;
+		var desiredLook = DefaultLookTarget + lookOffset;
+		targetPosition = desiredPos;
+		targetRotation = Rotation.LookAt( desiredLook - desiredPos, Vector3.Up );
+
+		// Zoom punch
 		zoomPunchAmount = Math.Max( 0f, zoomPunchAmount - zoomPunchDecay * RealTime.Delta * zoomPunchAmount );
-
-		var zoomDir = (targetPosition - DefaultLookTarget).Normal;
+		var zoomDir = (targetPosition - desiredLook).Normal;
 		var effectiveTarget = targetPosition - zoomDir * zoomPunchAmount;
 
-		mainCamera.WorldPosition = Vector3.Lerp( mainCamera.WorldPosition, effectiveTarget, dt * 5f );
-		mainCamera.WorldRotation = Rotation.Slerp( mainCamera.WorldRotation, targetRotation, dt * 5f );
+		// Smooth lerp — slower for focus transitions, faster for normal
+		var lerpSpeed = focusMode == "default" ? 4f : focusLerpSpeed;
+		mainCamera.WorldPosition = Vector3.Lerp( mainCamera.WorldPosition, effectiveTarget, dt * lerpSpeed );
+		mainCamera.WorldRotation = Rotation.Slerp( mainCamera.WorldRotation, targetRotation, dt * lerpSpeed );
 	}
 
 	private void UpdateShake()
@@ -151,6 +195,30 @@ public sealed class BattleCameraController : Component
 			zoomPunchAmount = 10f;
 			TriggerShake( 1.5f, 0.1f );
 		}
+	}
+
+	/// <summary>
+	/// Focus camera on the player's beast (when picking moves)
+	/// </summary>
+	public void FocusPlayer()
+	{
+		focusMode = "player";
+	}
+
+	/// <summary>
+	/// Focus camera on the enemy side (when picking targets)
+	/// </summary>
+	public void FocusEnemies()
+	{
+		focusMode = "enemies";
+	}
+
+	/// <summary>
+	/// Return camera to default idle position
+	/// </summary>
+	public void FocusDefault()
+	{
+		focusMode = "default";
 	}
 
 	public CameraComponent GetCamera() => mainCamera;
