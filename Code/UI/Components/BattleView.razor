@@ -547,23 +547,47 @@
 		<div class="battle3d-vignette"></div>
 	}
 
-	<!-- Wave Indicator (top center, outside ambient block) -->
+	<!-- Wave Indicator (top center) -->
 	@if (Use3DBattle && !BattleTransition.IsActive)
 	{
 		<div class="wave-indicator-container">
-			@if (IsBossWave())
-			{
-				<div class="wave-badge wave-boss">
-					<span class="wave-text">BOSS</span>
-				</div>
-			}
-			else
-			{
-				<div class="wave-badge">
-					<span class="wave-text">WAVE @(GetCurrentWave())</span>
-				</div>
-			}
+			<div class="wave-badge @(IsBossWave() ? "wave-boss" : "")">
+				<span class="wave-text">@(IsBossWave() ? "BOSS" : $"WAVE {GetCurrentWave()}")</span>
+			</div>
 		</div>
+	}
+
+	<!-- Battle Log Feed (bottom-left, auto-fade) -->
+	@if (Use3DBattle && !BattleTransition.IsActive)
+	{
+		var recentEntries = GetRecentLogEntries();
+		@if (recentEntries.Count > 0)
+		{
+			<div class="battle-log-feed">
+				@foreach (var (entry, age) in recentEntries)
+				{
+					var diamondClass = GetLogDiamondClass(entry);
+					var hasElementIcon = entry.MoveElement.HasValue && entry.Type is "damage" or "crit" or "super" or "resist";
+					var fadeClass = age > 3.0f ? "fading" : "";
+					<div class="blog-entry @entry.Type @(entry.IsPlayerAttacker ? "player-turn" : "enemy-turn") @fadeClass">
+						<div class="blog-diamond @diamondClass">
+							<iconify icon="@GetLogIconify(entry)" Size=@(14) Color="white" />
+						</div>
+						<div class="blog-content">
+							<span class="blog-text">@entry.Text</span>
+						</div>
+						@if (entry.IsCritical)
+						{
+							<div class="blog-badge crit"><span>CRIT</span></div>
+						}
+						else if (entry.IsSuperEffective)
+						{
+							<div class="blog-badge super"><span>2x</span></div>
+						}
+					</div>
+				}
+			</div>
+		}
 	}
 
 	<!-- 3D Action Bar (bottom) -->
@@ -584,19 +608,19 @@
 			<div class="action3d-buttons panel-in">
 				<div class="action3d-btn fight @(awaitingInput ? "awaiting" : "") @(buttonsDisabled ? "disabled" : "")" onclick=@OnFight3D onmouseover=@(() => HoverBtn(1))>
 					<div class="action3d-diamond">
-						<img class="diamond-icon" src="ui/icons/battle/fight.svg" />
+						<iconify icon="lucide:swords" Size=@(28) Color="white" />
 					</div>
 					<span class="action3d-label">FIGHT</span>
 				</div>
 				<div class="action3d-btn swap @(buttonsDisabled ? "disabled" : "")" onclick=@OnSwapRequested onmouseover=@(() => HoverBtn(2))>
 					<div class="action3d-diamond">
-						<img class="diamond-icon" src="ui/icons/battle/swap.svg" />
+						<iconify icon="lucide:repeat-2" Size=@(28) Color="white" />
 					</div>
 					<span class="action3d-label">SWITCH</span>
 				</div>
 				<div class="action3d-btn bag @(buttonsDisabled ? "disabled" : "")" onclick=@OnOpenBag onmouseover=@(() => HoverBtn(3))>
 					<div class="action3d-diamond">
-						<img class="diamond-icon" src="ui/icons/buttons/inventory.svg" />
+						<iconify icon="lucide:briefcase" Size=@(28) Color="white" />
 					</div>
 					<span class="action3d-label">BAG</span>
 				</div>
@@ -604,14 +628,14 @@
 				{
 					<div class="action3d-btn contract @(buttonsDisabled || !HasContractInk() ? "disabled" : "")" onclick=@OnContract3D onmouseover=@(() => HoverBtn(4))>
 						<div class="action3d-diamond">
-							<img class="diamond-icon" src="ui/icons/currency/ink.svg" />
+							<iconify icon="lucide:scroll-text" Size=@(28) Color="white" />
 						</div>
 						<span class="action3d-label">CONTRACT</span>
 					</div>
 				}
 				<div class="action3d-end @(buttonsDisabled ? "disabled" : "")" onclick=@OnEndClicked onmouseover=@(() => HoverBtn(5))>
 					<div class="end-diamond">
-						<img class="end-icon" src="ui/icons/battle/end.svg" />
+						<iconify icon="lucide:log-out" Size=@(16) Color="white" />
 					</div>
 					<span class="end-label">END</span>
 				</div>
@@ -661,7 +685,7 @@
 						}
 					}
 					<div class="move3d-back" onmouseover=@(() => HoverBtn(20)) onclick=@(() => { actionBarState = "actions"; BattleSceneController.Instance?.GetCameraController()?.FocusDefault(); StateHasChanged(); })>
-						<img src="ui/icons/battle/back.svg" class="back-icon" />
+						<iconify icon="ph:arrow-left-bold" Size=@(24) Color="white" />
 					</div>
 				</div>
 			</div>
@@ -675,14 +699,15 @@
 			var isActive = IsSwapTargetActive();
 
 			<div class="swap-bar panel-in">
-				<div class="move3d-back" onmouseover=@(() => HoverBtn(22)) onclick=@OnSwapBack>
-					<img src="ui/icons/battle/back.svg" class="back-icon" />
+				<div class="swap-confirm-btn @(isActive ? "active" : "")" onclick=@OnSwapConfirm onmouseover=@(() => HoverBtn(25))>
+					<iconify icon="lucide:repeat-2" Size=@(20) Color="white" />
+					<span class="swap-confirm-text">@(isActive ? "ACTIVE" : "SWAP")</span>
 				</div>
 
 				@if (swapTargets.Count > 1)
 				{
 					<div class="swap-bar-arrow" onmouseover=@(() => HoverBtn(23)) onclick=@OnSwapCarouselLeft>
-						<span class="swap-bar-arrow-text">◀</span>
+						<iconify icon="lucide:chevron-left" Size=@(22) Color="white" />
 					</div>
 				}
 
@@ -697,13 +722,12 @@
 				@if (swapTargets.Count > 1)
 				{
 					<div class="swap-bar-arrow" onmouseover=@(() => HoverBtn(24)) onclick=@OnSwapCarouselRight>
-						<span class="swap-bar-arrow-text">▶</span>
+						<iconify icon="lucide:chevron-right" Size=@(22) Color="white" />
 					</div>
 				}
 
-				<div class="swap-confirm-btn @(isActive ? "disabled" : "")" onclick=@OnSwapConfirm onmouseover=@(() => HoverBtn(25))>
-					<img class="swap-confirm-icon" src="ui/icons/battle/swap.svg" />
-					<span class="swap-confirm-text">@(isActive ? "ACTIVE" : "SWAP IN")</span>
+				<div class="move3d-back" onmouseover=@(() => HoverBtn(22)) onclick=@OnSwapBack>
+					<iconify icon="ph:arrow-left-bold" Size=@(24) Color="white" />
 				</div>
 			</div>
 		}
@@ -745,7 +769,7 @@
 				}
 			}
 			<div class="move3d-back" onmouseover=@(() => HoverBtn(21)) onclick=@OnCancelTargetPicker3D>
-				<img src="ui/icons/battle/back.svg" class="back-icon" />
+				<iconify icon="ph:arrow-left-bold" Size=@(24) Color="white" />
 			</div>
 		</div>
 	}
@@ -843,26 +867,7 @@
 			</div>
 		}
 
-		<!-- Battle Log (Center, above controls) - Popup Style -->
-		<div class="battle-log @(battleLog.Count > 0 ? "has-entries" : "") @(isLogCollapsed ? "collapsed" : "")">
-			@if (!isLogCollapsed)
-			{
-				<div class="log-popup">
-					<div class="log-entries">
-						@foreach (var entry in battleLog.TakeLast(8))
-						{
-							<div class="log-entry @entry.Type">
-								<span class="log-text">@entry.Text</span>
-							</div>
-						}
-					</div>
-				</div>
-			}
-			<div class="log-header" onclick=@ToggleLogCollapsed>
-				<span class="log-title">@L("ui.battle.log")</span>
-				<span class="log-toggle">@(isLogCollapsed ? "▲" : "▼")</span>
-			</div>
-		</div>
+		<!-- Battle log is now in the wave indicator dropdown above -->
 	</div>
 
 	<!-- Contract Negotiation (radial, no overlay) -->
@@ -950,7 +955,7 @@
 	// Battle log entries (persists across waves in same expedition)
 	private List<BattleLogEntry> battleLog = new();
 	private const int MAX_LOG_ENTRIES = 50; // Increased for full expedition logging
-	private bool isLogCollapsed = true; // Start collapsed by default
+	private bool isLogExpanded = false; // Compact by default, click to expand
 	private string lastLoggedExpeditionId = null;
 	private int lastLoggedWave = 0;
 
@@ -1147,7 +1152,17 @@
 	private class BattleLogEntry
 	{
 		public string Text { get; set; }
-		public string Type { get; set; } = "normal"; // normal, damage, heal, status, super, crit
+		public string Type { get; set; } = "normal"; // normal, damage, heal, status, super, crit, miss, swap, buff, debuff, guard, ko, wave
+		public string AttackerName { get; set; }
+		public string DefenderName { get; set; }
+		public string MoveName { get; set; }
+		public ElementType? MoveElement { get; set; }
+		public int Damage { get; set; }
+		public bool IsCritical { get; set; }
+		public bool IsSuperEffective { get; set; }
+		public bool IsPlayerAttacker { get; set; }
+		public string IconOverride { get; set; } // lucide icon name for non-element entries
+		public float Timestamp { get; set; } // RealTime.Now when entry was created
 	}
 
 	private string GetBackgroundStyle()
@@ -1310,13 +1325,121 @@
 		AddLogEntry(announcement, logType);
 	}
 
+	private float lastLogTimestamp = 0f;
+	private const float MIN_LOG_STAGGER = 0.4f; // minimum seconds between visible entries
+
+	private float GetStaggeredTimestamp()
+	{
+		var now = RealTime.Now;
+		// Ensure each entry is at least MIN_LOG_STAGGER seconds after the previous one
+		var ts = Math.Max(now, lastLogTimestamp + MIN_LOG_STAGGER);
+		lastLogTimestamp = ts;
+		return ts;
+	}
+
 	private void AddLogEntry(string text, string type = "normal")
 	{
-		battleLog.Add(new BattleLogEntry { Text = text, Type = type });
+		battleLog.Add(new BattleLogEntry { Text = text, Type = type, Timestamp = GetStaggeredTimestamp() });
 		if (battleLog.Count > MAX_LOG_ENTRIES)
-		{
 			battleLog.RemoveAt(0);
+	}
+
+	private void AddLogEntry(BattleTurn turn, string text, string type)
+	{
+		battleLog.Add(new BattleLogEntry
+		{
+			Text = text,
+			Type = type,
+			AttackerName = turn.AttackerName,
+			DefenderName = turn.DefenderName,
+			MoveName = turn.MoveName,
+			MoveElement = turn.MoveElement,
+			Damage = turn.Damage,
+			IsCritical = turn.IsCritical,
+			IsSuperEffective = turn.IsSuperEffective,
+			IsPlayerAttacker = turn.IsPlayerAttacker,
+			IconOverride = GetLogEntryIcon(type),
+			Timestamp = GetStaggeredTimestamp(),
+		});
+		if (battleLog.Count > MAX_LOG_ENTRIES)
+			battleLog.RemoveAt(0);
+	}
+
+	private const float LOG_VISIBLE_DURATION = 5.0f; // seconds before fading starts
+	private const float LOG_FADE_DURATION = 1.5f; // seconds to fade out
+
+	private List<(BattleLogEntry entry, float age)> GetRecentLogEntries()
+	{
+		var now = RealTime.Now;
+		var maxAge = LOG_VISIBLE_DURATION + LOG_FADE_DURATION;
+		var recent = new List<(BattleLogEntry, float)>();
+		for (int i = battleLog.Count - 1; i >= 0 && recent.Count < 5; i--)
+		{
+			var entry = battleLog[i];
+			// Skip entries whose staggered timestamp hasn't arrived yet
+			if (entry.Timestamp > now) continue;
+			var age = now - entry.Timestamp;
+			if (age > maxAge) break;
+			recent.Add((entry, age));
 		}
+		recent.Reverse(); // oldest first
+		return recent;
+	}
+
+	private string GetLogIconify(BattleLogEntry entry)
+	{
+		// Element-based attacks use element icons
+		if (entry.MoveElement.HasValue && entry.Type is "damage" or "crit" or "super" or "resist")
+		{
+			return entry.MoveElement.Value switch
+			{
+				ElementType.Fire => "game-icons:fire",
+				ElementType.Water => "game-icons:water-drop",
+				ElementType.Earth => "game-icons:stone-block",
+				ElementType.Wind => "game-icons:wind-slap",
+				ElementType.Electric => "game-icons:lightning-bolt",
+				ElementType.Ice => "game-icons:ice-cube",
+				ElementType.Nature => "game-icons:oak-leaf",
+				ElementType.Metal => "game-icons:anvil",
+				ElementType.Shadow => "game-icons:shadow-grasp",
+				ElementType.Spirit => "game-icons:ghost",
+				_ => "lucide:swords",
+			};
+		}
+		return entry.IconOverride ?? "lucide:circle";
+	}
+
+	private string GetLogEntryIcon(string type) => type switch
+	{
+		"miss" => "lucide:shield-off",
+		"swap" => "lucide:repeat-2",
+		"buff" => "lucide:trending-up",
+		"debuff" => "lucide:trending-down",
+		"guard" => "lucide:shield",
+		"heal" => "lucide:heart-pulse",
+		"status" => "lucide:flame",
+		"ko" => "lucide:skull",
+		"wave" => "lucide:swords",
+		_ => null, // attack types use element icon instead
+	};
+
+	private string GetLogDiamondClass(BattleLogEntry entry)
+	{
+		if (entry.MoveElement.HasValue && entry.Type is "damage" or "crit" or "super" or "resist")
+			return $"el-bg-{GetElementIconName(entry.MoveElement.Value)}";
+		return entry.Type switch
+		{
+			"miss" => "el-bg-neutral",
+			"swap" => "el-bg-swap",
+			"ko" => "el-bg-ko",
+			"wave" => "el-bg-wave",
+			"heal" => "el-bg-heal",
+			"buff" => "el-bg-buff",
+			"debuff" => "el-bg-debuff",
+			"guard" => "el-bg-guard",
+			"status" => "el-bg-status",
+			_ => "el-bg-neutral",
+		};
 	}
 
 	public override void Tick()
@@ -1400,27 +1523,33 @@
 		// Log swap actions
 		if (turn.IsSwap && !string.IsNullOrEmpty(turn.SwapToName))
 		{
-			AddLogEntry($"{turn.SwapToName} entered the battle!", "swap");
+			AddLogEntry(turn, $"{turn.SwapToName} entered the battle!", "swap");
 		}
 
 		// Log miss
 		if (turn.IsMiss)
 		{
-			AddLogEntry($"{turn.AttackerName}'s {turn.MoveName} missed!", "miss");
+			AddLogEntry(turn, $"{turn.AttackerName}'s {turn.MoveName} missed!", "miss");
 		}
 
 		// Log damage
 		if (turn.Damage > 0)
 		{
 			var logType = turn.IsCritical ? "crit" : (turn.IsSuperEffective ? "super" : (turn.IsResisted ? "resist" : "damage"));
-			AddLogEntry($"{turn.AttackerName} dealt {turn.Damage} damage!", logType);
+			AddLogEntry(turn, $"{turn.AttackerName} dealt {turn.Damage} dmg with {turn.MoveName}!", logType);
+		}
+
+		// Log KO
+		if (turn.Damage > 0 && turn.DefenderHPAfter <= 0)
+		{
+			AddLogEntry(turn, $"{turn.DefenderName} was knocked out!", "ko");
 		}
 
 		// Log status message (can't act due to sleep/paralysis, protected itself, etc.)
 		if (!string.IsNullOrEmpty(turn.StatusMessage) && !turn.IsSwap)
 		{
 			var statusType = GetStatusMessageType(turn.StatusMessage);
-			AddLogEntry(turn.StatusMessage, statusType);
+			AddLogEntry(turn, turn.StatusMessage, statusType);
 		}
 
 		// Log effect messages (stat changes, status effects, heals, etc.)
@@ -1430,11 +1559,9 @@
 			{
 				if (string.IsNullOrEmpty(msg)) continue;
 				var effectType = GetEffectMessageType(msg);
-				AddLogEntry(msg, effectType);
+				AddLogEntry(turn, msg, effectType);
 			}
 		}
-
-		// Battle sounds are played by BattleSceneController.PlayTurnVisuals()
 	}
 
 	private void HandleMonsterDefeated(Monster monster)
@@ -1709,7 +1836,7 @@
 
 	private void ToggleLogCollapsed()
 	{
-		isLogCollapsed = !isLogCollapsed;
+		isLogExpanded = !isLogExpanded;
 		SoundManager.PlayClick();
 	}
 
@@ -2201,7 +2328,7 @@
 		hash.Add(contractTargetSearchText);
 		hash.Add(swapCarouselIndex);
 		hash.Add(swapTargets?.Count);
-		hash.Add(isLogCollapsed);
+		hash.Add(isLogExpanded);
 		hash.Add(battleLog.Count);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		hash.Add(selectedTargetId);
