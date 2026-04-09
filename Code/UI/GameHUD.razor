@@ -5,9 +5,10 @@
 @using Beastborne.Systems;
 @using Beastborne.UI.Panels;
 @using Beastborne.UI.Components;
+@using Beastborne.Battle3D;
 @inherits PanelComponent
 
-<root class="game-hud @(IsVisible ? "" : "hidden") @GetActiveThemeClass()" onclick=@OnRootClicked>
+<root class="game-hud @(IsVisible ? "" : "hidden") @GetActiveThemeClass() @(Is3DBattleActive() ? "battle-3d" : "")" onclick=@OnRootClicked>
 	<!-- Unified Top Bar: Player Identity + Tabs + Currency -->
 	<div class="unified-top-bar">
 		<!-- LEFT: Player Identity -->
@@ -95,9 +96,9 @@
 		<!-- RIGHT: Currency + Alpha + Info -->
 		<div class="top-currency">
 			<div class="currency-pill">
-				<div class="resource gold" onmouseover=@(() => hoveredCurrency = "gold") onmouseout=@(() => hoveredCurrency = null)>
+				<div class="resource gold @GetCurrencyPulseClass("gold")" onmouseover=@(() => hoveredCurrency = "gold") onmouseout=@(() => hoveredCurrency = null)>
 					<img class="resource-icon" src="ui/icons/currency/money.svg" />
-					<span class="resource-value">@FormatNumber(GetGold())</span>
+					<span class="resource-value">@FormatNumber(GetDisplayedGold())</span>
 					@if (hoveredCurrency == "gold")
 					{
 						<div class="currency-tooltip">
@@ -106,9 +107,9 @@
 						</div>
 					}
 				</div>
-				<div class="resource ink" onmouseover=@(() => hoveredCurrency = "ink") onmouseout=@(() => hoveredCurrency = null)>
+				<div class="resource ink @GetCurrencyPulseClass("ink")" onmouseover=@(() => hoveredCurrency = "ink") onmouseout=@(() => hoveredCurrency = null)>
 					<img class="resource-icon" src="ui/icons/currency/ink.svg" />
-					<span class="resource-value">@GetContractInk()</span>
+					<span class="resource-value">@GetDisplayedInk()</span>
 					@if (hoveredCurrency == "ink")
 					{
 						<div class="currency-tooltip">
@@ -117,9 +118,9 @@
 						</div>
 					}
 				</div>
-				<div class="resource boss-tokens" onmouseover=@(() => hoveredCurrency = "tokens") onmouseout=@(() => hoveredCurrency = null)>
+				<div class="resource boss-tokens @GetCurrencyPulseClass("tokens")" onmouseover=@(() => hoveredCurrency = "tokens") onmouseout=@(() => hoveredCurrency = null)>
 					<img class="resource-icon" src="ui/icons/currency/token.svg" />
-					<span class="resource-value">@($"{GetBossTokens():N0}")</span>
+					<span class="resource-value">@($"{GetDisplayedTokens():N0}")</span>
 					@if (hoveredCurrency == "tokens")
 					{
 						<div class="currency-tooltip">
@@ -158,6 +159,7 @@
 
 	<!-- Content Area -->
 	<div class="content-area">
+		<BattleTransition />
 		@switch (currentTab)
 		{
 			case "monsters":
@@ -273,6 +275,7 @@
 	<MenuPopup />
 	<OptionsPanel />
 	<InventoryPanel />
+	<EndConfirmPopup />
 	<HelpPanel />
 	<CreditsPanel />
 	<TradingPanel />
@@ -308,6 +311,31 @@
 	private bool _tutorialChecked = false;
 	private float _tutorialCheckDelay = 0.5f;
 
+	// ============================================
+	// Currency roll-up animation state
+	// ============================================
+	// Displayed values lerp toward real values so the HUD counter "rolls" instead of snapping.
+	// Initialized lazily on first read so a fresh GameHUD mount does NOT roll from 0.
+	private float _displayedGold = -1f;
+	private float _displayedInk = -1f;
+	private float _displayedTokens = -1f;
+	// Previous real values, used to detect value changes (up/down) for icon pulse.
+	private int _prevGoldReal = -1;
+	private int _prevInkReal = -1;
+	private int _prevTokensReal = -1;
+	// Pulse-remaining timers (seconds). > 0 while the icon pulse is playing.
+	// Up pulse lasts ~0.3s, down pulse ~0.2s. Sign tracks direction (+ up, - down).
+	private float _goldPulse = 0f;
+	private float _inkPulse = 0f;
+	private float _tokensPulse = 0f;
+	private int _goldPulseDir = 0; // +1 up, -1 down, 0 none
+	private int _inkPulseDir = 0;
+	private int _tokensPulseDir = 0;
+	// Roll-up duration (ease-out, ~400ms total). Larger delta = same duration, the lerp speed adapts.
+	private const float CURRENCY_ROLL_DURATION = 0.4f;
+	private const float PULSE_UP_DURATION = 0.3f;
+	private const float PULSE_DOWN_DURATION = 0.2f;
+
 	/// <summary>
 	/// Called by panels when user presses W/Up at top row to exit back to tab navigation
 	/// </summary>
@@ -327,6 +355,8 @@
 
 	// Only show when game is running (not in main menu)
 	private bool IsVisible => GameManager.Instance?.IsInGame == true;
+
+	private bool Is3DBattleActive() => BattleSceneController.Instance?.IsActive == true && BattleManager.Instance?.IsInBattle == true && currentTab == "expedition";
 
 	protected override void OnStart()
 	{
@@ -433,6 +463,9 @@
 			TickBackgroundExpedition();
 
 			if ( !IsVisible ) return;
+
+			// Tick currency roll-up animation (rolls displayed values toward real values)
+			TickCurrencyAnimation();
 
 			// Check for tutorial auto-start after a brief delay (ensures managers are loaded)
 			if ( !_tutorialChecked )
@@ -566,7 +599,6 @@
 				if ( !BattleManager.Instance.IsPlaying )
 				{
 					Log.Info( $"[GameHUD] Starting playback for background battle, Wave={ExpeditionManager.Instance.CurrentWave}, Turn={BattleManager.Instance.CurrentTurnIndex}" );
-					BattleManager.Instance.PlaybackSpeed = 4.0f;
 					BattleManager.Instance.StartPlayback();
 				}
 
@@ -597,7 +629,7 @@
 			int currentWave = em.CurrentWave;
 			int totalWaves = em.CurrentExpedition.Waves;
 
-			Log.Info( $"[GameHUD] HandleBackgroundBattleEnd: PlayerWon={playerWon}, Wave={currentWave}/{totalWaves}, AutoRetry={em.AutoRetry}" );
+			Log.Info( $"[GameHUD] HandleBackgroundBattleEnd: PlayerWon={playerWon}, Wave={currentWave}/{totalWaves}" );
 
 			// Accumulate rewards from battle result
 			if ( result != null )
@@ -627,32 +659,7 @@
 			{
 				// Expedition complete!
 				Log.Info( $"[GameHUD] Expedition complete!" );
-
-				// Save expedition ID and team before completion clears them
-				var expeditionId = em.CurrentExpedition.Id;
-				var team = new List<Monster>( em.SelectedTeam );
-				bool shouldAutoRetry = em.AutoRetry;
-
-				// Award rewards for completion (this clears CurrentExpedition)
 				em.OnWaveComplete( true );
-
-				// If auto-retry is on, restart the expedition
-				if ( shouldAutoRetry && expeditionId != null )
-				{
-					Log.Info( $"[GameHUD] Auto-retry enabled, restarting expedition '{expeditionId}' from wave 1" );
-					em.SelectTeam( team );
-					em.StartExpedition( expeditionId );
-
-					// Ensure background mode stays enabled
-					em.EnableBackgroundMode();
-				}
-			}
-			else if ( !playerWon && em.AutoRetry )
-			{
-				// Retry from wave 1 - reset wave counter and start fresh
-				Log.Info( $"[GameHUD] Auto-retry, resetting to wave 1" );
-				em.ResetToWaveOne();
-				em.StartNextWave();
 			}
 			else
 			{
@@ -760,7 +767,7 @@
 			}
 
 			// Attempt negotiation
-			bool success = ContractGenerator.AttemptNegotiation( selectedOption );
+			var (success, _) = ContractGenerator.AttemptNegotiation( selectedOption );
 
 			if ( success )
 			{
@@ -915,6 +922,125 @@
 	private int GetGems() => TamerManager.Instance?.CurrentTamer?.Gems ?? 0;
 	private int GetContractInk() => TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
 	private int GetBossTokens() => TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0;
+
+	// ============================================
+	// Currency roll-up helpers
+	// ============================================
+	// Displayed (lerped) integer value used by the razor template. When displayed is -1
+	// (uninitialized), snap to the real value so a fresh mount does NOT roll from 0.
+	private int GetDisplayedGold()
+	{
+		var real = GetGold();
+		if ( _displayedGold < 0f ) _displayedGold = real;
+		return (int)System.Math.Round( _displayedGold );
+	}
+
+	private int GetDisplayedInk()
+	{
+		var real = GetContractInk();
+		if ( _displayedInk < 0f ) _displayedInk = real;
+		return (int)System.Math.Round( _displayedInk );
+	}
+
+	private int GetDisplayedTokens()
+	{
+		var real = GetBossTokens();
+		if ( _displayedTokens < 0f ) _displayedTokens = real;
+		return (int)System.Math.Round( _displayedTokens );
+	}
+
+	/// <summary>
+	/// Returns the CSS pulse class for a given currency key based on the active pulse timer.
+	/// Empty string when no pulse is active.
+	/// </summary>
+	private string GetCurrencyPulseClass( string key )
+	{
+		switch ( key )
+		{
+			case "gold":
+				if ( _goldPulse > 0f )
+					return _goldPulseDir > 0 ? "pulse-up" : "pulse-down";
+				break;
+			case "ink":
+				if ( _inkPulse > 0f )
+					return _inkPulseDir > 0 ? "pulse-up" : "pulse-down";
+				break;
+			case "tokens":
+				if ( _tokensPulse > 0f )
+					return _tokensPulseDir > 0 ? "pulse-up" : "pulse-down";
+				break;
+		}
+		return "";
+	}
+
+	/// <summary>
+	/// Lerp each displayed currency toward its real value using an ease-out curve,
+	/// and track value changes to trigger icon pulses. Called from OnUpdate when visible.
+	/// </summary>
+	private void TickCurrencyAnimation()
+	{
+		var dt = RealTime.Delta;
+		if ( dt <= 0f ) return;
+
+		var goldReal = GetGold();
+		var inkReal = GetContractInk();
+		var tokensReal = GetBossTokens();
+
+		// First-frame initialization — snap displayed values to real values (no "roll from 0")
+		if ( _displayedGold < 0f ) _displayedGold = goldReal;
+		if ( _displayedInk < 0f ) _displayedInk = inkReal;
+		if ( _displayedTokens < 0f ) _displayedTokens = tokensReal;
+		if ( _prevGoldReal < 0 ) _prevGoldReal = goldReal;
+		if ( _prevInkReal < 0 ) _prevInkReal = inkReal;
+		if ( _prevTokensReal < 0 ) _prevTokensReal = tokensReal;
+
+		// Detect real-value changes and trigger icon pulse.
+		if ( goldReal != _prevGoldReal )
+		{
+			if ( goldReal > _prevGoldReal ) { _goldPulseDir = 1; _goldPulse = PULSE_UP_DURATION; }
+			else { _goldPulseDir = -1; _goldPulse = PULSE_DOWN_DURATION; }
+			_prevGoldReal = goldReal;
+		}
+		if ( inkReal != _prevInkReal )
+		{
+			if ( inkReal > _prevInkReal ) { _inkPulseDir = 1; _inkPulse = PULSE_UP_DURATION; }
+			else { _inkPulseDir = -1; _inkPulse = PULSE_DOWN_DURATION; }
+			_prevInkReal = inkReal;
+		}
+		if ( tokensReal != _prevTokensReal )
+		{
+			if ( tokensReal > _prevTokensReal ) { _tokensPulseDir = 1; _tokensPulse = PULSE_UP_DURATION; }
+			else { _tokensPulseDir = -1; _tokensPulse = PULSE_DOWN_DURATION; }
+			_prevTokensReal = tokensReal;
+		}
+
+		// Tick down pulse timers.
+		if ( _goldPulse > 0f ) { _goldPulse -= dt; if ( _goldPulse <= 0f ) _goldPulseDir = 0; }
+		if ( _inkPulse > 0f ) { _inkPulse -= dt; if ( _inkPulse <= 0f ) _inkPulseDir = 0; }
+		if ( _tokensPulse > 0f ) { _tokensPulse -= dt; if ( _tokensPulse <= 0f ) _tokensPulseDir = 0; }
+
+		// Ease-out lerp: fraction per frame = 1 - exp(-k*dt) where k is tuned so that over
+		// CURRENCY_ROLL_DURATION the value closes ~95% of the gap (feels like "settling").
+		// k = -ln(0.05) / duration ≈ 7.49 / duration
+		var k = 7.49f / CURRENCY_ROLL_DURATION;
+		var alpha = 1f - MathF.Exp( -k * dt );
+
+		_displayedGold = LerpTowardInt( _displayedGold, goldReal, alpha );
+		_displayedInk = LerpTowardInt( _displayedInk, inkReal, alpha );
+		_displayedTokens = LerpTowardInt( _displayedTokens, tokensReal, alpha );
+	}
+
+	/// <summary>
+	/// Lerps a float toward an integer target, snapping when close enough so we never
+	/// get stuck on a fractional tail.
+	/// </summary>
+	private static float LerpTowardInt( float current, int target, float alpha )
+	{
+		var next = current + (target - current) * alpha;
+		if ( MathF.Abs( target - next ) < 0.5f )
+			return target;
+		return next;
+	}
 	private string GetTamerName() => TamerManager.Instance?.CurrentTamer?.Name ?? "Tamer";
 	private string GetTamerTitle()
 	{
@@ -1177,6 +1303,15 @@
 			hash.Add(currentTab);
 			hash.Add(GetGold());
 			hash.Add(GetContractInk());
+			hash.Add(GetBossTokens());
+			// Displayed (lerped) currency values — so the roll-up re-renders every frame while animating
+			hash.Add(GetDisplayedGold());
+			hash.Add(GetDisplayedInk());
+			hash.Add(GetDisplayedTokens());
+			// Pulse state — so the icon pulse class toggles on/off
+			hash.Add(_goldPulseDir);
+			hash.Add(_inkPulseDir);
+			hash.Add(_tokensPulseDir);
 			hash.Add(GetMonsterCount());
 			hash.Add(GetTamerLevel());
 			hash.Add(IsExpeditionRunning());
