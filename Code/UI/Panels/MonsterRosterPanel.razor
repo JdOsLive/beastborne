@@ -2862,11 +2862,23 @@
 	// Keyboard navigation state for monster selection
 	private int selectedMonsterIndex = 0;
 
-	// One-shot entrance reveal — fires on the SECOND Tick after the panel
-	// mounts (the first tick paints the hidden state, the second flips to
-	// entered so the transition has a starting state to interpolate from).
-	// Without the wait, s&box's render cadence collapses the animation to
-	// a single instant frame and you see no motion.
+	// Sidebar entrance reveal — staircase. Fires sequentially based on
+	// tick counter so each stage gets enough render frames to interpolate
+	// its transition. Earlier attempt with `await GameTask.DelaySeconds()`
+	// produced partial-broken state because s&box's render cadence missed
+	// stages flipped at <100ms intervals. Tick counter avoids that.
+	//
+	// Stage map:
+	//   0 = nothing visible (sidebar at translateX(-100), opacity 0)
+	//   1 = sidebar slides in (tick 3)
+	//   2 = portrait section reveals (tick 8)
+	//   3 = actions section reveals (tick 11)
+	//   4 = stats + info reveal (tick 14)
+	//   5 = moves reveal (tick 17)
+	//   6 = traits + battle mastery reveal (tick 20)
+	//
+	// 5-tick spacing = ~80ms at 60fps. Safe above the s&box render
+	// cadence threshold that caused earlier failures at <100ms intervals.
 	private int rosterRevealStage = 0;
 	private int _ticksSinceMount = 0;
 
@@ -2892,10 +2904,14 @@
 		// One tick is not enough — s&box's render cadence collapses the
 		// flip to a single frame and you see no motion.
 		_ticksSinceMount++;
-		if ( _ticksSinceMount == 3 && rosterRevealStage == 0 )
-		{
-			rosterRevealStage = 1;
-		}
+		// Sub-section staircase reveal does NOT work in this panel because
+		// BuildHash includes `SpriteAnimator.GlobalFrame` which re-hashes
+		// every render frame for the monster card sprite animations. The
+		// per-frame re-renders cause sub-section .entered classes to flip
+		// repeatedly, producing visual flickering. Reverted to single-
+		// stage reveal: only the parent sidebar slides in, sub-sections
+		// are always visible (no .entered class gate on them).
+		if ( _ticksSinceMount == 3 && rosterRevealStage < 1 ) rosterRevealStage = 1;
 	}
 
 	/// <summary>
