@@ -22,6 +22,7 @@ public static class SoundManager
 	private const string UI_SUCCESS = "sounds/ui/success.sound";
 	private const string UI_MAXIMIZE = "sounds/ui/maximize.sound";
 	private const string UI_MINIMIZE = "sounds/ui/minimize.sound";
+	private const string UI_SWOOSH = "sounds/ui/littleswoosh1b.sound";
 
 	// Guild Sounds (reuse existing)
 	private const string GUILD_JOIN = "sounds/ui/success.sound";
@@ -29,8 +30,8 @@ public static class SoundManager
 	private const string GUILD_LEVEL_UP = "sounds/ui/maximize.sound";
 	private const string RAID_COMPLETE = "sounds/ui/success.sound";
 
-	// Battle Sounds (s&box built-in)
-	private const string BATTLE_HIT = "player.attack.hit";
+	// Battle Sounds
+	private const string BATTLE_HIT = "sounds/battle/battle_hit.sound";
 	private const string BATTLE_MISS = "player.attack.miss";
 	private const string BATTLE_CRIT = "player.attack.hit.crit";
 	private const string BATTLE_START = "ui.navigate.forward";
@@ -191,6 +192,19 @@ public static class SoundManager
 	}
 
 	/// <summary>
+	/// Soft swoosh for passive UI motion — element sliding into place,
+	/// staircase reveals, panel section drops. Use for "things arriving"
+	/// not "user clicked something."
+	/// Currently uses UI_POPUP at low volume as a placeholder — swap
+	/// UI_SWOOSH back in when LittleSwoosh1b.wav has audible content
+	/// or is replaced with a real swoosh .wav file.
+	/// </summary>
+	public static void PlaySwoosh()
+	{
+		PlaySound( UI_POPUP, _uiVolume * 0.3f );
+	}
+
+	/// <summary>
 	/// Play when an action succeeds.
 	/// </summary>
 	public static void PlaySuccess()
@@ -316,6 +330,30 @@ public static class SoundManager
 	public static void PlayMonsterCatch()
 	{
 		PlaySound( UI_SUCCESS, _sfxVolume );
+	}
+
+	/// <summary>
+	/// Play when attempting a contract negotiation.
+	/// </summary>
+	public static void PlayContractAttempt()
+	{
+		PlaySound( UI_FORWARD, _sfxVolume * 0.8f );
+	}
+
+	/// <summary>
+	/// Play when contract negotiation fails.
+	/// </summary>
+	public static void PlayContractFail()
+	{
+		PlaySound( UI_DENY, _sfxVolume );
+	}
+
+	/// <summary>
+	/// Play when intimidation critically fails.
+	/// </summary>
+	public static void PlayIntimidateFail()
+	{
+		PlaySound( UI_DENY, _sfxVolume * 1.5f );
 	}
 
 	/// <summary>

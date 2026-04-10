@@ -90,6 +90,21 @@ _(What the user approved, rejected, or refined when reviewing agent proposals)_
   ```
   This recipe has been validated against s&box's CSS engine and works. Avoid: `transition-delay`, `:nth-child`/`:nth-of-type`, `animation forwards` for visibility, intervals < 100ms. Source: `DailyPanel.razor` `PlayStreakRevealSequence()` 2026-04-09 (final working version after 3 broken attempts).
 
+- **2026-04-10:** `[PROMOTE candidate]` **CRITICAL: hover sound spam from `onmouseover` bubbling — fix with `pointer-events: none` on children, NOT a state guard.** When a card has nested children (icons, text spans, progress bars, reward pips, etc.) and you attach `onmouseover=@(() => SoundManager.PlayHover())` to the parent card, the sound fires constantly as the mouse moves across child element boundaries because each child fires its own mouseover and they all bubble up. The user has reported this issue multiple times across different panels. **The fix is structural, not state-based:**
+  ```scss
+  .my-card {
+      pointer-events: all;
+      > * {
+          pointer-events: none;
+      }
+      // Re-enable on any interactive child (claim buttons, etc):
+      .claim-btn { pointer-events: all; }
+  }
+  ```
+  This makes the parent card the only event target — child mouseovers don't fire at all, so the sound only plays once when the mouse crosses the card's outer boundary. **Always prefer this over a JavaScript-side state guard** (`if hoveredX != current { play; set; }`) because the structural fix has zero per-frame cost and doesn't require BuildHash plumbing.
+
+  **Reference working pattern:** `.day-node` in DailyPanel.razor.scss has used this since the original implementation — that's why day-node hover never had the spam issue while mission cards did. **Apply this rule preemptively to ANY card-style UI element that plays a hover sound and has nested children.** Source: bug found and fixed 2026-04-10 on mission cards in DailyPanel; same root cause as previous similar reports across other panels.
+
 - **2026-04-09:** `[PROMOTE candidate]` **CRITICAL: s&box does NOT support `transition-delay`.** Confirmed via runtime log: `[6] Didn't handle transition style: transition-delay`. This means staggered reveals via `transition-delay` (the standard CSS technique used in every browser) are impossible in s&box. Workarounds:
   1. **C# state increments** — the MainMenu `entranceStage` pattern, `await Task.Delay(...)` between flag flips, each element keys off `>= N`. **WARNING:** very short delays (<100ms) may be missed by s&box's render/Tick cadence — observed in DailyPanel where 40ms intervals between days resulted in only the final stage being visible. Use ≥120ms intervals to be safe.
   2. **`animation-delay` on keyframe animations** — s&box appears to support `animation-delay` since several files use it. BUT see the separate `animation forwards` learning — combining `opacity:0 + animation-delay + forwards` is unreliable. Test empirically before relying on this approach.
@@ -98,7 +113,24 @@ _(What the user approved, rejected, or refined when reviewing agent proposals)_
 
 - **2026-04-09:** `[PROMOTE candidate]` **CRITICAL: s&box does NOT support `:nth-of-type()` (and likely `:nth-child()` as well).** Confirmed via runtime log: `Error parsing stylesheet: Unsupported Pseudo Class "nth-of-type(1)"`. **This parse error is catastrophic** — when s&box hits an unsupported selector, it appears to stop parsing the rest of the stylesheet, which is why DailyPanel stopped opening entirely after my staircase block introduced `:nth-of-type` selectors. **Symptom:** entire panel goes blank or stops rendering, not just the affected rule. **Workaround:** add explicit per-element classes via Razor (`<div class="my-section section-1">`, `section-2`, etc.) and target `.section-1`, `.section-2` in SCSS instead of `:nth-of-type`. This is more verbose but it's the proven project pattern (e.g. `.day-1`, `.day-2`, ..., `.day-7` in DailyPanel.razor.scss). **Verification needed:** test `:nth-child()` empirically — the previous agent claimed it was "verified used in GuildPanel" but that claim was hallucinated (zero matches in actual grep). Source: 2026-04-09 DailyPanel reveal attempt.
 
-- **2026-04-09:** `[PROMOTE candidate]` **s&box does NOT parse `radial-gradient(circle at X% Y%, ...)`.** The positional `circle at` form throws `Cannot read a color from 'circle at 40% 35%'` at runtime. Use `linear-gradient(135deg, ...)` or a plain `background-color` instead. The radial highlight effect is rarely worth the parse error — most UI elements that "need" a radial gradient look fine with a diagonal linear or even a flat fill. If a radial truly is needed, test the simpler `radial-gradient(color1, color2)` form (no `circle at`) empirically before relying on it. Source: `DailyPanel.razor.scss:1104,1109,1115` introduced 2026-04-09 in claim flyer styling, fixed by switching to linear gradients. Error visible in s&box log: `[2] Cannot read a color from 'circle at 40% 35%'`.
+- **2026-04-09:** `[PROMOTE candidate]` **s&box does NOT parse `radial-gradient` AT ALL.** Verified by runtime logs across multiple forms:
+  - `radial-gradient(circle at 40% 35%, ...)` → `Cannot read a color from 'circle at 40% 35%'`
+  - `radial-gradient(ellipse at center, ...)` → `Cannot read a color from 'ellipse at center'`
+  - `radial-gradient(ellipse, ...)` → `Cannot read a color from 'ellipse'`
+
+  **Every radial-gradient form tested so far has failed.** Do NOT use `radial-gradient` in s&box SCSS. For radial glow effects, use **layered `box-shadow`** with increasing blur/spread instead — that's the proven project pattern and it composes cleanly for spotlight/glow effects:
+  ```scss
+  .spotlight-div {
+    width: 40px; height: 8px;
+    background-color: rgba(...);
+    border-radius: 50%;
+    box-shadow:
+      0 0 30px 10px rgba(139, 92, 246, 0.35),
+      0 0 60px 20px rgba(139, 92, 246, 0.18),
+      0 0 90px 35px rgba(139, 92, 246, 0.08);
+  }
+  ```
+  For directional gradients use `linear-gradient(90deg, ...)` or `linear-gradient(135deg, ...)` — those work fine. Source: `DailyPanel.razor.scss` flyer styling + spotlight 2026-04-09, multiple runtime parse failures documented.
 
 - **2026-04-09:** `[PROMOTE candidate]` **For staggered reveals: drive from C# state, NOT from CSS animation delays.** The proven working pattern is MainMenu's `entranceStage` recipe (`MainMenu.razor:370, 493-525`):
   1. C# field `private int revealStage = 0`
