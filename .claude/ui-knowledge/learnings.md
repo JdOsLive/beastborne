@@ -101,6 +101,39 @@ _(What the user approved, rejected, or refined when reviewing agent proposals)_
 
   Source: tested in MonsterRosterPanel 2026-04-10, sub-section staircase reveal failed twice with flicker. Reverted to single-stage. The Daily panel's reveal works because its BuildHash doesn't include a per-frame value. Reference: `MonsterRosterPanel.razor:3140` adds `SpriteAnimator.GlobalFrame` to BuildHash for monster card sprite animation; same file's earlier `BuildHash` was where the conflict originated.
 
+- **2026-04-10:** **CRITICAL TASTE / IDENTITY: There is a recognizable "Claude UI signature" that real players can spot.** Player feedback verbatim: *"Look at the borders. It looks so claude generated. Claude likes those types of borders and those colors."* The signature is composed of:
+  - **2px semi-transparent borders** (`border: 2px solid rgba(255, 255, 255, 0.1)` or similar)
+  - **Rounded corners on everything** (`border-radius: 12-16px`)
+  - **Layered drop shadows** (`box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5)`)
+  - **Purple accents everywhere** (`#8b5cf6` / `#a78bfa` / `#c4b5fd`)
+  - **Dark cards with low-alpha overlays** (`rgba(20, 20, 35, 0.95)`)
+  - **Lucide vector icons** sprinkled as decoration
+
+  This composition is the AI-default "polished modern web" look, NOT a pixel-art monster collector look. Used systematically across an entire UI, it becomes a visual fingerprint that says "AI generated this."
+
+  **The fix is NOT to ban these properties** — they're fine in moderation and on a few elements. **The fix is to STOP applying them uniformly to every container as a reflex.** Real designers vary their visual register: some elements get borders, some don't. Some have shadows, some are flat. Some are purple, most aren't. The variance is what makes UI feel hand-built.
+
+  **For Beastborne specifically (pixel-art monster collector), consider these alternatives:**
+  - Hard 1-2px solid color borders (not rgba) using palette colors from the actual game art
+  - Pixel-bevel effect (`border-top: 2px solid #lighter; border-bottom: 2px solid #darker`)
+  - Sharp corners (radius 0-4px) on game-content elements
+  - Solid color blocks instead of semi-transparent overlays
+  - Reserve rounded corners + shadows + glow for moments that EARN them
+  - Use colors from the existing game palette (element colors, monster sprite colors) not generic UI purples
+
+  **Before adding ANY border/shadow/glow/radius to a new element, ask:** "Am I doing this because the element needs it, or because every other element has one?" If the answer is the latter, leave it off. Heterogeneity is more valuable than consistency for avoiding the AI tell.
+
+  **Source:** real player feedback 2026-04-10 from "matt944" and "kellie" on Beastborne UI work done in this session. Multiple panels (DailyPanel, MonsterRosterPanel, multi-release confirmation) had been built with the signature pattern. The player feedback specifically called out borders + colors as the tell.
+
+- **2026-04-10:** **TASTE: `glow` (drop-shadow / box-shadow with colored alpha) is over-used as a "make it look polished" reflex. The user explicitly called this out as a tell that UI was AI-coded.** Glow should be a SIGNAL (this thing is active, this thing is the hero of the screen, this thing demands attention), not decoration. Sprinkling glow on every element flattens its meaning — when everything glows, nothing glows. **Rules of thumb:**
+  1. **Hero/active elements only** — the selected card, the primary action button, the breathing portrait. Not every icon, button, or container.
+  2. **Hover states are fine** — glow as an interaction signal ("you can click this") is meaningful. Idle glow is decoration.
+  3. **Element identification icons, currency badges, level pills, small UI chrome** — should look clean, not glowing. Size + opacity + color does the job.
+  4. **If you find yourself adding glow to "make it pop more"** — first try increasing size, contrast, or weight. Those are the legible alternatives.
+  5. **The exception:** signature game-feel moments (the day-7 legendary reveal, a critical hit, a level-up) are appropriate places for big glow. Routine UI is not.
+
+  Source: user feedback 2026-04-10 on the bulk release element icon glow halo (`filter: drop-shadow` with white alpha) — looked over-decorated and "AI-based." Removed it; the icons read fine at full opacity + 18px size alone.
+
 - **2026-04-10:** **`calc()` for vertical positioning behaves unexpectedly in s&box.** Specifically `bottom: calc(100% + 8px)` on an absolutely-positioned tooltip placed the tooltip MUCH higher than the expected 8px above the parent — it appeared at the very top of a distant ancestor container instead. `calc(100% + Npx)` works for `width:` (e.g. ArenaPanel.razor.scss:1267 uses `width: calc(100% + 40px)` successfully) but not reliably for `bottom:`. **Use hardcoded pixel values for tooltip vertical positioning** instead of percentage-based calc. Source: tooltip placement experiment 2026-04-10 in MonsterRosterPanel.razor.scss `.pill-tooltip`.
 
 - **2026-04-10:** **CRITICAL: do NOT use `transform: scale(...)` on hover for cards in a dense grid.** Causes a hover-flicker loop: hovered card scales up → overlaps neighboring card → cursor is now technically over both cards → browser alternates which one is hovered → both cards flicker between hover and rest states forever. **Safe alternative:** `translateY(-Npx)` only + `box-shadow` + `border-color` for the lift effect. Vertical motion can't push the card sideways into its neighbor so no overlap can occur. Daily panel day-cards get away with `scale(1.18)` because they live in a horizontal `flex: 1` strip with explicit gap, but a dense vertical grid like the monster roster has cards too close together for any scale-up to be safe. Source: bug found in MonsterCard.razor.scss `&:hover` 2026-04-10, user reported flickering when hovering grid cards. Fix: remove the `scale(1.06)` from the hover transform, keep `translateY(-6px)` only.

@@ -16,20 +16,23 @@
 		@if (CurrentView == "collection")
 		{
 			<div class="header-filters">
-				<FilterBar @ref="filterBar"
-						   CurrentElement=@currentFilter
-						   CurrentSort=@currentSort
-						   CurrentRarity=@currentRarity
-						   SortAscending=@sortAscending
-						   ShowBeastiarySort=@true
-						   ShowRarityFilter=@true
-						   OnElementChanged=@OnElementChanged
-						   OnSortChanged=@OnSortChanged
-						   OnRarityChanged=@OnRarityChanged
-						   OnNameFilterChanged=@OnNameFilterChanged
-						   OnSortDirectionChanged=@OnSortDirectionChanged
-						   AvailableNames=@GetMonsterNames() />
-				<button class="sort-btn multi-select"
+				@if (!isMultiSelectMode)
+				{
+					<FilterBar @ref="filterBar"
+							   CurrentElement=@currentFilter
+							   CurrentSort=@currentSort
+							   CurrentRarity=@currentRarity
+							   SortAscending=@sortAscending
+							   ShowBeastiarySort=@true
+							   ShowRarityFilter=@true
+							   OnElementChanged=@OnElementChanged
+							   OnSortChanged=@OnSortChanged
+							   OnRarityChanged=@OnRarityChanged
+							   OnNameFilterChanged=@OnNameFilterChanged
+							   OnSortDirectionChanged=@OnSortDirectionChanged
+							   AvailableNames=@GetMonsterNames() />
+				}
+				<button class="sort-btn multi-select @(isMultiSelectMode ? "active-mode" : "")"
 						onclick=@ToggleMultiSelectMode
 						onmouseover=@(() => SoundManager.PlayHover())>
 					<span class="pill-label">@(isMultiSelectMode ? L("ui.roster.cancel") : L("ui.roster.multi_release"))</span>
@@ -683,16 +686,47 @@
 			<!-- Release Confirmation Modal -->
 			@if (showReleaseConfirm && monsterToRelease != null)
 			{
-				<div class="confirm-overlay" onclick=@CancelRelease>
-					<div class="confirm-panel" onclick:stopPropagation>
-						<div class="confirm-title">@L("ui.roster.release_confirm")</div>
-						<div class="confirm-content">
-							<div class="confirm-monster-name">@monsterToRelease.Nickname</div>
-							<div class="confirm-warning">@L("ui.roster.release_warning")</div>
+				@{
+					var _releaseSpecies = MonsterManager.Instance?.GetSpecies(monsterToRelease.SpeciesId);
+					var _releaseElementClass = _releaseSpecies?.Element.ToString().ToLower() ?? "neutral";
+				}
+				<div class="bulk-release-overlay" onclick=@CancelRelease>
+					<div class="bulk-release-panel" onclick:stopPropagation>
+						<!-- Header with warning icon -->
+						<div class="bulk-release-header">
+							<div class="bulk-release-warning-icon">
+								<iconify icon="lucide:triangle-alert" Size=@(28) Color="#ef4444" />
+							</div>
+							<div class="bulk-release-title-block">
+								<span class="bulk-release-title">Release this Beast?</span>
+								<span class="bulk-release-subtitle">This action cannot be undone</span>
+							</div>
 						</div>
-						<div class="confirm-buttons">
-							<button class="confirm-btn cancel" onclick=@CancelRelease>@L("ui.common.cancel")</button>
-							<button class="confirm-btn release" onclick=@ConfirmRelease>@L("ui.roster.release")</button>
+
+						<!-- Single beast card -->
+						<div class="bulk-release-list">
+							<div class="bulk-release-card @($"element-{_releaseElementClass}")">
+								<div class="bulk-release-card-portrait" style="background-image: url(@(_releaseSpecies?.IconPath ?? ""))"></div>
+								<div class="bulk-release-card-info">
+									<span class="bulk-release-card-name">@monsterToRelease.Nickname</span>
+									<div class="bulk-release-card-meta">
+										<span class="bulk-release-card-level">LV @monsterToRelease.Level</span>
+										<img class="bulk-release-card-element" src="ui/icons/elements/element_white/@(_releaseElementClass).svg" />
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- Action buttons -->
+						<div class="bulk-release-buttons">
+							<button class="bulk-release-btn cancel" onclick=@CancelRelease onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="lucide:x" Size=@(16) Color="white" />
+								<span>@L("ui.common.cancel")</span>
+							</button>
+							<button class="bulk-release-btn release" onclick=@ConfirmRelease onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="lucide:trash-2" Size=@(16) Color="white" />
+								<span>@L("ui.roster.release")</span>
+							</button>
 						</div>
 					</div>
 				</div>
@@ -1179,29 +1213,62 @@
 
 @if (showBulkReleaseConfirm && selectedForRelease.Count > 0)
 {
-	<div class="confirm-overlay" onclick=@CancelBulkRelease>
-		<div class="confirm-panel" onclick:stopPropagation>
-			<div class="confirm-title">@($"Release {selectedForRelease.Count} Beasts?")</div>
-			<div class="confirm-content">
-				<div class="confirm-monster-list">
-					@foreach (var monsterId in selectedForRelease.Take(5))
-					{
-						var monster = MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault(m => m.Id == monsterId);
-						if (monster != null)
-						{
-							<div class="confirm-monster-item"><span>@($"{monster.Nickname} (Lv.{monster.Level})")</span></div>
-						}
-					}
-					@if (selectedForRelease.Count > 5)
-					{
-						<div class="confirm-monster-item more"><span>@($"...and {selectedForRelease.Count - 5} more")</span></div>
-					}
+	<div class="bulk-release-overlay" onclick=@CancelBulkRelease>
+		<div class="bulk-release-panel" onclick:stopPropagation>
+			<!-- Header with warning icon -->
+			<div class="bulk-release-header">
+				<div class="bulk-release-warning-icon">
+					<iconify icon="lucide:triangle-alert" Size=@(28) Color="#ef4444" />
 				</div>
-				<div class="confirm-warning"><span>@L("ui.roster.release_warning")</span></div>
+				<div class="bulk-release-title-block">
+					<span class="bulk-release-title">Release @selectedForRelease.Count @(selectedForRelease.Count == 1 ? "Beast" : "Beasts")?</span>
+					<span class="bulk-release-subtitle">This action cannot be undone</span>
+				</div>
 			</div>
-			<div class="confirm-buttons">
-				<button class="confirm-btn cancel" onclick=@CancelBulkRelease><span>@L("ui.common.cancel")</span></button>
-				<button class="confirm-btn release" onclick=@ConfirmBulkRelease><span>@L("ui.roster.release_all")</span></button>
+
+			<!-- Beast cards being released — show first 3 + "more" pill so
+			     the popup stays a fixed compact size regardless of selection
+			     count. Players don't need to see all N beasts to confirm,
+			     they need to understand what kind of release this is. -->
+			<div class="bulk-release-list">
+				@foreach (var monsterId in selectedForRelease.Take(3))
+				{
+					var monster = MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault(m => m.Id == monsterId);
+					if (monster != null)
+					{
+						var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+						var elementClass = species?.Element.ToString().ToLower() ?? "neutral";
+						<div class="bulk-release-card @($"element-{elementClass}")">
+							<div class="bulk-release-card-portrait" style="background-image: url(@(species?.IconPath ?? ""))"></div>
+							<div class="bulk-release-card-info">
+								<span class="bulk-release-card-name">@monster.Nickname</span>
+								<div class="bulk-release-card-meta">
+									<span class="bulk-release-card-level">LV @monster.Level</span>
+									<img class="bulk-release-card-element" src="ui/icons/elements/element_white/@(elementClass).svg" />
+								</div>
+							</div>
+						</div>
+					}
+				}
+				@if (selectedForRelease.Count > 3)
+				{
+					<div class="bulk-release-more-pill">
+						<iconify icon="lucide:more-horizontal" Size=@(14) Color="rgba(255,255,255,0.5)" />
+						<span>and @(selectedForRelease.Count - 3) more</span>
+					</div>
+				}
+			</div>
+
+			<!-- Action buttons -->
+			<div class="bulk-release-buttons">
+				<button class="bulk-release-btn cancel" onclick=@CancelBulkRelease onmouseover=@(() => SoundManager.PlayHover())>
+					<iconify icon="lucide:x" Size=@(16) Color="white" />
+					<span>@L("ui.common.cancel")</span>
+				</button>
+				<button class="bulk-release-btn release" onclick=@ConfirmBulkRelease onmouseover=@(() => SoundManager.PlayHover())>
+					<iconify icon="lucide:trash-2" Size=@(16) Color="white" />
+					<span>Release @selectedForRelease.Count</span>
+				</button>
 			</div>
 		</div>
 	</div>
