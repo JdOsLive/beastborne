@@ -259,7 +259,11 @@ _(What the user approved, rejected, or refined when reviewing agent proposals)_
 
 - **2026-04-08:** **Mission card state hierarchy = 3 new state classes** applied via Razor conditionals on `GetMissionPercent() >= 75f`. `.near-complete` gets amber tint border + subtle purple progress-fill pulse. `.completed` gets a green glow box-shadow + the inner claim button pulses 1.0→1.04 every 1.8s. `.claimed` (existing class, extended) now collapses to `max-height: 64px`, `scale(0.96)`, `opacity: 0.35`. Reads at a glance exactly like Marvel Snap daily missions. Source: `DailyPanel.razor.scss` "MISSION CARD STATE HIERARCHY" block.
 
-- **2026-04-08:** **`async void` click handlers work fine in s&box Razor** for coordinated sequences — no special dispatch needed. Use `_ = SomeAsyncTask();` for fire-and-forget inside a non-async context. See MonsterRosterPanel for precedent (`async void SwitchView` at 1271). Source: `DailyPanel.razor:455`, `MonsterRosterPanel.razor:1271,2150`.
+- **2026-04-08:** **`async void` click handlers work fine in s&box Razor** for coordinated sequences — no special dispatch needed. Use `_ = SomeAsyncTask();` for fire-and-forget inside a non-async context. Source: `DailyPanel.razor:455`.
+
+- **2026-04-10:** **`!important` is not valid on `opacity` in s&box.** Compiler logs `Generic 1 !important is not valid with opacity`. To override an opacity rule, use a more specific selector or `:not()` exclusion instead of `!important`. Likely affects other properties too — prefer specificity over `!important` everywhere in s&box CSS.
+
+- **2026-04-11:** **`overflow: hidden` on a flex CHILD that is ALSO a flex container will silently collapse the entire panel** to zero width. CLAUDE.md mentions this rule but the symptom is brutal: the panel renders invisibly, no error, no warning. Hit it on `.result-panel-v2` which had `display: flex`, `width: 480px`, `flex-shrink: 0`, AND `overflow: hidden` to clip the rounded corners. The width and flex-shrink were ignored — the panel collapsed. Fix: drop `overflow: hidden`, accept that the children may slightly overlap the border-radius (they almost never do in practice). Compare against the working `.fusion-genes-card` pattern which has all the same properties except no overflow:hidden. **If a panel mysteriously vanishes, check overflow:hidden on flex children FIRST.**
 
 ### Phase 2 prep notes (Day 7 setpiece)
 

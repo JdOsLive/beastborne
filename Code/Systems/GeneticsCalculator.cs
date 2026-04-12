@@ -44,79 +44,81 @@ public static class GeneticsCalculator
 	}
 
 	/// <summary>
-	/// Calculate a single gene inheritance with mutation chance
-	/// Uses "best of selection" - biased toward picking the higher parent's gene
-	/// When locked, always picks the higher parent's gene (guaranteed)
+	/// Calculate a single gene inheritance — REBALANCED 2026-04-11 to be
+	/// zero-drift at base. The old math always added a positive bonus on top
+	/// of the average, which guaranteed the offspring exceeded both parents
+	/// every generation. Players were getting 30/30 perfect beasts within
+	/// 4-5 fusions because the system mathematically required upward drift.
+	///
+	/// New rules:
+	/// - Pick higher OR lower parent (60/40 base, up to 85% higher with skills)
+	/// - Variance is zero-centered (-2 to +2), not always positive
+	/// - Diminishing returns kick in earlier (20+ instead of 27+)
+	/// - Mutation chance is 5% base (down from 15%), 50/50 split
+	/// - Gene Lock is now "preserve" (higher ±1) not a free climb
+	/// - Climbing past parent values requires skill tree investment via
+	///   GeneticInheritanceBonus, MutationChance, and GeneBonusFlat
 	/// </summary>
 	private static int InheritGene( int gene1, int gene2, bool isLocked = false )
 	{
-		int inheritedValue;
+		int higher = Math.Max( gene1, gene2 );
+		int lower = Math.Min( gene1, gene2 );
 
 		if ( isLocked )
 		{
-			// Gene Lock: guaranteed higher parent's gene value, no variance or mutation
-			inheritedValue = Math.Max( gene1, gene2 );
-			return Math.Clamp( inheritedValue, 0, Genetics.MaxGeneValue );
+			// Locked: guaranteed higher parent's gene, with small variance
+			// (-1 to +1). No more "free climb" — locking preserves your best.
+			int locked = higher + random.Next( -1, 2 );
+			return Math.Clamp( locked, 0, Genetics.MaxGeneValue );
 		}
-		else
+
+		// Higher-parent bias: 60% base, up to +25% from GeneticInheritanceBonus
+		// skill (cap at 85%). Skill investment is what earns the upward drift.
+		float inheritBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneticInheritanceBonus ) ?? 0;
+		float higherChance = 0.6f + Math.Min( 0.25f, inheritBonus / 100f );
+
+		int baseValue = random.NextDouble() < higherChance ? higher : lower;
+
+		// Variance: -2 to +2, zero-centered. No guaranteed climb.
+		int variance = random.Next( -2, 3 );
+
+		// Diminishing returns at high gene values — pulls high parents down
+		// over generations to create a soft ceiling around 26-28.
+		if ( baseValue >= 26 )
+			variance = Math.Min( variance, 0 );          // 26+: can only stay or fall
+		else if ( baseValue >= 23 )
+			variance = Math.Min( variance, 1 );          // 23-25: +1 max
+		else if ( baseValue >= 20 )
+			variance = Math.Min( variance, 2 );          // 20-22: +2 max
+		// Below 20: full -2 to +2
+
+		int result = baseValue + variance;
+
+		// GeneBonusFlat skill — this is the player's "fusion payoff" path.
+		// Without skill investment, base math is zero-drift; with skills,
+		// players can push past the soft cap.
+		float geneBonusFlat = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneBonusFlat ) ?? 0;
+		if ( geneBonusFlat > 0 && result < Genetics.MaxGeneValue )
 		{
-			// Get skill bonus for gene inheritance (slight bias toward higher gene)
-			float geneBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneticInheritanceBonus ) ?? 0;
-
-			// Base: average of both parents (not biased toward higher)
-			float average = (gene1 + gene2) / 2f;
-
-			// Skill bonus adds a small weight toward the higher parent (up to 20% of the difference)
-			int higher = Math.Max( gene1, gene2 );
-			int lower = Math.Min( gene1, gene2 );
-			float skillBias = (geneBonus / 500f) * (higher - lower); // Very small bias
-			skillBias = Math.Clamp( skillBias, 0f, 3f ); // Cap at +3
-
-			inheritedValue = (int)Math.Round( average + skillBias );
+			int flatBonus = (int)geneBonusFlat;
+			if ( result >= 26 ) flatBonus = Math.Min( flatBonus, 1 );
+			result += flatBonus;
 		}
 
-		// Small random bonus (+1 to +3)
-		int bonus = random.Next( 1, 4 );
-
-		// Diminishing returns: the closer to max, the smaller the bonus
-		if ( inheritedValue >= 27 )
-			bonus = Math.Min( bonus, 1 ); // Genes 27+ only get +1 max
-		else if ( inheritedValue >= 25 )
-			bonus = Math.Min( bonus, 2 ); // Genes 25-26 get +2 max
-		// Below 25: full +1 to +3 bonus
-
-		inheritedValue += bonus;
-
-		// Mutation chance (10% base, reduced from 15%)
-		float mutationChance = 0.10f;
+		// Mutation chance (5% base, +bonus from skills). 50/50 positive vs
+		// negative — no more biased-upward mutations.
+		float mutationChance = 0.05f;
 		float mutationBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.MutationChance ) ?? 0;
 		mutationChance += mutationBonus / 100f;
 
 		if ( random.NextDouble() < mutationChance )
 		{
-			// Mutations can be positive or negative (60% positive, 40% negative)
-			int mutation = random.NextDouble() < 0.6 ? random.Next( 1, 4 ) : random.Next( -3, 0 );
-
-			// Diminishing returns on positive mutations too
-			if ( mutation > 0 && inheritedValue >= 25 )
-				mutation = Math.Min( mutation, 1 );
-
-			inheritedValue += mutation;
+			int mutation = random.NextDouble() < 0.5 ? random.Next( 1, 4 ) : random.Next( -3, 0 );
+			if ( mutation > 0 && result >= 26 ) mutation = Math.Min( mutation, 1 );
+			result += mutation;
 		}
 
-		// Apply flat gene bonus from skills (Gene Surge) - reduced impact
-		float geneBonusFlat = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneBonusFlat ) ?? 0;
-		if ( geneBonusFlat > 0 && inheritedValue < Genetics.MaxGeneValue )
-		{
-			int flatBonus = (int)geneBonusFlat;
-			// Diminishing returns on flat bonus too
-			if ( inheritedValue >= 25 )
-				flatBonus = Math.Min( flatBonus, 1 );
-			inheritedValue += flatBonus;
-		}
-
-		// Clamp to valid range
-		return Math.Clamp( inheritedValue, 0, Genetics.MaxGeneValue );
+		return Math.Clamp( result, 0, Genetics.MaxGeneValue );
 	}
 
 	/// <summary>
@@ -129,69 +131,53 @@ public static class GeneticsCalculator
 
 		int maxGene = Genetics.MaxGeneValue;
 
-		// Get skill bonus for expected value calculation
-		float geneBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneticInheritanceBonus ) ?? 0;
-		float higherWeight = 0.7f + (geneBonus / 300f); // Same formula as InheritGene (70% base)
+		// Get skill bonus for expected value calculation. Matches the
+		// new InheritGene formula: 60% base higher-bias + up to 25% from skills.
+		float inheritBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneticInheritanceBonus ) ?? 0;
+		float higherWeight = 0.6f + Math.Min( 0.25f, inheritBonus / 100f );
 
 		// Gene lock info
 		float geneLockBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneLock ) ?? 0;
 		preview.GeneLockSlots = (int)geneLockBonus;
 
-		// Calculate min/max/expected for each stat
-		// Locked genes: min = higher parent (guaranteed), expected = higher parent + variance
-		// Unlocked: min = lower parent - 2, expected = weighted average
+		// Min/max ranges match the new InheritGene math:
+		// - Unlocked: lower parent - 2 (worst variance) to higher + 2 (best variance)
+		// - Locked:   higher parent ± 1 (preserve, not climb)
+		// Mutation is rare (5%) so we exclude it from the displayed range.
 
-		bool hpLocked = lockedGenes?.Contains( "HP" ) == true;
-		preview.MinHP = hpLocked
-			? Math.Max( parent1.Genetics.HPGene, parent2.Genetics.HPGene )
-			: Math.Max( 0, Math.Min( parent1.Genetics.HPGene, parent2.Genetics.HPGene ) - 2 );
-		preview.MaxHP = Math.Min( maxGene, Math.Max( parent1.Genetics.HPGene, parent2.Genetics.HPGene ) + 7 );
-		preview.AvgHP = hpLocked
+		preview.MinHP = ComputeMin( parent1.Genetics.HPGene, parent2.Genetics.HPGene, lockedGenes?.Contains( "HP" ) == true );
+		preview.MaxHP = ComputeMax( parent1.Genetics.HPGene, parent2.Genetics.HPGene, lockedGenes?.Contains( "HP" ) == true );
+		preview.AvgHP = lockedGenes?.Contains( "HP" ) == true
 			? CalculateLockedExpectedGene( parent1.Genetics.HPGene, parent2.Genetics.HPGene )
 			: CalculateExpectedGene( parent1.Genetics.HPGene, parent2.Genetics.HPGene, higherWeight );
 
-		bool atkLocked = lockedGenes?.Contains( "ATK" ) == true;
-		preview.MinATK = atkLocked
-			? Math.Max( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene )
-			: Math.Max( 0, Math.Min( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene ) - 2 );
-		preview.MaxATK = Math.Min( maxGene, Math.Max( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene ) + 7 );
-		preview.AvgATK = atkLocked
+		preview.MinATK = ComputeMin( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene, lockedGenes?.Contains( "ATK" ) == true );
+		preview.MaxATK = ComputeMax( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene, lockedGenes?.Contains( "ATK" ) == true );
+		preview.AvgATK = lockedGenes?.Contains( "ATK" ) == true
 			? CalculateLockedExpectedGene( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene )
 			: CalculateExpectedGene( parent1.Genetics.ATKGene, parent2.Genetics.ATKGene, higherWeight );
 
-		bool defLocked = lockedGenes?.Contains( "DEF" ) == true;
-		preview.MinDEF = defLocked
-			? Math.Max( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene )
-			: Math.Max( 0, Math.Min( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene ) - 2 );
-		preview.MaxDEF = Math.Min( maxGene, Math.Max( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene ) + 7 );
-		preview.AvgDEF = defLocked
+		preview.MinDEF = ComputeMin( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene, lockedGenes?.Contains( "DEF" ) == true );
+		preview.MaxDEF = ComputeMax( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene, lockedGenes?.Contains( "DEF" ) == true );
+		preview.AvgDEF = lockedGenes?.Contains( "DEF" ) == true
 			? CalculateLockedExpectedGene( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene )
 			: CalculateExpectedGene( parent1.Genetics.DEFGene, parent2.Genetics.DEFGene, higherWeight );
 
-		bool spaLocked = lockedGenes?.Contains( "SpA" ) == true;
-		preview.MinSpA = spaLocked
-			? Math.Max( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene )
-			: Math.Max( 0, Math.Min( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene ) - 2 );
-		preview.MaxSpA = Math.Min( maxGene, Math.Max( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene ) + 7 );
-		preview.AvgSpA = spaLocked
+		preview.MinSpA = ComputeMin( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene, lockedGenes?.Contains( "SpA" ) == true );
+		preview.MaxSpA = ComputeMax( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene, lockedGenes?.Contains( "SpA" ) == true );
+		preview.AvgSpA = lockedGenes?.Contains( "SpA" ) == true
 			? CalculateLockedExpectedGene( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene )
 			: CalculateExpectedGene( parent1.Genetics.SpAGene, parent2.Genetics.SpAGene, higherWeight );
 
-		bool spdLocked = lockedGenes?.Contains( "SpD" ) == true;
-		preview.MinSpD = spdLocked
-			? Math.Max( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene )
-			: Math.Max( 0, Math.Min( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene ) - 2 );
-		preview.MaxSpD = Math.Min( maxGene, Math.Max( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene ) + 7 );
-		preview.AvgSpD = spdLocked
+		preview.MinSpD = ComputeMin( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene, lockedGenes?.Contains( "SpD" ) == true );
+		preview.MaxSpD = ComputeMax( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene, lockedGenes?.Contains( "SpD" ) == true );
+		preview.AvgSpD = lockedGenes?.Contains( "SpD" ) == true
 			? CalculateLockedExpectedGene( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene )
 			: CalculateExpectedGene( parent1.Genetics.SpDGene, parent2.Genetics.SpDGene, higherWeight );
 
-		bool spdStatLocked = lockedGenes?.Contains( "SPD" ) == true;
-		preview.MinSPD = spdStatLocked
-			? Math.Max( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene )
-			: Math.Max( 0, Math.Min( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene ) - 2 );
-		preview.MaxSPD = Math.Min( maxGene, Math.Max( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene ) + 7 );
-		preview.AvgSPD = spdStatLocked
+		preview.MinSPD = ComputeMin( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene, lockedGenes?.Contains( "SPD" ) == true );
+		preview.MaxSPD = ComputeMax( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene, lockedGenes?.Contains( "SPD" ) == true );
+		preview.AvgSPD = lockedGenes?.Contains( "SPD" ) == true
 			? CalculateLockedExpectedGene( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene )
 			: CalculateExpectedGene( parent1.Genetics.SPDGene, parent2.Genetics.SPDGene, higherWeight );
 
@@ -211,8 +197,8 @@ public static class GeneticsCalculator
 		float twinBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.TwinChance ) ?? 0;
 		preview.TwinChance = twinChance + (twinBonus / 100f);
 
-		// Mutation chance (base 15%)
-		float mutationChance = 0.15f;
+		// Mutation chance — matches InheritGene (5% base + skill bonus)
+		float mutationChance = 0.05f;
 		float mutationBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.MutationChance ) ?? 0;
 		preview.MutationChance = mutationChance + (mutationBonus / 100f);
 
@@ -224,31 +210,73 @@ public static class GeneticsCalculator
 	}
 
 	/// <summary>
-	/// Calculate expected gene value based on best-of selection with skill bonus weight
+	/// Per-gene min for the new InheritGene math. Unlocked: lower parent
+	/// minus 2 (worst variance roll). Locked: higher parent minus 1.
+	/// Excludes mutation since it's a rare event (5%).
 	/// </summary>
-	private static int CalculateExpectedGene( int gene1, int gene2, float higherWeight )
+	private static int ComputeMin( int g1, int g2, bool isLocked )
 	{
-		// New system: average of parents + small bonus
-		float average = (gene1 + gene2) / 2f;
-
-		// Expected bonus is ~+2 (average of 1-3 range)
-		float expectedBonus = 2f;
-
-		// Diminishing returns reduce expected bonus at high values
-		if ( average >= 27 )
-			expectedBonus = 1f;
-		else if ( average >= 25 )
-			expectedBonus = 1.5f;
-
-		return (int)Math.Round( average + expectedBonus );
+		if ( isLocked ) return Math.Max( 0, Math.Max( g1, g2 ) - 1 );
+		return Math.Max( 0, Math.Min( g1, g2 ) - 2 );
 	}
 
 	/// <summary>
-	/// Calculate expected gene value when locked (always picks higher parent)
+	/// Per-gene max for the new InheritGene math. Unlocked: higher parent
+	/// plus 2 (best variance, capped by diminishing returns at 26+).
+	/// Locked: higher parent plus 1. Excludes mutation.
+	/// </summary>
+	private static int ComputeMax( int g1, int g2, bool isLocked )
+	{
+		int higher = Math.Max( g1, g2 );
+		if ( isLocked ) return Math.Min( Genetics.MaxGeneValue, higher + 1 );
+		// Diminishing returns: 26+ caps at 0, 23-25 caps at +1, 20-22 caps at +2
+		int maxVariance = higher >= 26 ? 0 : (higher >= 23 ? 1 : 2);
+		return Math.Min( Genetics.MaxGeneValue, higher + maxVariance );
+	}
+
+	/// <summary>
+	/// Calculate expected gene value based on rebalanced math (2026-04-11).
+	/// Mirrors InheritGene's logic: weighted pick of higher/lower parent,
+	/// zero-centered variance, diminishing returns above 20, plus the
+	/// optional skill flat bonus that lets invested players climb past
+	/// the soft cap.
+	/// </summary>
+	private static int CalculateExpectedGene( int gene1, int gene2, float higherWeight )
+	{
+		int higher = Math.Max( gene1, gene2 );
+		int lower = Math.Min( gene1, gene2 );
+
+		// Expected base: weighted average of higher/lower based on bias
+		float expectedBase = (higher * higherWeight) + (lower * (1f - higherWeight));
+
+		// Variance is zero-centered (-2 to +2), so the EXPECTED variance is
+		// 0 at low values. At high values diminishing returns clip the
+		// upper variance, so the expected nudges DOWN slightly.
+		float expectedVariance = 0f;
+		if ( expectedBase >= 26 ) expectedVariance = -1.0f;       // Capped at 0, expected -1
+		else if ( expectedBase >= 23 ) expectedVariance = -0.5f;  // Capped at +1
+		else if ( expectedBase >= 20 ) expectedVariance = -0.0f;  // Capped at +2 (no shift)
+
+		float expected = expectedBase + expectedVariance;
+
+		// Skill flat bonus contributes to expected value
+		float geneBonusFlat = TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneBonusFlat ) ?? 0;
+		if ( geneBonusFlat > 0 )
+		{
+			float flat = geneBonusFlat;
+			if ( expected >= 26 ) flat = Math.Min( flat, 1f );
+			expected += flat;
+		}
+
+		return Math.Clamp( (int)Math.Round( expected ), 0, Genetics.MaxGeneValue );
+	}
+
+	/// <summary>
+	/// Calculate expected gene value when locked. Locked = guaranteed
+	/// higher parent value (with -1/+1 variance at breed time, expected 0).
 	/// </summary>
 	private static int CalculateLockedExpectedGene( int gene1, int gene2 )
 	{
-		// Locked: guaranteed higher parent value (variance/mutation still apply at breed time)
 		return Math.Max( gene1, gene2 );
 	}
 

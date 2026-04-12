@@ -27,6 +27,15 @@ public enum Rarity
 	Mythic      // Ultra-rare but catchable - the ultimate collector's prize
 }
 
+public enum BeastPersonality
+{
+	Bold,       // Confident, aggressive — responds to STRENGTH, TRIBUTE
+	Timid,      // Shy, cautious — responds to KINDNESS, PATIENCE
+	Greedy,     // Materialistic — responds to WEALTH, OFFERING, CHARM
+	Loyal,      // Honor-bound — responds to KINDNESS, TRIBUTE, BOND
+	Wild        // Untamed, instinctive — responds to STRENGTH, SACRIFICE
+}
+
 /// <summary>
 /// Base species definition - static data for each monster type
 /// </summary>
@@ -54,6 +63,13 @@ public class MonsterSpecies
 	public float SPDGrowth { get; set; }
 
 	public ElementType Element { get; set; }
+
+	// Optional secondary element for dual-type beasts (e.g. Manehelm =
+	// Fire/Metal, Lochmaw = Water/Shadow). Null = single-type.
+	// Battle defense multiplies both type effectivenesses Pokemon-style;
+	// UI element badges should render both icons stacked when set.
+	public ElementType? SecondaryElement { get; set; }
+
 	public Rarity BaseRarity { get; set; }
 
 	// Evolution chain
@@ -64,6 +80,10 @@ public class MonsterSpecies
 	// Catchability
 	public bool IsCatchable { get; set; } = true;
 	public float BaseCatchRate { get; set; } = 0.5f;
+
+	// Personality — affects contract negotiation approach effectiveness
+	public BeastPersonality Personality { get; set; } = BeastPersonality.Bold;
+	public string PersonalityHint { get; set; } = "This creature watches you cautiously...";
 
 	// Traits pool - possible traits this species can have
 	public List<string> PossibleTraits { get; set; } = new();

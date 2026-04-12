@@ -4433,6 +4433,45 @@ public static class MoveDatabase
 				new MoveEffect { Type = MoveEffectType.RaiseSpD, Value = 1, TargetsSelf = true }
 			}
 		} );
+
+		// =============================================================
+		// SIGNATURE MOVES - unique to final evolution starters
+		// =============================================================
+
+		AddMove( new MoveDefinition
+		{
+			Id = "forges_judgement",
+			Name = "Forges Judgement",
+			Description = "Strikes with molten metal forged in living flame. Raises user DEF.",
+			Element = ElementType.Metal,
+			Category = MoveCategory.Physical,
+			BasePower = 110,
+			Accuracy = 90,
+			MaxPP = 5,
+			MakesContact = true,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.RaiseDEF, Value = 1, TargetsSelf = true }
+			}
+		} );
+
+		AddMove( new MoveDefinition
+		{
+			Id = "abyssal_maw",
+			Name = "Abyssal Maw",
+			Description = "The deep opens its jaws. Lowers target DEF and SpD.",
+			Element = ElementType.Shadow,
+			Category = MoveCategory.Physical,
+			BasePower = 105,
+			Accuracy = 90,
+			MaxPP = 5,
+			MakesContact = true,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.LowerDEF, Value = 1 },
+				new MoveEffect { Type = MoveEffectType.LowerSpD, Value = 1 }
+			}
+		} );
 	}
 
 	private static void AddMove( MoveDefinition move )

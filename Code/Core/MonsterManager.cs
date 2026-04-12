@@ -167,15 +167,17 @@ public sealed class MonsterManager : Component
 		{
 			Id = "embrik",
 			Name = "Embrik",
-			Description = "A chubby little ember foal with stubby legs and a flickering mane. It trips over its own hooves but leaves tiny scorch marks wherever it tumbles.",
+			Description = "A small headless foal born still and silent. A wandering flame found the hollow where its head should be and nestled inside, giving the little colt a second chance at life.",
 			IconPath = "ui/monsters/embrik/idle/embrik_idle_01.png",
 			BaseHP = 44, BaseATK = 57, BaseDEF = 38, BaseSpA = 36, BaseSpD = 33, BaseSPD = 52,
 			HPGrowth = 4, ATKGrowth = 5, DEFGrowth = 3, SpAGrowth = 3, SpDGrowth = 3, SPDGrowth = 4,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Common,
-			EvolvesTo = "charrow",
+			EvolvesTo = "pyrgard",
 			EvolutionLevel = 16,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It watches the world through flickering flames, unsure if the warmth it carries is truly its own.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
 			LearnableMoves = new()
 			{
@@ -200,10 +202,7 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/embrik/idle/embrik_idle_01.png",
-				"ui/monsters/embrik/idle/embrik_idle_02.png",
-				"ui/monsters/embrik/idle/embrik_idle_03.png",
-				"ui/monsters/embrik/idle/embrik_idle_04.png"
+				"ui/monsters/embrik/idle/embrik_idle_01.png"
 			},
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 1,
@@ -213,18 +212,20 @@ public sealed class MonsterManager : Component
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "charrow",
-			Name = "Charrow",
-			Description = "A hollow creature with seven burning eyes. It was once a funeral pyre that refused to die, taking the shape of what it consumed.",
-			IconPath = "ui/monsters/charrow/idle/charrow_idle_01.png",
+			Id = "pyrgard",
+			Name = "Pyrgard",
+			Description = "The flame grew with the foal, forging a burning helm where its head should be. Pyrgard protects those who are weak — like it once was.",
+			IconPath = "ui/monsters/pyrgard/idle/pyrgard_idle_01.png",
 			BaseHP = 67, BaseATK = 82, BaseDEF = 53, BaseSpA = 48, BaseSpD = 51, BaseSPD = 69,
 			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 4, SpAGrowth = 4, SpDGrowth = 4, SPDGrowth = 5,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "embrik",
-			EvolvesTo = "ashenmare",
+			EvolvesTo = "manehelm",
 			EvolutionLevel = 32,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It positions itself between danger and those nearby, as if remembering a debt it can never repay.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
 			LearnableMoves = new()
 			{
@@ -251,10 +252,7 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/charrow/idle/charrow_idle_01.png",
-				"ui/monsters/charrow/idle/charrow_idle_02.png",
-				"ui/monsters/charrow/idle/charrow_idle_03.png",
-				"ui/monsters/charrow/idle/charrow_idle_04.png"
+				"ui/monsters/pyrgard/idle/pyrgard_idle_01.png"
 			},
 			BeastiaryNumber = 2,
 			IconOffsetX = 12f,
@@ -263,16 +261,19 @@ public sealed class MonsterManager : Component
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "ashenmare",
-			Name = "Ashenmare",
-			Description = "A beast of obsidian and eternal flame, born when a volcano's heart broke. Its hooves leave glass flowers that bloom into fire.",
-			IconPath = "ui/monsters/ashenmare/idle/ashenmare_idle_01.png",
+			Id = "manehelm",
+			Name = "Manehelm",
+			Description = "A knight of living flame. Manehelm stands as proof that even the weakest beginnings can become the strongest protectors.",
+			IconPath = "ui/monsters/manehelm/idle/manehelm_idle_01.png",
 			BaseHP = 92, BaseATK = 118, BaseDEF = 72, BaseSpA = 70, BaseSpD = 68, BaseSPD = 95,
 			HPGrowth = 6, ATKGrowth = 9, DEFGrowth = 5, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 7,
 			Element = ElementType.Fire,
+			SecondaryElement = ElementType.Metal,
 			BaseRarity = Rarity.Rare,
-			EvolvesFrom = "charrow",
+			EvolvesFrom = "pyrgard",
 			BaseCatchRate = 0.2f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It stands like a sentinel, its burning gaze sweeping for threats to those it has chosen to shield.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
 			LearnableMoves = new()
 			{
@@ -293,16 +294,20 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "volcanic_fury", LearnLevel = 39 },
 				new LearnableMove { MoveId = "primal_roar", LearnLevel = 42 },
 				new LearnableMove { MoveId = "conflagration", LearnLevel = 45 },
+				// Metal-type moves — Manehelm's secondary typing. A fire knight
+				// who also wields the strength of forged steel.
+				new LearnableMove { MoveId = "iron_rush", LearnLevel = 38 },
+				new LearnableMove { MoveId = "temper", LearnLevel = 40 },
+				new LearnableMove { MoveId = "alloy_smash", LearnLevel = 46 },
 				new LearnableMove { MoveId = "pyroclasm", LearnLevel = 48 },
 				new LearnableMove { MoveId = "wildfire_burst", LearnLevel = 52 },
-				new LearnableMove { MoveId = "annihilate", LearnLevel = 55 },
+				// Signature move — unique to Manehelm
+				new LearnableMove { MoveId = "forges_judgement", LearnLevel = 55 },
+				new LearnableMove { MoveId = "annihilate", LearnLevel = 58 },
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/ashenmare/idle/ashenmare_idle_01.png",
-				"ui/monsters/ashenmare/idle/ashenmare_idle_02.png",
-				"ui/monsters/ashenmare/idle/ashenmare_idle_03.png",
-				"ui/monsters/ashenmare/idle/ashenmare_idle_04.png"
+				"ui/monsters/manehelm/idle/manehelm_idle_01.png"
 			},
 			BeastiaryNumber = 3,
 			IconOffsetX = 8f,
@@ -315,17 +320,19 @@ public sealed class MonsterManager : Component
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "droskul",
-			Name = "Droskul",
-			Description = "A plump little eel with a stubby body and oversized eyes. It can barely swim straight, but the soft glow at its tail already hints at its predatory future.",
-			IconPath = "ui/monsters/droskul/idle/droskul_idle_01.png",
+			Id = "pagefin",
+			Name = "Pagefin",
+			Description = "The youngest recruit of the ocean queen's royal guard. Pagefin takes its duties seriously, even if it can barely swim in a straight line.",
+			IconPath = "ui/monsters/pagefin/idle/pagefin_idle_01.png",
 			BaseHP = 52, BaseATK = 38, BaseDEF = 57, BaseSpA = 48, BaseSpD = 62, BaseSPD = 43,
 			HPGrowth = 5, ATKGrowth = 3, DEFGrowth = 5, SpAGrowth = 4, SpDGrowth = 5, SPDGrowth = 4,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
-			EvolvesTo = "luracoil",
+			EvolvesTo = "gothsire",
 			EvolutionLevel = 16,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It salutes anything that moves, eager to prove itself worthy of its post.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -350,10 +357,7 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/droskul/idle/droskul_idle_01.png",
-				"ui/monsters/droskul/idle/droskul_idle_02.png",
-				"ui/monsters/droskul/idle/droskul_idle_03.png",
-				"ui/monsters/droskul/idle/droskul_idle_04.png"
+				"ui/monsters/pagefin/idle/pagefin_idle_01.png"
 			},
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 4
@@ -361,25 +365,24 @@ public sealed class MonsterManager : Component
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "luracoil",
-			Name = "Luracoil",
-			Description = "An electric eel that traded its spark for the ocean's depths. Its bioluminescent lure attracts prey with false promises of warmth in cold waters.",
-			IconPath = "ui/monsters/luracoil/idle/luracoil_idle_01.png",
+			Id = "gothsire",
+			Name = "Gothsire",
+			Description = "A brooding knight of the deep who traded her standard-issue armor for dark attire. Despite the attitude, Gothsire is fiercely loyal to the queen's guard.",
+			IconPath = "ui/monsters/gothsire/idle/gothsire_idle_01.png",
 			AnimationFrames = new()
 			{
-				"ui/monsters/luracoil/idle/luracoil_idle_01.png",
-				"ui/monsters/luracoil/idle/luracoil_idle_02.png",
-				"ui/monsters/luracoil/idle/luracoil_idle_03.png",
-				"ui/monsters/luracoil/idle/luracoil_idle_04.png"
+				"ui/monsters/gothsire/idle/gothsire_idle_01.png"
 			},
 			BaseHP = 75, BaseATK = 70, BaseDEF = 55, BaseSpA = 85, BaseSpD = 65, BaseSPD = 80,
 			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 4, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 6,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Uncommon,
-			EvolvesFrom = "droskul",
-			EvolvesTo = "tidehollow",
+			EvolvesFrom = "pagefin",
+			EvolvesTo = "lochmaw",
 			EvolutionLevel = 32,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Beneath the brooding exterior, it keeps one eye always turned toward those it guards.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -412,16 +415,19 @@ public sealed class MonsterManager : Component
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "tidehollow",
-			Name = "Tidehollow",
-			Description = "The abyss given form. It is said to be where the ocean goes to forget. Ships that enter its presence simply cease to have ever existed.",
-			IconPath = "ui/monsters/tidehollow/idle/tidehollow_idle_01.png",
+			Id = "lochmaw",
+			Name = "Lochmaw",
+			Description = "The most feared of the ocean queen's royal guard. Lochmaw patrols the deepest waters, and those who trespass don't get a second warning.",
+			IconPath = "ui/monsters/lochmaw/idle/lochmaw_idle_01.png",
 			BaseHP = 98, BaseATK = 78, BaseDEF = 95, BaseSpA = 85, BaseSpD = 98, BaseSPD = 68,
 			HPGrowth = 7, ATKGrowth = 5, DEFGrowth = 7, SpAGrowth = 6, SpDGrowth = 7, SPDGrowth = 5,
 			Element = ElementType.Water,
+			SecondaryElement = ElementType.Shadow,
 			BaseRarity = Rarity.Rare,
-			EvolvesFrom = "luracoil",
+			EvolvesFrom = "gothsire",
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "The deep waters part before it, and even the currents know to change course.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -441,17 +447,23 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ocean_torrent", LearnLevel = 38 },
 				new LearnableMove { MoveId = "sea_chant", LearnLevel = 40 },
 				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 42 },
+				// Shadow-type moves — Lochmaw's secondary typing. The deep-sea
+				// predator who stalks from the void beneath the waves.
+				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 38 },
+				new LearnableMove { MoveId = "shade_step", LearnLevel = 40 },
 				new LearnableMove { MoveId = "tsunami_crush", LearnLevel = 46 },
+				new LearnableMove { MoveId = "nightmare_wave", LearnLevel = 48 },
 				new LearnableMove { MoveId = "abyssal_wave", LearnLevel = 50 },
-				new LearnableMove { MoveId = "annihilate", LearnLevel = 54 },
-				new LearnableMove { MoveId = "seismic_surge", LearnLevel = 55 },
+				// Signature move — unique to Lochmaw
+				new LearnableMove { MoveId = "abyssal_maw", LearnLevel = 55 },
+				new LearnableMove { MoveId = "annihilate", LearnLevel = 58 },
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/tidehollow/idle/tidehollow_idle_01.png",
-				"ui/monsters/tidehollow/idle/tidehollow_idle_02.png",
-				"ui/monsters/tidehollow/idle/tidehollow_idle_03.png",
-				"ui/monsters/tidehollow/idle/tidehollow_idle_04.png"
+				"ui/monsters/lochmaw/idle/lochmaw_idle_01.png",
+				"ui/monsters/lochmaw/idle/lochmaw_idle_02.png",
+				"ui/monsters/lochmaw/idle/lochmaw_idle_03.png",
+				"ui/monsters/lochmaw/idle/lochmaw_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 6,
@@ -484,6 +496,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "hollowgale",
 			EvolutionLevel = 16,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It hums stolen sounds at random, delighting in the confusion of anyone nearby.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
 			LearnableMoves = new()
 			{
@@ -531,6 +545,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "vexstorm",
 			EvolutionLevel = 32,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "The air trembles in its wake, unsettled by something that refuses to hold a single shape.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
 			LearnableMoves = new()
 			{
@@ -580,6 +596,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "hollowgale",
 			BaseCatchRate = 0.18f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It crackles with a fury that existed long before it had a body to carry it.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
 			LearnableMoves = new()
 			{
@@ -639,6 +657,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "branchling",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.7f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It snaps a twig underfoot, then freezes, hoping you will come closer on your own.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -685,6 +705,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "twigsnap",
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It roots itself between saplings and heavy feet, patient as old bark.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -730,6 +752,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.7f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It trembles at the first sign of noon, already dreading the heat of the day.",
 			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -768,6 +792,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "flickermoth",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It curls into its fuzzy coat at the slightest noise, dreaming of skies it has never seen.",
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
@@ -813,6 +839,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "dustling",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Its lantern-heart flickers unpredictably, casting light down paths that may or may not lead somewhere safe.",
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
@@ -859,6 +887,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.65f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It inches forward in perfect silence, remembering footsteps that passed over it lifetimes ago.",
 			PossibleTraits = new() { "terra_force", "last_stand", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -915,6 +945,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "galefox",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "Its ears perk at every murmur, collecting whispers like coins in a purse.",
 			PossibleTraits = new() { "gale_spirit", "subtle_arts", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -960,6 +992,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "whiskerwind",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It races ahead without hesitation, tearing open shortcuts through the air itself.",
 			PossibleTraits = new() { "gale_spirit", "brutal_force", "trickster" },
 			LearnableMoves = new()
 			{
@@ -1006,6 +1040,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It pulses nervously in the dark, growing brighter when powerful things draw near.",
 			PossibleTraits = new() { "verdant_power", "ethereal_blessing", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -1050,6 +1086,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "blazefang",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "Thin wisps of smoke rise from its back as it waddles about, blissfully unaware of its own heat.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -1095,6 +1133,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "cinderscale",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Its tail flame burns with an intensity that dares anything to stand in its path.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -1142,6 +1182,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It works tirelessly in the cracks of cooling stone, convinced its effort keeps the mountain alive.",
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -1190,6 +1232,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "emberhound",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It presses close to those it trusts, offering warmth that carries the memory of sacrifice.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -1236,6 +1280,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "infernowarg",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Rings of controlled fire mark where it has claimed dominion, and nothing crosses those lines.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -1284,6 +1330,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "emberhound",
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "A fallen star burns in its eyes, ancient and untameable as the void it once called home.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -1337,6 +1385,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "mirrorpond",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It spits out reflections in the wrong order, as if reality is just a game it has not learned the rules to.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -1381,6 +1431,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "puddlejaw",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Those who look into it see something they were not prepared for, and it does not understand why they flinch.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -1426,6 +1478,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It drifts toward the sound of crying, trailing crystallized tears that catch the faintest light.",
 			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -1479,6 +1533,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "rivercrest",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It babbles in the language of running water, genuinely puzzled when no one answers back.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -1525,6 +1581,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "oceanmaw",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It stands at the crossroads of flowing waters, settling disputes with the patience of ancient stone.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -1571,6 +1629,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "rivercrest",
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It carries the sorrow of every drop that never reached the sea, and the weight shows in its ancient gaze.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -1619,6 +1679,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "foamwraith",
 			EvolutionLevel = 24,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It clutches its tiny dome of air close, afraid to drift beyond the shallows it knows.",
 			PossibleTraits = new() { "torrent_soul", "hunters_focus", "trickster" },
 			LearnableMoves = new()
 			{
@@ -1663,6 +1725,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "bubblite",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Ghostly tendrils trail behind it, carrying final words and steering the living away from the same fate.",
 			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -1708,6 +1772,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "It surveys every shoreline it passes, always searching for the perfect place to anchor its growing collection.",
 			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -1759,6 +1825,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "galeclaw",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It follows at a distance, not to threaten, but because it has forgotten how to walk alone.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
 			LearnableMoves = new()
 			{
@@ -1803,6 +1871,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "driftmote",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Its claws are made of solidified wind, and its cry is the sound of doors slamming in places long abandoned.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
 			LearnableMoves = new()
 			{
@@ -1848,6 +1918,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "You can only catch it in the corner of your eye, and by then it has already moved on.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "trickster" },
 			LearnableMoves = new()
 			{
@@ -1896,6 +1968,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "cyclonyx",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It weighs less than a whisper and trembles at the thought of growing any heavier.",
 			PossibleTraits = new() { "gale_spirit", "skyborne", "hunters_focus" },
 			LearnableMoves = new()
 			{
@@ -1942,6 +2016,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "tempestking",
 			EvolutionLevel = 38,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It spins endlessly, communicating through shifts in pressure that no one else can feel.",
 			PossibleTraits = new() { "gale_spirit", "skyborne", "brutal_force" },
 			LearnableMoves = new()
 			{
@@ -1988,6 +2064,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "cyclonyx",
 			BaseCatchRate = 0.12f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Destruction follows where it chooses to exist, and it considers this entirely unremarkable.",
 			PossibleTraits = new() { "gale_spirit", "skyborne", "precision_hunter" },
 			LearnableMoves = new()
 			{
@@ -2036,6 +2114,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "plumestorm",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "Each feather remembers a different flight, and the whole creature trembles with borrowed nostalgia.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "skyborne" },
 			LearnableMoves = new()
 			{
@@ -2080,6 +2160,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "featherwisp",
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It trails storms of feathers in its wake, utterly confident that the sky belongs to it alone.",
 			PossibleTraits = new() { "gale_spirit", "brutal_force", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -2125,6 +2207,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It spins without stopping, genuinely baffled that other creatures prefer to stand still.",
 			PossibleTraits = new() { "gale_spirit", "brutal_force", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -2176,6 +2260,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "voltweave",
 			EvolutionLevel = 16,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It reaches out desperately, then pulls back, knowing its touch destroys what it loves.",
 			PossibleTraits = new() { "static_charge", "lightning_rod", "momentum" },
 			LearnableMoves = new()
 			{
@@ -2224,6 +2310,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "temporal",
 			EvolutionLevel = 34,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Borrowed memories crackle through its web, each arc of lightning a stolen thought.",
 			PossibleTraits = new() { "static_charge", "lightning_rod", "momentum" },
 			LearnableMoves = new()
 			{
@@ -2270,6 +2358,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "voltweave",
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It flickers in and out of the moment, existing in the space where time forgets to move.",
 			PossibleTraits = new() { "static_charge", "lightning_rod", "momentum" },
 			LearnableMoves = new()
 			{
@@ -2315,6 +2405,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "It feeds hungrily on frustration and anger, growing fat on the static of broken machines.",
 			PossibleTraits = new() { "static_charge", "trickster", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -2363,6 +2455,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "thundermane",
 			EvolutionLevel = 24,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It reaches out with longing, then hesitates, having learned that affection must be shown from a safe distance.",
 			PossibleTraits = new() { "static_charge", "hunters_focus", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -2409,6 +2503,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "joltpaw",
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Its mane crackles with restrained power, finally able to touch those it loves without causing harm.",
 			PossibleTraits = new() { "static_charge", "brutal_force", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -2455,6 +2551,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It explores dry land with reckless confidence, constantly amazed at the world beyond the water.",
 			PossibleTraits = new() { "static_charge", "aqua_siphon", "lightning_rod" },
 			LearnableMoves = new()
 			{
@@ -2500,6 +2598,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It wanders endlessly, searching for something worthy of its strike, never finding satisfaction.",
 			PossibleTraits = new() { "static_charge", "last_stand", "fortunate_strike" },
 			LearnableMoves = new()
 			{
@@ -2545,6 +2645,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.45f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It perceives the world as pathways and resistances, finding the chaos of life fascinatingly inefficient.",
 			PossibleTraits = new() { "static_charge", "hunters_focus", "iron_will" },
 			LearnableMoves = new()
 			{
@@ -2596,6 +2698,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "cragmaw",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.65f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It remembers every step ever taken upon the earth and honors each one in silence.",
 			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -2646,6 +2750,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "monoleth",
 			EvolutionLevel = 34,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It does not chase — it simply waits, and the earth itself reshapes to deliver what comes next.",
 			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -2692,6 +2798,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "cragmaw",
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Civilizations have risen and fallen upon its back, and it has never once thought to mention it.",
 			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -2731,6 +2839,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It gathers broken things with gentle care, trying to rebuild what it cannot fully understand.",
 			PossibleTraits = new() { "terra_force", "barbed_hide", "hardened_resolve" },
 			LearnableMoves = new()
 			{
@@ -2773,6 +2883,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "boulderon",
 			EvolutionLevel = 26,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It rolls happily through small spaces, dreaming of boulders but content with being cozy.",
 			PossibleTraits = new() { "terra_force", "last_stand", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -2813,6 +2925,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "pebblit",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It has traveled so far it no longer remembers where it began, and the forgetting weighs heavy.",
 			PossibleTraits = new() { "terra_force", "enduring_will", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -2853,6 +2967,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It hums at frequencies only the earth can hear, singing songs no surface creature will ever understand.",
 			PossibleTraits = new() { "terra_force", "ethereal_blessing", "hardened_resolve" },
 			LearnableMoves = new()
 			{
@@ -2892,6 +3008,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Tiny storms swirl on its shell as it plods forward, carrying an ecosystem that depends on it entirely.",
 			PossibleTraits = new() { "terra_force", "last_stand", "hardened_resolve" },
 			LearnableMoves = new()
 			{
@@ -2931,6 +3049,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "Its single eye sweeps over treasures it has long forgotten the purpose of, but guards them all the same.",
 			PossibleTraits = new() { "terra_force", "hunters_focus", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -2976,6 +3096,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "glacimaw",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It does not understand warmth and believes all things secretly wish to be still and silent.",
 			PossibleTraits = new() { "frost_core", "thermal_hide", "hunters_focus" },
 			LearnableMoves = new()
 			{
@@ -3018,6 +3140,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "permafrost",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It speaks only in the voices of the lost, promising warmth it can never deliver.",
 			PossibleTraits = new() { "frost_core", "thermal_hide", "hardened_resolve" },
 			LearnableMoves = new()
 			{
@@ -3058,6 +3182,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "glacimaw",
 			BaseCatchRate = 0.12f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Patient and inevitable, it walks as the memory of a world that died of cold.",
 			PossibleTraits = new() { "frost_core", "thermal_hide", "hardened_resolve" },
 			LearnableMoves = new()
 			{
@@ -3097,6 +3223,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It does not freeze you — it simply reminds your body that warmth was never guaranteed.",
 			PossibleTraits = new() { "frost_core", "menacing_aura", "barbed_hide" },
 			LearnableMoves = new()
 			{
@@ -3139,6 +3267,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "blizzardian",
 			EvolutionLevel = 26,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "Each one is unique, and it takes tremendous pride in the delicate pattern it was born with.",
 			PossibleTraits = new() { "frost_core", "hunters_focus", "cleansing_retreat" },
 			LearnableMoves = new()
 			{
@@ -3179,6 +3309,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "snowmite",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It remembers being thousands of unique individuals, and the chorus of their voices drives it ever onward.",
 			PossibleTraits = new() { "frost_core", "precision_hunter", "cleansing_retreat" },
 			LearnableMoves = new()
 			{
@@ -3219,6 +3351,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.45f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It waits perfectly still, patient and deadly, until the moment something mistakes it for harmless.",
 			PossibleTraits = new() { "frost_core", "fortunate_strike", "precision_hunter" },
 			LearnableMoves = new()
 			{
@@ -3258,6 +3392,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It drifts through cold places, leaving words in ice that no one has ever been able to read.",
 			PossibleTraits = new() { "frost_core", "subtle_arts", "trickster" },
 			LearnableMoves = new()
 			{
@@ -3297,6 +3433,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "Its razor edges keep others at a distance, though all it wants is to be close.",
 			PossibleTraits = new() { "frost_core", "barbed_hide", "cleansing_retreat" },
 			LearnableMoves = new()
 			{
@@ -3336,6 +3474,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.2f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Entire ecosystems live upon its shell, trusting in its slow and steady march through the frozen wastes.",
 			PossibleTraits = new() { "frost_core", "enduring_will", "hardened_resolve" },
 			LearnableMoves = new()
 			{
@@ -3381,6 +3521,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "thornveil",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It wanders in search of soil that was never promised, carrying forests that will never take root.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -3423,6 +3565,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "eldergrove",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "Its thorns drink memories, growing not toward sunlight but toward secrets buried deep.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -3463,6 +3607,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "thornveil",
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Every tree that ever was exists somewhere in its rings, and it speaks in the ancient language of growth and decay.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -3501,6 +3647,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "It absorbs confessions whispered to empty rooms and hums them back when least expected.",
 			PossibleTraits = new() { "verdant_power", "wild_growth", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -3549,6 +3697,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "bloomguard",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.6f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It bounces joyfully, spreading flowers everywhere, then sneezes violently from its own pollen.",
 			PossibleTraits = new() { "verdant_power", "wild_growth", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
@@ -3595,6 +3745,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "pollenpuff",
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It stands between gardens and plucking hands, commanding pollen armies with noble resolve.",
 			PossibleTraits = new() { "verdant_power", "wild_growth", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
@@ -3641,6 +3793,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It coils around anything nearby for comfort, growing terribly lonely when nothing is close enough to hold.",
 			PossibleTraits = new() { "verdant_power", "barbed_hide", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -3686,6 +3840,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.45f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Its feet face backwards and its path leads in circles, but whether you find the exit depends on what you carry in your heart.",
 			PossibleTraits = new() { "verdant_power", "wild_growth", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -3731,6 +3887,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It collects the tears of weeping trees, believing they are sad, not understanding they were simply made that way.",
 			PossibleTraits = new() { "verdant_power", "subtle_arts", "trickster" },
 			LearnableMoves = new()
 			{
@@ -3776,6 +3934,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.2f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Flowers bloom out of season in its wake, and dormant seeds awaken as if remembering a dream of spring.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "wild_growth" },
 			LearnableMoves = new()
 			{
@@ -3827,6 +3987,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "ironclad",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It spins endlessly, terrified that stopping will cause some great unseen machine to fail.",
 			PossibleTraits = new() { "iron_will", "brutal_force", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -3875,6 +4037,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "forgeborn",
 			EvolutionLevel = 38,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Swords that refused to draw blood bound themselves together, becoming a protector born from shame.",
 			PossibleTraits = new() { "iron_will", "hardened_resolve", "brutal_force" },
 			LearnableMoves = new()
 			{
@@ -3921,6 +4085,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "ironclad",
 			BaseCatchRate = 0.12f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It remembers being ore, being mountain, and choosing to become something greater. It is transformation itself.",
 			PossibleTraits = new() { "iron_will", "hardened_resolve", "precision_hunter" },
 			LearnableMoves = new()
 			{
@@ -3968,6 +4134,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "oxidrake",
 			EvolutionLevel = 32,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It believes it is helping things return to their natural state, unaware that its touch is feared.",
 			PossibleTraits = new() { "iron_will", "barbed_hide", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -4014,6 +4182,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "corrode",
 			BaseCatchRate = 0.18f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It is the graveyard of ambition given wings, carrying every rusted sword and fallen crown.",
 			PossibleTraits = new() { "iron_will", "barbed_hide", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -4062,6 +4232,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "junktitan",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "It adds pieces to itself constantly, always dreaming of becoming something mightier than it is.",
 			PossibleTraits = new() { "iron_will", "reckless_charge", "titanic_might" },
 			LearnableMoves = new()
 			{
@@ -4108,6 +4280,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "scrapper",
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It finally became mighty, but now lives in quiet fear of being taken apart for spare pieces.",
 			PossibleTraits = new() { "iron_will", "reckless_charge", "titanic_might" },
 			LearnableMoves = new()
 			{
@@ -4154,6 +4328,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It does not mean to cut — it just cannot help being made entirely of razors.",
 			PossibleTraits = new() { "iron_will", "barbed_hide", "fortunate_strike" },
 			LearnableMoves = new()
 			{
@@ -4199,6 +4375,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It rings itself at every sign of danger, confused when those it warns flee from the sound.",
 			PossibleTraits = new() { "iron_will", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -4244,6 +4422,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.45f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It stretches and contracts endlessly, never certain which shape is the one it was meant to hold.",
 			PossibleTraits = new() { "iron_will", "brutal_force", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -4289,6 +4469,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Metal,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "Its mirror-bright scales catch every gleam of light, and it spends hours lost in its own reflection.",
 			PossibleTraits = new() { "iron_will", "precision_hunter", "brutal_force" },
 			LearnableMoves = new()
 			{
@@ -4348,6 +4530,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "haloveil",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It drifts toward cold hearts with gentle warmth, unable to fathom why darkness would choose to exist.",
 			PossibleTraits = new() { "ethereal_blessing", "phantom_step", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -4397,6 +4581,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "solmara",
 			EvolutionLevel = 40,
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It moves in silence, leaving trails of warmth for those who walk cold and forgotten paths.",
 			PossibleTraits = new() { "ethereal_blessing", "phantom_step", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -4444,6 +4630,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Epic,
 			EvolvesFrom = "haloveil",
 			BaseCatchRate = 0.1f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It wears rings of every color the sunrise has ever known, radiant and utterly assured of its place in the sky.",
 			PossibleTraits = new() { "ethereal_blessing", "precision_hunter", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -4490,6 +4678,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It knows things no living person remembers and asks questions that have no answers.",
 			PossibleTraits = new() { "ethereal_blessing", "trickster", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -4539,6 +4729,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "hopebringer",
 			EvolutionLevel = 26,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It clutches fountain-wishes close, desperate to grant them but heartbroken by the impossible ones.",
 			PossibleTraits = new() { "ethereal_blessing", "vital_recovery", "trickster" },
 			LearnableMoves = new()
 			{
@@ -4586,6 +4778,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "wishling",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It has learned that the best wishes are the ones people must work for, and guides them patiently.",
 			PossibleTraits = new() { "ethereal_blessing", "vital_recovery", "trickster" },
 			LearnableMoves = new()
 			{
@@ -4633,6 +4827,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It replays moments with perfect clarity, unable to understand why some memories bring tears.",
 			PossibleTraits = new() { "ethereal_blessing", "cleansing_retreat", "subtle_arts" },
 			LearnableMoves = new()
 			{
@@ -4679,6 +4875,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It slips between waking and sleeping, collecting forgotten dreams and sometimes delivering them to the wrong person.",
 			PossibleTraits = new() { "ethereal_blessing", "trickster", "hunters_focus" },
 			LearnableMoves = new()
 			{
@@ -4725,6 +4923,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It appears in flashes of brilliance, arriving at the exact moment inspiration strikes.",
 			PossibleTraits = new() { "ethereal_blessing", "fortunate_strike", "subtle_arts" },
 			LearnableMoves = new()
 			{
@@ -4771,6 +4971,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.15f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It carries the weight of every meaningful moment in history, believing that even the smallest kindness matters.",
 			PossibleTraits = new() { "ethereal_blessing", "subtle_arts", "enduring_will" },
 			LearnableMoves = new()
 			{
@@ -4823,6 +5025,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "voidweep",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It feeds on the things people push to the back of their minds, growing stronger on what is refused.",
 			PossibleTraits = new() { "dark_presence", "phantom_step", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -4872,6 +5076,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "nullgrave",
 			EvolutionLevel = 40,
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It arrives not to cause endings but to witness them, carrying the weight of every last moment.",
 			PossibleTraits = new() { "dark_presence", "last_stand", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -4919,6 +5125,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Epic,
 			EvolvesFrom = "voidweep",
 			BaseCatchRate = 0.08f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It is neither evil nor good — simply the shape of what remains when even darkness forgets itself.",
 			PossibleTraits = new() { "dark_presence", "brutal_force", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -4965,6 +5173,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.45f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It has always been there, in the shadow you cast when no light is present. You just never looked.",
 			PossibleTraits = new() { "dark_presence", "phantom_step", "menacing_aura" },
 			LearnableMoves = new()
 			{
@@ -5014,6 +5224,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "duskstalker",
 			EvolutionLevel = 24,
 			BaseCatchRate = 0.5f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It freezes the instant eyes fall upon it, mortified at the thought of being seen in motion.",
 			PossibleTraits = new() { "dark_presence", "phantom_step", "fortunate_strike" },
 			LearnableMoves = new()
 			{
@@ -5061,6 +5273,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "nightcrawl",
 			BaseCatchRate = 0.3f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It moves through darkness without shame, having accepted that some things must happen where no one can see.",
 			PossibleTraits = new() { "dark_presence", "phantom_step", "fortunate_strike" },
 			LearnableMoves = new()
 			{
@@ -5108,6 +5322,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It flinches at its own reflection, wishing it knew how to be something other than frightening.",
 			PossibleTraits = new() { "dark_presence", "menacing_aura", "adrenaline_rush" },
 			LearnableMoves = new()
 			{
@@ -5154,6 +5370,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It slips through spaces where light cannot reach, sometimes getting trapped in places with no shadows at all.",
 			PossibleTraits = new() { "dark_presence", "phantom_step", "precision_hunter" },
 			LearnableMoves = new()
 			{
@@ -5200,6 +5418,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.35f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "It devours every whisper spoken in darkness, hoarding knowledge it has no use for but will never release.",
 			PossibleTraits = new() { "dark_presence", "last_stand", "trickster" },
 			LearnableMoves = new()
 			{
@@ -5246,6 +5466,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.2f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It flickers between real and unreal, fully existing only in rare moments when the sun goes dark.",
 			PossibleTraits = new() { "dark_presence", "phantom_step", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -5292,6 +5514,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.12f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It rules the kingdom of bad dreams not with cruelty but with balance, keeping nightmares from becoming too dark.",
 			PossibleTraits = new() { "dark_presence", "bloodlust", "brutal_force" },
 			LearnableMoves = new()
 			{
@@ -5343,6 +5567,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.1f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Still blooming, still closing, caught in the eternal moment of becoming — all plants remember being part of it.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "wild_growth" },
 			LearnableMoves = new()
 			{
@@ -5390,6 +5616,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.08f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It radiates warmth that melts stone and light that casts no shadows, unyielding and absolute.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
 			LearnableMoves = new()
 			{
@@ -5437,6 +5665,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Ice,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.08f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Time itself seems to slow in its presence, atoms surrendering their motion to its ancient stillness.",
 			PossibleTraits = new() { "frost_core", "thermal_hide", "enduring_will" },
 			LearnableMoves = new()
 			{
@@ -5484,6 +5714,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.08f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Other storms tell stories about it, trying to recreate the fury they once felt in its presence.",
 			PossibleTraits = new() { "static_charge", "momentum", "elemental_mastery" },
 			LearnableMoves = new()
 			{
@@ -5531,6 +5763,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Legendary,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It is not the first beast but the reason beasts exist in stories at all — all creatures are echoes of its dreaming.",
 			PossibleTraits = new() { "elemental_mastery", "enduring_will", "titanic_might" },
 			LearnableMoves = new()
 			{
@@ -5578,6 +5812,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Legendary,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "What you see is only the smallest fragment of something that encircles the world in dimensions beyond perception.",
 			PossibleTraits = new() { "terra_force", "enduring_will", "titanic_might" },
 			LearnableMoves = new()
 			{
@@ -5625,6 +5861,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Legendary,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It eats light and exhales darkness. Where it flies, the universe forgets that stars were ever there.",
 			PossibleTraits = new() { "dark_presence", "bloodlust", "elemental_mastery" },
 			LearnableMoves = new()
 			{
@@ -5673,6 +5911,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Mythic,
 			IsCatchable = true,
 			BaseCatchRate = 0.001f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Something vast stirs within — wings of pure creation folding and unfolding in the moment before birth, frozen in time.",
 			PossibleTraits = new() { "elemental_mastery", "enduring_will", "titanic_might" },
 			LearnableMoves = new()
 			{
@@ -5718,6 +5958,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Mythic,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It remembers a time before time, when existence was merely a suggestion waiting to be spoken.",
 			PossibleTraits = new() { "ethereal_blessing", "enduring_will", "elemental_mastery" },
 			LearnableMoves = new()
 			{
@@ -5765,6 +6007,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.05f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "The ground cracks beneath it, unable to contain a fire that was never meant to exist in this world.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "ember_heart" },
 			LearnableMoves = new()
 			{
@@ -5812,6 +6056,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.05f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "One half blooms while the other crumbles into void — it has never fully belonged to either world.",
 			PossibleTraits = new() { "dark_presence", "last_stand", "brutal_force" },
 			LearnableMoves = new()
 			{
@@ -5866,6 +6112,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.1f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It carries the blueprint for all life within itself, ancient beyond measure, patient beyond understanding.",
 			PossibleTraits = new() { "verdant_power", "vital_recovery", "wild_growth" },
 			LearnableMoves = new()
 			{
@@ -5912,6 +6160,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.1f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Oceans, rivers, rain, and tears all remember being part of this single primordial drop.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
 			LearnableMoves = new()
 			{
@@ -5958,6 +6208,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "A spark crackles at the tip of its tail when startled, betraying its nervousness despite its sleek form.",
 			EvolvesTo = "arcferron",
 			EvolutionLevel = 18,
 			PossibleTraits = new() { "static_charge", "momentum", "adrenaline_rush" },
@@ -6006,6 +6258,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It tumbles and digs with clumsy enthusiasm, leaving small craters in its joyful wake.",
 			PossibleTraits = new() { "terra_force", "hardened_resolve", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -6052,6 +6306,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "Its fluffy seeds drift away on the faintest breath, and it watches them go with quiet wonder.",
 			PossibleTraits = new() { "gale_spirit", "wild_growth", "skyborne" },
 			LearnableMoves = new()
 			{
@@ -6104,6 +6360,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.06f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It moves like living lightning, striking before its thunder arrives — swift, certain, and devastating.",
 			EvolvesFrom = "arcferron",
 			PossibleTraits = new() { "static_charge", "precision_hunter", "elemental_mastery" },
 			LearnableMoves = new()
@@ -6151,6 +6409,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Electric,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.12f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Arcs of electricity snap between its pointed ears as it moves faster than the eye can follow.",
 			EvolvesFrom = "prismite",
 			EvolvesTo = "raijura",
 			EvolutionLevel = 36,
@@ -6200,6 +6460,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Rare,
 			BaseCatchRate = 0.12f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Its jaw unhinges impossibly wide, revealing the faint golden glow of every heart it has judged.",
 			PossibleTraits = new() { "dark_presence", "hardened_resolve", "bloodlust" },
 			LearnableMoves = new()
 			{
@@ -6246,6 +6508,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.2f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Its form flickers between solid and translucent, and its long ears twist toward sounds that have not happened yet.",
 			PossibleTraits = new() { "gale_spirit", "subtle_arts", "skyborne" },
 			LearnableMoves = new()
 			{
@@ -6292,6 +6556,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.2f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It skitters along volcanic vents where dimensions grind together, feeding on the heat of colliding realities.",
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "reckless_charge" },
 			LearnableMoves = new()
 			{
@@ -6344,6 +6610,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Legendary,
 			IsCatchable = true,
 			BaseCatchRate = 0.02f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It holds within it the potential to be anything — stone, star, or soul — and has not yet chosen.",
 			PossibleTraits = new() { "enduring_will", "titanic_might", "elemental_mastery" },
 			LearnableMoves = new()
 			{
@@ -6390,6 +6658,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Shadow,
 			BaseRarity = Rarity.Epic,
 			BaseCatchRate = 0.05f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "A single pale eye stares from a swirling vortex of shadow, seeing into the space between moments.",
 			PossibleTraits = new() { "dark_presence", "brutal_force", "last_stand" },
 			LearnableMoves = new()
 			{
@@ -6429,6 +6699,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Spirit,
 			BaseRarity = Rarity.Mythic,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "Reality ripples outward from its song — every sound ever heard is merely an echo of its endless melody.",
 			PossibleTraits = new() { "ethereal_blessing", "enduring_will", "elemental_mastery" },
 			LearnableMoves = new()
 			{
@@ -6483,6 +6755,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Uncommon,
 			BaseCatchRate = 0.4f,
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "Spores drift from its cap like snow, and wherever they land, new territory springs up overnight.",
 			PossibleTraits = new() { "verdant_power", "wild_growth", "vital_recovery" },
 			LearnableMoves = new()
 			{
@@ -6528,6 +6802,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Common,
 			IsCatchable = true,
 			BaseCatchRate = 0.55f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It darts through shadows trailing embers, vanishing from rooftops before anyone can look twice.",
 			EvolvesTo = "enkong",
 			EvolutionLevel = 22,
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
@@ -6575,6 +6851,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			IsCatchable = true,
 			BaseCatchRate = 0.25f,
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "Golden eyes see through smoke and shadow, and its burning tail-whip once set an entire fortress ablaze.",
 			EvolvesFrom = "hinobi",
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "brutal_force" },
 			LearnableMoves = new()
@@ -6623,6 +6901,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Mythic,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "When it stirs, coastlines reshape and tides reverse — the deep ocean floor trembles at its passage.",
 			PossibleTraits = new() { "torrent_soul", "titanic_might", "enduring_will" },
 			LearnableMoves = new()
 			{
@@ -6671,6 +6951,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Mythic,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "Molten ichor flows through a single vein from head to ankle, and its hollow body rings like a war bell.",
 			PossibleTraits = new() { "titanic_might", "enduring_will", "elemental_mastery" },
 			LearnableMoves = new()
 			{
@@ -6719,6 +7001,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Mythic,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "When it opens the sack upon its back, storms are born. When it laughs, hurricanes follow.",
 			PossibleTraits = new() { "sky_forsaker", "elemental_mastery", "enduring_will" },
 			LearnableMoves = new()
 			{
@@ -6767,6 +7051,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Mythic,
 			IsCatchable = true,
 			BaseCatchRate = 0.01f,
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It puffs up and huffs icy breath to look fearsome, then sneezes and freezes itself solid.",
 			PossibleTraits = new() { "frozen_heart", "elemental_mastery", "enduring_will" },
 			LearnableMoves = new()
 			{
@@ -6821,10 +7107,17 @@ public sealed class MonsterManager : Component
 			OwnedMonsters = new();
 		}
 
-		// Migrate existing monsters to v2 format (SpA/SpD stats and moves)
+		// Migrate existing monsters
 		bool needsSave = false;
 		foreach ( var monster in OwnedMonsters )
 		{
+			// Migrate renamed species IDs
+			if ( OldSpeciesIdMap.TryGetValue( monster.SpeciesId, out var newSpeciesId ) )
+			{
+				monster.SpeciesId = newSpeciesId;
+				needsSave = true;
+			}
+
 			if ( MigrateMonsterToV2( monster ) )
 				needsSave = true;
 
@@ -6993,6 +7286,16 @@ public sealed class MonsterManager : Component
 	/// <summary>
 	/// Convert old trait display names to new trait IDs
 	/// </summary>
+	public static readonly Dictionary<string, string> OldSpeciesIdMap = new( StringComparer.OrdinalIgnoreCase )
+	{
+		{ "charrow", "pyrgard" },
+		{ "ashenmare", "manehelm" },
+		{ "droskul", "pagefin" },
+		{ "sireling", "pagefin" },
+		{ "luracoil", "gothsire" },
+		{ "tidehollow", "lochmaw" },
+	};
+
 	private static readonly Dictionary<string, string> OldMoveIdMap = new( StringComparer.OrdinalIgnoreCase )
 	{
 		{ "fire_spin", "flame_vortex" },

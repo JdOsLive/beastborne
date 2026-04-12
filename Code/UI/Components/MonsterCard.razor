@@ -7,29 +7,104 @@
 @using Beastborne.Systems;
 @inherits Panel
 
-@if (IsMini)
+@if (IsHorizontal)
+{
+	<!-- Horizontal Card: Sprite on left, info column on right.
+	     Used in compact contexts like fusion parent slots where the
+	     vertical mini layout eats too much height. -->
+	<div class="monster-card horizontal @(IsSelected ? "selected" : "") @GetRarityClass()"
+		 onclick=@OnCardClicked onmouseover=@OnMouseEnter onmouseout=@OnMouseLeave>
+		<!-- Left: Sprite -->
+		<div class="horiz-sprite-wrap">
+			@if (HasSprite())
+			{
+				<div class="horiz-sprite monster-icon" style="background-image: url(@GetCurrentFrame())"></div>
+			}
+			else
+			{
+				<div class="horiz-sprite-placeholder">?</div>
+			}
+		</div>
+
+		<!-- Right: Info column -->
+		<div class="horiz-info">
+			<div class="horiz-name-row">
+				<img class="horiz-element-icon" src="ui/icons/elements/background/@(GetElementClass()).svg" />
+				@if (HasSecondaryElement())
+				{
+					<img class="horiz-element-icon secondary" src="ui/icons/elements/background/@(GetSecondaryElementClass()).svg" />
+				}
+				<span class="horiz-name">@Monster.Nickname</span>
+				@if (Monster.IsFavorite)
+				{
+					<iconify icon="lucide:star" Size=@(12) Color="#fbbf24" />
+				}
+			</div>
+			<div class="horiz-stat-row">
+				<div class="horiz-stat lv">
+					<span class="hs-label">LV</span>
+					<span class="hs-val">@Monster.Level</span>
+				</div>
+				<div class="horiz-stat pwr">
+					<span class="hs-label">PWR</span>
+					<span class="hs-val">@Monster.PowerRating.ToString("N0")</span>
+				</div>
+				@if (Monster?.Genetics != null)
+				{
+					<div class="horiz-stat genes @GetGeneticsClass()">
+						<iconify icon="lucide:dna" Size=@(11) Color="#c4b5fd" />
+						<span class="hs-val">@Monster.Genetics.TotalValue</span>
+					</div>
+				}
+			</div>
+			<!-- Quality micro-bar -->
+			<div class="horiz-quality-bar-bg">
+				<div class="horiz-quality-bar-fill @GetGeneticsClass()" style="width: @(((Monster?.Genetics?.TotalValue ?? 0) / 180f * 100f).ToString("F0"))%"></div>
+			</div>
+		</div>
+
+	</div>
+}
+else if (IsMini)
 {
 	<!-- Mini Card: Sprite + overlays -->
-	<div class="monster-card mini @(IsSelected ? "selected" : "")"
+	<div class="monster-card mini @(IsSelected ? "selected" : "") @(ShowGenes ? "show-genes" : "")"
 		 onclick=@OnCardClicked onmouseover=@OnMouseEnter onmouseout=@OnMouseLeave>
 		<!-- Sprite (absolutely positioned, fills card) -->
 		@if (HasSprite())
 		{
 			<div class="mini-icon monster-icon" style="background-image: url(@GetCurrentFrame())"></div>
 		}
-		<!-- Top-left: Combined pill badge -->
-		<div class="mini-tag">
-			<span class="mini-tag-lv">@Monster.Level</span>
-			<img class="mini-tag-el" src="ui/icons/elements/background/@(GetElementClass()).svg" />
-			<img class="mini-tag-rarity" src="ui/icons/rarity/@(GetRarityPipClass()).svg" />
+		<!-- Top-left badge stack: LV pill + (optional) genes pill flow
+		     side-by-side via flex so the genes pill auto-positions next
+		     to the LV pill regardless of digit count (LV5 vs LV100). -->
+		<div class="mini-badge-row">
+			<div class="mini-lv-pill">
+				<span class="lv-text">@($"LV{Monster.Level}")</span>
+			</div>
+			@if (ShowGenes && Monster?.Genetics != null)
+			{
+				<div class="mini-genes-pill @GetGeneticsClass()">
+					<iconify icon="lucide:dna" Size=@(11) Color="#c4b5fd" />
+					<span class="genes-text">@Monster.Genetics.TotalValue</span>
+				</div>
+			}
 		</div>
 		<!-- Top-right: Favorite -->
 		@if (Monster.IsFavorite)
 		{
-			<span class="mini-fav">★</span>
+			<div class="mini-fav"><iconify icon="lucide:star" Size=@(12) Color="#fbbf24" /></div>
 		}
-		<!-- Bottom: Name bar -->
+		<!-- Rarity edge line -->
+		<div class="mini-rarity-edge @GetRarityClass()"></div>
+		<!-- Bottom: Name bar with element icon(s). Dual-type beasts get
+		     a second smaller icon stacked next to the primary. -->
 		<div class="mini-name-bar">
+			<img class="mini-name-el" src="ui/icons/elements/background/@(GetElementClass()).svg" />
+			@if (HasSecondaryElement())
+			{
+				<img class="mini-name-el secondary" src="ui/icons/elements/background/@(GetSecondaryElementClass()).svg" />
+			}
 			<span class="mini-name">@Monster.Nickname</span>
 		</div>
 	</div>
@@ -154,7 +229,9 @@ else
 	public bool IsSelected { get; set; }
 	public bool IsCompact { get; set; }
 	public bool IsMini { get; set; }
+	public bool IsHorizontal { get; set; } // Horizontal variant: sprite left, info right (used in fusion parent slots)
 	public bool IsInTeam { get; set; }
+	public bool ShowGenes { get; set; } // Mini-card variant: shows the gene-total pill alongside LV (used in fusion mode)
 	public bool UseStaticImage { get; set; } = false;
 	public bool AnimateOnHover { get; set; } = false;
 	public Action ClickAction { get; set; }
@@ -361,6 +438,21 @@ else
 	{
 		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
 		return species?.Element.ToString().ToLower() ?? "neutral";
+	}
+
+	// Returns the secondary element class for dual-type beasts, or
+	// null if the species is single-type. Used by render variants
+	// that show both element badges.
+	private string GetSecondaryElementClass()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.SecondaryElement?.ToString().ToLower();
+	}
+
+	private bool HasSecondaryElement()
+	{
+		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		return species?.SecondaryElement.HasValue == true;
 	}
 
 	private string GetElementName()

@@ -937,15 +937,24 @@ public static class BattleSimulator
 		float baseDamage = (levelFactor * move.BasePower * atkDefRatio) / 20f + 2f;
 		baseDamage = Math.Max( 1, baseDamage );
 
-		// STAB (Same Type Attack Bonus) - 50% boost if move type matches monster type
-		if ( attackerSpecies != null && move.Element == attackerSpecies.Element )
+		// STAB (Same Type Attack Bonus) — 50% boost if move type matches
+		// EITHER of the attacker's types (dual-type beasts get STAB on
+		// both their primary and secondary type moves).
+		if ( attackerSpecies != null && (
+			move.Element == attackerSpecies.Element ||
+			(attackerSpecies.SecondaryElement.HasValue && move.Element == attackerSpecies.SecondaryElement.Value)
+		) )
 		{
 			result.HasSTAB = true;
 			baseDamage *= 1.5f;
 		}
 
-		// Type effectiveness (use move's element, not monster's)
-		float typeMultiplier = BattleAI.GetTypeEffectiveness( move.Element, defenderSpecies?.Element ?? ElementType.Neutral );
+		// Type effectiveness (use move's element vs defender's full
+		// type combo — Pokemon-style dual-type defense).
+		float typeMultiplier = BattleAI.GetTypeEffectiveness(
+			move.Element,
+			defenderSpecies?.Element ?? ElementType.Neutral,
+			defenderSpecies?.SecondaryElement );
 		result.ElementModifier = typeMultiplier;
 		result.IsSuperEffective = typeMultiplier >= 1.5f;
 		result.IsResisted = typeMultiplier < 1.0f && typeMultiplier > 0f;
@@ -2219,6 +2228,72 @@ public static class BattleSimulator
 		state.ProcessEndOfTurn();
 
 		Log.Info( $"[ExecuteSingleTurn] Returning {turns.Count} total turns" );
+		return turns;
+	}
+
+	/// <summary>
+	/// Execute only the enemy's turn (player consumed their turn contracting)
+	/// </summary>
+	public static List<BattleTurn> ExecuteEnemyOnlyTurn(
+		List<Monster> playerTeam,
+		List<Monster> enemyTeam,
+		BattleState state )
+	{
+		var turns = new List<BattleTurn>();
+		state.TurnNumber++;
+
+		var playerActive = GetActiveMonster( playerTeam, state.PlayerActiveIndex );
+		if ( playerActive == null || playerActive.CurrentHP <= 0 )
+			return turns;
+
+		var aliveEnemies = enemyTeam.Where( e => e != null && e.CurrentHP > 0 ).ToList();
+		if ( aliveEnemies.Count == 0 )
+			return turns;
+
+		// Each alive enemy gets to attack
+		foreach ( var enemy in aliveEnemies )
+		{
+			if ( playerActive.CurrentHP <= 0 ) break; // Player beast already KO'd
+
+			// AI selects a move
+			var enemyChoice = BattleAI.SelectAction( enemy, playerActive, state, aliveEnemies, false );
+
+			var actionResults = ExecuteAction(
+				enemyChoice, enemy, playerActive, false,
+				playerTeam, enemyTeam, state );
+			turns.AddRange( actionResults );
+		}
+
+		// Check if player's active beast is KO'd, auto-swap if possible
+		var playerCheck = GetActiveMonster( playerTeam, state.PlayerActiveIndex );
+		if ( playerCheck != null && playerCheck.CurrentHP <= 0 )
+		{
+			for ( int i = 0; i < playerTeam.Count; i++ )
+			{
+				if ( i == state.PlayerActiveIndex ) continue;
+				if ( playerTeam[i] != null && playerTeam[i].CurrentHP > 0 )
+				{
+					var oldActive = playerCheck;
+					state.PlayerActiveIndex = i;
+					var newActive = playerTeam[i];
+					turns.Add( new BattleTurn
+					{
+						TurnNumber = state.TurnNumber,
+						AttackerId = oldActive.Id,
+						AttackerName = oldActive.Nickname,
+						DefenderId = newActive.Id,
+						DefenderName = newActive.Nickname,
+						IsPlayerAttacker = true,
+						IsSwap = true,
+						SwapToName = newActive.Nickname,
+						StatusMessage = $"{newActive.Nickname} was sent out!"
+					} );
+					break;
+				}
+			}
+		}
+
+		Log.Info( $"[ExecuteEnemyOnlyTurn] Returning {turns.Count} turns" );
 		return turns;
 	}
 

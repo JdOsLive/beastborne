@@ -119,7 +119,7 @@ public static class BattleAI
 		// Type effectiveness bonus
 		if ( defenderSpecies != null )
 		{
-			float typeMultiplier = GetTypeEffectiveness( move.Element, defenderSpecies.Element );
+			float typeMultiplier = GetTypeEffectiveness( move.Element, defenderSpecies.Element, defenderSpecies.SecondaryElement );
 			if ( typeMultiplier >= 2.0f )
 				score += 30f; // Super effective
 			else if ( typeMultiplier >= 1.5f )
@@ -318,11 +318,12 @@ public static class BattleAI
 		var attackerSpecies = MonsterManager.Instance?.GetSpecies( attacker.SpeciesId );
 		var defenderSpecies = MonsterManager.Instance?.GetSpecies( defender.SpeciesId );
 
-		// Check if we're at severe type disadvantage
+		// Check if we're at severe type disadvantage. Use the defender's
+		// best move type vs OUR full dual-type defense (Pokemon-style).
 		bool atDisadvantage = false;
 		if ( attackerSpecies != null && defenderSpecies != null )
 		{
-			float theirEffectiveness = GetTypeEffectiveness( defenderSpecies.Element, attackerSpecies.Element );
+			float theirEffectiveness = GetTypeEffectiveness( defenderSpecies.Element, attackerSpecies.Element, attackerSpecies.SecondaryElement );
 			if ( theirEffectiveness >= 2.0f )
 				atDisadvantage = true;
 		}
@@ -350,15 +351,21 @@ public static class BattleAI
 
 			float score = 0f;
 
-			// Type advantage against enemy
-			float ourEffectiveness = GetTypeEffectiveness( teammateSpecies.Element, defenderSpecies?.Element ?? ElementType.Neutral );
+			// Type advantage against enemy (our type vs their dual defense)
+			float ourEffectiveness = GetTypeEffectiveness(
+				teammateSpecies.Element,
+				defenderSpecies?.Element ?? ElementType.Neutral,
+				defenderSpecies?.SecondaryElement );
 			if ( ourEffectiveness >= 2.0f )
 				score += 30f;
 			else if ( ourEffectiveness >= 1.5f )
 				score += 15f;
 
-			// Resistance to enemy type
-			float theirEffectiveness = GetTypeEffectiveness( defenderSpecies?.Element ?? ElementType.Neutral, teammateSpecies.Element );
+			// Resistance to enemy type (their type vs OUR dual defense)
+			float theirEffectiveness = GetTypeEffectiveness(
+				defenderSpecies?.Element ?? ElementType.Neutral,
+				teammateSpecies.Element,
+				teammateSpecies.SecondaryElement );
 			if ( theirEffectiveness <= 0.5f )
 				score += 20f;
 			else if ( theirEffectiveness >= 2.0f )
@@ -415,15 +422,21 @@ public static class BattleAI
 		damage = Math.Max( 1, damage );
 
 		// STAB
-		if ( attackerSpecies != null && move.Element == attackerSpecies.Element )
+		// STAB (Same Type Attack Bonus) — applies if the move's element
+		// matches EITHER of the attacker's types. Dual-type beasts get
+		// STAB on moves that match their primary OR secondary element.
+		if ( attackerSpecies != null && (
+			move.Element == attackerSpecies.Element ||
+			(attackerSpecies.SecondaryElement.HasValue && move.Element == attackerSpecies.SecondaryElement.Value)
+		) )
 		{
 			damage *= 1.5f;
 		}
 
-		// Type effectiveness
+		// Type effectiveness — multiplies against both defender types
 		if ( defenderSpecies != null )
 		{
-			damage *= GetTypeEffectiveness( move.Element, defenderSpecies.Element );
+			damage *= GetTypeEffectiveness( move.Element, defenderSpecies.Element, defenderSpecies.SecondaryElement );
 		}
 
 		return (int)damage;
@@ -470,6 +483,19 @@ public static class BattleAI
 	/// <summary>
 	/// Get type effectiveness multiplier
 	/// </summary>
+	/// <summary>
+	/// Dual-type defense overload. Multiplies the attack's effectiveness
+	/// against both defending types Pokemon-style. Pass null for the
+	/// secondary if the defender is single-type.
+	/// </summary>
+	public static float GetTypeEffectiveness( ElementType attackType, ElementType primaryDefend, ElementType? secondaryDefend )
+	{
+		float primary = GetTypeEffectiveness( attackType, primaryDefend );
+		if ( !secondaryDefend.HasValue ) return primary;
+		float secondary = GetTypeEffectiveness( attackType, secondaryDefend.Value );
+		return primary * secondary;
+	}
+
 	public static float GetTypeEffectiveness( ElementType attackType, ElementType defendType )
 	{
 		return (attackType, defendType) switch
