@@ -2137,13 +2137,46 @@ public static class BattleSimulator
 		// Execute actions
 		foreach ( var (choice, actor, target, isPlayer) in actions )
 		{
-			Log.Info( $"[ExecuteSingleTurn] Checking action: {actor.Nickname} (HP={actor.CurrentHP}) -> {target.Nickname} (HP={target.CurrentHP})" );
+			// Re-resolve enemy attack targets after a swap. The action queue is
+			// built BEFORE the priority sort, so an enemy attack captures `target`
+			// = playerActive at queue time. If the player's swap (priority 6) ran
+			// first this turn, state.PlayerActiveIndex has already advanced — the
+			// queued enemy attack would otherwise land on the OUTGOING beast
+			// (off-screen, on the bench), which is exactly Veauph's bug report:
+			// "swapped out my beast and it was attacked off-screen and killed
+			// instead of the beast I put in." Same fix applies to player attacks
+			// in case an enemy swap ever runs first (defensive parity).
+			var resolvedTarget = target;
+			if ( choice.ActionType == BattleActionType.Attack )
+			{
+				if ( !isPlayer )
+				{
+					var currentPlayerActive = GetActiveMonster( playerTeam, state.PlayerActiveIndex );
+					if ( currentPlayerActive != null && currentPlayerActive.CurrentHP > 0 && currentPlayerActive.Id != target.Id )
+					{
+						Log.Info( $"[ExecuteSingleTurn] Retargeting enemy attack from {target.Nickname} -> {currentPlayerActive.Nickname} (player swapped this turn)" );
+						resolvedTarget = currentPlayerActive;
+					}
+				}
+				else if ( state.IsArenaMode )
+				{
+					// Arena mirror: if enemy swapped first, retarget to new enemy active.
+					var currentEnemyActive = GetActiveMonster( enemyTeam, state.EnemyActiveIndex );
+					if ( currentEnemyActive != null && currentEnemyActive.CurrentHP > 0 && currentEnemyActive.Id != target.Id )
+					{
+						Log.Info( $"[ExecuteSingleTurn] Retargeting player attack from {target.Nickname} -> {currentEnemyActive.Nickname} (enemy swapped this turn)" );
+						resolvedTarget = currentEnemyActive;
+					}
+				}
+			}
+
+			Log.Info( $"[ExecuteSingleTurn] Checking action: {actor.Nickname} (HP={actor.CurrentHP}) -> {resolvedTarget.Nickname} (HP={resolvedTarget.CurrentHP})" );
 			if ( actor.CurrentHP <= 0 )
 			{
 				Log.Info( $"[ExecuteSingleTurn] Skipping - actor is KO'd" );
 				continue;
 			}
-			if ( target.CurrentHP <= 0 )
+			if ( resolvedTarget.CurrentHP <= 0 )
 			{
 				Log.Info( $"[ExecuteSingleTurn] Skipping - target is KO'd" );
 				continue;
@@ -2154,7 +2187,7 @@ public static class BattleSimulator
 				break;
 			}
 
-			var turnResults = ExecuteAction( choice, actor, target, isPlayer, playerTeam, enemyTeam, state );
+			var turnResults = ExecuteAction( choice, actor, resolvedTarget, isPlayer, playerTeam, enemyTeam, state );
 			Log.Info( $"[ExecuteSingleTurn] Executed action, got {turnResults.Count} turn results" );
 			turns.AddRange( turnResults );
 		}

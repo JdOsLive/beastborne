@@ -654,8 +654,12 @@ public sealed class BattleManager : Component
 			}
 		}
 
-		// Update tamer battle stats
-		if ( TamerManager.Instance?.CurrentTamer != null )
+		// Update tamer battle stats. Raids are score-attack runs — they always
+		// flag PlayerWon=true regardless of whether the team survived (see
+		// PlaybackManualTurns raid path), so we'd double-count if we let raid
+		// runs increment the battles-won counter. Skip the increment for raids;
+		// the raid score is tracked separately via RaidDamageDealt.
+		if ( TamerManager.Instance?.CurrentTamer != null && !IsRaidMode )
 		{
 			TamerManager.Instance.CurrentTamer.TotalBattlesWon++;
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalBattlesWon, TamerManager.Instance.CurrentTamer.TotalBattlesWon );
@@ -837,9 +841,16 @@ public sealed class BattleManager : Component
 			MissionManager.Instance?.TrackBossDefeated();
 		}
 
-		// Accumulate tamer-level damage/knockout totals for leaderboards
+		// Accumulate tamer-level damage/knockout totals for leaderboards.
+		// Skip for raids — raid damage is the score itself, accumulating it
+		// into lifetime damage massively inflates the leaderboard (a 10-round
+		// raid against an immortal boss easily deals 500k+ damage). Per-monster
+		// damage above is also gated; we exited TrackVeteranStats before this
+		// block updates monster totals, but those still get raid damage today.
+		// TODO: also gate the per-monster `ownedMonster.TotalDamageDealt` block
+		// for raids if we ever expose it on the leaderboard.
 		var tamer = TamerManager.Instance?.CurrentTamer;
-		if ( tamer != null )
+		if ( tamer != null && !IsRaidMode )
 		{
 			int battleDamage = damageByMonster.Values.Sum();
 			int battleKOs = kosByMonster.Values.Sum();

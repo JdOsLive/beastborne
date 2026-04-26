@@ -197,6 +197,57 @@ public sealed class TamerManager : Component
 				// and it'll no-op anyway. The next mutation will push the flag.
 			}
 
+			// MigrationVersion 1 — beta-launch leaderboard reset. Pre-launch
+			// playtest data (raid runs counted as battle wins, dev bot-testing,
+			// missing aggregation config, etc) inflated lifetime counters AND
+			// the public leaderboards. Zero out the local counters AND push 0
+			// to every affected leaderboard slug so the public boards visibly
+			// reset — without the explicit upload, players' boards stay frozen
+			// at the inflated value until they next trigger an event that
+			// uploads a stat. The local achievements/missions that key off
+			// these counters will re-progress, which is intentional — fresh
+			// boards mean fresh progression too.
+			if ( CurrentTamer.MigrationVersion < 1 )
+			{
+				int prevBattles = CurrentTamer.TotalBattlesWon;
+				int prevDamage = CurrentTamer.TotalDamageDealt;
+				int prevKOs = CurrentTamer.TotalKnockouts;
+				int prevCaught = CurrentTamer.TotalMonstersCaught;
+				int prevBred = CurrentTamer.TotalMonstersBred;
+				int prevEvolved = CurrentTamer.TotalMonstersEvolved;
+				int prevExpeditions = CurrentTamer.TotalExpeditionsCompleted;
+
+				CurrentTamer.TotalBattlesWon = 0;
+				CurrentTamer.TotalBattlesLost = 0;
+				CurrentTamer.TotalDamageDealt = 0;
+				CurrentTamer.TotalKnockouts = 0;
+				CurrentTamer.TotalMonstersCaught = 0;
+				CurrentTamer.TotalMonstersBred = 0;
+				CurrentTamer.TotalMonstersEvolved = 0;
+				CurrentTamer.TotalExpeditionsCompleted = 0;
+
+				// Push 0 to every public-facing leaderboard slug so other clients
+				// see the reset immediately. Stats.SetValue is fire-and-forget;
+				// failures are logged but non-fatal.
+				try
+				{
+					Stats.SetValue( "battles-won-launch", 0 );
+					Stats.SetValue( "total-damage-launch", 0 );
+					Stats.SetValue( "total-knockouts-launch", 0 );
+					Stats.SetValue( "monsters-caught-launch", 0 );
+					Stats.SetValue( "monsters-bred-launch", 0 );
+					Stats.SetValue( "monsters-evolved-launch", 0 );
+					Stats.SetValue( "expeditions-completed-launch", 0 );
+				}
+				catch ( Exception e )
+				{
+					Log.Warning( $"[TamerManager] Migration v1 leaderboard push failed: {e.Message}" );
+				}
+
+				CurrentTamer.MigrationVersion = 1;
+				Log.Info( $"[TamerManager] Beta-launch migration v1: cleared inflated stats (was BattlesWon={prevBattles}, Damage={prevDamage}, KOs={prevKOs}, Caught={prevCaught}, Bred={prevBred}, Evolved={prevEvolved}, Expeditions={prevExpeditions}) and pushed 0 to public leaderboards" );
+			}
+
 			// Clamp on LOAD as well as on save. Without this, a corrupted save
 			// (e.g. pre-launch dev build with inflated TotalPlayTime) would be
 			// displayed and submitted to the leaderboard before the next

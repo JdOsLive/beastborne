@@ -81,6 +81,13 @@ public class Tamer
 	// Bug fix compensation flags
 	public bool HasClaimedSkillPointRecovery { get; set; } = false;
 
+	// One-time migration version. Each migration step bumps this and
+	// performs cleanup on load. Use for retroactive data fixes that
+	// shouldn't run twice. v1 = beta-launch leaderboard reset (zeroes
+	// pre-launch inflated battle/damage/KO totals so the open beta
+	// starts everyone clean).
+	public int MigrationVersion { get; set; } = 0;
+
 	// Stats tracking
 	public int TotalBattlesWon { get; set; } = 0;
 	public int TotalBattlesLost { get; set; } = 0;
