@@ -31,6 +31,20 @@ public sealed class ShopManager : Component
 	private List<ServerBoost> _serverBoosts = new();
 	public IReadOnlyList<ServerBoost> ServerBoosts => _serverBoosts;
 
+	// ---------------------------------------------------------------
+	// Daily Spotlight — one featured item per "day" gets a real gold
+	// discount applied at purchase time. Kept on the manager (not the
+	// item data) so the discount state is stateless on ShopItem and
+	// the spotlight concept lives where it belongs.
+	//
+	// Picking logic mirrors the UI's GetFeaturedItem ladder (storage
+	// → personal boost → highest-priced item), but the resolver is
+	// self-contained here so the discount applies even if the UI
+	// never runs (e.g. scripted / automated purchase).
+	// ---------------------------------------------------------------
+	public string SpotlightItemId { get; private set; }
+	public float SpotlightDiscountPercent { get; private set; } = 15f;
+
 	// Events
 	public Action<ShopItem> OnItemPurchased;
 	public Action<ActiveBoost> OnBoostExpired;
@@ -45,6 +59,7 @@ public sealed class ShopManager : Component
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
 			InitializeShop();
+			ResolveSpotlight();
 			Log.Info( "ShopManager initialized" );
 		}
 		else
@@ -380,7 +395,110 @@ public sealed class ShopManager : Component
 	}
 
 	/// <summary>
-	/// Get the discounted price for an item (applies Bargain Hunter + Savvy Shopper skills)
+	/// Allow the UI (or any other caller) to declare which item is the
+	/// current Daily Spotlight. Used by <c>ShopPanelContent</c> so that
+	/// the UI-side featured ladder (which honors player state like
+	/// "storage maxed out") stays in sync with the manager-side sale
+	/// discount applied at purchase time.
+	///
+	/// Passing null clears the spotlight (no item gets the discount).
+	/// </summary>
+	public void SetSpotlight( string itemId )
+	{
+		SpotlightItemId = itemId;
+	}
+
+	/// <summary>
+	/// Resolve which item is currently the Daily Spotlight. Mirrors the
+	/// UI's featured-item ladder (storage expansion → highest-priced
+	/// personal boost → highest-priced non-server item). Called on init
+	/// and stashes the id on <see cref="SpotlightItemId"/>.
+	///
+	/// Kept simple and deterministic for this pass — every server sees
+	/// the same spotlight. A daily rotation can be layered on later by
+	/// seeding the selection with DateTime.UtcNow.Date, but for now the
+	/// spotlight is a real gold sale and we want the discount to behave
+	/// predictably across sessions.
+	/// </summary>
+	private void ResolveSpotlight()
+	{
+		SpotlightItemId = null;
+
+		// 1. Big-ticket storage expansion (matches UI heuristic)
+		var storageHero = _shopItems.FirstOrDefault(
+			i => i.Type == ShopItemType.MonsterSlot && i.Price >= 250000 && !i.Id.StartsWith( "server_" ) );
+		if ( storageHero != null )
+		{
+			SpotlightItemId = storageHero.Id;
+			return;
+		}
+
+		// 2. Highest-priced personal boost
+		var boost = _shopItems
+			.Where( i => !i.Id.StartsWith( "server_" ) && IsBoostCategory( i.Type ) )
+			.OrderByDescending( i => i.Price )
+			.FirstOrDefault();
+		if ( boost != null )
+		{
+			SpotlightItemId = boost.Id;
+			return;
+		}
+
+		// 3. Highest-priced non-server fallback
+		var fallback = _shopItems
+			.Where( i => !i.Id.StartsWith( "server_" ) )
+			.OrderByDescending( i => i.Price )
+			.FirstOrDefault();
+		SpotlightItemId = fallback?.Id;
+	}
+
+	private static bool IsBoostCategory( ShopItemType t )
+	{
+		return t == ShopItemType.TamerXPBoost
+			|| t == ShopItemType.BeastXPBoost
+			|| t == ShopItemType.XPBoost
+			|| t == ShopItemType.GoldBoost
+			|| t == ShopItemType.RareEncounter
+			|| t == ShopItemType.LuckyCharm;
+	}
+
+	/// <summary>
+	/// Is this item the currently-featured Daily Spotlight?
+	/// </summary>
+	public bool IsSpotlight( ShopItem item )
+	{
+		return item != null && !string.IsNullOrEmpty( SpotlightItemId ) && item.Id == SpotlightItemId;
+	}
+
+	/// <summary>
+	/// Is this item (by id) the currently-featured Daily Spotlight?
+	/// </summary>
+	public bool IsSpotlight( string itemId )
+	{
+		return !string.IsNullOrEmpty( SpotlightItemId ) && itemId == SpotlightItemId;
+	}
+
+	/// <summary>
+	/// Apply the spotlight discount (if this item is the spotlight and pays
+	/// in gold). Returns the post-discount price. Other callers (skills,
+	/// hover cost preview, etc) should route through <see cref="GetDiscountedPrice"/>,
+	/// which now includes this discount too.
+	/// </summary>
+	public int GetSpotlightDiscountedPrice( ShopItem item )
+	{
+		if ( item == null ) return 0;
+		if ( item.Currency != CurrencyType.Gold ) return item.Price;
+		if ( !IsSpotlight( item ) ) return item.Price;
+		if ( SpotlightDiscountPercent <= 0 ) return item.Price;
+
+		float pct = Math.Min( SpotlightDiscountPercent, 90f );
+		int discounted = (int)( item.Price * ( 1f - pct / 100f ) );
+		return Math.Max( 1, discounted );
+	}
+
+	/// <summary>
+	/// Get the discounted price for an item (applies Bargain Hunter + Savvy Shopper skills,
+	/// then the Daily Spotlight discount on top of that).
 	/// </summary>
 	public int GetDiscountedPrice( ShopItem item )
 	{
@@ -402,11 +520,17 @@ public sealed class ShopManager : Component
 			discount += extraDiscount;
 		}
 
+		// Daily Spotlight discount stacks additively with skill discounts
+		if ( IsSpotlight( item ) && SpotlightDiscountPercent > 0 )
+		{
+			discount += SpotlightDiscountPercent;
+		}
+
 		if ( discount <= 0 )
 			return item.Price;
 
-		// Cap total discount at 50%
-		discount = Math.Min( discount, 50f );
+		// Cap total discount at 70% (was 50% — spotlight + max skill stack can legitimately reach ~40%)
+		discount = Math.Min( discount, 70f );
 
 		int discountedPrice = (int)(item.Price * (1 - discount / 100f));
 		return Math.Max( 1, discountedPrice ); // Minimum 1 gold

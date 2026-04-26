@@ -1,6 +1,8 @@
 @namespace Beastborne.UI.Components
 @using Sandbox;
 @using Sandbox.UI;
+@using System;
+@using System.Threading.Tasks;
 @inherits Panel
 
 <root class="battle-transition @(phase)">
@@ -63,5 +65,52 @@
 		if ( Instance == null ) return;
 		Instance.phase = "hidden";
 		Instance.StateHasChanged();
+	}
+
+	/// <summary>
+	/// Run the full cinematic fade-in → hold → fade-out sequence. <paramref name="onBlackout"/>
+	/// fires while the screen is fully black — the right moment to mutate state that
+	/// should be invisible to the player (e.g. start an expedition).
+	///
+	/// This method orchestrates the sequence from BattleTransition itself (a globally
+	/// persistent panel in GameHUD) so the async chain survives even if the caller
+	/// gets destroyed mid-flight. Team picker triggers StartExpedition during the
+	/// blackout, which swaps WorldMapPanel out for ExpeditionPanel and destroys the
+	/// picker — if the caller had awaited the sequence from its own lifetime, the
+	/// continuation would die and Hide() would never fire, leaving the screen black.
+	/// </summary>
+	// Fully qualified `System.Threading.Tasks.Task` avoids the name collision
+	// with Sandbox.UI.Panel.Task (an inherited member) that would otherwise
+	// shadow the type inside a Panel subclass.
+	public static async System.Threading.Tasks.Task PlayEmbarkSequence( Action onBlackout, int fadeInMs = 350, int holdMs = 1200, int fadeOutMs = 700 )
+	{
+		if ( Instance == null )
+		{
+			// Still run the action so we don't softlock the caller's flow.
+			try { onBlackout?.Invoke(); } catch ( Exception ex ) { Log.Warning( $"[BattleTransition] onBlackout threw: {ex.Message}" ); }
+			return;
+		}
+
+		try
+		{
+			FadeIn();
+			await System.Threading.Tasks.Task.Delay( fadeInMs );
+			Hold();
+
+			try { onBlackout?.Invoke(); } catch ( Exception ex ) { Log.Warning( $"[BattleTransition] onBlackout threw: {ex.Message}" ); }
+
+			await System.Threading.Tasks.Task.Delay( holdMs );
+
+			FadeOut();
+			await System.Threading.Tasks.Task.Delay( fadeOutMs );
+			Hide();
+		}
+		catch ( Exception ex )
+		{
+			Log.Warning( $"[BattleTransition] PlayEmbarkSequence error: {ex.Message}" );
+			// Belt-and-suspenders: if anything threw mid-sequence, clear the overlay
+			// so the player isn't stuck on a black screen.
+			Hide();
+		}
 	}
 }

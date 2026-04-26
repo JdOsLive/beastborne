@@ -7,297 +7,952 @@
 @using Beastborne.UI.Components;
 @inherits Panel
 
-<div class="beastiary-panel" onclick=@OnPanelClicked>
-	<div class="beastiary-header">
+<root class="beastbook-panel" onclick=@OnPanelClicked>
+
+	<!-- ============================================================
+	     HEADER — floating filter row, roster-style. Title chip left,
+	     FilterBar center (pills render themselves), completion pill right.
+	     No solid 60px bar, no border-bottom — just pills on the page bg.
+	     ============================================================ -->
+	<div class="beastbook-header">
 		<div class="header-left">
-			<img class="panel-title-icon" src="ui/icons/beastiary.svg" />
-			<div class="beastiary-title">@L("ui.beastiary.title")</div>
+			<img src="ui/icons/beastiary.svg" class="beastbook-title-icon" />
+			<div class="beastbook-title">@L("ui.beastiary.title")</div>
 		</div>
 		<div class="header-filters">
 			<FilterBar @ref="filterBar"
 					   CurrentElement=@currentElementStr
 					   CurrentSort=@currentSort
+					   SortAscending=@sortAscending
 					   ShowBeastiarySort=@true
 					   HideMonsterOnlySorts=@true
 					   OnElementChanged=@OnElementChanged
 					   OnSortChanged=@OnSortChanged
+					   OnSortDirectionChanged=@OnSortDirectionChanged
 					   OnNameFilterChanged=@OnNameFilterChanged
 					   AvailableNames=@GetSpeciesNames() />
 		</div>
-		<div class="discovery-count">
-			<img class="count-icon-svg" src="ui/icons/beastiary.svg" />
-			<span class="count-value">@GetDiscoveredCount()</span>
-			<span class="count-separator">/</span>
-			<span class="count-total">@GetTotalCount()</span>
-			<span class="count-label">@L("ui.beastiary.discovered")</span>
+		<div class="header-right">
+			@{
+				var pct = GetCompletionPercent();
+				var isMilestone = pct >= 25 && (pct == 25 || pct == 50 || pct == 75 || pct == 100);
+			}
+			<div class="beastbook-count @(isMilestone ? "milestone" : "")">
+				@if (isMilestone)
+				{
+					<iconify icon="lucide:sparkles" Size=@(13) Color="#fbbf24" />
+				}
+				<span class="beastbook-count-pct">@(pct)%</span>
+				<span class="beastbook-count-dot">·</span>
+				<span class="beastbook-count-count">@GetDiscoveredCount() / @GetTotalCount()</span>
+				<span class="beastbook-count-label">@L("ui.beastbook.bound")</span>
+			</div>
 		</div>
 	</div>
 
-	<div class="beastiary-content">
-		<div class="beastiary-left">
-			<div class="species-grid">
-			@foreach (var species in GetFilteredSpecies())
-			{
-				var isDiscovered = IsDiscovered(species.Id);
-				var isSeen = IsSeen(species.Id);
-				var stateClass = isDiscovered ? "discovered" : (isSeen ? "seen" : "undiscovered");
-				<div class="species-entry @stateClass @(selectedSpecies?.Id == species.Id ? "selected" : "")"
-					 onclick=@(() => SelectSpecies(species, isDiscovered))>
-
-					<div class="entry-icon-container @GetRarityClass(species)">
-						@if (isDiscovered || isSeen)
-						{
-							@if (HasSprite(species))
-							{
-								<img class="entry-icon @(isSeen && !isDiscovered ? "seen-only" : "")" src="@species.IconPath" style="margin-left: @(species.IconOffsetX - 18)px; margin-top: @(species.IconOffsetY)px" />
-							}
-							else
-							{
-								<div class="unknown-icon">?</div>
-							}
-						}
-						else
-						{
-							<div class="unknown-icon">?</div>
-						}
-					</div>
-
-					<div class="entry-name-row">
-						<img class="entry-element-icon" src="ui/icons/elements/background/@(species.Element.ToString().ToLower()).svg" />
-						<div class="entry-name">
-							@(isDiscovered || isSeen ? species.Name : "???")
-						</div>
-					</div>
-
-					<div class="entry-number">#@species.BeastiaryNumber.ToString("D3")</div>
-				</div>
-			}
-			</div>
-		</div>
-
-		<!-- Species Detail Panel - Always visible -->
-		<div class="species-detail @(selectedSpecies == null ? "empty" : "") @(selectedSpecies != null && !IsDiscovered(selectedSpecies.Id) ? (IsSeen(selectedSpecies.Id) ? "seen" : "undiscovered") : "")">
-			@if (selectedSpecies != null && IsDiscovered(selectedSpecies.Id))
-			{
-				<div class="detail-header">
-					@if (HasSprite(selectedSpecies))
+	<!-- ============================================================
+	     BODY — roster-style collection layout: grid dominates, detail
+	     sidebar is a narrower ~400px column on the right.
+	     ============================================================ -->
+	<div class="view-container">
+		<div class="collection-layout with-detail">
+			<div class="collection-main">
+				<div class="beastbook-grid">
+					@{
+						var filteredSpecies = GetFilteredSpecies();
+					}
+					@if (filteredSpecies.Count == 0)
 					{
-						<img class="detail-icon" src="@GetAnimatedIcon(selectedSpecies)" />
+						<div class="beastbook-grid-empty">
+							<iconify icon="lucide:search-x" Size=@(56) Color="rgba(255,255,255,0.25)" />
+							<span class="beastbook-grid-empty-text">@L("ui.beastbook.no_match")</span>
+							<span class="beastbook-grid-empty-hint">@L("ui.beastbook.no_match_hint")</span>
+						</div>
 					}
 					else
 					{
-						<div class="detail-icon-placeholder">?</div>
-					}
-					<div class="detail-info">
-						<div class="detail-number">#@selectedSpecies.BeastiaryNumber.ToString("D3")</div>
-						<div class="detail-name">@selectedSpecies.Name</div>
-						<div class="detail-badges">
-							<div class="detail-element @selectedSpecies.Element.ToString().ToLower()">
-								<img class="detail-element-icon" src="ui/icons/elements/element_white/@(selectedSpecies.Element.ToString().ToLower()).svg" />
-								<span>@selectedSpecies.Element</span>
-							</div>
-							<div class="detail-rarity @selectedSpecies.BaseRarity.ToString().ToLower()">
-								@selectedSpecies.BaseRarity
-							</div>
-						</div>
-					</div>
-				</div>
+						@foreach (var species in filteredSpecies)
+						{
+							var isDiscovered = IsDiscovered(species.Id);
+							var isSeen = IsSeen(species.Id);
+							var stateClass = isDiscovered ? "discovered" : (isSeen ? "seen" : "undiscovered");
+							var isSelected = selectedSpecies?.Id == species.Id;
+							var primaryClass = species.Element.ToString().ToLower();
+							var secondaryClassCard = species.SecondaryElement.HasValue
+								? species.SecondaryElement.Value.ToString().ToLower()
+								: null;
+							var elementClass = $"element-{primaryClass}";
+							var rarityClassCard = $"rarity-{species.BaseRarity.ToString().ToLower()}";
+							// Card = flat uniform #0c0a18 bg for every card. Element color
+							// is bounded to the small square badge(s) in the bottom strip —
+							// no per-card tint floods anymore. Rarity = border color + thickness.
+							// Number = LV-style dark pill in the top-left corner.
+							<div class="bb-card @stateClass @elementClass @rarityClassCard @(isSelected ? "selected" : "")"
+								 onclick=@(() => SelectSpecies(species, isDiscovered))
+								 onmouseover=@(() => OnCardHover(species.Id))>
 
-				<div class="detail-description">
-					<div class="description-text">@selectedSpecies.Description</div>
-				</div>
-
-				<div class="detail-section">
-					<div class="section-title">@L("ui.beastiary.base_stats")</div>
-					<div class="base-stats">
-						<div class="base-stat">
-							<span class="stat-label">HP</span>
-							<div class="stat-bar">
-								<div class="stat-fill hp" style="width: @(statsResetting ? 0 : selectedSpecies.BaseHP * 100 / 150)%"></div>
-							</div>
-							<span class="stat-value">@selectedSpecies.BaseHP</span>
-						</div>
-						<div class="base-stat">
-							<span class="stat-label">ATK</span>
-							<div class="stat-bar">
-								<div class="stat-fill atk" style="width: @(statsResetting ? 0 : selectedSpecies.BaseATK * 100 / 150)%"></div>
-							</div>
-							<span class="stat-value">@selectedSpecies.BaseATK</span>
-						</div>
-						<div class="base-stat">
-							<span class="stat-label">DEF</span>
-							<div class="stat-bar">
-								<div class="stat-fill def" style="width: @(statsResetting ? 0 : selectedSpecies.BaseDEF * 100 / 150)%"></div>
-							</div>
-							<span class="stat-value">@selectedSpecies.BaseDEF</span>
-						</div>
-						<div class="base-stat">
-							<span class="stat-label">SpA</span>
-							<div class="stat-bar">
-								<div class="stat-fill spa" style="width: @(statsResetting ? 0 : selectedSpecies.BaseSpA * 100 / 150)%"></div>
-							</div>
-							<span class="stat-value">@selectedSpecies.BaseSpA</span>
-						</div>
-						<div class="base-stat">
-							<span class="stat-label">SpD</span>
-							<div class="stat-bar">
-								<div class="stat-fill spd-def" style="width: @(statsResetting ? 0 : selectedSpecies.BaseSpD * 100 / 150)%"></div>
-							</div>
-							<span class="stat-value">@selectedSpecies.BaseSpD</span>
-						</div>
-						<div class="base-stat">
-							<span class="stat-label">SPD</span>
-							<div class="stat-bar">
-								<div class="stat-fill spd" style="width: @(statsResetting ? 0 : selectedSpecies.BaseSPD * 100 / 150)%"></div>
-							</div>
-							<span class="stat-value">@selectedSpecies.BaseSPD</span>
-						</div>
-						<div class="base-stat-total">
-							<span class="stat-label">Total</span>
-							<span class="stat-value">@GetBaseStatTotal(selectedSpecies)</span>
-						</div>
-					</div>
-				</div>
-
-				@{
-					var evolutionChain = GetEvolutionChain(selectedSpecies);
-				}
-				@if (evolutionChain.Count > 1)
-				{
-					<div class="detail-section">
-						<div class="section-title">Evolution</div>
-						<div class="evolution-chain">
-							@for (int i = 0; i < evolutionChain.Count; i++)
-							{
-								var evoSpecies = evolutionChain[i];
-								var isCurrent = evoSpecies.Id == selectedSpecies.Id;
-								var isDiscovered = IsDiscovered(evoSpecies.Id);
-
-								@if (i > 0)
+								@if (justSelectedSpeciesId == species.Id)
 								{
-									<div class="evolution-arrow">→</div>
+									<!-- One-shot select pulse. `pulse-@selectPulseVersion`
+									     remounts the div every click so @keyframes re-fires
+									     (s&box only plays keyframes on first DOM mount).
+									     Rarity class flows through so the pulse border color
+									     can match the beast's rarity tier — signature beastbook
+									     touch vs the shop's single purple. -->
+									<div class="select-pulse pulse-@selectPulseVersion @rarityClassCard"></div>
 								}
 
-								<div class="evolution-stage @(isCurrent ? "current" : "") @(isDiscovered ? "" : "unknown")">
-									@if (isDiscovered)
+								<!-- Card header — number pill only. Rarity communicates via the
+								     thin strip at the card's bottom edge instead of a badge here.
+								     Hidden on undiscovered so we don't leak number. -->
+								@if (isDiscovered || isSeen)
+								{
+									<div class="bb-card-header">
+										<div class="bb-card-number">
+											<span>#@species.BeastiaryNumber.ToString("D3")</span>
+										</div>
+									</div>
+								}
+
+								<!-- Rarity strip — thin colored line at the bottom of the card.
+								     Only visible for discovered beasts (don't leak rarity). -->
+								@if (isDiscovered)
+								{
+									<div class="bb-card-rarity-strip @rarityClassCard"></div>
+								}
+
+								<!-- Portrait — fills most of the card, bottom-aligned.
+								     CardScale + CardOffsetX/Y (per-species data overrides,
+								     defaults 1.0 / 0 / 0) are composed into a single transform
+								     on the container so that native sprite-size and anchor
+								     mismatches can be normalized without touching the shared
+								     grid layout. Scale origin is center bottom so the sprite
+								     scales up from the feet and stays grounded in the card.
+								     InvariantCulture on the float formatting — s&box CSS
+								     needs `.` not `,` regardless of the host machine locale.
+								     The img's own hover translate still composes inside. -->
+								@{
+									var ci = System.Globalization.CultureInfo.InvariantCulture;
+									var cardOx = species.CardOffsetX.ToString("F2", ci);
+									var cardOy = species.CardOffsetY.ToString("F2", ci);
+									var cardSc = species.CardScale.ToString("F2", ci);
+									var cardTransform = $"transform: translate({cardOx}px, {cardOy}px) scale({cardSc}); transform-origin: center bottom;";
+								}
+								<div class="bb-card-portrait" style="@cardTransform">
+									@if (HasSprite(species))
 									{
-										@if (HasSprite(evoSpecies))
-										{
-											<img class="evo-icon" src="@evoSpecies.IconPath" />
-										}
-										else
-										{
-											<div class="evo-unknown">?</div>
-										}
-										<span class="evo-name">@evoSpecies.Name</span>
+										<img class="bb-card-sprite @(isSeen && !isDiscovered ? "seen-only" : "") @(!isDiscovered && !isSeen ? "silhouette" : "")" src="@GetAnimatedIcon(species)" />
 									}
 									else
 									{
-										<div class="evo-unknown">?</div>
-										<span class="evo-name">???</span>
+										<div class="bb-card-unknown">?</div>
 									}
-									@if (i == 0)
+								</div>
+
+								<!-- Bottom strip — name on the left, small square element
+								     badge(s) on the right. Each badge is a colored tile with
+								     a white element glyph inside. Dual-type beasts render two
+								     badges side-by-side. Element color lives ONLY on these
+								     badges so the grid reads calm and uniform. -->
+								<div class="bb-card-bottom">
+									<span class="bb-card-name">@(isDiscovered || isSeen ? species.Name : "???")</span>
+									@if (isDiscovered || isSeen)
 									{
-										<span class="evo-level">Base</span>
+										<div class="bb-card-elements">
+											<div class="bb-card-element-badge element-@primaryClass">
+												<img class="bb-card-el" src="ui/icons/elements/element_white/@(primaryClass).svg" />
+											</div>
+											@if (secondaryClassCard != null)
+											{
+												<div class="bb-card-element-badge element-@secondaryClassCard">
+													<img class="bb-card-el" src="ui/icons/elements/element_white/@(secondaryClassCard).svg" />
+												</div>
+											}
+										</div>
+									}
+								</div>
+
+							</div>
+						}
+					}
+				</div>
+			</div>
+
+			<!-- ============================================================
+			     DETAIL SIDEBAR — roster silhouette. Vertical stack,
+			     ~400px wide, compact portrait next to identity block,
+			     then sections. Moves live inline at the bottom.
+			     ============================================================ -->
+			<div class="detail-sidebar entered">
+
+				@if (selectedSpecies == null)
+				{
+					<!-- Empty state -->
+					<div class="bb-empty">
+						<iconify icon="lucide:book-open" Size=@(72) Color="rgba(255,255,255,0.12)" />
+						<span class="bb-empty-text">@L("ui.beastbook.empty_state")</span>
+						<span class="bb-empty-hint">@L("ui.beastbook.empty_hint")</span>
+					</div>
+				}
+				else if (!IsDiscovered(selectedSpecies.Id) && !IsSeen(selectedSpecies.Id))
+				{
+					<!-- Undiscovered state -->
+					<div class="bb-empty">
+						<iconify icon="lucide:help-circle" Size=@(72) Color="rgba(255,255,255,0.12)" />
+						<span class="bb-empty-text">???</span>
+						<span class="bb-empty-hint">@L("ui.beastbook.find_hint")</span>
+					</div>
+				}
+				else
+				{
+					var isFullyDiscovered = IsDiscovered(selectedSpecies.Id);
+					var primaryClass = selectedSpecies.Element.ToString().ToLower();
+					var secondaryClass = selectedSpecies.SecondaryElement.HasValue
+						? selectedSpecies.SecondaryElement.Value.ToString().ToLower()
+						: null;
+
+					<!-- ============================================================
+					     FIXED TOP — portrait + identity + description. Does NOT
+					     scroll. Pinned so the beast + its flavor stay visible no
+					     matter which swappable view is active below.
+					     ============================================================ -->
+					<div class="bb-detail-fixed">
+
+						<!-- ====== HERO ROW: portrait + identity block ====== -->
+						<div class="bb-portrait-section">
+
+							<!-- Portrait — clean dark frame, no rarity/element color bleed. -->
+							<div class="bb-portrait-wrapper">
+								<div class="bb-portrait-container @(isFullyDiscovered ? "" : "silhouette")"
+									 onclick=@OnPortraitClick
+									 onmouseover=@(() => OnDiamondHover("portrait"))
+									 title="@L("ui.beastbook.click_to_hear")">
+									@if (HasSprite(selectedSpecies))
+									{
+										<img class="bb-portrait-sprite @(isFullyDiscovered ? "" : "silhouette")" src="@GetAnimatedIcon(selectedSpecies)" />
 									}
 									else
 									{
-										var prevSpecies = evolutionChain[i - 1];
-										<span class="evo-level">Lv.@prevSpecies.EvolutionLevel</span>
+										<div class="bb-portrait-unknown">?</div>
+									}
+								</div>
+								<!-- element pills live inline next to the name (see identity block below).
+								     the identity block, per user feedback. No duplicate row
+								     under the portrait. -->
+
+							</div>
+
+							<!-- Identity block — strict VERTICAL STACK.
+							     Row 1 (line 1): #num pill alone.
+							     Row 2 (line 2): big name.
+							     Row 3 (line 3): element pill(s) with icon + full name label.
+							     Row 4 (line 4): rarity badge + BST badge on their own row.
+							     Per user feedback — number on top, name below, element beneath
+							     with its full word, stats+rarity as a final summary row. -->
+							<div class="bb-name-section">
+								<div class="bb-identity-row-num">
+									<div class="bb-number-pill">
+										<span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
+									</div>
+								</div>
+								<div class="bb-identity-row-name">
+									<div class="bb-name">@selectedSpecies.Name</div>
+								</div>
+								@if (isFullyDiscovered || IsSeen(selectedSpecies.Id))
+								{
+									<!-- Element pills — own row. Dual-type (FIRE + SHADOW)
+									     sits horizontally, wraps only if column gets cramped. -->
+									<div class="bb-identity-elements-row">
+										<div class="bb-pill element-@primaryClass bb-element-pill-full">
+											<img src="ui/icons/elements/element_white/@(primaryClass).svg" />
+											<span>@primaryClass.ToUpper()</span>
+										</div>
+										@if (secondaryClass != null)
+										{
+											<div class="bb-pill element-@secondaryClass bb-element-pill-full">
+												<img src="ui/icons/elements/element_white/@(secondaryClass).svg" />
+												<span>@secondaryClass.ToUpper()</span>
+											</div>
+										}
+									</div>
+								}
+								@if (isFullyDiscovered)
+								{
+									<!-- Rarity + BST row — sits directly under the element pills
+									     so the "what kind of beast" summary reads top-down as
+									     element → rarity/stats → personality (identity trailer). -->
+									<div class="bb-identity-row-bottom">
+										<div class="bb-rarity-badge rarity-@selectedSpecies.BaseRarity.ToString().ToLower()">
+											<span>@selectedSpecies.BaseRarity.ToString().ToUpper()</span>
+										</div>
+										<div class="bb-bst-badge">
+											<span class="bb-bst-label">BST</span>
+											<span class="bb-bst-value">@GetBaseStatTotal(selectedSpecies)</span>
+										</div>
+									</div>
+									<!-- Personality pill — standalone, no label. Sits below
+									     rarity/BST so the identity block reads: type → tier →
+									     character. Label dropped per user feedback — other rows
+									     don't have labels, so this one shouldn't either. Tiny
+									     iconify prefix (lucide:user) gives the pill a shape
+									     distinct from the element pills (which use element
+									     glyphs) without coloring it like a third element. -->
+									<div class="bb-identity-personality-row">
+										<div class="bb-pill personality bb-personality-pill-inline">
+											<iconify icon="lucide:user" Size=@(11) Color="rgba(255,255,255,0.7)" />
+											<span>@selectedSpecies.Personality.ToString().ToUpper()</span>
+										</div>
+									</div>
+								}
+							</div>
+						</div>
+
+						<!-- ====== FLAVOR DESCRIPTION ======
+						     MOVED UP from inside the stats view — lives in the fixed
+						     top so it's always visible regardless of which swappable
+						     view is active. Core identity, not view-specific content. -->
+						@if (isFullyDiscovered && !string.IsNullOrEmpty(selectedSpecies.Description))
+						{
+							<div class="bb-flavor"><span>@selectedSpecies.Description</span></div>
+						}
+						else if (!isFullyDiscovered && (IsDiscovered(selectedSpecies.Id) || IsSeen(selectedSpecies.Id)))
+						{
+							<div class="bb-flavor"><span>???</span></div>
+						}
+
+					</div>
+
+					<!-- ============================================================
+					     SCROLLABLE BODY — actions, mastery, swappable view, footer.
+					     Direct children only (s&box scroll-height quirk).
+					     ============================================================ -->
+					<div class="bb-detail-scroll">
+
+						<!-- ====== ACTIONS — diamond row ======
+						     Cry / Moves / Evolution / Lore / Mastery. First thing in the
+						     scroll area — primary navigation for the swappable bottom view. -->
+						@if (isFullyDiscovered)
+						{
+							var moveCount = selectedSpecies.LearnableMoves?.Count ?? 0;
+							var hasEvolution = GetEvolutionChain(selectedSpecies).Count > 1;
+							<div class="bb-actions-section">
+								<div class="bb-section-title"><span>ACTIONS</span></div>
+								<div class="bb-diamond-row">
+
+								<!-- 1. Cry — plays beast cry, does NOT switch views -->
+								<div class="bb-detail-diamond cry" onclick=@OnPortraitClick onmouseover=@(() => OnDiamondHover("cry"))>
+									<div class="bb-diamond-shape"><iconify icon="lucide:volume-2" Size=@(16) Color="#c4b5fd" /></div>
+									<span class="bb-diamond-tooltip">@L("ui.beastbook.click_to_hear")</span>
+								</div>
+
+								<!-- 2. Moves — toggles bottom section to moves view -->
+								<div class="bb-detail-diamond moves @(detailView == "moves" ? "active" : "")" onclick=@(() => OnDiamondClick("moves")) onmouseover=@(() => OnDiamondHover("moves"))>
+									<div class="bb-diamond-shape"><iconify icon="lucide:sparkles" Size=@(16) Color="white" /></div>
+									<div class="bb-diamond-badge"><span>@moveCount</span></div>
+									<span class="bb-diamond-tooltip">@L("ui.beastbook.learns_moves", moveCount)</span>
+								</div>
+
+								<!-- 3. Evolution — toggles bottom section to evolution view -->
+								@if (hasEvolution)
+								{
+									<div class="bb-detail-diamond evolution @(detailView == "evolution" ? "active" : "")" onclick=@(() => OnDiamondClick("evolution")) onmouseover=@(() => OnDiamondHover("evolution"))>
+										<div class="bb-diamond-shape"><iconify icon="lucide:git-fork" Size=@(16) Color="#7dd3fc" /></div>
+										<span class="bb-diamond-tooltip">View evolution line</span>
+									</div>
+								}
+
+								<!-- 4. Lore — toggles bottom section to lore view -->
+								<div class="bb-detail-diamond lore @(detailView == "lore" ? "active" : "")" onclick=@(() => OnDiamondClick("lore")) onmouseover=@(() => OnDiamondHover("lore"))>
+									<div class="bb-diamond-shape"><iconify icon="lucide:scroll" Size=@(16) Color="#fcd34d" /></div>
+									<span class="bb-diamond-tooltip">@(detailView == "lore" ? "Hide lore" : "Read lore")</span>
+								</div>
+
+								<!-- 5. Mastery — toggles bottom section to mastery view -->
+								<div class="bb-detail-diamond mastery @(detailView == "mastery" ? "active" : "")" onclick=@(() => OnDiamondClick("mastery")) onmouseover=@(() => OnDiamondHover("mastery"))>
+									<div class="bb-diamond-shape"><iconify icon="lucide:crown" Size=@(16) Color="#c4b5fd" /></div>
+									<span class="bb-diamond-tooltip">@(detailView == "mastery" ? "Hide mastery" : "View mastery")</span>
+								</div>
+								</div>
+							</div>
+						}
+
+						<!-- ============================================================
+						     SWAPPABLE BOTTOM SECTION — controlled by detailView state.
+						     Diamonds toggle between stats/moves/evolution/lore/mastery.
+						     Personality + traits live in the fixed top (see CHARACTER
+						     section above) — identity, not stats. Stats view shows only
+						     the stat bars + BST total.
+						     ============================================================ -->
+						@if (isFullyDiscovered)
+						{
+							<!-- ====== STATS VIEW (default) — stats bars only; description
+							     lives in the fixed top now so it's always visible. ====== -->
+							@if (detailView == "stats")
+							{
+								<div class="bb-stats-section">
+									<div class="bb-section-title"><span>@L("ui.beastiary.base_stats")</span></div>
+									<div class="bb-stats-grid">
+										<!-- Compact single-line stat rows — LABEL | BAR | VALUE.
+										     Fixed-width label column (36px) + fixed-width value
+										     column (30px) means every row's columns line up
+										     vertically across the six stats. Bar gets flex: 1
+										     to fill the middle. Hover tints the row bg subtly —
+										     Tier 1 ambient "this is inspectable" feedback. -->
+										<div class="bb-stat-item hp">
+											<span class="bb-stat-name">HP</span>
+											<div class="bb-stat-bar-bg">
+												<div class="bb-stat-bar-fill hp" style="width: @(GetStatFillPct(selectedSpecies.BaseHP))%"></div>
+											</div>
+											<span class="bb-stat-value">@selectedSpecies.BaseHP</span>
+										</div>
+										<div class="bb-stat-item atk">
+											<span class="bb-stat-name">ATK</span>
+											<div class="bb-stat-bar-bg">
+												<div class="bb-stat-bar-fill atk" style="width: @(GetStatFillPct(selectedSpecies.BaseATK))%"></div>
+											</div>
+											<span class="bb-stat-value">@selectedSpecies.BaseATK</span>
+										</div>
+										<div class="bb-stat-item def">
+											<span class="bb-stat-name">DEF</span>
+											<div class="bb-stat-bar-bg">
+												<div class="bb-stat-bar-fill def" style="width: @(GetStatFillPct(selectedSpecies.BaseDEF))%"></div>
+											</div>
+											<span class="bb-stat-value">@selectedSpecies.BaseDEF</span>
+										</div>
+										<div class="bb-stat-item spa">
+											<span class="bb-stat-name">SpA</span>
+											<div class="bb-stat-bar-bg">
+												<div class="bb-stat-bar-fill spa" style="width: @(GetStatFillPct(selectedSpecies.BaseSpA))%"></div>
+											</div>
+											<span class="bb-stat-value">@selectedSpecies.BaseSpA</span>
+										</div>
+										<div class="bb-stat-item spd-def">
+											<span class="bb-stat-name">SpD</span>
+											<div class="bb-stat-bar-bg">
+												<div class="bb-stat-bar-fill spd-def" style="width: @(GetStatFillPct(selectedSpecies.BaseSpD))%"></div>
+											</div>
+											<span class="bb-stat-value">@selectedSpecies.BaseSpD</span>
+										</div>
+										<div class="bb-stat-item spd">
+											<span class="bb-stat-name">SPD</span>
+											<div class="bb-stat-bar-bg">
+												<div class="bb-stat-bar-fill spd" style="width: @(GetStatFillPct(selectedSpecies.BaseSPD))%"></div>
+											</div>
+											<span class="bb-stat-value">@selectedSpecies.BaseSPD</span>
+										</div>
+										<!-- BST total row — inline summary so the bars resolve to a number. -->
+										<div class="bb-stat-total-row">
+											<span class="bb-stat-total-label">TOTAL</span>
+											<span class="bb-stat-total-value">@GetBaseStatTotal(selectedSpecies)</span>
+										</div>
+										<!-- TRAITS row — sits at the very bottom of the stats
+										     view, below TOTAL. Compact inline format: mini-label
+										     on the left, wrapping trait pills on the right. Hidden
+										     entirely if the species has no possible traits. -->
+										@if (selectedSpecies.PossibleTraits != null && selectedSpecies.PossibleTraits.Count > 0)
+										{
+											<div class="bb-stat-traits-row">
+												<span class="bb-stat-traits-label">TRAITS</span>
+												<div class="bb-stat-traits-pills">
+													@foreach (var traitId in selectedSpecies.PossibleTraits)
+													{
+														var trait = TraitDatabase.GetTrait(traitId);
+														var traitName = trait?.Name ?? traitId;
+														var traitDesc = trait?.Description ?? "";
+														var isHovered = hoveredTraitId == traitId;
+														var capturedId = traitId;
+														<div class="bb-pill trait has-tooltip @(isHovered ? "is-hovered" : "")"
+															 onmouseover=@(() => OnTraitHover(capturedId))
+															 onmouseout=@(() => OnTraitOut(capturedId))>
+															<span>@traitName</span>
+															@if (isHovered && !string.IsNullOrEmpty(traitDesc))
+															{
+																<div class="bb-trait-tooltip">
+																	<div class="bb-trait-tt-name">@traitName</div>
+																	<div class="bb-trait-tt-desc">@traitDesc</div>
+																</div>
+															}
+														</div>
+													}
+												</div>
+											</div>
+										}
+									</div>
+								</div>
+							}
+
+							<!-- ====== MOVES VIEW ====== -->
+							@if (detailView == "moves")
+							{
+								var moves = selectedSpecies.LearnableMoves ?? new List<LearnableMove>();
+								<div class="bb-moves-section">
+									<div class="bb-section-title">
+										<span>MOVES</span>
+										@if (moves.Count > 0)
+										{
+											<span class="bb-section-count-badge">@moves.Count @L("ui.roster.available")</span>
+										}
+									</div>
+									@if (moves.Count == 0)
+									{
+										<div class="bb-moves-empty">
+											<iconify icon="lucide:sparkles" Size=@(36) Color="rgba(255,255,255,0.2)" />
+											<span>@L("ui.beastbook.moves_empty")</span>
+										</div>
+									}
+									else
+									{
+										<div class="bb-moves-list">
+											@foreach (var lm in moves.OrderBy(m => m.LearnLevel))
+											{
+												var moveDef = MoveDatabase.GetMove(lm.MoveId);
+												var moveName = moveDef?.Name ?? lm.MoveId;
+												var moveEl = moveDef != null ? moveDef.Element.ToString().ToLower() : "neutral";
+												var moveCat = moveDef?.Category.ToString() ?? "";
+												var movePwr = moveDef?.BasePower ?? 0;
+												var moveAcc = moveDef?.Accuracy ?? 0;
+												<!-- Move row — strict 4-column grid. Diamond (40px) |
+												     name+level column (flex) | category pill (50px) |
+												     power/accuracy stacked (60px, right-aligned). Fixed
+												     widths so every row's columns line up regardless of
+												     name length. Hover sound guarded via move id so the
+												     same row doesn't re-fire every frame. -->
+												<div class="bb-move-row @moveEl" onmouseover=@(() => OnMoveRowHover(lm.MoveId))>
+													<div class="bb-move-diamond-col">
+														<div class="bb-move-diamond @moveEl">
+															<img class="bb-move-diamond-icon" src="ui/icons/elements/element_white/@(moveEl).svg" />
+														</div>
+													</div>
+													<div class="bb-move-info">
+														<span class="bb-move-name">@moveName</span>
+														<span class="bb-move-level">Lv.@lm.LearnLevel</span>
+													</div>
+													<div class="bb-move-cat-col">
+														@if (!string.IsNullOrEmpty(moveCat))
+														{
+															<span class="bb-move-cat @moveCat.ToLower()">@moveCat.Substring(0, 3).ToUpper()</span>
+														}
+													</div>
+													<div class="bb-move-stats-col">
+														@if (movePwr > 0)
+														{
+															<span class="bb-move-pwr">@movePwr</span>
+														}
+														@if (moveAcc > 0)
+														{
+															<span class="bb-move-acc">@(moveAcc)%</span>
+														}
+													</div>
+												</div>
+											}
+										</div>
 									}
 								</div>
 							}
-						</div>
+
+							<!-- ====== EVOLUTION VIEW ======
+							     Bigger stages (100x100 sprites, larger frames) in a horizontal
+							     chain. Sprites are cropped top-heavy (object-position in SCSS)
+							     for a pseudo-headshot so the beast's face is the focus. Each
+							     stage shows name + level-to-next-evo under the portrait. -->
+							@if (detailView == "evolution")
+							{
+								var evolutionChain = GetEvolutionChain(selectedSpecies);
+								@if (evolutionChain.Count > 1)
+								{
+									<div class="bb-evo-section">
+										<div class="bb-section-title"><span>@L("ui.beastbook.evolution")</span></div>
+										<div class="bb-evo-chain">
+											@for (int i = 0; i < evolutionChain.Count; i++)
+											{
+												var evoSpecies = evolutionChain[i];
+												var evoPrimary = evoSpecies.Element.ToString().ToLower();
+												var isCurrent = evoSpecies.Id == selectedSpecies.Id;
+												var evoDiscovered = IsDiscovered(evoSpecies.Id);
+												var hasNext = !string.IsNullOrEmpty(evoSpecies.EvolvesTo) && evoSpecies.EvolutionLevel > 0;
+
+												@if (i > 0)
+												{
+													<div class="bb-evo-arrow">
+														<iconify icon="lucide:chevron-right" Size=@(24) Color="rgba(196, 181, 253, 0.55)" />
+													</div>
+												}
+
+												@{
+													// Reuse grid-card per-species positioning at ~0.65x (100px frame vs 156px card)
+													// so species authored for the grid (Manehelm, Lochmaw, Pyrgard) also sit
+													// correctly in the evo frame without separate authoring.
+													var evoCi = System.Globalization.CultureInfo.InvariantCulture;
+													var evoScale = evoSpecies.CardScale;
+													var evoOffX = evoSpecies.CardOffsetX * 0.65f;
+													var evoOffY = evoSpecies.CardOffsetY * 0.65f;
+													var evoSpriteStyle = $"transform: translate({evoOffX.ToString("F2", evoCi)}px, {evoOffY.ToString("F2", evoCi)}px) scale({evoScale.ToString("F2", evoCi)}); transform-origin: center bottom;";
+												}
+												<div class="bb-evo-stage @(isCurrent ? "current" : "") @evoPrimary @(evoDiscovered ? "" : "unknown")"
+													 onmouseover=@(() => OnEvoStageHover(evoSpecies.Id))>
+													@if (isCurrent)
+													{
+														<div class="bb-evo-current-badge">CURRENT</div>
+													}
+													<div class="bb-evo-portrait">
+														@if (evoDiscovered)
+														{
+															@if (HasSprite(evoSpecies))
+															{
+																<img class="bb-evo-sprite" src="@(isCurrent ? GetAnimatedIcon(evoSpecies) : evoSpecies.IconPath)" style="@evoSpriteStyle" />
+															}
+															else
+															{
+																<div class="bb-evo-unknown">?</div>
+															}
+														}
+														else
+														{
+															<div class="bb-evo-unknown">?</div>
+														}
+													</div>
+													@if (evoDiscovered)
+													{
+														<span class="bb-evo-name">@evoSpecies.Name</span>
+													}
+													else
+													{
+														<span class="bb-evo-name">???</span>
+													}
+													@if (hasNext)
+													{
+														<span class="bb-evo-level">Lv @evoSpecies.EvolutionLevel</span>
+													}
+												</div>
+											}
+										</div>
+									</div>
+								}
+								else
+								{
+									<div class="bb-evo-section">
+										<div class="bb-section-title"><span>@L("ui.beastbook.evolution")</span></div>
+										<div class="bb-moves-empty">
+											<iconify icon="lucide:git-fork" Size=@(36) Color="rgba(255,255,255,0.2)" />
+											<span>This species does not evolve.</span>
+										</div>
+									</div>
+								}
+							}
+
+							<!-- ====== LORE VIEW (mastery-gated entries) ======
+							     Dark neutral rows, tier-colored LV chip + thin accent strip on
+							     unlocked. Locked rows dim, italic — readable against dark bg. -->
+							@if (detailView == "lore")
+							{
+								var bmgrLore = BeastiaryManager.Instance;
+								var loreMasteryLvl = bmgrLore?.GetMasteryLevel(selectedSpecies.Id) ?? 0;
+								<div class="bb-lore-block">
+									<div class="bb-section-title"><span>@L("ui.beastbook.lore_title")</span></div>
+
+									<!-- Lore entry 1 (mastery Lv1) — uses the species Description -->
+									<div class="bb-lore-entry tier-1 @(loreMasteryLvl >= 1 ? "unlocked" : "locked")">
+										<div class="bb-lore-level-pill tier-1"><span>LV 1</span></div>
+										@if (loreMasteryLvl >= 1 && !string.IsNullOrEmpty(selectedSpecies.Description))
+										{
+											<span class="bb-lore-text">@selectedSpecies.Description</span>
+										}
+										else
+										{
+											<span class="bb-lore-locked-text">@L("ui.beastbook.lore_locked", 1)</span>
+										}
+									</div>
+
+									<!-- Future lore entries (Lv2-6) — placeholder locked cards.
+									     When LoreEntries are authored on MonsterSpecies, loop
+									     those here instead of these stubs. -->
+									@for (int loreIdx = 2; loreIdx <= 6; loreIdx++)
+									{
+										// Hoist to a local so Razor parses cleanly. User reported
+										// that "Lv@(loreIdx) to unlock" was rendering the literal
+										// source text (not the value) in s&box razor. A named local
+										// sidesteps whatever tokenizer edge case is biting.
+										var lockedLv = loreIdx;
+										<div class="bb-lore-entry tier-@loreIdx locked">
+											<div class="bb-lore-level-pill tier-@loreIdx"><span>LV @loreIdx</span></div>
+											<span class="bb-lore-locked-text">@L("ui.beastbook.lore_locked", lockedLv)</span>
+										</div>
+									}
+								</div>
+							}
+
+							<!-- ====== MASTERY VIEW — per-species progression badge + tier list ====== -->
+							@if (detailView == "mastery")
+							{
+								<div class="bb-mastery-section">
+									<div class="bb-section-title"><span>@L("ui.beastbook.mastery_title")</span></div>
+
+									@{
+										var bmgr = BeastiaryManager.Instance;
+										var masteryLvl = bmgr?.GetMasteryLevel(selectedSpecies.Id) ?? 0;
+										var masteryTitle = bmgr?.GetMasteryTitle(selectedSpecies.Id) ?? "";
+										var masteryBonusPct = (int)((bmgr?.GetMasteryBonus(selectedSpecies.Id) ?? 0f) * 100);
+										int masteryCurrent = 0;
+										int masteryRequired = 1;
+										string masteryDescription = "";
+										if (bmgr != null)
+										{
+											var p = bmgr.GetProgressToNext(selectedSpecies.Id);
+											masteryCurrent = p.current;
+											masteryRequired = p.required;
+											masteryDescription = p.description;
+										}
+										var progressPct = masteryRequired > 0
+											? Math.Clamp((float)masteryCurrent / masteryRequired * 100f, 0f, 100f)
+											: 0f;
+									}
+
+									<div class="bb-mastery-header">
+										<div class="bb-mastery-level-badge level-@masteryLvl">
+											<span class="bb-mastery-level-num">@masteryLvl</span>
+											<span class="bb-mastery-level-caption">LV</span>
+										</div>
+										<div class="bb-mastery-header-text">
+											<div class="bb-pill bb-mastery-title-pill level-@masteryLvl"><span>@masteryTitle</span></div>
+											@if (masteryBonusPct > 0)
+											{
+												<div class="bb-pill bb-mastery-bonus-pill"><span>+@masteryBonusPct% stats</span></div>
+											}
+										</div>
+									</div>
+
+									@if (masteryLvl < 6)
+									{
+										<div class="bb-mastery-next">
+											<span class="bb-mastery-next-label">@L("ui.beastbook.mastery_next", masteryDescription)</span>
+											<div class="bb-mastery-progress-bar">
+												<div class="bb-mastery-progress-fill level-@masteryLvl" style="width: @(progressPct)%"></div>
+											</div>
+										</div>
+									}
+
+									<div class="bb-mastery-tiers">
+										@for (int tier = 1; tier <= 6; tier++)
+										{
+											var unlocked = masteryLvl >= tier;
+											var tierTitle = tier switch
+											{
+												1 => "Novice",
+												2 => "Adept",
+												3 => "Veteran",
+												4 => "Elite",
+												5 => "Master",
+												6 => "Grandmaster",
+												_ => ""
+											};
+											@{
+												var tierColor = tier switch
+												{
+													1 => "#9ca3af",
+													2 => "#4ade80",
+													3 => "#60a5fa",
+													4 => "#a855f7",
+													5 => "#fbbf24",
+													6 => "#ec4899",
+													_ => "#ffffff"
+												};
+											}
+											<div class="bb-mastery-tier tier-@tier @(unlocked ? "unlocked" : "locked")">
+												<iconify icon="@(unlocked ? "lucide:check" : "lucide:circle")" Size=@(11) Color="@(unlocked ? tierColor : "rgba(255,255,255,0.25)")" />
+												<span class="bb-mastery-tier-name">Lv@(tier) @tierTitle</span>
+											</div>
+										}
+									</div>
+								</div>
+							}
+						}
+
+						<!-- ====== ARTIST CREDIT FOOTER ====== -->
+						@if (isFullyDiscovered && !string.IsNullOrEmpty(selectedSpecies.ArtistCredit))
+						{
+							<div class="bb-artist-credit">
+								<span>@L("ui.beastbook.art_by", "@" + selectedSpecies.ArtistCredit)</span>
+							</div>
+						}
 					</div>
 				}
-
-				<div class="detail-section">
-					<div class="section-title">Possible Traits</div>
-					<div class="traits-list">
-						@foreach (var traitId in selectedSpecies.PossibleTraits)
-						{
-							<span class="trait-tag">@GetTraitName(traitId)</span>
-						}
-					</div>
-				</div>
-			}
-			else if (selectedSpecies != null && IsSeen(selectedSpecies.Id))
-			{
-				<!-- Seen but not caught - show image and name only -->
-				<div class="seen-content">
-					<div class="seen-header">
-						@if (HasSprite(selectedSpecies))
-						{
-							<img class="seen-icon" src="@selectedSpecies.IconPath" />
-						}
-						else
-						{
-							<div class="seen-icon-placeholder">?</div>
-						}
-						<div class="seen-info">
-							<div class="seen-number">#@selectedSpecies.BeastiaryNumber.ToString("D3")</div>
-							<div class="seen-name">@selectedSpecies.Name</div>
-							<div class="seen-element @selectedSpecies.Element.ToString().ToLower()">
-								<img class="seen-element-icon" src="ui/icons/elements/element_white/@(selectedSpecies.Element.ToString().ToLower()).svg" />
-								<span>@selectedSpecies.Element</span>
-							</div>
-						</div>
-					</div>
-					<div class="seen-hint">
-						<div class="seen-hint-icon">📜</div>
-						<div class="seen-hint-text">Catch this creature to unlock full details</div>
-					</div>
-				</div>
-			}
-			else if (selectedSpecies != null)
-			{
-				<div class="undiscovered-content">
-					<div class="undiscovered-icon">?</div>
-					<div class="undiscovered-text">Species Not Discovered</div>
-					<div class="undiscovered-hint">Find this creature in expeditions to learn more about it</div>
-				</div>
-			}
-			else
-			{
-				<div class="empty-content">
-					<div class="empty-icon">📖</div>
-					<div class="empty-text">Select a Species</div>
-					<div class="empty-hint">Click on a creature to view its details</div>
-				</div>
-			}
+			</div>
 		</div>
 	</div>
-</div>
+
+	<!-- ====== BEAST PREVIEW POPUP ======
+	     Click the portrait (or the 'cry' diamond) to open this modal.
+	     Shows a bigger sprite with zoom controls — future home for per-
+	     species cry audio + animation-set picker. Closes on backdrop
+	     click, X button, or species change. -->
+	@if (showBeastPopup && selectedSpecies != null && HasSprite(selectedSpecies))
+	{
+		<div class="bb-beast-popup-root">
+			<div class="bb-beast-popup-overlay" onclick=@CloseBeastPopup></div>
+			<div class="bb-beast-popup">
+				<div class="bb-beast-popup-header">
+					<div class="bb-beast-popup-title-col">
+						<span class="bb-beast-popup-number">#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
+						<span class="bb-beast-popup-name">@selectedSpecies.Name</span>
+					</div>
+					<button class="bb-beast-popup-close" onclick=@CloseBeastPopup onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:x" Size=@(18) Color="rgba(255,255,255,0.85)" />
+					</button>
+				</div>
+
+				<div class="bb-beast-popup-stage @(_isDraggingBeast ? "is-dragging" : "")"
+					 onmousedown=@OnBeastStageDown
+					 onmousemove=@OnBeastStageMove
+					 onmouseup=@OnBeastStageUp
+					 onmouseover=@OnBeastStageEnter
+					 onmouseout=@OnBeastStageLeave>
+					<img class="bb-beast-popup-sprite" src="@GetAnimatedIcon(selectedSpecies)" style="@BeastPopupSpriteStyle()" />
+					<div class="bb-beast-popup-hint">
+						<iconify icon="lucide:move" Size=@(11) Color="rgba(196, 181, 253, 0.55)" />
+						<span>Drag to pan · Scroll to zoom</span>
+					</div>
+				</div>
+
+				<div class="bb-beast-popup-controls">
+					<button class="bb-beast-popup-ctrl" onclick=@BeastPopupZoomOut onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:zoom-out" Size=@(16) Color="rgba(255,255,255,0.85)" />
+					</button>
+					<div class="bb-beast-popup-zoom-readout">
+						<span>@((int)(beastPopupZoom * 100))%</span>
+					</div>
+					<button class="bb-beast-popup-ctrl" onclick=@BeastPopupZoomIn onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:zoom-in" Size=@(16) Color="rgba(255,255,255,0.85)" />
+					</button>
+					<button class="bb-beast-popup-ctrl reset" onclick=@BeastPopupResetZoom onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:refresh-ccw" Size=@(14) Color="rgba(255,255,255,0.7)" />
+					</button>
+				</div>
+			</div>
+		</div>
+	}
+</root>
 
 @code {
-	// Localization helper
+	// ============================================================
+	// Localization
+	// ============================================================
 	private string L( string key ) => LocalizationManager.Get( key );
 	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
 
+	// ============================================================
+	// State
+	// ============================================================
 	private ElementType? currentElement = null;
 	private string currentElementStr = "all";
 	private string currentSort = "beastiary";
+	private bool sortAscending = true;
 	private string currentNameFilter = "";
 	private MonsterSpecies selectedSpecies = null;
 	private int selectedIndex = 0;
-	private bool statsResetting = false;
 	private FilterBar filterBar;
 
+	// Swappable bottom section — diamonds toggle the detail view between
+	// stats (default), moves, evolution, and lore. Replaces the old
+	// showMoves/showLore booleans with a single state string.
+	private string detailView = "stats";
+
+	// Hover-sound guard: track the last species id that fired a hover sound so we
+	// don't re-fire PlayHover() every frame while the mouse is over the same card.
+	private string lastHoveredCardId = null;
+
+	// One-shot card-select pulse — border flash on the clicked card,
+	// remounted via `pulse-@selectPulseVersion` class so @keyframes
+	// re-fire every click (s&box quirk). Ported from ShopPanelContent.
+	private string justSelectedSpeciesId = null;
+	private int selectPulseVersion = 0;
+
+	// Separate guards for the detail-pane diamond row and the evolution
+	// chain stages. Each family tracks its own "last id" so crossing from
+	// the grid into the detail doesn't mis-deduplicate against a grid id.
+	//
+	// s&box `onmouseover` fires repeatedly while the cursor stays on the
+	// element, so without a guard every diamond/stage would spam hover
+	// sounds once per frame. Pattern mirrors OnCardHover.
+	private string lastHoveredDiamondId = null;
+	private string lastHoveredEvoStageId = null;
+	private string lastHoveredMoveId = null;
+
+	// Trait tooltip — tracked in code-behind because the CSS `:hover .descendant`
+	// pattern is unreliable in s&box (tooltip sometimes only appears on mouseout).
+	// Instead we render the tooltip conditionally based on this state, which
+	// updates every time the hover moves between trait pills. See learnings.md.
+	private string hoveredTraitId = null;
+	private void OnTraitHover( string traitId )
+	{
+		if ( hoveredTraitId == traitId ) return;
+		hoveredTraitId = traitId;
+		SoundManager.PlayHover();
+	}
+	private void OnTraitOut( string traitId )
+	{
+		if ( hoveredTraitId == traitId ) hoveredTraitId = null;
+	}
+
+	private void OnDiamondHover( string diamondId )
+	{
+		if ( lastHoveredDiamondId != diamondId )
+		{
+			lastHoveredDiamondId = diamondId;
+			SoundManager.PlayHover();
+		}
+	}
+
+	private void OnEvoStageHover( string stageId )
+	{
+		if ( lastHoveredEvoStageId != stageId )
+		{
+			lastHoveredEvoStageId = stageId;
+			SoundManager.PlayHover();
+		}
+	}
+
+	private void OnMoveRowHover( string moveId )
+	{
+		if ( lastHoveredMoveId != moveId )
+		{
+			lastHoveredMoveId = moveId;
+			SoundManager.PlayHover();
+		}
+	}
+
+	// ============================================================
+	// Input plumbing
+	// ============================================================
 	private void OnPanelClicked()
 	{
-		// When user clicks with mouse, ensure we're in panel mode (not tab navigation)
 		GameHUD.EnterPanel();
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
-		// Note: Input handling is now done via TickInput() called from GameHUD
 	}
 
-	/// <summary>
-	/// Called by GameHUD to handle keyboard input (child panels don't auto-tick in s&box Razor)
-	/// </summary>
+	// Mouse-wheel zoom for the beast preview popup — override the Panel
+	// base class's `OnMouseWheel` method (canonical s&box UI API, see
+	// `Sandbox.UI.Panel.OnMouseWheel(Vector2)`). `delta.y` is the scroll
+	// amount (positive = scroll up / toward user). Scoped via
+	// `_isMouseOverBeastStage` so wheel elsewhere in the panel (grid
+	// scroll, detail-pane scroll) isn't intercepted.
+	public override void OnMouseWheel( Vector2 delta )
+	{
+		if ( showBeastPopup && _isMouseOverBeastStage )
+		{
+			beastPopupZoom = Math.Clamp(
+				beastPopupZoom + delta.y * BEAST_POPUP_WHEEL_ZOOM_STEP,
+				BEAST_POPUP_ZOOM_MIN,
+				BEAST_POPUP_ZOOM_MAX
+			);
+			return; // consume — don't let wheel fall through to the grid
+		}
+		base.OnMouseWheel( delta );
+	}
+
 	public void TickInput()
 	{
 		HandleKeyboardInput();
@@ -305,61 +960,53 @@
 
 	private void HandleKeyboardInput()
 	{
-
 		var species = GetFilteredSpecies();
-		if (species.Count == 0)
+		if ( species.Count == 0 )
 		{
-			// No species - W/Up exits to tabs
-			if (Input.Pressed("Up"))
-			{
-				GameHUD.ExitPanel();
-			}
+			if ( Input.Pressed( "Up" ) ) GameHUD.ExitPanel();
 			return;
 		}
 
-		selectedIndex = Math.Clamp(selectedIndex, 0, species.Count - 1);
+		selectedIndex = Math.Clamp( selectedIndex, 0, species.Count - 1 );
+		// Roster runs ~9 cols; we use 8 here so the wider detail pane reflow lines up.
+		int columns = 8;
 
-		// Grid navigation (assume 5 columns)
-		int columns = 5;
-
-		if (Input.Pressed("Left"))
+		if ( Input.Pressed( "Left" ) )
 		{
-			selectedIndex = Math.Max(0, selectedIndex - 1);
-			SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+			selectedIndex = Math.Max( 0, selectedIndex - 1 );
+			SelectSpecies( species[selectedIndex], IsDiscovered( species[selectedIndex].Id ) );
 			SoundManager.PlayHover();
 		}
-		else if (Input.Pressed("Right"))
+		else if ( Input.Pressed( "Right" ) )
 		{
-			selectedIndex = Math.Min(species.Count - 1, selectedIndex + 1);
-			SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+			selectedIndex = Math.Min( species.Count - 1, selectedIndex + 1 );
+			SelectSpecies( species[selectedIndex], IsDiscovered( species[selectedIndex].Id ) );
 			SoundManager.PlayHover();
 		}
-		else if (Input.Pressed("Up"))
+		else if ( Input.Pressed( "Up" ) )
 		{
-			// If at top row, exit to tab navigation
-			if (selectedIndex < columns)
+			if ( selectedIndex < columns )
 			{
 				GameHUD.ExitPanel();
 			}
 			else
 			{
-				selectedIndex = Math.Max(0, selectedIndex - columns);
-				SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+				selectedIndex = Math.Max( 0, selectedIndex - columns );
+				SelectSpecies( species[selectedIndex], IsDiscovered( species[selectedIndex].Id ) );
 				SoundManager.PlayHover();
 			}
 		}
-		else if (Input.Pressed("Down"))
+		else if ( Input.Pressed( "Down" ) )
 		{
-			selectedIndex = Math.Min(species.Count - 1, selectedIndex + columns);
-			SelectSpecies(species[selectedIndex], IsDiscovered(species[selectedIndex].Id));
+			selectedIndex = Math.Min( species.Count - 1, selectedIndex + columns );
+			SelectSpecies( species[selectedIndex], IsDiscovered( species[selectedIndex].Id ) );
 			SoundManager.PlayHover();
 		}
-		// Cycle element filters with Q/E
-		else if (Input.Pressed("PrevWeapon"))
+		else if ( Input.Pressed( "PrevWeapon" ) )
 		{
 			CycleElementBack();
 		}
-		else if (Input.Pressed("NextWeapon"))
+		else if ( Input.Pressed( "NextWeapon" ) )
 		{
 			CycleElementForward();
 		}
@@ -368,31 +1015,25 @@
 	private void CycleElementBack()
 	{
 		var elementStrs = new string[] { "all", "neutral", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit" };
-		int idx = Array.IndexOf(elementStrs, currentElementStr);
+		int idx = Array.IndexOf( elementStrs, currentElementStr );
 		idx = (idx - 1 + elementStrs.Length) % elementStrs.Length;
-		OnElementChanged(elementStrs[idx]);
+		OnElementChanged( elementStrs[idx] );
 		SoundManager.PlayClick();
 	}
 
 	private void CycleElementForward()
 	{
 		var elementStrs = new string[] { "all", "neutral", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit" };
-		int idx = Array.IndexOf(elementStrs, currentElementStr);
+		int idx = Array.IndexOf( elementStrs, currentElementStr );
 		idx = (idx + 1) % elementStrs.Length;
-		OnElementChanged(elementStrs[idx]);
+		OnElementChanged( elementStrs[idx] );
 		SoundManager.PlayClick();
 	}
 
-	private void SetElementFilter(ElementType? element)
-	{
-		currentElement = element;
-		selectedIndex = 0;
-		selectedSpecies = null;
-		SoundManager.PlayClick();
-	}
-
-	// FilterBar callback handlers
-	private void OnElementChanged(string element)
+	// ============================================================
+	// FilterBar callbacks
+	// ============================================================
+	private void OnElementChanged( string element )
 	{
 		currentElementStr = element;
 		currentElement = element switch
@@ -413,16 +1054,24 @@
 		};
 		selectedIndex = 0;
 		selectedSpecies = null;
+		SoundManager.PlayClick();
 	}
 
-	private void OnSortChanged(string sort)
+	private void OnSortChanged( string sort )
 	{
 		currentSort = sort;
 		selectedIndex = 0;
 		selectedSpecies = null;
 	}
 
-	private void OnNameFilterChanged(string name)
+	private void OnSortDirectionChanged( bool ascending )
+	{
+		sortAscending = ascending;
+		selectedIndex = 0;
+		selectedSpecies = null;
+	}
+
+	private void OnNameFilterChanged( string name )
 	{
 		currentNameFilter = name;
 		selectedIndex = 0;
@@ -431,174 +1080,354 @@
 
 	private List<string> GetSpeciesNames()
 	{
-		var species = MonsterManager.Instance?.GetAllSpecies() ?? new();
-		return species.Select(s => s.Name).OrderBy(n => n).ToList();
+		var species = GetLaunchSpecies();
+		return species.Select( s => s.Name ).OrderBy( n => n ).ToList();
 	}
 
+	/// <summary>
+	/// Beastiary scope — only species in the launch roster are visible.
+	/// Hides the 113 AI-holdover species we don't ship at launch so the
+	/// completion counter and discovery flow reflect the actual content
+	/// a player can encounter.
+	/// </summary>
+	private List<MonsterSpecies> GetLaunchSpecies()
+	{
+		var all = MonsterManager.Instance?.GetAllSpecies() ?? new();
+		return all.Where( s => s != null && MonsterManager.LaunchRoster.Contains( s.Id ) ).ToList();
+	}
+
+	// ============================================================
+	// Counts
+	// ============================================================
 	private int GetDiscoveredCount()
 	{
-		return BeastiaryManager.Instance?.DiscoveredSpecies?.Count ?? 0;
+		// Only count discovered species that are also in the launch roster.
+		var discovered = BeastiaryManager.Instance?.DiscoveredSpecies;
+		if ( discovered == null ) return 0;
+		return discovered.Count( id => MonsterManager.LaunchRoster.Contains( id ) );
 	}
+	private int GetTotalCount() => GetLaunchSpecies().Count;
 
-	private int GetTotalCount()
+	private int GetCompletionPercent()
 	{
-		return MonsterManager.Instance?.GetAllSpecies()?.Count ?? 0;
+		int total = GetTotalCount();
+		if ( total <= 0 ) return 0;
+		return (int)((GetDiscoveredCount() / (float)total) * 100f);
 	}
 
+	// ============================================================
+	// Filtering / sorting
+	// ============================================================
 	private List<MonsterSpecies> GetFilteredSpecies()
 	{
-		var species = MonsterManager.Instance?.GetAllSpecies() ?? new();
+		var species = GetLaunchSpecies();
 
-		// Apply element filter
-		if (currentElement.HasValue)
+		// Dual-type element filter: match primary OR secondary
+		if ( currentElement.HasValue )
 		{
-			species = species.Where(s => s.Element == currentElement.Value).ToList();
+			species = species.Where( s =>
+				s.Element == currentElement.Value ||
+				s.SecondaryElement == currentElement.Value ).ToList();
 		}
 
-		// Apply name filter
-		if (currentSort == "name" && !string.IsNullOrEmpty(currentNameFilter))
+		if ( currentSort == "name" && !string.IsNullOrEmpty( currentNameFilter ) )
 		{
-			species = species.Where(s => s.Name.Equals(currentNameFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+			species = species.Where( s => s.Name.Equals( currentNameFilter, StringComparison.OrdinalIgnoreCase ) ).ToList();
 		}
 
-		// Apply sort
+		// Sort by the current mode first (each case picks its natural default
+		// direction — e.g. rarity descending reads as "mythic first" which is
+		// the expected "biggest first" convention). Then reverse at the end
+		// if the user has toggled the direction arrow to the opposite of the
+		// natural default.
 		species = currentSort switch
 		{
-			"beastiary" => species.OrderBy(s => s.BeastiaryNumber).ToList(),
-			"power" => species.OrderByDescending(s => s.BaseHP + s.BaseATK + s.BaseDEF + s.BaseSpA + s.BaseSpD + s.BaseSPD).ToList(),
-			"basestats" => species.OrderByDescending(s => s.BaseHP + s.BaseATK + s.BaseDEF + s.BaseSpA + s.BaseSpD + s.BaseSPD).ToList(),
-			"level" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No level for species, use beastiary
-			"genes" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No genes for species, use beastiary
-			"rarity" => species.OrderByDescending(s => (int)s.BaseRarity).ThenBy(s => s.BeastiaryNumber).ToList(),
-			"fav" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No favorites for species
-			"recent" => species.OrderBy(s => s.BeastiaryNumber).ToList(), // No recent for species
-			"name" => species.OrderBy(s => s.Name).ToList(),
-			_ => species.OrderBy(s => s.BeastiaryNumber).ToList()
+			"beastiary" => species.OrderBy( s => s.BeastiaryNumber ).ToList(),
+			"power" => species.OrderByDescending( s => s.BaseHP + s.BaseATK + s.BaseDEF + s.BaseSpA + s.BaseSpD + s.BaseSPD ).ToList(),
+			"basestats" => species.OrderByDescending( s => s.BaseHP + s.BaseATK + s.BaseDEF + s.BaseSpA + s.BaseSpD + s.BaseSPD ).ToList(),
+			"level" => species.OrderBy( s => s.BeastiaryNumber ).ToList(),
+			"genes" => species.OrderBy( s => s.BeastiaryNumber ).ToList(),
+			"rarity" => species.OrderByDescending( s => (int)s.BaseRarity ).ThenBy( s => s.BeastiaryNumber ).ToList(),
+			"recent" => species.OrderBy( s => s.BeastiaryNumber ).ToList(),
+			"name" => species.OrderBy( s => s.Name ).ToList(),
+			_ => species.OrderBy( s => s.BeastiaryNumber ).ToList()
 		};
+
+		// Each sort mode has a natural direction (ascending for number/name/
+		// level, descending for basestats/rarity). The direction toggle flips
+		// FROM that natural direction. We express that as: reverse the list
+		// when the user's `sortAscending` disagrees with the natural default.
+		bool naturalDescending = currentSort == "power" || currentSort == "basestats" || currentSort == "rarity";
+		bool currentlyDescending = !sortAscending;
+		if ( naturalDescending != currentlyDescending )
+		{
+			species.Reverse();
+		}
 
 		return species;
 	}
 
-	private bool IsDiscovered(string speciesId)
+	// ============================================================
+	// Helpers
+	// ============================================================
+	private bool IsDiscovered( string speciesId ) => BeastiaryManager.Instance?.IsDiscovered( speciesId ) ?? false;
+	private bool IsSeen( string speciesId ) => BeastiaryManager.Instance?.IsSeen( speciesId ) ?? false;
+
+	private bool HasSprite( MonsterSpecies species )
 	{
-		return BeastiaryManager.Instance?.IsDiscovered(speciesId) ?? false;
-	}
-
-	private bool IsSeen(string speciesId)
-	{
-		return BeastiaryManager.Instance?.IsSeen(speciesId) ?? false;
-	}
-
-	private string GetRarityClass(MonsterSpecies species)
-	{
-		return $"rarity-{species.BaseRarity.ToString().ToLower()}";
-	}
-
-	private bool HasSprite(MonsterSpecies species)
-	{
-		if (species == null) return false;
-
-		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
-			return true;
-		if (!string.IsNullOrEmpty(species.IconPath))
-			return true;
-
+		if ( species == null ) return false;
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 ) return true;
+		if ( !string.IsNullOrEmpty( species.IconPath ) ) return true;
 		return false;
 	}
 
-	private async void SelectSpecies(MonsterSpecies species, bool isDiscovered)
+	private void SelectSpecies( MonsterSpecies species, bool isDiscovered )
 	{
-		if (selectedSpecies?.Id != species?.Id)
+		if ( selectedSpecies?.Id != species?.Id )
 		{
-			// Trigger stat bar animation by resetting then expanding
-			statsResetting = true;
 			selectedSpecies = species;
-			StateHasChanged();
-
-			await Task.Delay(50);
-			statsResetting = false;
-			StateHasChanged();
+			// Reset to stats view on species change — each beast starts with a
+			// clean, short detail view. User can re-toggle via diamonds.
+			detailView = "stats";
+			// Close any open beast preview popup — it belongs to the old species.
+			showBeastPopup = false;
+			// One-shot card-select pulse — keyed on selectPulseVersion so the
+			// overlay div remounts each click and the @keyframes re-fires.
+			// Ported from ShopPanelContent.
+			justSelectedSpeciesId = species?.Id;
+			selectPulseVersion++;
+			SoundManager.PlayClick();
 		}
+	}
+
+	/// <summary>
+	/// Diamond click handler — toggles the swappable bottom section.
+	/// If the view is already showing the clicked diamond's target,
+	/// snap back to "stats" (default). Otherwise switch to the new view.
+	/// </summary>
+	private void OnDiamondClick( string view )
+	{
+		if ( detailView == view )
+			detailView = "stats"; // toggle back
 		else
+			detailView = view;
+		SoundManager.PlayClick();
+	}
+
+	private void OnCardHover( string speciesId )
+	{
+		// Guard — onmouseover fires repeatedly while mouse stays on the element.
+		// Only play the hover sound the first time the hovered card changes.
+		if ( lastHoveredCardId != speciesId )
 		{
-			selectedSpecies = species;
+			lastHoveredCardId = speciesId;
+			SoundManager.PlayHover();
 		}
 	}
 
-	private MonsterSpecies GetSpecies(string id)
+	// ============================================================
+	// Beast preview popup — opens when the detail-pane portrait (or
+	// the "cry" diamond) is clicked. Future home for per-species cry
+	// audio + animation-set picker (idle / attack / faint / etc).
+	// For now: zoom controls + big sprite view.
+	// ============================================================
+	private bool showBeastPopup = false;
+	private float beastPopupZoom = 1f;
+	private float beastPopupPanX = 0f;
+	private float beastPopupPanY = 0f;
+	private bool _isDraggingBeast = false;
+	private float _dragStartMouseX = 0f;
+	private float _dragStartMouseY = 0f;
+	private float _dragStartPanX = 0f;
+	private float _dragStartPanY = 0f;
+	private bool _isMouseOverBeastStage = false;
+	private const float BEAST_POPUP_ZOOM_MIN = 0.5f;
+	private const float BEAST_POPUP_ZOOM_MAX = 3f;
+	private const float BEAST_POPUP_ZOOM_STEP = 0.25f;
+	// Mouse-wheel zoom step — smaller than button step for finer control.
+	private const float BEAST_POPUP_WHEEL_ZOOM_STEP = 0.1f;
+
+	private void OnPortraitClick()
 	{
-		return MonsterManager.Instance?.GetSpecies(id);
+		if ( selectedSpecies == null ) return;
+		beastPopupZoom = 1f;
+		beastPopupPanX = 0f;
+		beastPopupPanY = 0f;
+		showBeastPopup = true;
+		SoundManager.PlayClick();
 	}
 
-	private string GetAnimatedIcon(MonsterSpecies species)
+	private void CloseBeastPopup()
 	{
-		if (species == null)
-			return "ui/monsters/default.png";
+		showBeastPopup = false;
+		_isDraggingBeast = false;
+		_isMouseOverBeastStage = false;
+		SoundManager.PlayBack();
+	}
 
-		// Check if species has animation frames defined
-		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
+	private void BeastPopupZoomIn()
+	{
+		beastPopupZoom = MathF.Min( BEAST_POPUP_ZOOM_MAX, beastPopupZoom + BEAST_POPUP_ZOOM_STEP );
+		SoundManager.PlayHover();
+	}
+
+	private void BeastPopupZoomOut()
+	{
+		beastPopupZoom = MathF.Max( BEAST_POPUP_ZOOM_MIN, beastPopupZoom - BEAST_POPUP_ZOOM_STEP );
+		SoundManager.PlayHover();
+	}
+
+	private void BeastPopupResetZoom()
+	{
+		beastPopupZoom = 1f;
+		beastPopupPanX = 0f;
+		beastPopupPanY = 0f;
+		SoundManager.PlayClick();
+	}
+
+	// Drag handlers — mouse-down on the stage starts a drag, mouse-move
+	// while dragging updates the pan offset by the mouse delta from start,
+	// mouse-up ends the drag. Same pattern as RadioWidget volume slider.
+	private void OnBeastStageDown( PanelEvent e )
+	{
+		_isDraggingBeast = true;
+		_dragStartMouseX = MousePosition.x;
+		_dragStartMouseY = MousePosition.y;
+		_dragStartPanX = beastPopupPanX;
+		_dragStartPanY = beastPopupPanY;
+	}
+
+	private void OnBeastStageMove( PanelEvent e )
+	{
+		if ( !_isDraggingBeast ) return;
+		var dx = MousePosition.x - _dragStartMouseX;
+		var dy = MousePosition.y - _dragStartMouseY;
+		beastPopupPanX = _dragStartPanX + dx;
+		beastPopupPanY = _dragStartPanY + dy;
+	}
+
+	private void OnBeastStageUp( PanelEvent e )
+	{
+		_isDraggingBeast = false;
+	}
+
+	private void OnBeastStageEnter()
+	{
+		_isMouseOverBeastStage = true;
+	}
+
+	private void OnBeastStageLeave()
+	{
+		_isMouseOverBeastStage = false;
+		_isDraggingBeast = false;
+	}
+
+	private string BeastPopupSpriteStyle()
+	{
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		// Translate first (pan), then scale (zoom). transform-origin center
+		// keeps zoom centered on the sprite even after panning.
+		return $"transform: translate({beastPopupPanX.ToString("F2", ci)}px, {beastPopupPanY.ToString("F2", ci)}px) scale({beastPopupZoom.ToString("F2", ci)}); transform-origin: center center;";
+	}
+
+	private MonsterSpecies GetSpecies( string id ) => MonsterManager.Instance?.GetSpecies( id );
+
+	private string GetAnimatedIcon( MonsterSpecies species )
+	{
+		if ( species == null ) return "ui/monsters/default.png";
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 )
 		{
 			int frameIndex = SpriteAnimator.GlobalFrame % species.AnimationFrames.Count;
 			return species.AnimationFrames[frameIndex];
 		}
-
-		// Fall back to static icon
 		return species.IconPath ?? "ui/monsters/default.png";
 	}
 
-	private List<MonsterSpecies> GetEvolutionChain(MonsterSpecies species)
+	private List<MonsterSpecies> GetEvolutionChain( MonsterSpecies species )
 	{
 		var chain = new List<MonsterSpecies>();
-		if (species == null) return chain;
+		if ( species == null ) return chain;
 
-		// Find the base form by walking back
 		var current = species;
-		while (!string.IsNullOrEmpty(current.EvolvesFrom))
+		while ( !string.IsNullOrEmpty( current.EvolvesFrom ) )
 		{
-			var prev = GetSpecies(current.EvolvesFrom);
-			if (prev == null) break;
+			var prev = GetSpecies( current.EvolvesFrom );
+			if ( prev == null ) break;
 			current = prev;
 		}
 
-		// Now walk forward from the base form
-		while (current != null)
+		while ( current != null )
 		{
-			chain.Add(current);
-			if (string.IsNullOrEmpty(current.EvolvesTo)) break;
-			current = GetSpecies(current.EvolvesTo);
+			chain.Add( current );
+			if ( string.IsNullOrEmpty( current.EvolvesTo ) ) break;
+			current = GetSpecies( current.EvolvesTo );
 		}
 
 		return chain;
 	}
 
-	private string GetTraitName(string traitId)
+	private int GetBaseStatTotal( MonsterSpecies species )
 	{
-		var trait = TraitDatabase.GetTrait(traitId);
-		return trait?.Name ?? traitId;
-	}
-
-	private int GetBaseStatTotal(MonsterSpecies species)
-	{
-		if (species == null) return 0;
+		if ( species == null ) return 0;
 		return species.BaseHP + species.BaseATK + species.BaseDEF +
 			   species.BaseSpA + species.BaseSpD + species.BaseSPD;
 	}
 
+	/// <summary>
+	/// Computes a stat bar fill as a percent (0-100). Works with the narrower
+	/// stat bar in the new roster-style sidebar — no fixed pixel width needed,
+	/// CSS transitions interpolate smoothly on select.
+	/// </summary>
+	private int GetStatFillPct( int statValue )
+	{
+		// 150 = "max" for visualization purposes
+		return Math.Clamp( (statValue * 100) / 150, 0, 100 );
+	}
+
+	private string GetPersonalityColor( BeastPersonality p )
+	{
+		return p switch
+		{
+			BeastPersonality.Bold => "#d05040",
+			BeastPersonality.Timid => "#4090d0",
+			BeastPersonality.Greedy => "#c8a840",
+			BeastPersonality.Loyal => "#50b060",
+			BeastPersonality.Wild => "#9060c0",
+			_ => "#888888"
+		};
+	}
+
+	// ============================================================
+	// BuildHash — include every field that affects render
+	// ============================================================
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
-		hash.Add(currentElement);
-		hash.Add(currentElementStr);
-		hash.Add(currentSort);
-		hash.Add(currentNameFilter);
-		hash.Add(selectedSpecies?.Id);
-		hash.Add(statsResetting);
-		// Only include animation frame if we have a selected species with animation
-		// This prevents the entire grid from rebuilding every frame
-		if (selectedSpecies != null && selectedSpecies.AnimationFrames?.Count > 0)
-		{
-			hash.Add(SpriteAnimator.GlobalFrame);
-		}
+		hash.Add( currentElement );
+		hash.Add( currentElementStr );
+		hash.Add( currentSort );
+		hash.Add( sortAscending );
+		hash.Add( currentNameFilter );
+		hash.Add( selectedSpecies?.Id );
+		hash.Add( detailView );
+		hash.Add( hoveredTraitId );
+		hash.Add( GetDiscoveredCount() );
+		// Beast preview popup state — visibility + zoom level need to rehash
+		// so the popup opens, closes, and scales smoothly in response to
+		// clicks/zoom controls.
+		hash.Add( showBeastPopup );
+		hash.Add( beastPopupZoom );
+		hash.Add( beastPopupPanX );
+		hash.Add( beastPopupPanY );
+		hash.Add( _isDraggingBeast );
+		// Always include animation frame — grid cards animate even when no
+		// species is selected, AND undiscovered silhouettes still cycle
+		// (animated shadow is free juice + signals there's a creature there).
+		hash.Add( SpriteAnimator.GlobalFrame );
+		// Select-pulse state — without these in the hash, the panel won't
+		// re-render on re-click and the one-shot flash won't remount.
+		hash.Add( justSelectedSpeciesId );
+		hash.Add( selectPulseVersion );
 		return hash.ToHashCode();
 	}
 }

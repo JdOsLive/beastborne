@@ -40,6 +40,10 @@ MonsterCard {
 	// the cursor over both cards alternately and produces a flickering
 	// hover-loop bug. Vertical lift + stronger shadow + purple glow give
 	// plenty of "feels alive" feedback without the flicker risk.
+	// NOTE: s&box does NOT clip box-shadow to the scroll viewport. The
+	// solid opaque `.roster-header` bg covers leaks on the top edge; the
+	// bottom bar's solid bg covers leaks on the bottom edge. Keep chrome
+	// opaque wherever a scroll grid sits.
 	&:hover {
 		transform: translateY(-6px);
 		box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75), 0 0 24px rgba(196, 181, 253, 0.3);
@@ -51,15 +55,16 @@ MonsterCard {
 		transform: translateY(-2px) scale(0.98);
 	}
 
-	// Selected state — stronger purple glow + slight scale-up so the
-	// selected beast clearly pops out of the grid. The grid is dense
-	// (50+ cards) so the selection needs strong visual weight to be
-	// findable at a glance without being garish.
+	// Selected — border-only signal. Any `transform` on a selected card
+	// inside `overflow-y: scroll` lifts it OUT of the scroll clip in s&box
+	// — the card's name/pills then render above/beside the grid in header
+	// territory. Outer glows leak the same way. Pure border signaling
+	// (thicker + brighter ring + subtle bg tint) avoids both. See
+	// learnings 2026-04-17 "selected card transform escapes scroll clip".
 	&.selected {
-		border-color: #8b5cf6;
-		box-shadow: 0 0 28px rgba(139, 92, 246, 0.6), 0 8px 24px rgba(0, 0, 0, 0.7);
-		transform: translateY(-3px);
-		animation: cardSelect 0.2s ease-out;
+		border-width: 2px;
+		border-color: #a78bfa;
+		background-color: rgba(45, 32, 78, 0.95);
 	}
 
 	&.compact {
@@ -354,24 +359,24 @@ MonsterCard {
 	}
 
 	&.selected {
-		border-color: rgba(200, 168, 64, 0.7);
-		box-shadow: 0 0 24px rgba(200, 168, 64, 0.35), 0 6px 20px rgba(0, 0, 0, 0.5);
+		border-width: 2px;
+		border-color: rgba(218, 184, 72, 0.95);
+		background: linear-gradient(180deg, rgba(50, 38, 18, 1) 0%, rgba(32, 22, 8, 1) 100%);
 	}
 }
 
 // Sprite — absolutely positioned, fills card area above name bar.
-// IMPORTANT: use `contain` not a fixed `170px 170px` size. The new monster
-// sprites (Manehelm, Pyrgard, Gothsire, Pagefin, Lochmaw) are wider than
-// they are tall — fixed-square sizing was forcing them into a square box,
-// visibly squishing them. `contain` preserves the source aspect ratio and
-// letterboxes within the container, which is the right behavior for any
-// sprite shape.
+// `background-size: contain` preserves the source aspect ratio. Fixed
+// pixel sizes (e.g. 170px 170px) get visually stretched on this
+// non-square element in s&box. To make the sprite bigger, expand the
+// element bounds (flush to card edges, tighter bottom) rather than
+// oversizing the background.
 .mini-icon {
 	position: absolute;
-	top: 2px;
-	left: 2px;
-	right: 2px;
-	bottom: 34px;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 30px;
 	background-size: contain;
 	background-repeat: no-repeat;
 	background-position: center center;
@@ -386,8 +391,11 @@ MonsterCard {
 // with the LV pill).
 .mini-badge-row {
 	position: absolute;
-	top: -7px;
-	left: -3px;
+	// Pinned INSIDE the card bounds — overhang leaks above the scroll
+	// clip in s&box (LV pills showing up as ghost row above the grid).
+	// Matches the `.mini-fav` fix from the same pass (2026-04-17).
+	top: 4px;
+	left: 4px;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
@@ -398,10 +406,10 @@ MonsterCard {
 // LV pill — child of .mini-badge-row, no longer positioned
 .mini-lv-pill {
 	background-color: rgba(10, 8, 20, 0.92);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	border: 1px solid rgba(255, 255, 255, 0.18);
 	border-radius: 10px;
 	padding: 3px 8px;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+	// No box-shadow — outer shadows leak past scroll clip in s&box.
 	flex-shrink: 0;
 
 	.lv-text {
@@ -421,10 +429,11 @@ MonsterCard {
 	align-items: center;
 	gap: 3px;
 	background-color: rgba(10, 8, 20, 0.92);
-	border: 1px solid rgba(196, 181, 253, 0.35);
+	border: 1px solid rgba(196, 181, 253, 0.5);
 	border-radius: 10px;
 	padding: 3px 7px;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(139, 92, 246, 0.25);
+	// No box-shadow — outer shadows (including purple glow) leak past
+	// scroll clip in s&box. Brighter border alpha compensates.
 	flex-shrink: 0;
 	animation: genePillFadeIn 0.25s ease-out;
 
@@ -493,8 +502,9 @@ MonsterCard {
 	}
 
 	&.selected {
-		border-color: rgba(251, 191, 36, 0.7);
-		box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.4), 0 6px 20px rgba(0, 0, 0, 0.6), 0 0 22px rgba(251, 191, 36, 0.3);
+		border-width: 2px;
+		border-color: rgba(251, 191, 36, 0.95);
+		background: linear-gradient(135deg, rgba(50, 40, 15, 1) 0%, rgba(32, 24, 8, 1) 100%);
 	}
 }
 
@@ -717,17 +727,21 @@ MonsterCard {
 // Favorite star top-right
 .mini-fav {
 	position: absolute;
-	top: -7px;
-	right: -3px;
+	// Pinned INSIDE the card bounds — overhang (top: -7px, right: -3px)
+	// leaks above the grid's scroll clip in s&box, making the star drift
+	// into the header area on cards at the top of the visible grid. Keep
+	// the pill fully contained within the card border (2026-04-17).
+	top: 4px;
+	right: 4px;
 	z-index: 4;
 	background-color: rgba(10, 8, 20, 0.92);
-	border: 1px solid rgba(251, 191, 36, 0.4);
+	border: 1px solid rgba(251, 191, 36, 0.55);
 	border-radius: 10px;
 	padding: 4px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), 0 0 8px rgba(251, 191, 36, 0.2);
+	// No box-shadow — outer glows leak past the scroll clip in s&box.
 }
 
 // Name bar at bottom

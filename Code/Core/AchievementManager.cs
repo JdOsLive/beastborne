@@ -71,10 +71,6 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalMonstersCaught, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "catch_25", "Monster Collector", "Catch 25 monsters", AchievementCategory.Collection,
-			AchievementRequirement.TotalMonstersCaught, 25, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Collector" ) } );
-
 		AddAchievement( "catch_50", "Seasoned Hunter", "Catch 50 monsters", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 50, order++,
 			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.ContractInk, 10 ) } );
@@ -83,51 +79,17 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalMonstersCaught, 100, order++,
 			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Master Tamer" ) } );
 
-		AddAchievement( "catch_250", "Beast Wrangler", "Catch 250 monsters", AchievementCategory.Collection,
-			AchievementRequirement.TotalMonstersCaught, 250, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Beast Wrangler" ) } );
-
 		AddAchievement( "catch_500", "Living Legend", "Catch 500 monsters", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 500, order++,
-			new() { Reward( AchievementRewardType.Gems, 25 ), Reward( AchievementRewardType.Title, 0, "Living Legend" ) } );
+			new() { Reward( AchievementRewardType.Gems, 25 ) } );
 
-		// Element catches
-		AddElementAchievement( "catch_fire", "Flame Finder", "Catch a Fire element monster", AchievementRequirement.CaughtElementFire, order++ );
-		AddElementAchievement( "catch_water", "Wave Rider", "Catch a Water element monster", AchievementRequirement.CaughtElementWater, order++ );
-		AddElementAchievement( "catch_earth", "Ground Breaker", "Catch an Earth element monster", AchievementRequirement.CaughtElementEarth, order++ );
-		AddElementAchievement( "catch_wind", "Storm Chaser", "Catch a Wind element monster", AchievementRequirement.CaughtElementWind, order++ );
-		AddElementAchievement( "catch_electric", "Lightning Rod", "Catch an Electric element monster", AchievementRequirement.CaughtElementElectric, order++ );
-		AddElementAchievement( "catch_ice", "Frost Seeker", "Catch an Ice element monster", AchievementRequirement.CaughtElementIce, order++ );
-		AddElementAchievement( "catch_nature", "Green Thumb", "Catch a Nature element monster", AchievementRequirement.CaughtElementNature, order++ );
-		AddElementAchievement( "catch_metal", "Iron Will", "Catch a Metal element monster", AchievementRequirement.CaughtElementMetal, order++ );
-		AddElementAchievement( "catch_shadow", "Shadow Walker", "Catch a Shadow element monster", AchievementRequirement.CaughtElementShadow, order++ );
-		AddElementAchievement( "catch_spirit", "Spirit Guide", "Catch a Spirit element monster", AchievementRequirement.CaughtElementSpirit, order++ );
-		AddElementAchievement( "catch_neutral", "Plain Sight", "Catch a Neutral element monster", AchievementRequirement.CaughtElementNeutral, order++ );
-
-		// Rarity catches
-		AddAchievement( "catch_rare", "Rare Find", "Catch a Rare monster", AchievementCategory.Collection,
-			AchievementRequirement.CaughtRarityRare, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 3000 ) } );
-
-		AddAchievement( "catch_epic", "Epic Discovery", "Catch an Epic monster", AchievementCategory.Collection,
-			AchievementRequirement.CaughtRarityEpic, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.ContractInk, 5 ) } );
-
-		AddAchievement( "catch_legendary", "Legendary Encounter", "Catch a Legendary monster", AchievementCategory.Collection,
-			AchievementRequirement.CaughtRarityLegendary, 1, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Legend Hunter" ) } );
-
-		AddAchievement( "catch_mythic", "Myth Made Real", "Catch a Mythic monster", AchievementCategory.Collection,
-			AchievementRequirement.CaughtRarityMythic, 1, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Mythic Hunter" ) } );
+		// (Cut: 11 element catches + 4 rarity catches + own_same_5 — none had
+		//  backing trigger code in the game. Re-add when per-element / per-rarity
+		//  / OwnedSameSpecies counters are wired in MonsterManager.OnCatch.)
 
 		AddAchievement( "beast_complete", "Beastborne Master", "Discover every species in the Beastiary", AchievementCategory.Collection,
 			AchievementRequirement.BeastiaryCompleted, 1, order++,
 			new() { Reward( AchievementRewardType.Gems, 25 ), Reward( AchievementRewardType.Title, 0, "Beastborne Master" ) } );
-
-		AddAchievement( "own_same_5", "Dedicated Fuser", "Own 5 monsters of the same species", AchievementCategory.Collection,
-			AchievementRequirement.OwnedSameSpecies, 5, order++,
-			new() { Reward( AchievementRewardType.Gold, 3000 ) } );
 
 		// ── BATTLE ──────────────────────────────────────────────────
 
@@ -139,21 +101,13 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalBattlesWon, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "win_50", "Veteran Fighter", "Win 50 battles", AchievementCategory.Battle,
-			AchievementRequirement.TotalBattlesWon, 50, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Veteran Fighter" ) } );
-
 		AddAchievement( "win_100", "Centurion", "Win 100 battles", AchievementCategory.Battle,
 			AchievementRequirement.TotalBattlesWon, 100, order++,
 			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
-		AddAchievement( "win_500", "Warborn", "Win 500 battles", AchievementCategory.Battle,
-			AchievementRequirement.TotalBattlesWon, 500, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Warborn" ) } );
-
 		AddAchievement( "win_1000", "Unbreakable", "Win 1000 battles", AchievementCategory.Battle,
 			AchievementRequirement.TotalBattlesWon, 1000, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Unbreakable" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
 		AddAchievement( "damage_10k", "Heavy Hitter", "Deal 10,000 total damage", AchievementCategory.Battle,
 			AchievementRequirement.TotalDamageDealt, 10000, order++,
@@ -161,39 +115,27 @@ public sealed class AchievementManager : Component
 
 		AddAchievement( "damage_100k", "Devastator", "Deal 100,000 total damage", AchievementCategory.Battle,
 			AchievementRequirement.TotalDamageDealt, 100000, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Devastator" ) } );
+			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		AddAchievement( "damage_1m", "Cataclysm", "Deal 1,000,000 total damage", AchievementCategory.Battle,
 			AchievementRequirement.TotalDamageDealt, 1000000, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Cataclysm" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
 		AddAchievement( "knockouts_10", "Knockout Artist", "Score 10 knockouts", AchievementCategory.Battle,
 			AchievementRequirement.TotalKnockouts, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "knockouts_50", "Ring Master", "Score 50 knockouts", AchievementCategory.Battle,
-			AchievementRequirement.TotalKnockouts, 50, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
-
 		AddAchievement( "knockouts_100", "Executioner", "Score 100 knockouts", AchievementCategory.Battle,
 			AchievementRequirement.TotalKnockouts, 100, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Executioner" ) } );
+			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		AddAchievement( "knockouts_500", "Annihilator", "Score 500 knockouts", AchievementCategory.Battle,
 			AchievementRequirement.TotalKnockouts, 500, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Annihilator" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "flawless_win", "Flawless Victory", "Win a battle without losing a monster", AchievementCategory.Battle,
-			AchievementRequirement.WinWithoutLoss, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Flawless" ) } );
-
-		AddAchievement( "type_underdog", "Against the Odds", "Win a battle with a type disadvantage", AchievementCategory.Battle,
-			AchievementRequirement.WinWithTypeDisadvantage, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 3000 ) } );
-
-		AddAchievement( "all_elem_battle", "Elemental Master", "Use every element type in battle", AchievementCategory.Battle,
-			AchievementRequirement.UsedEveryElement, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Elemental Master" ) } );
+		// (Cut: flawless_win, type_underdog, all_elem_battle — backing trigger
+		//  code missing for WinWithoutLoss / WinWithTypeDisadvantage / UsedEveryElement.
+		//  Re-add when those battle-end checks exist.)
 
 		// ── EXPEDITION ──────────────────────────────────────────────
 
@@ -201,17 +143,9 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.HighestExpeditionCleared, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 1000 ) } );
 
-		AddAchievement( "expedition_3", "Trailblazer", "Clear Expedition 3", AchievementCategory.Expedition,
-			AchievementRequirement.HighestExpeditionCleared, 3, order++,
-			new() { Reward( AchievementRewardType.Gold, 3000 ) } );
-
 		AddAchievement( "expedition_5", "Into the Wild", "Clear Expedition 5", AchievementCategory.Expedition,
 			AchievementRequirement.HighestExpeditionCleared, 5, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.ContractInk, 10 ) } );
-
-		AddAchievement( "expedition_8", "Deep Explorer", "Clear Expedition 8", AchievementCategory.Expedition,
-			AchievementRequirement.HighestExpeditionCleared, 8, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		AddAchievement( "expedition_12", "Uncharted Territory", "Clear Expedition 12", AchievementCategory.Expedition,
 			AchievementRequirement.HighestExpeditionCleared, 12, order++,
@@ -225,37 +159,39 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.HighestHardModeCleared, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "hard_mode_5", "Iron Explorer", "Clear Hard Mode Expedition 5", AchievementCategory.Expedition,
-			AchievementRequirement.HighestHardModeCleared, 5, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Iron Explorer" ) } );
-
 		AddAchievement( "hard_mode_10", "Unbreakable Explorer", "Clear Hard Mode Expedition 10", AchievementCategory.Expedition,
 			AchievementRequirement.HighestHardModeCleared, 10, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Unbreakable Explorer" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
 		AddAchievement( "hard_mode_16", "Absolute Legend", "Clear all 16 Hard Mode Expeditions", AchievementCategory.Expedition,
 			AchievementRequirement.HighestHardModeCleared, 16, order++,
-			new() { Reward( AchievementRewardType.Gems, 15 ), Reward( AchievementRewardType.Title, 0, "Absolute Legend" ) } );
+			new() { Reward( AchievementRewardType.Gems, 15 ) } );
 
 		AddAchievement( "expeditions_50", "Seasoned Adventurer", "Complete 50 expeditions", AchievementCategory.Expedition,
 			AchievementRequirement.ExpeditionsCompleted, 50, order++,
 			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
-		AddAchievement( "expeditions_100", "Expedition Veteran", "Complete 100 expeditions", AchievementCategory.Expedition,
-			AchievementRequirement.ExpeditionsCompleted, 100, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Expedition Veteran" ) } );
-
 		AddAchievement( "expeditions_250", "Endless Explorer", "Complete 250 expeditions", AchievementCategory.Expedition,
 			AchievementRequirement.ExpeditionsCompleted, 250, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Endless Explorer" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "no_catch_run", "Pacifist Run", "Complete an expedition without catching anything", AchievementCategory.Expedition,
-			AchievementRequirement.ExpeditionWithoutCatch, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
+		// Boss Slayer / Supreme Tamer — replace the old boss-token store entries.
+		// Required count is hardcoded because ExpeditionManager.OnStart (which
+		// populates _expeditions) hasn't run when this initializer fires.
+		// LAUNCH_BOSS_COUNT must match the # of `HasBoss = true` expeditions
+		// in ExpeditionManager.GenerateExpeditions(). Bump when new boss
+		// expeditions ship.
+		const int LAUNCH_BOSS_COUNT = 2;
 
-		AddAchievement( "all_bosses", "Boss Slayer", "Defeat every boss", AchievementCategory.Expedition,
-			AchievementRequirement.AllBossesDefeated, 1, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.BossTokens, 50 ), Reward( AchievementRewardType.Title, 0, "Boss Slayer" ) } );
+		AddAchievement( "boss_first", "Boss Slayer", "Defeat your first expedition boss", AchievementCategory.Expedition,
+			AchievementRequirement.BossesCleared, 1, order++,
+			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Boss Slayer" ) } );
+
+		AddAchievement( "boss_all", "Supreme Tamer", "Defeat every expedition boss at least once", AchievementCategory.Expedition,
+			AchievementRequirement.BossesCleared, LAUNCH_BOSS_COUNT, order++,
+			new() { Reward( AchievementRewardType.Gems, 25 ), Reward( AchievementRewardType.Title, 0, "Supreme Tamer" ) } );
+
+		// (Cut: no_catch_run — ExpeditionWithoutCatch trigger code missing.)
 
 		// ── FUSING ──────────────────────────────────────────────
 
@@ -267,13 +203,9 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalMonstersBred, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "breed_25", "Beast Fuser", "Fuse 25 monsters", AchievementCategory.Breeding,
-			AchievementRequirement.TotalMonstersBred, 25, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Beast Fuser" ) } );
-
 		AddAchievement( "breed_50", "Genetics Expert", "Fuse 50 monsters", AchievementCategory.Breeding,
 			AchievementRequirement.TotalMonstersBred, 50, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Genetics Expert" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
 		AddAchievement( "breed_100", "Master Fuser", "Fuse 100 monsters", AchievementCategory.Breeding,
 			AchievementRequirement.TotalMonstersBred, 100, order++,
@@ -285,15 +217,9 @@ public sealed class AchievementManager : Component
 
 		AddAchievement( "perfect_gene", "Perfection", "Fuse a monster with a perfect gene (30)", AchievementCategory.Breeding,
 			AchievementRequirement.BredPerfectGene, 1, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Perfectionist" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
-		AddAchievement( "got_twins", "Double Trouble", "Get twins from fusing", AchievementCategory.Breeding,
-			AchievementRequirement.GotTwins, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
-
-		AddAchievement( "rare_trait", "Lucky Genes", "Fuse a monster with a rare or higher trait", AchievementCategory.Breeding,
-			AchievementRequirement.BredRareTrait, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
+		// (Cut: got_twins, rare_trait — GotTwins + BredRareTrait trigger code missing.)
 
 		// ── ECONOMY ──────────────────────────────────────────────
 
@@ -307,23 +233,19 @@ public sealed class AchievementManager : Component
 
 		AddAchievement( "gold_100k", "Wealthy Tamer", "Earn 100,000 total gold", AchievementCategory.Economy,
 			AchievementRequirement.TotalGoldEarned, 100000, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Wealthy" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
 		AddAchievement( "gold_1m", "Beastborne Millionaire", "Earn 1,000,000 total gold", AchievementCategory.Economy,
 			AchievementRequirement.TotalGoldEarned, 1000000, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Millionaire" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "gold_1b", "Beastborne Billionaire", "Earn 1,000,000,000 total gold", AchievementCategory.Economy,
-			AchievementRequirement.TotalGoldEarned, 1000000000, order++,
-			new() { Reward( AchievementRewardType.Gems, 100 ), Reward( AchievementRewardType.Title, 0, "Billionaire" ), Reward( AchievementRewardType.Monster, 50, "chromedragon" ) } );
+		// (Cut gold_1b — 1B is functionally unreachable in alpha; was aspirational filler.)
 
 		AddAchievement( "items_10", "Shopper", "Buy 10 items from the shop", AchievementCategory.Economy,
 			AchievementRequirement.TotalItemsBought, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "items_50", "Big Spender", "Buy 50 items from the shop", AchievementCategory.Economy,
-			AchievementRequirement.TotalItemsBought, 50, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Big Spender" ) } );
+		// (Cut items_50 — tier trim; items_10 is the meaningful first milestone.)
 
 		AddAchievement( "three_relics", "Fully Equipped", "Equip 3 relics simultaneously", AchievementCategory.Economy,
 			AchievementRequirement.EquippedThreeRelics, 1, order++,
@@ -343,17 +265,9 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.ArenaWins, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "arena_win_5", "Arena Regular", "Win 5 ranked sets", AchievementCategory.Arena,
-			AchievementRequirement.ArenaWins, 5, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
-
 		AddAchievement( "arena_win_25", "Arena Warrior", "Win 25 ranked sets", AchievementCategory.Arena,
 			AchievementRequirement.ArenaWins, 25, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Arena Warrior" ) } );
-
-		AddAchievement( "arena_win_50", "Arena Champion", "Win 50 ranked sets", AchievementCategory.Arena,
-			AchievementRequirement.ArenaWins, 50, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Arena Champion" ) } );
+			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		AddAchievement( "arena_win_100", "Arena Legend", "Win 100 ranked sets", AchievementCategory.Arena,
 			AchievementRequirement.ArenaWins, 100, order++,
@@ -372,25 +286,19 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.ArenaWinStreak, 3, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "win_streak_5", "Hot Streak", "Win 5 ranked sets in a row", AchievementCategory.Arena,
-			AchievementRequirement.ArenaWinStreak, 5, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "On Fire" ) } );
-
 		AddAchievement( "win_streak_10", "Unstoppable", "Win 10 ranked sets in a row", AchievementCategory.Arena,
 			AchievementRequirement.ArenaWinStreak, 10, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Unstoppable" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "arena_vs_higher", "Giant Killer", "Win a ranked set against a higher-ranked player", AchievementCategory.Arena,
-			AchievementRequirement.ArenaWinVsHigherRank, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Giant Killer" ) } );
+		// (Cut arena_vs_higher — ArenaWinVsHigherRank trigger code missing.)
 
 		AddAchievement( "arena_sets_100", "Arena Veteran", "Complete 100 ranked sets", AchievementCategory.Arena,
 			AchievementRequirement.ArenaSetsCompleted, 100, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Arena Veteran" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
 		AddAchievement( "reverse_sweep", "Reverse Sweep", "Come back from a 0-1 deficit to win a ranked set 2-1", AchievementCategory.Arena,
 			AchievementRequirement.ArenaReverseSweep, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Comeback King" ) } );
+			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		// ── SOCIAL / ONLINE ──────────────────────────────────────────
 
@@ -398,25 +306,17 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalTradesCompleted, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "trade_5", "Trading Partner", "Complete 5 trades", AchievementCategory.Social,
-			AchievementRequirement.TotalTradesCompleted, 5, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
-
 		AddAchievement( "trade_25", "Merchant", "Complete 25 trades", AchievementCategory.Social,
 			AchievementRequirement.TotalTradesCompleted, 25, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Merchant" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
 		AddAchievement( "trade_50", "Trade Baron", "Complete 50 trades", AchievementCategory.Social,
 			AchievementRequirement.TotalTradesCompleted, 50, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Trade Baron" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
 		AddAchievement( "chat_10", "Social Butterfly", "Send 10 chat messages", AchievementCategory.Social,
 			AchievementRequirement.ChatMessagesSent, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 1000 ) } );
-
-		AddAchievement( "chat_50", "Chatterbox", "Send 50 chat messages", AchievementCategory.Social,
-			AchievementRequirement.ChatMessagesSent, 50, order++,
-			new() { Reward( AchievementRewardType.Gold, 3000 ), Reward( AchievementRewardType.Title, 0, "Chatterbox" ) } );
 
 		AddAchievement( "beast_showcase", "Show and Tell", "Showcase a beast in chat", AchievementCategory.Social,
 			AchievementRequirement.BeastShowcased, 1, order++,
@@ -426,35 +326,23 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TamerCardsCollected, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "cards_25", "Social Network", "Collect 25 tamer cards", AchievementCategory.Social,
-			AchievementRequirement.TamerCardsCollected, 25, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Social Network" ) } );
-
 		// ── MASTERY ──────────────────────────────────────────────
 
 		AddAchievement( "level_10", "Apprentice", "Reach Tamer Level 10", AchievementCategory.Mastery,
 			AchievementRequirement.TamerLevel, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "level_25", "Journeyman", "Reach Tamer Level 25", AchievementCategory.Mastery,
-			AchievementRequirement.TamerLevel, 25, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
-
 		AddAchievement( "level_50", "Expert Tamer", "Reach Tamer Level 50", AchievementCategory.Mastery,
 			AchievementRequirement.TamerLevel, 50, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Expert" ) } );
+			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		AddAchievement( "level_100", "Centurion Tamer", "Reach Tamer Level 100", AchievementCategory.Mastery,
 			AchievementRequirement.TamerLevel, 100, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Centurion" ) } );
-
-		AddAchievement( "level_150", "Grand Tamer", "Reach Tamer Level 150", AchievementCategory.Mastery,
-			AchievementRequirement.TamerLevel, 150, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Grand Tamer" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
 		AddAchievement( "level_200", "Legendary Tamer", "Reach Tamer Level 200", AchievementCategory.Mastery,
 			AchievementRequirement.TamerLevel, 200, order++,
-			new() { Reward( AchievementRewardType.Gems, 15 ), Reward( AchievementRewardType.Title, 0, "Legendary Tamer" ) } );
+			new() { Reward( AchievementRewardType.Gems, 15 ) } );
 
 		AddAchievement( "level_250", "Max Level", "Reach Tamer Level 250", AchievementCategory.Mastery,
 			AchievementRequirement.TamerLevel, 250, order++,
@@ -466,53 +354,35 @@ public sealed class AchievementManager : Component
 
 		AddAchievement( "skills_25", "Skill Master", "Unlock 25 skills", AchievementCategory.Mastery,
 			AchievementRequirement.SkillsUnlocked, 25, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Skill Master" ) } );
+			new() { Reward( AchievementRewardType.Gems, 5 ) } );
 
 		AddAchievement( "evolve_5", "Evolution Theory", "Evolve 5 monsters", AchievementCategory.Mastery,
 			AchievementRequirement.MonstersEvolved, 5, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "evolve_25", "Darwin's Heir", "Evolve 25 monsters", AchievementCategory.Mastery,
-			AchievementRequirement.MonstersEvolved, 25, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Darwin's Heir" ) } );
-
 		AddAchievement( "evolve_50", "Evolution Master", "Evolve 50 monsters", AchievementCategory.Mastery,
 			AchievementRequirement.MonstersEvolved, 50, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Evolution Master" ) } );
+			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "veteran_max", "Battle Hardened", "Have a monster reach maximum Veteran Rank", AchievementCategory.Mastery,
+		AddAchievement( "veteran_max", "Grandmaster Scholar", "Reach Grandmaster mastery on any species", AchievementCategory.Mastery,
 			AchievementRequirement.MonsterVeteranMaxRank, 1, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Battle Hardened" ) } );
+			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
 		AddAchievement( "skill_points_100", "Point Hoarder", "Invest 100 skill points", AchievementCategory.Mastery,
 			AchievementRequirement.SkillPointsInvested, 100, order++,
 			new() { Reward( AchievementRewardType.Gold, 10000 ) } );
 
-		AddAchievement( "skill_points_250", "Point Master", "Invest 250 skill points", AchievementCategory.Mastery,
-			AchievementRequirement.SkillPointsInvested, 250, order++,
-			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Point Master" ) } );
+		// (Cut: skill_points_250 — tier trim. skill_points_100 covers the "deep
+		//  investment" milestone.)
 
 		// ── SECRET ──────────────────────────────────────────────
-
-		AddAchievement( "secret_night_owl", "Night Owl", "Play for 24 hours total", AchievementCategory.Secret,
-			AchievementRequirement.SecretCondition, 1, order++,
-			new() { Reward( AchievementRewardType.Title, 0, "Night Owl" ) }, isSecret: true );
-
-		AddAchievement( "secret_full_team", "Full House", "Have a full team of 3 monsters all the same species", AchievementCategory.Secret,
-			AchievementRequirement.SecretCondition, 2, order++,
-			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.Title, 0, "Full House" ) }, isSecret: true );
-
-		AddAchievement( "secret_no_evolve", "Natural Beauty", "Reach Tamer Level 50 without evolving any monster", AchievementCategory.Secret,
-			AchievementRequirement.SecretCondition, 3, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Naturalist" ) }, isSecret: true );
-
-		AddAchievement( "secret_mono", "Mono Master", "Clear Expedition 5 with a team of only one element", AchievementCategory.Secret,
-			AchievementRequirement.SecretCondition, 4, order++,
-			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.Title, 0, "Mono Master" ) }, isSecret: true );
-
-		AddAchievement( "secret_lucky7", "Lucky Seven", "Have 7 monsters all at level 7", AchievementCategory.Secret,
-			AchievementRequirement.SecretCondition, 5, order++,
-			new() { Reward( AchievementRewardType.Gems, 5 ) }, isSecret: true );
+		// (All 5 secrets removed — none had backing trigger code. Each one
+		//  needs custom detection logic per condition. Re-add when wired:
+		//   - Night Owl: total play-time tracking
+		//   - Full House: roster-composition check
+		//   - Natural Beauty: level-up gate that checks evolved-count
+		//   - Mono Master: expedition-clear check with team-element filter
+		//   - Lucky Seven: roster check (7 monsters all at exactly level 7))
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -536,12 +406,6 @@ public sealed class AchievementManager : Component
 		} );
 	}
 
-	private void AddElementAchievement( string id, string name, string desc, AchievementRequirement req, int order )
-	{
-		AddAchievement( id, name, desc, AchievementCategory.Collection, req, 1, order,
-			new() { Reward( AchievementRewardType.Gold, 1000 ) } );
-	}
-
 	private void AddRankAchievement( string id, string name, string desc, string rank, int order )
 	{
 		int rankValue = rank switch
@@ -562,8 +426,6 @@ public sealed class AchievementManager : Component
 		if ( rankValue >= 5 )
 			rewards.Add( Reward( AchievementRewardType.Gems, rankValue * 2 ) );
 
-		rewards.Add( Reward( AchievementRewardType.Title, 0, $"{rank} Champion" ) );
-
 		AddAchievement( id, name, desc, AchievementCategory.Arena, AchievementRequirement.ArenaRankReached, rankValue, order, rewards );
 	}
 
@@ -573,7 +435,7 @@ public sealed class AchievementManager : Component
 		{
 			Type = type,
 			Value = value,
-			ItemId = type == AchievementRewardType.Item || type == AchievementRewardType.Title || type == AchievementRewardType.Theme ? itemOrSpeciesId : null,
+			ItemId = type == AchievementRewardType.Item || type == AchievementRewardType.Title ? itemOrSpeciesId : null,
 			SpeciesId = type == AchievementRewardType.Monster ? itemOrSpeciesId : null
 		};
 	}
@@ -667,18 +529,9 @@ public sealed class AchievementManager : Component
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
 
-		// Show notification
-		NotificationManager.Instance?.AddNotification(
-			NotificationType.Success,
-			"Achievement Unlocked!",
-			$"{achievement.Name} — Claim your rewards!"
-		);
-
-		// Announce in chat
-		var playerName = TamerManager.Instance?.CurrentTamer?.Name ?? "Player";
-		ChatManager.Instance?.AnnounceMilestone( playerName,
-			$"unlocked the achievement: {achievement.Name}!"
-		);
+		// NotificationManager subscribes to OnAchievementUnlocked and handles its own notification.
+		// Don't fire AddNotification here to avoid double-firing.
+		// Don't broadcast to chat — achievements stay in the notification layer to avoid chat bloat.
 
 		// Fire event for UI
 		OnAchievementUnlocked?.Invoke( achievement );
@@ -753,12 +606,12 @@ public sealed class AchievementManager : Component
 				tamer.ContractInk += reward.Value;
 				break;
 			case AchievementRewardType.Title:
-				if ( !string.IsNullOrEmpty( reward.ItemId ) && !tamer.UnlockedTitles.Contains( reward.ItemId ) )
+				if ( !string.IsNullOrEmpty( reward.ItemId )
+					&& Beastborne.Data.CosmeticDatabase.GetTitle( reward.ItemId ) != null
+					&& !tamer.UnlockedTitles.Contains( reward.ItemId ) )
+				{
 					tamer.UnlockedTitles.Add( reward.ItemId );
-				break;
-			case AchievementRewardType.Theme:
-				if ( !string.IsNullOrEmpty( reward.ItemId ) && !tamer.UnlockedThemes.Contains( reward.ItemId ) )
-					tamer.UnlockedThemes.Add( reward.ItemId );
+				}
 				break;
 			case AchievementRewardType.Item:
 				if ( !string.IsNullOrEmpty( reward.ItemId ) )
@@ -900,7 +753,6 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalItemsBought => tamer.TotalItemsBought,
 			AchievementRequirement.ExpeditionsCompleted => tamer.TotalExpeditionsCompleted,
 			AchievementRequirement.TotalTradesCompleted => tamer.TotalTradesCompleted,
-			AchievementRequirement.MiniGamesPlayed => tamer.TotalMiniGamesPlayed,
 			AchievementRequirement.ChatMessagesSent => tamer.ChatMessagesSent,
 			AchievementRequirement.BossTokensSpent => tamer.BossTokensSpent,
 			AchievementRequirement.TotalDamageDealt => tamer.TotalDamageDealt,

@@ -40,8 +40,11 @@ public class Genetics
 	public int HPGene { get; set; }
 	public int ATKGene { get; set; }
 	public int DEFGene { get; set; }
+	[System.Text.Json.Serialization.JsonPropertyName("sp_a_gene")]
 	public int SpAGene { get; set; }  // Special Attack gene
+	[System.Text.Json.Serialization.JsonPropertyName("sp_d_gene")]
 	public int SpDGene { get; set; }  // Special Defense gene
+	[System.Text.Json.Serialization.JsonPropertyName("speed_gene")]
 	public int SPDGene { get; set; }  // Speed gene
 
 	/// <summary>

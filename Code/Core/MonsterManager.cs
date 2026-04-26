@@ -13,20 +13,15 @@ public sealed class MonsterManager : Component
 {
 	public static MonsterManager Instance { get; private set; }
 
-	private const string MONSTER_COOKIE_KEY = "monsters-data";
-	private const string MAX_MONSTERS_COOKIE_KEY = "max-monsters";
 	private const int BASE_MAX_MONSTERS = 50;
 	private const int ABSOLUTE_MAX_MONSTERS = 500; // Hard cap on storage
-
-	/// <summary>
-	/// Get the full key with slot prefix
-	/// </summary>
-	private static string GetKey( string key ) => $"{SaveSlotManager.GetSlotPrefix()}{key}";
 
 	public List<Monster> OwnedMonsters { get; private set; } = new();
 
 	// Dynamic max monsters (can be increased via shop)
 	public int MaxMonsters { get; private set; } = BASE_MAX_MONSTERS;
+
+	private bool _hasHydrated;
 
 	/// <summary>
 	/// Check if storage can be expanded further
@@ -62,22 +57,56 @@ public sealed class MonsterManager : Component
 
 	private void SaveMaxMonsters()
 	{
-		Game.Cookies.Set( GetKey( MAX_MONSTERS_COOKIE_KEY ), MaxMonsters );
-	}
-
-	private void LoadMaxMonsters()
-	{
-		MaxMonsters = Game.Cookies.Get<int>( GetKey( MAX_MONSTERS_COOKIE_KEY ), BASE_MAX_MONSTERS );
-		// Ensure MaxMonsters is never below the base (fixes corrupted/reset slots)
-		if ( MaxMonsters < BASE_MAX_MONSTERS )
-		{
-			MaxMonsters = BASE_MAX_MONSTERS;
-		}
+		var blob = SaveService.Instance?.CurrentBlob;
+		if ( blob == null ) return;
+		blob.MaxMonsters = MaxMonsters;
+		SaveService.Instance.MarkDirty( "monsters" );
 	}
 
 	// Species database
 	private Dictionary<string, MonsterSpecies> _speciesDatabase = new();
 	public IReadOnlyDictionary<string, MonsterSpecies> SpeciesDatabase => _speciesDatabase;
+
+	// ═════════════════════════════════════════════════════════════════════
+	// LAUNCH ROSTER — canonical list of species that ship at launch.
+	// Single source of truth for the BeastiaryPanel filter, essence drops,
+	// and anywhere else we want to hide the 113 AI-holdover species we
+	// don't show players at launch. Reads: 4 handmade + 9 zone-1 wilds +
+	// 9 zone-2 nature pool + 7 zone-3 water pool + 9 evolutions (3 zone-1
+	// mid-stage, 3 starter mid-evos, 3 starter final evos). ~36 total.
+	// ═════════════════════════════════════════════════════════════════════
+	public static readonly HashSet<string> LaunchRoster = new()
+	{
+		// Handmade (4) — starters + mascot
+		"embrik", "pagefin", "cherune", "pollenpuff",
+
+		// Zone 1 — Saltmoor Cove wild pool (9)
+		"twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom",
+		"wishlift", "twincoil", "heartwell",
+
+		// Zone 2 — Saltmoor Forest wild pool (9)
+		"sproutkin", "thornveil", "mosswhisper", "bloomguard",
+		"vinewhip", "fungrowth", "willowwisp", "curublast",
+		// (pollenpuff already in handmade block above, also appears in this pool)
+
+		// Zone 3 — Old Saltmoor wild pool (7)
+		"puddlejaw", "mirrorpond", "weepfin", "streamling",
+		"rivercrest", "bubblite", "coralheim",
+
+		// Evolutions of launch species — players can evolve into these,
+		// so they must exist in the visible roster. They don't spawn wild.
+		"branchling",   // twigsnap evo
+		"flickermoth",  // dustling evo
+		"galefox",      // whiskerwind evo
+		"pyrgard",      // embrik mid-evo
+		"manehelm",     // embrik final evo (fire/metal)
+		"gothsire",     // pagefin mid-evo
+		"lochmaw",      // pagefin final evo (water/shadow)
+		"seraphiel",   // cherune mid-evo
+		"aurael",      // cherune final evo (wind)
+	};
+
+	public static bool IsLaunchAvailable( string speciesId ) => LaunchRoster.Contains( speciesId );
 
 	// Events
 	public Action<Monster> OnMonsterAdded;
@@ -105,8 +134,36 @@ public sealed class MonsterManager : Component
 	protected override void OnStart()
 	{
 		LoadSpeciesDatabase();
-		LoadMonsters();
-		LoadMaxMonsters();
+
+		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
+		{
+			Hydrate();
+		}
+		else if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveLoaded += Hydrate;
+		}
+		else
+		{
+			Log.Warning( "[MonsterManager] SaveService.Instance is null; starting with empty roster" );
+			OwnedMonsters = new();
+			MaxMonsters = BASE_MAX_MONSTERS;
+		}
+
+		if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveReset += HandleSaveReset;
+		}
+	}
+
+	private void HandleSaveReset()
+	{
+		_hasHydrated = false;
+		OwnedMonsters = new();
+		MaxMonsters = BASE_MAX_MONSTERS;
+		_otBackfillDone = false;
+		Hydrate();
+		Log.Info( "[MonsterManager] reset to empty roster" );
 	}
 
 	protected override void OnUpdate()
@@ -150,6 +207,11 @@ public sealed class MonsterManager : Component
 		// Create default species for MVP
 		CreateDefaultSpecies();
 		Log.Info( $"Loaded {_speciesDatabase.Count} monster species" );
+
+		// Register a themed material item for every launch-roster species so
+		// signature drops work at defeat time. ItemManager reads SignatureDropName
+		// from each species and falls back to "{Name} Spirit" when unset.
+		ItemManager.Instance?.RegisterBeastMaterials( _speciesDatabase, LaunchRoster );
 	}
 
 	private void CreateDefaultSpecies()
@@ -169,13 +231,16 @@ public sealed class MonsterManager : Component
 			Name = "Embrik",
 			Description = "A small headless foal born still and silent. A wandering flame found the hollow where its head should be and nestled inside, giving the little colt a second chance at life.",
 			IconPath = "ui/monsters/embrik/idle/embrik_idle_01.png",
-			BaseHP = 44, BaseATK = 57, BaseDEF = 38, BaseSpA = 36, BaseSpD = 33, BaseSPD = 52,
-			HPGrowth = 4, ATKGrowth = 5, DEFGrowth = 3, SpAGrowth = 3, SpDGrowth = 3, SPDGrowth = 4,
+			BaseHP = 48, BaseATK = 65, BaseDEF = 42, BaseSpA = 40, BaseSpD = 35, BaseSPD = 53,
+			HPGrowth = 5, ATKGrowth = 6, DEFGrowth = 5, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 6,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Common,
 			EvolvesTo = "pyrgard",
-			EvolutionLevel = 16,
+			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
+			BaseExpYield = 100,
+			SignatureDropName = "Ember Ash",
+			SignatureDropDescription = "Warm grey dust left where an Embrik's hollow flame burned itself cool.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It watches the world through flickering flames, unsure if the warmth it carries is truly its own.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
@@ -207,7 +272,8 @@ public sealed class MonsterManager : Component
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 1,
 			IconOffsetX = 10f,
-			IconOffsetY = 24f
+			IconOffsetY = 24f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -222,7 +288,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "embrik",
 			EvolvesTo = "manehelm",
-			EvolutionLevel = 32,
+			EvolutionLevel = 36,
 			BaseCatchRate = 0.4f,
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "It positions itself between danger and those nearby, as if remembering a debt it can never repay.",
@@ -256,7 +322,9 @@ public sealed class MonsterManager : Component
 			},
 			BeastiaryNumber = 2,
 			IconOffsetX = 12f,
-			IconOffsetY = 32f
+			IconOffsetY = 32f,
+			CardOffsetX = 10f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -311,7 +379,14 @@ public sealed class MonsterManager : Component
 			},
 			BeastiaryNumber = 3,
 			IconOffsetX = 8f,
-			IconOffsetY = 26f
+			IconOffsetY = 26f,
+			// Grid-card art: scale is already generous at 1.3x. Without an
+			// offset, the head clips the top edge of the card. Push the
+			// whole portrait 12px down so the helmet sits just under the
+			// top border and the feet stay planted on the name strip.
+			CardScale = 1.3f,
+			CardOffsetY = 32f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -324,13 +399,16 @@ public sealed class MonsterManager : Component
 			Name = "Pagefin",
 			Description = "The youngest recruit of the ocean queen's royal guard. Pagefin takes its duties seriously, even if it can barely swim in a straight line.",
 			IconPath = "ui/monsters/pagefin/idle/pagefin_idle_01.png",
-			BaseHP = 52, BaseATK = 38, BaseDEF = 57, BaseSpA = 48, BaseSpD = 62, BaseSPD = 43,
-			HPGrowth = 5, ATKGrowth = 3, DEFGrowth = 5, SpAGrowth = 4, SpDGrowth = 5, SPDGrowth = 4,
+			BaseHP = 52, BaseATK = 37, BaseDEF = 52, BaseSpA = 43, BaseSpD = 55, BaseSPD = 44,
+			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 5, SpDGrowth = 6, SPDGrowth = 4,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			EvolvesTo = "gothsire",
-			EvolutionLevel = 16,
+			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
+			BaseExpYield = 100,
+			SignatureDropName = "Knight's Fin",
+			SignatureDropDescription = "A small salt-rimed fin engraved with the tide-marks of Pagefin's first patrol.",
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "It salutes anything that moves, eager to prove itself worthy of its post.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
@@ -360,7 +438,8 @@ public sealed class MonsterManager : Component
 				"ui/monsters/pagefin/idle/pagefin_idle_01.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 4
+			BeastiaryNumber = 4,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -379,7 +458,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "pagefin",
 			EvolvesTo = "lochmaw",
-			EvolutionLevel = 32,
+			EvolutionLevel = 36,
 			BaseCatchRate = 0.35f,
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "Beneath the brooding exterior, it keeps one eye always turned toward those it guards.",
@@ -410,7 +489,8 @@ public sealed class MonsterManager : Component
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 5,
 			IconOffsetX = 10f,
-			IconOffsetY = 24f
+			IconOffsetY = 24f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -460,42 +540,46 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrames = new()
 			{
-				"ui/monsters/lochmaw/idle/lochmaw_idle_01.png",
-				"ui/monsters/lochmaw/idle/lochmaw_idle_02.png",
-				"ui/monsters/lochmaw/idle/lochmaw_idle_03.png",
-				"ui/monsters/lochmaw/idle/lochmaw_idle_04.png"
+				"ui/monsters/lochmaw/idle/lochmaw_idle_01.png"
 			},
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 6,
 			IconOffsetX = 10f,
-			IconOffsetY = 32f
+			IconOffsetY = 32f,
+			// Grid-card art: good silhouette but reads tight at 1.15x.
+			// Bump scale a hair and nudge right + down so the sea-beast
+			// fills more of the card without clipping the left edge.
+			CardScale = 1.25f,
+			CardOffsetX = 22f,
+			CardOffsetY = 38f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
-		// WIND STARTER LINE (#7-9): Wispryn → Hollowgale → Vexstorm
+		// PROTECTOR STARTER LINE (#7-9): Cherune → Seraphiel → Aurael (stage 3 sprite + data pending)
 		// ═══════════════════════════════════════════════════════════════
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "wispryn",
-			Name = "Wispryn",
-			Description = "A playful spirit born from echoes that never found their way back. It collects sounds and releases them in unexpected places.",
-			IconPath = "ui/monsters/wispryn/idle/wispryn_idle_01.png",
+			Id = "cherune",
+			Name = "Cherune",
+			Description = "A novice cherub barely larger than the halo it wears. It hovers beside lost travelers for a few breaths and vanishes, leaving a warmth that feels like someone was watching over them.",
+			IconPath = "ui/monsters/cherune/idle/cherune_idle_01.png",
 			AnimationFrames = new()
 			{
-				"ui/monsters/wispryn/idle/Wispryn_idle_01.png",
-				"ui/monsters/wispryn/idle/Wispryn_idle_02.png",
-				"ui/monsters/wispryn/idle/Wispryn_idle_03.png",
-				"ui/monsters/wispryn/idle/Wispryn_idle_04.png"
+				"ui/monsters/cherune/idle/cherune_idle_01.png"
 			},
 			AnimationFrameRate = 6f,
-			BaseHP = 38, BaseATK = 52, BaseDEF = 33, BaseSpA = 47, BaseSpD = 38, BaseSPD = 67,
-			HPGrowth = 3, ATKGrowth = 4, DEFGrowth = 3, SpAGrowth = 4, SpDGrowth = 3, SPDGrowth = 6,
+			BaseHP = 40, BaseATK = 53, BaseDEF = 34, BaseSpA = 48, BaseSpD = 39, BaseSPD = 69,
+			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 4, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 8,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Common,
-			EvolvesTo = "hollowgale",
-			EvolutionLevel = 16,
+			EvolvesTo = "seraphiel",
+			EvolutionLevel = 18,
 			BaseCatchRate = 0.55f,
+			BaseExpYield = 100,
+			SignatureDropName = "Lost Feather",
+			SignatureDropDescription = "A stray down feather left behind where a Cherune hovered too long.",
 			Personality = BeastPersonality.Wild,
 			PersonalityHint = "It hums stolen sounds at random, delighting in the confusion of anyone nearby.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
@@ -520,30 +604,28 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 24 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 7
+			BeastiaryNumber = 7,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "hollowgale",
-			Name = "Hollowgale",
-			Description = "A faceless wanderer that wears the skin of passing storms. Where it walks, the air forgets how to be still.",
-			IconPath = "ui/monsters/hollowgate/idle/hollowgate_idle_01.png",
+			Id = "seraphiel",
+			Name = "Seraphiel",
+			Description = "A warden seraph whose twin serpent arms cradle a silvered blade. When a Cherune has sheltered enough fragile lives, it ascends into this form, armed with the weight of every one it chose to guard.",
+			IconPath = "ui/monsters/seraphiel/idle/seraphiel_idle_01.png",
 			AnimationFrames = new()
 			{
-				"ui/monsters/hollowgate/idle/hollowgate_idle_01.png",
-				"ui/monsters/hollowgate/idle/hollowgate_idle_02.png",
-				"ui/monsters/hollowgate/idle/hollowgate_idle_03.png",
-				"ui/monsters/hollowgate/idle/hollowgate_idle_04.png"
+				"ui/monsters/seraphiel/idle/seraphiel_idle_01.png"
 			},
 			AnimationFrameRate = 6f,
 			BaseHP = 58, BaseATK = 77, BaseDEF = 48, BaseSpA = 72, BaseSpD = 53, BaseSPD = 97,
 			HPGrowth = 4, ATKGrowth = 6, DEFGrowth = 4, SpAGrowth = 5, SpDGrowth = 4, SPDGrowth = 8,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
-			EvolvesFrom = "wispryn",
-			EvolvesTo = "vexstorm",
-			EvolutionLevel = 32,
+			EvolvesFrom = "cherune",
+			EvolvesTo = "aurael",
+			EvolutionLevel = 36,
 			BaseCatchRate = 0.3f,
 			Personality = BeastPersonality.Wild,
 			PersonalityHint = "The air trembles in its wake, unsettled by something that refuses to hold a single shape.",
@@ -573,28 +655,34 @@ public sealed class MonsterManager : Component
 			},
 			BeastiaryNumber = 8,
 			IconOffsetX = 10f,
-			IconOffsetY = 24f
+			IconOffsetY = 24f,
+			// Canvas has content all the way to both horizontal edges
+			// (halo/wing tips on one side, blade-tail on the other) — at
+			// default 180×180 display inside a 172px card with overflow:
+			// hidden, the extremities clip. Scale down so the full sprite
+			// sits inside the card.
+			CardScale = 0.88f,
+			CardOffsetX = -14f,
+			MiniOffsetX = 10f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		AddSpecies( new MonsterSpecies
 		{
-			Id = "vexstorm",
-			Name = "Vexstorm",
-			Description = "Not a bird but the angry pause between storm_strikeclaps given consciousness. It exists in the moment before lightning strikes, forever.",
-			IconPath = "ui/monsters/vexstorm/idle/vexstorm_idle_01.png",
+			Id = "aurael",
+			Name = "Aurael",
+			Description = "The crowned herald of the protector host. Every soul a Cherune once sheltered returns as a phantom hand at its side, and Aurael's verdict is always mercy — even when mercy requires a blade.",
+			IconPath = "ui/monsters/aurael/idle/aurael_idle_01.png",
 			AnimationFrames = new()
 			{
-				"ui/monsters/vexstorm/idle/vexstorm_idle_01.png",
-				"ui/monsters/vexstorm/idle/vexstorm_idle_02.png",
-				"ui/monsters/vexstorm/idle/vexstorm_idle_03.png",
-				"ui/monsters/vexstorm/idle/vexstorm_idle_04.png"
+				"ui/monsters/aurael/idle/aurael_idle_01.png"
 			},
 			AnimationFrameRate = 6f,
 			BaseHP = 73, BaseATK = 97, BaseDEF = 63, BaseSpA = 92, BaseSpD = 68, BaseSPD = 122,
 			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 8,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Rare,
-			EvolvesFrom = "hollowgale",
+			EvolvesFrom = "seraphiel",
 			BaseCatchRate = 0.18f,
 			Personality = BeastPersonality.Wild,
 			PersonalityHint = "It crackles with a fury that existed long before it had a body to carry it.",
@@ -624,7 +712,12 @@ public sealed class MonsterManager : Component
 			},
 			BeastiaryNumber = 9,
 			IconOffsetX = 14f,
-			IconOffsetY = 32f
+			IconOffsetY = 32f,
+			// Same Cherune-line canvas framing as Seraphiel — wings/blade
+			// extend to canvas edges and clip at default 1.0 scale.
+			CardScale = 0.88f,
+			CardOffsetX = 0f,
+			ArtistCredit = "SirPlnguin"
 		} );
 
 		// ═══════════════════════════════════════════════════════════════════════════
@@ -657,6 +750,9 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "branchling",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.7f,
+			BaseExpYield = 55,
+			SignatureDropName = "Snapped Twig",
+			SignatureDropDescription = "A dry brown twig, freshly broken from a Twigsnap's wooden frame.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It snaps a twig underfoot, then freezes, hoping you will come closer on your own.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "barbed_hide" },
@@ -683,7 +779,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "spore_cloud", LearnLevel = 32 },
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 35 },
 			},
-			BeastiaryNumber = 10
+			BeastiaryNumber = 13
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -705,6 +801,9 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "twigsnap",
 			BaseCatchRate = 0.4f,
+			BaseExpYield = 140,
+			SignatureDropName = "Heartwood Branch",
+			SignatureDropDescription = "A dense, rune-grained branch from the core of a Branchling. Warm to the touch.",
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "It roots itself between saplings and heavy feet, patient as old bark.",
 			PossibleTraits = new() { "verdant_power", "wild_harden", "barbed_hide" },
@@ -731,7 +830,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "verdant_edge", LearnLevel = 40 },
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 11
+			BeastiaryNumber = 14
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -752,6 +851,9 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.7f,
+			BaseExpYield = 75,
+			SignatureDropName = "Dewdroplet",
+			SignatureDropDescription = "A perfect globe of water that refuses to evaporate. Cool to the touch, sweet-smelling.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It trembles at the first sign of noon, already dreading the heat of the day.",
 			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
@@ -776,7 +878,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 24 },
 				new LearnableMove { MoveId = "sea_chant", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 12
+			BeastiaryNumber = 15
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -792,6 +894,9 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "flickermoth",
 			EvolutionLevel = 18,
 			BaseCatchRate = 0.6f,
+			BaseExpYield = 55,
+			SignatureDropName = "Dust Tuft",
+			SignatureDropDescription = "A shimmering wisp of fine Dustling fuzz. Smells faintly of starlight.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It curls into its fuzzy coat at the slightest noise, dreaming of skies it has never seen.",
 			PossibleTraits = new() { "kindle_heart", "ember_heart", "adrenaline_rush" },
@@ -824,7 +929,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/dustling/idle/dustling_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 13
+			BeastiaryNumber = 16
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -873,7 +978,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/flickermoth/idle/flickermoth_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 14
+			BeastiaryNumber = 17
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -887,6 +992,9 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Earth,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.65f,
+			BaseExpYield = 75,
+			SignatureDropName = "Elder Moss",
+			SignatureDropDescription = "A patch of ancient green felt scraped from a Mosscreep's back. Heavy for its size.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It inches forward in perfect silence, remembering footsteps that passed over it lifetimes ago.",
 			PossibleTraits = new() { "terra_force", "last_stand", "barbed_hide" },
@@ -921,7 +1029,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/mosscreep/idle/mosscreep_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 15
+			BeastiaryNumber = 18
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -945,6 +1053,9 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "galefox",
 			EvolutionLevel = 20,
 			BaseCatchRate = 0.55f,
+			BaseExpYield = 55,
+			SignatureDropName = "Whisker",
+			SignatureDropDescription = "A fine silver whisker from a Whiskerwind. Still hums with half-caught whispers.",
 			Personality = BeastPersonality.Greedy,
 			PersonalityHint = "Its ears perk at every murmur, collecting whispers like coins in a purse.",
 			PossibleTraits = new() { "gale_spirit", "subtle_arts", "vital_recovery" },
@@ -969,7 +1080,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 25 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 16
+			BeastiaryNumber = 19
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1018,7 +1129,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 17
+			BeastiaryNumber = 20
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1040,6 +1151,9 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Nature,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.6f,
+			BaseExpYield = 75,
+			SignatureDropName = "Glimcap",
+			SignatureDropDescription = "The luminous mushroom cap of a Glimshroom. Glows faintly in the dark.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It pulses nervously in the dark, growing brighter when powerful things draw near.",
 			PossibleTraits = new() { "verdant_power", "ethereal_blessing", "vital_recovery" },
@@ -1066,7 +1180,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "floral_guard", LearnLevel = 34 },
 				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 36 },
 			},
-			BeastiaryNumber = 18
+			BeastiaryNumber = 21
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -1117,7 +1231,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/cinderscale/idle/cinderscale_idle_03.png",
 				"ui/monsters/cinderscale/idle/cinderscale_idle_04.png"
 			},
-			BeastiaryNumber = 19,
+			BeastiaryNumber = 22,
 			IconOffsetX = 8f
 		} );
 
@@ -1166,7 +1280,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/blazefang/idle/blazefang_idle_03.png",
 				"ui/monsters/blazefang/idle/blazefang_idle_04.png"
 			},
-			BeastiaryNumber = 20,
+			BeastiaryNumber = 23,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f
 		} );
@@ -1215,7 +1329,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/magmite/idle/magmite_idle_03.png",
 				"ui/monsters/magmite/idle/magmite_idle_04.png"
 			},
-			BeastiaryNumber = 21
+			BeastiaryNumber = 24
 		} );
 
 		// Smolderpup 3-stage line
@@ -1263,7 +1377,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/smolderpup/idle/smolderpup_idle_03.png",
 				"ui/monsters/smolderpup/idle/smolderpup_idle_04.png"
 			},
-			BeastiaryNumber = 24
+			BeastiaryNumber = 27
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1313,7 +1427,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/emberhound/idle/emberhound_idle_03.png",
 				"ui/monsters/emberhound/idle/emberhound_idle_04.png"
 			},
-			BeastiaryNumber = 25,
+			BeastiaryNumber = 28,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f
 		} );
@@ -1363,7 +1477,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/infernowarg/idle/infernowarg_idle_03.png",
 				"ui/monsters/infernowarg/idle/infernowarg_idle_04.png"
 			},
-			BeastiaryNumber = 26,
+			BeastiaryNumber = 29,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f
 		} );
@@ -1416,7 +1530,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/puddlejaw/idle/puddlejaw_idle_03.png",
 				"ui/monsters/puddlejaw/idle/puddlejaw_idle_04.png"
 			},
-			BeastiaryNumber = 27
+			BeastiaryNumber = 30
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1464,7 +1578,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/mirrorpond/idle/mirrorpond_idle_03.png",
 				"ui/monsters/mirrorpond/idle/mirrorpond_idle_04.png"
 			},
-			BeastiaryNumber = 28
+			BeastiaryNumber = 31
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1509,7 +1623,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/weepfin/idle/weepfin_idle_03.png",
 				"ui/monsters/weepfin/idle/weepfin_idle_04.png"
 			},
-			BeastiaryNumber = 29
+			BeastiaryNumber = 32
 		} );
 
 		// Streamling 3-stage line
@@ -1557,7 +1671,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "torrent_claw", LearnLevel = 24 },
 				new LearnableMove { MoveId = "whirlpool_surge", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 30
+			BeastiaryNumber = 33
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1607,7 +1721,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ocean_torrent", LearnLevel = 40 },
 				new LearnableMove { MoveId = "hydro_fang", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 31
+			BeastiaryNumber = 34
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1655,7 +1769,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "abyssal_wave", LearnLevel = 50 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 52 },
 			},
-			BeastiaryNumber = 32
+			BeastiaryNumber = 35
 		} );
 
 		// Bubblite 2-stage line
@@ -1703,7 +1817,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 24 },
 				new LearnableMove { MoveId = "aqua_shield", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 33
+			BeastiaryNumber = 36
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1751,7 +1865,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 42 },
 				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 34
+			BeastiaryNumber = 37
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1798,7 +1912,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ocean_torrent", LearnLevel = 40 },
 				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 35
+			BeastiaryNumber = 38
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -1849,7 +1963,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "slipstream", LearnLevel = 24 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 36
+			BeastiaryNumber = 39
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1897,7 +2011,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "hurricane_slam", LearnLevel = 40 },
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 37
+			BeastiaryNumber = 40
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1944,7 +2058,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tornado_dive", LearnLevel = 38 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 38
+			BeastiaryNumber = 41
 		} );
 
 		// Zephyrmite 3-stage line
@@ -1992,7 +2106,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vortex_blast", LearnLevel = 24 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 40
+			BeastiaryNumber = 43
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2042,7 +2156,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "squall_burst", LearnLevel = 39 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 41
+			BeastiaryNumber = 44
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2090,7 +2204,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tempest_unleash", LearnLevel = 55 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 58 },
 			},
-			BeastiaryNumber = 42
+			BeastiaryNumber = 45
 		} );
 
 		// Featherwisp 2-stage line
@@ -2138,7 +2252,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vortex_blast", LearnLevel = 24 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 43
+			BeastiaryNumber = 46
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2186,7 +2300,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 46 },
 			},
-			BeastiaryNumber = 44
+			BeastiaryNumber = 47
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2233,7 +2347,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tornado_dive", LearnLevel = 38 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 45
+			BeastiaryNumber = 48
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -2286,7 +2400,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "lightning_fang", LearnLevel = 28 },
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 46
+			BeastiaryNumber = 49
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2336,7 +2450,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 42 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 44 }
 			},
-			BeastiaryNumber = 47
+			BeastiaryNumber = 50
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2384,7 +2498,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 },
 				new LearnableMove { MoveId = "discharge_pulse", LearnLevel = 58 }
 			},
-			BeastiaryNumber = 48
+			BeastiaryNumber = 51
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2431,7 +2545,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "overcharge", LearnLevel = 30 },
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 32 }
 			},
-			BeastiaryNumber = 49
+			BeastiaryNumber = 52
 		} );
 
 		// Joltpaw 2-stage line
@@ -2481,7 +2595,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 26 },
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 28 }
 			},
-			BeastiaryNumber = 50
+			BeastiaryNumber = 53
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2529,7 +2643,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 44 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 46 }
 			},
-			BeastiaryNumber = 51
+			BeastiaryNumber = 54
 		} );
 
 		// Single-stage Electric creatures
@@ -2577,7 +2691,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "overload_crash", LearnLevel = 36 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 52
+			BeastiaryNumber = 55
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2624,7 +2738,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "discharge_pulse", LearnLevel = 38 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 42 }
 			},
-			BeastiaryNumber = 53
+			BeastiaryNumber = 56
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2671,7 +2785,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "voltage_ray", LearnLevel = 28 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 54
+			BeastiaryNumber = 57
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -2724,7 +2838,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "geode_burst", LearnLevel = 28 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 55,
+			BeastiaryNumber = 58,
 			IconOffsetX = 4f,
 			IconOffsetY = 30f
 		} );
@@ -2776,7 +2890,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "fissure_wave", LearnLevel = 38 },
 				new LearnableMove { MoveId = "landslide", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 56
+			BeastiaryNumber = 59
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2824,7 +2938,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 },
 				new LearnableMove { MoveId = "fossil_power", LearnLevel = 58 }
 			},
-			BeastiaryNumber = 57
+			BeastiaryNumber = 60
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2865,7 +2979,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "stalagmite_jab", LearnLevel = 31 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 32 }
 			},
-			BeastiaryNumber = 58
+			BeastiaryNumber = 61
 		} );
 
 		// Pebblit 2-stage line
@@ -2909,7 +3023,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "geode_burst", LearnLevel = 26 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 28 }
 			},
-			BeastiaryNumber = 59
+			BeastiaryNumber = 62
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2951,7 +3065,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "continental_crush", LearnLevel = 42 },
 				new LearnableMove { MoveId = "quake_stomp", LearnLevel = 44 }
 			},
-			BeastiaryNumber = 60
+			BeastiaryNumber = 63
 		} );
 
 		// Single-stage Earth creatures
@@ -2993,7 +3107,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tectonic_slam", LearnLevel = 36 },
 				new LearnableMove { MoveId = "fossil_power", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 62
+			BeastiaryNumber = 65
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3034,7 +3148,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "petrify", LearnLevel = 33 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 35 }
 			},
-			BeastiaryNumber = 63
+			BeastiaryNumber = 66
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3075,7 +3189,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "landslide", LearnLevel = 38 },
 				new LearnableMove { MoveId = "continental_crush", LearnLevel = 42 }
 			},
-			BeastiaryNumber = 64
+			BeastiaryNumber = 67
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -3122,7 +3236,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "cryo_beam", LearnLevel = 26 },
 				new LearnableMove { MoveId = "glacier_slam", LearnLevel = 28 }
 			},
-			BeastiaryNumber = 65
+			BeastiaryNumber = 68
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3166,7 +3280,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "blizzard_wrath", LearnLevel = 38 },
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 66
+			BeastiaryNumber = 69
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3208,7 +3322,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 },
 				new LearnableMove { MoveId = "crystallize", LearnLevel = 58 }
 			},
-			BeastiaryNumber = 67
+			BeastiaryNumber = 70
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3249,7 +3363,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ice_armor", LearnLevel = 38 },
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 68
+			BeastiaryNumber = 71
 		} );
 
 		// Snowmite 2-stage line
@@ -3293,7 +3407,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "glacier_slam", LearnLevel = 28 },
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 69
+			BeastiaryNumber = 72
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3335,7 +3449,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 44 },
 				new LearnableMove { MoveId = "tempest", LearnLevel = 48 }
 			},
-			BeastiaryNumber = 70
+			BeastiaryNumber = 73
 		} );
 
 		// Single-stage Ice creatures
@@ -3377,7 +3491,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "frost_crush", LearnLevel = 34 },
 				new LearnableMove { MoveId = "glacier_slam", LearnLevel = 36 }
 			},
-			BeastiaryNumber = 71
+			BeastiaryNumber = 74
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3418,7 +3532,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 34 },
 				new LearnableMove { MoveId = "ice_armor", LearnLevel = 36 }
 			},
-			BeastiaryNumber = 72
+			BeastiaryNumber = 75
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3459,7 +3573,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 34 },
 				new LearnableMove { MoveId = "frost_crush", LearnLevel = 38 }
 			},
-			BeastiaryNumber = 73
+			BeastiaryNumber = 76
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3500,7 +3614,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 40 },
 				new LearnableMove { MoveId = "absolute_zero", LearnLevel = 48 }
 			},
-			BeastiaryNumber = 74
+			BeastiaryNumber = 77
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -3547,7 +3661,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 30 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 75
+			BeastiaryNumber = 78
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3591,7 +3705,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "overgrowth_slam", LearnLevel = 42 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 76
+			BeastiaryNumber = 79
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3633,7 +3747,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 52 },
 				new LearnableMove { MoveId = "evergreen_pulse", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 77
+			BeastiaryNumber = 80
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3680,7 +3794,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/mosswhisper/idle/mosswhisper_idle_03.png",
 				"ui/monsters/mosswhisper/idle/mosswhisper_idle_04.png"
 			},
-			BeastiaryNumber = 78
+			BeastiaryNumber = 81
 		} );
 
 		// Pollenpuff 2-stage line
@@ -3697,6 +3811,9 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "bloomguard",
 			EvolutionLevel = 22,
 			BaseCatchRate = 0.6f,
+			BaseExpYield = 70,
+			SignatureDropName = "Pollen Burst",
+			SignatureDropDescription = "A fluffy clump of golden pollen, still faintly warm from a Pollenpuff's sneeze.",
 			Personality = BeastPersonality.Timid,
 			PersonalityHint = "It bounces joyfully, spreading flowers everywhere, then sneezes violently from its own pollen.",
 			PossibleTraits = new() { "verdant_power", "wild_growth", "adrenaline_rush" },
@@ -3730,7 +3847,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/pollenpuff/idle/pollenpuff_idle_03.png",
 				"ui/monsters/pollenpuff/idle/pollenpuff_idle_04.png"
 			},
-			BeastiaryNumber = 79
+			BeastiaryNumber = 82
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3778,7 +3895,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bloomguard/idle/bloomguard_idle_03.png",
 				"ui/monsters/bloomguard/idle/bloomguard_idle_04.png"
 			},
-			BeastiaryNumber = 80
+			BeastiaryNumber = 83
 		} );
 
 		// Single-stage Nature creatures
@@ -3826,7 +3943,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/vinewhip/idle/vinewhip_idle_03.png",
 				"ui/monsters/vinewhip/idle/vinewhip_idle_04.png"
 			},
-			BeastiaryNumber = 81
+			BeastiaryNumber = 84
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3873,7 +3990,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/curublast/idle/curublast_idle_03.png",
 				"ui/monsters/curublast/idle/curublast_idle_04.png"
 			},
-			BeastiaryNumber = 82
+			BeastiaryNumber = 85
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3920,7 +4037,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/willowwisp/idle/willowwisp_idle_03.png",
 				"ui/monsters/willowwisp/idle/willowwisp_idle_04.png"
 			},
-			BeastiaryNumber = 83
+			BeastiaryNumber = 86
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3967,7 +4084,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/verdantis/idle/verdantis_idle_03.png",
 				"ui/monsters/verdantis/idle/verdantis_idle_04.png"
 			},
-			BeastiaryNumber = 85
+			BeastiaryNumber = 88
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -4020,7 +4137,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/coglet/idle/coglet_idle_03.png",
 				"ui/monsters/coglet/idle/coglet_idle_04.png"
 			},
-			BeastiaryNumber = 86
+			BeastiaryNumber = 89
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4070,7 +4187,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/ironclad/idle/ironclad_idle_03.png",
 				"ui/monsters/ironclad/idle/ironclad_idle_04.png"
 			},
-			BeastiaryNumber = 87
+			BeastiaryNumber = 90
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4118,7 +4235,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/forgeborn/idle/forgeborn_idle_03.png",
 				"ui/monsters/forgeborn/idle/forgeborn_idle_04.png"
 			},
-			BeastiaryNumber = 88
+			BeastiaryNumber = 91
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4167,7 +4284,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/corrode/idle/corrode_idle_03.png",
 				"ui/monsters/corrode/idle/corrode_idle_04.png"
 			},
-			BeastiaryNumber = 89
+			BeastiaryNumber = 92
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4215,7 +4332,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/oxidrake/idle/oxidrake_idle_03.png",
 				"ui/monsters/oxidrake/idle/oxidrake_idle_04.png"
 			},
-			BeastiaryNumber = 90
+			BeastiaryNumber = 93
 		} );
 
 		// Scrapper 2-stage line
@@ -4265,7 +4382,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/scrapper/idle/scrapper_idle_03.png",
 				"ui/monsters/scrapper/idle/scrapper_idle_04.png"
 			},
-			BeastiaryNumber = 91
+			BeastiaryNumber = 94
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4313,7 +4430,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/junktitan/idle/junktitan_idle_03.png",
 				"ui/monsters/junktitan/idle/junktitan_idle_04.png"
 			},
-			BeastiaryNumber = 92
+			BeastiaryNumber = 95
 		} );
 
 		// Single-stage Metal creatures
@@ -4361,7 +4478,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bladefly/idle/bladefly_idle_03.png",
 				"ui/monsters/bladefly/idle/bladefly_idle_04.png"
 			},
-			BeastiaryNumber = 93
+			BeastiaryNumber = 96
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4408,7 +4525,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bellguard/idle/bellguard_idle_03.png",
 				"ui/monsters/bellguard/idle/bellguard_idle_04.png"
 			},
-			BeastiaryNumber = 94
+			BeastiaryNumber = 97
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4455,7 +4572,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/chainlink/idle/chainlink_idle_03.png",
 				"ui/monsters/chainlink/idle/chainlink_idle_04.png"
 			},
-			BeastiaryNumber = 95
+			BeastiaryNumber = 98
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4502,7 +4619,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/chromedragon/idle/chromedragon_idle_03.png",
 				"ui/monsters/chromedragon/idle/chromedragon_idle_04.png"
 			},
-			BeastiaryNumber = 96
+			BeastiaryNumber = 99
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -4556,7 +4673,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ethereal_rush", LearnLevel = 30 },
 				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 97
+			BeastiaryNumber = 100
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4607,7 +4724,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 46 },
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 48 },
 			},
-			BeastiaryNumber = 98
+			BeastiaryNumber = 101
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4656,7 +4773,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "divine_light", LearnLevel = 56 },
 				new LearnableMove { MoveId = "genesis_thought", LearnLevel = 60 },
 			},
-			BeastiaryNumber = 99
+			BeastiaryNumber = 102
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4704,7 +4821,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 43 },
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 100
+			BeastiaryNumber = 103
 		} );
 
 		// Wishling 2-stage line
@@ -4755,7 +4872,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 30 },
 				new LearnableMove { MoveId = "concentration", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 101
+			BeastiaryNumber = 104
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4804,7 +4921,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 44 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 46 },
 			},
-			BeastiaryNumber = 102
+			BeastiaryNumber = 105
 		} );
 
 		// Single-stage Spirit creatures
@@ -4853,7 +4970,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 43 },
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 103
+			BeastiaryNumber = 106
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4901,7 +5018,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 32 },
 				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 34 },
 			},
-			BeastiaryNumber = 104
+			BeastiaryNumber = 107
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4949,7 +5066,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 46 },
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 48 },
 			},
-			BeastiaryNumber = 105
+			BeastiaryNumber = 108
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4997,7 +5114,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 48 },
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 50 },
 			},
-			BeastiaryNumber = 106
+			BeastiaryNumber = 109
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -5051,7 +5168,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 31 },
 				new LearnableMove { MoveId = "nightfall_rush", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 107
+			BeastiaryNumber = 110
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5102,7 +5219,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 41 },
 				new LearnableMove { MoveId = "oblivion_claw", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 108
+			BeastiaryNumber = 111
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5151,7 +5268,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_wings", LearnLevel = 56 },
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 60 },
 			},
-			BeastiaryNumber = 109
+			BeastiaryNumber = 112
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5199,7 +5316,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 31 },
 				new LearnableMove { MoveId = "nightfall_rush", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 110
+			BeastiaryNumber = 113
 		} );
 
 		// Nightcrawl 2-stage line
@@ -5250,7 +5367,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 30 },
 				new LearnableMove { MoveId = "phantom_rend", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 111
+			BeastiaryNumber = 114
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5299,7 +5416,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 44 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 46 },
 			},
-			BeastiaryNumber = 112
+			BeastiaryNumber = 115
 		} );
 
 		// Single-stage Shadow creatures
@@ -5348,7 +5465,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 31 },
 				new LearnableMove { MoveId = "feint_jab", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 113
+			BeastiaryNumber = 116
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5396,7 +5513,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 40 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 114
+			BeastiaryNumber = 117
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5444,7 +5561,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "concentration", LearnLevel = 42 },
 				new LearnableMove { MoveId = "phantom_rend", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 115
+			BeastiaryNumber = 118
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5492,7 +5609,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 46 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 48 },
 			},
-			BeastiaryNumber = 116
+			BeastiaryNumber = 119
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5540,7 +5657,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_tear", LearnLevel = 48 },
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 52 },
 			},
-			BeastiaryNumber = 117
+			BeastiaryNumber = 120
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -5593,7 +5710,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "primal_roar", LearnLevel = 58 },
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 60 },
 			},
-			BeastiaryNumber = 118
+			BeastiaryNumber = 121
 		} );
 
 		// Epic Fire - rare spawn in deep volcanic areas
@@ -5642,7 +5759,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "wildfire_burst", LearnLevel = 58 },
 				new LearnableMove { MoveId = "pyroclasm", LearnLevel = 62 },
 			},
-			BeastiaryNumber = 119
+			BeastiaryNumber = 122
 		} );
 
 		// Epic Ice - rare spawn in deepest frozen areas
@@ -5691,7 +5808,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "frozen_ground", LearnLevel = 65 },
 				new LearnableMove { MoveId = "cataclysm", LearnLevel = 70 }
 			},
-			BeastiaryNumber = 120
+			BeastiaryNumber = 123
 		} );
 
 		// Epic Electric - rare spawn during perfect storms
@@ -5740,7 +5857,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "dimensional_rift", LearnLevel = 64 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 68 }
 			},
-			BeastiaryNumber = 121
+			BeastiaryNumber = 124
 		} );
 
 		// Legendary - The Mythweaver
@@ -5789,7 +5906,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "genesis_wave", LearnLevel = 70 },
 				new LearnableMove { MoveId = "concentration", LearnLevel = 72 },
 			},
-			BeastiaryNumber = 122
+			BeastiaryNumber = 125
 		} );
 
 		// Legendary - The World Serpent
@@ -5838,7 +5955,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "fossil_power", LearnLevel = 70 },
 				new LearnableMove { MoveId = "primordial_surge", LearnLevel = 72 }
 			},
-			BeastiaryNumber = 123
+			BeastiaryNumber = 126
 		} );
 
 		// Legendary - The Void Dragon
@@ -5887,7 +6004,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 60 },
 				new LearnableMove { MoveId = "cosmic_erasure", LearnLevel = 65 },
 			},
-			BeastiaryNumber = 124
+			BeastiaryNumber = 127
 		} );
 
 		// Mythic - radeep_slumber creature
@@ -5937,7 +6054,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "creation_burst", LearnLevel = 80 },
 				new LearnableMove { MoveId = "concentration", LearnLevel = 82 },
 			},
-			BeastiaryNumber = 139
+			BeastiaryNumber = 142
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -5992,7 +6109,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/genisoul/idle/genisoul_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 125
+			BeastiaryNumber = 128
 		} );
 
 		// Epic Fire - Inspired by Hinokagutsuchi, the fire god whose birth destroyed its creator
@@ -6041,7 +6158,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/primeflare/idle/primeflare_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 126
+			BeastiaryNumber = 129
 		} );
 
 		// Epic Shadow - Inspired by Yomotsu Hirasaka (boundary between life and death) and Hel (half-living, half-dead)
@@ -6090,7 +6207,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/voidlboom/idle/voidbloom_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 127
+			BeastiaryNumber = 130
 		} );
 
 		// Rare Nature - The first seed
@@ -6138,7 +6255,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "photon_bloom", LearnLevel = 46 },
 				new LearnableMove { MoveId = "jungle_wrath", LearnLevel = 50 },
 			},
-			BeastiaryNumber = 128
+			BeastiaryNumber = 131
 		} );
 
 		// Rare Water - The first droplet
@@ -6186,7 +6303,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tsunami_crush", LearnLevel = 50 },
 				new LearnableMove { MoveId = "abyssal_wave", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 129
+			BeastiaryNumber = 132
 		} );
 
 		// Uncommon Electric - Inspired by Raijū (Japanese thunder beast) + Weasel/Stoat — Stage 1
@@ -6236,7 +6353,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 28 },
 				new LearnableMove { MoveId = "energy_pulse", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 130
+			BeastiaryNumber = 133
 		} );
 
 		// Uncommon Earth - A primordial bear cub
@@ -6284,7 +6401,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tectonic_slam", LearnLevel = 34 },
 				new LearnableMove { MoveId = "brace", LearnLevel = 38 }
 			},
-			BeastiaryNumber = 61
+			BeastiaryNumber = 64
 		} );
 
 		// Uncommon Wind - The first breath
@@ -6332,7 +6449,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "calm_air", LearnLevel = 38 },
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 39
+			BeastiaryNumber = 42
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6387,7 +6504,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 65 },
 				new LearnableMove { MoveId = "cataclysm", LearnLevel = 70 }
 			},
-			BeastiaryNumber = 132
+			BeastiaryNumber = 135
 		} );
 
 		// Rare Electric - Inspired by Raijū + Weasel/Stoat — Stage 2
@@ -6438,7 +6555,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "surge_field", LearnLevel = 44 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 48 }
 			},
-			BeastiaryNumber = 131
+			BeastiaryNumber = 134
 		} );
 
 		// Rare Shadow - Inspired by Ammit (Egyptian devourer of unworthy souls) + Crocodile
@@ -6486,7 +6603,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_pulse", LearnLevel = 50 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 52 },
 			},
-			BeastiaryNumber = 133
+			BeastiaryNumber = 136
 		} );
 
 		// Uncommon Wind - Inspired by Púca (Celtic shapeshifter) + Hare
@@ -6534,7 +6651,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "squall_burst", LearnLevel = 38 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 134
+			BeastiaryNumber = 137
 		} );
 
 		// Uncommon Fire - Inspired by Cherufe (Mapuche volcanic spirit) + Crab
@@ -6582,7 +6699,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "lava_plume", LearnLevel = 38 },
 				new LearnableMove { MoveId = "ash_cloud", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 135
+			BeastiaryNumber = 138
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6636,7 +6753,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "cataclysm", LearnLevel = 68 },
 				new LearnableMove { MoveId = "oblivion_ray", LearnLevel = 70 },
 			},
-			BeastiaryNumber = 136
+			BeastiaryNumber = 139
 		} );
 
 		// Epic Shadow - Inspired by Erebus, the primordial darkness before light
@@ -6684,7 +6801,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 50 },
 				new LearnableMove { MoveId = "cosmic_erasure", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 137
+			BeastiaryNumber = 140
 		} );
 
 		// Mythic Spirit - Inspired by Aboriginal Dreamtime ancestors who sang reality into existence (CATCHABLE ultra-rare)
@@ -6733,7 +6850,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/songborne/idle/songborne_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 138
+			BeastiaryNumber = 141
 		} );
 
 		// Fungrowth - Nature mushroom creature (Overgrown Heart)
@@ -6781,7 +6898,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 38 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 84
+			BeastiaryNumber = 87
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6835,7 +6952,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/hinobi/idle/hinobi_idle_03.png",
 				"ui/monsters/hinobi/idle/hinobi_idle_04.png"
 			},
-			BeastiaryNumber = 22
+			BeastiaryNumber = 25
 		} );
 
 		// Uncommon Fire - Blazing ninja warrior
@@ -6885,7 +7002,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/enkong/idle/enkong_idle_03.png",
 				"ui/monsters/enkong/idle/enkong_idle_04.png"
 			},
-			BeastiaryNumber = 23
+			BeastiaryNumber = 26
 		} );
 
 		// Mythic Water - Inspired by Namazu (鯰), the giant earthquake catfish of Japanese mythology
@@ -6935,7 +7052,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/namashira/idle/namashira_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 140
+			BeastiaryNumber = 143
 		} );
 
 		// Mythic Metal - Inspired by Talos (Τάλως), the giant bronze automaton of Greek mythology who guarded Crete
@@ -6985,7 +7102,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/chalkodon/idle/chalkodon_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 141
+			BeastiaryNumber = 144
 		} );
 
 		// Mythic Wind - Inspired by Fujin (風神), the Japanese god of wind who carries storms in a great sack
@@ -7035,7 +7152,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/fujinara/idle/fujinara_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 142
+			BeastiaryNumber = 145
 		} );
 
 		// Mythic Ice - Inspired by Yuki-onna (雪女) storms of Japanese legend, reimagined as a bumbling ice spirit
@@ -7085,7 +7202,151 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bluffrost/idle/bluffrost_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 143
+			BeastiaryNumber = 146
+		} );
+
+		// ═══════════════════════════════════════════════════════════════
+		// SALTMOOR COVE — extra zone-1 wilds (#10-12)
+		// Three handmade beasts in the starter expedition pool. Slotted
+		// at 10/11/12 right after the starters; the rest of the roster
+		// was bumped +3 to make room.
+		// ═══════════════════════════════════════════════════════════════
+
+		// Wishlift — based on the faerie myth (carried by dream-bubbles)
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "wishlift",
+			Name = "Wishlift",
+			Description = "A small fae who cannot fly on her own, so she gathers spent wishes from sleeping villagers and hardens them into drifting dream-bubbles. The bubbles carry her from garden to garden until they pop.",
+			IconPath = "ui/monsters/wishlift/idle/wishlift_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/wishlift/idle/wishlift_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 38, BaseATK = 32, BaseDEF = 33, BaseSpA = 55, BaseSpD = 42, BaseSPD = 60,
+			HPGrowth = 3, ATKGrowth = 2, DEFGrowth = 2, SpAGrowth = 5, SpDGrowth = 3, SPDGrowth = 5,
+			Element = ElementType.Wind,
+			BaseRarity = Rarity.Common,
+			BaseCatchRate = 0.65f,
+			BaseExpYield = 60,
+			SignatureDropName = "Wishbubble",
+			SignatureDropDescription = "A perfect translucent sphere holding someone's spent hope. Weightless, and softly warm.",
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "She tucks behind her bubbles when you draw near, peeking through the largest one as if it were a window.",
+			PossibleTraits = new() { "gale_spirit", "vital_recovery", "subtle_arts" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 1 },
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "gust_claw", LearnLevel = 4 },
+				new LearnableMove { MoveId = "intimidate", LearnLevel = 6 },
+				new LearnableMove { MoveId = "draft_rush", LearnLevel = 8 },
+				new LearnableMove { MoveId = "updraft", LearnLevel = 10 },
+				new LearnableMove { MoveId = "gust_shield", LearnLevel = 12 },
+				new LearnableMove { MoveId = "agility_boost", LearnLevel = 14 },
+				new LearnableMove { MoveId = "wind_blade", LearnLevel = 16 },
+				new LearnableMove { MoveId = "feint_jab", LearnLevel = 18 },
+				new LearnableMove { MoveId = "slipstream", LearnLevel = 20 },
+				new LearnableMove { MoveId = "howling_gust", LearnLevel = 22 },
+				new LearnableMove { MoveId = "sky_shear", LearnLevel = 24 },
+				new LearnableMove { MoveId = "cyclone_tackle", LearnLevel = 25 },
+			},
+			BeastiaryNumber = 10,
+			ArtistCredit = "Spookior"
+		} );
+
+		// Twincoil — based on the two-faced (Janus) myth, garden snake
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "twincoil",
+			Name = "Twincoil",
+			Description = "A garden serpent born under a Janus moon. Its outer face is sweet and wide-eyed — but every so often it opens its jaws, and a second pair of eyes peers out from inside its mouth. Villagers say nothing in the herb beds escapes its notice, no matter which face is showing.",
+			IconPath = "ui/monsters/twincoil/idle/twincoil_idle_02.png",
+			AnimationFrames = new()
+			{
+				// Static on the mouth-open pose so the second pair of eyes
+				// inside the mouth always reads. The closed-mouth frame
+				// (twincoil_idle_01.png) stays in the folder for if/when
+				// we revisit the reveal animation.
+				"ui/monsters/twincoil/idle/twincoil_idle_02.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 44, BaseATK = 50, BaseDEF = 42, BaseSpA = 38, BaseSpD = 42, BaseSPD = 47,
+			HPGrowth = 4, ATKGrowth = 4, DEFGrowth = 3, SpAGrowth = 3, SpDGrowth = 3, SPDGrowth = 4,
+			Element = ElementType.Nature,
+			SecondaryElement = ElementType.Neutral,
+			BaseRarity = Rarity.Common,
+			BaseCatchRate = 0.6f,
+			BaseExpYield = 65,
+			SignatureDropName = "Twinscale",
+			SignatureDropDescription = "A small green-and-gold snake scale split clean down the middle. Both halves stay warm long after they fall.",
+			Personality = BeastPersonality.Greedy,
+			PersonalityHint = "Its outer eyes appraise the bowl of milk. Then its jaws part — and the eyes inside its mouth appraise you. Neither pair blinks.",
+			PossibleTraits = new() { "verdant_power", "barbed_hide", "trickster" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 1 },
+				new LearnableMove { MoveId = "rend", LearnLevel = 1 },
+				new LearnableMove { MoveId = "feint_jab", LearnLevel = 4 },
+				new LearnableMove { MoveId = "intimidate", LearnLevel = 6 },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 8 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 10 },
+				new LearnableMove { MoveId = "bramble_strike", LearnLevel = 12 },
+				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 14 },
+				new LearnableMove { MoveId = "wild_thorn", LearnLevel = 16 },
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 18 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 20 },
+				new LearnableMove { MoveId = "tangling_roots", LearnLevel = 22 },
+				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 24 },
+				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 25 },
+			},
+			BeastiaryNumber = 11,
+			ArtistCredit = "Spookior"
+		} );
+
+		// Heartwell — based on sokushinbutsu (self-mummified monk)
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "heartwell",
+			Name = "Heartwell",
+			Description = "A monk who sat so long beneath the village fountain that the spring took him in. He still keeps his vows, channeling cold, clean water through the gardens — villagers call to him when the shallow wells run dry.",
+			IconPath = "ui/monsters/heartwell/idle/heartwell_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/heartwell/idle/heartwell_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 55, BaseATK = 30, BaseDEF = 47, BaseSpA = 45, BaseSpD = 60, BaseSPD = 30,
+			HPGrowth = 5, ATKGrowth = 2, DEFGrowth = 4, SpAGrowth = 3, SpDGrowth = 5, SPDGrowth = 2,
+			Element = ElementType.Water,
+			BaseRarity = Rarity.Common,
+			BaseCatchRate = 0.65f,
+			BaseExpYield = 65,
+			SignatureDropName = "Stillwater Bead",
+			SignatureDropDescription = "A drop of water that holds its shape on a flat stone for hours before sinking in. Tastes faintly of incense.",
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "He does not turn to face you. The water around him simply holds its breath until you have finished speaking.",
+			PossibleTraits = new() { "torrent_soul", "vital_recovery", "cleansing_retreat" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "drizzle_mist", LearnLevel = 4 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 6 },
+				new LearnableMove { MoveId = "foam_coat", LearnLevel = 8 },
+				new LearnableMove { MoveId = "brine_spray", LearnLevel = 10 },
+				new LearnableMove { MoveId = "mist_veil", LearnLevel = 12 },
+				new LearnableMove { MoveId = "deep_slumber", LearnLevel = 14 },
+				new LearnableMove { MoveId = "ripple_burst", LearnLevel = 16 },
+				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 18 },
+				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 20 },
+				new LearnableMove { MoveId = "endure_stance", LearnLevel = 22 },
+				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 24 },
+				new LearnableMove { MoveId = "sea_chant", LearnLevel = 25 },
+			},
+			BeastiaryNumber = 12,
+			ArtistCredit = "Spookior"
 		} );
 
 	}
@@ -7095,22 +7356,45 @@ public sealed class MonsterManager : Component
 		_speciesDatabase[species.Id] = species;
 	}
 
-	private void LoadMonsters()
+	/// <summary>
+	/// Pull owned-monsters + MaxMonsters out of the save blob. Runs once after
+	/// <see cref="SaveService.OnSaveLoaded"/> fires.
+	/// </summary>
+	private void Hydrate()
 	{
-		var json = Game.Cookies.Get<string>( GetKey( MONSTER_COOKIE_KEY ), "[]" );
-		try
-		{
-			OwnedMonsters = JsonSerializer.Deserialize<List<Monster>>( json ) ?? new();
-		}
-		catch
+		if ( _hasHydrated ) return;
+		_hasHydrated = true;
+
+		var blob = SaveService.Instance?.CurrentBlob;
+		if ( blob == null )
 		{
 			OwnedMonsters = new();
+			MaxMonsters = BASE_MAX_MONSTERS;
+			return;
 		}
+
+		OwnedMonsters = blob.Monsters ?? new();
+		MaxMonsters = blob.MaxMonsters > 0 ? blob.MaxMonsters : BASE_MAX_MONSTERS;
+		if ( MaxMonsters < BASE_MAX_MONSTERS ) MaxMonsters = BASE_MAX_MONSTERS;
 
 		// Migrate existing monsters
 		bool needsSave = false;
+		// Defensive copy: the loop below prunes null-SpeciesId monsters, which
+		// would otherwise throw downstream ("Value cannot be null. (Parameter
+		// 'key')") in any dictionary lookup keyed by SpeciesId.
+		var prunedMonsters = new List<Monster>( OwnedMonsters.Count );
 		foreach ( var monster in OwnedMonsters )
 		{
+			// Guard against corrupted/mangled saves where SpeciesId round-tripped
+			// as null. Skip the monster entirely rather than crash the render tree.
+			if ( string.IsNullOrEmpty( monster.SpeciesId ) )
+			{
+				Log.Warning( $"[MonsterManager] Dropping monster with null/empty SpeciesId (Id={monster.Id}, Nickname={monster.Nickname})" );
+				needsSave = true;
+				continue;
+			}
+			prunedMonsters.Add( monster );
+
 			// Migrate renamed species IDs
 			if ( OldSpeciesIdMap.TryGetValue( monster.SpeciesId, out var newSpeciesId ) )
 			{
@@ -7127,8 +7411,11 @@ public sealed class MonsterManager : Component
 				monster.Level = 100;
 				needsSave = true;
 			}
-
 		}
+
+		// Replace with pruned list if any monsters were dropped.
+		if ( prunedMonsters.Count != OwnedMonsters.Count )
+			OwnedMonsters = prunedMonsters;
 
 		if ( needsSave )
 		{
@@ -7136,7 +7423,7 @@ public sealed class MonsterManager : Component
 			SaveMonsters();
 		}
 
-		Log.Info( $"Loaded {OwnedMonsters.Count} monsters" );
+		Log.Info( $"[MonsterManager] Hydrated: {OwnedMonsters.Count} monsters, MaxMonsters={MaxMonsters}" );
 	}
 
 	/// <summary>
@@ -7542,28 +7829,22 @@ public sealed class MonsterManager : Component
 		Log.Info( $"Refreshed moves for {monster.Nickname} at level {monster.Level}: {string.Join( ", ", monster.Moves.Select( m => m.MoveId ) )}" );
 	}
 
+	/// <summary>
+	/// Push the in-memory monster roster + MaxMonsters back into the save blob
+	/// and mark it dirty. Kept as <c>SaveMonsters</c> so existing call sites
+	/// across the UI/ItemManager/BattleManager/etc. keep working.
+	/// </summary>
 	public void SaveMonsters()
 	{
-		try
-		{
-			var json = JsonSerializer.Serialize( OwnedMonsters );
-			Game.Cookies.Set( GetKey( MONSTER_COOKIE_KEY ), json );
-		}
-		catch ( Exception e )
-		{
-			Log.Warning( $"Failed to save monsters: {e.Message}" );
-		}
-	}
+		var service = SaveService.Instance;
+		if ( service == null ) return;
 
-	/// <summary>
-	/// Reload data from the current save slot
-	/// </summary>
-	public void ReloadFromSlot()
-	{
-		Log.Info( $"MonsterManager reloading from slot {SaveSlotManager.Instance?.ActiveSlot}, prefix={SaveSlotManager.GetSlotPrefix()}" );
-		LoadMonsters();
-		LoadMaxMonsters();
-		Log.Info( $"MonsterManager reloaded: {OwnedMonsters.Count} monsters, MaxMonsters={MaxMonsters}" );
+		var blob = service.CurrentBlob;
+		if ( blob == null ) return;
+
+		blob.Monsters = OwnedMonsters;
+		blob.MaxMonsters = MaxMonsters;
+		service.MarkDirty( "monsters" );
 	}
 
 	/// <summary>
@@ -7641,6 +7922,17 @@ public sealed class MonsterManager : Component
 
 		// Update beastiary
 		BeastiaryManager.Instance?.DiscoverSpecies( monster.SpeciesId );
+
+		// Species mastery — count this beast toward the "contract/own" milestones
+		BeastiaryManager.Instance?.OnBeastContracted( monster.SpeciesId );
+
+		// If this species has no further evolution (terminal form), flag the
+		// max-evolve milestone. This also catches single-stage species that have
+		// no evolution line at all — they ARE their own max form.
+		if ( species != null && string.IsNullOrEmpty( species.EvolvesTo ) )
+		{
+			BeastiaryManager.Instance?.OnBeastMaxEvolved( monster.SpeciesId );
+		}
 
 		OnMonsterAdded?.Invoke( monster );
 		return monster;
@@ -7796,7 +8088,7 @@ public sealed class MonsterManager : Component
 		{
 			TamerManager.Instance.CurrentTamer.TotalMonstersBred++;
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalMonstersBred, TamerManager.Instance.CurrentTamer.TotalMonstersBred );
-			Stats.SetValue( "monsters-bred", TamerManager.Instance.CurrentTamer.TotalMonstersBred );
+			Stats.SetValue( "monsters-bred-launch", TamerManager.Instance.CurrentTamer.TotalMonstersBred );
 
 			// Check breeding-specific achievements
 			int totalGenes = (offspring.Genetics?.HPGene ?? 0) + (offspring.Genetics?.ATKGene ?? 0) +
@@ -7811,7 +8103,13 @@ public sealed class MonsterManager : Component
 
 			// Track mission progress for fusion
 			MissionManager.Instance?.TrackFusion( totalGenes: totalGenes );
+			SideQuestManager.Instance?.TrackFusion();
 		}
+
+		// Species mastery — mark both parent species as "fused"
+		BeastiaryManager.Instance?.OnBeastFused( parent1.SpeciesId );
+		if ( parent2.SpeciesId != parent1.SpeciesId )
+			BeastiaryManager.Instance?.OnBeastFused( parent2.SpeciesId );
 
 		// Remove parent monsters (fusion consumes them)
 		RemoveMonster( parent1.Id );
@@ -7868,16 +8166,17 @@ public sealed class MonsterManager : Component
 		// Apply relic bonuses
 		ApplyRelicBonuses( monster );
 
-		// Apply veteran bonuses (based on battles fought)
-		ApplyVeteranBonuses( monster );
+		// Apply species mastery bonus (Beastbook-tracked, tamer-wide per species)
+		ApplySpeciesMasteryBonus( monster );
 	}
 
 	/// <summary>
-	/// Apply veteran bonuses based on battles fought
+	/// Apply the tamer's Beastbook species-mastery bonus (0-12%) to this monster's stats.
+	/// Replaces the old per-instance veteran rank system.
 	/// </summary>
-	private void ApplyVeteranBonuses( Monster monster )
+	private void ApplySpeciesMasteryBonus( Monster monster )
 	{
-		float bonusPercent = monster.GetVeteranBonusPercent();
+		float bonusPercent = BeastiaryManager.Instance?.GetMasteryBonus( monster.SpeciesId ) ?? 0f;
 		if ( bonusPercent <= 0 )
 			return;
 
@@ -8083,6 +8382,19 @@ public sealed class MonsterManager : Component
 		// Discover the new species in beastiary
 		BeastiaryManager.Instance?.DiscoverSpecies( evolvedSpecies.Id );
 
+		// Species mastery — treat the evolved form as newly "contracted" for its line
+		// (mastery is per-species, so evolving restarts progress on the new SpeciesId).
+		BeastiaryManager.Instance?.OnBeastContracted( evolvedSpecies.Id );
+
+		// If the evolved species is a terminal form, fire the max-evolve milestone
+		// for BOTH the evolved species (the one we're now in) AND retroactively for
+		// the previous stage that the player just completed the chain on.
+		if ( string.IsNullOrEmpty( evolvedSpecies.EvolvesTo ) )
+		{
+			BeastiaryManager.Instance?.OnBeastMaxEvolved( evolvedSpecies.Id );
+			BeastiaryManager.Instance?.OnBeastMaxEvolved( fromSpecies.Id );
+		}
+
 		SaveMonsters();
 		OnMonsterUpdated?.Invoke( monster );
 		OnMonsterEvolved?.Invoke( monster, fromSpecies, evolvedSpecies );
@@ -8094,7 +8406,7 @@ public sealed class MonsterManager : Component
 		{
 			TamerManager.Instance.CurrentTamer.TotalMonstersEvolved++;
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.MonstersEvolved, TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
-			Stats.SetValue( "monsters-evolved", TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
+			Stats.SetValue( "monsters-evolved-launch", TamerManager.Instance.CurrentTamer.TotalMonstersEvolved );
 		}
 
 		// Track mission progress for evolution

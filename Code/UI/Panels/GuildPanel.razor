@@ -14,25 +14,45 @@
 
 @if ( guildView == "landing" )
 {
-	<!-- GUILD LANDING PAGE -->
-	<div class="guild-content-card">
-	<div class="guild-landing">
+	@{
+		var gmL = GuildManager.Instance;
+		var inGuildL = gmL?.IsInGuild ?? false;
+		var guildL = gmL?.Guild;
+		var inviteCount = gmL?.PendingInvites?.Count ?? 0;
+		var visibleGuilds = GetVisibleGuilds();
+		var levelGated = GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN;
+	}
 
-		<!-- Hero Crest -->
-		<div class="landing-hero">
-			<div class="landing-hero-crest">
-				<img class="landing-hero-icon" src="ui/icons/animated/guild.webp" />
-			</div>
-			<span class="landing-hero-title">@L("ui.guild.guilds")</span>
-			<span class="landing-hero-sub">@L("ui.guild.join_forces")</span>
-		</div>
+	<!-- GUILD LANDING — Persona-5 style, hero+actions split.
+	     When in a guild: hero card is your guild + actions row of Browse/Invites.
+	     When not in a guild: hero card is "Form a Guild" (browse OR create) + Invites action. -->
+	<div class="guild-landing-v2">
 
-		<!-- PENDING INVITES (shown on landing if any) -->
-		@if ( (GuildManager.Instance?.PendingInvites?.Count ?? 0) > 0 )
+		<!-- LEVEL GATE — fullscreen takeover when below level 10 -->
+		@if ( levelGated )
 		{
-			<div class="guild-section-card">
-				<span class="section-title">@L("ui.guild.pending_invites")</span>
-				@foreach ( var invite in GuildManager.Instance.PendingInvites )
+			<div class="landing-gate-card">
+				<div class="landing-gate-icon-wrap">
+					<iconify icon="lucide:lock-keyhole" Size=@(72) Color="rgba(255, 200, 100, 0.85)" />
+				</div>
+				<span class="landing-gate-title">@L("ui.guild.guilds")</span>
+				<span class="landing-gate-rule">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
+				<span class="landing-gate-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
+			</div>
+		}
+		else
+		{
+
+		<!-- PENDING INVITES BANNER (above hero — high-priority alert) -->
+		@if ( inviteCount > 0 )
+		{
+			<div class="landing-invites-banner">
+				<div class="landing-invites-header">
+					<iconify icon="lucide:mailbox" Size=@(16) Color="#fbbf24" />
+					<span class="landing-invites-title">@L("ui.guild.pending_invites")</span>
+					<span class="landing-invites-count">@inviteCount</span>
+				</div>
+				@foreach ( var invite in gmL.PendingInvites )
 				{
 					<div class="invite-row">
 						<div class="invite-info">
@@ -40,110 +60,182 @@
 							<span class="invite-from">@L("ui.guild.from") @invite.InviterName</span>
 						</div>
 						<div class="invite-actions">
-							<div class="guild-btn accept-btn" onclick=@(() => { AcceptInvite( invite ); SoundManager.PlaySelect(); })><span>@L("ui.guild.accept")</span></div>
-							<div class="guild-btn deny-btn" onclick=@(() => { DeclineInvite( invite ); SoundManager.PlayDeny(); })><span>@L("ui.guild.deny")</span></div>
+							<div class="guild-btn accept-btn" onclick=@(() => { AcceptInvite( invite ); SoundManager.PlaySelect(); })>
+								<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
+								<span>@L("ui.guild.accept")</span>
+							</div>
+							<div class="guild-btn deny-btn" onclick=@(() => { DeclineInvite( invite ); SoundManager.PlayDeny(); })>
+								<iconify icon="lucide:x" Size=@(13) Color="#ffffff" />
+								<span>@L("ui.guild.deny")</span>
+							</div>
 						</div>
 					</div>
 				}
 			</div>
 		}
 
-		<div class="landing-cards">
-			<!-- PENDING INVITES CARD -->
-			<div class="landing-card invites-card @(hoveredLandingCard == "invites" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
-				 onmouseover=@(() => { if (hoveredLandingCard != "invites") { hoveredLandingCard = "invites"; SoundManager.PlayHover(); } })
-				 onclick=@(() => { SoundManager.PlayClick(); })>
-								<div class="landing-card-icon-wrap">
-					<img class="landing-card-webp" src="ui/icons/animated/guild-invites.webp" />
-				</div>
-				<span class="landing-card-title">@L("ui.guild.invites")</span>
-				<span class="landing-card-desc">@L("ui.guild.pending")</span>
-				@{
-					var inviteCount = GuildManager.Instance?.PendingInvites?.Count ?? 0;
-				}
-				@if ( inviteCount > 0 )
-				{
-					<span class="landing-card-badge">@inviteCount pending</span>
-				}
-				else
-				{
-					<span class="landing-card-none">@L("ui.guild.none")</span>
-				}
-			</div>
-
-			<!-- BROWSE GUILDS CARD -->
-			<div class="landing-card browse-landing-card @(hoveredLandingCard == "browse" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
-				 onmouseover=@(() => { if (hoveredLandingCard != "browse") { hoveredLandingCard = "browse"; SoundManager.PlayHover(); } })
-				 onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; errorMessage = ""; viewingGuild = null; LoadGuildsFromApi(); })>
-								<div class="landing-card-icon-wrap">
-					<img class="landing-card-webp" src="ui/icons/animated/guild-browse.webp" />
-				</div>
-				<span class="landing-card-title">@L("ui.guild.browse")</span>
-				<span class="landing-card-desc">@L("ui.guild.view_guilds")</span>
-				@{
-					var guildCount = GetVisibleGuilds().Count;
-				}
-				@if ( guildCount > 0 )
-				{
-					<span class="landing-card-badge">@guildCount @L("ui.guild.found")</span>
-				}
-			</div>
-
-			<!-- MY GUILD / CREATE CARD -->
-			<div class="landing-card myguild-landing-card @(hoveredLandingCard == "myguild" ? "selected" : hoveredLandingCard != null ? "dimmed" : "")"
-				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
-				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
-								@if ( GuildManager.Instance?.IsInGuild ?? false )
-				{
-					<div class="landing-card-emblem shape-@(GuildManager.Instance.Guild?.EmblemShape ?? "square")" style="background-color: @(GuildManager.Instance.Guild?.EmblemColor ?? "#7c3aed")">
-						<span class="landing-card-emblem-icon">@GetEmblemEmoji( GuildManager.Instance.Guild?.EmblemIcon ?? "dragon" )</span>
-					</div>
-					<span class="landing-card-title">@(GuildManager.Instance.Guild?.Name ?? L("ui.guild.my_guild"))</span>
-					<span class="landing-card-desc">[@(GuildManager.Instance.Guild?.Tag ?? "")] · @(GuildManager.Instance.Members?.Count ?? 0) members</span>
-				}
-				else
-				{
-					<div class="landing-card-icon-wrap">
-						<img class="landing-card-webp" src="ui/icons/animated/guild-myguild.webp" />
-					</div>
-					<span class="landing-card-title">@L("ui.guild.create")</span>
-					<span class="landing-card-desc">@L("ui.guild.start_own")</span>
-				}
-			</div>
-		</div>
-
-		<!-- Level gate warning -->
-		@if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN )
+		<!-- HERO CARD — adapts to in-guild vs no-guild state -->
+		@if ( inGuildL )
 		{
-			<div class="guild-level-gate">
-				<span class="gate-icon">🔒</span>
-				<span class="gate-text">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
-				<span class="gate-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
+			<div class="landing-hero-card has-guild"
+				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
+				 onmouseout=@(() => hoveredLandingCard = null)
+				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
+
+				<!-- Halftone bg layer (P5 stamp aesthetic) -->
+				<div class="landing-hero-bg"></div>
+
+				<!-- Big emblem -->
+				<div class="landing-hero-emblem-wrap">
+					<div class="landing-hero-emblem shape-@(guildL?.EmblemShape ?? "square")" style="background-color: @(guildL?.EmblemColor ?? "#7c3aed")">
+						<iconify icon="@GetEmblemIcon( guildL?.EmblemIcon ?? "shield" )" Size=@(56) Color="#ffffff" />
+					</div>
+				</div>
+
+				<!-- Guild identity stack -->
+				<div class="landing-hero-info">
+					<div class="landing-hero-titlerow">
+						<span class="landing-hero-name">@(guildL?.Name ?? L("ui.guild.my_guild"))</span>
+						<span class="landing-hero-tag">[@(guildL?.Tag ?? "")]</span>
+					</div>
+					<div class="landing-hero-statsrow">
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:trending-up" Size=@(13) Color="#a78bfa" />
+							<span class="landing-hero-stat-value">Lv @(guildL?.Level ?? 1)</span>
+						</div>
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:users" Size=@(13) Color="#a78bfa" />
+							<span class="landing-hero-stat-value">@(gmL.Members?.Count ?? 0)</span>
+							<span class="landing-hero-stat-label">@L("ui.guild.members")</span>
+						</div>
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:circle" Size=@(11) Color="#4ade80" />
+							<span class="landing-hero-stat-value">@gmL.OnlineCount</span>
+							<span class="landing-hero-stat-label">@L("ui.guild.online")</span>
+						</div>
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:trophy" Size=@(13) Color="@GuildManager.GetGuildRankColor(gmL.GuildRankTier)" />
+							<span class="landing-hero-stat-value" style="color: @GuildManager.GetGuildRankColor(gmL.GuildRankTier)">@gmL.GuildRankTier</span>
+						</div>
+					</div>
+				</div>
+
+				<!-- CTA chevron -->
+				<div class="landing-hero-cta">
+					<span class="landing-hero-cta-text">@L("ui.guild.enter")</span>
+					<iconify icon="lucide:arrow-right" Size=@(20) Color="#ffffff" />
+				</div>
+			</div>
+		}
+		else
+		{
+			<!-- No guild — Create CTA hero -->
+			<div class="landing-hero-card no-guild"
+				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
+				 onmouseout=@(() => hoveredLandingCard = null)
+				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
+
+				<div class="landing-hero-bg"></div>
+
+				<div class="landing-hero-emblem-wrap">
+					<div class="landing-hero-emblem shape-square placeholder-emblem">
+						<iconify icon="lucide:plus" Size=@(56) Color="#a78bfa" />
+					</div>
+				</div>
+
+				<div class="landing-hero-info">
+					<div class="landing-hero-titlerow">
+						<span class="landing-hero-name">@L("ui.guild.create_a_guild")</span>
+					</div>
+					<div class="landing-hero-statsrow">
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:coins" Size=@(13) Color="#fbbf24" />
+							<span class="landing-hero-stat-value">@($"{GuildManager.GUILD_CREATION_COST:N0}")</span>
+							<span class="landing-hero-stat-label">@L("ui.guild.gold_cost")</span>
+						</div>
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:users" Size=@(13) Color="#a78bfa" />
+							<span class="landing-hero-stat-value">@GuildManager.BASE_MAX_MEMBERS</span>
+							<span class="landing-hero-stat-label">@L("ui.guild.max_members")</span>
+						</div>
+						<div class="landing-hero-stat">
+							<iconify icon="lucide:zap" Size=@(13) Color="#a78bfa" />
+							<span class="landing-hero-stat-value">10</span>
+							<span class="landing-hero-stat-label">@L("ui.guild.tab_perks")</span>
+						</div>
+					</div>
+				</div>
+
+				<div class="landing-hero-cta">
+					<span class="landing-hero-cta-text">@L("ui.guild.start")</span>
+					<iconify icon="lucide:arrow-right" Size=@(20) Color="#ffffff" />
+				</div>
 			</div>
 		}
 
-		<!-- Hop cooldown -->
-		@if ( GuildManager.Instance?.IsOnHopCooldown() ?? false )
+		<!-- ACTION ROW — Browse + (Invites if not already in banner above) -->
+		<div class="landing-actions-row">
+			<div class="landing-action-card browse-action @(hoveredLandingCard == "browse" ? "selected" : "")"
+				 onmouseover=@(() => { if (hoveredLandingCard != "browse") { hoveredLandingCard = "browse"; SoundManager.PlayHover(); } })
+				 onmouseout=@(() => hoveredLandingCard = null)
+				 onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; errorMessage = ""; viewingGuild = null; LoadGuildsFromApi(); })>
+				<div class="landing-action-icon">
+					<iconify icon="lucide:search" Size=@(28) Color="#a78bfa" />
+				</div>
+				<div class="landing-action-text">
+					<span class="landing-action-title">@L("ui.guild.browse")</span>
+					<span class="landing-action-sub">@(visibleGuilds.Count > 0 ? string.Format("{0} {1}", visibleGuilds.Count, L("ui.guild.found")) : L("ui.guild.view_guilds"))</span>
+				</div>
+				<iconify icon="lucide:chevron-right" Size=@(18) Color="rgba(255,255,255,0.5)" />
+			</div>
+
+			@if ( inviteCount == 0 )
+			{
+				<div class="landing-action-card invites-action @(hoveredLandingCard == "invites" ? "selected" : "")"
+					 onmouseover=@(() => { if (hoveredLandingCard != "invites") { hoveredLandingCard = "invites"; SoundManager.PlayHover(); } })
+					 onmouseout=@(() => hoveredLandingCard = null)>
+					<div class="landing-action-icon">
+						<iconify icon="lucide:mailbox" Size=@(28) Color="rgba(255,255,255,0.4)" />
+					</div>
+					<div class="landing-action-text">
+						<span class="landing-action-title">@L("ui.guild.invites")</span>
+						<span class="landing-action-sub">@L("ui.guild.none")</span>
+					</div>
+				</div>
+			}
+		</div>
+
+		<!-- Hop cooldown notice -->
+		@if ( gmL?.IsOnHopCooldown() ?? false )
 		{
 			<div class="hop-cooldown-notice">
+				<iconify icon="lucide:clock" Size=@(14) Color="rgba(255, 200, 100, 0.85)" />
 				<span class="cooldown-text">@string.Format(L("ui.guild.hop_cooldown"), FormatCooldown())</span>
 			</div>
 		}
 
-	</div>
+		}
 	</div>
 }
 else if ( guildView == "browse" )
 {
-	<!-- BROWSE GUILDS VIEW -->
-	<div class="guild-header-bar">
-		<div class="guild-header-left">
-			<img class="panel-title-icon" src="ui/icons/buttons/guild.svg" />
-			<span class="guild-header-title">@L("ui.guild.browse_title")</span>
+	<!-- BROWSE GUILDS VIEW — P5 stamp slab header + scrollable card list. -->
+	<div class="browse-topbar">
+		<!-- Title slab — angular stamp w/ italic uppercase, matches plaza-banner aesthetic -->
+		<div class="browse-title-slab">
+			<div class="browse-title-cut"></div>
+			<iconify class="browse-title-icon" icon="lucide:search" Size=@(18) Color="#fbbf24" />
+			<span class="browse-title-text">@L("ui.guild.browse_title")</span>
 		</div>
-		<div class="guild-header-right">
-			<button class="back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; viewingGuild = null; errorMessage = ""; })><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
-		</div>
+		<div class="browse-topbar-spacer"></div>
+		<!-- Refresh -->
+		<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayClick(); LoadGuildsFromApi(); })>
+			<iconify icon="lucide:refresh-cw" Size=@(16) Color="rgba(255,255,255,0.85)" />
+		</button>
+		<!-- Back -->
+		<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = (GuildManager.Instance?.IsInGuild ?? false) ? "myguild" : "landing"; viewingGuild = null; errorMessage = ""; })>
+			<iconify icon="lucide:arrow-left" Size=@(16) Color="rgba(255,255,255,0.85)" />
+		</button>
 	</div>
 	<div class="guild-content-card">
 	<div class="guild-browse-view">
@@ -154,7 +246,7 @@ else if ( guildView == "browse" )
 			<div class="guild-detail">
 				<div class="detail-header">
 					<div class="detail-emblem" style="background-color: @viewingGuild.EmblemColor">
-						<span class="detail-emblem-icon">@GetEmblemEmoji( viewingGuild.EmblemIcon )</span>
+						<iconify class="detail-emblem-icon" icon="@GetEmblemIcon( viewingGuild.EmblemIcon )" Size=@(32) Color="#ffffff" />
 					</div>
 					<div class="detail-header-info">
 						<div class="detail-name-row">
@@ -209,7 +301,7 @@ else if ( guildView == "browse" )
 							@foreach ( var member in viewingGuildMembers )
 							{
 								<div class="detail-member-chip">
-									<span class="chip-role">@GuildManager.GetRoleIcon( (GuildRole)member.Role )</span>
+									<iconify class="chip-role" icon="@GuildManager.GetRoleIcon( (GuildRole)member.Role )" Size=@(12) Color="@GuildManager.GetRoleColor( (GuildRole)member.Role )" />
 									<span class="chip-name">@member.Name</span>
 									<span class="chip-level">@($"{member.Level}")</span>
 								</div>
@@ -258,25 +350,51 @@ else if ( guildView == "browse" )
 			}
 			@foreach ( var guild in guilds )
 			{
-				<div class="browse-row" onclick=@(() => ViewGuildDetail( guild ))>
-					<div class="browse-emblem" style="background-color: @guild.EmblemColor">
-						<span class="browse-emblem-icon">@GetEmblemEmoji( guild.EmblemIcon )</span>
+				var isLocked = guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly;
+				<div class="browse-card-v2" onclick=@(() => ViewGuildDetail( guild ))>
+					<!-- LEFT-edge accent in the guild's emblem color (absolute child — per-side borders w/ style word are rejected in s&box) -->
+					<div class="browse-card-edge" style="background-color: @guild.EmblemColor"></div>
+					<!-- Halftone diagonal slash decoration in the bottom-right -->
+					<div class="browse-card-halftone"></div>
+					<!-- Top-right diagonal corner-cut in the emblem color (decorative, pointer-events: none) -->
+					<div class="browse-card-corner-cut" style="background-image: linear-gradient(225deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 28%, @guild.EmblemColor 28%, @guild.EmblemColor 36%, rgba(0,0,0,0) 36%, rgba(0,0,0,0) 100%)"></div>
+
+					<!-- Emblem stamp — angular slab w/ hard border -->
+					<div class="browse-card-emblem" style="background-color: @guild.EmblemColor">
+						<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(22) Color="#ffffff" />
 					</div>
-					<div class="browse-info">
-						<span class="browse-name">@($"[{guild.GuildTag}] {guild.GuildName}")</span>
-						<span class="browse-stats">@($"Lv {guild.Level} · {guild.MemberCount} members · {guild.TotalRP} RP")</span>
-					</div>
-					<div class="browse-actions">
-						@if ( guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly )
-						{
-							<span class="browse-locked">@L("ui.guild.invite_only")</span>
-						}
-						else if ( !(GuildManager.Instance?.IsInGuild ?? false) )
-						{
-							<div class="guild-btn join-btn" onclick=@(() => { RequestJoin( guild ); SoundManager.PlaySelect(); })>
-								<span>@(guild.JoinMode == GuildJoinMode.Open ? "Join" : "Request")</span>
+
+					<!-- Identity stack -->
+					<div class="browse-card-info">
+						<div class="browse-card-titlerow">
+							<!-- Tag pill — purple stamp on the left, italic uppercase white text -->
+							<div class="browse-card-tag-pill">
+								<span>@guild.GuildTag</span>
 							</div>
-						}
+							<span class="browse-card-name">@guild.GuildName</span>
+						</div>
+						<div class="browse-card-meta-row">
+							<div class="browse-card-meta-chip">
+								<iconify icon="lucide:users" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
+								<span>@guild.MemberCount</span>
+							</div>
+							<div class="browse-card-meta-chip">
+								<iconify icon="lucide:trending-up" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
+								<span>@($"{guild.TotalRP:N0}") RP</span>
+							</div>
+							@if ( isLocked )
+							{
+								<div class="browse-card-meta-chip locked-chip">
+									<iconify icon="lucide:lock" Size=@(10) Color="rgba(252, 165, 165, 0.85)" />
+									<span>@L("ui.guild.invite_only")</span>
+								</div>
+							}
+						</div>
+					</div>
+
+					<!-- Right side: gold level stamp pill (decorative, rotated -2°) -->
+					<div class="browse-card-level-stamp">
+						<span>Lv @guild.Level</span>
 					</div>
 				</div>
 			}
@@ -304,7 +422,7 @@ else if ( guildView == "myguild" )
 			@if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN )
 			{
 				<div class="guild-level-gate">
-					<span class="gate-icon">🔒</span>
+					<iconify class="gate-icon" icon="lucide:lock" Size=@(20) Color="rgba(255, 200, 100, 0.85)" />
 					<span class="gate-text">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
 					<span class="gate-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
 				</div>
@@ -348,15 +466,10 @@ else if ( guildView == "myguild" )
 							<div class="emblem-section">
 								<span class="emblem-section-label">@L("ui.guild.icon")</span>
 								<div class="emblem-picker-row">
-									@foreach ( var chunk in ChunkArray( EmblemIcons.ToArray(), 5 ) )
+									@foreach ( var icon in EmblemIcons )
 									{
-										<div class="emblem-picker-row-inner">
-											@foreach ( var icon in chunk )
-											{
-												<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
-													<span>@icon.Value</span>
-												</div>
-											}
+										<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
+											<iconify icon="@icon.Value" Size=@(18) Color="#ffffff" />
 										</div>
 									}
 								</div>
@@ -364,15 +477,10 @@ else if ( guildView == "myguild" )
 							<div class="emblem-section">
 								<span class="emblem-section-label">@L("ui.guild.shape")</span>
 								<div class="emblem-picker-row">
-									@foreach ( var chunk in ChunkArray( EmblemShapes.ToArray(), 5 ) )
+									@foreach ( var shape in EmblemShapes )
 									{
-										<div class="emblem-picker-row-inner">
-											@foreach ( var shape in chunk )
-											{
-												<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
-													<span>@shape.Value</span>
-												</div>
-											}
+										<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
+											<iconify icon="@shape.Value" Size=@(16) Color="#ffffff" />
 										</div>
 									}
 								</div>
@@ -384,7 +492,7 @@ else if ( guildView == "myguild" )
 					<div class="guild-create-preview">
 						<div class="preview-emblem-wrap">
 							<div class="preview-emblem shape-@emblemShape" style="background-color: @emblemColor">
-								<span class="preview-emblem-icon">@GetEmblemEmoji( emblemIcon )</span>
+								<iconify class="preview-emblem-icon" icon="@GetEmblemIcon( emblemIcon )" Size=@(48) Color="#ffffff" />
 							</div>
 						</div>
 						<span class="preview-name">@(string.IsNullOrEmpty( createNameInput?.Text ) ? "Guild Name" : createNameInput.Text)</span>
@@ -416,626 +524,636 @@ else if ( guildView == "myguild" )
 			var gm = GuildManager.Instance;
 			var guild = gm?.Guild;
 			var members = gm?.Members ?? new List<GuildMemberInfo>();
+			var pendingRequests = gm.IsOfficer ? (gm.JoinRequests ?? new List<GuildJoinRequest>()) : new List<GuildJoinRequest>();
+			var raid = gm?.CurrentRaidBoss;
+			var rankColor = GuildManager.GetGuildRankColor( gm.GuildRankTier );
 		}
 
-		<!-- GUILD HUB HEADER -->
-		<div class="guild-header-bar">
-			<div class="guild-header-left">
-				<span class="guild-header-title">@guild.Name</span>
-				<span class="guild-header-sub">@($"[{guild.Tag}] · Lv {guild.Level}")</span>
+		@if ( raidViewOpen && raid != null && !showRaidTeamSelect && !showRaidBattle )
+		{
+			<!-- RAID ENCOUNTER — full takeover when monument clicked -->
+			@{
+				var elementColor = GetElementAccentColor();
+			}
+			<div class="guild-raid-scene">
+				<div class="raid-scene-topbar">
+					<!-- Title slab — italic uppercase "RAID — [boss name]" -->
+					<div class="raid-title-slab">
+						<div class="raid-title-cut" style="background-image: linear-gradient(225deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 28%, #ef4444 28%, #ef4444 36%, rgba(0,0,0,0) 36%, rgba(0,0,0,0) 100%)"></div>
+						<iconify class="raid-title-icon" icon="lucide:swords" Size=@(16) Color="#ef4444" />
+						<span class="raid-title-text">@L("ui.guild.tab_raids")</span>
+						<span class="raid-title-sep">—</span>
+						<span class="raid-title-boss">@raid.BossName</span>
+					</div>
+					<div class="raid-topbar-spacer"></div>
+					<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayBack(); raidViewOpen = false; })>
+						<iconify icon="lucide:arrow-left" Size=@(16) Color="rgba(255,255,255,0.85)" />
+					</button>
+				</div>
+
+				<!-- BOSS HERO — P5 stamp slab with corner-cut, halftone, and rotated BOSS stamp -->
+				<div class="raid-boss-hero p5-stamp" style="border-color: @(elementColor)55">
+					<!-- Diagonal corner-cut accent in element color (decorative) -->
+					<div class="raid-hero-corner-cut" style="background-image: linear-gradient(225deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 24%, @elementColor 24%, @elementColor 30%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 100%)"></div>
+					<!-- Halftone slash texture (decorative) -->
+					<div class="raid-hero-halftone"></div>
+					<!-- BOSS rotated stamp — sits in the top-right (decorative, pointer-events: none) -->
+					<div class="raid-hero-boss-stamp">
+						<span>BOSS</span>
+					</div>
+
+					<div class="raid-hero-top">
+						<div class="raid-hero-sprite-col">
+							<div class="raid-boss-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
+						</div>
+						<div class="raid-hero-info-col">
+							<span class="raid-boss-name" style="color: @elementColor">@raid.BossName</span>
+							<div class="raid-boss-tags">
+								<!-- Element stamp pill — solid element bg, rotated -2° (decorative) -->
+								<div class="raid-stamp-pill element-stamp" style="background-color: @elementColor">
+									<span>@raid.BossElement</span>
+								</div>
+								<!-- Level gold stamp pill, rotated +2° -->
+								<div class="raid-stamp-pill level-stamp">
+									<span>Lv @raid.BossLevel</span>
+								</div>
+								<!-- Rarity purple stamp pill, rotated -2° -->
+								<div class="raid-stamp-pill rarity-stamp">
+									<span>@GetRaidBossRarity()</span>
+								</div>
+							</div>
+							<div class="raid-desc-row"><span class="raid-boss-desc">@GetRaidBossDescription()</span></div>
+							<div class="raid-boss-meta">
+								<span class="raid-meta-text">Period @raid.PeriodNumber</span>
+								<span class="raid-meta-sep">·</span>
+								<span class="raid-meta-text">@L("ui.guild.until_ko")</span>
+							</div>
+						</div>
+					</div>
+					<div class="raid-hero-timer">
+						<iconify icon="lucide:hourglass" Size=@(14) Color="rgba(255, 200, 100, 0.9)" />
+						<span class="raid-timer-label">@L("ui.guild.rotates_in")</span>
+						<span class="raid-timer-sep">·</span>
+						<span class="raid-timer-value">@FormatRaidTimer() remaining</span>
+					</div>
+				</div>
+
+				<div class="raid-action-bar p5-stamp">
+					<div class="raid-attempts-info">
+						<div class="raid-attempt-pips">
+							@for ( int i = 0; i < gm.GetRaidAttemptsPerDay(); i++ )
+							{
+								var used = i < gm.GetRaidAttemptsToday();
+								<div class="raid-pip @(used ? "used" : "available")" style="@(!used ? $"border-color: {elementColor}" : "")"></div>
+							}
+						</div>
+						<!-- "X / Y USED" stamp badge — clearer than just dots -->
+						<div class="raid-attempts-stamp">
+							<span class="raid-attempts-num">@gm.GetRaidAttemptsToday()</span>
+							<span class="raid-attempts-sep">/</span>
+							<span class="raid-attempts-max">@gm.GetRaidAttemptsPerDay()</span>
+							<span class="raid-attempts-tag">USED</span>
+						</div>
+					</div>
+					@if ( gm.CanAttemptRaid() )
+					{
+						<div class="raid-attack-slab" onclick=@OnAttackRaidBoss>
+							<iconify icon="lucide:swords" Size=@(15) Color="#ffffff" />
+							<span>@L("ui.guild.attack_boss")</span>
+						</div>
+					}
+					else
+					{
+						<span class="attempts-exhausted">@L("ui.guild.no_attempts")</span>
+					}
+				</div>
+
+				<div class="raid-info-columns">
+					<div class="raid-combos-card p5-stamp">
+						<!-- Halftone overlay -->
+						<div class="raid-combos-halftone"></div>
+						<span class="raid-section-title">@L("ui.guild.combo_bonuses")</span>
+						<div class="combo-entry">
+							<div class="combo-edge" style="background-color: #ef4444"></div>
+							<iconify class="combo-icon" icon="lucide:swords" Size=@(13) Color="#ef4444" /><span class="combo-label">@L("ui.guild.type_advantage")</span><span class="combo-mult">1.5x</span>
+						</div>
+						<div class="combo-entry">
+							<div class="combo-edge" style="background-color: #f59e0b"></div>
+							<iconify class="combo-icon" icon="lucide:trending-down" Size=@(13) Color="#f59e0b" /><span class="combo-label">@L("ui.guild.underdog")</span><span class="combo-mult">1.5x</span>
+						</div>
+						<div class="combo-entry">
+							<div class="combo-edge" style="background-color: #22d3ee"></div>
+							<iconify class="combo-icon" icon="lucide:link" Size=@(13) Color="#22d3ee" /><span class="combo-label">@L("ui.guild.evolution_chain")</span><span class="combo-mult">1.4x</span>
+						</div>
+						<div class="combo-entry">
+							<div class="combo-edge" style="background-color: #a78bfa"></div>
+							<iconify class="combo-icon" icon="lucide:sparkles" Size=@(13) Color="#a78bfa" /><span class="combo-label">@L("ui.guild.elemental_unity")</span><span class="combo-mult">1.3x</span>
+						</div>
+						<div class="combo-entry">
+							<div class="combo-edge" style="background-color: #60a5fa"></div>
+							<iconify class="combo-icon" icon="lucide:diamond" Size=@(13) Color="#60a5fa" /><span class="combo-label">@L("ui.guild.rarity_rush")</span><span class="combo-mult">1.25x</span>
+						</div>
+						<div class="combo-entry">
+							<div class="combo-edge" style="background-color: #f472b6"></div>
+							<iconify class="combo-icon" icon="lucide:palette" Size=@(13) Color="#f472b6" /><span class="combo-label">@L("ui.guild.diversity")</span><span class="combo-mult">1.2x</span>
+						</div>
+					</div>
+					<div class="raid-personal-card p5-stamp">
+						<span class="raid-section-title">@L("ui.guild.your_best")</span>
+						@{
+							var myBest = GetMyBestRaidScore();
+						}
+						@if ( myBest != null )
+						{
+							<span class="personal-score" style="color: @elementColor">@($"{myBest.TotalScore:N0}")</span>
+							<div class="personal-detail-row">
+								<span class="personal-detail-label">@L("ui.guild.raw_damage")</span>
+								<span class="personal-detail-value">@($"{myBest.RawDamage:N0}")</span>
+							</div>
+							<div class="personal-detail-row">
+								<span class="personal-detail-label">@L("ui.guild.combo")</span>
+								<span class="personal-detail-value">@($"{myBest.ComboMultiplier:F1}")x</span>
+							</div>
+							<div class="personal-detail-row">
+								<span class="personal-detail-label">@L("ui.guild.rounds_survived")</span>
+								<span class="personal-detail-value">@myBest.RoundsUsed</span>
+							</div>
+						}
+						else
+						{
+							<div class="personal-empty">
+								<iconify class="personal-empty-icon" icon="lucide:target" Size=@(28) Color="rgba(255,255,255,0.35)" />
+								<span class="personal-empty-text">@L("ui.guild.no_attempts_yet")</span>
+								<span class="personal-empty-hint">Attack the boss to set your score!</span>
+							</div>
+						}
+					</div>
+				</div>
+
+				<div class="raid-leaderboard-card p5-stamp">
+					<div class="raid-lb-header">
+						<span class="raid-section-title">@L("ui.guild.guild_leaderboard")</span>
+						<span class="raid-lb-total">Total: @($"{raid.GuildTotalScore:N0}")</span>
+					</div>
+					@{
+						var scores = raid.BestScores.Values.OrderByDescending( s => s.TotalScore ).ToList();
+					}
+					@if ( scores.Count > 0 )
+					{
+						<div class="raid-lb-list">
+							@foreach ( var score in scores )
+							{
+								var rank = scores.IndexOf( score ) + 1;
+								var rankClass = rank == 1 ? "gold" : rank == 2 ? "silver" : rank == 3 ? "bronze" : "";
+								<div class="raid-lb-row">
+									<span class="raid-lb-rank @rankClass">@rank</span>
+									<span class="raid-lb-name">@score.PlayerName</span>
+									<span class="raid-lb-combo">@($"{score.ComboMultiplier:F1}")x</span>
+									<span class="raid-lb-score">@($"{score.TotalScore:N0}")</span>
+								</div>
+							}
+						</div>
+					}
+					else
+					{
+						<span class="raid-lb-empty">@L("ui.guild.no_scores")</span>
+					}
+				</div>
 			</div>
-			<div class="guild-header-right">
-				@if ( gm.IsOfficer )
-				{
-					<div class="guild-btn invite-header-btn" onclick=@OnInviteClicked><span>@L("ui.guild.invite")</span></div>
-				}
-				<button class="back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; errorMessage = ""; })><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
+		}
+		else if ( showRaidTeamSelect && raid != null )
+		{
+			<!-- RAID TEAM SELECTION (unchanged from old) -->
+			<div class="raid-team-selection">
+				<div class="raid-select-header">
+					<div class="raid-select-boss">
+						<span class="raid-select-boss-name">VS @(raid?.BossName)</span>
+						<div class="raid-select-boss-detail">
+							<span>@(raid?.BossElement)</span>
+							<span class="raid-detail-sep">·</span>
+							<span>@($"Lv {raid?.BossLevel}")</span>
+							<span class="raid-detail-sep">·</span>
+							<span>@L("ui.guild.until_ko")</span>
+						</div>
+					</div>
+					<div class="raid-select-counter">
+						<span class="raid-select-counter-num">@raidTeamSelection.Count</span>
+						<span class="raid-select-counter-sep">/</span>
+						<span class="raid-select-counter-max">3</span>
+					</div>
+				</div>
+
+				<div class="raid-select-body">
+					<div class="raid-select-grid">
+						@foreach ( var monster in GetRaidAvailableMonsters() )
+						{
+							var m = monster;
+							var inTeam = raidTeamSelection.Contains( m );
+							<div class="raid-select-option @(inTeam ? "in-team" : "")">
+								<MonsterCard Monster=@m IsCompact=@true AnimateOnHover=@true AnimationFrame=@SpriteAnimator.GlobalFrame
+											 ClickAction=@(() => ToggleRaidTeamMember( m )) />
+							</div>
+						}
+					</div>
+
+					<div class="raid-select-sidebar">
+						<span class="raid-sidebar-label">@L("ui.guild.raid_team")</span>
+						<div class="raid-sidebar-slots">
+							@for ( int slotIdx = 0; slotIdx < 3; slotIdx++ )
+							{
+								var idx = slotIdx;
+								var slotMonster = raidTeamSelection.Count > idx ? raidTeamSelection[idx] : null;
+								<div class="raid-sidebar-slot @(slotMonster != null ? "filled" : "empty")"
+									 onclick=@(() => { if ( slotMonster != null ) { raidTeamSelection.Remove( slotMonster ); SoundManager.PlayBack(); } })>
+									@if ( slotMonster != null )
+									{
+										<MonsterCard Monster=@slotMonster IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
+									}
+									else
+									{
+										<div class="raid-slot-empty">
+											<span class="raid-slot-number">@(idx + 1)</span>
+											<span class="raid-slot-label">@L("ui.guild.empty")</span>
+										</div>
+									}
+								</div>
+							}
+						</div>
+
+						@{
+							var comboPreview = GetRaidComboPreview();
+						}
+						<div class="raid-combo-preview @(comboPreview.Multiplier > 1f ? "active" : "")">
+							<span class="raid-combo-label">@L("ui.guild.combo")</span>
+							@if ( comboPreview.Multiplier > 1f )
+							{
+								<span class="raid-combo-name">@comboPreview.ComboName</span>
+								<span class="raid-combo-mult">@($"{comboPreview.Multiplier:F1}")x</span>
+							}
+							else if ( raidTeamSelection.Count < 3 )
+							{
+								<span class="raid-combo-hint">Pick 3 to see combo</span>
+							}
+							else
+							{
+								<span class="raid-combo-hint">@L("ui.guild.no_combo")</span>
+							}
+						</div>
+
+						<div class="guild-btn raid-attack-btn @(raidTeamSelection.Count < 3 ? "disabled" : "")" onclick=@(() => { if ( raidTeamSelection.Count == 3 ) StartRaidBattle(); })>
+							<span>@L("ui.guild.attack_boss")</span>
+						</div>
+						<div class="guild-btn secondary-btn" onclick=@(() => { showRaidTeamSelect = false; raidTeamSelection.Clear(); SoundManager.PlayBack(); })>
+							<span>@L("ui.common.cancel")</span>
+						</div>
+					</div>
+				</div>
 			</div>
-		</div>
+		}
+		else
+		{
+			<!-- THE PLAZA — guild-as-a-place. One scene, no tabs. -->
+			<div class="guild-plaza">
+				<!-- Plaza-wide halftone paper texture (very low alpha) -->
+				<div class="plaza-halftone"></div>
 
-		<!-- GUILD HUB: SIDEBAR + MAIN -->
-		<div class="guild-hub-layout">
-			<!-- SIDEBAR -->
-			<div class="guild-sidebar">
-				<!-- Emblem + Name -->
-				<div class="sidebar-emblem-wrap">
-					<div class="sidebar-emblem shape-@guild.EmblemShape" style="background-color: @guild.EmblemColor">
-						<span class="sidebar-emblem-icon">@GetEmblemEmoji( guild.EmblemIcon )</span>
-					</div>
-					<span class="sidebar-guild-name">@guild.Name</span>
-					<span class="sidebar-guild-tag">@($"[{guild.Tag}]")</span>
-					<span class="sidebar-level-badge">@($"Lv {guild.Level}")</span>
+				<!-- TOPBAR — right-aligned action icons. Browse stays here so in-guild
+				     users can still find other guilds without leaving the plaza first. -->
+				<div class="plaza-topbar">
+					@if ( pendingRequests.Count > 0 )
+					{
+						<div class="plaza-requests-pill" onclick=@(() => { showRequestsModal = true; SoundManager.PlayClick(); })>
+							<iconify icon="lucide:mailbox" Size=@(13) Color="#fbbf24" />
+							<span>@pendingRequests.Count pending</span>
+						</div>
+					}
+					<div class="plaza-topbar-spacer"></div>
+					<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; viewingGuild = null; LoadGuildsFromApi(); })>
+						<iconify icon="lucide:search" Size=@(16) Color="rgba(255,255,255,0.8)" />
+					</button>
+					@if ( gm.IsOfficer )
+					{
+						<button class="plaza-icon-btn" onclick=@(() => { OnInviteClicked(); })>
+							<iconify icon="lucide:user-plus" Size=@(16) Color="#4ade80" />
+						</button>
+						<button class="plaza-icon-btn" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
+							<iconify icon="lucide:settings" Size=@(16) Color="rgba(255,255,255,0.8)" />
+						</button>
+					}
+					<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayBack(); OnBack?.Invoke(); })>
+						<iconify icon="lucide:arrow-left" Size=@(16) Color="rgba(255,255,255,0.8)" />
+					</button>
 				</div>
 
-				<!-- XP Bar -->
-				<div class="sidebar-xp-section">
-					<div class="xp-progress-bar">
-						<div class="xp-bar-fill" style="width: @GetGuildXPPercent()%"></div>
+				<!-- BANNER — P5 headline stamp. Angular emblem slab on the LEFT,
+				     guild name + meta stack to the RIGHT, XP slab at the bottom. -->
+				<div class="plaza-banner">
+					<!-- Halftone overlay on the banner block for paper texture -->
+					<div class="banner-halftone"></div>
+
+					<div class="banner-row">
+						<!-- Emblem SLAB — angular 96x96 with corner-cut accent -->
+						<div class="banner-emblem-slab" style="background-color: @guild.EmblemColor">
+							<div class="banner-emblem-cut"></div>
+							<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(64) Color="#ffffff" />
+						</div>
+
+						<!-- Name + stamps stack -->
+						<div class="banner-stack">
+							<span class="banner-name">@guild.Name</span>
+							<div class="banner-stamps">
+								<div class="banner-stamp tag-stamp">
+									<span>[@guild.Tag]</span>
+								</div>
+								<div class="banner-stamp lv-stamp">
+									<span>LV @guild.Level</span>
+								</div>
+								<div class="banner-stamp rank-stamp" style="background-color: @rankColor">
+									<span>@gm.GuildRankTier</span>
+								</div>
+							</div>
+						</div>
 					</div>
-					<span class="xp-bar-text">@($"{GetGuildXPInLevel():N0}") / @($"{GetGuildXPNeededForNext():N0}") XP</span>
+
+					<!-- XP slab — chunky 14px bar with overlaid % text -->
+					<div class="banner-xp-slab">
+						<div class="banner-xp-bar">
+							<div class="banner-xp-fill" style="width: @GetGuildXPPercent()%"></div>
+							<div class="banner-xp-overlay">
+								<span class="banner-xp-pct">@GetGuildXPPercent()%</span>
+								<span class="banner-xp-text">@($"{GetGuildXPInLevel():N0}") / @($"{GetGuildXPNeededForNext():N0}") XP</span>
+							</div>
+						</div>
+					</div>
 				</div>
 
-				<!-- Member/Online Stats -->
-				<div class="sidebar-stats">
-					<div class="sidebar-stat-pill">
-						<span class="sidebar-stat-value">@members.Count</span>
-						<span class="sidebar-stat-label">@L("ui.guild.members")</span>
-					</div>
-					<div class="sidebar-stat-pill">
-						<span class="sidebar-stat-value online-val">@gm.OnlineCount</span>
-						<span class="sidebar-stat-label">@L("ui.guild.online")</span>
-					</div>
-				</div>
+				<!-- MONUMENTS — MOTD stone (left) + Raid monument (right) -->
+				<div class="plaza-monuments">
+					<!-- MOTD stone -->
+					<div class="motd-stone">
+						<!-- P5 stamp layers: corner-cut (gold) + halftone + index "01" -->
+						<div class="monument-cut gold"></div>
+						<div class="monument-halftone"></div>
+						<div class="monument-index gold"><span>01</span></div>
 
-				<!-- MOTD -->
-				@if ( !string.IsNullOrEmpty( guild.Motd ) || gm.IsOfficer )
-				{
-					<div class="sidebar-motd">
-						<span class="motd-label">📢</span>
+						<div class="motd-stone-header">
+							<iconify icon="lucide:megaphone" Size=@(13) Color="#fbbf24" />
+							<span class="motd-stone-title">Announcement</span>
+						</div>
 						@if ( editingMotd )
 						{
 							<TextEntry class="motd-input" @ref="motdDraftInput" Text=@motdDraft />
-							<div class="guild-btn motd-save-btn" onclick=@(() => { SaveMotd(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
-							<div class="guild-btn secondary-btn motd-cancel-btn" onclick=@CancelMotd><span>@L("ui.common.cancel")</span></div>
+							<div class="motd-actions">
+								<div class="guild-btn accept-btn" onclick=@(() => { SaveMotd(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
+								<div class="guild-btn deny-btn" onclick=@CancelMotd><span>@L("ui.common.cancel")</span></div>
+							</div>
 						}
 						else
 						{
 							<span class="motd-text">@(string.IsNullOrEmpty( guild.Motd ) ? L("ui.guild.no_announcement") : guild.Motd)</span>
 							@if ( gm.IsOfficer )
 							{
-								<div class="guild-btn motd-edit-btn" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })><span>@L("ui.guild.edit")</span></div>
+								<button class="motd-edit-btn" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })>
+									<iconify icon="lucide:pencil" Size=@(11) Color="rgba(255,255,255,0.6)" />
+									<span>Edit</span>
+								</button>
 							}
 						}
 					</div>
-				}
 
-				<!-- About -->
-				<div class="sidebar-about">
-					<span class="sidebar-about-title">@L("ui.guild.about")</span>
-					<span class="about-text">@(string.IsNullOrEmpty( guild.Description ) ? L("ui.guild.no_description") : guild.Description)</span>
-				</div>
-
-				<!-- Guild Rank -->
-				<div class="sidebar-rank">
-					<span class="sidebar-rank-label">Rank:</span>
-					<span class="sidebar-rank-value" style="color: @GuildManager.GetGuildRankColor( gm.GuildRankTier )">@gm.GuildRankTier</span>
-				</div>
-
-				<!-- Danger Zone -->
-				<div class="sidebar-danger">
-					<span class="danger-title">@L("ui.guild.danger_zone")</span>
-					@if ( gm.IsLeader && members.Count > 1 )
+					<!-- Raid monument -->
+					@if ( raid != null )
 					{
-						<div class="guild-btn danger-btn" onclick=@OnTransferOwnership><span>@L("ui.guild.transfer_ownership")</span></div>
-					}
-					@if ( gm.CanClaimLeadership() )
-					{
-						<div class="guild-btn claim-btn" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })><span>@L("ui.guild.claim_leadership")</span></div>
-					}
-					<div class="guild-btn danger-btn" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })><span>@L("ui.guild.leave")</span></div>
-					@if ( gm.IsLeader )
-					{
-						<div class="guild-btn danger-btn disband-btn" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })><span>@L("ui.guild.disband")</span></div>
-					}
-				</div>
-			</div>
+						<div class="raid-monument" onclick=@(() => { SoundManager.PlayForward(); raidViewOpen = true; })>
+							<!-- P5 stamp layers: corner-cut (red) + halftone + index "BOSS" -->
+							<div class="monument-cut red"></div>
+							<div class="monument-halftone"></div>
+							<div class="monument-index red"><span>BOSS</span></div>
 
-			<!-- MAIN CONTENT -->
-			<div class="guild-main">
-				<!-- TABS -->
-				<div class="guild-tabs">
-					<div class="guild-tab @(activeTab == "members" ? "active" : "")" onclick=@(() => SetTab( "members" ))><span>@L("ui.guild.tab_members")</span></div>
-					<div class="guild-tab @(activeTab == "perks" ? "active" : "")" onclick=@(() => SetTab( "perks" ))><span>@L("ui.guild.tab_perks")</span></div>
-					<div class="guild-tab @(activeTab == "raids" ? "active" : "")" onclick=@(() => SetTab( "raids" ))><span>@L("ui.guild.tab_raids")</span></div>
-					<div class="guild-tab @(activeTab == "emblem" ? "active" : "")" onclick=@(() => SetTab( "emblem" ))><span>@L("ui.guild.tab_emblem")</span></div>
-					<div class="guild-tab @(activeTab == "settings" ? "active" : "")" onclick=@(() => SetTab( "settings" ))><span>@L("ui.guild.tab_settings")</span></div>
-					<div class="guild-tab @(activeTab == "logs" ? "active" : "")" onclick=@(() => SetTab( "logs" ))><span>@L("ui.guild.tab_logs")</span></div>
-					@if ( gm.IsOfficer )
-					{
-						<div class="guild-tab @(activeTab == "requests" ? "active" : "")" onclick=@(() => SetTab( "requests" ))>
-							<span>@L("ui.guild.tab_requests")</span>
-							@if ( (gm.JoinRequests?.Count ?? 0) > 0 )
-							{
-								<span class="tab-badge">@gm.JoinRequests.Count</span>
-							}
-						</div>
-					}
-				</div>
-
-				<!-- TAB CONTENT -->
-				<div class="guild-body">
-
-					@if ( activeTab == "members" )
-					{
-						<!-- MEMBERS TAB -->
-						<div class="members-layout">
-							<div class="members-search-row">
-								<TextEntry class="member-search-input" @ref="memberSearchInput" Text=@memberSearch Placeholder="Search members..." />
+							<div class="raid-monument-header">
+								<iconify icon="lucide:swords" Size=@(13) Color="#fca5a5" />
+								<span class="raid-monument-title">RAID</span>
 							</div>
-							<div class="members-scroll">
-								@{
-									var filtered = GetFilteredMembers();
-									var grouped = filtered.GroupBy( m => m.Role ).OrderByDescending( g => g.Key );
-								}
-								@foreach ( var group in grouped )
-								{
-									<div class="role-header">
-										<span class="role-icon">@GuildManager.GetRoleIcon( group.Key )</span>
-										<span class="role-name">@GuildManager.GetRoleDisplayName( group.Key )</span>
-										<span class="role-count">@group.Count()</span>
+							<div class="raid-monument-content">
+								<div class="raid-monument-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
+								<div class="raid-monument-info">
+									<span class="raid-monument-name">@raid.BossName</span>
+									<span class="raid-monument-element">@raid.BossElement · Lv @raid.BossLevel</span>
+									<div class="raid-monument-row">
+										<iconify icon="lucide:target" Size=@(11) Color="rgba(255,255,255,0.55)" />
+										<span>@(gm.GetRaidAttemptsPerDay() - gm.GetRaidAttemptsToday()) attempts left</span>
 									</div>
-									@foreach ( var member in group.OrderByDescending( m => m.ArenaPoints ) )
-									{
-										<div class="member-row @(member.IsOnline ? "online" : "offline") @(IsInactive( member ) ? "inactive" : "")">
-											<div class="member-avatar">
-												<span class="avatar-emoji">@GetAvatarEmoji( member )</span>
-												<div class="status-dot @(member.IsOnline ? "dot-online" : "dot-offline")"></div>
-											</div>
-											<div class="member-info">
-												<div class="member-name-row">
-													<span class="member-name">@member.Name</span>
-													<span class="member-role-badge" style="color: @GuildManager.GetRoleColor( member.Role )">@GuildManager.GetRoleDisplayName( member.Role )</span>
-												</div>
-												<div class="member-detail-row">
-													<span class="member-level">@($"Lv {member.Level}")</span>
-													<span class="member-rank">@member.ArenaRank</span>
-													@if ( !member.IsOnline && (DateTime.UtcNow - member.LastSeen).TotalDays >= 3 )
-													{
-														<span class="member-lastseen">@FormatLastSeen( member.LastSeen )</span>
-													}
-												</div>
-											</div>
-											<div class="member-rp">
-												<span class="rp-value">@member.ArenaPoints</span>
-												<span class="rp-label">@L("ui.guild.rp")</span>
-											</div>
-											@if ( gm.IsOfficer && member.SteamId != (Connection.Local?.SteamId ?? 0) && member.Role < gm.Membership.Role )
-											{
-												<div class="member-actions">
-													@if ( gm.IsLeader && member.Role < GuildRole.Warden )
-													{
-														<div class="action-btn promote-btn" onclick=@(() => { gm.PromoteMember( member.SteamId ); SoundManager.PlaySelect(); })><span>▲</span></div>
-													}
-													@if ( gm.IsLeader && member.Role > GuildRole.Wanderer && member.Role < GuildRole.Beastlord )
-													{
-														<div class="action-btn demote-btn" onclick=@(() => { gm.DemoteMember( member.SteamId ); SoundManager.PlayClick(); })><span>▼</span></div>
-													}
-													<div class="action-btn kick-btn" onclick=@(() => { ConfirmKick( member ); SoundManager.PlayPopup(); })><span>✕</span></div>
-												</div>
-											}
-										</div>
-									}
-								}
-							</div>
-						</div>
-					}
-
-					@if ( activeTab == "perks" )
-					{
-						<!-- PERKS TAB -->
-						<div class="perks-content">
-							<div class="xp-progress-bar">
-								<div class="xp-bar-fill" style="width: @GetGuildXPPercent()%"></div>
-							</div>
-							<span class="xp-bar-text">Guild XP: @($"{GetGuildXPInLevel():N0}") / @($"{GetGuildXPNeededForNext():N0}")</span>
-							<div class="perks-grid">
-								@{
-									var perkList = GetPerkList();
-								}
-								@for ( int i = 0; i < perkList.Count; i += 2 )
-								{
-									<div class="perks-row">
-										@{
-											var perk = perkList[i];
-										}
-										<div class="perk-card @(guild.Level >= perk.Level ? "unlocked" : "locked")">
-											<div class="perk-card-header">
-												<div class="perk-level-badge"><span>@($"Lv {perk.Level}")</span></div>
-												@if ( guild.Level < perk.Level )
-												{
-													<span class="perk-locked-label">🔒 Locked</span>
-												}
-												else
-												{
-													<span class="perk-active-label">✓ Active</span>
-												}
-											</div>
-											<div class="perk-name-row"><span class="perk-name">@perk.Name</span></div>
-											<div class="perk-desc-row"><span class="perk-desc">@perk.Description</span></div>
-										</div>
-										@if ( i + 1 < perkList.Count )
-										{
-											@{
-												var perk2 = perkList[i + 1];
-											}
-											<div class="perk-card @(guild.Level >= perk2.Level ? "unlocked" : "locked")">
-												<div class="perk-card-header">
-													<div class="perk-level-badge"><span>@($"Lv {perk2.Level}")</span></div>
-													@if ( guild.Level < perk2.Level )
-													{
-														<span class="perk-locked-label">🔒 Locked</span>
-													}
-													else
-													{
-														<span class="perk-active-label">✓ Active</span>
-													}
-												</div>
-												<div class="perk-name-row"><span class="perk-name">@perk2.Name</span></div>
-												<div class="perk-desc-row"><span class="perk-desc">@perk2.Description</span></div>
-											</div>
-										}
-									</div>
-								}
-							</div>
-
-							<!-- Guild Achievements -->
-							<div class="section-divider-row"><span class="section-divider-title">@L("ui.guild.guild_achievements")</span></div>
-							<div class="achievements-grid">
-								@{
-									var achList = GuildManager.AllAchievements?.ToList() ?? new List<GuildAchievement>();
-								}
-								@for ( int i = 0; i < achList.Count; i += 2 )
-								{
-									<div class="achievements-row">
-										@{
-											var ach = achList[i];
-											var progress = gm.GetAchievementProgress( ach.Id );
-											var complete = gm.IsAchievementComplete( ach.Id );
-										}
-										<div class="achievement-card @(complete ? "complete" : "")">
-											<div class="ach-name-row"><span class="ach-name">@ach.Name</span></div>
-											<div class="ach-desc-row"><span class="ach-desc">@ach.Description</span></div>
-											<div class="ach-progress-bar">
-												<div class="ach-bar-fill" style="width: @(Math.Min( 100, (float)progress / ach.Requirement * 100 ))%"></div>
-											</div>
-											<div class="ach-footer-row">
-												<span class="ach-progress-text">@progress / @ach.Requirement</span>
-												<span class="ach-reward">+@($"{ach.GuildXPReward:N0}") Guild XP</span>
-											</div>
-										</div>
-										@if ( i + 1 < achList.Count )
-										{
-											@{
-												var ach2 = achList[i + 1];
-												var progress2 = gm.GetAchievementProgress( ach2.Id );
-												var complete2 = gm.IsAchievementComplete( ach2.Id );
-											}
-											<div class="achievement-card @(complete2 ? "complete" : "")">
-												<div class="ach-name-row"><span class="ach-name">@ach2.Name</span></div>
-												<div class="ach-desc-row"><span class="ach-desc">@ach2.Description</span></div>
-												<div class="ach-progress-bar">
-													<div class="ach-bar-fill" style="width: @(Math.Min( 100, (float)progress2 / ach2.Requirement * 100 ))%"></div>
-												</div>
-												<div class="ach-footer-row">
-													<span class="ach-progress-text">@progress2 / @ach2.Requirement</span>
-													<span class="ach-reward">+@($"{ach2.GuildXPReward:N0}") Guild XP</span>
-												</div>
-											</div>
-										}
-									</div>
-								}
-							</div>
-						</div>
-					}
-
-					@if ( activeTab == "raids" )
-					{
-						@{
-							var raid = gm.CurrentRaidBoss;
-						}
-						@if ( showRaidTeamSelect )
-						{
-							<!-- RAID TEAM SELECTION -->
-							<div class="raid-team-selection">
-								<div class="raid-select-header">
-									<div class="raid-select-boss">
-										<span class="raid-select-boss-name">VS @(raid?.BossName)</span>
-										<div class="raid-select-boss-detail">
-											<span>@(raid?.BossElement)</span>
-											<span class="raid-detail-sep">·</span>
-											<span>@($"Lv {raid?.BossLevel}")</span>
-											<span class="raid-detail-sep">·</span>
-											<span>@L("ui.guild.until_ko")</span>
-										</div>
-									</div>
-									<div class="raid-select-counter">
-										<span class="raid-select-counter-num">@raidTeamSelection.Count</span>
-										<span class="raid-select-counter-sep">/</span>
-										<span class="raid-select-counter-max">3</span>
+									<div class="raid-monument-row">
+										<iconify icon="lucide:hourglass" Size=@(11) Color="rgba(255,255,255,0.55)" />
+										<span>@FormatRaidTimer() until rotation</span>
 									</div>
 								</div>
+							</div>
+							<div class="raid-monument-cta">
+								<span>ENTER</span>
+								<iconify icon="lucide:arrow-right" Size=@(13) Color="#ffffff" />
+							</div>
+						</div>
+					}
+				</div>
 
-								<div class="raid-select-body">
-									<div class="raid-select-grid">
-										@foreach ( var monster in GetRaidAvailableMonsters() )
-										{
-											var m = monster;
-											var inTeam = raidTeamSelection.Contains( m );
-											<div class="raid-select-option @(inTeam ? "in-team" : "")">
-												<MonsterCard Monster=@m IsCompact=@true AnimateOnHover=@true AnimationFrame=@SpriteAnimator.GlobalFrame
-															 ClickAction=@(() => ToggleRaidTeamMember( m )) />
-											</div>
-										}
-									</div>
+				<!-- BOTTOM ROW — members (left, wider) + perks (right). Both
+				     stretch to fill remaining vertical space so the plaza
+				     stops floating in dead pixels. -->
+				<div class="plaza-bottom-row">
+					<!-- MEMBERS -->
+					<div class="plaza-members">
+						<div class="plaza-members-row">
+							<!-- P5 stamp layers: ROSTER stamp + halftone bg + count chip -->
+							<div class="plaza-box-halftone"></div>
+							<div class="plaza-box-stamp roster-stamp">
+								<span>ROSTER</span>
+							</div>
+							<div class="plaza-box-count">
+								<span>@members.Count · @gm.OnlineCount ONLINE</span>
+							</div>
 
-									<div class="raid-select-sidebar">
-										<span class="raid-sidebar-label">@L("ui.guild.raid_team")</span>
-										<div class="raid-sidebar-slots">
-											@for ( int slotIdx = 0; slotIdx < 3; slotIdx++ )
+							<div class="plaza-portraits-grid">
+								@foreach ( var member in members.OrderByDescending( m => m.IsOnline ).ThenByDescending( m => m.Role ).ThenByDescending( m => m.ArenaPoints ) )
+								{
+									var m = member;
+									<div class="member-portrait @(m.IsOnline ? "online" : "offline") @(IsInactive( m ) ? "inactive" : "")"
+										 onmouseover=@(() => { if (hoveredMember != m.SteamId.ToString()) { hoveredMember = m.SteamId.ToString(); SoundManager.PlayHover(); } })
+										 onmouseout=@(() => hoveredMember = null)
+										 onclick=@(() => { selectedMember = m; showMemberMenu = true; SoundManager.PlayClick(); })>
+										<div class="member-portrait-frame" style="border-color: @GuildManager.GetRoleColor( m.Role )">
+											@if ( m.SteamId > 0 )
 											{
-												var idx = slotIdx;
-												var slotMonster = raidTeamSelection.Count > idx ? raidTeamSelection[idx] : null;
-												<div class="raid-sidebar-slot @(slotMonster != null ? "filled" : "empty")"
-													 onclick=@(() => { if ( slotMonster != null ) { raidTeamSelection.Remove( slotMonster ); SoundManager.PlayBack(); } })>
-													@if ( slotMonster != null )
-													{
-														<MonsterCard Monster=@slotMonster IsCompact=@true AnimationFrame=@SpriteAnimator.GlobalFrame />
-													}
-													else
-													{
-														<div class="raid-slot-empty">
-															<span class="raid-slot-number">@(idx + 1)</span>
-															<span class="raid-slot-label">@L("ui.guild.empty")</span>
-														</div>
-													}
-												</div>
-											}
-										</div>
-
-										@{
-											var comboPreview = GetRaidComboPreview();
-										}
-										<div class="raid-combo-preview @(comboPreview.Multiplier > 1f ? "active" : "")">
-											<span class="raid-combo-label">@L("ui.guild.combo")</span>
-											@if ( comboPreview.Multiplier > 1f )
-											{
-												<span class="raid-combo-name">@comboPreview.ComboName</span>
-												<span class="raid-combo-mult">@($"{comboPreview.Multiplier:F1}")x</span>
-											}
-											else if ( raidTeamSelection.Count < 3 )
-											{
-												<span class="raid-combo-hint">Pick 3 to see combo</span>
+												<img class="member-portrait-avatar" src="@($"avatar:{m.SteamId}")" />
 											}
 											else
 											{
-												<span class="raid-combo-hint">@L("ui.guild.no_combo")</span>
+												<iconify icon="@GetAvatarIcon( m )" Size=@(28) Color="@GuildManager.GetRoleColor( m.Role )" />
 											}
+											<div class="member-portrait-status @(m.IsOnline ? "dot-online" : "dot-offline")"></div>
 										</div>
-
-										<div class="guild-btn raid-attack-btn @(raidTeamSelection.Count < 3 ? "disabled" : "")" onclick=@(() => { if ( raidTeamSelection.Count == 3 ) StartRaidBattle(); })>
-											<span>@L("ui.guild.attack_boss")</span>
-										</div>
-										<div class="guild-btn secondary-btn" onclick=@(() => { showRaidTeamSelect = false; raidTeamSelection.Clear(); SoundManager.PlayBack(); })>
-											<span>@L("ui.common.cancel")</span>
-										</div>
+										<span class="member-portrait-name">@m.Name</span>
+										<!-- Role-color underline stripe (P5 accent under name) -->
+										<div class="member-portrait-stripe" style="background-color: @GuildManager.GetRoleColor( m.Role )"></div>
+										<span class="member-portrait-role" style="color: @GuildManager.GetRoleColor( m.Role )">@GuildManager.GetRoleDisplayName( m.Role )</span>
 									</div>
-								</div>
-							</div>
-						}
-						else if ( raid != null )
-						{
-							<div class="raids-content">
-								@{
-									var elementColor = GetElementAccentColor();
 								}
+							</div>
+						</div>
+					</div>
 
-								<!-- Boss Showcase Hero -->
-								<div class="raid-boss-hero" style="border-color: @(elementColor)40">
-									<div class="raid-hero-top">
-										<div class="raid-hero-sprite-col">
-											<div class="raid-boss-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
-										</div>
-										<div class="raid-hero-info-col">
-											<span class="raid-boss-name" style="color: @elementColor">@raid.BossName</span>
-											<div class="raid-boss-tags">
-												<div class="raid-tag element-tag" style="background-color: @(elementColor)20; border-color: @(elementColor)40">
-													<span style="color: @elementColor">@raid.BossElement</span>
-												</div>
-												<div class="raid-tag level-tag">
-													<span>@($"Lv {raid.BossLevel}")</span>
-												</div>
-												<div class="raid-tag rarity-tag">
-													<span>@GetRaidBossRarity()</span>
-												</div>
-											</div>
-											<div class="raid-desc-row">
-												<span class="raid-boss-desc">@GetRaidBossDescription()</span>
-											</div>
-											<div class="raid-boss-meta">
-												<span class="raid-meta-text">Period @raid.PeriodNumber</span>
-												<span class="raid-meta-sep">·</span>
-												<span class="raid-meta-text">@L("ui.guild.until_ko")</span>
-											</div>
-										</div>
-									</div>
-									<div class="raid-hero-timer">
-										<span class="raid-timer-label">@L("ui.guild.rotates_in")</span>
-										<span class="raid-timer-value">@FormatRaidTimer()</span>
-									</div>
-								</div>
+					<!-- PERKS shrine -->
+					<div class="plaza-perks">
+						<div class="plaza-perks-list">
+							<!-- P5 stamp layers: PERKS stamp + halftone bg -->
+							<div class="plaza-box-halftone"></div>
+							<div class="plaza-box-stamp perks-stamp">
+								<span>PERKS</span>
+							</div>
 
-								<!-- Action Bar -->
-								<div class="raid-action-bar">
-									<div class="raid-attempts-info">
-										<div class="raid-attempt-pips">
-											@for ( int i = 0; i < GuildManager.MAX_RAID_ATTEMPTS_PER_DAY; i++ )
-											{
-												var used = i < gm.GetRaidAttemptsToday();
-												<div class="raid-pip @(used ? "used" : "available")" style="@(!used ? $"border-color: {elementColor}; box-shadow: 0 0 6px {elementColor}40" : "")"></div>
-											}
-										</div>
-										<span class="raid-attempts-label">@(gm.GetRaidAttemptsToday()) of @GuildManager.MAX_RAID_ATTEMPTS_PER_DAY used</span>
-									</div>
-									@if ( gm.CanAttemptRaid() )
-									{
-										<div class="guild-btn raid-attack-btn" onclick=@OnAttackRaidBoss><span>@L("ui.guild.attack_boss")</span></div>
-									}
-									else
-									{
-										<span class="attempts-exhausted">@L("ui.guild.no_attempts")</span>
-									}
-								</div>
-
-								<!-- Two-Column: Combos + Personal Best -->
-								<div class="raid-info-columns">
-									<div class="raid-combos-card">
-										<span class="raid-section-title">@L("ui.guild.combo_bonuses")</span>
-										<div class="combo-entry"><span class="combo-icon">⚔️</span><span class="combo-label">@L("ui.guild.type_advantage")</span><span class="combo-mult">1.5x</span></div>
-										<div class="combo-entry"><span class="combo-icon">📉</span><span class="combo-label">@L("ui.guild.underdog")</span><span class="combo-mult">1.5x</span></div>
-										<div class="combo-entry"><span class="combo-icon">🔗</span><span class="combo-label">@L("ui.guild.evolution_chain")</span><span class="combo-mult">1.4x</span></div>
-										<div class="combo-entry"><span class="combo-icon">🔮</span><span class="combo-label">@L("ui.guild.elemental_unity")</span><span class="combo-mult">1.3x</span></div>
-										<div class="combo-entry"><span class="combo-icon">💎</span><span class="combo-label">@L("ui.guild.rarity_rush")</span><span class="combo-mult">1.25x</span></div>
-										<div class="combo-entry"><span class="combo-icon">🌈</span><span class="combo-label">@L("ui.guild.diversity")</span><span class="combo-mult">1.2x</span></div>
-									</div>
-									<div class="raid-personal-card">
-										<span class="raid-section-title">@L("ui.guild.your_best")</span>
-										@{
-											var myBest = GetMyBestRaidScore();
-										}
-										@if ( myBest != null )
+							<div class="plaza-perks-rows">
+								@foreach ( var perk in GetPerkList() )
+								{
+									var p = perk;
+									var unlocked = guild.Level >= p.Level;
+									<div class="perk-row @(unlocked ? "unlocked" : "locked")">
+										<!-- Yellow LEFT-edge accent strip on unlocked rows (per-side
+										     borders with style word are rejected, so use a child div) -->
+										@if ( unlocked )
 										{
-											<span class="personal-score" style="color: @elementColor">@($"{myBest.TotalScore:N0}")</span>
-											<div class="personal-detail-row">
-												<span class="personal-detail-label">@L("ui.guild.raw_damage")</span>
-												<span class="personal-detail-value">@($"{myBest.RawDamage:N0}")</span>
-											</div>
-											<div class="personal-detail-row">
-												<span class="personal-detail-label">@L("ui.guild.combo")</span>
-												<span class="personal-detail-value">@($"{myBest.ComboMultiplier:F1}")x</span>
-											</div>
-											<div class="personal-detail-row">
-												<span class="personal-detail-label">@L("ui.guild.rounds_survived")</span>
-												<span class="personal-detail-value">@myBest.RoundsUsed</span>
-											</div>
+											<div class="perk-row-edge"></div>
 										}
 										else
 										{
-											<div class="personal-empty">
-												<span class="personal-empty-icon">🎯</span>
-												<span class="personal-empty-text">@L("ui.guild.no_attempts_yet")</span>
-												<span class="personal-empty-hint">Attack the boss to set your score!</span>
+											<!-- LOCKED corner stamp (decorative, non-clickable, no rotate) -->
+											<div class="perk-row-locked-stamp">
+												<span>LOCKED</span>
+											</div>
+										}
+
+										<div class="perk-row-disc">
+											<iconify icon="@GetPerkIcon( p.Level )" Size=@(18) Color="@(unlocked ? "#1a1100" : "rgba(255,255,255,0.28)")" />
+										</div>
+										<div class="perk-row-info">
+											<div class="perk-row-titlerow">
+												<span class="perk-row-name">@p.Name</span>
+												<div class="perk-row-level-stamp @(unlocked ? "unlocked" : "locked")">
+													<span>LV @p.Level</span>
+												</div>
+											</div>
+											<span class="perk-row-desc">@p.Description</span>
+										</div>
+									</div>
+								}
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- DANGER ZONE — small label + slab buttons (P5 stamp). -->
+				<div class="plaza-danger-bar">
+					<div class="plaza-danger-label"><span>DANGER ZONE</span></div>
+					<div class="plaza-danger-buttons">
+						@if ( gm.CanClaimLeadership() )
+						{
+							<button class="plaza-slab-btn claim" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })>
+								<iconify icon="lucide:crown" Size=@(13) Color="#1a1100" />
+								<span>@L("ui.guild.claim_leadership")</span>
+							</button>
+						}
+						@if ( gm.IsLeader && members.Count > 1 )
+						{
+							<button class="plaza-slab-btn neutral" onclick=@OnTransferOwnership>
+								<iconify icon="lucide:repeat" Size=@(13) Color="rgba(255,255,255,0.85)" />
+								<span>@L("ui.guild.transfer_ownership")</span>
+							</button>
+						}
+						<button class="plaza-slab-btn leave" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })>
+							<iconify icon="lucide:log-out" Size=@(13) Color="#ffffff" />
+							<span>@L("ui.guild.leave")</span>
+						</button>
+						@if ( gm.IsLeader )
+						{
+							<button class="plaza-slab-btn disband" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })>
+								<iconify icon="lucide:trash-2" Size=@(13) Color="#ffffff" />
+								<span>@L("ui.guild.disband")</span>
+							</button>
+						}
+					</div>
+				</div>
+
+			</div>
+		}
+
+		<!-- SETTINGS MODAL — replaces the old Settings tab. Folds emblem editor + guild settings. -->
+		@if ( showSettingsModal )
+		{
+			<div class="confirm-overlay" onclick=@(() => { showSettingsModal = false; })>
+				<div class="settings-modal" onclick:stopPropagation>
+					<div class="settings-modal-header">
+						<iconify icon="lucide:settings" Size=@(16) Color="#a78bfa" />
+						<span class="settings-modal-title">Guild Settings</span>
+						<button class="settings-modal-close" onclick=@(() => showSettingsModal = false)>
+							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
+						</button>
+					</div>
+					<div class="settings-modal-body">
+
+						<!-- Emblem block -->
+						<div class="settings-modal-section">
+							<div class="settings-modal-section-label">
+								<iconify icon="lucide:shield" Size=@(12) Color="#a78bfa" />
+								<span>Emblem</span>
+							</div>
+							<div class="settings-emblem-row">
+								<div class="settings-emblem-preview shape-@emblemShape" style="background-color: @emblemColor">
+									<iconify icon="@GetEmblemIcon( emblemIcon )" Size=@(40) Color="#ffffff" />
+								</div>
+								<div class="settings-emblem-pickers">
+									<div class="settings-pick-row">
+										@foreach ( var color in EmblemColors )
+										{
+											<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
+										}
+									</div>
+									<div class="settings-pick-row">
+										@foreach ( var icon in EmblemIcons )
+										{
+											<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
+												<iconify icon="@icon.Value" Size=@(16) Color="#ffffff" />
+											</div>
+										}
+									</div>
+									<div class="settings-pick-row">
+										@foreach ( var shape in EmblemShapes )
+										{
+											<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
+												<iconify icon="@shape.Value" Size=@(14) Color="#ffffff" />
 											</div>
 										}
 									</div>
 								</div>
-
-								<!-- Guild Leaderboard -->
-								<div class="raid-leaderboard-card">
-									<div class="raid-lb-header">
-										<span class="raid-section-title">@L("ui.guild.guild_leaderboard")</span>
-										<span class="raid-lb-total">Total: @($"{raid.GuildTotalScore:N0}")</span>
-									</div>
-									@{
-										var scores = raid.BestScores.Values.OrderByDescending( s => s.TotalScore ).ToList();
-									}
-									@if ( scores.Count > 0 )
-									{
-										<div class="raid-lb-list">
-											@foreach ( var score in scores )
-											{
-												var rank = scores.IndexOf( score ) + 1;
-												var rankClass = rank == 1 ? "gold" : rank == 2 ? "silver" : rank == 3 ? "bronze" : "";
-												<div class="raid-lb-row">
-													<span class="raid-lb-rank @rankClass">@rank</span>
-													<span class="raid-lb-name">@score.PlayerName</span>
-													<span class="raid-lb-combo">@($"{score.ComboMultiplier:F1}")x</span>
-													<span class="raid-lb-score">@($"{score.TotalScore:N0}")</span>
-												</div>
-											}
-										</div>
-									}
-									else
-									{
-										<span class="raid-lb-empty">@L("ui.guild.no_scores")</span>
-									}
-								</div>
 							</div>
-						}
-						else
-						{
-							<div class="raids-content">
-								<span class="raid-loading">Loading raid boss...</span>
-							</div>
-						}
-					}
-
-					@if ( activeTab == "emblem" )
-					{
-						<!-- EMBLEM TAB -->
-						<div class="emblem-content">
-							<div class="emblem-preview-wrap">
-								<div class="emblem-preview shape-@emblemShape" style="background-color: @emblemColor">
-									<span class="emblem-preview-icon">@GetEmblemEmoji( emblemIcon )</span>
-								</div>
-							</div>
-
-							<div class="emblem-section">
-								<span class="emblem-section-label">@L("ui.guild.color")</span>
-								<div class="emblem-picker-row">
-									@foreach ( var chunk in ChunkArray( EmblemColors, 4 ) )
-									{
-										<div class="emblem-picker-row-inner">
-											@foreach ( var color in chunk )
-											{
-												<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
-											}
-										</div>
-									}
-								</div>
-							</div>
-
-							<div class="emblem-section">
-								<span class="emblem-section-label">@L("ui.guild.icon")</span>
-								<div class="emblem-picker-row">
-									@foreach ( var chunk in ChunkArray( EmblemIcons.ToArray(), 5 ) )
-									{
-										<div class="emblem-picker-row-inner">
-											@foreach ( var icon in chunk )
-											{
-												<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
-													<span>@icon.Value</span>
-												</div>
-											}
-										</div>
-									}
-								</div>
-							</div>
-
-							<div class="emblem-section">
-								<span class="emblem-section-label">@L("ui.guild.shape")</span>
-								<div class="emblem-picker-row">
-									@foreach ( var chunk in ChunkArray( EmblemShapes.ToArray(), 5 ) )
-									{
-										<div class="emblem-picker-row-inner">
-											@foreach ( var shape in chunk )
-											{
-												<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
-													<span>@shape.Value</span>
-												</div>
-											}
-										</div>
-									}
-								</div>
-							</div>
-
-							@if ( gm.IsOfficer )
-							{
-								<div class="guild-btn save-emblem-btn" onclick=@SaveEmblem><span>@L("ui.guild.save_changes")</span></div>
-							}
 						</div>
-					}
 
-					@if ( activeTab == "settings" )
-					{
-						<!-- SETTINGS TAB -->
-						<div class="settings-content">
-							<div class="setting-row">
-								<span class="setting-label">@L("ui.guild.description")</span>
-								<TextEntry class="setting-desc-input" @ref="settingsDescInput" Text=@settingsDescription></TextEntry>
+						<!-- Description -->
+						<div class="settings-modal-section">
+							<div class="settings-modal-section-label">
+								<iconify icon="lucide:file-text" Size=@(12) Color="#a78bfa" />
+								<span>@L("ui.guild.description")</span>
 							</div>
-							<div class="setting-row">
-								<span class="setting-label">Join Mode</span>
-								<div class="setting-options">
+							<TextEntry class="setting-desc-input" @ref="settingsDescInput" Text=@settingsDescription></TextEntry>
+						</div>
+
+						<!-- Membership rules -->
+						<div class="settings-modal-section">
+							<div class="settings-modal-section-label">
+								<iconify icon="lucide:users-round" Size=@(12) Color="#a78bfa" />
+								<span>Membership</span>
+							</div>
+							<div class="settings-row">
+								<span class="settings-row-label">@L("ui.guild.join_mode")</span>
+								<div class="settings-row-options">
 									@foreach ( GuildJoinMode mode in Enum.GetValues( typeof( GuildJoinMode ) ) )
 									{
 										<div class="setting-option @(settingsJoinMode == mode ? "selected" : "")" onclick=@(() => { settingsJoinMode = mode; SoundManager.PlayClick(); })>
@@ -1044,9 +1162,9 @@ else if ( guildView == "myguild" )
 									}
 								</div>
 							</div>
-							<div class="setting-row">
-								<span class="setting-label">Min Level</span>
-								<div class="setting-options">
+							<div class="settings-row">
+								<span class="settings-row-label">@L("ui.guild.min_level")</span>
+								<div class="settings-row-options">
 									@foreach ( var lvl in new[] { 1, 10, 25, 50 } )
 									{
 										<div class="setting-option @(settingsMinLevel == lvl ? "selected" : "")" onclick=@(() => { settingsMinLevel = lvl; SoundManager.PlayClick(); })>
@@ -1055,9 +1173,9 @@ else if ( guildView == "myguild" )
 									}
 								</div>
 							</div>
-							<div class="setting-row">
-								<span class="setting-label">Min Rank</span>
-								<div class="setting-options">
+							<div class="settings-row">
+								<span class="settings-row-label">@L("ui.guild.min_rank")</span>
+								<div class="settings-row-options">
 									@foreach ( var rank in new[] { "Unranked", "Bronze", "Silver", "Gold" } )
 									{
 										<div class="setting-option @(settingsMinRank == rank ? "selected" : "")" onclick=@(() => { settingsMinRank = rank; SoundManager.PlayClick(); })>
@@ -1066,17 +1184,17 @@ else if ( guildView == "myguild" )
 									}
 								</div>
 							</div>
-							<div class="setting-row">
-								<span class="setting-label">Auto-Kick Inactive</span>
+							<div class="settings-row">
+								<span class="settings-row-label">@L("ui.guild.auto_kick")</span>
 								<div class="setting-toggle @(settingsAutoKick ? "active" : "")" onclick=@(() => { settingsAutoKick = !settingsAutoKick; SoundManager.PlayClick(); })>
 									<span>@(settingsAutoKick ? "ON" : "OFF")</span>
 								</div>
 							</div>
 							@if ( settingsAutoKick )
 							{
-								<div class="setting-row">
-									<span class="setting-label">Inactive Days</span>
-									<div class="setting-options">
+								<div class="settings-row">
+									<span class="settings-row-label">@L("ui.guild.inactive_days")</span>
+									<div class="settings-row-options">
 										@foreach ( var days in new[] { 3, 7, 14, 30 } )
 										{
 											<div class="setting-option @(settingsInactiveDays == days ? "selected" : "")" onclick=@(() => { settingsInactiveDays = days; SoundManager.PlayClick(); })>
@@ -1086,88 +1204,108 @@ else if ( guildView == "myguild" )
 									</div>
 								</div>
 							}
-
-							@if ( gm.IsOfficer )
-							{
-								<div class="guild-btn save-settings-btn" onclick=@SaveSettings><span>Save Settings</span></div>
-							}
-
-							<!-- Permission Matrix -->
-							<div class="permission-matrix">
-								<span class="perm-title">Role Permissions</span>
-								<div class="perm-header-row">
-									<span class="perm-action-header">Action</span>
-									<span class="perm-role-header">👑</span>
-									<span class="perm-role-header">⭐</span>
-									<span class="perm-role-header">💎</span>
-									<span class="perm-role-header">👤</span>
-								</div>
-								@foreach ( var perm in GetPermissionMatrix() )
-								{
-									<div class="perm-row">
-										<span class="perm-action">@perm.Action</span>
-										<span class="perm-check @(perm.Beastlord ? "yes" : "no")">@(perm.Beastlord ? "✓" : "—")</span>
-										<span class="perm-check @(perm.Warden ? "yes" : "no")">@(perm.Warden ? "✓" : "—")</span>
-										<span class="perm-check @(perm.Tamer ? "yes" : "no")">@(perm.Tamer ? "✓" : "—")</span>
-										<span class="perm-check @(perm.Wanderer ? "yes" : "no")">@(perm.Wanderer ? "✓" : "—")</span>
-									</div>
-								}
-							</div>
 						</div>
-					}
 
-					@if ( activeTab == "logs" )
-					{
-						<!-- LOGS TAB -->
-						<div class="logs-content">
-							@{
-								var logs = gm.ActivityLog ?? new List<GuildLogEntry>();
-							}
-							@if ( logs.Count == 0 )
-							{
-								<span class="logs-empty">No activity yet</span>
-							}
-							@foreach ( var log in logs )
-							{
-								<div class="log-entry">
-									<span class="log-icon">@GetLogIcon( log.Action )</span>
-									<span class="log-text">@log.Details</span>
-									<span class="log-time">@FormatLogTime( log.Timestamp )</span>
-								</div>
-							}
-						</div>
-					}
-
-					@if ( activeTab == "requests" )
-					{
-						<!-- REQUESTS TAB -->
-						<div class="requests-content">
-							@{
-								var requests = gm.JoinRequests ?? new List<GuildJoinRequest>();
-							}
-							@if ( requests.Count == 0 )
-							{
-								<span class="requests-empty">No pending requests</span>
-							}
-							@foreach ( var req in requests )
-							{
-								<div class="request-row">
-									<div class="request-info">
-										<span class="request-name">@req.PlayerName</span>
-										<span class="request-stats">@($"Lv {req.Level} · {req.ArenaRank} · {req.ArenaPoints} RP")</span>
-									</div>
-									<div class="request-actions">
-										<div class="guild-btn accept-btn" onclick=@(() => { gm.ApproveJoinRequest( req ); SoundManager.PlaySelect(); })><span>@L("ui.guild.accept")</span></div>
-										<div class="guild-btn deny-btn" onclick=@(() => { gm.DenyJoinRequest( req ); SoundManager.PlayDeny(); })><span>@L("ui.guild.deny")</span></div>
-									</div>
-								</div>
-							}
-						</div>
-					}
-
+					</div>
+					<div class="settings-modal-footer">
+						<button class="guild-btn deny-btn" onclick=@(() => showSettingsModal = false)><span>@L("ui.common.cancel")</span></button>
+						@if ( gm.IsOfficer )
+						{
+							<button class="guild-btn accept-btn" onclick=@(() => { SaveEmblem(); SaveSettings(); showSettingsModal = false; })>
+								<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
+								<span>Save Changes</span>
+							</button>
+						}
+					</div>
 				</div>
 			</div>
-		</div>
+		}
+
+		<!-- MEMBER ACTION MODAL — promote/demote/kick (officer-only) on member click -->
+		@if ( showMemberMenu && selectedMember != null )
+		{
+			@{
+				var sm = selectedMember;
+				var canManage = gm.IsOfficer && sm.SteamId != (Connection.Local?.SteamId ?? 0) && sm.Role < gm.Membership.Role;
+			}
+			<div class="confirm-overlay" onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
+				<div class="member-menu" onclick:stopPropagation>
+					<div class="member-menu-header">
+						<div class="member-menu-portrait" style="border-color: @GuildManager.GetRoleColor( sm.Role )">
+							<iconify icon="@GetAvatarIcon( sm )" Size=@(32) Color="@GuildManager.GetRoleColor( sm.Role )" />
+						</div>
+						<div class="member-menu-info">
+							<span class="member-menu-name">@sm.Name</span>
+							<span class="member-menu-role" style="color: @GuildManager.GetRoleColor( sm.Role )">@GuildManager.GetRoleDisplayName( sm.Role )</span>
+							<span class="member-menu-stats">Lv @sm.Level · @sm.ArenaRank · @sm.ArenaPoints RP</span>
+						</div>
+					</div>
+					<div class="member-menu-actions">
+						@if ( canManage && gm.IsLeader && sm.Role < GuildRole.Warden )
+						{
+							<button class="member-menu-action" onclick=@(() => { gm.PromoteMember( sm.SteamId ); SoundManager.PlaySelect(); showMemberMenu = false; selectedMember = null; })>
+								<iconify icon="lucide:chevron-up" Size=@(14) Color="#4ade80" />
+								<span>Promote</span>
+							</button>
+						}
+						@if ( canManage && gm.IsLeader && sm.Role > GuildRole.Wanderer && sm.Role < GuildRole.Beastlord )
+						{
+							<button class="member-menu-action" onclick=@(() => { gm.DemoteMember( sm.SteamId ); SoundManager.PlayClick(); showMemberMenu = false; selectedMember = null; })>
+								<iconify icon="lucide:chevron-down" Size=@(14) Color="#fbbf24" />
+								<span>Demote</span>
+							</button>
+						}
+						@if ( canManage )
+						{
+							<button class="member-menu-action danger" onclick=@(() => { ConfirmKick( sm ); SoundManager.PlayPopup(); showMemberMenu = false; selectedMember = null; })>
+								<iconify icon="lucide:user-x" Size=@(14) Color="#f87171" />
+								<span>Kick</span>
+							</button>
+						}
+						<button class="member-menu-action" onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
+							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.6)" />
+							<span>Close</span>
+						</button>
+					</div>
+				</div>
+			</div>
+		}
+
+		<!-- REQUESTS MODAL — opened from the topbar pill when officer has pending join requests -->
+		@if ( showRequestsModal )
+		{
+			<div class="confirm-overlay" onclick=@(() => showRequestsModal = false)>
+				<div class="requests-modal" onclick:stopPropagation>
+					<div class="settings-modal-header">
+						<iconify icon="lucide:mailbox" Size=@(16) Color="#fbbf24" />
+						<span class="settings-modal-title">Pending Requests</span>
+						<button class="settings-modal-close" onclick=@(() => showRequestsModal = false)>
+							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
+						</button>
+					</div>
+					<div class="requests-modal-body">
+						@if ( pendingRequests.Count == 0 )
+						{
+							<span class="requests-empty">No pending requests</span>
+						}
+						@foreach ( var req in pendingRequests )
+						{
+							<div class="request-row">
+								<div class="request-info">
+									<span class="request-name">@req.PlayerName</span>
+									<span class="request-stats">@($"Lv {req.Level} · {req.ArenaRank} · {req.ArenaPoints} RP")</span>
+								</div>
+								<div class="request-actions">
+									<div class="guild-btn accept-btn" onclick=@(() => { gm.ApproveJoinRequest( req ); SoundManager.PlaySelect(); })><span>@L("ui.guild.accept")</span></div>
+									<div class="guild-btn deny-btn" onclick=@(() => { gm.DenyJoinRequest( req ); SoundManager.PlayDeny(); })><span>@L("ui.guild.deny")</span></div>
+								</div>
+							</div>
+						}
+					</div>
+				</div>
+			</div>
+		}
+
 
 		<!-- Raid Battle Overlay -->
 		@if ( showRaidBattle )
@@ -1278,6 +1416,16 @@ else if ( guildView == "myguild" )
 	private string hoveredLandingCard = null;
 	private string activeTab = "members";
 	private string memberSearch = "";
+	private bool showPermissionMatrix = false;
+
+	// Plaza state — replaces the old tab system. Guild interior is one scene.
+	private bool showSettingsModal = false;
+	private bool showMemberMenu = false;
+	private GuildMemberInfo selectedMember = null;
+	private string hoveredMember = null;
+	private string hoveredPerk = null;
+	private bool showRequestsModal = false;
+	private bool raidViewOpen = false;
 	private string createName = "";
 	private string createTag = "";
 	private string errorMessage = "";
@@ -1336,16 +1484,31 @@ else if ( guildView == "myguild" )
 		"#3b82f6", "#ec4899", "#6366f1", "#14b8a6"
 	};
 
+	// Emblem icon picker: key (saved on Guild) → lucide iconify name.
+	// Adding a new emblem? Add the entry here AND make sure the key existing
+	// guilds may have saved still resolves in GetEmblemIcon().
+	// Icon keys map to iconify glyphs. lucide doesn't ship every fantasy
+	// silhouette, so dragon/wolf/phoenix use game-icons (the prefix our
+	// element VFX already use). If a guild's saved icon string isn't here,
+	// GetEmblemIcon falls back to lucide:shield.
 	private static readonly Dictionary<string, string> EmblemIcons = new()
 	{
-		{ "dragon", "🐉" }, { "swords", "⚔️" }, { "star", "⭐" },
-		{ "flame", "🔥" }, { "crown", "👑" }, { "shield", "🛡️" },
-		{ "wolf", "🐺" }, { "phoenix", "🦅" }, { "anchor", "⚓" }, { "skull", "💀" }
+		{ "dragon",  "game-icons:dragon-head" },
+		{ "swords",  "lucide:swords" },
+		{ "star",    "lucide:star" },
+		{ "flame",   "lucide:flame" },
+		{ "crown",   "lucide:crown" },
+		{ "shield",  "lucide:shield" },
+		{ "wolf",    "game-icons:wolf-head" },
+		{ "phoenix", "game-icons:phoenix" },
+		{ "anchor",  "lucide:anchor" },
+		{ "skull",   "lucide:skull" }
 	};
 
 	private static readonly Dictionary<string, string> EmblemShapes = new()
 	{
-		{ "square", "⬛" }, { "circle", "⭕" }
+		{ "square", "lucide:square" },
+		{ "circle", "lucide:circle" }
 	};
 
 	private static IEnumerable<T[]> ChunkArray<T>( T[] source, int size )
@@ -1362,6 +1525,14 @@ else if ( guildView == "myguild" )
 	{
 		if ( firstTime )
 		{
+			// In-guild players go straight to the plaza — no need to view a
+			// summary card with an Enter button first. The landing is only the
+			// no-guild state (Create/Browse/Invites).
+			if ( GuildManager.Instance?.IsInGuild ?? false )
+			{
+				guildView = "myguild";
+			}
+
 			if ( GuildManager.Instance != null )
 			{
 				GuildManager.Instance.OnGuildUpdated += OnRefresh;
@@ -1404,6 +1575,13 @@ else if ( guildView == "myguild" )
 		hash.Add( showRaidResults );
 		hash.Add( showConfirmDialog );
 		hash.Add( showPicker );
+		hash.Add( showPermissionMatrix );
+		hash.Add( showSettingsModal );
+		hash.Add( showMemberMenu );
+		hash.Add( showRequestsModal );
+		hash.Add( raidViewOpen );
+		hash.Add( hoveredMember );
+		hash.Add( hoveredPerk );
 		return hash.ToHashCode();
 	}
 
@@ -1810,9 +1988,13 @@ else if ( guildView == "myguild" )
 	{
 		var end = GuildManager.Instance?.GetPeriodEndDate() ?? DateTime.UtcNow;
 		var remaining = end - DateTime.UtcNow;
+		if ( remaining <= TimeSpan.Zero )
+			return "rotating now";
 		if ( remaining.TotalDays >= 1 )
 			return $"{(int)remaining.TotalDays}d {remaining.Hours}h";
-		return $"{remaining.Hours}h {remaining.Minutes}m";
+		if ( remaining.TotalHours >= 1 )
+			return $"{remaining.Hours}h {remaining.Minutes}m";
+		return $"{remaining.Minutes}m {remaining.Seconds}s";
 	}
 
 	private string FormatLastSeen( DateTime lastSeen )
@@ -1857,18 +2039,23 @@ else if ( guildView == "myguild" )
 		return GuildManager.GetXPForGuildLevel( guild.Level + 1 ) - GuildManager.GetXPForGuildLevel( guild.Level );
 	}
 
-	private string GetEmblemEmoji( string icon )
+	private string GetEmblemIcon( string icon )
 	{
-		return EmblemIcons.TryGetValue( icon, out var emoji ) ? emoji : "🛡️";
+		return EmblemIcons.TryGetValue( icon, out var name ) ? name : "lucide:shield";
 	}
 
-	private string GetAvatarEmoji( GuildMemberInfo member )
+	private string GetEmblemShapeIcon( string shape )
+	{
+		return EmblemShapes.TryGetValue( shape, out var name ) ? name : "lucide:square";
+	}
+
+	private string GetAvatarIcon( GuildMemberInfo member )
 	{
 		return member.Role switch
 		{
-			GuildRole.Beastlord => "👑",
-			GuildRole.Warden => "⭐",
-			_ => "🧑"
+			GuildRole.Beastlord => "lucide:crown",
+			GuildRole.Warden => "lucide:star",
+			_ => "lucide:user"
 		};
 	}
 
@@ -1876,34 +2063,71 @@ else if ( guildView == "myguild" )
 	{
 		return action switch
 		{
-			"joined" => "➕",
-			"left" => "➖",
-			"promoted" => "⬆️",
-			"kicked" => "🚫",
-			"created" => "🏛️",
-			"updated" => "✏️",
-			"invited" => "📧",
-			"approved" => "✅",
-			"succession" => "👑",
-			_ => "📋"
+			"joined" => "lucide:user-plus",
+			"left" => "lucide:user-minus",
+			"promoted" => "lucide:arrow-up",
+			"kicked" => "lucide:user-x",
+			"created" => "lucide:landmark",
+			"updated" => "lucide:pencil",
+			"invited" => "lucide:mail",
+			"approved" => "lucide:check-circle-2",
+			"succession" => "lucide:crown",
+			_ => "lucide:clipboard-list"
 		};
 	}
 
-	// Perk list
+	private string GetLogColor( string action )
+	{
+		return action switch
+		{
+			"joined" => "#4ade80",
+			"left" => "#94a3b8",
+			"promoted" => "#fbbf24",
+			"kicked" => "#f87171",
+			"created" => "#a78bfa",
+			"approved" => "#4ade80",
+			"succession" => "#fbbf24",
+			_ => "rgba(255,255,255,0.7)"
+		};
+	}
+
+	// Perk list — 10 perks across the 1-50 climb. Mix of tactical buffs and identity unlocks.
+	// Trophy at L50 ("Eternal Beastlord") replaces the old L20 "Exclusive Title".
 	private record PerkInfo( int Level, string Name, string Description );
 
 	private List<PerkInfo> GetPerkList()
 	{
 		return new List<PerkInfo>
 		{
-			new( 2, "+5% Expedition Gold", "Gold from expeditions increased by 5%" ),
-			new( 4, "+5% Tamer XP", "Tamer XP from all sources increased by 5%" ),
-			new( 6, "+5% Catch Rate", "Monster catch rate bonus of 5%" ),
-			new( 8, "+10% Gold (All)", "Gold from all sources increased by 10%" ),
-			new( 10, "+10% Tamer XP", "Additional 10% Tamer XP (total +15%)" ),
-			new( 12, "+10% Beast XP", "Monster XP gain increased by 10%" ),
-			new( 15, "+15% Gold (All)", "Additional 15% gold from all sources (total +25%)" ),
-			new( 20, "Exclusive Title", "Unlock an exclusive guild master title" )
+			new( 5,  "Coffer Cut",         "+5% gold from every expedition reward" ),
+			new( 10, "Pack Mentor",        "+10% Tamer XP for every guild member, from every source" ),
+			new( 15, "Wider Banner",       "Roster cap raised from 30 to 35 members" ),
+			new( 20, "Beast Trainer",      "+10% Beast XP gain for every monster owned by a guild member" ),
+			new( 25, "Raid Vigor",         "+1 raid attempt per day for every member (3 → 4)" ),
+			new( 30, "Sharper Eye",        "+10% catch rate bonus on every wild encounter" ),
+			new( 35, "Halls of Renown",    "Roster cap raised to 40 and unlock animated guild banner FX" ),
+			new( 40, "Crested Emblem",     "Unlock animated emblem frames and custom rank titles" ),
+			new( 45, "Boss Hunter's Cut",  "+15% raw damage on every guild raid boss attempt" ),
+			new( 50, "Eternal Beastlord",  "Hall-of-fame slot, golden master title, and an exclusive emblem ring" )
+		};
+	}
+
+	// Plaza perks shrine — pick an iconify glyph per perk level (matches the perk's flavor).
+	private string GetPerkIcon( int level )
+	{
+		return level switch
+		{
+			5  => "lucide:coins",
+			10 => "lucide:graduation-cap",
+			15 => "lucide:users",
+			20 => "lucide:paw-print",
+			25 => "lucide:swords",
+			30 => "lucide:target",
+			35 => "lucide:landmark",
+			40 => "lucide:sparkles",
+			45 => "lucide:flame",
+			50 => "lucide:crown",
+			_  => "lucide:zap"
 		};
 	}
 

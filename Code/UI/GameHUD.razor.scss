@@ -41,7 +41,10 @@ GameHUD {
 	left: 0;
 	width: 100%;
 	height: 100%;
-	background-color: #0f0f1a;
+	background-color: #0a0818;
+	background-image: url(ui/menus/animated-bg.webp);
+	background-size: cover;
+	background-position: center;
 	pointer-events: none;
 	overflow: visible;
 
@@ -51,385 +54,181 @@ GameHUD {
 
 	&.battle-3d {
 		background-color: transparent;
+		// NOTE: .game-hud sets `background-image: url(ui/menus/animated-bg.webp)`
+		// above. Clearing only `background-color` leaves that image covering
+		// the 3D scene — you'd see the animated menu bg through the battle
+		// instead of the arena. Reset the image here too.
+		background-image: none;
 
 		.content-area {
 			background-color: transparent;
 			background-image: none;
 		}
+
+		// NOTE: .command-bar is omitted from the DOM via Razor @if during
+		// 3D battle mode — not hidden via opacity. Conditional render is
+		// the safe pattern (older opacity-toggle attempts left the bar
+		// stuck invisible outside battle).
 	}
 }
 
-// ============================================
-// UNIFIED TOP BAR (Player Identity + Tabs + Currency)
-// ============================================
-.unified-top-bar {
+// ============================================================
+// CONTENT AREA — full-bleed. The Razor wrapper component fills
+// the whole screen so the inner panel's bg extends behind the bar.
+//
+// Panel CONTENT (flex/flow children) is kept above the bar by
+// applying `padding-bottom: 96px; box-sizing: border-box;` to
+// the bg-bearing INNER panel directly (see RESERVE-BAR-FOOTPRINT
+// rule below). Doing it on the wrapper would shrink the inner
+// panel's box (100% of the wrapper's content height), cropping
+// the bg-image and leaving a visible band at the bottom.
+//
+// 96px = 16px island inset from screen edge + 80px center island
+// height. Flanking islands are 56px tall — they get a few extra
+// pixels of clearance, harmless.
+// ============================================================
+.content-area {
 	position: absolute;
 	top: 0;
 	left: 0;
 	right: 0;
-	height: 60px;
-	background-color: rgba(0, 0, 0, 0.35);
-	background-image: url(ui/icons/animated/topbar-bg.webp);
-	background-size: cover;
-	background-position: center;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	padding: 0 16px;
-	gap: 12px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	bottom: 0;
+	overflow: visible;
 	pointer-events: all;
-	z-index: 100;
-}
+	z-index: 60;
+	background-color: transparent;
 
-// LEFT: Player Identity (compact)
-.top-identity {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	flex-shrink: 0;
-	padding-right: 12px;
-	border-right: 1px solid rgba(255, 255, 255, 0.06);
-	cursor: pointer;
-	transition: transform 0.1s ease;
-
-	&:hover {
-		transform: scale(1.02);
-
-		.player-avatar {
-			border-color: rgba(139, 92, 246, 0.8);
-			box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
-		}
+	> * {
+		width: 100%;
+		height: 100%;
 	}
 }
 
-.player-avatar {
-	width: 32px;
-	height: 32px;
-	border-radius: 50%;
-	overflow: hidden;
-	border: 2px solid rgba(139, 92, 246, 0.5);
-	background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(59, 130, 246, 0.2));
-	transition: all 0.2s ease;
-	flex-shrink: 0;
-	display: flex;
-	align-items: flex-start;
-	justify-content: center;
-	position: relative;
-
-	&.female {
-		border-color: rgba(236, 72, 153, 0.5);
-		background: linear-gradient(135deg, rgba(236, 72, 153, 0.2), rgba(244, 114, 182, 0.2));
+// ============================================================
+// RESERVE-BAR-FOOTPRINT — keeps each panel's box full-bleed (so
+// its bg-image paints behind the bar with no band at the screen
+// bottom) and reserves 96px at the bottom for the command bar.
+//
+// Most panels are `display: flex; flex-direction: column;` with
+// a `flex-shrink: 0` header + `flex: 1` body. A `::after`
+// pseudo-spacer as the LAST flex child reserves 96px — the body
+// shrinks via flex calc and its content ends just above the
+// islands instead of running behind them.
+//
+// `box-sizing: border-box` would be the cleaner fix, but s&box's
+// parser rejects it ("Generic border-box is not valid with
+// box-sizing"). The pseudo-spacer is the next-best CSS-only fix.
+//
+// Roster panel is excluded from this list — its `.roster-grid`
+// uses `margin-bottom: 96px` directly because the pseudo-spacer
+// did NOT take effect on its layout (likely because the panel
+// has additional flex children beyond header + grid that broke
+// the simple "one body, flex:1" assumption).
+//
+// Caveat: any panel that uses absolute positioning for its main
+// content needs a per-panel adjustment instead of this rule.
+// ============================================================
+.expedition-panel,
+.skill-tree-panel,
+.beastbook-panel,
+.shop-panel-content,
+.online-hub,
+.ach-container,
+.arena-panel,
+.breeding-panel,
+.leaderboard-panel {
+	&::after {
+		content: "";
+		flex-shrink: 0;
+		width: 100%;
+		height: 96px;
 	}
 }
 
-.avatar-fallback {
-	position: absolute;
-	font-size: 18px;
-	z-index: 0;
+// .guild-panel and .leaderboard-panel were originally also in the list,
+// but they sit INSIDE .online-hub which already reserves the 96px. The
+// double-reservation produced ~100px of dark void below the plaza/board
+// content. .leaderboard-panel kept its spacer because it can also be
+// reached outside the online hub (legacy direct-mount path); .guild-panel
+// is only ever rendered inside .online-hub, so removing it here is safe.
+
+// Battle-3d mode hides the command bar entirely (omitted from the DOM
+// via Razor @if). The 96px spacer would push the action diamonds up
+// off the screen edge — cancel it so the FIGHT / SWITCH / BAG cluster
+// sits flush at the bottom where it belongs during battle.
+.expedition-panel.battle-3d::after {
+	height: 0;
 }
 
-.avatar-img {
-	position: relative;
-	min-width: 72px;
-	width: 72px;
-	height: auto;
-	margin-top: -4px;
-	image-rendering: pixelated;
-	z-index: 1;
-}
-
-.level-badge {
-	background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
-	padding: 3px 10px;
-	border-radius: 6px;
-	font-size: 11px;
-	font-weight: 700;
-	color: #ffffff;
-	letter-spacing: 1px;
-	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-	flex-shrink: 0;
-}
-
-.identity-details {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	flex-shrink: 0;
-}
-
-.identity-name {
-	font-size: 11px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.9);
-	letter-spacing: 0.5px;
-}
-
-.identity-title {
-	font-size: 9px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.4);
-	letter-spacing: 0.3px;
-}
-
-.xp-col {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	flex-shrink: 0;
-}
-
-.xp-text {
-	font-size: 9px;
-	color: rgba(255, 255, 255, 0.3);
-}
-
-.xp-bar {
-	width: 76px;
-	height: 3px;
-	background-color: rgba(255, 255, 255, 0.1);
-	border-radius: 2px;
-	overflow: hidden;
-	flex-shrink: 0;
-}
-
-.xp-fill {
+.panel-placeholder {
+	width: 100%;
 	height: 100%;
-	background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
-	border-radius: 2px;
-	transition: width 0.3s ease;
-}
-
-// CENTER: Tab Navigation
-.top-tabs {
 	display: flex;
-	flex-direction: row;
-	align-items: center;
+	flex-direction: column;
 	justify-content: center;
-	gap: 4px;
-	flex: 1;
-
-	// When tab navigation is focused, show a subtle indicator
-	&.focused {
-		border-bottom-color: rgba(139, 92, 246, 0.3);
-	}
-}
-
-// Subtle glow pulse for active tab icon
-@keyframes activeTabGlow {
-	0%, 100% { opacity: 0.8; }
-	50% { opacity: 1; }
-}
-
-.tab {
-	position: relative;
-	display: flex;
-	flex-direction: row;
 	align-items: center;
-	gap: 10px;
-	padding: 12px 28px;
-	cursor: pointer;
-	border-bottom: 2px solid transparent;
-	margin-bottom: -1px;
-	pointer-events: all;
+	gap: 16px;
+	background-color: rgba(255, 255, 255, 0.02);
+	border: 2px solid rgba(255, 255, 255, 0.1);
+	border-radius: 16px;
 
-	&:hover {
-		background-color: rgba(255, 255, 255, 0.06);
-
-		.tab-icon-svg {
-			opacity: 0;
-		}
-
-		.tab-icon-anim {
-			opacity: 1;
-		}
-
-		.tab-label {
-			color: rgba(255, 255, 255, 0.85);
-		}
+	.placeholder-icon {
+		font-size: 64px;
+		opacity: 0.5;
 	}
 
-	&.active {
-		.tab-icon-svg {
-			opacity: 0;
-		}
-
-		.tab-icon-anim {
-			opacity: 1;
-			animation: activeTabGlow 2.5s ease-in-out infinite;
-		}
-
-		.tab-label {
-			color: #e8e8f0;
-			font-weight: 700;
-		}
-
-		.tab-key {
-			color: rgba(255, 255, 255, 0.5);
-		}
-	}
-
-	// Unified purple accent for all tabs
-	&.active {
-		border-bottom-color: #7c3aed;
-		background-color: rgba(124, 58, 237, 0.08);
-		box-shadow: 0 4px 16px rgba(124, 58, 237, 0.1);
-	}
-
-	// Keyboard selection highlight
-	&.keyboard-selected {
-		background-color: rgba(139, 92, 246, 0.2);
-		border-bottom-color: #a78bfa;
-		box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
-
-		.tab-label {
-			color: #ffffff;
-		}
-
-		.tab-key {
-			color: rgba(255, 255, 255, 0.6);
-		}
-	}
-
-	.tab-icon {
-		font-size: 20px;
-	}
-
-	.tab-icon-svg {
-		width: 28px;
-		height: 28px;
-		transition: opacity 0.2s ease;
-	}
-
-	.tab-icon-anim {
-		position: absolute;
-		top: 50%;
-		left: 28px;
-		transform: translateY(-50%);
-		width: 28px;
-		height: 28px;
-		opacity: 0;
-		transition: opacity 0.2s ease;
-	}
-
-	.tab-label {
-		font-size: 14px;
+	.placeholder-text {
+		font-size: 24px;
 		font-weight: 600;
-		letter-spacing: 2px;
 		color: rgba(255, 255, 255, 0.5);
-		transition: all 0.25s ease;
 	}
 
-	.tab-key {
-		position: absolute;
-		top: 2px;
-		right: 4px;
-		font-size: 9px;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.2);
-		transition: all 0.2s ease;
-	}
-
-	&.running {
-		.tab-icon {
-			animation: pulse-glow 1.5s ease-in-out infinite;
-		}
-	}
-
-	.running-indicator {
-		width: 8px;
-		height: 8px;
-		background: #22c55e;
-		border-radius: 50%;
-		animation: pulse-indicator 1s ease-in-out infinite;
-		margin-left: 4px;
+	.placeholder-count {
+		font-size: 14px;
+		color: rgba(255, 255, 255, 0.3);
 	}
 }
 
-// RIGHT: Currency + Alpha + Info
-.top-currency {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	flex-shrink: 0;
-	padding-left: 12px;
-	border-left: 1px solid rgba(255, 255, 255, 0.06);
+// ============================================================
+// COMMAND BAR — Unified Bottom Bar (2026-04-23, 4th HUD rework)
+// The single chrome element for the entire HUD. Three zones,
+// thin purple dividers, labeled tabs, utility diamonds.
+//
+// Design philosophy:
+//  - ONE floating card that holds everything. No competing chrome.
+//  - Subtle tier-1 ambient breath — just enough to feel alive.
+//  - Restraint on motion: hover + active feedback are snappy, not loud.
+//  - Bigger typography than the vertical rail (labels 13px, currency 17px).
+//  - Purple accents tastefully — top hairline, active underline, dividers.
+//
+// Layout math (bar is 88px tall, inset 20px from each bottom edge):
+//   Left zone   — avatar 48 + LV meta + 3 currency pills (~340px wide)
+//   Center zone — 7 tabs × ~100px = ~700px (flex: 1)
+//   Right zone  — 3 actions + 5 utility diamonds + version (~520px)
+// ============================================================
+
+// --- Ambient breath (tier 1) — barely perceptible, 5s loop ---
+@keyframes cbBreath {
+	0%, 100% { transform: translateY(0) scale(1); }
+	50%      { transform: translateY(-1px) scale(1.002); }
 }
 
-.currency-pill {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 12px;
-	padding: 4px 12px;
-	background-color: rgba(15, 12, 28, 0.85);
-	border-radius: 8px;
-	border: 1px solid rgba(139, 92, 246, 0.15);
+// --- Active tab glow — for the underline's slow pulse ---
+@keyframes cbActiveGlow {
+	0%, 100% { opacity: 0.88; }
+	50%      { opacity: 1; }
 }
 
-.resources {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 20px;
+// --- Running-dot pulse — expedition in progress ---
+@keyframes cbRunningDotPulse {
+	0%, 100% { transform: scale(1); box-shadow: 0 0 8px rgba(34, 197, 94, 0.75); }
+	50%      { transform: scale(1.15); box-shadow: 0 0 14px rgba(34, 197, 94, 0.9); }
 }
 
-.resource {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 6px;
-
-	.resource-icon {
-		width: 16px;
-		height: 16px;
-	}
-
-	.resource-value {
-		font-size: 13px;
-		font-weight: 600;
-		letter-spacing: 0.5px;
-	}
-
-	// Gold styling
-	&.gold .resource-value {
-		color: #fcd34d;
-	}
-
-	// Contract Ink styling
-	&.ink .resource-value {
-		color: #93c5fd;
-	}
-
-	// Boss tokens styling
-	&.boss-tokens .resource-value {
-		color: #fbbf24;
-	}
-
-	// Hover for tooltip
-	position: relative;
-	cursor: pointer;
-	pointer-events: all;
-
-	// ============================================
-	// Currency change pulses (Tier 1->2 ambient feedback)
-	// These classes are toggled by GameHUD code when real currency values
-	// change. The lerped number roll-up happens in C#; the icon pulse is
-	// pure CSS so it doesn't cost any tick work.
-	// ============================================
-	&.pulse-up .resource-icon {
-		animation: currency-pulse-up 0.3s ease-out;
-	}
-	&.pulse-down .resource-icon {
-		animation: currency-pulse-down 0.2s ease-out;
-	}
-}
-
+// --- Currency pulse (up/down on value change) ---
 @keyframes currency-pulse-up {
 	0%   { transform: scale(1); filter: drop-shadow(0 0 0 rgba(251, 191, 36, 0)); }
-	40%  { transform: scale(1.15); filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.85)); }
+	40%  { transform: scale(1.18); filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.85)); }
 	100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(251, 191, 36, 0)); }
 }
 
@@ -439,88 +238,918 @@ GameHUD {
 	100% { filter: brightness(1) drop-shadow(0 0 0 rgba(248, 113, 113, 0)); }
 }
 
-.currency-tooltip {
+// --- Avatar breath — tier 1 ambient on the avatar circle ---
+@keyframes cbAvatarBreath {
+	0%, 100% { transform: scale(1); }
+	50%      { transform: scale(1.04); }
+}
+
+// --- Quest/Bag "new" badge pulse ---
+@keyframes cbNewBadgePulse {
+	0%, 100% { transform: scale(1); }
+	50%      { transform: scale(1.08); }
+}
+
+// Three-island layout. The .command-bar container is now a transparent
+// flex layout that positions three independent CARDS (left/center/right),
+// each with its own background, border, shadow, and asymmetric corners.
+// Gaps between cards let the world bg breathe through, breaking the
+// "single long pill = horizon line" feel.
+.command-bar {
 	position: absolute;
-	top: 100%;
-	left: 50%;
-	margin-top: 8px;
-	margin-left: -60px;
-	width: 120px;
-	padding: 8px 12px;
-	background-color: #1a1828;
-	border: 1px solid rgba(139, 92, 246, 0.3);
-	border-radius: 8px;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+	bottom: 16px;
+	// Edge-to-edge — flanking islands run all the way to the screen sides
+	// so they read as anchored chrome rather than floating cards drifting
+	// in space. Visibility against bright/light bgs (Saltmoor green, etc)
+	// is much stronger when the islands have a definite "this is the edge
+	// of the UI" termination at the screen edge.
+	left: 0;
+	right: 0;
+	// `space-between` pins left to screen-left, right to screen-right, and
+	// keeps the center island centered. `gap` is irrelevant with this
+	// distribution but kept low in case the cluster ever needs to compress.
+	background-color: transparent;
+	border: none;
+	box-shadow: none;
 	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 2px;
-	z-index: 10000;
-	pointer-events: none;
+	flex-direction: row;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 8px;
+	pointer-events: none; // children handle their own pointer events
+	z-index: 100;
 }
 
-.tooltip-value {
-	font-size: 14px;
-	font-weight: 700;
-	color: #ffffff;
+// Shared island chrome — applied to .cb-zone-left/center/right.
+// Each island gets its own bg/border/shadow so they read as separate
+// floating cards rather than zones of one bar.
+.cb-island {
+	position: relative;
+	background-color: rgba(12, 8, 20, 0.96);
+	border: 1px solid rgba(0, 0, 0, 0.45);
+	// Drop shadow underneath + 1px bright outer-top edge. The top edge
+	// is the visibility hack: against bright world bgs (Saltmoor green,
+	// Stoneflats tan) the dark island used to dissolve into the bg —
+	// the 1px highlight defines its top against any backdrop. Outer
+	// shadow only (no `inset` — s&box rejects inset box-shadows).
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 -1px 0 rgba(255, 255, 255, 0.08);
+	pointer-events: all;
+	// Default corners; overridden per-island below for the asymmetric look
+	// that suggests "three pieces broken from one ribbon."
+	border-radius: 6px;
 }
 
-.tooltip-label {
-	font-size: 10px;
-	color: rgba(255, 255, 255, 0.5);
+// Left island — flanking, shorter (56px). Outer-left corners SQUARED off
+// since the island now butts up against the screen edge — rounded corners
+// at the very edge would leave a visible triangular gap. Inner-right
+// corners stay slightly rounded (6px) for the soft "broken from one
+// ribbon" look between islands.
+.cb-zone-left.cb-island {
+	height: 56px;
+	min-width: 540px;
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	border-top-right-radius: 6px;
+	border-bottom-right-radius: 6px;
 }
 
-.boost-pill {
+// Right island — same min-width as left for balance.
+.cb-zone-right.cb-island {
+	min-width: 540px;
+}
+
+// Center island — HERO. 80px tall (24px taller than flanking islands)
+// so the tab strip clearly dominates the silhouette. Stronger shadow
+// + slightly more-rounded top corners reinforces "this is elevated."
+.cb-zone-center.cb-island {
+	height: 80px;
+	border-top-left-radius: 12px;
+	border-top-right-radius: 12px;
+	border-bottom-left-radius: 6px;
+	border-bottom-right-radius: 6px;
+	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(139, 92, 246, 0.15);
+}
+
+// Right island — mirror of left. 56px tall. Outer-right corners SQUARED off
+// to butt against the screen edge cleanly. Inner-left corners 6px rounded
+// to match the gap-side softness on the left island.
+.cb-zone-right.cb-island {
+	height: 56px;
+	border-top-left-radius: 6px;
+	border-bottom-left-radius: 6px;
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+// Note: corner diamond accents were prototyped here but removed —
+// with center island taller than the flanking ones, the diamonds at
+// each island's top-corners landed at different vertical heights and
+// read as broken/misaligned. Height variation alone carries the
+// silhouette character. Reintroduce only if all islands return to
+// equal heights.
+
+// Hide the old vertical zone-dividers — the gap between islands replaces them.
+.cb-divider {
+	display: none;
+}
+
+// Vertical divider between zones — dark-tasteful rgba like style-guide cards
+// rather than bright purple. Shorter with the new 64px bar height.
+.cb-divider {
+	width: 1px;
+	background-color: rgba(255, 255, 255, 0.06);
+	margin: 14px 0;
+	flex-shrink: 0;
+
+	&.cb-divider-thin {
+		background-color: rgba(255, 255, 255, 0.04);
+		margin: 18px 8px;
+	}
+}
+
+// ─── ZONES (shared base) ──────────────────────────────────────
+.cb-zone {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 6px;
-	padding: 6px 12px;
-	border-radius: 20px;
-	font-size: 12px;
-	font-weight: 600;
+}
 
-	&.personal {
-		background: linear-gradient(135deg, rgba(74, 222, 128, 0.2), rgba(34, 197, 94, 0.2));
-		border: 1px solid rgba(74, 222, 128, 0.5);
+// ─────────────────────────────────────────────────────────────
+// LEFT ZONE — avatar + LV chip + currency trio
+// ─────────────────────────────────────────────────────────────
+.cb-zone-left {
+	padding: 0 20px 0 22px;
+	gap: 16px;
+	flex-shrink: 0;
+	// Center content within the wider 540px island instead of bunching it
+	// at the left edge. Avatar + currencies cluster mid-island, with even
+	// breathing room on both sides.
+	justify-content: center;
+}
+
+.cb-avatar-wrap {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
+	cursor: pointer;
+	pointer-events: all;
+	position: relative;
+	padding: 4px 10px 4px 4px;
+	border-radius: 14px;
+	transition: background-color 0.15s ease;
+
+	&:hover {
+		background-color: rgba(139, 92, 246, 0.12);
+
+		.cb-avatar {
+			border-color: rgba(167, 139, 250, 0.95);
+			box-shadow: 0 0 14px rgba(139, 92, 246, 0.5);
+		}
+
+		.cb-tamer-name {
+			color: #ffffff;
+		}
 	}
+}
 
-	&.server {
-		background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(245, 158, 11, 0.25));
-		border: 1px solid rgba(251, 191, 36, 0.6);
+.cb-avatar {
+	width: 36px;
+	height: 36px;
+	border-radius: 50%;
+	overflow: hidden;
+	border: 1.5px solid rgba(139, 92, 246, 0.45);
+	background: linear-gradient(135deg, rgba(139, 92, 246, 0.28), rgba(59, 130, 246, 0.28));
+	transition: border-color 0.2s ease;
+	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	// No ambient breath — avatar sits still in the quieter bar.
+
+	&.female {
+		border-color: rgba(236, 72, 153, 0.55);
+		background: linear-gradient(135deg, rgba(236, 72, 153, 0.28), rgba(244, 114, 182, 0.28));
 	}
 }
 
-.boost-icon {
-	font-size: 14px;
+// Fallback emoji — classic absolute-centered via 50% + negative half-margin
+// so it's dead-center even when flex alignment gets weird.
+.cb-avatar-fallback {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin-top: -9px;   // half of 18px font (approx)
+	margin-left: -9px;
+	font-size: 18px;
+	line-height: 18;
+	z-index: 0;
 }
 
-.boost-label {
-	color: #ffffff;
-	font-weight: 600;
+// Steam avatar — 32×32 centered inside the 36×36 container using the
+// bulletproof "absolute + 50% + negative half-margin" pattern. Flex
+// centering was shifting the image in s&box for reasons that weren't
+// clear (possibly natural-image-size interaction with flex sizing).
+// With this pattern the image is EXACTLY at the container's geometric
+// center regardless of flex or natural-size quirks.
+.cb-avatar-steam {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin-top: -16px;   // -(height / 2) = -(32/2)
+	margin-left: -16px;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	object-fit: cover;
+	z-index: 1;
 }
 
-.boost-timer {
-	color: rgba(255, 255, 255, 0.7);
+// Dev fallback portrait — same sizing treatment as Steam avatar.
+.cb-avatar-img {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin-top: -16px;
+	margin-left: -16px;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	object-fit: cover;
+	image-rendering: pixelated;
+	z-index: 1;
+}
+
+.cb-avatar-meta {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	gap: 4px;
+	min-width: 0;
+}
+
+.cb-tamer-name {
+	font-size: 13px;
+	font-weight: 800;
+	color: rgba(220, 220, 240, 0.92);
+	letter-spacing: 0.4px;
+	line-height: 14;
+	white-space: nowrap;
+	transition: color 0.15s ease;
+	max-width: 110px;
+}
+
+.cb-lv-chip {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	align-self: flex-start;
+	padding: 3px 9px;
+	background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+	border-radius: 7px;
 	font-size: 11px;
-	font-weight: 500;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 1.2px;
+	line-height: 12;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.boost-server {
-	background: linear-gradient(135deg, #fbbf24, #f59e0b);
-	color: #000000;
+// --- Currency trio ---
+.cb-currency-stack {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	// Wide gap so the protruding diamonds (left: -14px on each currency)
+	// don't overlap with the previous neighbor's rectangle. 22px = 14 for
+	// the diamond + 8 of clean breathing space.
+	gap: 22px;
+}
+
+// Currency — diamond + rectangle pattern (ported from MonsterRoster's
+// `.action-v2` family). The rectangle holds the value; a rotated 45° diamond
+// holds the icon and protrudes from the LEFT side of the rectangle. Adds the
+// signature Beastborne diamond DNA to the bar without needing corner accents.
+.cb-currency {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 38px;
+	// Padding-left makes room for the protruding diamond (which is 28px wide
+	// rotated, sitting at left: -14, so 14 of it overlaps the rectangle).
+	// Right padding holds the value comfortably. (Inter-currency spacing
+	// is handled by .cb-currency-stack's gap, not margin here.)
+	padding: 0 14px 0 26px;
+	background-color: rgba(15, 12, 28, 0.75);
+	border: 1px solid rgba(255, 255, 255, 0.06);
+	border-radius: 8px;
+	cursor: pointer;
+	pointer-events: all;
+	position: relative;
+	transition: background-color 0.15s ease, border-color 0.15s ease;
+
+	&:hover {
+		background-color: rgba(25, 20, 42, 0.9);
+		border-color: rgba(139, 92, 246, 0.4);
+
+		.cb-currency-diamond {
+			border-color: rgba(255, 255, 255, 0.25);
+		}
+	}
+
+	.cb-currency-value {
+		font-size: 14px;
+		font-weight: 800;
+		letter-spacing: 0.3px;
+		line-height: 15;
+		white-space: nowrap;
+	}
+
+	// Per-currency identity comes from the diamond's BORDER color only.
+	// Background is uniform dark (matches MonsterRoster's `.action-v2-diamond`
+	// pattern) so the icon glyph always reads cleanly. Earlier saturated
+	// colored bgs muddied the ink icon (its natural blue blended into the
+	// blue bg) — uniform dark fixes the contrast issue.
+	&.gold {
+		.cb-currency-value { color: #fcd34d; }
+		.cb-currency-diamond { border-color: rgba(251, 191, 36, 0.7); }
+	}
+	&.ink {
+		.cb-currency-value { color: #93c5fd; }
+		.cb-currency-diamond { border-color: rgba(96, 165, 250, 0.7); }
+	}
+	&.tokens {
+		.cb-currency-value { color: #fbbf24; }
+		.cb-currency-diamond { border-color: rgba(167, 139, 250, 0.7); }
+	}
+
+	&.pulse-up .cb-currency-icon {
+		animation: currency-pulse-up 0.3s ease-out;
+	}
+
+	&.pulse-down .cb-currency-icon {
+		animation: currency-pulse-down 0.2s ease-out;
+	}
+}
+
+// The diamond — rotated 45° square, absolutely positioned so half of it
+// overlaps the rectangle and half protrudes to the LEFT. Icon inside is
+// counter-rotated -45° to stay upright. Style mirrors MonsterRoster's
+// `.action-v2-diamond`: uniform dark fill, 2px colored rim per currency,
+// soft drop shadow.
+.cb-currency-diamond {
+	position: absolute;
+	left: -14px;
+	top: 50%;
+	margin-top: -14px;
+	width: 28px;
+	height: 28px;
+	border-radius: 5px;
+	transform: rotate(45deg);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: rgba(15, 12, 28, 0.96);
+	border: 2px solid rgba(255, 255, 255, 0.12);  // overridden per currency
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+	z-index: 2;
+	transition: border-color 0.15s ease;
+}
+
+.cb-currency-icon {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	transform: rotate(-45deg);   // counter-rotate to stay upright in the diamond
+}
+
+// ─────────────────────────────────────────────────────────────
+// CENTER ZONE — 7 destination tabs
+// ─────────────────────────────────────────────────────────────
+.cb-zone-center {
+	// Sized by content (6 tabs × ~128px) instead of stretching to fill —
+	// the three-island layout sets each card's width by what's INSIDE it,
+	// not by available bar space. Center sits naturally between left + right
+	// islands, with the bar's `justify-content: center` doing horizontal
+	// centering of the whole 3-island cluster.
+	flex: 0 0 auto;
+	justify-content: center;
+	gap: 2px;
+	padding: 0 8px;
+}
+
+.cb-tab {
+	position: relative;
+	// Wider (128px) so the active-state "pill" fill has real breathing room
+	// around even the longest label (EXPEDITIONS ≈ 88px wide). At 112px the
+	// label reached the tab edges — the pill looked like it was choking the
+	// text. At 128px there's ~20px of pill margin on each side of the label.
+	width: 128px;
+	height: 64px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	cursor: pointer;
+	pointer-events: all;
+	padding: 6px 0 7px 0;
+	// 6px (was 12px) — rectangular enough to echo the new header pill
+	// geometry while still soft enough that the bottom bar reads as ambient
+	// chrome rather than a destination header. The active stamp gets a hard
+	// offset shadow to fully bridge to the header pill vocabulary.
+	border-radius: 6px;
+	transition: background-color 0.15s ease, transform 0.15s ease;
+
+	&:hover {
+		background-color: rgba(139, 92, 246, 0.12);
+		// NO translateY — hover lift moved the tab 1px, which took the
+		// cursor OFF the tab if it was near the top edge, triggering
+		// rapid mouseout→mouseover cycles and making the hover sound
+		// fire repeatedly. Color/bg change is enough for hover feedback.
+
+		.cb-tab-icon-svg { opacity: 0; }
+		.cb-tab-icon-anim { opacity: 1; }
+
+		.cb-tab-label {
+			color: #e9e3ff;
+		}
+
+		.cb-tab-underline {
+			// Hover preview underline — subtle violet, narrow. Real "you
+			// are here" treatment is the gold rail on the active tab.
+			background-image: linear-gradient(to right, rgba(167, 139, 250, 0.55) 0%, rgba(167, 139, 250, 0.25) 100%);
+			width: 36px;
+		}
+	}
+
+	&:active {
+		transform: scale(0.97);
+	}
+
+	&.active {
+		// P5-light treatment: subtle violet wash + italic stamp label + gold
+		// rail underline. Gold lives ONLY in the rail underneath — adding a
+		// gold cast on the BG blended with violet rendered as warm brown,
+		// which fought the rest of the dark/violet UI.
+		// 2px violet offset shadow added to bridge the active stamp into
+		// the new header pill vocabulary (which uses a 3px hard offset
+		// shadow). Smaller offset preserves bottom-bar-as-ambient hierarchy:
+		// the active tab "pops out" but doesn't shout as loud as a header
+		// destination pill.
+		background-color: rgba(124, 58, 237, 0.22);
+		box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.35);
+
+		.cb-tab-icon-svg { opacity: 0; }
+		.cb-tab-icon-anim { opacity: 1; }
+
+		.cb-tab-iconify {
+			filter: brightness(1.15);
+		}
+
+		.cb-tab-label {
+			// Stamp typography vocabulary lifted from the tile's .tile-name
+			// (italic / 900 / wider letter-spacing) — only the ACTIVE tab
+			// gets it so it reads as the "stamped on" hero of the bar.
+			color: #ffffff;
+			font-style: italic;
+			font-weight: 900;
+			letter-spacing: 1.5px;
+		}
+
+		.cb-tab-underline {
+			// Gold rail — same fading-right gradient as the tile's
+			// .tile-rail-bar. 3px tall. Only the active tab gets gold;
+			// hover/keyboard preview stays violet so gold reads as a
+			// committed "you are here" stamp.
+			background-image: linear-gradient(to right, #fbbf24 0%, #fbbf24 65%, rgba(251, 191, 36, 0) 100%);
+			height: 3px;
+			width: 48px;
+		}
+	}
+
+	&.keyboard-selected {
+		background-color: rgba(139, 92, 246, 0.22);
+
+		.cb-tab-underline {
+			// Keyboard nav stays violet — gold is reserved for the
+			// committed-active tab so the two states are distinguishable.
+			background-image: linear-gradient(to right, #c4b5fd 0%, rgba(196, 181, 253, 0.5) 100%);
+			width: 48px;
+		}
+	}
+}
+
+// Icon wrap — holds the static SVG + animated WebP in the same spot,
+// plus the running-dot for the expedition tab.
+.cb-tab-icon-wrap {
+	position: relative;
+	width: 26px;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.cb-tab-icon-svg {
+	width: 24px;
+	height: 24px;
+	opacity: 1;
+	transition: opacity 0.18s ease;
+}
+
+.cb-tab-icon-anim {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin-top: -13px;
+	margin-left: -13px;
+	width: 26px;
+	height: 26px;
+	opacity: 0;
+	transition: opacity 0.18s ease;
+}
+
+.cb-tab-iconify {
+	width: 24px;
+	height: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+// Label — 11px / 800 / uppercase / ls 1.2 so labels fit the 112px tab
+// without running into siblings. EXPEDITIONS (longest) measures ~94px.
+.cb-tab-label {
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 1.2px;
+	color: rgba(200, 200, 220, 0.72);
+	line-height: 12;
+	text-transform: uppercase;
+	white-space: nowrap;
+	transition: color 0.18s ease;
+}
+
+// Underline indicator — sits just below the label. Invisible default,
+// short violet preview on hover, gold fading-right rail when active.
+// The width transition gives the slide-in feel when a tab becomes active
+// without needing cross-sibling morph (which s&box can't do cleanly).
+// Background is set via gradient `background-image` in the state rules
+// (active = gold rail, hover = violet preview, keyboard = bright violet).
+.cb-tab-underline {
+	position: absolute;
+	bottom: 4px;
+	left: 50%;
+	margin-left: -16px;
+	width: 0;
+	height: 2px;
+	border-radius: 1.5px;
+	background-color: rgba(0, 0, 0, 0);
+	transition: width 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), margin-left 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), height 0.18s ease;
+}
+
+// Active underline: recenter its margin so the wider bar stays centered.
+// Center the 48px indicator bar (half = 24px left offset).
+.cb-tab.active .cb-tab-underline,
+.cb-tab.keyboard-selected .cb-tab-underline {
+	margin-left: -24px;
+}
+
+// Hover state keeps a shorter 36px preview of the underline to distinguish
+// it from the committed-active underline. Scoped to NON-active/selected
+// tabs so hovering the active tab doesn't collapse its full-width bar
+// back to the 36px preview width (specificity bug fix: prior version had
+// `.cb-tab:hover` match the active tab too since both have equal weight).
+.cb-tab:hover:not(.active):not(.keyboard-selected) .cb-tab-underline {
+	margin-left: -18px;
+}
+
+// Extra guard — explicitly pin the active underline even when hovered,
+// in case `:not()` is imperfectly supported by the s&box parser. Higher
+// specificity than the hover selector alone.
+.cb-tab.active:hover .cb-tab-underline,
+.cb-tab.keyboard-selected:hover .cb-tab-underline {
+	margin-left: -24px;
+	width: 48px;
+}
+
+// Keyboard number hint — flat black-on-gold P5 stamp pinned top-right.
+// Same vocabulary as .lb-section-tag / .tile-level-pill: solid gold fill,
+// dark border, hard 1px offset shadow for the "stamped on" feel. Stays
+// small so it doesn't compete with the icon, just adds a flicker of the
+// tile's stamp identity to the bar. Markup is `<div><span>N</span></div>`
+// so the inner span carries the type (avoids the bare-text-in-flex quirk).
+.cb-tab-key {
+	position: absolute;
+	top: 4px;
+	right: 5px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	min-width: 14px;
+	height: 14px;
+	padding: 0 4px;
+	background-color: #fbbf24;
+	border: 1px solid #1a1100;
+	border-radius: 2px;
+	box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.5);
+	// Quieter at rest so 6 simultaneous gold pills don't shout — only the
+	// engaged tab's pill goes full 1.0 (handled below in the hover/active
+	// override). 0.55 still made all six pills read as bright across the bar.
+	opacity: 0.32;
+	transition: opacity 0.15s ease;
+
+	span {
+		font-size: 9px;
+		font-weight: 900;
+		font-style: italic;
+		color: #1a1100;
+		letter-spacing: 0.5px;
+		line-height: 11;
+	}
+}
+
+// Stamp brightens on hover and on the active tab so it reads as part of
+// the engaged-tab stamp cluster, fades back when the tab is idle.
+.cb-tab:hover .cb-tab-key,
+.cb-tab.active .cb-tab-key,
+.cb-tab.keyboard-selected .cb-tab-key {
+	opacity: 1;
+}
+
+// Expedition tab's running-dot — persistent signal that a run is active.
+// Sits top-right of the icon, pulses slowly (tier 1 ambient).
+.cb-tab-running-dot {
+	position: absolute;
+	top: -2px;
+	right: -2px;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background-color: #22c55e;
+	box-shadow: 0 0 8px rgba(34, 197, 94, 0.75);
+	animation: cbRunningDotPulse 1.8s ease-in-out infinite;
+}
+
+// ─────────────────────────────────────────────────────────────
+// RIGHT ZONE — actions + utilities + help + version
+// ─────────────────────────────────────────────────────────────
+.cb-zone-right {
+	padding: 0 22px 0 16px;
+	gap: 10px;
+	flex-shrink: 0;
+	// Mirror of .cb-zone-left — center content within the 540px island
+	// so the action+utility cluster sits mid-island, not bunched at the
+	// inner edge.
+	justify-content: center;
+}
+
+// --- Action group: Quests / Menu / Bag (labeled pills) ---
+.cb-action-group {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+}
+
+// Action pills now match tab visual DNA — icon on top + label below,
+// transparent default bg, same 64px height. Tabs stay the hero since
+// actions have no active-underline state. Slightly narrower (88px) than
+// tabs (112px) so the "primary nav vs secondary action" hierarchy reads.
+.cb-action {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	width: 88px;
+	height: 64px;
+	padding: 6px 0 7px 0;
+	background-color: transparent;
+	border: none;
+	border-radius: 12px;
+	cursor: pointer;
+	pointer-events: all;
+	transition: background-color 0.18s ease, transform 0.15s ease;
+
+	&:hover {
+		background-color: rgba(139, 92, 246, 0.10);
+		// No translateY — same hover-glitch reason as cb-tab above.
+
+		.cb-action-icon { opacity: 0; }
+		.cb-action-icon-anim { opacity: 1; }
+
+		.cb-action-label {
+			color: #e9e3ff;
+		}
+	}
+
+	&:active {
+		transform: scale(0.97);
+	}
+}
+
+.cb-action-icon {
+	width: 24px;
+	height: 24px;
+	flex-shrink: 0;
+	opacity: 1;
+	transition: opacity 0.15s ease;
+}
+
+.cb-action-icon-anim {
+	position: absolute;
+	top: 7px;
+	left: 50%;
+	margin-left: -13px;
+	width: 26px;
+	height: 26px;
+	opacity: 0;
+	transition: opacity 0.15s ease;
+}
+
+// Action labels are DIMMER than tab labels so the tabs read as primary nav
+// and actions (Quests/Menu/Bag) read as secondary. Same font-size/weight/
+// letter-spacing for family consistency — only the color alpha changes.
+.cb-action-label {
+	font-size: 11px;
+	font-weight: 800;
+	letter-spacing: 1.2px;
+	color: rgba(170, 170, 190, 0.55);
+	line-height: 12;
+	text-transform: uppercase;
+	white-space: nowrap;
+	transition: color 0.18s ease;
+}
+
+.cb-action-badge {
+	position: absolute;
+	top: -6px;
+	right: -4px;
+	padding: 2px 7px;
+	background: linear-gradient(135deg, #22c55e, #16a34a);
+	border-radius: 8px;
 	font-size: 9px;
-	font-weight: 700;
-	padding: 2px 6px;
-	border-radius: 4px;
+	font-weight: 800;
+	color: #ffffff;
 	letter-spacing: 0.5px;
-	margin-left: 2px;
+	box-shadow: 0 2px 8px rgba(34, 197, 94, 0.45);
+	animation: cbNewBadgePulse 2s ease-in-out infinite;
+
+	&.quests-badge {
+		min-width: 18px;
+		height: 18px;
+		padding: 0;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 12px;
+	}
 }
 
-// Sub-navigation (for Beasts tab: Collection/Fusion toggle)
+// --- Utility diamonds: Chat / Radio / Effects / Notifs / Help ---
+// Rotated 45° shells with counter-rotated iconify inside. Signature
+// Beastborne diamond pattern from MonsterRosterPanel's .action-v2.
+.cb-util-group {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+}
+
+.cb-util {
+	width: 48px;
+	height: 56px;
+	cursor: pointer;
+	pointer-events: all;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.3);
+
+	&:hover {
+		transform: scale(1.08);
+
+		.cb-util-shell {
+			background-color: rgba(35, 25, 60, 0.95);
+			border-color: rgba(167, 139, 250, 0.85);
+			box-shadow: 0 0 18px rgba(139, 92, 246, 0.5), 0 4px 12px rgba(0, 0, 0, 0.45);
+		}
+	}
+
+	&:active {
+		transform: scale(0.94);
+	}
+}
+
+// Inner rotated shell — 34x34 so a 20px iconify + bezel reads clearly.
+.cb-util-shell {
+	width: 34px;
+	height: 34px;
+	background-color: rgba(15, 12, 28, 0.88);
+	border: 1.5px solid rgba(139, 92, 246, 0.4);
+	transform: rotate(45deg);
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	position: relative;
+	transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+// Counter-rotate the iconify glyph so it stays upright in the rotated shell.
+.cb-util-iconify-wrap {
+	transform: rotate(-45deg);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+// Badge sits top-right of the un-rotated outer wrapper.
+.cb-util-badge {
+	position: absolute;
+	top: 3px;
+	right: 0;
+	min-width: 18px;
+	height: 18px;
+	padding: 0 5px;
+	border-radius: 9px;
+	color: #ffffff;
+	font-size: 10px;
+	font-weight: 800;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+	z-index: 2;
+	line-height: 11;
+
+	&.purple {
+		background-color: #7c3aed;
+	}
+
+	&.yellow {
+		background-color: #eab308;
+	}
+}
+
+// --- Version chip ---
+// .cb-version + .cb-version-alpha + .cb-version-number — removed 2026-04-25.
+// The version chip ("α 0.8") was getting clipped at the right edge of the
+// right island after the three-island layout, and added little value vs
+// the space it consumed. Version is now visible only in the menu/credits
+// popup. Reintroduce here only if a player-facing build hash needs surfacing.
+
+// ─── Tooltip (appears ABOVE the bar on hover) ────────────────
+// Used everywhere on the command bar — one shared class for avatar,
+// currencies, utilities, help. Positioned so its bottom edge sits
+// just above the hovered element.
+.cb-tooltip {
+	position: absolute;
+	left: 50%;
+	height: 26px;
+	padding: 5px 10px;
+	background-color: #1a1828;
+	border: 1px solid rgba(139, 92, 246, 0.45);
+	border-radius: 8px;
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 1.2px;
+	line-height: 14;
+	color: #ffffff;
+	display: flex;
+	align-items: center;
+	white-space: nowrap;
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+	pointer-events: none;
+	z-index: 120;
+
+	&.cb-tooltip-above {
+		bottom: 100%;
+		margin-bottom: 8px;
+		margin-left: -60px;
+		width: 120px;
+		justify-content: center;
+	}
+
+	&.cb-tooltip-wide {
+		width: 200px;
+		margin-left: -100px;
+		letter-spacing: 0.5px;
+	}
+}
+
+// ─── Sub-navigation (Beasts tab's Collection/Fusion toggle) ───
 .sub-navigation {
 	position: absolute;
-	top: 60px;
+	top: 16px;
 	left: 0;
 	right: 0;
 	display: flex;
@@ -575,285 +1204,6 @@ GameHUD {
 	50% { transform: scale(1.3); opacity: 0.7; }
 }
 
-// Content Area
-.content-area {
-	position: absolute;
-	top: 60px;
-	left: 0;
-	right: 0;
-	bottom: 80px;
-	overflow: visible;
-	pointer-events: all;
-	z-index: 60;
-	background-color: #0a0818;
-	background-image: url(ui/menus/animated-bg.webp);
-	background-size: cover;
-	background-position: center;
-
-	> * {
-		width: 100%;
-		height: 100%;
-	}
-
-}
-
-.panel-placeholder {
-	width: 100%;
-	height: 100%;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	gap: 16px;
-	background-color: rgba(255, 255, 255, 0.02);
-	border: 2px solid rgba(255, 255, 255, 0.1);
-	border-radius: 16px;
-
-	.placeholder-icon {
-		font-size: 64px;
-		opacity: 0.5;
-	}
-
-	.placeholder-text {
-		font-size: 24px;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.5);
-	}
-
-	.placeholder-count {
-		font-size: 14px;
-		color: rgba(255, 255, 255, 0.3);
-	}
-}
-
-// Bottom Bar (Menu + Boosts)
-// Bottom Bar — gradient fade, 3 sections
-.bottom-bar {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	height: 90px;
-	background-color: rgba(8, 6, 16, 0.85);
-	background-image: url(ui/icons/animated/bottombar-bg.webp);
-	background-size: cover;
-	background-position: center;
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-	align-items: center;
-	padding: 0 24px;
-	pointer-events: none;
-}
-
-.missions-btn {
-	.action-icon {
-		width: 30px;
-		height: 30px;
-	}
-
-	.action-icon-anim {
-		width: 34px;
-		height: 34px;
-	}
-}
-
-.bottom-bar-divider {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	height: 2px;
-	background-color: rgba(255, 255, 255, 0.25);
-	z-index: 100;
-}
-
-.bottom-bar-left {
-	position: absolute;
-	left: 24px;
-	display: flex;
-	flex-direction: row;
-	gap: 8px;
-	pointer-events: all;
-}
-
-.bottom-bar-center {
-	display: flex;
-	flex-direction: row;
-	gap: 12px;
-	pointer-events: all;
-}
-
-.bottom-bar-right {
-	position: absolute;
-	right: 24px;
-	display: flex;
-	flex-direction: row;
-	gap: 8px;
-	pointer-events: all;
-}
-
-// Buttons — dark pill style with hover/press transitions
-.action-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 10px;
-	padding: 12px 24px 12px 18px;
-	background-color: #252530;
-	border: 1.5px solid rgba(255, 255, 255, 0.06);
-	border-radius: 14px;
-	cursor: pointer;
-	pointer-events: all;
-	position: relative;
-	transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-
-	&:hover {
-		background-color: #2e2e3e;
-		border-color: rgba(255, 255, 255, 0.12);
-		transform: translateY(-2px);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-
-		.action-icon {
-			opacity: 0;
-		}
-
-		.action-icon-anim {
-			opacity: 1;
-		}
-
-		.action-label {
-			color: #d0d0e4;
-		}
-
-		.action-badge {
-			transform: scale(1.15);
-		}
-	}
-
-	&:active {
-		transform: translateY(0px) scale(0.97);
-		box-shadow: none;
-	}
-
-	// Small variant — chat, effects, radio, notifications
-	&.small {
-		padding: 9px 16px 9px 12px;
-		border-radius: 12px;
-		gap: 8px;
-
-		.action-icon {
-			width: 20px;
-			height: 20px;
-		}
-
-		.action-label {
-			font-size: 11px;
-		}
-	}
-
-	.action-icon {
-		width: 24px;
-		height: 24px;
-		flex-shrink: 0;
-	}
-
-	.action-icon-anim {
-		position: absolute;
-		top: 50%;
-		left: 13px;
-		transform: translateY(-50%);
-		width: 34px;
-		height: 34px;
-		opacity: 0;
-	}
-
-	&.small .action-icon-anim {
-		left: 8px;
-		width: 28px;
-		height: 28px;
-	}
-
-	.action-label {
-		font-weight: 800;
-		font-size: 13px;
-		letter-spacing: 1.5px;
-		color: #8888a8;
-		transition: color 0.2s ease;
-	}
-
-	// Badge (notification count pill)
-	.action-badge {
-		color: white;
-		font-size: 10px;
-		font-weight: 800;
-		min-width: 18px;
-		height: 18px;
-		border-radius: 9px;
-		display: flex;
-		flex-direction: row;
-		align-items: center;
-		justify-content: center;
-		padding: 0 5px;
-		transition: transform 0.2s ease;
-		line-height: 8;
-
-		&.purple {
-			background-color: #7c3aed;
-		}
-
-		&.yellow {
-			background-color: #eab308;
-		}
-	}
-
-	// New item badge
-	.new-badge {
-		position: absolute;
-		top: -8px;
-		right: -8px;
-		padding: 3px 8px;
-		background: linear-gradient(135deg, #22c55e, #16a34a);
-		border-radius: 8px;
-		font-size: 10px;
-		font-weight: 700;
-		color: #ffffff;
-		letter-spacing: 0.5px;
-		box-shadow: 0 2px 8px rgba(34, 197, 94, 0.4);
-		animation: new-badge-pulse 2s ease-in-out infinite;
-	}
-}
-
-@keyframes new-badge-pulse {
-	0%, 100% {
-		transform: scale(1);
-		box-shadow: 0 2px 8px rgba(34, 197, 94, 0.4);
-	}
-	50% {
-		transform: scale(1.05);
-		box-shadow: 0 2px 12px rgba(34, 197, 94, 0.6);
-	}
-}
-
-.inventory-badge {
-	position: absolute;
-	top: -6px;
-	right: -6px;
-	min-width: 20px;
-	height: 20px;
-	padding: 0 6px;
-	background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-	border-radius: 10px;
-	font-size: 11px;
-	font-weight: 700;
-	color: #ffffff;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
 // Panel Overlay (for breeding, etc.)
 .panel-overlay {
 	position: absolute;
@@ -899,640 +1249,6 @@ GameHUD {
 
 	&:hover {
 		background-color: rgba(239, 68, 68, 0.5);
-	}
-}
-
-// Version Indicator
-.version-indicator {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	padding: 4px 10px;
-	background-color: rgba(0, 0, 0, 0.4);
-	border-radius: 4px;
-	border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.version-alpha {
-	font-size: 10px;
-	font-weight: 700;
-	color: #fbbf24;
-	background-color: rgba(251, 191, 36, 0.2);
-	padding: 2px 6px;
-	border-radius: 4px;
-	letter-spacing: 1px;
-}
-
-.version-number {
-	font-size: 11px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.5);
-}
-
-// Help Button
-.help-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	width: 32px;
-	height: 32px;
-	background-color: rgba(139, 92, 246, 0.2);
-	border: 1px solid rgba(139, 92, 246, 0.4);
-	border-radius: 6px;
-	cursor: pointer;
-	pointer-events: all;
-
-	&:hover {
-		background-color: rgba(139, 92, 246, 0.4);
-		border-color: rgba(139, 92, 246, 0.6);
-	}
-
-	.help-icon {
-		width: 16px;
-		height: 16px;
-	}
-}
-
-// ============================================
-// NOTIFICATION PANEL (top-left, opposite of version indicator)
-// ============================================
-
-NotificationPanel {
-	z-index: 300;
-}
-
-.notification-panel {
-	position: absolute;
-	bottom: 90px;
-	right: 16px;
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	max-width: 360px;
-	z-index: 10000;
-	pointer-events: none;
-	overflow: visible;
-}
-
-.notification {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 12px;
-	padding: 16px;
-	background-color: rgba(40, 40, 50, 1);
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	border-left: 3px solid rgba(255, 255, 255, 0.2);
-	border-radius: 10px;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-	cursor: pointer;
-	pointer-events: all;
-	position: relative;
-	overflow: visible;
-	flex-shrink: 0;
-	animation: slideInLeft 0.3s ease;
-
-	&:hover {
-		background-color: rgba(50, 50, 65, 1);
-
-		.notification-close {
-			opacity: 1;
-		}
-	}
-
-	// Type-specific styling - dark gray background with colored accents
-	&.info {
-		border-left-color: #3b82f6;
-		.notification-icon { color: #3b82f6; }
-	}
-
-	&.success {
-		border-left-color: #22c55e;
-		.notification-icon { color: #22c55e; }
-	}
-
-	&.warning {
-		border-left-color: #f59e0b;
-		.notification-icon { color: #f59e0b; }
-	}
-
-	&.evolution {
-		border-left-color: #fbbf24;
-		.notification-icon { color: #fbbf24; }
-		.notification-title { color: #fbbf24; }
-	}
-
-	&.server-boost {
-		border-left-color: #a855f7;
-		border-color: rgba(168, 85, 247, 0.4);
-		background-color: rgba(50, 30, 70, 1);
-		box-shadow: 0 4px 20px rgba(168, 85, 247, 0.3);
-		.notification-icon { color: #a855f7; }
-		.notification-title { color: #a855f7; }
-	}
-
-	&.ranked-battle {
-		border-left-color: #ef4444;
-		.notification-icon { color: #ef4444; }
-		.notification-title { color: #ef4444; }
-	}
-
-	&.catch {
-		border-left-color: #22c55e;
-		.notification-icon { color: #22c55e; }
-		.notification-title { color: #22c55e; }
-	}
-
-	&.tamer-level-up {
-		border-left-color: #06b6d4;
-		.notification-icon { color: #06b6d4; }
-		.notification-title { color: #06b6d4; }
-	}
-}
-
-@keyframes slideInLeft {
-	from {
-		opacity: 0;
-		transform: translateX(-20px);
-	}
-	to {
-		opacity: 1;
-		transform: translateX(0);
-	}
-}
-
-@keyframes headerSlideIn {
-	from {
-		opacity: 0;
-		transform: translateY(-15px);
-	}
-	to {
-		transform: translateY(0);
-	}
-}
-
-.notification-icon {
-	font-size: 20px;
-	flex-shrink: 0;
-	line-height: 20px;
-	width: 28px;
-	height: 28px;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-}
-
-.notification-icon-img {
-	width: 28px;
-	height: 28px;
-	image-rendering: pixelated;
-}
-
-.notification-content {
-	flex: 1;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	min-width: 0;
-}
-
-.notification-title {
-	font-size: 13px;
-	font-weight: 700;
-	color: #ffffff;
-	line-height: 18px;
-}
-
-.notification-message {
-	font-size: 12px;
-	color: rgba(255, 255, 255, 0.7);
-	line-height: 16px;
-}
-
-.notification-close {
-	color: rgba(255, 255, 255, 0.4);
-	opacity: 0;
-	transition: opacity 0.2s ease;
-	flex-shrink: 0;
-	margin-left: 8px;
-
-	.close-icon {
-		width: 14px;
-		height: 14px;
-	}
-
-	&:hover {
-		color: rgba(255, 255, 255, 0.8);
-	}
-}
-
-.notification-progress {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	right: 0;
-	height: 2px;
-	background-color: rgba(255, 255, 255, 0.1);
-}
-
-.notification-progress-bar {
-	height: 100%;
-	background-color: rgba(139, 92, 246, 0.6);
-	transition: width 0.1s linear;
-}
-
-// Expand button — dark pill style with hover lift / press squish
-.notification-expand-btn {
-	opacity: 0;
-	height: 0;
-	pointer-events: none;
-	padding: 0;
-	background-color: #252530;
-	border: 1.5px solid rgba(255, 255, 255, 0.06);
-	border-radius: 12px;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	align-self: flex-start;
-	gap: 8px;
-	cursor: pointer;
-	pointer-events: all;
-	position: relative;
-	transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-
-	&:hover {
-		background-color: #2e2e3e;
-		border-color: rgba(255, 255, 255, 0.12);
-		transform: translateY(-2px);
-		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-
-		.notification-btn-icon {
-			opacity: 0;
-		}
-
-		.notification-btn-icon-anim {
-			opacity: 1;
-		}
-
-		.notification-btn-text {
-			color: #d0d0e4;
-		}
-	}
-
-	&:active {
-		transform: translateY(0px) scale(0.97);
-		box-shadow: none;
-	}
-
-	&.has-unread {
-		animation: unread-pulse 2s ease-in-out infinite;
-	}
-}
-
-@keyframes unread-pulse {
-	0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
-	50% { box-shadow: 0 0 12px 4px rgba(139, 92, 246, 0.5); }
-}
-
-.notification-btn-icon {
-	width: 16px;
-	height: 16px;
-}
-
-.notification-btn-icon-anim {
-	position: absolute;
-	top: 50%;
-	left: 9px;
-	transform: translateY(-50%);
-	width: 22px;
-	height: 22px;
-	opacity: 0;
-}
-
-.notification-btn-text {
-	font-size: 11px;
-	font-weight: 800;
-	letter-spacing: 1.5px;
-	color: #8888a8;
-	transition: color 0.2s ease;
-}
-
-.unread-badge {
-	background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-	color: #ffffff;
-	font-size: 10px;
-	font-weight: 700;
-	padding: 2px 6px;
-	border-radius: 10px;
-	min-width: 16px;
-	text-align: center;
-}
-
-@keyframes pulse {
-	0%, 100% { transform: scale(1); }
-	50% { transform: scale(1.1); }
-}
-
-// Expanded panel state
-.notification-panel.expanded {
-	width: 340px;
-	max-width: 340px;
-}
-
-// ============================================
-// NOTIFICATION HISTORY PANEL (expanded view)
-// ============================================
-
-.notification-history {
-	position: absolute;
-	bottom: 0;
-	right: 0;
-	width: 360px;
-	height: 580px;
-	background-color: #0c0c18;
-	border: 1px solid rgba(255, 255, 255, 0.04);
-	border-radius: 16px;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-
-	// Hidden by default — animate in/out (position: absolute so it doesn't push siblings)
-	opacity: 0;
-	transform: scale(0.92);
-	pointer-events: none;
-	transition: opacity 0.2s ease, transform 0.2s ease;
-
-	&.open {
-		opacity: 1;
-		transform: scale(1);
-		pointer-events: all;
-		animation: panelPopIn 0.4s ease-out;
-
-		// Staggered content entrance
-		.notif-header {
-			opacity: 0;
-			animation: panelContentFadeIn 0.3s ease-out 0.1s forwards;
-		}
-
-		.notif-filter {
-			opacity: 0;
-			animation: panelContentFadeIn 0.3s ease-out 0.15s forwards;
-		}
-
-		.notif-list {
-			opacity: 0;
-			animation: panelContentFadeIn 0.3s ease-out 0.2s forwards;
-		}
-
-		.notif-clear {
-			opacity: 0;
-			animation: panelContentFadeIn 0.3s ease-out 0.25s forwards;
-		}
-	}
-}
-
-// Notification Header
-.notif-header {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: space-between;
-	padding: 12px 14px;
-	background-color: rgba(0, 0, 0, 0.2);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-	flex-shrink: 0;
-}
-
-.notif-header-left {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-}
-
-.notif-icon {
-	width: 18px;
-	height: 18px;
-}
-
-.notif-title {
-	font-size: 12px;
-	font-weight: 900;
-	letter-spacing: 0.06em;
-	color: #e0e0ec;
-}
-
-.notif-header-right {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-}
-
-.notif-badge {
-	font-size: 9px;
-	font-weight: 800;
-	color: #ef4444;
-	background-color: rgba(239, 68, 68, 0.08);
-	padding: 3px 8px;
-	border-radius: 6px;
-}
-
-// Filter Tabs
-.notif-filter {
-	display: flex;
-	flex-direction: row;
-	padding: 6px 10px;
-	gap: 3px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-	background-color: rgba(0, 0, 0, 0.08);
-	flex-shrink: 0;
-}
-
-.nf-pill {
-	padding: 4px 10px;
-	border-radius: 6px;
-	cursor: pointer;
-
-	span {
-		font-size: 9px;
-		font-weight: 700;
-		color: #4a4a6a;
-	}
-
-	&:hover span {
-		color: #8888a8;
-	}
-
-	&.active {
-		background-color: rgba(124, 58, 237, 0.1);
-
-		span {
-			color: #e0e0ec;
-		}
-	}
-}
-
-// Notification List
-.notif-list {
-	flex: 1 1 0;
-	min-height: 0;
-	overflow-y: scroll;
-	overflow-x: hidden;
-	padding: 8px 10px;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-// Notification Message Card
-.notif-msg {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	padding: 8px 12px;
-	border-radius: 8px;
-	border-left: 3px solid #8888a8;
-	flex-shrink: 0;
-	background-color: rgba(136, 136, 168, 0.03);
-
-	// Type colors
-	&.info {
-		border-left-color: #8888a8;
-		background-color: rgba(136, 136, 168, 0.03);
-	}
-	&.success {
-		border-left-color: #22c55e;
-		background-color: rgba(34, 197, 94, 0.04);
-	}
-	&.warning {
-		border-left-color: #f59e0b;
-		background-color: rgba(245, 158, 11, 0.04);
-	}
-	&.evolution {
-		border-left-color: #a855f7;
-		background-color: rgba(168, 85, 247, 0.04);
-	}
-	&.server-boost {
-		border-left-color: #f59e0b;
-		background-color: rgba(245, 158, 11, 0.04);
-	}
-	&.ranked-battle {
-		border-left-color: #ef4444;
-		background-color: rgba(239, 68, 68, 0.04);
-	}
-	&.catch {
-		border-left-color: #22c55e;
-		background-color: rgba(34, 197, 94, 0.04);
-	}
-	&.tamer-level-up {
-		border-left-color: #3b82f6;
-		background-color: rgba(59, 130, 246, 0.04);
-	}
-	&.expedition-unlock {
-		border-left-color: #22c55e;
-		background-color: rgba(34, 197, 94, 0.04);
-	}
-}
-
-// Icon container
-.ni {
-	width: 28px;
-	height: 28px;
-	min-width: 28px;
-	border-radius: 8px;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	background-color: rgba(136, 136, 168, 0.08);
-
-	span {
-		font-size: 14px;
-	}
-
-	&.info { background-color: rgba(136, 136, 168, 0.08); }
-	&.success { background-color: rgba(34, 197, 94, 0.1); }
-	&.warning { background-color: rgba(245, 158, 11, 0.1); }
-	&.evolution { background-color: rgba(168, 85, 247, 0.1); }
-	&.server-boost { background-color: rgba(245, 158, 11, 0.1); }
-	&.ranked-battle { background-color: rgba(239, 68, 68, 0.1); }
-	&.catch { background-color: rgba(34, 197, 94, 0.1); }
-	&.tamer-level-up { background-color: rgba(59, 130, 246, 0.1); }
-	&.expedition-unlock { background-color: rgba(34, 197, 94, 0.1); }
-}
-
-.ni-img {
-	width: 22px;
-	height: 22px;
-	image-rendering: pixelated;
-}
-
-// Content
-.nc {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.nt {
-	font-size: 10px;
-	font-weight: 800;
-	line-height: 14;
-	color: #8888a8;
-
-	&.info { color: #8888a8; }
-	&.success { color: #4ade80; }
-	&.warning { color: #fbbf24; }
-	&.evolution { color: #c084fc; }
-	&.server-boost { color: #fbbf24; }
-	&.ranked-battle { color: #f87171; }
-	&.catch { color: #4ade80; }
-	&.tamer-level-up { color: #60a5fa; }
-	&.expedition-unlock { color: #4ade80; }
-}
-
-.ns {
-	font-size: 9px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.5);
-	margin-top: 1px;
-}
-
-.ntime {
-	font-size: 8px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.4);
-	align-self: flex-start;
-	flex-shrink: 0;
-}
-
-// Clear All
-.notif-clear {
-	padding: 10px;
-	text-align: center;
-	border-top: 1px solid rgba(255, 255, 255, 0.04);
-	flex-shrink: 0;
-}
-
-.notif-clear-btn {
-	cursor: pointer;
-
-	span {
-		font-size: 10px;
-		font-weight: 700;
-		color: #4a4a6a;
-	}
-
-	&:hover span {
-		color: #8888a8;
 	}
 }
 
@@ -1713,635 +1429,149 @@ NotificationPanel {
 	}
 }
 
-// ============================================
-// BOSS TOKENS RESOURCE
-// ============================================
+// ═══════════════════════════════════════════════════════════════
+// TAB-LEAVE CONFIRM DIALOG — fires when the player tries to
+// switch away from the expedition tab mid-run. Warns that the
+// current expedition will end so a stray click doesn't silently
+// cost them progress.
+// ═══════════════════════════════════════════════════════════════
 
-.resource.boss-tokens {
-	.resource-value {
-		color: #fbbf24;
-	}
+@keyframes tlcEnter {
+	from { opacity: 0; transform: translate(-50%, -50%) scale(0.92); }
+	to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
-// ============================================
-// HUD THEMES
-// ============================================
-
-// Fire Theme (Inferno)
-.game-hud.theme-fire {
-	.unified-top-bar {
-		background: linear-gradient(180deg, rgba(45, 24, 16, 0.95) 0%, rgba(26, 15, 10, 0.95) 100%);
-		border-bottom-color: rgba(255, 107, 53, 0.3);
-	}
-
-	.tab {
-		&.active {
-			border-bottom-color: #ff6b35;
-			background-color: rgba(255, 107, 53, 0.15);
-		}
-
-		&.keyboard-selected {
-			background-color: rgba(255, 107, 53, 0.25);
-			border-bottom-color: #ff8c5a;
-			box-shadow: 0 0 20px rgba(255, 107, 53, 0.3);
-		}
-	}
-
-	.level-badge {
-		background: linear-gradient(135deg, #ff6b35 0%, #d4440a 100%);
-	}
-
-	.bottom-bar {
-		background: linear-gradient(180deg, rgba(26, 15, 10, 0.95) 0%, rgba(45, 24, 16, 0.95) 100%);
-		border-top-color: rgba(255, 107, 53, 0.3);
-	}
-}
-
-// Water Theme (Abyssal)
-.game-hud.theme-water {
-	.unified-top-bar {
-		background: linear-gradient(180deg, rgba(10, 22, 40, 0.95) 0%, rgba(5, 16, 32, 0.95) 100%);
-		border-bottom-color: rgba(6, 182, 212, 0.3);
-	}
-
-	.tab {
-		&.active {
-			border-bottom-color: #06b6d4;
-			background-color: rgba(6, 182, 212, 0.15);
-		}
-
-		&.keyboard-selected {
-			background-color: rgba(6, 182, 212, 0.25);
-			border-bottom-color: #22d3ee;
-			box-shadow: 0 0 20px rgba(6, 182, 212, 0.3);
-		}
-	}
-
-	.level-badge {
-		background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-	}
-
-	.bottom-bar {
-		background: linear-gradient(180deg, rgba(5, 16, 32, 0.95) 0%, rgba(10, 22, 40, 0.95) 100%);
-		border-top-color: rgba(6, 182, 212, 0.3);
-	}
-}
-
-// Nature Theme (Verdant)
-.game-hud.theme-nature {
-	.unified-top-bar {
-		background: linear-gradient(180deg, rgba(15, 31, 20, 0.95) 0%, rgba(10, 21, 13, 0.95) 100%);
-		border-bottom-color: rgba(34, 197, 94, 0.3);
-	}
-
-	.tab {
-		&.active {
-			border-bottom-color: #22c55e;
-			background-color: rgba(34, 197, 94, 0.15);
-		}
-
-		&.keyboard-selected {
-			background-color: rgba(34, 197, 94, 0.25);
-			border-bottom-color: #4ade80;
-			box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
-		}
-	}
-
-	.level-badge {
-		background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
-	}
-
-	.bottom-bar {
-		background: linear-gradient(180deg, rgba(10, 21, 13, 0.95) 0%, rgba(15, 31, 20, 0.95) 100%);
-		border-top-color: rgba(34, 197, 94, 0.3);
-	}
-}
-ActiveEffectsPanel {
-	z-index: 300;
-}
-
-.active-effects-panel {
+.tab-leave-confirm-root {
 	position: absolute;
-	bottom: 20px;
-	right: 24px;
-	display: flex;
-	flex-direction: column-reverse;
-	align-items: flex-end;
-	gap: 8px;
-	z-index: 10000;
-	pointer-events: none;
-	overflow: visible;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 150;
 }
 
-.active-effects-panel.expanded {
-	width: 380px;
-	max-width: 380px;
-}
-
-.effects-popup {
+.tab-leave-backdrop {
 	position: absolute;
-	bottom: 70px;
-	right: 0;
-	width: 380px;
-	height: 450px;
-	background-color: #0c0c18;
-	border: 1px solid rgba(255, 255, 255, 0.04);
-	border-radius: 16px;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.78);
+}
+
+.tab-leave-modal {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 440px;
+	max-width: 88%;
+	padding: 26px 28px 22px 28px;
+	background-color: rgba(12, 18, 30, 0.98);
+	border: 2px solid rgba(252, 165, 165, 0.75);
+	border-radius: 14px;
+	box-shadow: 0 24px 60px rgba(0, 0, 0, 0.7), 0 0 70px rgba(239, 68, 68, 0.25);
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
-	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-
-	opacity: 0;
-	transform: scale(0.92);
-	pointer-events: none;
-	transition: opacity 0.2s ease, transform 0.2s ease;
-
-	&.open {
-		opacity: 1;
-		transform: scale(1);
-		pointer-events: all;
-		animation: panelPopIn 0.4s ease-out;
-	}
-}
-
-// Header
-.ep-header {
-	padding: 14px 16px 0px 16px;
-	display: flex;
 	align-items: center;
-	justify-content: space-between;
-	flex-shrink: 0;
+	animation: tlcEnter 0.22s ease-out;
 }
 
-.ep-title {
-	display: flex;
-	align-items: center;
-	gap: 7px;
-	font-size: 13px;
-	font-weight: 900;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
-	color: #e0ddf0;
-}
-
-.ep-title-icon {
-	font-size: 14px;
-}
-
-// Tabs
-.ep-tabs {
-	display: flex;
-	gap: 2px;
-	padding: 10px 16px 0px 16px;
-	flex-shrink: 0;
-}
-
-.ep-tab {
-	flex: 1;
-	padding: 8px 0px;
-	text-align: center;
-	font-size: 9px;
-	font-weight: 800;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: #55536a;
-	cursor: pointer;
-	border-bottom: 2px solid transparent;
-	transition: all 0.15s ease;
+.tlc-icon {
+	width: 64px;
+	height: 64px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 5px;
-	pointer-events: all;
-
-	&:hover {
-		color: #9896b0;
-	}
-
-	&.active {
-		color: #e0ddf0;
-		border-bottom-color: #7c3aed;
-
-		.ep-tab-count {
-			background-color: rgba(124, 58, 237, 0.08);
-			color: #c084fc;
-		}
-	}
+	margin-bottom: 12px;
+	background-color: rgba(239, 68, 68, 0.18);
+	border: 2px solid rgba(252, 165, 165, 0.85);
+	border-radius: 14px;
+	transform: rotate(45deg);
 }
 
-.ep-tab-count {
-	font-size: 8px;
+.tlc-icon iconify {
+	transform: rotate(-45deg);
+}
+
+.tlc-title {
+	font-size: 20px;
 	font-weight: 900;
-	background-color: rgba(255, 255, 255, 0.05);
-	padding: 2px 5px;
-	border-radius: 4px;
-	color: #9896b0;
+	color: rgb(254, 243, 199);
+	letter-spacing: 2.5px;
+	line-height: 22;
+	margin-bottom: 6px;
+	text-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
 }
 
-// Divider
-.ep-divider {
-	height: 1px;
-	background-color: rgba(255, 255, 255, 0.04);
-	margin: 0px 16px;
-	flex-shrink: 0;
+.tlc-body {
+	font-size: 12px;
+	font-weight: 500;
+	color: rgba(203, 213, 225, 0.92);
+	line-height: 16;
+	letter-spacing: 0.3px;
+	text-align: center;
+	margin-bottom: 20px;
+	padding: 0 8px;
 }
 
-// Scroll area
-.ep-scroll {
+.tlc-actions {
+	display: flex;
+	flex-direction: row;
+	width: 100%;
+}
+
+.tlc-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
 	flex: 1 1 0;
-	min-height: 0;
-	overflow-y: scroll;
-	overflow-x: hidden;
-	display: flex;
-	flex-direction: column;
-}
-
-// Section header (direct child of scroll)
-.ep-sec-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 10px 16px 4px 16px;
-	flex-shrink: 0;
-}
-
-.ep-sec-title {
-	display: flex;
-	align-items: center;
-	gap: 5px;
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: #9896b0;
-}
-
-.ep-sec-icon {
-	font-size: 11px;
-}
-
-.ep-sec-count {
-	font-size: 8px;
-	font-weight: 800;
-	padding: 3px 7px;
-	border-radius: 5px;
-	background-color: rgba(255, 255, 255, 0.04);
-	color: #55536a;
-}
-
-// Empty state
-.ep-empty {
-	text-align: center;
-	padding: 24px 16px;
-	margin: 0px 12px;
-	color: #55536a;
-	font-size: 10px;
-	font-weight: 600;
-	flex-shrink: 0;
-}
-
-// ===== BOOST CARD =====
-.boost-card {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
-	margin: 0px 12px 6px 12px;
-	background-color: rgba(19, 19, 34, 1);
-	border: 1px solid rgba(255, 255, 255, 0.04);
-	border-radius: 10px;
-	transition: all 0.15s ease;
-	cursor: pointer;
-	flex-shrink: 0;
-
-	&:hover {
-		background-color: rgba(24, 24, 48, 1);
-		border-color: rgba(255, 255, 255, 0.06);
-	}
-}
-
-.boost-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 8px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-
-	img {
-		width: 28px;
-		height: 28px;
-		image-rendering: pixelated;
-	}
-
-	&.ink {
-		background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(124, 58, 237, 0.08));
-		border: 1px solid rgba(168, 85, 247, 0.12);
-	}
-
-	&.xp {
-		background: linear-gradient(135deg, rgba(34, 211, 238, 0.15), rgba(34, 211, 238, 0.06));
-		border: 1px solid rgba(34, 211, 238, 0.12);
-	}
-
-	&.event {
-		background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(245, 158, 11, 0.12));
-		border: 1px solid rgba(251, 191, 36, 0.3);
-
-		span {
-			font-size: 14px;
-			font-weight: 900;
-			color: #fbbf24;
-		}
-	}
-
-	&.gold {
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.06));
-		border: 1px solid rgba(245, 158, 11, 0.12);
-	}
-}
-
-.boost-info {
-	flex: 1;
 	min-width: 0;
-	display: flex;
-	flex-direction: column;
+	height: 46px;
+	margin-right: 8px;
+	padding: 0 14px;
+	border-radius: 9px;
+	cursor: pointer;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				transform 0.1s ease-out;
 }
 
-.boost-name {
+.tlc-btn:last-child {
+	margin-right: 0;
+}
+
+.tlc-btn span {
+	margin-left: 7px;
 	font-size: 12px;
-	font-weight: 700;
-	color: #e0ddf0;
+	font-weight: 900;
+	color: white;
+	line-height: 14;
+	letter-spacing: 1.5px;
 }
 
-.boost-desc {
-	font-size: 11px;
-	color: #9896b0;
-	margin-top: 2px;
+.tlc-btn.danger {
+	background: linear-gradient(to right, rgba(153, 27, 27, 1) 0%, rgba(220, 38, 38, 1) 100%);
+	border: 2px solid rgba(252, 165, 165, 0.85);
 }
 
-.boost-source {
-	font-size: 10px;
-	color: #f59e0b;
-	margin-top: 2px;
+.tlc-btn.danger:hover {
+	transform: translateY(-1px);
+	border-color: rgba(254, 202, 202, 1);
+	box-shadow: 0 6px 18px rgba(220, 38, 38, 0.35);
 }
 
-.boost-timer {
-	font-size: 9px;
-	font-weight: 800;
-	padding: 3px 8px;
-	border-radius: 5px;
+.tlc-btn.secondary {
 	background-color: rgba(255, 255, 255, 0.06);
-	color: #9896b0;
-	white-space: nowrap;
-	flex-shrink: 0;
-
-	&.expiring {
-		color: #ef4444;
-		animation: timer-pulse 1s ease-in-out infinite;
-	}
+	border: 2px solid rgba(148, 163, 184, 0.45);
 }
 
-.boost-server {
-	font-size: 7px;
-	font-weight: 900;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	padding: 2px 5px;
-	border-radius: 3px;
-	background: linear-gradient(135deg, #fbbf24, #f59e0b);
-	color: #000000;
-	flex-shrink: 0;
+.tlc-btn.secondary span {
+	color: rgba(226, 232, 240, 0.92);
 }
 
-.event-boost {
-	background-color: rgba(251, 191, 36, 0.08);
-	border: 1px solid rgba(251, 191, 36, 0.2);
-
-	&:hover {
-		background-color: rgba(251, 191, 36, 0.12);
-		border-color: rgba(251, 191, 36, 0.3);
-	}
-
-	.boost-name {
-		color: #fbbf24;
-	}
-}
-
-@keyframes timer-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.6; }
-}
-
-// ===== RELIC CARD =====
-.relic-card {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
-	margin: 0px 12px 6px 12px;
-	border-radius: 10px;
-	transition: all 0.15s ease;
-	cursor: pointer;
-	border: 1px solid transparent;
-	flex-shrink: 0;
-
-	&:hover {
-		background-color: rgba(255, 255, 255, 0.02);
-	}
-
-	&.rare {
-		background-color: rgba(59, 130, 246, 0.08);
-		border-color: rgba(59, 130, 246, 0.2);
-	}
-
-	&.uncommon {
-		background-color: rgba(34, 197, 94, 0.08);
-		border-color: rgba(34, 197, 94, 0.2);
-	}
-
-	&.epic {
-		background-color: rgba(168, 85, 247, 0.08);
-		border-color: rgba(168, 85, 247, 0.2);
-	}
-
-	&.legendary {
-		background-color: rgba(245, 158, 11, 0.08);
-		border-color: rgba(245, 158, 11, 0.2);
-	}
-}
-
-.relic-icon {
-	width: 38px;
-	height: 38px;
-	border-radius: 8px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	flex-shrink: 0;
-	background-color: rgba(0, 0, 0, 0.3);
-
-	img {
-		width: 28px;
-		height: 28px;
-		image-rendering: pixelated;
-	}
-}
-
-.relic-info {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.relic-name {
-	font-size: 12px;
-	font-weight: 700;
-	color: #e0ddf0;
-}
-
-.relic-desc {
-	font-size: 11px;
-	color: #9896b0;
-	margin-top: 2px;
-}
-
-.relic-rarity {
-	font-size: 8px;
-	font-weight: 900;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	padding: 3px 7px;
-	border-radius: 4px;
-	white-space: nowrap;
-	flex-shrink: 0;
-
-	&.rare {
-		background-color: rgba(59, 130, 246, 0.1);
-		color: #60a5fa;
-		border: 1px solid rgba(59, 130, 246, 0.15);
-	}
-
-	&.uncommon {
-		background-color: rgba(34, 197, 94, 0.1);
-		color: #4ade80;
-		border: 1px solid rgba(34, 197, 94, 0.15);
-	}
-
-	&.epic {
-		background-color: rgba(168, 85, 247, 0.1);
-		color: #c084fc;
-		border: 1px solid rgba(168, 85, 247, 0.15);
-	}
-
-	&.legendary {
-		background-color: rgba(245, 158, 11, 0.1);
-		color: #fbbf24;
-		border: 1px solid rgba(245, 158, 11, 0.15);
-	}
-}
-
-// ===== SKILL CARD =====
-.skill-card {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 10px 12px;
-	margin: 0px 12px 6px 12px;
-	background-color: rgba(19, 19, 34, 1);
-	border: 1px solid rgba(255, 255, 255, 0.04);
-	border-radius: 10px;
-	border-left: 3px solid #22c55e;
-	flex-shrink: 0;
-}
-
-.skill-icon {
-	width: 32px;
-	height: 32px;
-	border-radius: 50%;
-	background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.05));
-	border: 1px solid rgba(34, 197, 94, 0.12);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 14px;
-	flex-shrink: 0;
-}
-
-.skill-info {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.skill-name {
-	font-size: 12px;
-	font-weight: 700;
-	color: #e0ddf0;
-}
-
-.skill-desc {
-	font-size: 11px;
-	color: #9896b0;
-	margin-top: 2px;
-}
-
-.skill-rank {
-	font-size: 8px;
-	font-weight: 800;
-	padding: 3px 7px;
-	display: flex;
-	align-items: center;
-	gap: 4px;
-
-	.rank-icon {
-		width: 14px;
-		height: 14px;
-	}
-	border-radius: 5px;
-	background-color: rgba(124, 58, 237, 0.08);
-	color: #c084fc;
-	border: 1px solid rgba(124, 58, 237, 0.12);
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-
-// Genesis Theme (Origin)
-.game-hud.theme-genesis {
-	.top-bar {
-		background: linear-gradient(180deg, rgba(0, 5, 16, 0.98) 0%, rgba(0, 3, 8, 0.98) 100%);
-		border-bottom-color: rgba(255, 255, 255, 0.2);
-	}
-
-	.tab-navigation {
-		background-color: rgba(0, 3, 8, 0.9);
-		border-bottom-color: rgba(255, 255, 255, 0.1);
-	}
-
-	.tab {
-		&.active {
-			border-bottom-color: #ffffff;
-			background-color: rgba(255, 255, 255, 0.1);
-		}
-
-		&.keyboard-selected {
-			background-color: rgba(255, 255, 255, 0.15);
-			border-bottom-color: #ffffff;
-			box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
-		}
-	}
-
-	.level-badge {
-		background: linear-gradient(135deg, #ffffff 0%, #a1a1aa 100%);
-		color: #000000;
-	}
-
-	.bottom-bar {
-		background: linear-gradient(180deg, rgba(0, 3, 8, 0.98) 0%, rgba(0, 5, 16, 0.98) 100%);
-		border-top-color: rgba(255, 255, 255, 0.2);
-	}
+.tlc-btn.secondary:hover {
+	background-color: rgba(167, 139, 250, 0.14);
+	border-color: rgba(167, 139, 250, 0.6);
 }

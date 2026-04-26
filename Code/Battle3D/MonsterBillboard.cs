@@ -47,16 +47,89 @@ public sealed class MonsterBillboard : Component
 	private bool isFainting;
 	private bool faintComplete;
 	private float faintTimer;
-	[Property] public float FaintDuration { get; set; } = 0.45f;
+	// Faint timing — was 0.45s linear which felt rushed (sprite vanished
+	// before the player registered the KO, especially during the KO money-
+	// shot zoom). Bumped to 0.85s with ease-in (gravity-style accel) so the
+	// drop reads as weight, not a teleport. Drop distance 15u → 22u for
+	// more visible travel.
+	[Property] public float FaintDuration { get; set; } = 0.85f;
+	[Property] public float FaintDropDistance { get; set; } = 22f;
 	private Vector3 faintStartPos;
 
-	// Attack animation state
+	// Attack animation state (legacy PlayAttack lunge — currently unused; kept
+	// for compatibility. Real attack motion now flows through LungeForward).
 	private bool isAttacking;
 	private float attackTimer;
 	private const float AttackLungeDuration = 0.15f;
 	private const float AttackReturnDuration = 0.2f;
 	private Vector3 attackStartPos;
 	private Vector3 attackLungeTarget;
+
+	// ── Billboard motion (lunge / knockback) ──────────────────────────
+	// Layered offset on top of WorldPosition. Rest position is captured by
+	// PositionTeam → SetRestPosition; per-frame Update applies offset on top.
+	// Last call wins — a new lunge cancels any in-flight motion.
+	//
+	// Tuning constants (initial — easy to iterate). Distances in world units,
+	// durations in seconds. See the table in CLAUDE-task plan for source.
+	public const float LungeDistanceNormal = 18f;
+	public const float LungeDistanceCrit = 28f;
+	public const float LungeDistanceSuper = 22f;
+	public const float LungeDistanceMiss = 18f;
+
+	public const float KnockbackDistanceNormal = 8f;
+	public const float KnockbackDistanceCrit = 14f;
+	public const float KnockbackDistanceSuper = 10f;
+
+	public const float LungeOutNormal = 0.15f;
+	public const float LungeHoldNormal = 0.05f;
+	public const float LungeBackNormal = 0.20f;
+
+	public const float LungeOutCrit = 0.15f;
+	public const float LungeHoldCrit = 0.08f;
+	public const float LungeBackCrit = 0.20f;
+
+	public const float LungeOutSuper = 0.15f;
+	public const float LungeHoldSuper = 0.05f;
+	public const float LungeBackSuper = 0.22f;
+
+	public const float LungeOutMiss = 0.15f;
+	public const float LungeHoldMiss = 0.0f;
+	public const float LungeBackMiss = 0.10f;
+
+	public const float KbOutNormal = 0.10f;
+	public const float KbBackNormal = 0.25f;
+	public const float KbOutCrit = 0.10f;
+	public const float KbBackCrit = 0.30f;
+	public const float KbOutSuper = 0.10f;
+	public const float KbBackSuper = 0.27f;
+
+	public const float KbDelayNormal = 0.15f;
+	public const float KbDelayCrit = 0.18f;
+	public const float KbDelaySuper = 0.15f;
+
+	private Vector3 motionOffset = Vector3.Zero;
+	private Vector3 restPosition;
+	private bool restPositionSet;
+
+	// Lunge state machine
+	private enum MotionPhase { Idle, Out, Hold, Back }
+	private MotionPhase lungePhase = MotionPhase.Idle;
+	private Vector3 lungeTargetOffset;
+	private float lungeOutDuration;
+	private float lungeHoldDuration;
+	private float lungeBackDuration;
+	private float lungePhaseTimer;
+	private Vector3 lungePhaseStart;
+
+	// Knockback state machine (with optional delay before starting)
+	private MotionPhase kbPhase = MotionPhase.Idle;
+	private float kbDelay;
+	private Vector3 kbTargetOffset;
+	private float kbOutDuration;
+	private float kbBackDuration;
+	private float kbPhaseTimer;
+	private Vector3 kbPhaseStart;
 
 	// Hit flash state
 	private bool isFlashing;
@@ -90,12 +163,32 @@ public sealed class MonsterBillboard : Component
 		CreateSprite();
 	}
 
+	/// <summary>
+	/// Refresh the cached <see cref="Species"/> + sprite if the monster's
+	/// species has changed (i.e., the player evolved it between battles
+	/// while the 3D scene was still alive in wave-transition mode).
+	/// Returns true if the sprite was recreated.
+	/// </summary>
+	public bool RefreshSpeciesIfChanged()
+	{
+		if ( Monster == null ) return false;
+		var currentSpecies = MonsterManager.Instance?.GetSpecies( Monster.SpeciesId );
+		if ( currentSpecies == null ) return false;
+		if ( currentSpecies.Id == Species?.Id ) return false;
+
+		Log.Info( $"Battle3D: Species changed for {Monster.Nickname} ({Species?.Id} → {currentSpecies.Id}) — refreshing sprite" );
+		Species = currentSpecies;
+		CreateSprite();
+		return true;
+	}
+
 	protected override void OnUpdate()
 	{
 		UpdateAttackAnimation();
 		UpdateHitFlash();
 		UpdateSwapLerp();
 		UpdateVisualState();
+		UpdateBillboardMotion();
 	}
 
 	private void CreateSprite()
@@ -160,9 +253,13 @@ public sealed class MonsterBillboard : Component
 		// Handle faint animation (only start once, never restart)
 		if ( IsKO && !isFainting && !faintComplete )
 		{
+			// Clear any in-flight billboard motion so the faint starts from
+			// the rest pose, not whatever knockback frame we happened to be on.
+			ClearMotion();
 			isFainting = true;
 			faintTimer = 0f;
-			faintStartPos = WorldPosition;
+			faintStartPos = restPositionSet ? restPosition : WorldPosition;
+			WorldPosition = faintStartPos;
 		}
 
 		if ( isFainting )
@@ -170,9 +267,14 @@ public sealed class MonsterBillboard : Component
 			faintTimer += Time.Delta;
 			var progress = MathF.Min( faintTimer / FaintDuration, 1f );
 
+			// Ease-in (quadratic) on the drop so it accelerates like gravity
+			// instead of falling at constant speed. Alpha stays linear so the
+			// sprite is still readable mid-fall.
+			var dropProgress = progress * progress;
+
 			var alpha = 1f - progress;
 			renderer.Color = new Color( 1f, 1f, 1f, alpha );
-			WorldPosition = faintStartPos + Vector3.Down * (progress * 15f);
+			WorldPosition = faintStartPos + Vector3.Down * (dropProgress * FaintDropDistance);
 
 			if ( progress >= 1f )
 			{
@@ -344,6 +446,220 @@ public sealed class MonsterBillboard : Component
 		}
 	}
 
+	// ── Billboard motion API ──────────────────────────────────────────────
+
+	/// <summary>
+	/// World-space rest position the controller placed this billboard at.
+	/// Lunge/knockback offsets are layered on top of this. Defaults to current
+	/// WorldPosition the first time it's read so callers don't get Vector3.Zero
+	/// before SetRestPosition has fired.
+	/// </summary>
+	public Vector3 RestPosition
+	{
+		get
+		{
+			if ( !restPositionSet ) { restPosition = WorldPosition; restPositionSet = true; }
+			return restPosition;
+		}
+	}
+
+	/// <summary>
+	/// Tell the billboard the position it should sit at when at rest. Called by
+	/// PositionTeam / wave transitions / swap exits — anything that wants to
+	/// (re)anchor the sprite. Clears any in-flight motion so the new rest
+	/// position takes effect immediately.
+	/// </summary>
+	public void SetRestPosition( Vector3 pos )
+	{
+		restPosition = pos;
+		restPositionSet = true;
+		ClearMotion();
+		WorldPosition = pos;
+	}
+
+	/// <summary>
+	/// Cancel any in-flight lunge/knockback and snap motionOffset to zero.
+	/// Used on KO and wave-transition cleanup.
+	/// </summary>
+	public void ClearMotion()
+	{
+		motionOffset = Vector3.Zero;
+		lungePhase = MotionPhase.Idle;
+		kbPhase = MotionPhase.Idle;
+		kbDelay = 0f;
+	}
+
+	/// <summary>
+	/// Attacker physical commit. Eases motionOffset from 0 → dirToTarget*distance
+	/// over outDuration, holds, then eases back to 0 over backDuration. Last
+	/// call wins — cancels any prior in-flight lunge.
+	/// </summary>
+	public void LungeForward( Vector3 dirToTarget, float distance, float outDuration, float holdDuration, float backDuration )
+	{
+		if ( IsKO || isFainting ) return;
+		lungeTargetOffset = dirToTarget.Normal * distance;
+		lungeOutDuration = MathF.Max( 0.001f, outDuration );
+		lungeHoldDuration = MathF.Max( 0f, holdDuration );
+		lungeBackDuration = MathF.Max( 0.001f, backDuration );
+		lungePhaseStart = motionOffset;
+		lungePhaseTimer = 0f;
+		lungePhase = MotionPhase.Out;
+	}
+
+	/// <summary>
+	/// Defender knockback. Eases motionOffset away from the attacker direction.
+	/// No hold phase. Optional delayBeforeStart so it can lag the attacker's
+	/// lunge for an "impact-then-recoil" beat.
+	/// </summary>
+	public void Knockback( Vector3 fromAttackerDir, float distance, float outDuration, float backDuration, float delayBeforeStart = 0f )
+	{
+		if ( IsKO || isFainting ) return;
+		kbTargetOffset = fromAttackerDir.Normal * distance;
+		kbOutDuration = MathF.Max( 0.001f, outDuration );
+		kbBackDuration = MathF.Max( 0.001f, backDuration );
+		kbDelay = MathF.Max( 0f, delayBeforeStart );
+		kbPhaseStart = motionOffset;
+		kbPhaseTimer = 0f;
+		kbPhase = delayBeforeStart > 0f ? MotionPhase.Idle : MotionPhase.Out;
+		// During delay we keep kbPhase = Idle and tick kbDelay down in the
+		// motion update; once it hits zero we promote to Out. Sentinel pattern
+		// so a single state machine handles both flows.
+		_kbAwaitingDelay = delayBeforeStart > 0f;
+	}
+
+	private bool _kbAwaitingDelay;
+
+	private static float SmoothStep( float t )
+	{
+		// Cubic in/out — heavier on start/end, snappier through the middle.
+		t = MathX.Clamp( t, 0f, 1f );
+		return t * t * (3f - 2f * t);
+	}
+
+	private void UpdateBillboardMotion()
+	{
+		// KO / faint / swap-lerp / entrance owns WorldPosition outright; bail
+		// so we don't fight them.
+		if ( IsKO || isFainting || faintComplete || isEntering || isSwapLerping )
+		{
+			if ( motionOffset != Vector3.Zero ) motionOffset = Vector3.Zero;
+			return;
+		}
+
+		// Legacy PlayAttack also writes WorldPosition directly; defer to it
+		// when active (it'll restore attackStartPos on completion, then we
+		// resume here). Without this, the two systems would race per-frame.
+		if ( isAttacking ) return;
+
+		float dt = Time.Delta;
+
+		// ── Lunge phases ─────
+		switch ( lungePhase )
+		{
+			case MotionPhase.Out:
+			{
+				lungePhaseTimer += dt;
+				float t = SmoothStep( lungePhaseTimer / lungeOutDuration );
+				motionOffset = Vector3.Lerp( lungePhaseStart, lungeTargetOffset, t );
+				if ( lungePhaseTimer >= lungeOutDuration )
+				{
+					motionOffset = lungeTargetOffset;
+					if ( lungeHoldDuration > 0f )
+					{
+						lungePhase = MotionPhase.Hold;
+						lungePhaseTimer = 0f;
+					}
+					else
+					{
+						lungePhase = MotionPhase.Back;
+						lungePhaseTimer = 0f;
+						lungePhaseStart = motionOffset;
+					}
+				}
+				break;
+			}
+			case MotionPhase.Hold:
+			{
+				lungePhaseTimer += dt;
+				motionOffset = lungeTargetOffset;
+				if ( lungePhaseTimer >= lungeHoldDuration )
+				{
+					lungePhase = MotionPhase.Back;
+					lungePhaseTimer = 0f;
+					lungePhaseStart = motionOffset;
+				}
+				break;
+			}
+			case MotionPhase.Back:
+			{
+				lungePhaseTimer += dt;
+				float t = SmoothStep( lungePhaseTimer / lungeBackDuration );
+				motionOffset = Vector3.Lerp( lungePhaseStart, Vector3.Zero, t );
+				if ( lungePhaseTimer >= lungeBackDuration )
+				{
+					motionOffset = Vector3.Zero;
+					lungePhase = MotionPhase.Idle;
+				}
+				break;
+			}
+		}
+
+		// ── Knockback phases (independent state machine — both can run simultaneously
+		// in principle, but in practice attacker and defender are different billboards).
+		// We keep both here so "self-knockback" or chain reactions remain trivial.
+		if ( _kbAwaitingDelay )
+		{
+			kbDelay -= dt;
+			if ( kbDelay <= 0f )
+			{
+				_kbAwaitingDelay = false;
+				kbPhase = MotionPhase.Out;
+				kbPhaseTimer = 0f;
+				kbPhaseStart = motionOffset;
+			}
+		}
+
+		switch ( kbPhase )
+		{
+			case MotionPhase.Out:
+			{
+				kbPhaseTimer += dt;
+				float t = SmoothStep( kbPhaseTimer / kbOutDuration );
+				// Combine with any active lunge offset by treating kb as additive
+				// override during this frame — but since attacker billboards
+				// don't get knockback (and vice-versa) in normal play, this is
+				// effectively a direct write.
+				motionOffset = Vector3.Lerp( kbPhaseStart, kbTargetOffset, t );
+				if ( kbPhaseTimer >= kbOutDuration )
+				{
+					motionOffset = kbTargetOffset;
+					kbPhase = MotionPhase.Back;
+					kbPhaseTimer = 0f;
+					kbPhaseStart = motionOffset;
+				}
+				break;
+			}
+			case MotionPhase.Back:
+			{
+				kbPhaseTimer += dt;
+				float t = SmoothStep( kbPhaseTimer / kbBackDuration );
+				motionOffset = Vector3.Lerp( kbPhaseStart, Vector3.Zero, t );
+				if ( kbPhaseTimer >= kbBackDuration )
+				{
+					motionOffset = Vector3.Zero;
+					kbPhase = MotionPhase.Idle;
+				}
+				break;
+			}
+		}
+
+		// Apply motion offset on top of rest position.
+		if ( restPositionSet && (lungePhase != MotionPhase.Idle || kbPhase != MotionPhase.Idle || _kbAwaitingDelay || motionOffset != Vector3.Zero) )
+		{
+			WorldPosition = restPosition + motionOffset;
+		}
+	}
+
 	private void UpdateHitFlash()
 	{
 		if ( !isFlashing || renderer == null ) return;
@@ -406,6 +722,7 @@ public sealed class MonsterBillboard : Component
 		isFainting = false;
 		faintComplete = false;
 		isEntering = false;
+		ClearMotion();
 		if ( renderer != null )
 		{
 			renderer.Enabled = true;

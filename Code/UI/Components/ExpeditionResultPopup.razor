@@ -1,0 +1,225 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using System.Linq;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Panels;
+@inherits Panel
+
+<root class="result-popup-root @(_won ? "victory" : "defeat") @(IsVisible ? "visible" : "")">
+	@if ( IsVisible )
+	{
+		var zone = ExpeditionManager.Instance?.GetExpedition( _zoneId );
+		var isComplete = _won && _wave >= (zone?.Waves ?? 0);
+
+		<div class="result-popup-backdrop"></div>
+		<div class="result-popup-modal">
+
+			<div class="result-popup-banner">
+				@if ( isComplete )
+				{
+					<div class="result-popup-icon victory">
+						<img src="ui/icons/rarity/gold.svg" />
+					</div>
+					<div class="result-popup-kicker">EXPEDITION COMPLETE</div>
+					<div class="result-popup-title">VICTORY</div>
+					<div class="result-popup-subtitle">@zone.Name conquered</div>
+				}
+				else
+				{
+					<div class="result-popup-icon defeat">
+						<img src="ui/icons/sort/skull.svg" />
+					</div>
+					<div class="result-popup-kicker">EXPEDITION FAILED</div>
+					<div class="result-popup-title">DEFEATED</div>
+					<div class="result-popup-subtitle">Your team fell on Wave @_wave of @zone.Waves</div>
+				}
+			</div>
+
+			@if ( _won )
+			{
+				<div class="result-popup-rewards">
+					<div class="result-reward-row">
+						<img class="result-reward-icon" src="ui/icons/currency/money.svg" />
+						<span class="result-reward-label">GOLD EARNED</span>
+						<span class="result-reward-amount gold">+@_gold</span>
+					</div>
+					<div class="result-reward-row">
+						<img class="result-reward-icon" src="ui/icons/expedition_badges/xp.svg" />
+						<span class="result-reward-label">TAMER XP</span>
+						<span class="result-reward-amount xp">+@_xp</span>
+					</div>
+					@if ( _tokens > 0 )
+					{
+						<div class="result-reward-row">
+							<img class="result-reward-icon" src="ui/icons/currency/token.svg" />
+							<span class="result-reward-label">BOSS TOKENS</span>
+							<span class="result-reward-amount tokens">+@_tokens</span>
+						</div>
+					}
+				</div>
+			}
+
+			<div class="result-popup-actions">
+				@if ( _won )
+				{
+					<button class="result-btn primary" onclick=@OnEmbarkAgain>
+						<iconify icon="lucide:compass" Size=@(16) Color="#ffffff" />
+						<span>EMBARK AGAIN</span>
+					</button>
+					<button class="result-btn secondary" onclick=@OnReturnToMap>
+						<iconify icon="lucide:map" Size=@(14) Color="#cbd5e1" />
+						<span>RETURN TO MAP</span>
+					</button>
+				}
+				else
+				{
+					<button class="result-btn primary" onclick=@OnRetry>
+						<iconify icon="lucide:rotate-ccw" Size=@(16) Color="#ffffff" />
+						<span>RETRY</span>
+					</button>
+					<button class="result-btn secondary" onclick=@OnEmbarkAgain>
+						<iconify icon="lucide:users" Size=@(14) Color="#cbd5e1" />
+						<span>CHANGE TEAM</span>
+					</button>
+					<button class="result-btn ghost" onclick=@OnReturnToMap>
+						<iconify icon="lucide:map" Size=@(14) Color="#94a3b8" />
+						<span>MAP</span>
+					</button>
+				}
+			</div>
+		</div>
+	}
+</root>
+}
+
+@code {
+	public static ExpeditionResultPopup Instance { get; private set; }
+	public static bool IsVisible { get; private set; }
+
+	// Stashed result data. Set by Show(...); cleared on Close().
+	private static bool _won;
+	private static int _wave;
+	private static string _zoneId;
+	private static int _gold;
+	private static int _xp;
+	private static int _tokens;
+
+	// Stash the player's team at the moment of failure so Retry can re-use
+	// it. ExpeditionManager clears SelectedTeam when the expedition resolves,
+	// so we have to capture it here before it goes away.
+	private static System.Collections.Generic.List<Monster> _lastTeam;
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime ) Instance = this;
+	}
+
+	/// <summary>
+	/// Surface the result popup. Called from ExpeditionPanel.OnBattleComplete.
+	/// Must be mounted globally (GameHUD), not inside ExpeditionPanel, because
+	/// by the time this fires, CurrentExpedition is already null and GameHUD
+	/// is about to destroy ExpeditionPanel.
+	/// </summary>
+	public static void Show( bool won, int wave, string zoneId, int gold, int xp, int tokens, System.Collections.Generic.List<Monster> team )
+	{
+		_won = won;
+		_wave = wave;
+		_zoneId = zoneId;
+		_gold = gold;
+		_xp = xp;
+		_tokens = tokens;
+		_lastTeam = team != null ? new System.Collections.Generic.List<Monster>( team ) : new System.Collections.Generic.List<Monster>();
+		IsVisible = true;
+		Instance?.StateHasChanged();
+		Log.Info( $"[ExpeditionResultPopup] Show: won={won}, wave={wave}, zone={zoneId}, gold={gold}, xp={xp}" );
+		SoundManager.PlayPopup();
+	}
+
+	public static void Close()
+	{
+		IsVisible = false;
+		Instance?.StateHasChanged();
+		SoundManager.PlayPopdown();
+	}
+
+	// s&box only re-evaluates the Razor template when BuildHash changes.
+	// Without this override, IsVisible / zoneId / won flipping via static
+	// Show(...) calls doesn't re-render the panel and the popup never
+	// appears.
+	protected override int BuildHash()
+	{
+		var h = new System.HashCode();
+		h.Add( IsVisible );
+		h.Add( _won );
+		h.Add( _wave );
+		h.Add( _zoneId );
+		h.Add( _gold );
+		h.Add( _xp );
+		h.Add( _tokens );
+		return h.ToHashCode();
+	}
+
+	// ─── ACTIONS ─────────────────────────────────────────────────────
+
+	private void OnRetry()
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null || string.IsNullOrEmpty( _zoneId ) )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		var team = _lastTeam?.Where( m => m != null ).ToList() ?? new System.Collections.Generic.List<Monster>();
+		if ( team.Count == 0 )
+		{
+			// All beasts gone? Bail to map instead of softlocking.
+			OnReturnToMap();
+			return;
+		}
+
+		IsVisible = false;
+		SoundManager.PlayBattleStart();
+
+		// Tear down the resolved expedition state before starting a fresh run.
+		// ResolveExpedition left CurrentExpedition set so the battle scene
+		// could stay rendered; StartExpedition needs a clean slate.
+		em.FinalizeExpedition();
+
+		var zoneId = _zoneId;
+		_ = BattleTransition.PlayEmbarkSequence( () =>
+		{
+			em.SelectTeam( team );
+			em.StartExpedition( zoneId );
+		} );
+	}
+
+	private void OnEmbarkAgain()
+	{
+		// Same idea as Retry, but routes through the team picker so the
+		// player can re-pick a different squad.
+		var zoneId = _zoneId;
+		IsVisible = false;
+		// Clear the resolved expedition — GameHUD will swap to the world map
+		// and the picker will open on top of it.
+		ExpeditionManager.Instance?.FinalizeExpedition();
+		if ( !string.IsNullOrEmpty( zoneId ) )
+		{
+			TeamPickerPopup.Show( zoneId );
+		}
+	}
+
+	private void OnReturnToMap()
+	{
+		IsVisible = false;
+		SoundManager.PlayBack();
+		// Finalize the resolved expedition so GameHUD swaps the battle scene
+		// out for the world map. ResolveExpedition kept CurrentExpedition set
+		// for the duration of the popup so the scene stayed behind it; we're
+		// done with it now.
+		ExpeditionManager.Instance?.FinalizeExpedition();
+	}
+}

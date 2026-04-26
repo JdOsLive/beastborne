@@ -7,321 +7,386 @@
 @using System.Linq;
 @inherits Panel
 
-<div class="skill-tree-panel" onclick=@OnPanelClicked>
-	<!-- Header Row -->
+<div class="skill-tree-panel" onclick=@OnPanelClicked onmousemove=@OnPanelMouseMove>
+
+	@* =========================== Header =========================== *@
 	<div class="skill-header">
-		<div class="header-left">
-			<img class="panel-title-icon" src="ui/icons/skills.svg" />
+		<div class="skill-header-left">
+			<iconify class="skill-title-icon" icon="lucide:sparkles" Size=@(24) Color="#c4b5fd" />
 			<div class="skill-title">@L("ui.skill.title")</div>
 		</div>
-		<div class="branch-tabs-container">
-			<div class="branch-tabs">
-				<button class="branch-tab @(currentBranch == SkillBranch.Power ? "power-active" : "power")"
-						onclick=@(() => SelectBranch(SkillBranch.Power))
-						onmouseover=@(() => SoundManager.PlayHover())>
-					<img class="tab-icon-svg" src="ui/icons/tabs/power.svg" />
-					<span class="tab-name">Power</span>
-					<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Power) pts</span>
-				</button>
-				<button class="branch-tab @(currentBranch == SkillBranch.Fusion ? "fusion-active" : "fusion")"
-						onclick=@(() => SelectBranch(SkillBranch.Fusion))
-						onmouseover=@(() => SoundManager.PlayHover())>
-					<img class="tab-icon-svg" src="ui/icons/tabs/fusion.svg" />
-					<span class="tab-name">Fusion</span>
-					<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Fusion) pts</span>
-				</button>
-				<button class="branch-tab @(currentBranch == SkillBranch.Expedition ? "expedition-active" : "expedition")"
-						onclick=@(() => SelectBranch(SkillBranch.Expedition))
-						onmouseover=@(() => SoundManager.PlayHover())>
-					<img class="tab-icon-svg" src="ui/icons/tabs/expedition-tab.svg" />
-					<span class="tab-name">Expedition</span>
-					<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Expedition) pts</span>
-				</button>
-				<button class="branch-tab @(currentBranch == SkillBranch.Mastery ? "mastery-active" : "mastery")"
-						onclick=@(() => SelectBranch(SkillBranch.Mastery))
-						onmouseover=@(() => SoundManager.PlayHover())>
-					<img class="tab-icon-svg" src="ui/icons/tabs/mastery.svg" />
-					<span class="tab-name">Mastery</span>
-					<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Mastery) pts</span>
-				</button>
-				<button class="branch-tab @(currentBranch == SkillBranch.Fortune ? "fortune-active" : "fortune")"
-						onclick=@(() => SelectBranch(SkillBranch.Fortune))
-						onmouseover=@(() => SoundManager.PlayHover())>
-					<img class="tab-icon-svg" src="ui/icons/tabs/fortune.svg" />
-					<span class="tab-name">Fortune</span>
-					<span class="tab-points">@GetBranchPointsSpent(SkillBranch.Fortune) pts</span>
-				</button>
 
-				<!-- Reset Button -->
-				@if (GetTotalRanksUnlocked() > 0)
-				{
-					<button class="reset-btn-header @(isHoldingReset ? "holding" : "")"
-							onmousedown=@StartHoldReset
-							onmouseup=@StopHold
-							onmouseleave=@StopHold
-							onmouseover=@(() => SoundManager.PlayHover())>
-						<div class="btn-fill" style="width: @(isHoldingReset ? holdProgress * 100 : 0)%;"></div>
-						<span class="reset-icon">↺</span>
-						<span>@(isHoldingReset ? L("ui.skill.resetting") : L("ui.skill.reset"))</span>
-					</button>
-				}
+		<div class="skill-header-right">
+			@* Combined SP pill — shows "available / total" with a gold progress
+			   fill across the bottom representing spent/total. Replaces the
+			   separate SPENT and SP AVAILABLE pills (which forced the player to
+			   do their own math); single pill reads as "you have N SP, here's
+			   how far through the budget you are." *@
+			@{
+				var spent = GetTotalSkillPointsSpent();
+				var avail = GetSkillPoints();
+				var total = spent + avail;
+				var pctF = total > 0 ? (float)spent / total : 0f;
+				var pct = (int)System.Math.Round( pctF * 100f );
+			}
+			<div class="skill-pill sp-pill-combined">
+				<iconify icon="lucide:star" Size=@(14) Color="#fbbf24" />
+				<span class="skill-pill-value-gold">@avail</span>
+				<span class="skill-pill-sep">/</span>
+				<span class="skill-pill-total">@total</span>
+				<span class="skill-pill-label-inline">SP</span>
+				<div class="sp-pill-fill" style="width: @(pct)%;"></div>
 			</div>
-		</div>
-		<div class="header-right">
-			<div class="skill-progress">
-				<span class="progress-current">@GetTotalRanksUnlocked()</span>
-				<span class="progress-sep">/</span>
-				<span class="progress-max">@GetMaxPossibleRanks()</span>
-				<span class="progress-label">@L("ui.skill.ranks")</span>
-			</div>
-			<div class="skill-points">
-				<span class="points-icon">⭐</span>
-				<span class="points-value">@GetSkillPoints()</span>
-				<span class="points-label">@L("ui.skill.sp")</span>
-			</div>
+			@if (GetTotalRanksUnlocked() > 0)
+			{
+				@* Inline two-stage confirm. No popup modal — the button itself is
+				   the flow. Render-key (`reset-btn-@resetBtnVersion`) remounts the
+				   element on each state flip so the armed pulse keyframe replays
+				   cleanly. Tuple pattern mirrors ShopPanelContent.GetBuyButtonContent
+				   to sidestep the Razor @if/else ghost-child bug (doubled icons on
+				   rapid state changes). *@
+				@{ var reset = GetResetButtonContent(); }
+				<button class="reset-btn @reset.cssClass reset-btn-@resetBtnVersion"
+						onclick=@OnResetClicked
+						onmouseover=@OnResetHover>
+					@* Armed pulse overlay — conditionally mounted so the @keyframes
+					   replays fresh on each arm (s&box keyframes only fire on DOM
+					   mount, not class toggle). Pointer-events off so clicks still
+					   reach the parent button. *@
+					@if (resetConfirming)
+					{
+						<div class="reset-armed-glow"></div>
+					}
+					<iconify icon="@reset.icon" Size=@(14) Color="@reset.color" />
+					<span>@reset.label</span>
+				</button>
+			}
 		</div>
 	</div>
 
-	<!-- Main Content Area -->
-	<div class="skill-main-content">
-		<!-- Left: Skills Grid (3-column tier layout) -->
-		<div class="skills-container">
-			<div class="skills-grid">
-				@foreach (var tier in new[] { 1, 2, 3 })
-				{
-					var tierNodes = GetBranchNodes().Where(n => n.Tier == tier).OrderBy(n => n.GridRow).ToList();
-					var tierReq = tierNodes.FirstOrDefault()?.RequiredBranchPoints ?? 0;
-					var branchPoints = GetBranchPointsSpent();
-					var isTierUnlocked = branchPoints >= tierReq;
+	@* =========================== Branch Clusters Row =========================== *@
+	<div class="skill-body">
+		<div class="clusters-row">
+			@foreach (var branch in AllBranches)
+			{
+				var branchClass = branch.ToString().ToLower();
+				var branchPts = GetBranchPointsSpent(branch);
+				var branchMax = GetBranchMaxPoints(branch);
+				var mastered = branchPts >= branchMax && branchMax > 0;
+				var branchNodes = GetBranchNodes(branch);
 
-					<div class="tier-column @(isTierUnlocked ? "unlocked" : "locked")">
-						<!-- Tier Header -->
-						<div class="tier-header @currentBranch.ToString().ToLower()">
-							<span class="tier-label">Tier @tier</span>
-							@if (tierReq > 0)
+				<div class="branch-cluster @branchClass @(mastered ? "mastered" : "")">
+
+					@* ---- Branch header ---- *@
+					<div class="branch-header @branchClass">
+						<div class="branch-header-title">
+							@if (mastered)
 							{
-								<span class="tier-req @(isTierUnlocked ? "met" : "")">@tierReq pts</span>
+								@* On max, the branch icon becomes the crown — clearer than
+								   cramming both icons side-by-side, and the gold reads
+								   strongly against the warm-dark mastered bg. *@
+								<iconify class="branch-header-icon mastered" icon="lucide:crown" Size=@(20) Color="#fbbf24" />
 							}
 							else
 							{
-								<span class="tier-req met">Unlocked</span>
+								<iconify class="branch-header-icon" icon="@GetBranchIcon(branch)" Size=@(18) Color="@GetBranchAccent(branch)" />
 							}
+							<span class="branch-name @(mastered ? "mastered" : "")">@branch.ToString().ToUpper()</span>
 						</div>
+						@* Partial state (spent > 0 && < max) tints the counter amber —
+						   reads as "in progress" between cool-default and mastered-gold. *@
+						@{
+							var partialBranch = !mastered && branchPts > 0 && branchPts < branchMax;
+						}
+						<div class="branch-header-pts @(mastered ? "mastered" : "") @(partialBranch ? "partial" : "")">
+							<span class="branch-pts-value">@branchPts</span>
+							<span class="branch-pts-sep">/</span>
+							<span class="branch-pts-max">@branchMax</span>
+						</div>
+					</div>
 
-						<!-- Tier Skills -->
-						<div class="tier-skills">
-							@foreach (var node in tierNodes)
-							{
-								var rank = GetSkillRank(node.Id);
-								var isMaxed = rank >= node.MaxRank;
-								var canUpgrade = CanUpgradeSkill(node.Id);
-								var isSelected = selectedNode?.Id == node.Id;
-								var progress = (float)rank / node.MaxRank;
+					@* ---- Flower canvas ---- *@
+					<div class="cluster-canvas">
 
-								<div class="skill-node-wrapper">
-									<button class="skill-node @GetNodeStateClass(node) @(isSelected ? "selected" : "") @currentBranch.ToString().ToLower()"
-											onclick=@(() => SelectNode(node))
-											onmouseenter=@(() => HoverNode(node))
-											onmouseleave=@(() => HoverNode(null))>
-										<!-- Node content -->
-										<div class="node-content">
-											<span class="node-icon">@GetSkillIcon(node)</span>
+						@* Connector lines — keystone-bottom-center to each petal-top.
+						   Two divs per cluster, anchored at keystone center via the
+						   `.left` / `.right` modifier in SCSS. They sit BEHIND the
+						   hex bodies via z-index so they read as "the petals plug
+						   into the keystone." Brighten to branch color when the
+						   downstream petal is unlocked — the bright line signals
+						   "energy flows here now." *@
+						@{
+							// The two petals both list the keystone as their prereq.
+							// Resolve "unlocked" once for each so the connector class
+							// stays in sync with the visual hex state.
+							var leftUnlocked  = branchNodes.Count > 1
+								&& (string.IsNullOrEmpty(branchNodes[1].RequiredSkillId)
+									|| GetSkillRank(branchNodes[1].RequiredSkillId) >= branchNodes[1].RequiredSkillRank);
+							var rightUnlocked = branchNodes.Count > 2
+								&& (string.IsNullOrEmpty(branchNodes[2].RequiredSkillId)
+									|| GetSkillRank(branchNodes[2].RequiredSkillId) >= branchNodes[2].RequiredSkillRank);
+						}
+						<div class="hex-connector left @branchClass @(leftUnlocked ? "active" : "")"></div>
+						<div class="hex-connector right @branchClass @(rightUnlocked ? "active" : "")"></div>
+
+						@for (int nodeIdx = 0; nodeIdx < branchNodes.Count; nodeIdx++)
+						{
+							var node = branchNodes[nodeIdx];
+							var rank = GetSkillRank(node.Id);
+							var isMaxed = rank >= node.MaxRank;
+							var canUpgrade = CanUpgradeSkill(node.Id);
+							// Node is visually "available" only when its branch-point gate
+							// AND its prereq-skill dependency are both satisfied. Launch
+							// tree uses prereqs (keystone unlocks petals), no branch gates.
+							var tierUnlocked = branchPts >= node.RequiredBranchPoints
+								&& (string.IsNullOrEmpty(node.RequiredSkillId)
+									|| GetSkillRank(node.RequiredSkillId) >= node.RequiredSkillRank);
+							var stateClass = GetNodeStateClass(node, rank, canUpgrade, tierUnlocked);
+							var unlockKey = GetUnlockKey(node.Id);
+							// First node in the branch list is always the keystone. Marks
+							// the start of the chain visually (slightly larger hex + an
+							// inner accent ring on the body).
+							var isKeystone = nodeIdx == 0;
+
+							<div class="hex-slot @branchClass @stateClass @(tierUnlocked ? "revealed" : "dimmed") @(isKeystone ? "is-keystone" : "")"
+								 style="left: @(node.GridX)px; top: @(node.GridY)px;"
+								 onclick=@(() => OnNodeClicked(node))
+								 onmouseover=@(() => OnNodeHover(node))
+								 onmouseout=@OnNodeHoverOut>
+
+								@* Hex body — state class drives visual; unlock pulse is a
+								   separate conditionally-mounted overlay so the keyframe
+								   fires fresh per invest. *@
+								<div class="hex-body @branchClass @stateClass @(isKeystone ? "is-keystone" : "")">
+									<iconify class="hex-icon" icon="@GetNodeIcon(node)" Size=@(26) Color="@GetNodeIconColor(node, rank, isMaxed)" />
+
+									@* Locked petal lock-icon overlay — small lucide:lock in
+									   the top-right corner. Only on petals (keystones are
+									   never gated). Strengthens the "this is gated" read
+									   beyond opacity alone. *@
+									@if (!tierUnlocked && !isKeystone)
+									{
+										<div class="hex-lock-corner">
+											<iconify icon="lucide:lock" Size=@(10) Color="rgba(255, 255, 255, 0.55)" />
 										</div>
+									}
+								</div>
 
-										<!-- Rank display -->
-										<div class="node-rank @(isMaxed ? "maxed" : "") @(rank > 0 ? "has-progress" : "")">
-											@rank/@node.MaxRank
-										</div>
+								@* One-shot unlock pulse overlay — mounted fresh per invest via pulse-N key *@
+								@if (unlockKey > 0 && node.Id == lastInvestedId && sinceBurst < 0.6f)
+								{
+									<div class="hex-unlock-pulse @branchClass pulse-@unlockKey"></div>
+								}
 
-										<!-- Progress bar under node -->
-										@if (node.MaxRank > 1)
-										{
-											<div class="node-progress-bar">
-												<div class="node-progress-fill @currentBranch.ToString().ToLower()" style="width: @(progress * 100)%;"></div>
-											</div>
-										}
-
-										<!-- Checkmark for maxed skills -->
+								@* Rank badge *@
+								@if (rank > 0 || isMaxed)
+								{
+									<div class="rank-badge @branchClass @(isMaxed ? "maxed" : "")">
 										@if (isMaxed)
 										{
-											<div class="node-check">✓</div>
+											<iconify icon="lucide:check" Size=@(10) Color="#ffffff" />
 										}
-									</button>
+										else
+										{
+											<span>@rank</span>
+										}
+									</div>
+								}
+							</div>
+						}
+					</div>
 
-									<div class="node-name">@node.Name</div>
-								</div>
+				</div>
+			}
+		</div>
+	</div>
+
+	@* =========================== Tooltip (follows cursor) =========================== *@
+	@if (hoveredNode != null)
+	{
+		var rank = GetSkillRank(hoveredNode.Id);
+		var isMaxed = rank >= hoveredNode.MaxRank;
+		var canUpgrade = CanUpgradeSkill(hoveredNode.Id);
+		// Match the grid's availability check — branch-point gate AND prereq-skill rank.
+		var tierUnlocked = GetBranchPointsSpent(hoveredNode.Branch) >= hoveredNode.RequiredBranchPoints
+			&& (string.IsNullOrEmpty(hoveredNode.RequiredSkillId)
+				|| GetSkillRank(hoveredNode.RequiredSkillId) >= hoveredNode.RequiredSkillRank);
+		var nextRank = rank + 1;
+		var branchClass = hoveredNode.Branch.ToString().ToLower();
+		// Offset slightly from cursor; clamp to keep the tooltip fully on-screen
+		// using the panel's own Box bounds.
+		float panelW = Box.Rect.Width;
+		float panelH = Box.Rect.Height;
+		var cursorLeft = Math.Max(16f, Math.Min(panelW - 340f, lastMouseX + 20f));
+		var cursorTop = Math.Max(16f, Math.Min(panelH - 280f, lastMouseY + 20f));
+
+		<div class="skill-tooltip @branchClass"
+			 style="left: @(cursorLeft)px; top: @(cursorTop)px;">
+
+			<div class="tt-branch-tag @branchClass">@hoveredNode.Branch.ToString().ToUpper()</div>
+			<div class="tt-name">@hoveredNode.Name</div>
+			<div class="tt-rank-row">
+				<span class="tt-rank-label">Rank</span>
+				<span class="tt-rank-value">@rank</span>
+				<span class="tt-rank-sep">/</span>
+				<span class="tt-rank-max">@hoveredNode.MaxRank</span>
+				@if (isMaxed)
+				{
+					<span class="tt-maxed">MAX</span>
+				}
+			</div>
+
+			<div class="tt-desc">@hoveredNode.Description</div>
+
+			<div class="tt-effect-block">
+				@foreach (var effect in hoveredNode.Effects)
+				{
+					var cur = GetEffectDisplay(hoveredNode, effect, rank);
+					var nxt = GetEffectDisplay(hoveredNode, effect, nextRank);
+					<div class="tt-effect-row">
+						@if (rank > 0)
+						{
+							<span class="tt-eff-current">@cur</span>
+						}
+						@if (!isMaxed)
+						{
+							@if (rank > 0)
+							{
+								<span class="tt-eff-arrow">→</span>
 							}
-						</div>
+							<span class="tt-eff-next">@nxt</span>
+						}
 					</div>
 				}
 			</div>
-		</div>
 
-		<!-- Right: Skill Detail Panel -->
-		<div class="skill-detail">
-		@{
-			var displayNode = selectedNode ?? hoveredNode;
-		}
-		@if (displayNode != null)
-		{
-			var rank = GetSkillRank(displayNode.Id);
-			var isMaxed = rank >= displayNode.MaxRank;
-			var canUpgrade = CanUpgradeSkill(displayNode.Id);
-			var currentBonus = GetCurrentBonus(displayNode, rank);
-			var nextBonus = GetCurrentBonus(displayNode, rank + 1);
-			var costToMax = (displayNode.MaxRank - rank) * displayNode.CostPerRank;
-
-			<div class="detail-content">
-				<!-- Skill Image -->
-				<div class="detail-image-container">
-					<img class="detail-image" src="/ui/skills/@(displayNode.Id).png" />
-					<div class="detail-image-overlay @currentBranch.ToString().ToLower()"></div>
-				</div>
-
-				<!-- Skill Header -->
-				<div class="detail-header">
-					<span class="detail-icon @currentBranch.ToString().ToLower()">@GetSkillIcon(displayNode)</span>
-					<div class="detail-title">
-						<span class="detail-name">@displayNode.Name</span>
-						<span class="detail-rank @(isMaxed ? "maxed" : "")">
-							@if (isMaxed)
-							{
-								<span>MAX</span>
-							}
-							else
-							{
-								<span>Rank @rank/@displayNode.MaxRank</span>
-							}
-						</span>
+			@if (!isMaxed)
+			{
+				<div class="tt-divider"></div>
+				<div class="tt-cost-row">
+					<div class="tt-cost">
+						<iconify icon="lucide:star" Size=@(12) Color="#fbbf24" />
+						<span class="tt-cost-value">@hoveredNode.CostPerRank</span>
+						<span class="tt-cost-label">SP</span>
 					</div>
-				</div>
-
-				<!-- Description -->
-				<div class="detail-desc">@displayNode.Description</div>
-
-				<!-- Effects -->
-				<div class="detail-effects">
-					@foreach (var effect in displayNode.Effects)
+					@if (!tierUnlocked)
 					{
-						var currentVal = effect.Value * rank;
-						var nextVal = effect.Value * (rank + 1);
-						var maxVal = effect.Value * displayNode.MaxRank;
-
-						<div class="effect-row">
-							<span class="effect-label">@GetEffectLabel(effect)</span>
-							<div class="effect-values">
-								<span class="effect-current">+@currentVal@GetEffectSuffix(effect)</span>
-								@if (!isMaxed)
-								{
-									<span class="effect-arrow">→</span>
-									<span class="effect-next">+@nextVal@GetEffectSuffix(effect)</span>
-								}
-							</div>
-							<span class="effect-max">(Max: +@maxVal@GetEffectSuffix(effect))</span>
+						<div class="tt-warn">
+							<iconify icon="lucide:lock" Size=@(12) Color="#f87171" />
+							<span>@hoveredNode.RequiredBranchPoints pts in branch</span>
 						</div>
 					}
-				</div>
-
-				<!-- Progress bar -->
-				<div class="detail-progress">
-					<div class="progress-bar">
-						<div class="progress-fill @currentBranch.ToString().ToLower()"
-							 style="width: @((float)rank / displayNode.MaxRank * 100)%;"></div>
-					</div>
-					<span class="progress-text">@rank / @displayNode.MaxRank</span>
-				</div>
-
-				<!-- Actions -->
-				<div class="detail-actions">
-					@if (isMaxed)
+					else if (!string.IsNullOrEmpty(hoveredNode.RequiredSkillId) && GetSkillRank(hoveredNode.RequiredSkillId) < hoveredNode.RequiredSkillRank)
 					{
-						<div class="detail-maxed">
-							<span class="maxed-icon">✓</span>
-							<span class="maxed-text">MAXED</span>
+						var reqNode = TamerManager.Instance?.SkillTree?.GetNode(hoveredNode.RequiredSkillId);
+						<div class="tt-warn">
+							<iconify icon="lucide:lock" Size=@(12) Color="#f87171" />
+							<span>Needs @reqNode?.Name rk @hoveredNode.RequiredSkillRank</span>
 						</div>
 					}
 					else if (canUpgrade)
 					{
-						<div class="detail-cost">
-							<span class="cost-value">@displayNode.CostPerRank</span>
-							<span class="cost-label">SP</span>
-						</div>
-						<div class="detail-buttons">
-							<button class="upgrade-btn @(isHoldingUpgrade ? "holding" : "")"
-									onmousedown=@StartHoldUpgrade
-									onmouseup=@StopHold
-									onmouseleave=@StopHold>
-								<div class="btn-fill" style="width: @(isHoldingUpgrade ? holdProgress * 100 : 0)%;"></div>
-								<span class="btn-text">@(isHoldingUpgrade ? "UPGRADING..." : "Hold to Upgrade")</span>
-							</button>
-							@if (rank < displayNode.MaxRank - 1 && GetSkillPoints() >= costToMax)
-							{
-								<button class="maxout-btn @(isHoldingMax ? "holding" : "")"
-										onmousedown=@StartHoldMax
-										onmouseup=@StopHold
-										onmouseleave=@StopHold>
-									<div class="btn-fill" style="width: @(isHoldingMax ? holdProgress * 100 : 0)%;"></div>
-									<span class="btn-text">@(isHoldingMax ? "MAXING..." : $"Hold to Max ({costToMax} SP)")</span>
-								</button>
-							}
+						<div class="tt-hint">
+							<iconify icon="lucide:mouse-pointer-click" Size=@(11) Color="#4ade80" />
+							<span>Click to invest</span>
 						</div>
 					}
-					else
+					else if (GetSkillPoints() < hoveredNode.CostPerRank)
 					{
-						<div class="detail-locked">
-							@{
-								var branchPts = GetBranchPointsSpent();
-								var needsBranchPts = displayNode.RequiredBranchPoints > 0 && branchPts < displayNode.RequiredBranchPoints;
-								var needsSkillReq = !string.IsNullOrEmpty(displayNode.RequiredSkillId) && GetSkillRank(displayNode.RequiredSkillId) < displayNode.RequiredSkillRank;
-							}
-							@if (needsBranchPts)
-							{
-								<span class="locked-text">Need @displayNode.RequiredBranchPoints pts in branch (@branchPts/@displayNode.RequiredBranchPoints)</span>
-							}
-							else if (needsSkillReq)
-							{
-								var reqNode = TamerManager.Instance?.SkillTree?.GetNode(displayNode.RequiredSkillId);
-								<span class="locked-text">Requires @reqNode?.Name Rank @displayNode.RequiredSkillRank</span>
-							}
-							else if (GetSkillPoints() < displayNode.CostPerRank)
-							{
-								<span class="locked-text">Not enough SP</span>
-							}
+						<div class="tt-warn">
+							<iconify icon="lucide:coins" Size=@(12) Color="#f87171" />
+							<span>Not enough SP</span>
 						</div>
 					}
 				</div>
-			</div>
-		}
-		else
-		{
-			<div class="detail-placeholder">
-				<span class="placeholder-icon">🎯</span>
-				<span class="placeholder-text">@L("ui.skill.select_skill")</span>
-			</div>
-		}
-	</div>
-	</div>
+			}
+		</div>
+	}
+
+	@* =========================== Floating particle layer (keystroke-mounted) =========================== *@
+	@if (showBurst)
+	{
+		<div class="unlock-burst-layer burst-@burstVersion" style="left: @(burstX)px; top: @(burstY)px;">
+			@for (int i = 0; i < 8; i++)
+			{
+				<div class="burst-particle p-@i" style="background-color: @burstColor;"></div>
+			}
+		</div>
+	}
+
+	@* Reset confirmation is now inline on the button itself (see the header's
+	   `reset-btn`). No modal / backdrop / card markup — the two-stage flow
+	   happens in-place so a misclick doesn't trap the player. *@
 
 </div>
 
+
 @code {
-	// Localization helper
-	private string L( string key ) => LocalizationManager.Get( key );
-	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
+	// =========================================================================
+	// State
+	// =========================================================================
+	private SkillNode hoveredNode;
+	private string lastHoveredId = null; // hover-sound guard (s&box onmouseover fires repeatedly)
 
-	private SkillBranch currentBranch = SkillBranch.Power;
-	private SkillNode selectedNode = null;
-	private SkillNode hoveredNode = null;
+	// Tooltip position tracking
+	private float lastMouseX;
+	private float lastMouseY;
 
-	// Hold-to-upgrade state
-	private bool isHoldingUpgrade = false;
-	private bool isHoldingMax = false;
-	private bool isHoldingReset = false;
-	private float holdProgress = 0f;
-	private const float HoldDuration = 0.7f; // seconds to fill (upgrade)
-	private const float HoldDurationMax = 0.9f; // longer for max (more impactful)
-	private const float HoldDurationReset = 1.0f; // longest for reset (destructive)
+	// Unlock keys drive a one-shot flash via CSS animation mounted on a key-changing div.
+	// When a rank is invested we bump the key for that node so CSS remounts and plays.
+	private Dictionary<string, int> unlockVersions = new();
 
+	// Particle burst state
+	private bool showBurst;
+	private int burstVersion;
+	private float burstX;
+	private float burstY;
+	private string burstColor = "#ffffff";
+	private TimeSince sinceBurst;
+
+	// Tracks which node was most-recently invested so the unlock pulse overlay
+	// only mounts on that specific hex (not every hex with unlockKey > 0).
+	private string lastInvestedId = null;
+
+	// Reset confirmation — inline two-stage flow on the header button itself.
+	// No modal. `resetConfirming` arms the button; `resetConfirmExpires` is a
+	// RealTime.Now timestamp at which the armed state auto-reverts if the user
+	// doesn't click again. `resetFlashUntil` drives the brief "Reset!" success
+	// flash after a confirmed click. `resetBtnVersion` is a render-key that
+	// remounts the button element each state flip so the armed pulse @keyframes
+	// replays cleanly (s&box only plays keyframes on first mount).
+	private bool resetConfirming;
+	private float resetConfirmExpires = 0f;
+	private float resetFlashUntil = 0f;
+	private int resetBtnVersion = 0;
+	// Set in OnResetClicked so the bubbling panel-level click handler (which
+	// runs AFTER the button's own handler) doesn't immediately disarm the
+	// state we just entered. RealTime.Now timestamp — grace window ~0.1s.
+	private float resetClickGuardUntil = 0f;
+	private string lastResetHoverState = null;
+
+	private bool IsResetFlashing => RealTime.Now < resetFlashUntil;
+	private const float ResetConfirmWindow = 3.0f;
+	private const float ResetFlashDuration = 0.9f;
+
+	private SkillBranch[] AllBranches = new[]
+	{
+		SkillBranch.Power,
+		SkillBranch.Fortune,
+		SkillBranch.Fusion,
+		SkillBranch.Expedition,
+		SkillBranch.Mastery
+	};
+
+	// =========================================================================
+	// Localization
+	// =========================================================================
+	private string L(string key) => LocalizationManager.Get(key);
+	private string L(string key, params object[] args) => LocalizationManager.Get(key, args);
+
+	// =========================================================================
+	// Lifecycle
+	// =========================================================================
 	protected override void OnAfterTreeRender(bool firstTime)
 	{
 		if (firstTime)
@@ -333,207 +398,218 @@
 	public override void Tick()
 	{
 		base.Tick();
-		UpdateHoldProgress();
-	}
 
-	private void UpdateHoldProgress()
-	{
-		if (isHoldingUpgrade || isHoldingMax || isHoldingReset)
+		// Auto-hide burst after ~0.9s so the layer can remount on next click.
+		if (showBurst && sinceBurst > 0.9f)
 		{
-			// Use different durations for each action type
-			float duration = HoldDuration;
-			if (isHoldingMax) duration = HoldDurationMax;
-			else if (isHoldingReset) duration = HoldDurationReset;
-
-			// Increment progress based on time
-			holdProgress += Time.Delta / duration;
-
-			if (holdProgress >= 1f)
-			{
-				// Trigger the action
-				if (isHoldingUpgrade)
-				{
-					UpgradeSelected();
-				}
-				else if (isHoldingMax)
-				{
-					MaxOutSelected();
-				}
-				else if (isHoldingReset)
-				{
-					ResetSkills();
-				}
-
-				// Reset state
-				ResetHoldState();
-			}
+			showBurst = false;
 		}
-	}
 
-	private void StartHoldUpgrade()
-	{
-		if (selectedNode == null || !CanUpgradeSkill(selectedNode.Id)) return;
-		isHoldingUpgrade = true;
-		holdProgress = 0f;
-		SoundManager.PlayHover();
-	}
-
-	private void StartHoldMax()
-	{
-		if (selectedNode == null) return;
-		isHoldingMax = true;
-		holdProgress = 0f;
-		SoundManager.PlayHover();
-	}
-
-	private void StartHoldReset()
-	{
-		if (GetTotalRanksUnlocked() <= 0) return;
-		isHoldingReset = true;
-		holdProgress = 0f;
-		SoundManager.PlayHover();
-	}
-
-	private void StopHold()
-	{
-		ResetHoldState();
-	}
-
-	private void ResetHoldState()
-	{
-		isHoldingUpgrade = false;
-		isHoldingMax = false;
-		isHoldingReset = false;
-		holdProgress = 0f;
+		// Auto-revert the armed reset button if the user doesn't confirm
+		// within the confirm window. Silent — no sound on timeout (user didn't
+		// act, so playing a "back" cue would be noise).
+		if (resetConfirming && RealTime.Now > resetConfirmExpires)
+		{
+			resetConfirming = false;
+			resetBtnVersion++;
+		}
 	}
 
 	public void TickInput()
 	{
-		HandleKeyboardInput();
-	}
-
-	private void HandleKeyboardInput()
-	{
-		var nodes = GetBranchNodes();
-		if (nodes.Count == 0) return;
-
-		// Navigate branches with Q/E
-		if (Input.Pressed("PrevWeapon"))
-		{
-			CycleBranchBack();
-		}
-		else if (Input.Pressed("NextWeapon"))
-		{
-			CycleBranchForward();
-		}
-
-		// Navigate skills with Left/Right
-		if (Input.Pressed("Left"))
-		{
-			SelectPreviousNode();
-		}
-		else if (Input.Pressed("Right"))
-		{
-			SelectNextNode();
-		}
-
-		// Upgrade with Enter/Space
-		if (Input.Pressed("attack1") || Input.Pressed("jump"))
-		{
-			UpgradeSelected();
-		}
-
-		// Exit with Up
 		if (Input.Pressed("Up"))
 		{
 			GameHUD.ExitPanel();
 		}
 	}
 
+	// =========================================================================
+	// Event handlers
+	// =========================================================================
 	private void OnPanelClicked()
 	{
 		GameHUD.EnterPanel();
+
+		// Click-elsewhere cancels the armed reset. The reset button's onclick
+		// runs first and sets `resetClickGuardUntil` to block this immediate
+		// bubble — so this path only fires for genuine "click outside the
+		// button" inputs, the intended escape hatch.
+		if (resetConfirming && RealTime.Now > resetClickGuardUntil)
+		{
+			resetConfirming = false;
+			resetBtnVersion++;
+		}
 	}
 
-	private void SelectBranch(SkillBranch branch)
+	private void OnPanelMouseMove()
 	{
-		currentBranch = branch;
-		selectedNode = null;
-		SoundManager.PlayClick();
+		// Track cursor for tooltip positioning. MousePosition is already in
+		// panel-local coordinates on s&box Panels.
+		lastMouseX = MousePosition.x;
+		lastMouseY = MousePosition.y;
 	}
 
-	private void CycleBranchBack()
+	private void OnNodeHover(SkillNode node)
 	{
-		var branches = new[] { SkillBranch.Power, SkillBranch.Fusion, SkillBranch.Expedition, SkillBranch.Mastery, SkillBranch.Fortune };
-		int idx = Array.IndexOf(branches, currentBranch);
-		idx = (idx - 1 + branches.Length) % branches.Length;
-		SelectBranch(branches[idx]);
-	}
-
-	private void CycleBranchForward()
-	{
-		var branches = new[] { SkillBranch.Power, SkillBranch.Fusion, SkillBranch.Expedition, SkillBranch.Mastery, SkillBranch.Fortune };
-		int idx = Array.IndexOf(branches, currentBranch);
-		idx = (idx + 1) % branches.Length;
-		SelectBranch(branches[idx]);
-	}
-
-	private void SelectNode(SkillNode node)
-	{
-		selectedNode = node;
-		SoundManager.PlayHover();
-	}
-
-	private void HoverNode(SkillNode node)
-	{
+		if (node == null) return;
+		if (lastHoveredId == node.Id) return; // guard repeat-fire
+		lastHoveredId = node.Id;
 		hoveredNode = node;
+
+		// Locked petals (prereq unmet) get a soft deny cue instead of the
+		// standard hover ping — communicates "this is gated" without
+		// forcing the player to read the tooltip. Same prereq-resolution
+		// logic the visual `tierUnlocked` flag uses.
+		bool tierUnlocked = GetBranchPointsSpent(node.Branch) >= node.RequiredBranchPoints
+			&& (string.IsNullOrEmpty(node.RequiredSkillId)
+				|| GetSkillRank(node.RequiredSkillId) >= node.RequiredSkillRank);
+		if (!tierUnlocked)
+		{
+			SoundManager.PlayDeny();
+		}
+		else
+		{
+			SoundManager.PlayHover();
+		}
 	}
 
-	private void SelectPreviousNode()
+	private void OnNodeHoverOut()
 	{
-		var nodes = GetBranchNodes();
-		if (nodes.Count == 0) return;
+		lastHoveredId = null;
+		hoveredNode = null;
+	}
 
-		int currentIdx = selectedNode != null ? nodes.FindIndex(n => n.Id == selectedNode.Id) : 0;
-		int newIdx = Math.Max(0, currentIdx - 1);
-		selectedNode = nodes[newIdx];
+	private void OnNodeClicked(SkillNode node)
+	{
+		if (node == null) return;
+
+		var tamer = TamerManager.Instance;
+		if (tamer == null) return;
+
+		// Attempt the unlock. The manager owns the eligibility logic.
+		bool ok = tamer.CanUnlockSkill(node.Id);
+
+		if (!ok)
+		{
+			// Denied — soft feedback (no shake for now; would need per-node version for CSS trigger).
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		int prevRank = tamer.GetSkillRank(node.Id);
+		bool success = tamer.UnlockSkill(node.Id);
+		if (!success) { SoundManager.PlayDeny(); return; }
+
+		int newRank = tamer.GetSkillRank(node.Id);
+		var newNode = tamer.SkillTree?.GetNode(node.Id);
+		bool justMaxed = newNode != null && newRank >= newNode.MaxRank;
+		bool isCapstoneSetpiece = justMaxed && node.Tier == 3;
+
+		// Bump the unlock version → CSS keyframe remounts + replays.
+		if (!unlockVersions.ContainsKey(node.Id)) unlockVersions[node.Id] = 0;
+		unlockVersions[node.Id]++;
+		lastInvestedId = node.Id;
+
+		// Trigger particle burst at cursor (local coords) with branch color.
+		burstVersion++;
+		burstX = lastMouseX;
+		burstY = lastMouseY;
+		burstColor = GetBranchAccent(node.Branch);
+		showBurst = true;
+		sinceBurst = 0f;
+
+		// Sound — tiered based on what just happened.
+		if (isCapstoneSetpiece)
+		{
+			SoundManager.PlaySuccess();
+			SoundManager.PlayGoldReward();
+		}
+		else if (justMaxed)
+		{
+			SoundManager.PlaySuccess();
+		}
+		else
+		{
+			SoundManager.PlayForward();
+		}
+	}
+
+	// Inline two-stage reset. First click arms; second click (within the
+	// confirm window) fires; click-elsewhere or timeout reverts silently.
+	private void OnResetClicked()
+	{
+		if (GetTotalRanksUnlocked() <= 0) return;
+
+		// Block the bubbling panel-level click from immediately disarming.
+		// Keep the window short — just enough for the same frame's bubble.
+		resetClickGuardUntil = RealTime.Now + 0.1f;
+
+		// Already flashing "Reset!" — ignore extra clicks during the payoff
+		// so the player can't accidentally re-arm before the flash finishes.
+		if (IsResetFlashing) return;
+
+		if (!resetConfirming)
+		{
+			// Stage 1: arm. Small click cue — feels deliberate.
+			resetConfirming = true;
+			resetConfirmExpires = RealTime.Now + ResetConfirmWindow;
+			resetBtnVersion++; // remount so the armed pulse keyframe plays
+			SoundManager.PlayClick();
+		}
+		else
+		{
+			// Stage 2: confirm + fire. Destructive action — use PlayBack so
+			// the audio colors "undoing progress" distinctly from the normal
+			// success cue (that'd read as if something was gained).
+			var tm = TamerManager.Instance;
+			if (tm == null)
+			{
+				resetConfirming = false;
+				resetBtnVersion++;
+				return;
+			}
+
+			int refunded = tm.ResetSkillTree();
+			unlockVersions.Clear();
+			lastInvestedId = null;
+			hoveredNode = null;
+
+			resetConfirming = false;
+			resetFlashUntil = RealTime.Now + ResetFlashDuration;
+			resetBtnVersion++;
+
+			SoundManager.PlayBack();
+			Log.Info($"[SkillTree] Inline reset confirmed — refunded {refunded} SP");
+		}
+	}
+
+	private void OnResetHover()
+	{
+		if (lastResetHoverState == "reset") return;
+		lastResetHoverState = "reset";
 		SoundManager.PlayHover();
 	}
 
-	private void SelectNextNode()
+	// Tuple-render helper. Mirrors ShopPanelContent.GetBuyButtonContent — keeps
+	// the Razor button body a single <iconify> + single <span> so s&box only
+	// swaps attribute values (no ghost-child bug on rapid state changes).
+	private (string icon, string label, string color, string cssClass) GetResetButtonContent()
 	{
-		var nodes = GetBranchNodes();
-		if (nodes.Count == 0) return;
+		if (IsResetFlashing)
+			return ("lucide:check", "Reset!", "#ffffff", "flashing");
 
-		int currentIdx = selectedNode != null ? nodes.FindIndex(n => n.Id == selectedNode.Id) : -1;
-		int newIdx = Math.Min(nodes.Count - 1, currentIdx + 1);
-		selectedNode = nodes[newIdx];
-		SoundManager.PlayHover();
+		if (resetConfirming)
+			return ("lucide:alert-triangle", "Click again to confirm", "#fbbf24", "armed");
+
+		return ("lucide:rotate-ccw", "Reset", "#f87171", "");
 	}
 
-	private void UpgradeSelected()
-	{
-		if (selectedNode == null) return;
-		if (!CanUpgradeSkill(selectedNode.Id)) return;
-
-		TamerManager.Instance?.UnlockSkill(selectedNode.Id);
-		SoundManager.PlayForward();
-	}
-
-	private void MaxOutSelected()
-	{
-		if (selectedNode == null) return;
-
-		TamerManager.Instance?.MaxOutSkill(selectedNode.Id);
-		SoundManager.PlayForward();
-	}
-
+	// =========================================================================
+	// Data helpers
+	// =========================================================================
 	private int GetSkillPoints() => TamerManager.Instance?.CurrentTamer?.SkillPoints ?? 0;
-
-	private int GetBranchPointsSpent()
-	{
-		return GetBranchPointsSpent(currentBranch);
-	}
+	private int GetTotalSkillPointsSpent() => TamerManager.Instance?.GetTotalSkillPointsSpent() ?? 0;
+	private int GetTotalRanksUnlocked() => TamerManager.Instance?.GetTotalRanksUnlocked() ?? 0;
 
 	private int GetBranchPointsSpent(SkillBranch branch)
 	{
@@ -542,90 +618,146 @@
 		return tamer.SkillTree.GetPointsSpentInBranch(branch, tamer.CurrentTamer.SkillRanks);
 	}
 
-	private int GetBranchMaxPoints()
+	private int GetBranchMaxPoints(SkillBranch branch)
 	{
-		var nodes = GetBranchNodes();
-		return nodes.Sum(n => n.MaxRank * n.CostPerRank);
+		return GetBranchNodes(branch).Sum(n => n.MaxRank * n.CostPerRank);
 	}
 
-	private List<SkillNode> GetBranchNodes()
+	private List<SkillNode> GetBranchNodes(SkillBranch branch)
 	{
-		return TamerManager.Instance?.SkillTree?.GetNodesByBranch(currentBranch) ?? new();
+		return TamerManager.Instance?.SkillTree?.GetNodesByBranch(branch) ?? new();
 	}
 
-	private int GetSkillRank(string skillId)
+	private int GetSkillRank(string skillId) => TamerManager.Instance?.GetSkillRank(skillId) ?? 0;
+	private bool CanUpgradeSkill(string skillId) => TamerManager.Instance?.CanUnlockSkill(skillId) ?? false;
+
+	private int GetUnlockKey(string id)
 	{
-		return TamerManager.Instance?.GetSkillRank(skillId) ?? 0;
+		return unlockVersions.TryGetValue(id, out var v) ? v : 0;
 	}
 
-	private bool CanUpgradeSkill(string skillId)
+	// =========================================================================
+	// Node state → CSS class
+	// =========================================================================
+	private string GetNodeStateClass(SkillNode node, int rank, bool canUpgrade, bool tierUnlocked)
 	{
-		return TamerManager.Instance?.CanUnlockSkill(skillId) ?? false;
-	}
-
-	private int GetTotalRanksUnlocked()
-	{
-		return TamerManager.Instance?.GetTotalRanksUnlocked() ?? 0;
-	}
-
-	private int GetMaxPossibleRanks()
-	{
-		return TamerManager.Instance?.GetMaxPossibleRanks() ?? 0;
-	}
-
-	private string GetNodeStateClass(SkillNode node)
-	{
-		int rank = GetSkillRank(node.Id);
 		if (rank >= node.MaxRank) return "maxed";
-		if (CanUpgradeSkill(node.Id)) return "available";
+		if (!tierUnlocked) return "gated";
+		if (canUpgrade) return "available";
 		if (rank > 0) return "partial";
 		return "locked";
 	}
 
-	private string GetSkillIcon(SkillNode node)
+	private string GetNodeIconColor(SkillNode node, int rank, bool isMaxed)
 	{
-		// Return emoji based on skill effect type
-		if (node.Effects.Count == 0) return "◆";
+		if (isMaxed) return "#0c0a18"; // dark icon on warm filled hex
+		if (rank > 0) return "#ffffff";
+		return "rgba(255, 255, 255, 0.75)";
+	}
 
-		return node.Effects[0].Type switch
+	// =========================================================================
+	// Branch presentation helpers
+	// =========================================================================
+	private string GetBranchAccent(SkillBranch branch)
+	{
+		return branch switch
 		{
-			SkillEffectType.AllMonsterATKPercent => "⚔️",
-			SkillEffectType.AllMonsterDEFPercent => "🛡️",
-			SkillEffectType.AllMonsterHPPercent => "❤️",
-			SkillEffectType.AllMonsterSpAPercent => "✨",
-			SkillEffectType.AllMonsterSpDPercent => "🔮",
-			SkillEffectType.AllMonsterSPDPercent => "💨",
-			SkillEffectType.CritChanceBonus => "🎯",
-			SkillEffectType.CritDamageBonus => "💥",
-			SkillEffectType.GeneBonusFlat => "🧬",
-			SkillEffectType.GeneticInheritanceBonus => "🔬",
-			SkillEffectType.MutationChance => "⚗️",
-			SkillEffectType.BreedingCostReduction => "💎",
-			SkillEffectType.TwinChance => "👯",
-			SkillEffectType.RareTraitChance => "⭐",
-			SkillEffectType.NatureInheritance => "🌿",
-			SkillEffectType.GeneLock => "🔒",
-			SkillEffectType.ExpeditionSpeedBonus => "🏃",
-			SkillEffectType.ItemFindBonus => "📦",
-			SkillEffectType.EncounterRateBonus => "👁️",
-			SkillEffectType.ExpeditionXPBonus => "📚",
-			SkillEffectType.RareItemChance => "🎁",
-			SkillEffectType.TeamSizeBonus => "👥",
-			SkillEffectType.CartographerUnlock => "🗺️",
-			SkillEffectType.BossDamageBonus => "👑",
-			SkillEffectType.BossDamageReduction => "🛡️",
-			SkillEffectType.BossTokenBonus => "🪙",
-			SkillEffectType.HigherTierDamageBonus => "⬆️",
-			SkillEffectType.PhaseDamageBonus => "💫",
-			SkillEffectType.MythicDamageBonus => "🔥",
-			SkillEffectType.BossSpawnBonus => "🎲",
-			SkillEffectType.ShopDiscount => "🏷️",
-			SkillEffectType.GoldDropBonus => "💰",
-			SkillEffectType.DiscountStackingBonus => "📈",
-			SkillEffectType.DoubleDropChance => "✌️",
-			SkillEffectType.BoostPotencyBonus => "⚡",
-			SkillEffectType.GoldFromAllSources => "🌟",
-			_ => "◆"
+			SkillBranch.Power => "#dc2626",
+			SkillBranch.Fortune => "#f59e0b",
+			SkillBranch.Fusion => "#ec4899",
+			SkillBranch.Expedition => "#0ea5e9",
+			SkillBranch.Mastery => "#8b5cf6",
+			_ => "#c4b5fd"
+		};
+	}
+
+	private string GetBranchIcon(SkillBranch branch)
+	{
+		return branch switch
+		{
+			SkillBranch.Power => "lucide:swords",
+			SkillBranch.Fortune => "lucide:coins",
+			SkillBranch.Fusion => "lucide:flask-conical",
+			SkillBranch.Expedition => "lucide:compass",
+			SkillBranch.Mastery => "lucide:skull",
+			_ => "lucide:sparkles"
+		};
+	}
+
+
+	// =========================================================================
+	// Node icons — per skill id
+	// Only the 15 launch talents are mapped. Post-launch updates that add new
+	// nodes need to add a new arm here AND fall through cleanly via the
+	// default. Don't pre-populate icons for unimplemented IDs — dead arms
+	// imply missing features and noise the search.
+	// =========================================================================
+	private string GetNodeIcon(SkillNode node)
+	{
+		return node.Id switch
+		{
+			// Power (3)
+			"power_might"        => "lucide:swords",
+			"power_vitality"     => "lucide:heart",
+			"power_criteye"      => "lucide:target",
+
+			// Fortune (3)
+			"fortune_goldrush"   => "lucide:coins",
+			"fortune_bargain"    => "lucide:tag",
+			"fortune_jackpot"    => "lucide:dices",
+
+			// Fusion (3)
+			"fusion_genesurge"   => "lucide:dna",
+			"fusion_inheritance" => "lucide:git-branch",
+			"fusion_mutation"    => "lucide:flask-conical",
+
+			// Expedition (3)
+			"exp_prospector"     => "lucide:pickaxe",
+			"exp_scout"          => "lucide:binoculars",
+			"exp_luckyfind"      => "lucide:gift",
+
+			// Mastery (3)
+			"mastery_slayer"     => "lucide:skull",
+			"mastery_resilience" => "lucide:shield-check",
+			"mastery_tokens"     => "lucide:coins",
+
+			_ => "lucide:circle"
+		};
+	}
+
+	// =========================================================================
+	// Effect display (tooltip text)
+	// =========================================================================
+	private string GetEffectDisplay(SkillNode node, SkillEffect effect, int rank)
+	{
+		// Pathfinder is special: rank 1 = speed, rank 2 = slot — non-scaling.
+		if (node.Id == "exp_pathfinder")
+		{
+			if (rank <= 0) return "Locked";
+			if (rank == 1) return "−10% expedition time";
+			if (rank >= 2) return "+1 expedition slot";
+		}
+
+		if (rank <= 0) return "Locked";
+
+		// For normal scaling effects: show cumulative at this rank.
+		float total = effect.Value * rank;
+		string sign = total >= 0 ? "+" : "";
+		string suffix = GetEffectSuffix(effect);
+		string label = GetEffectLabel(effect);
+
+		return $"{sign}{total:0.#}{suffix} {label}";
+	}
+
+	private string GetEffectSuffix(SkillEffect effect)
+	{
+		return effect.Type switch
+		{
+			SkillEffectType.GeneBonusFlat => "",
+			SkillEffectType.TeamSizeBonus => "",
+			SkillEffectType.GeneLock => "",
+			SkillEffectType.CartographerUnlock => "",
+			_ => "%"
 		};
 	}
 
@@ -639,103 +771,66 @@
 			SkillEffectType.AllMonsterSpAPercent => "SpA",
 			SkillEffectType.AllMonsterSpDPercent => "SpD",
 			SkillEffectType.AllMonsterSPDPercent => "SPD",
-			SkillEffectType.CritChanceBonus => "Crit Chance",
-			SkillEffectType.CritDamageBonus => "Crit Damage",
-			SkillEffectType.GeneBonusFlat => "Gene Bonus",
-			SkillEffectType.GeneticInheritanceBonus => "Inheritance",
-			SkillEffectType.MutationChance => "Mutation",
-			SkillEffectType.BreedingCostReduction => "Cost Reduction",
-			SkillEffectType.TwinChance => "Twin Chance",
-			SkillEffectType.RareTraitChance => "Rare Trait",
-			SkillEffectType.NatureInheritance => "Nature Inherit",
-			SkillEffectType.GeneLock => "Genes Locked",
-			SkillEffectType.ExpeditionSpeedBonus => "Speed",
-			SkillEffectType.ItemFindBonus => "Item Find",
-			SkillEffectType.EncounterRateBonus => "Encounters",
-			SkillEffectType.ExpeditionXPBonus => "Team XP",
-			SkillEffectType.RareItemChance => "Rare Items",
-			SkillEffectType.TeamSizeBonus => "Team Size",
-			SkillEffectType.CartographerUnlock => "Mode Unlock",
-			SkillEffectType.BossDamageBonus => "Boss Damage",
-			SkillEffectType.BossDamageReduction => "Boss Resist",
-			SkillEffectType.BossTokenBonus => "Tokens",
-			SkillEffectType.HigherTierDamageBonus => "Tier Damage",
-			SkillEffectType.PhaseDamageBonus => "Phase Damage",
-			SkillEffectType.MythicDamageBonus => "Mythic Damage",
-			SkillEffectType.BossSpawnBonus => "Boss Spawn",
-			SkillEffectType.ShopDiscount => "Shop Discount",
-			SkillEffectType.GoldDropBonus => "Gold Drops",
-			SkillEffectType.DiscountStackingBonus => "Stacking Discount",
-			SkillEffectType.DoubleDropChance => "Double Drop",
-			SkillEffectType.BoostPotencyBonus => "Boost Power",
-			SkillEffectType.GoldFromAllSources => "All Gold",
-			_ => effect.Type.ToString()
+			SkillEffectType.CritChanceBonus => "crit chance",
+			SkillEffectType.CritDamageBonus => "crit damage",
+			SkillEffectType.GeneBonusFlat => "bonus gene point",
+			SkillEffectType.GeneticInheritanceBonus => "gene inheritance",
+			SkillEffectType.MutationChance => "mutation chance",
+			SkillEffectType.BreedingCostReduction => "fusion cost",
+			SkillEffectType.NatureInheritance => "nature inheritance",
+			SkillEffectType.ExpeditionGoldBonus => "expedition gold",
+			SkillEffectType.EncounterRateBonus => "encounter rate",
+			SkillEffectType.ExpeditionXPBonus => "expedition XP",
+			SkillEffectType.RareItemChance => "rare item chance",
+			SkillEffectType.ExpeditionSpeedBonus => "expedition speed",
+			SkillEffectType.TeamSizeBonus => "expedition slot",
+			SkillEffectType.BossDamageBonus => "damage vs bosses",
+			SkillEffectType.BossDamageReduction => "boss damage taken",
+			SkillEffectType.BossTokenBonus => "boss tokens",
+			SkillEffectType.HigherTierDamageBonus => "vs higher-tier bosses",
+			SkillEffectType.PhaseDamageBonus => "phase-transition damage",
+			SkillEffectType.MythicDamageBonus => "vs Mythic bosses",
+			SkillEffectType.ShopDiscount => "shop prices",
+			SkillEffectType.GoldDropBonus => "gold drops",
+			SkillEffectType.DoubleDropChance => "double-drop chance",
+			SkillEffectType.BoostPotencyBonus => "shop boost potency",
+			SkillEffectType.GoldFromAllSources => "gold from all sources",
+			_ => ""
 		};
 	}
 
-	private string GetEffectSuffix(SkillEffect effect)
-	{
-		// Some effects are flat values, others are percentages
-		return effect.Type switch
-		{
-			SkillEffectType.GeneBonusFlat => "",
-			SkillEffectType.GeneLock => "",
-			SkillEffectType.TeamSizeBonus => "",
-			SkillEffectType.CartographerUnlock => "",
-			_ => "%"
-		};
-	}
-
-	private float GetCurrentBonus(SkillNode node, int rank)
-	{
-		if (node.Effects.Count == 0) return 0;
-		return node.Effects[0].Value * rank;
-	}
-
-	private string GetBranchColor(SkillBranch branch)
-	{
-		return branch switch
-		{
-			SkillBranch.Power => "#ef4444",
-			SkillBranch.Fusion => "#ec4899",
-			SkillBranch.Expedition => "#22c55e",
-			SkillBranch.Mastery => "#fbbf24",
-			SkillBranch.Fortune => "#06b6d4",
-			_ => "#8b5cf6"
-		};
-	}
-
-	private void ResetSkills()
-	{
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		if (tamer == null) return;
-
-		// Calculate total points spent
-		int refundedPoints = TamerManager.Instance.GetTotalSkillPointsSpent();
-
-		tamer.SkillPoints += refundedPoints;
-		tamer.SkillRanks.Clear();
-
-		TamerManager.Instance.SaveToCloud();
-		selectedNode = null;
-
-		SoundManager.PlayForward();
-		Log.Info($"Reset skills, refunded {refundedPoints} points");
-	}
-
+	// =========================================================================
+	// BuildHash — include every piece of state that affects rendering
+	// =========================================================================
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
-		hash.Add(currentBranch);
-		hash.Add(selectedNode?.Id);
-		hash.Add(hoveredNode?.Id);
 		hash.Add(GetSkillPoints());
+		hash.Add(GetTotalSkillPointsSpent());
 		hash.Add(GetTotalRanksUnlocked());
-		hash.Add(GetBranchPointsSpent());
-		hash.Add(holdProgress);
-		hash.Add(isHoldingUpgrade);
-		hash.Add(isHoldingMax);
-		hash.Add(isHoldingReset);
+		hash.Add(hoveredNode?.Id);
+		hash.Add(resetConfirming);
+		hash.Add(IsResetFlashing);
+		hash.Add(resetBtnVersion);
+		hash.Add(showBurst);
+		hash.Add(burstVersion);
+		hash.Add(lastInvestedId);
+		// Ticking the hash while the pulse overlay is visible so it unmounts at ~0.6s.
+		hash.Add(showBurst && sinceBurst < 0.6f);
+		// Include branch totals so the tier-gates update when they cross a threshold.
+		foreach (var b in AllBranches)
+		{
+			hash.Add(GetBranchPointsSpent(b));
+		}
+		// Include per-node unlock versions so the flash triggers on new click.
+		foreach (var kv in unlockVersions)
+		{
+			hash.Add(kv.Key);
+			hash.Add(kv.Value);
+		}
+		// Cursor-driven tooltip position
+		hash.Add((int)(lastMouseX / 8));
+		hash.Add((int)(lastMouseY / 8));
 		return hash.ToHashCode();
 	}
 }

@@ -66,9 +66,6 @@ public sealed class SettingsManager : Component
 		Settings = new GameSettings();
 
 		// Battle settings
-		Settings.DefaultBattleSpeed = Game.Cookies.Get<float>( GetKey( "settings-battle-speed" ), 1.0f );
-		Settings.DefaultAutoBattle = Game.Cookies.Get<bool>( GetKey( "settings-auto-battle" ), false );
-		Settings.DefaultAutoRetry = Game.Cookies.Get<bool>( GetKey( "settings-auto-retry" ), false );
 		Settings.DefaultAutoContract = Game.Cookies.Get<bool>( GetKey( "settings-auto-contract" ), false );
 		Settings.DefaultNegotiationStrategy = Game.Cookies.Get<int>( GetKey( "settings-negotiation-strategy" ), 1 );
 		Settings.UseAutoContractSpeciesFilter = Game.Cookies.Get<bool>( GetKey( "settings-species-filter-enabled" ), false );
@@ -105,9 +102,6 @@ public sealed class SettingsManager : Component
 	public void SaveSettings()
 	{
 		// Battle settings
-		Game.Cookies.Set( GetKey( "settings-battle-speed" ), Settings.DefaultBattleSpeed );
-		Game.Cookies.Set( GetKey( "settings-auto-battle" ), Settings.DefaultAutoBattle );
-		Game.Cookies.Set( GetKey( "settings-auto-retry" ), Settings.DefaultAutoRetry );
 		Game.Cookies.Set( GetKey( "settings-auto-contract" ), Settings.DefaultAutoContract );
 		Game.Cookies.Set( GetKey( "settings-negotiation-strategy" ), Settings.DefaultNegotiationStrategy );
 		Game.Cookies.Set( GetKey( "settings-species-filter-enabled" ), Settings.UseAutoContractSpeciesFilter );
@@ -165,24 +159,6 @@ public sealed class SettingsManager : Component
 	/// <summary>
 	/// Update a single setting and save
 	/// </summary>
-	public void SetBattleSpeed( float speed )
-	{
-		Settings.DefaultBattleSpeed = speed;
-		SaveSettings();
-	}
-
-	public void SetAutoBattle( bool enabled )
-	{
-		Settings.DefaultAutoBattle = enabled;
-		SaveSettings();
-	}
-
-	public void SetAutoRetry( bool enabled )
-	{
-		Settings.DefaultAutoRetry = enabled;
-		SaveSettings();
-	}
-
 	public void SetAutoContract( bool enabled )
 	{
 		Settings.DefaultAutoContract = enabled;

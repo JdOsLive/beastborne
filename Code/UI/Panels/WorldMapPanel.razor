@@ -1,0 +1,607 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using System;
+@using System.Collections.Generic;
+@using System.Linq;
+@inherits Panel
+
+<root class="world-map-root">
+	<div class="map-modal">
+		<!-- ═══ ILLUSTRATED MAP BACKDROP ═══ -->
+		<div class="map-backdrop">
+			<div class="map-bg-layer map-bg-gradient"></div>
+			<div class="map-bg-layer map-bg-texture"></div>
+		</div>
+
+		<!-- No header chrome — the navbar tab already identifies this surface.
+			 The map IS the content; let it breathe full-bleed. -->
+
+		<!-- ═══ ZONE MARKERS (absolute positioned on backdrop) ═══ -->
+		<div class="map-markers">
+			@foreach ( var z in Zones )
+			{
+				var zone = z;
+				var isUnlocked = IsZoneUnlocked( zone );
+				var isCleared = ExpeditionManager.Instance?.HasClearedExpedition( zone.ExpeditionId ) ?? false;
+				var unlockedClass = isUnlocked ? "unlocked" : "locked";
+				var clearedClass = isCleared ? "cleared" : "";
+				var zoneKey = "zone-" + zone.Id;
+				var isHovered = _hoveredZoneId == zone.Id;
+				<div class="zone-marker @unlockedClass @clearedClass @(isHovered ? "hovered" : "")"
+					 style="left: @(zone.X)%; top: @(zone.Y)%;"
+					 onclick=@(() => SelectZone(zone.Id))
+					 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
+					 onmouseout=@(() => OnZoneMarkerLeave(zone.Id))>
+
+					<div class="marker-stem"></div>
+					<div class="marker-pin">
+						@if ( !isUnlocked )
+						{
+							<iconify icon="lucide:lock" Size=@(22) Color="#94a3b8" />
+						}
+						else if ( isCleared )
+						{
+							<iconify icon="lucide:check" Size=@(24) Color="#86efac" />
+						}
+						else
+						{
+							<iconify icon="lucide:swords" Size=@(26) Color="#fef3c7" />
+						}
+					</div>
+					<div class="marker-pulse"></div>
+
+					<div class="zone-label">
+						<span class="zone-name">@zone.Name</span>
+						<span class="zone-meta">Lv @zone.Level</span>
+					</div>
+				</div>
+			}
+
+			<!-- ═══ ZONE HOVER PREVIEW (Age of Calamity style) ═══ -->
+			@if ( _hoveredZoneId != null )
+			{
+				var hz = GetZone( _hoveredZoneId );
+				if ( hz != null )
+				{
+					var hexp = GetExpedition( hz.ExpeditionId );
+					var hUnlocked = IsZoneUnlocked( hz );
+					var hCleared = ExpeditionManager.Instance?.HasClearedExpedition( hz.ExpeditionId ) ?? false;
+					// Preview always sits to the right of the marker — the
+					// player's reading flow left→right means the card reads as
+					// supplementary detail rather than a sidetrack. Right-edge
+					// overflow is accepted in exchange for consistency.
+					var cardImg = !string.IsNullOrEmpty( hexp?.BackgroundImage ) ? hexp.BackgroundImage : "ui/locations/placeholder_zone.png";
+					<div class="zone-preview flip-right"
+						 style="left: @(hz.X)%; top: @(hz.Y)%;">
+						<div class="zp-header">
+							<span class="zp-title">@hz.Name</span>
+							@if ( hCleared )
+							{
+								<span class="zp-badge cleared">CLEARED</span>
+							}
+							else if ( !hUnlocked )
+							{
+								<span class="zp-badge locked">LOCKED</span>
+							}
+						</div>
+						<div class="zp-image-wrap">
+							<img class="zp-image" src="@cardImg" />
+							@if ( !hUnlocked )
+							{
+								<div class="zp-image-veil">
+									<iconify icon="lucide:lock" Size=@(34) Color="#f1f5f9" />
+								</div>
+							}
+						</div>
+						<div class="zp-rec">
+							<span class="zp-rec-label">RECOMMENDED LEVEL</span>
+							<span class="zp-rec-value">Lv. @hz.Level</span>
+						</div>
+						<div class="zp-stats">
+							<div class="zp-stat">
+								<iconify icon="lucide:layers" Size=@(14) Color="#c4b5fd" />
+								<span>@(hexp?.Waves ?? 0) WAVES</span>
+							</div>
+							@if ( hexp != null )
+							{
+								<div class="zp-stat element-@(hexp.Element.ToString().ToLower())">
+									<img class="zp-stat-el" src="ui/icons/elements/background/@(hexp.Element.ToString().ToLower()).svg" />
+									<span>@hexp.Element.ToString().ToUpper()</span>
+								</div>
+								@if ( hexp.HasBoss )
+								{
+									<div class="zp-stat boss">
+										<iconify icon="lucide:skull" Size=@(13) Color="#fca5a5" />
+										<span>BOSS</span>
+									</div>
+								}
+							}
+						</div>
+						<div class="zp-lore">@hz.Lore</div>
+						@if ( hUnlocked )
+						{
+							<div class="zp-hint">
+								<iconify icon="lucide:mouse-pointer-click" Size=@(12) Color="#fde68a" />
+								<span>Click to open</span>
+							</div>
+						}
+						else
+						{
+							<div class="zp-hint locked">
+								<iconify icon="lucide:info" Size=@(12) Color="#94a3b8" />
+								<span>Clear the previous zone to unlock</span>
+							</div>
+						}
+					</div>
+				}
+			}
+
+			<!-- ═══ TRADE NODES (request-tile style) ═══ -->
+			@foreach ( var node in GetVisibleTradeNodes() )
+			{
+				var n = node;
+				var isLocked = TradeNodeManager.Instance?.IsLocked( n.Id ) ?? true;
+				var canAfford = TradeNodeManager.Instance?.CanAfford( n.Id ) ?? false;
+				var tnClass = (isLocked ? "done" : "") + " " + (canAfford ? "ready" : "");
+				var tnKey = "tn-" + n.Id;
+				<div class="trade-node @tnClass"
+					 style="left: @(n.MapPosX)%; top: @(n.MapPosY)%;"
+					 onclick=@(() => OpenTradeNode(n.Id))
+					 onmouseover=@(() => OnHover(tnKey))>
+					<div class="tn-pin">
+						@if ( isLocked )
+						{
+							<iconify icon="lucide:check" Size=@(14) Color="#4ade80" />
+						}
+						else
+						{
+							<iconify icon="lucide:handshake" Size=@(16) Color="#fef3c7" />
+						}
+					</div>
+					@if ( canAfford && !isLocked )
+					{
+						<div class="tn-ready-pulse"></div>
+					}
+				</div>
+			}
+		</div>
+
+		<!-- ═══ TRADE NODE POPUP (exchange dialog) ═══ -->
+		@if ( _tradePopupNodeId != null )
+		{
+			var tnode = TradeNodeManager.Instance?.GetNode( _tradePopupNodeId );
+			if ( tnode != null )
+			{
+				var canAfford = TradeNodeManager.Instance?.CanAfford( tnode.Id ) ?? false;
+				var isDone = TradeNodeManager.Instance?.IsLocked( tnode.Id ) ?? true;
+				var state = TradeNodeManager.Instance?.GetState( tnode.Id );
+
+				<div class="zone-detail-overlay" onclick=@CloseTradePopup></div>
+				<div class="trade-popup">
+					<div class="zd-header">
+						<div class="zd-title-stack">
+							<span class="zd-kicker">TRADE REQUEST</span>
+							<span class="zd-title">@tnode.Name</span>
+							@if ( !string.IsNullOrEmpty( tnode.NpcName ) )
+							{
+								<span class="zd-meta">@tnode.NpcName</span>
+							}
+						</div>
+						<button class="close-btn zd-close" onclick=@CloseTradePopup onmouseover=@(() => OnHover("tn-close"))>
+							<img class="close-icon" src="ui/icons/buttons/close.svg" />
+						</button>
+					</div>
+
+					<div class="zd-lore">
+						<span class="zd-lore-text">@tnode.Description</span>
+					</div>
+
+					<div class="zd-section-label">
+						<span>GIVE</span>
+					</div>
+					<div class="tn-line-list">
+						@foreach ( var (itemId, qty) in tnode.Requirements )
+						{
+							var item = ItemManager.Instance?.GetItem( itemId );
+							var have = TamerManager.Instance?.CurrentTamer?.Inventory != null
+								&& TamerManager.Instance.CurrentTamer.Inventory.TryGetValue( itemId, out var h ) ? h : 0;
+							var lineClass = have >= qty ? "satisfied" : "short";
+							<div class="tn-line @lineClass">
+								<iconify icon="lucide:package" Size=@(14) Color="#c4b5fd" />
+								<span class="tn-line-name">@(item?.Name ?? itemId)</span>
+								<span class="tn-line-amt">@have / @qty</span>
+							</div>
+						}
+						@if ( tnode.GoldCost > 0 )
+						{
+							var gold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+							var lineClass = gold >= tnode.GoldCost ? "satisfied" : "short";
+							<div class="tn-line @lineClass">
+								<iconify icon="lucide:coins" Size=@(14) Color="#fbbf24" />
+								<span class="tn-line-name">Gold</span>
+								<span class="tn-line-amt">@gold / @tnode.GoldCost</span>
+							</div>
+						}
+					</div>
+
+					<div class="zd-section-label">
+						<span>RECEIVE</span>
+					</div>
+					<div class="tn-line-list">
+						@foreach ( var (itemId, qty) in tnode.ItemRewards )
+						{
+							var item = ItemManager.Instance?.GetItem( itemId );
+							<div class="tn-line reward">
+								<iconify icon="lucide:gift" Size=@(14) Color="#4ade80" />
+								<span class="tn-line-name">@(item?.Name ?? itemId)</span>
+								<span class="tn-line-amt">x@qty</span>
+							</div>
+						}
+						@if ( tnode.GoldReward > 0 )
+						{
+							<div class="tn-line reward">
+								<iconify icon="lucide:coins" Size=@(14) Color="#fbbf24" />
+								<span class="tn-line-name">Gold</span>
+								<span class="tn-line-amt">+@tnode.GoldReward</span>
+							</div>
+						}
+						@if ( tnode.XPReward > 0 )
+						{
+							<div class="tn-line reward">
+								<iconify icon="lucide:arrow-up" Size=@(14) Color="#4ade80" />
+								<span class="tn-line-name">Tamer XP</span>
+								<span class="tn-line-amt">+@tnode.XPReward</span>
+							</div>
+						}
+						@if ( tnode.SkillPointReward > 0 )
+						{
+							<div class="tn-line reward">
+								<iconify icon="lucide:sparkles" Size=@(14) Color="#a78bfa" />
+								<span class="tn-line-name">Skill Points</span>
+								<span class="tn-line-amt">+@tnode.SkillPointReward</span>
+							</div>
+						}
+					</div>
+
+					@if ( isDone )
+					{
+						<div class="tn-done-banner">
+							<iconify icon="lucide:check-circle-2" Size=@(18) Color="#4ade80" />
+							<span>Already completed</span>
+						</div>
+					}
+					else
+					{
+						<button class="embark-btn @(canAfford ? "" : "disabled")"
+								onclick=@(() => ExecuteTrade(tnode.Id))
+								onmouseover=@(() => OnHover("tn-exec-" + tnode.Id))>
+							<iconify icon="lucide:handshake" Size=@(20) Color="#ffffff" />
+							<span>@(canAfford ? "ACCEPT TRADE" : "NOT ENOUGH")</span>
+						</button>
+					}
+
+					@if ( state != null && state.TimesCompleted > 0 )
+					{
+						<div class="tn-times-row">
+							<span>Completed @state.TimesCompleted @(state.TimesCompleted == 1 ? "time" : "times")</span>
+						</div>
+					}
+				</div>
+			}
+		}
+
+		<!-- ═══ ZONE DETAIL PANE (appears when a zone is selected) ═══ -->
+		@if ( _selectedZoneId != null )
+		{
+			var sz = GetZone( _selectedZoneId );
+			if ( sz != null )
+			{
+				var exp = GetExpedition( sz.ExpeditionId );
+
+				<div class="zone-detail-overlay" onclick=@CloseZoneDetail></div>
+				<div class="zone-detail">
+					<div class="zd-header">
+						<div class="zd-title-stack">
+							<span class="zd-kicker">EXPEDITION</span>
+							<span class="zd-title">@sz.Name</span>
+							<span class="zd-meta">Level @sz.Level &middot; @(exp?.Waves ?? 0) waves</span>
+						</div>
+						<button class="close-btn zd-close" onclick=@CloseZoneDetail onmouseover=@(() => OnHover("zd-close"))>
+							<img class="close-icon" src="ui/icons/buttons/close.svg" />
+						</button>
+					</div>
+
+					<div class="zd-lore">
+						<span class="zd-lore-text">@sz.Lore</span>
+					</div>
+
+					<!-- Embark CTA -->
+					<button class="embark-btn" onclick=@(() => Embark(sz.ExpeditionId)) onmouseover=@(() => OnHover("embark-" + sz.Id))>
+						<iconify icon="lucide:compass" Size=@(20) Color="#ffffff" />
+						<span>EMBARK</span>
+					</button>
+
+					<!-- NPC quest-giver slots (side quest acceptance — placeholder for now) -->
+					<div class="zd-section-label">
+						<span>SIDE QUESTS</span>
+						<span class="zd-section-count">Coming soon</span>
+					</div>
+					<div class="zd-npc-list">
+						@foreach ( var npc in sz.NpcPlaceholders )
+						{
+							var npcName = npc;
+							<div class="zd-npc-slot locked" onmouseover=@(() => OnHover("npc-" + sz.Id + "-" + npcName))>
+								<div class="zd-npc-icon">
+									<iconify icon="lucide:user" Size=@(18) Color="#94a3b8" />
+								</div>
+								<div class="zd-npc-text">
+									<span class="zd-npc-name">@npcName</span>
+									<span class="zd-npc-hook">No quests yet &mdash; check back later</span>
+								</div>
+								<iconify icon="lucide:lock" Size=@(14) Color="#64748b" />
+							</div>
+						}
+					</div>
+				</div>
+			}
+		}
+
+		<!-- ═══ TEAM PICKER POPUP (overlays the whole map when Embark is clicked) ═══ -->
+		<TeamPickerPopup />
+	</div>
+</root>
+
+@code {
+	public static WorldMapPanel Instance { get; private set; }
+
+	private string _selectedZoneId;
+	private string _tradePopupNodeId;
+	// Tracked separately from _hoveredKey so mousing over child elements of
+	// the marker (label, pin) doesn't flicker the preview card off and back.
+	private string _hoveredZoneId;
+
+	// Hover-sound guard — onmouseover bubbles from children in s&box, so gate
+	// sound playback behind a key change.
+	private string _hoveredKey;
+	private void OnHover( string key )
+	{
+		if ( _hoveredKey == key ) return;
+		_hoveredKey = key;
+		SoundManager.PlayHover();
+	}
+
+	// Zone marker hover — plays the hover sound once AND sets the preview
+	// target. Split from OnHover so the preview card only anchors on the
+	// outermost marker element, not its label/pin children (which would
+	// otherwise fire mouseout and close the card mid-read).
+	private void OnZoneMarkerHover( string zoneId, string hoverKey )
+	{
+		OnHover( hoverKey );
+		_hoveredZoneId = zoneId;
+	}
+
+	private void OnZoneMarkerLeave( string zoneId )
+	{
+		if ( _hoveredZoneId == zoneId ) _hoveredZoneId = null;
+	}
+
+	// Zone definitions — visual/narrative layer on top of the ExpeditionManager
+	// data. Each zone maps to one of the first three Expedition entries until we
+	// cut the rest on the Apr 25 retheme pass.
+	private record MapZone(
+		string Id,
+		string ExpeditionId,
+		string Name,
+		string Lore,
+		int Level,
+		float X,
+		float Y,
+		string[] NpcPlaceholders );
+
+	private static readonly MapZone[] Zones = new[]
+	{
+		new MapZone(
+			Id: "saltmoor_cove",
+			ExpeditionId: "saltmoor_cove",
+			Name: "Saltmoor Cove",
+			Lore: "A small coastal village where homes are grown into the curve of the hillside and every rooftop turns its face to the sun. The tide pools teach soft lessons, and the beasts here are mostly kind.",
+			Level: 1,
+			X: 22f,
+			Y: 62f,
+			NpcPlaceholders: new[] { "Elder Mira", "Saltkeeper Bram", "Lost-Cat Kera" } ),
+
+		new MapZone(
+			Id: "saltmoor_forest",
+			ExpeditionId: "saltmoor_forest",
+			Name: "Saltmoor Forest",
+			Lore: "The woods the village has spent a generation healing. Paths wind between mangrove roots and old ceibas, the canopy holding the morning mist. The beasts here are bolder — territorial, not unfriendly, but not to be tested alone.",
+			Level: 15,
+			X: 52f,
+			Y: 38f,
+			NpcPlaceholders: new[] { "Ranger Tasha", "The Herbalist", "A Nervous Trader" } ),
+
+		new MapZone(
+			Id: "old_saltmoor",
+			ExpeditionId: "old_saltmoor",
+			Name: "Old Saltmoor",
+			Lore: "The original settlement, lost to the storms two generations ago. A broken pier, a hollow lighthouse, walls the sea keeps trying to take back. The beasts that claim it now are older, stranger, and less willing to share.",
+			Level: 30,
+			X: 78f,
+			Y: 68f,
+			NpcPlaceholders: new[] { "Archaeologist Ven", "A Wary Scout", "The Collector" } ),
+	};
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			Instance = this;
+			_hoveredKey = null;
+			_selectedZoneId = null;
+		}
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		// Esc dismisses the zone-detail overlay if it's open. Leaving the map
+		// itself is done via the HUD tab bar (map is inline, not a modal).
+		if ( Input.Pressed( "Escape" ) )
+		{
+			if ( _tradePopupNodeId != null ) CloseTradePopup();
+			else if ( _selectedZoneId != null ) CloseZoneDetail();
+		}
+	}
+
+	private void SelectZone( string zoneId )
+	{
+		var zone = GetZone( zoneId );
+		if ( zone == null ) return;
+		if ( !IsZoneUnlocked( zone ) )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+		_selectedZoneId = zoneId;
+		_hoveredKey = null;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseZoneDetail()
+	{
+		_selectedZoneId = null;
+		_hoveredKey = null;
+		SoundManager.PlayPopdown();
+	}
+
+	private void Embark( string expeditionId )
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Progression gate — requires the previous expedition to be cleared.
+		// Tamer level is NOT a hard cap (only a recommendation), so the copy
+		// here reflects the real reason the CTA was disallowed.
+		if ( !em.CanStartExpedition( expeditionId ) )
+		{
+			NotificationManager.Instance?.AddNotification(
+				NotificationType.Warning,
+				"Zone locked",
+				"Clear the previous expedition to unlock this zone." );
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Open the team picker popup — it owns the actual StartExpedition call.
+		// Close the zone-detail pane so the popup isn't stacked under the
+		// zd-overlay's click-dismiss layer.
+		_selectedZoneId = null;
+		TeamPickerPopup.Show( expeditionId );
+	}
+
+	private MapZone GetZone( string id ) => Zones.FirstOrDefault( z => z.Id == id );
+
+	private Expedition GetExpedition( string id ) =>
+		ExpeditionManager.Instance?.Expeditions.FirstOrDefault( e => e.Id == id );
+
+	// ───────────────────── TRADE NODE HELPERS ─────────────────────
+
+	/// <summary>
+	/// Trade nodes appear only AFTER the player has cleared the zone at least
+	/// once. Keeps the first trip through each expedition focused on the main
+	/// loop; side content unlocks on the way back. Matches SideQuest gating.
+	/// </summary>
+	private IEnumerable<TradeNode> GetVisibleTradeNodes()
+	{
+		var mgr = TradeNodeManager.Instance;
+		if ( mgr == null ) yield break;
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) yield break;
+		foreach ( var node in mgr.AllNodes )
+		{
+			if ( !em.HasClearedExpedition( node.ZoneId ) ) continue;
+			yield return node;
+		}
+	}
+
+	private void OpenTradeNode( string nodeId )
+	{
+		_tradePopupNodeId = nodeId;
+		_hoveredKey = null;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseTradePopup()
+	{
+		_tradePopupNodeId = null;
+		_hoveredKey = null;
+		SoundManager.PlayPopdown();
+	}
+
+	private void ExecuteTrade( string nodeId )
+	{
+		var result = TradeNodeManager.Instance?.Execute( nodeId ) ?? TradeNodeManager.TradeResult.UnknownNode;
+		if ( result == TradeNodeManager.TradeResult.Success )
+		{
+			SoundManager.PlaySuccess();
+			// Keep the popup open so the player sees the updated counts. Auto-close
+			// after they click elsewhere.
+		}
+		else
+		{
+			SoundManager.PlayDeny();
+		}
+	}
+
+	private bool IsZoneUnlocked( MapZone zone )
+	{
+		// Zone N is unlocked once the previous expedition has been cleared at
+		// least once. HighestExpeditionCleared is a count (0 = none, 1 = cleared
+		// expedition[0], 2 = cleared through expedition[1], etc.) — so a zone
+		// at index N is unlocked when HighestExpeditionCleared >= N.
+		var em = ExpeditionManager.Instance;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( em == null || tamer == null ) return zone.Id == "saltmoor_cove"; // fail-safe: only the starter
+		var exp = em.Expeditions.FirstOrDefault( e => e.Id == zone.ExpeditionId );
+		if ( exp == null ) return false;
+		int idx = em.Expeditions.ToList().IndexOf( exp );
+		return idx <= tamer.HighestExpeditionCleared;
+	}
+
+	protected override int BuildHash()
+	{
+		var h = new HashCode();
+		h.Add( IsVisible );
+		h.Add( _selectedZoneId );
+		h.Add( _tradePopupNodeId );
+		h.Add( _hoveredZoneId );
+		h.Add( TamerManager.Instance?.CurrentTamer?.Level ?? 0 );
+		h.Add( TamerManager.Instance?.CurrentTamer?.HighestExpeditionCleared ?? 0 );
+		h.Add( TamerManager.Instance?.CurrentTamer?.Gold ?? 0 );
+		// Rebuild the "ready" badge when the player's material counts change.
+		var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if ( inv != null )
+		{
+			foreach ( var node in TradeNodeManager.Instance?.AllNodes ?? new List<TradeNode>() )
+			{
+				foreach ( var (itemId, _) in node.Requirements )
+				{
+					inv.TryGetValue( itemId, out var cnt );
+					h.Add( itemId );
+					h.Add( cnt );
+				}
+				var state = TradeNodeManager.Instance?.GetState( node.Id );
+				h.Add( state?.TimesCompleted ?? 0 );
+			}
+		}
+		return h.ToHashCode();
+	}
+}

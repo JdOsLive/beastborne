@@ -29,6 +29,24 @@ public sealed class BattleSceneController : Component
 	public bool IsWaveTransitioning => sceneState == SceneState.WaveTransition || pendingWaveTransition;
 
 	/// <summary>
+	/// True while the scene still has pending turns to animate — queued
+	/// turns waiting to play, the current turn's VFX still running, or
+	/// a faint animation settling. BattleView uses this to keep the
+	/// player's action bar disabled until the visual story catches up to
+	/// the simulation, so the player can't input a move before the prior
+	/// turn's animation finishes.
+	/// </summary>
+	public bool IsPlayingTurns => turnQueue.Count > 0 || isAnimatingTurn || waitingForFaint || (cameraController?.IsInKOZoom ?? false);
+
+	/// <summary>
+	/// Fires when a queued turn's visuals START playing (one per turn).
+	/// BattleView subscribes so its log feed reveals entries in sync with
+	/// the 3D scene instead of all at once when BattleManager finishes
+	/// simulating the round.
+	/// </summary>
+	public Action<BattleTurn> OnTurnVisualsStarted;
+
+	/// <summary>
 	/// 0-1 progress of new enemies sliding into position. UI can use this to fade in health tabs.
 	/// </summary>
 	public float WaveEnterProgress { get; private set; }
@@ -54,6 +72,14 @@ public sealed class BattleSceneController : Component
 	// Track which monsters need KO after their turn VFX plays
 	private Queue<Guid> pendingKOs = new();
 	private bool waitingForFaint;
+	// After the KO zoom + faint both finish, hold a small extra beat before
+	// the next turn fires so the player can register what happened. Without
+	// this, the camera snaps out of the money-shot and the next attack
+	// starts on the same frame — feels rushed. 0.25s is the smallest beat
+	// that reads as "moment of silence" without pacing the battle into
+	// molasses.
+	private const float PostKOSettleDuration = 0.25f;
+	private float postKOSettleTimer;
 
 	// Wave transition state
 	private bool pendingWaveTransition;
@@ -103,6 +129,12 @@ public sealed class BattleSceneController : Component
 		var go = scene.CreateObject();
 		go.Name = "BattleSceneController";
 		go.Components.Create<BattleSceneController>();
+		// The damage-number overlay reads from DamageNumberManager.Instance;
+		// keep its lifecycle tied to the battle scene controller's so the
+		// singleton always exists once battles can start.
+		DamageNumberManager.EnsureInstance( scene );
+		// Same pattern for the localized impact-ring overlay.
+		ImpactRingManager.EnsureInstance( scene );
 	}
 
 	protected override void OnUpdate()
@@ -157,7 +189,9 @@ public sealed class BattleSceneController : Component
 
 	private void ProcessTurnQueue()
 	{
-		// Wait for faint animations to finish before playing next turn
+		// Wait for faint animations to finish before playing next turn.
+		// Also wait for the KO money-shot zoom — we don't want the next
+		// turn to fire mid-cinematic.
 		if ( waitingForFaint )
 		{
 			bool anyFainting = false;
@@ -169,10 +203,28 @@ public sealed class BattleSceneController : Component
 					break;
 				}
 			}
-			if ( !anyFainting )
+			bool koZoomActive = cameraController?.IsInKOZoom ?? false;
+			if ( !anyFainting && !koZoomActive )
 			{
+				// Both faint and KO zoom finished — start the post-KO settle
+				// hold. Tick it down on subsequent frames before clearing the
+				// wait state. This is what gives the "moment of silence"
+				// after the camera snaps back to default.
+				if ( postKOSettleTimer < PostKOSettleDuration )
+				{
+					postKOSettleTimer += Time.Delta;
+					return;
+				}
+				postKOSettleTimer = 0f;
 				waitingForFaint = false;
 				isAnimatingTurn = false;
+				// Re-read PlayerActiveIndex / EnemyActiveIndex and move the
+				// newly-active beast into the front slot. BattleSimulator's
+				// auto-swap updates the active indices on KO, but the scene
+				// didn't refresh — the swapped-in beast's billboard was
+				// parked at its bench position and never moved, so players
+				// saw an empty front slot after a faint.
+				RepositionBillboards();
 			}
 			return;
 		}
@@ -182,14 +234,18 @@ public sealed class BattleSceneController : Component
 			turnAnimTimer -= Time.Delta;
 			if ( turnAnimTimer <= 0f )
 			{
-				// Apply any pending KOs now that the VFX delay has passed
+				// Apply any pending KOs now that the VFX delay has passed.
+				// Capture the LAST KO'd defender's world pos for the money-shot
+				// (most-recent KO == most narratively relevant target).
 				bool anyKO = false;
+				Vector3? koTargetPos = null;
 				while ( pendingKOs.Count > 0 )
 				{
 					var koId = pendingKOs.Dequeue();
 					if ( billboards.TryGetValue( koId, out var bb ) )
 					{
 						Log.Info( $"Battle3D: Applying KO to {bb.Monster?.Nickname}" );
+						koTargetPos = bb.WorldPosition;
 						bb.IsKO = true;
 						anyKO = true;
 					}
@@ -199,6 +255,15 @@ public sealed class BattleSceneController : Component
 				{
 					// Switch to waiting for faint — don't process next turn yet
 					waitingForFaint = true;
+
+					// Trigger the KO money-shot. Skip during wave transition
+					// (too chaotic) — though by construction we shouldn't reach
+					// here in WaveTransition state since ProcessTurnQueue is
+					// only called in the Active state, this is defensive.
+					if ( cameraController != null && koTargetPos.HasValue && sceneState == SceneState.Active )
+					{
+						cameraController.TriggerKOZoom( koTargetPos.Value );
+					}
 				}
 				else
 				{
@@ -212,6 +277,10 @@ public sealed class BattleSceneController : Component
 		{
 			var turn = turnQueue.Dequeue();
 			PlayTurnVisuals( turn );
+			// Announce the turn so the battle log reveals its entry in sync
+			// with the on-screen animation instead of jumping ahead.
+			try { OnTurnVisualsStarted?.Invoke( turn ); }
+			catch ( Exception ex ) { Log.Warning( $"Battle3D: OnTurnVisualsStarted handler threw: {ex.Message}" ); }
 			isAnimatingTurn = true;
 			turnAnimTimer = TurnAnimDelay;
 		}
@@ -219,14 +288,64 @@ public sealed class BattleSceneController : Component
 
 	// ── Event Handlers ──
 
+	// Track the expedition id the current scene is showing so we can
+	// distinguish "same expedition, next wave" (wave-transition reuse is
+	// correct) from "different expedition, start of run" (need full rebuild
+	// — new team, fresh camera, fresh scene). Set in SetupBattle.
+	private string currentSceneExpeditionId;
+
 	private void HandleBattleStart()
 	{
-		Log.Info( $"Battle3D: HandleBattleStart fired. SceneState={sceneState}, hasRoot={battleSceneRoot != null}" );
+		var em = ExpeditionManager.Instance;
+		var newExpId = em?.CurrentExpedition?.Id;
+		var newWave = em?.CurrentWave ?? 0;
+		Log.Info( $"Battle3D: HandleBattleStart fired. SceneState={sceneState}, hasRoot={battleSceneRoot != null}, newExp={newExpId} (wave {newWave}), sceneExp={currentSceneExpeditionId}" );
 
 		if ( sceneState != SceneState.Inactive && battleSceneRoot != null )
 		{
-			// Scene already exists — flag for wave transition
-			// Don't transition yet — let the turn queue + faint play first
+			// A fresh run starts at Wave 1. If the new expedition starts at
+			// wave 1 while we still have a scene from a previous run, that's
+			// ALWAYS a new-expedition entry (even if the expedition id is the
+			// same — e.g. Retry of the same zone) and needs a clean rebuild.
+			// Wave-transition reuse should ONLY happen for wave 2+ of the
+			// same continuous run. Reusing the old scene across runs has been
+			// producing blank / half-visible scenes (stale camera, stale
+			// arena state, stale billboard visual state from the prior KO).
+			bool sameExpedition = !string.IsNullOrEmpty( newExpId )
+				&& newExpId == currentSceneExpeditionId;
+			bool isFreshRun = newWave <= 1 || !sameExpedition;
+			if ( isFreshRun )
+			{
+				Log.Info( $"Battle3D: Fresh expedition start (wave={newWave}, sameExp={sameExpedition}) — full rebuild" );
+				SetupBattle();
+				return;
+			}
+
+			// Additional safety: even within the same expedition, if any
+			// current player monster has no billboard (team composition
+			// changed between waves — unusual but possible), rebuild.
+			var bm = BattleManager.Instance;
+			bool teamMatches = true;
+			if ( bm?.PlayerTeam != null )
+			{
+				foreach ( var monster in bm.PlayerTeam )
+				{
+					if ( monster == null ) continue;
+					if ( !billboards.ContainsKey( monster.Id ) )
+					{
+						teamMatches = false;
+						break;
+					}
+				}
+			}
+
+			if ( !teamMatches )
+			{
+				Log.Info( "Battle3D: Player team composition differs from existing scene — full rebuild" );
+				SetupBattle();
+				return;
+			}
+
 			Log.Info( "Battle3D: Detected wave transition, pending after VFX/faint" );
 			pendingWaveTransition = true;
 			WaveEnterProgress = 0f; // Reset so UI doesn't flash with old progress
@@ -295,6 +414,22 @@ public sealed class BattleSceneController : Component
 				Systems.SoundManager.PlayAttackHit();
 
 			SpawnDamageNumber( turn );
+
+			// ── Billboard physical commit (lunge + knockback) ─────────
+			TriggerLungeAndKnockback( attackerBB, defenderBB, turn.IsCritical, turn.IsSuperEffective, isMiss: false );
+
+			// ── Localized impact rings (Item 3) ───────────────────────
+			// Fire AFTER damage number so the ring sits at the same captured
+			// screen pos. Yellow ring on crit, orange ring on super. Both
+			// can fire on the same hit; orange staggers 60ms behind yellow.
+			if ( turn.IsCritical )
+			{
+				ImpactRingManager.Instance?.SpawnRing( turn.DefenderId, "#fde047", isCrit: true );
+			}
+			if ( turn.IsSuperEffective )
+			{
+				_ = SpawnSuperRingDelayedAsync( turn.DefenderId, turn.IsCritical );
+			}
 		}
 		else if ( turn.IsMiss )
 		{
@@ -302,6 +437,9 @@ public sealed class BattleSceneController : Component
 			cameraController?.TriggerShake( 0.5f, 0.05f );
 			Systems.SoundManager.PlayAttackMiss();
 			SpawnMissText( defenderBB );
+
+			// Miss: attacker still commits to the swing, defender gets no knockback.
+			TriggerLungeAndKnockback( attackerBB, defenderBB, false, false, isMiss: true );
 		}
 
 		if ( turn.IsSwap )
@@ -344,7 +482,15 @@ public sealed class BattleSceneController : Component
 		turnQueue.Clear();
 		isAnimatingTurn = false;
 		waitingForFaint = false;
+		postKOSettleTimer = 0f;
 		pendingEndCheck = false;
+
+		// Clear any in-flight billboard motion so a half-completed knockback
+		// from the last turn doesn't bleed into the wave-transition slide-in.
+		foreach ( var kvp in billboards )
+		{
+			kvp.Value?.ClearMotion();
+		}
 
 		// Faint is already done — remove dead enemies immediately
 		RemoveDefeatedEnemyBillboards();
@@ -409,13 +555,66 @@ public sealed class BattleSceneController : Component
 		var bm = BattleManager.Instance;
 		if ( bm == null ) return;
 
+		// Case 1: reconcile billboards with the current player team.
+		//  a) existing billboard for a monster still on the team → refresh it
+		//  b) no billboard for a monster on the team → create one (e.g. team
+		//     composition changed between expeditions — new beast in slot)
+		//  c) billboard for a monster no longer on the team → destroy it
+		//     (otherwise old beasts linger at bench positions forever)
+		//
+		// The wave-transition path used to skip (b) and (c), which left the
+		// whole player side invisible whenever you started a new expedition
+		// with any team change — the scene only had orphaned billboards from
+		// the previous run.
+		var currentIds = new HashSet<System.Guid>();
 		foreach ( var monster in bm.PlayerTeam )
 		{
+			if ( monster == null ) continue;
+			currentIds.Add( monster.Id );
+
 			if ( billboards.TryGetValue( monster.Id, out var bb ) )
 			{
 				bb.ResetFromFaint();
+				// If the player evolved this beast between expeditions, the
+				// cached Species on the billboard is stale and would keep
+				// showing the pre-evolution sprite. Refresh it.
+				bb.RefreshSpeciesIfChanged();
+			}
+			else
+			{
+				// New beast — spawn a fresh billboard.
+				var species = MonsterManager.Instance?.GetSpecies( monster.SpeciesId );
+				if ( species == null ) continue;
+
+				var go = new GameObject( true, $"Billboard_{monster.Nickname ?? species.Name}" );
+				go.Parent = battleSceneRoot;
+
+				var billboard = go.Components.Create<MonsterBillboard>();
+				billboard.Setup( monster, species, true );
+				billboards[monster.Id] = billboard;
+				Log.Info( $"Battle3D: Spawned new player billboard for {monster.Nickname ?? species.Name} (team changed between expeditions)" );
 			}
 		}
+
+		// Prune billboards for monsters that were on the prior team but not
+		// this one. Walk keys into a temp list so we can mutate the dict.
+		var stale = new List<System.Guid>();
+		foreach ( var kvp in billboards )
+		{
+			var bb = kvp.Value;
+			if ( bb == null || !bb.IsPlayerSide ) continue;
+			if ( !currentIds.Contains( kvp.Key ) ) stale.Add( kvp.Key );
+		}
+		foreach ( var id in stale )
+		{
+			billboards[id]?.GameObject?.Destroy();
+			billboards.Remove( id );
+		}
+		if ( stale.Count > 0 )
+		{
+			Log.Info( $"Battle3D: Pruned {stale.Count} stale player billboards from previous team" );
+		}
+
 		// Reposition in case active index changed
 		PositionTeam( bm.PlayerTeam, GetPlayerPositions(), true );
 	}
@@ -496,7 +695,23 @@ public sealed class BattleSceneController : Component
 		SpawnBillboards( bm.EnemyTeam, false );
 		RepositionBillboards();
 
-		Log.Info( $"Battle3D: Scene setup with {billboards.Count} monsters" );
+		// Record which expedition this scene belongs to. HandleBattleStart
+		// uses this to detect cross-expedition battle starts and force a
+		// full rebuild rather than a wave-transition reuse.
+		currentSceneExpeditionId = ExpeditionManager.Instance?.CurrentExpedition?.Id;
+
+		// Diagnostic: log the final positions so we can tell at a glance
+		// whether billboards are being placed where the camera is looking.
+		// Previously a "blank scene" bug (arena + sprites invisible) turned
+		// out to be a camera-control race after expedition retries; leaving
+		// this in so the next such bug surfaces quickly.
+		foreach ( var kvp in billboards )
+		{
+			var bb = kvp.Value;
+			Log.Info( $"Battle3D: Billboard '{bb.Monster?.Nickname ?? bb.Species?.Name}' placed at {bb.WorldPosition}, IsActive={bb.IsActive}, IsPlayerSide={bb.IsPlayerSide}, IsKO={bb.IsKO}" );
+		}
+		var cam = cameraController?.GetCamera();
+		Log.Info( $"Battle3D: Scene setup with {billboards.Count} monsters for expedition '{currentSceneExpeditionId}'. Camera pos={cam?.WorldPosition}, FOV={cam?.FieldOfView}, Enabled={cam?.Enabled}, IsMain={cam?.IsMainCamera}" );
 	}
 
 	private void TeardownBattle()
@@ -505,15 +720,29 @@ public sealed class BattleSceneController : Component
 		turnQueue.Clear();
 		pendingKOs.Clear();
 		isAnimatingTurn = false;
+		postKOSettleTimer = 0f;
 		waitingForFaint = false;
 		incomingEnemies.Clear();
 		pendingEndCheck = false;
 		pendingWaveTransition = false;
 
+		// Purge any in-flight damage numbers so they don't drift into the
+		// post-battle view.
+		DamageNumberManager.Instance?.Clear();
+		ImpactRingManager.Instance?.Clear();
+
+		// Restore the main camera to its pre-battle state BEFORE destroying
+		// the scene root. The BattleCameraController component lives on a
+		// child of battleSceneRoot, so destroying the root would take its
+		// OnDestroy offline; explicit Disable() here guarantees the camera
+		// gets its saved position/rotation/FOV back.
+		cameraController?.Disable();
+
 		battleSceneRoot?.Destroy();
 		battleSceneRoot = null;
 		cameraController = null;
 		arena = null;
+		currentSceneExpeditionId = null;
 
 		sceneState = SceneState.Inactive;
 		Log.Info( "Battle3D: Scene torn down" );
@@ -562,12 +791,12 @@ public sealed class BattleSceneController : Component
 
 			if ( i == activeIdx )
 			{
-				billboard.WorldPosition = positions[0];
+				billboard.SetRestPosition( positions[0] );
 				billboard.IsActive = true;
 			}
 			else if ( benchIdx < positions.Length )
 			{
-				billboard.WorldPosition = positions[benchIdx];
+				billboard.SetRestPosition( positions[benchIdx] );
 				billboard.IsActive = false;
 				benchIdx++;
 			}
@@ -607,31 +836,122 @@ public sealed class BattleSceneController : Component
 
 	// ── Utility ──
 
+	// Damage numbers were 3D TextRenderer GameObjects; rendering moved to a
+	// screen-space Razor overlay (DamageNumberOverlay) because TextRenderer
+	// has no outline / stroke / shadow / gradient API and could never match
+	// the "Manga Impact" mockup. These methods now just delegate spawn
+	// requests to DamageNumberManager which holds the live list.
 	private void SpawnDamageNumber( BattleTurn turn )
 	{
-		if ( !billboards.TryGetValue( turn.DefenderId, out var defenderBB ) ) return;
-		var spawnPos = defenderBB.GetTopPosition() + Vector3.Up * 5f;
-		spawnPos += new Vector3( 0f, Random.Shared.Float( -5f, 5f ), 0f );
-
-		var go = new GameObject( true, $"DamageNum_{turn.Damage}" );
-		go.Parent = battleSceneRoot;
-		go.WorldPosition = spawnPos;
-
-		var dmgNum = go.Components.Create<FloatingDamageNumber>();
-		dmgNum.Setup( turn.Damage, turn.IsCritical, turn.IsSuperEffective );
+		var mgr = DamageNumberManager.Instance;
+		if ( mgr == null ) return;
+		mgr.SpawnHit( turn.DefenderId, turn.Damage, turn.IsCritical, turn.IsSuperEffective );
 	}
 
 	private void SpawnMissText( MonsterBillboard defenderBB )
 	{
 		if ( defenderBB == null ) return;
-		var spawnPos = defenderBB.GetTopPosition() + Vector3.Up * 5f;
+		var mgr = DamageNumberManager.Instance;
+		if ( mgr == null ) return;
+		mgr.SpawnMiss( defenderBB.Monster.Id );
+	}
 
-		var go = new GameObject( true, "MissText" );
-		go.Parent = battleSceneRoot;
-		go.WorldPosition = spawnPos;
+	/// <summary>
+	/// Drive the attacker's lunge and (when applicable) the defender's knockback.
+	/// Tuning lives in MonsterBillboard's constants — this method just dispatches
+	/// the (crit/super/miss) bucket and computes the direction vector.
+	/// </summary>
+	private void TriggerLungeAndKnockback( MonsterBillboard attacker, MonsterBillboard defender, bool isCrit, bool isSuper, bool isMiss )
+	{
+		if ( attacker == null ) return;
 
-		var dmgNum = go.Components.Create<FloatingDamageNumber>();
-		dmgNum.SetupMiss();
+		// Direction from attacker toward defender. If we don't have a defender
+		// (rare — e.g. self-targeted move on miss), fall back to side-aware
+		// forward so the attacker still commits visually.
+		Vector3 dirToTarget;
+		if ( defender != null )
+		{
+			var delta = defender.RestPosition - attacker.RestPosition;
+			if ( delta.LengthSquared > 0.01f )
+				dirToTarget = delta.Normal;
+			else
+				dirToTarget = attacker.IsPlayerSide ? Vector3.Forward : Vector3.Backward;
+		}
+		else
+		{
+			dirToTarget = attacker.IsPlayerSide ? Vector3.Forward : Vector3.Backward;
+		}
+
+		float lungeDist, lungeOut, lungeHold, lungeBack;
+		float kbDist, kbOut, kbBack, kbDelay;
+
+		if ( isMiss )
+		{
+			lungeDist = MonsterBillboard.LungeDistanceMiss;
+			lungeOut = MonsterBillboard.LungeOutMiss;
+			lungeHold = MonsterBillboard.LungeHoldMiss;
+			lungeBack = MonsterBillboard.LungeBackMiss;
+			kbDist = 0f; kbOut = 0f; kbBack = 0f; kbDelay = 0f;
+		}
+		else if ( isCrit )
+		{
+			lungeDist = MonsterBillboard.LungeDistanceCrit;
+			lungeOut = MonsterBillboard.LungeOutCrit;
+			lungeHold = MonsterBillboard.LungeHoldCrit;
+			lungeBack = MonsterBillboard.LungeBackCrit;
+			kbDist = MonsterBillboard.KnockbackDistanceCrit;
+			kbOut = MonsterBillboard.KbOutCrit;
+			kbBack = MonsterBillboard.KbBackCrit;
+			kbDelay = MonsterBillboard.KbDelayCrit;
+		}
+		else if ( isSuper )
+		{
+			lungeDist = MonsterBillboard.LungeDistanceSuper;
+			lungeOut = MonsterBillboard.LungeOutSuper;
+			lungeHold = MonsterBillboard.LungeHoldSuper;
+			lungeBack = MonsterBillboard.LungeBackSuper;
+			kbDist = MonsterBillboard.KnockbackDistanceSuper;
+			kbOut = MonsterBillboard.KbOutSuper;
+			kbBack = MonsterBillboard.KbBackSuper;
+			kbDelay = MonsterBillboard.KbDelaySuper;
+		}
+		else
+		{
+			lungeDist = MonsterBillboard.LungeDistanceNormal;
+			lungeOut = MonsterBillboard.LungeOutNormal;
+			lungeHold = MonsterBillboard.LungeHoldNormal;
+			lungeBack = MonsterBillboard.LungeBackNormal;
+			kbDist = MonsterBillboard.KnockbackDistanceNormal;
+			kbOut = MonsterBillboard.KbOutNormal;
+			kbBack = MonsterBillboard.KbBackNormal;
+			kbDelay = MonsterBillboard.KbDelayNormal;
+		}
+
+		Log.Info( $"Battle3D: Lunge → {attacker.Monster?.Nickname} dist={lungeDist} (crit={isCrit} super={isSuper} miss={isMiss})" );
+		attacker.LungeForward( dirToTarget, lungeDist, lungeOut, lungeHold, lungeBack );
+
+		if ( !isMiss && defender != null && kbDist > 0f )
+		{
+			defender.Knockback( dirToTarget, kbDist, kbOut, kbBack, kbDelay );
+		}
+	}
+
+	/// <summary>
+	/// Spawn the orange super-effective ring 60ms after the call site so on
+	/// super-crits the yellow ring fires first and the orange one chases.
+	/// </summary>
+	private async Task SpawnSuperRingDelayedAsync( Guid defenderId, bool isCritOnSameHit )
+	{
+		try
+		{
+			if ( isCritOnSameHit )
+				await Task.DelayRealtimeSeconds( 0.06f );
+			ImpactRingManager.Instance?.SpawnRing( defenderId, "#fb923c", isCrit: false );
+		}
+		catch ( Exception ex )
+		{
+			Log.Warning( $"Battle3D: SpawnSuperRingDelayed threw: {ex.Message}" );
+		}
 	}
 
 	public Vector3? GetMonsterWorldPosition( Guid monsterId )

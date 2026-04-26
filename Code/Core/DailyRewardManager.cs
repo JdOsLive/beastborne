@@ -16,12 +16,7 @@ public sealed class DailyRewardManager : Component
 {
 	public static DailyRewardManager Instance { get; private set; }
 
-	private const string STAT_PREFIX = "tamer-";
-
-	/// <summary>
-	/// Get the full key with slot prefix
-	/// </summary>
-	private static string GetKey( string key ) => $"{SaveSlotManager.GetSlotPrefix()}{key}";
+	private bool _hasHydrated;
 
 	// ═══════════════════════════════════════════════════════════════
 	// STREAK STATE (loaded from / saved to cookies)
@@ -79,8 +74,38 @@ public sealed class DailyRewardManager : Component
 
 	protected override void OnStart()
 	{
-		LoadFromCookies();
-		CheckLoginStreak();
+		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
+		{
+			Hydrate();
+			CheckLoginStreak();
+		}
+		else if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveLoaded += () =>
+			{
+				Hydrate();
+				CheckLoginStreak();
+			};
+		}
+
+		if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveReset += HandleSaveReset;
+		}
+	}
+
+	private void HandleSaveReset()
+	{
+		_hasHydrated = false;
+		DailyStreak = 0;
+		TotalLoginDays = 0;
+		StreakShieldUsed = false;
+		TodayRewardClaimed = false;
+		Day7BeastPending = false;
+		LastLoginDate = DateTime.MinValue;
+		MilestonesClaimed = new();
+		Hydrate();
+		Log.Info( "[DailyRewardManager] reset" );
 	}
 
 	public static void EnsureInstance( Scene scene )
@@ -584,50 +609,61 @@ public sealed class DailyRewardManager : Component
 	// PERSISTENCE (Cookie-based)
 	// ═══════════════════════════════════════════════════════════════
 
-	private void LoadFromCookies()
+	private void Hydrate()
 	{
-		DailyStreak = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}daily-streak" ), 0 );
-		TotalLoginDays = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}total-login-days" ), 0 );
-		StreakShieldUsed = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}streak-shield-used" ), 0 ) == 1;
-		TodayRewardClaimed = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}today-reward-claimed" ), 0 ) == 1;
-		Day7BeastPending = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}day7-beast-pending" ), 0 ) == 1;
+		if ( _hasHydrated ) return;
+		_hasHydrated = true;
 
-		// Load last login date
-		var lastLoginTicks = Game.Cookies.Get<long>( GetKey( $"{STAT_PREFIX}last-login-ticks" ), 0 );
-		LastLoginDate = lastLoginTicks > 0 ? new DateTime( lastLoginTicks, DateTimeKind.Utc ) : DateTime.MinValue;
-
-		// Load shield reset date
-		var shieldResetTicks = Game.Cookies.Get<long>( GetKey( $"{STAT_PREFIX}shield-reset-ticks" ), 0 );
-		StreakShieldResetDate = shieldResetTicks > 0
-			? new DateTime( shieldResetTicks, DateTimeKind.Utc )
-			: GetNextMondayMidnight( DateTime.UtcNow );
-
-		// Load milestones claimed
-		var milestonesJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}milestones-claimed" ), "[]" );
-		try
+		var section = SaveService.Instance?.CurrentBlob?.DailyReward;
+		if ( section == null )
 		{
-			MilestonesClaimed = JsonSerializer.Deserialize<List<int>>( milestonesJson ) ?? new();
-		}
-		catch
-		{
+			DailyStreak = 0;
+			TotalLoginDays = 0;
+			StreakShieldUsed = false;
+			TodayRewardClaimed = false;
+			Day7BeastPending = false;
+			LastLoginDate = DateTime.MinValue;
+			StreakShieldResetDate = GetNextMondayMidnight( DateTime.UtcNow );
 			MilestonesClaimed = new();
+			Log.Info( "[DailyReward] Hydrated: fresh (no existing save)" );
+			return;
 		}
 
-		Log.Info( $"[DailyReward] Loaded: Streak={DailyStreak}, Total={TotalLoginDays}, Shield={!StreakShieldUsed}" );
+		DailyStreak = section.DailyStreak;
+		TotalLoginDays = section.TotalLoginDays;
+		StreakShieldUsed = section.StreakShieldUsed;
+		TodayRewardClaimed = section.TodayRewardClaimed;
+		Day7BeastPending = section.Day7BeastPending;
+		LastLoginDate = section.LastLoginTicks > 0 ? new DateTime( section.LastLoginTicks, DateTimeKind.Utc ) : DateTime.MinValue;
+		StreakShieldResetDate = section.StreakShieldResetTicks > 0
+			? new DateTime( section.StreakShieldResetTicks, DateTimeKind.Utc )
+			: GetNextMondayMidnight( DateTime.UtcNow );
+		MilestonesClaimed = section.MilestonesClaimed ?? new();
+
+		Log.Info( $"[DailyReward] Hydrated: Streak={DailyStreak}, Total={TotalLoginDays}, Shield={!StreakShieldUsed}" );
 	}
 
+	/// <summary>
+	/// Push daily-reward state into the save blob. Kept as <c>SaveToCookies</c>
+	/// so the many internal call sites in this file don't need updating.
+	/// </summary>
 	private void SaveToCookies()
 	{
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}daily-streak" ), DailyStreak );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}total-login-days" ), TotalLoginDays );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}streak-shield-used" ), StreakShieldUsed ? 1 : 0 );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}today-reward-claimed" ), TodayRewardClaimed ? 1 : 0 );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}day7-beast-pending" ), Day7BeastPending ? 1 : 0 );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}last-login-ticks" ), LastLoginDate.Ticks );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}shield-reset-ticks" ), StreakShieldResetDate.Ticks );
+		var service = SaveService.Instance;
+		if ( service == null ) return;
+		var blob = service.CurrentBlob;
+		if ( blob == null ) return;
 
-		var milestonesJson = JsonSerializer.Serialize( MilestonesClaimed ?? new() );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}milestones-claimed" ), milestonesJson );
+		blob.DailyReward ??= new DailyRewardSaveData();
+		blob.DailyReward.DailyStreak = DailyStreak;
+		blob.DailyReward.TotalLoginDays = TotalLoginDays;
+		blob.DailyReward.StreakShieldUsed = StreakShieldUsed;
+		blob.DailyReward.TodayRewardClaimed = TodayRewardClaimed;
+		blob.DailyReward.Day7BeastPending = Day7BeastPending;
+		blob.DailyReward.LastLoginTicks = LastLoginDate.Ticks;
+		blob.DailyReward.StreakShieldResetTicks = StreakShieldResetDate.Ticks;
+		blob.DailyReward.MilestonesClaimed = MilestonesClaimed ?? new();
+		service.MarkDirty( "daily-reward" );
 	}
 
 	// ═══════════════════════════════════════════════════════════════

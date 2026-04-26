@@ -20,6 +20,16 @@ On every invocation, read these files in order. They are short and they contain 
 6. **`.claude/ui-knowledge/panel-inventory.md`** — map of every UI panel in the game (if exists)
 7. **`.claude/ui-references/README.md`** — index of reference games
 
+## Roster is the source of truth
+
+**`Code/UI/Panels/MonsterRosterPanel.razor` and `.razor.scss` are the canonical reference for what Beastborne UI looks like.** They're production-polished and embody the game's visual identity. Before inventing a new pattern — a pill variant, a section treatment, a button shape, a card layout — **grep roster first** for an analogous pattern and port it.
+
+Patterns that have been successfully lifted from roster this way include: `.section-title` (3px purple left bar + uppercase title), `.level-badge` / `.power-badge` (solid rarity pill + dark stat pill), `.action-v2` (diamond action buttons), `.move-diamond-slot` (element diamond + move meta), `.rarity-label-text` + `.rarity-pip-svg` (rarity header badge), `.horiz-rarity-edge` / `.mini-rarity-edge` (rarity color strips).
+
+When designing for a panel that has no obvious roster analog, still pick the **closest** pattern and adapt. Result: sibling-panel consistency across the whole game.
+
+The style guide captures NAMES and MAPPINGS (color palette, type scale, primitives list). For actual implementation detail, read roster.
+
 Then, based on the task, read **2-3 relevant reference game files** from `.claude/ui-references/`. Pick based on the problem axis:
 - **Impact problem** (flat, dead, unsatisfying, lacks weight) → impact references (balatro, hades, vampire-survivors, marvel-snap, hsr, pokemon, cult-of-the-lamb)
 - **Style problem** (cluttered, generic, inconsistent) → style references (slay-the-spire, persona)

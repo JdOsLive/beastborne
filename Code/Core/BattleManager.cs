@@ -33,7 +33,6 @@ public sealed class BattleManager : Component
 	public int CurrentTurnIndex { get; private set; }
 	public float TurnTimer { get; private set; }
 	public bool IsPlaying { get; private set; }
-	public float PlaybackSpeed { get; set; } = 1.0f;
 
 	private const float TURN_DELAY = 1.5f; // Seconds between turns during playback
 
@@ -57,7 +56,7 @@ public sealed class BattleManager : Component
 	// Delayed battle end for manual mode (so player can see HP bar animation)
 	private bool pendingManualBattleEnd = false;
 	private float manualBattleEndTimer = 0f;
-	private const float MANUAL_BATTLE_END_DELAY = 0.7f; // Seconds to wait before showing result
+	private const float MANUAL_BATTLE_END_DELAY = 2.0f; // Wait for VFX + faint animation before ending
 
 	// Skip animations state - execute all turns instantly, then delay before result
 	private bool skipAnimationsPending = false;
@@ -154,11 +153,6 @@ public sealed class BattleManager : Component
 		// Clear transitioning flag since we're starting fresh
 		IsTransitioning = false;
 
-		// Apply default battle speed from settings
-		if ( SettingsManager.Instance != null )
-		{
-			PlaybackSpeed = SettingsManager.Instance.Settings.DefaultBattleSpeed;
-		}
 
 		if ( playerTeam == null || playerTeam.Count == 0 )
 		{
@@ -196,12 +190,8 @@ public sealed class BattleManager : Component
 			}
 		}
 
-		// Check if we should use manual mode (auto-battle is OFF)
-		// Get auto-battle setting from ExpeditionManager if available
-		bool useManualMode = !IsAutoMode || (ExpeditionManager.Instance != null && !ExpeditionManager.Instance.AutoBattle);
-		Log.Info( $"StartBattle: IsAutoMode={IsAutoMode}, ExpeditionAutoBattle={ExpeditionManager.Instance?.AutoBattle}, useManualMode={useManualMode}" );
-
-		if ( useManualMode )
+		// Always use manual mode (auto-battle removed)
+		if ( true )
 		{
 			// Manual mode: Don't pre-simulate, set up for turn-by-turn play
 			CurrentBattleState = new BattleState();
@@ -369,7 +359,7 @@ public sealed class BattleManager : Component
 			// Already executed all turns, waiting for delay
 			if ( skipAnimationsPending )
 			{
-				skipAnimationsTimer -= delta * PlaybackSpeed;
+				skipAnimationsTimer -= delta;
 				if ( skipAnimationsTimer <= 0 )
 				{
 					skipAnimationsPending = false;
@@ -393,7 +383,7 @@ public sealed class BattleManager : Component
 			return;
 		}
 
-		TurnTimer += delta * PlaybackSpeed;
+		TurnTimer += delta;
 
 		if ( TurnTimer >= TURN_DELAY )
 		{
@@ -443,7 +433,7 @@ public sealed class BattleManager : Component
 			return;
 		}
 
-		TurnTimer += Time.Delta * PlaybackSpeed;
+		TurnTimer += Time.Delta;
 
 		if ( TurnTimer >= TURN_DELAY )
 		{
@@ -669,7 +659,7 @@ public sealed class BattleManager : Component
 		{
 			TamerManager.Instance.CurrentTamer.TotalBattlesWon++;
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalBattlesWon, TamerManager.Instance.CurrentTamer.TotalBattlesWon );
-			Stats.SetValue( "battles-won", TamerManager.Instance.CurrentTamer.TotalBattlesWon );
+			Stats.SetValue( "battles-won-launch", TamerManager.Instance.CurrentTamer.TotalBattlesWon );
 		}
 
 		// Update contract satisfaction for participating monsters
@@ -752,7 +742,7 @@ public sealed class BattleManager : Component
 	}
 
 	/// <summary>
-	/// Track veteran stats from battle turns (damage dealt, KOs, battles fought)
+	/// Track battle stats (damage, KOs, boss defeats) and species mastery progress.
 	/// </summary>
 	private void TrackVeteranStats()
 	{
@@ -762,6 +752,9 @@ public sealed class BattleManager : Component
 		// Track damage dealt and knockouts per monster
 		var damageByMonster = new Dictionary<Guid, int>();
 		var kosByMonster = new Dictionary<Guid, int>();
+
+		// Species mastery: count unique enemy species the player knocked out this battle
+		var defeatedEnemySpeciesIds = new List<string>();
 
 		foreach ( var turn in CurrentResult.Turns )
 		{
@@ -782,6 +775,13 @@ public sealed class BattleManager : Component
 				if ( !kosByMonster.ContainsKey( attackerId ) )
 					kosByMonster[attackerId] = 0;
 				kosByMonster[attackerId]++;
+
+				// Record the defeated enemy's species for mastery tracking
+				var defeatedEnemy = EnemyTeam?.FirstOrDefault( e => e != null && e.Id == turn.DefenderId );
+				if ( defeatedEnemy != null && !defeatedEnemy.WasContracted && !string.IsNullOrEmpty( defeatedEnemy.SpeciesId ) )
+				{
+					defeatedEnemySpeciesIds.Add( defeatedEnemy.SpeciesId );
+				}
 			}
 		}
 
@@ -793,10 +793,6 @@ public sealed class BattleManager : Component
 			// Find the original monster in MonsterManager
 			var ownedMonster = MonsterManager.Instance?.GetMonster( monster.Id );
 			if ( ownedMonster == null ) continue;
-
-			// Increment battles fought
-			var previousRank = ownedMonster.GetVeteranRank();
-			ownedMonster.BattlesFought++;
 
 			// Add damage dealt
 			if ( damageByMonster.TryGetValue( monster.Id, out var damage ) )
@@ -827,23 +823,12 @@ public sealed class BattleManager : Component
 					zoneId: expeditionZoneId
 				);
 			}
+		}
 
-			// Check for battle mastery rank milestone
-			var newRank = ownedMonster.GetVeteranRank();
-			if ( newRank != previousRank && newRank != VeteranRank.Rookie )
-			{
-				ownedMonster.AddJournalEntry(
-					$"Achieved {newRank} mastery after {ownedMonster.BattlesFought} battles!",
-					JournalEntryType.Milestone
-				);
-
-				// Notify player of rank up
-				NotificationManager.Instance?.AddNotification(
-					NotificationType.Success,
-					"Battle Mastery Rank Up!",
-					$"{ownedMonster.Nickname} is now a {newRank}! (+{(int)(ownedMonster.GetVeteranBonusPercent() * 100)}% stats)"
-				);
-			}
+		// Fire species mastery defeat hooks for every enemy the player knocked out
+		foreach ( var defeatedSpeciesId in defeatedEnemySpeciesIds )
+		{
+			BeastiaryManager.Instance?.OnBeastDefeated( defeatedSpeciesId );
 		}
 
 		// Track boss defeat mission (once per battle, not per monster)
@@ -863,9 +848,9 @@ public sealed class BattleManager : Component
 
 			// Submit to leaderboards
 			if ( battleDamage > 0 )
-				Stats.SetValue( "total-damage", tamer.TotalDamageDealt );
+				Stats.SetValue( "total-damage-launch", tamer.TotalDamageDealt );
 			if ( battleKOs > 0 )
-				Stats.SetValue( "total-knockouts", tamer.TotalKnockouts );
+				Stats.SetValue( "total-knockouts-launch", tamer.TotalKnockouts );
 
 			// Check damage/knockout achievements
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalDamageDealt, tamer.TotalDamageDealt );
@@ -1042,12 +1027,7 @@ public sealed class BattleManager : Component
 	/// <summary>
 	/// Whether we're in manual battle mode (turn-by-turn)
 	/// </summary>
-	public bool IsManualMode => InputMode == BattleInputMode.Manual && !IsAutoMode;
-
-	/// <summary>
-	/// Whether auto-battle is enabled (default to OFF for better new player experience)
-	/// </summary>
-	public bool IsAutoMode { get; set; } = false;
+	public bool IsManualMode => InputMode == BattleInputMode.Manual;
 
 	/// <summary>
 	/// List of turns accumulated during manual mode
@@ -1079,11 +1059,6 @@ public sealed class BattleManager : Component
 
 		IsTransitioning = false;
 
-		// Apply default battle speed from settings
-		if ( SettingsManager.Instance != null )
-		{
-			PlaybackSpeed = SettingsManager.Instance.Settings.DefaultBattleSpeed;
-		}
 
 		if ( playerTeam == null || playerTeam.Count == 0 )
 		{
@@ -1349,6 +1324,57 @@ public sealed class BattleManager : Component
 	}
 
 	/// <summary>
+	/// Use an item during battle. Applies the item effect, then consumes the turn
+	/// (enemy still attacks on the same round).
+	/// </summary>
+	/// <param name="itemId">Item to use</param>
+	/// <param name="target">Target monster (required for targeted consumables; null otherwise)</param>
+	/// <returns>true if the item was used and the turn was consumed</returns>
+	public bool ExecutePlayerItem( string itemId, Monster target )
+	{
+		if ( !IsInBattle || !IsWaitingForPlayerInput )
+		{
+			Log.Warning( $"ExecutePlayerItem: Invalid state - IsInBattle={IsInBattle}, IsWaitingForPlayerInput={IsWaitingForPlayerInput}" );
+			return false;
+		}
+
+		var item = ItemManager.Instance?.GetItem( itemId );
+		if ( item == null )
+		{
+			Log.Warning( $"ExecutePlayerItem: item not found {itemId}" );
+			return false;
+		}
+
+		// Apply the item effect before the turn runs so heals/buffs land first
+		bool applied = ItemManager.Instance.UseItem( itemId, target );
+		if ( !applied )
+		{
+			Log.Warning( $"ExecutePlayerItem: effect failed to apply for {itemId}" );
+			return false;
+		}
+
+		// Stash the item info on state so ExecuteSingleTurn can build the UseItem MoveChoice
+		if ( CurrentBattleState != null )
+		{
+			CurrentBattleState.PendingItemId = itemId;
+			CurrentBattleState.PendingItemName = item.Name;
+			CurrentBattleState.PendingItemTargetName = target?.Nickname;
+		}
+
+		Log.Info( $"ExecutePlayerItem: used {item.Name} on {target?.Nickname ?? "self"}" );
+		ExecutePlayerMove( "item" );
+
+		if ( CurrentBattleState != null )
+		{
+			CurrentBattleState.PendingItemId = null;
+			CurrentBattleState.PendingItemName = null;
+			CurrentBattleState.PendingItemTargetName = null;
+		}
+
+		return true;
+	}
+
+	/// <summary>
 	/// Execute a swap action for the player
 	/// </summary>
 	public void ExecutePlayerSwap( int swapToIndex )
@@ -1596,70 +1622,6 @@ public sealed class BattleManager : Component
 		OnBattleEnd?.Invoke( CurrentResult );
 	}
 
-	/// <summary>
-	/// Toggle between auto and manual mode mid-battle
-	/// </summary>
-	public void SetAutoMode( bool auto )
-	{
-		Log.Info( $"SetAutoMode: auto={auto}, IsInBattle={IsInBattle}, IsWaitingForPlayerInput={IsWaitingForPlayerInput}, IsPlaying={IsPlaying}" );
-		IsAutoMode = auto;
-
-		if ( !IsInBattle )
-			return;
-
-		if ( auto )
-		{
-			// Switching to auto mode
-			if ( IsWaitingForPlayerInput )
-			{
-				// Simulate the rest of the battle
-				Log.Info( "Switching to auto mode - simulating remainder" );
-				SimulateRemainderOfBattle();
-			}
-			// If already playing, just let it continue
-		}
-		else
-		{
-			// Switching to manual mode - ALWAYS pause and wait for input
-			Log.Info( $"Switching to manual mode - pausing and waiting for player input. CurrentTurnIndex={CurrentTurnIndex}" );
-			IsPlaying = false;
-			IsWaitingForPlayerInput = true;
-
-			// ALWAYS restore monster HP when switching to manual mode
-			// The pre-simulation already applied all the damage, so we need to reset
-			// This gives the player a fresh start to play manually
-			Log.Info( "Restoring all monster HP for manual mode" );
-			foreach ( var monster in PlayerTeam )
-			{
-				monster?.FullHeal();
-			}
-			foreach ( var monster in EnemyTeam )
-			{
-				monster?.FullHeal();
-			}
-
-			// Reset battle state for fresh manual mode
-			CurrentBattleState = new BattleState();
-			CurrentBattleState.TurnNumber = 0; // Start fresh
-			foreach ( var m in PlayerTeam.Concat( EnemyTeam ) )
-			{
-				if ( m != null )
-					CurrentBattleState.InitializeMonster( m.Id );
-			}
-			Log.Info( "Created fresh BattleState for manual mode" );
-
-			// Clear ALL pre-simulated turns - we're starting fresh
-			if ( CurrentResult?.Turns != null )
-			{
-				Log.Info( $"Clearing all {CurrentResult.Turns.Count} pre-simulated turns" );
-				CurrentResult.Turns.Clear();
-			}
-
-			// Reset playback index
-			CurrentTurnIndex = 0;
-			manualModeTurns.Clear();
-		}
-	}
 
 	/// <summary>
 	/// When switching from manual to auto, simulate the rest of the battle
@@ -1820,5 +1782,73 @@ public sealed class BattleManager : Component
 
 		// Fire the event for UI updates
 		OnBossPhaseTransition?.Invoke( result );
+	}
+
+	// ── Contract Battle Methods ──
+
+	/// <summary>
+	/// Remove a contracted enemy from the battle (HP=0, marked as contracted)
+	/// </summary>
+	public void RemoveEnemyFromBattle( Monster enemy )
+	{
+		if ( enemy == null || EnemyTeam == null ) return;
+		enemy.CurrentHP = 0;
+		enemy.WasContracted = true;
+		Log.Info( $"RemoveEnemyFromBattle: {enemy.Nickname} was contracted" );
+	}
+
+	/// <summary>
+	/// Execute only the enemy's attack (player consumed their turn contracting)
+	/// </summary>
+	public void ExecuteEnemyTurnOnly()
+	{
+		if ( !IsInBattle || !IsWaitingForPlayerInput ) return;
+
+		Log.Info( "ExecuteEnemyTurnOnly: Enemy gets a free attack (player used CONTRACT)" );
+
+		var turnResults = BattleSimulator.ExecuteEnemyOnlyTurn(
+			PlayerTeam, EnemyTeam, CurrentBattleState );
+
+		if ( turnResults.Count > 0 )
+		{
+			CurrentResult.Turns.AddRange( turnResults );
+			manualModeTurns.AddRange( turnResults );
+		}
+
+		IsWaitingForPlayerInput = false;
+		if ( turnResults.Count > 0 )
+			PlaybackManualTurns( turnResults );
+		else
+			IsWaitingForPlayerInput = true; // No enemies alive to attack
+	}
+
+	/// <summary>
+	/// Force end the battle (e.g., all enemies contracted)
+	/// </summary>
+	public void ForceEndBattle( bool playerWon )
+	{
+		if ( !IsInBattle ) return;
+
+		Log.Info( $"ForceEndBattle: playerWon={playerWon}" );
+		CurrentResult.PlayerWon = playerWon;
+		CurrentResult.TotalTurns = CurrentBattleState?.TurnNumber ?? 0;
+
+		// Calculate rewards (exclude contracted enemies)
+		if ( playerWon && PlayerTeam.Count > 0 )
+		{
+			int avgLevel = (int)PlayerTeam.Average( p => p.Level );
+			foreach ( var enemy in EnemyTeam )
+			{
+				if ( enemy == null || enemy.WasContracted ) continue;
+				CurrentResult.TotalXP += BattleSimulator.CalculateXPGain( enemy, avgLevel );
+				CurrentResult.TotalGold += BattleSimulator.CalculateGoldDrop( enemy );
+			}
+		}
+
+		// Set playing state so ManualTick processes the delayed end
+		IsWaitingForPlayerInput = false;
+		IsPlaying = true;
+		pendingManualBattleEnd = true;
+		manualBattleEndTimer = MANUAL_BATTLE_END_DELAY;
 	}
 }

@@ -213,8 +213,13 @@ public sealed class ChatManager : Component, Component.INetworkListener
 			? monster.Genetics.HPGene + monster.Genetics.ATKGene + monster.Genetics.DEFGene +
 			  monster.Genetics.SPDGene + monster.Genetics.SpAGene + monster.Genetics.SpDGene
 			: 0;
-		var rank = monster.GetVeteranRank();
-		var rankText = rank != VeteranRank.Rookie ? rank.ToString() : "";
+		// Species-level mastery (Beastbook) replaces the old per-instance veteran rank.
+		// Show the title word (e.g. "Master", "Grandmaster") only when the player has
+		// actually advanced past Unbound.
+		var masteryLevel = BeastiaryManager.Instance?.GetMasteryLevel( monster.SpeciesId ) ?? 0;
+		var rankText = masteryLevel > 0
+			? (BeastiaryManager.Instance?.GetMasteryTitleWord( monster.SpeciesId ) ?? "")
+			: "";
 
 		// Get trait display names (not IDs)
 		var traitNames = "";
@@ -247,7 +252,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 			ShowcaseElement = species.Element.ToString(),
 			ShowcaseMonsterId = monster.Id,
 			// Extended stats
-			ShowcaseBattles = monster.BattlesFought,
+			ShowcaseBattles = 0, // Per-instance BattlesFought removed; species mastery lives on ShowcaseVeteranRank
 			ShowcaseKnockouts = monster.TotalKnockouts,
 			ShowcaseExpeditions = monster.ExpeditionsCompleted,
 			ShowcaseHP = monster.MaxHP,
@@ -268,7 +273,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 				monster.Level, monster.PowerRating, genes,
 				species.BaseRarity.ToString(), rankText, species.Element.ToString(),
 				message.Timestamp.Ticks,
-				monster.BattlesFought, monster.TotalKnockouts, monster.ExpeditionsCompleted,
+				0, monster.TotalKnockouts, monster.ExpeditionsCompleted,
 				monster.MaxHP, monster.ATK, monster.DEF, monster.SpA, monster.SpD, monster.SPD, traitNames
 			);
 		}
@@ -614,6 +619,50 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		};
 
 		OnProfilesUpdated?.Invoke();
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// TRADE CHAT
+	// ═══════════════════════════════════════════════════════════════
+
+	/// <summary>
+	/// Send a message to the trade channel (visible to all players globally)
+	/// </summary>
+	public void SendTradeMessage( string content )
+	{
+		if ( string.IsNullOrWhiteSpace( content ) ) return;
+
+		content = content.Length > 500 ? content.Substring( 0, 500 ) : content;
+
+		var message = new ChatMessage
+		{
+			SteamId = LocalSteamId,
+			PlayerName = LocalPlayerName,
+			Content = content,
+			Type = ChatMessageType.Trade
+		};
+		AddMessage( message );
+
+		if ( GameNetworkSystem.IsActive )
+		{
+			BroadcastTradeChat( LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName, content, message.Timestamp.Ticks );
+		}
+	}
+
+	[Rpc.Broadcast]
+	public void BroadcastTradeChat( string senderConnectionId, long steamId, string playerName, string content, long timestampTicks )
+	{
+		if ( senderConnectionId == LocalConnectionId.ToString() ) return;
+
+		var msg = new ChatMessage
+		{
+			SteamId = steamId,
+			PlayerName = playerName,
+			Content = content,
+			Type = ChatMessageType.Trade,
+			Timestamp = new DateTime( timestampTicks, DateTimeKind.Utc )
+		};
+		AddMessage( msg );
 	}
 
 	// ═══════════════════════════════════════════════════════════════

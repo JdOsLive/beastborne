@@ -11,21 +11,6 @@ public class GameSettings
 	// ============================================
 
 	/// <summary>
-	/// Default battle playback speed (1.0, 2.0, or 4.0)
-	/// </summary>
-	public float DefaultBattleSpeed { get; set; } = 1.0f;
-
-	/// <summary>
-	/// Whether auto-battle is enabled by default when starting expeditions
-	/// </summary>
-	public bool DefaultAutoBattle { get; set; } = false;
-
-	/// <summary>
-	/// Whether auto-retry is enabled by default when starting expeditions
-	/// </summary>
-	public bool DefaultAutoRetry { get; set; } = false;
-
-	/// <summary>
 	/// Whether auto-contract is enabled by default when starting expeditions
 	/// </summary>
 	public bool DefaultAutoContract { get; set; } = false;
@@ -140,9 +125,6 @@ public class GameSettings
 		return new GameSettings
 		{
 			// Battle
-			DefaultBattleSpeed = DefaultBattleSpeed,
-			DefaultAutoBattle = DefaultAutoBattle,
-			DefaultAutoRetry = DefaultAutoRetry,
 			DefaultAutoContract = DefaultAutoContract,
 			DefaultNegotiationStrategy = DefaultNegotiationStrategy,
 			UseAutoContractSpeciesFilter = UseAutoContractSpeciesFilter,

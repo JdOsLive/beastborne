@@ -8,12 +8,17 @@
 @inherits Panel
 
 <root class="@(isExpanded ? "expanded" : "collapsed") @(hasUnread ? "has-unread" : "")">
+	<!-- Drag wrapper receives the translate; chat-overlay keeps its scale
+	     open/close transition unaffected. -->
+	<div class="chat-drag-wrap" style="@GetDragStyle()">
 	<div class="chat-overlay @(isExpanded ? "open" : "")">
 			<div class="bg-scroll"><img src="ui/bg-patterns/bg-chat.svg" /></div>
-			<!-- Header -->
+			<!-- Header. Drag handle is ONLY the title area (header-left) so
+			     the close button in header-right doesn't hijack click events
+			     by triggering drag-start on its mousedown. -->
 			<div class="chat-header">
-				<div class="header-left">
-					<img class="chat-icon" src="ui/icons/buttons/chat.svg" />
+				<div class="header-left" onmousedown=@OnDragStart>
+					<iconify icon="lucide:message-square" Size=@(22) Color="#c4b5fd" />
 					<span class="chat-title">@L("ui.chat.title")</span>
 				</div>
 				<div class="header-right">
@@ -32,13 +37,30 @@
 				{
 					<div class="ch-tab @(currentChannel == "guild" ? "active" : "")" onclick=@(() => SetChannel("guild"))><span>@L("ui.chat.guild_tab")</span></div>
 				}
-				<div class="ch-tab @(currentChannel == "trade" ? "active" : "") disabled"><span>@L("ui.chat.trade_tab")</span></div>
-				<div class="ch-tab @(currentChannel == "help" ? "active" : "") disabled"><span>@L("ui.chat.help_tab")</span></div>
+				<div class="ch-tab @(currentChannel == "trade" ? "active" : "") trade-tab" onclick=@(() => SetChannel("trade"))><span>@L("ui.chat.trade_tab")</span></div>
 			</div>
 
 			<!-- Messages -->
 			<div class="chat-messages" @ref="messagesContainer">
-				@foreach (var message in GetMessages())
+				@{ var channelMessages = GetMessages(); }
+				@if (channelMessages.Count == 0 && currentChannel != "global")
+				{
+					<div class="chat-empty">
+						<div class="chat-empty-icon">
+							@if (currentChannel == "guild")
+							{
+								<iconify icon="lucide:shield" Size=@(44) Color="rgba(139, 92, 246, 0.45)" />
+							}
+							else if (currentChannel == "trade")
+							{
+								<iconify icon="lucide:coins" Size=@(44) Color="rgba(251, 191, 36, 0.55)" />
+							}
+						</div>
+						<span class="chat-empty-label">@L(currentChannel == "guild" ? "ui.chat.empty_guild_title" : "ui.chat.empty_trade_title")</span>
+						<span class="chat-empty-hint">@L(currentChannel == "guild" ? "ui.chat.empty_guild_hint" : "ui.chat.empty_trade_hint")</span>
+					</div>
+				}
+				@foreach (var message in channelMessages)
 				{
 					@if (message.Type == ChatMessageType.Player || message.Type == ChatMessageType.GuildChat)
 					{
@@ -200,22 +222,47 @@
 					{
 						<!-- Achievement Message -->
 						<div class="msg-achievement">
-							@if (!string.IsNullOrEmpty(message.IconPath))
-							{
-								<img class="sys-icon-img" src="@message.IconPath" />
-							}
-							else
-							{
-								<img class="sys-icon" src="ui/icons/buttons/info.svg" />
-							}
+							<div class="ach-icon-wrap">
+								@if (!string.IsNullOrEmpty(message.IconPath))
+								{
+									<img class="sys-icon-img" src="@message.IconPath" />
+								}
+								else
+								{
+									<iconify icon="lucide:trophy" Size=@(20) Color="#fcd34d" />
+								}
+							</div>
 							<span class="sys-text">@message.Content</span>
+						</div>
+					}
+					else if (message.Type == ChatMessageType.Trade)
+					{
+						<!-- Trade Message -->
+						<div class="msg">
+							<div class="msg-avatar av-@message.ResolvedNameColor">
+								<img src="avatar:@message.SteamId" />
+							</div>
+							<div class="msg-body">
+								<div class="msg-top">
+									@if (message.IsDeveloper)
+									{
+										<span class="role-pill dev">DEV</span>
+									}
+									<span class="role-pill trade">TRADE</span>
+									<span class="msg-name c-@message.ResolvedNameColor">@message.PlayerName</span>
+									<span class="msg-time">@message.FormattedTime</span>
+								</div>
+								<span class="msg-text trade-text">@message.Content</span>
+							</div>
 						</div>
 					}
 					else
 					{
 						<!-- System Message -->
 						<div class="msg-system">
-							<img class="sys-icon" src="ui/icons/buttons/info.svg" />
+							<div class="sys-icon-slot">
+								<iconify icon="lucide:lightbulb" Size=@(18) Color="#c4b5fd" />
+							</div>
 							<span class="sys-text">@message.Content</span>
 							@if (message.Content.Contains("discord.gg"))
 							{
@@ -233,12 +280,22 @@
 				<div class="input-row">
 					<ChatInputBox @ref="chatInputBox" OnSubmit=@OnSendMessage />
 					<button class="send-btn" onclick=@OnSendMessage>
-						<img class="send-icon" src="ui/icons/buttons/send.svg" />
+						<iconify icon="lucide:send" Size=@(18) Color="#ffffff" />
 					</button>
 				</div>
 			</div>
 		</div>
 	</div>
+	@if ( _isDragging )
+	{
+		<!-- Drag shield: full-viewport transparent overlay that captures
+		     mouse events DURING drag. Placed AFTER chat-overlay in the DOM
+		     so it wins hit-testing in s&box (which appears to use DOM order
+		     in addition to z-index). Sibling of drag-wrap so the shield
+		     itself does NOT inherit the popup's transform — coordinate
+		     system stays stable, no feedback-loop shake. -->
+		<div class="chat-drag-shield" onmousemove=@OnDragMove onmouseup=@OnDragEnd></div>
+	}
 </root>
 
 @code {
@@ -252,6 +309,76 @@
 	private string currentChannel = "global";
 	private Panel messagesContainer;
 	private ChatInputBox chatInputBox;
+
+	// ─── Drag state ────────────────────────────────────────────────
+	// Drag the chat popup around the screen by the header. Uses the same
+	// onmousedown/onmousemove/onmouseup pattern as RadioWidget's volume
+	// slider. `_dragOffsetX/Y` is the cumulative offset FROM the default
+	// anchored position (bottom-right above the command bar), applied via
+	// `transform: translate(...)`. Position persists across open/close.
+	private bool _isDragging = false;
+	private bool _needsDragAnchor = false;
+	private float _dragStartMouseX, _dragStartMouseY;
+	private float _dragStartOffsetX, _dragStartOffsetY;
+	private float _dragOffsetX = 0f, _dragOffsetY = 0f;
+
+	private void OnDragStart( PanelEvent e )
+	{
+		_isDragging = true;
+		// `MousePosition` inside the handler of the chat-header reports
+		// coords relative to the header's own box. The header IS moving
+		// (as part of the popup), so this is NOT stable by itself.
+		// But we only use OnDragStart once at the click moment — we
+		// capture the CURRENT offset and delegate live tracking to the
+		// drag shield. Record the shield-space mouse position lazily on
+		// the first OnDragMove (see that handler).
+		_dragStartOffsetX = _dragOffsetX;
+		_dragStartOffsetY = _dragOffsetY;
+		_needsDragAnchor = true;
+		StateHasChanged(); // force drag-shield into DOM
+	}
+
+	private void OnDragMove( PanelEvent e )
+	{
+		if ( !_isDragging ) return;
+
+		// First move after drag start: anchor to the current mouse position
+		// on the SHIELD (a fixed/static element, so shield-local coords are
+		// effectively viewport-absolute and immune to the popup's own motion).
+		if ( _needsDragAnchor )
+		{
+			_dragStartMouseX = MousePosition.x;
+			_dragStartMouseY = MousePosition.y;
+			_needsDragAnchor = false;
+			return;
+		}
+
+		_dragOffsetX = _dragStartOffsetX + ( MousePosition.x - _dragStartMouseX );
+		_dragOffsetY = _dragStartOffsetY + ( MousePosition.y - _dragStartMouseY );
+		StateHasChanged();
+	}
+
+	private void OnDragEnd( PanelEvent e )
+	{
+		_isDragging = false;
+		// Force re-render so the shield un-mounts immediately. Without
+		// this, the shield stays in the DOM (Razor doesn't auto-rerender
+		// on plain field changes), keeping pointer-events captured and
+		// causing the next click to feel "click-to-toggle-drag" instead
+		// of "hold-to-drag."
+		StateHasChanged();
+	}
+
+	private string GetDragStyle()
+	{
+		if ( _dragOffsetX == 0f && _dragOffsetY == 0f ) return "";
+		// InvariantCulture via format string so s&box CSS gets `.` decimal
+		return string.Format( System.Globalization.CultureInfo.InvariantCulture,
+			"transform: translate({0:F0}px, {1:F0}px);", _dragOffsetX, _dragOffsetY );
+	}
+
+	// Incoming message ping debounce — play at most once per 1.5s, never when focused
+	private RealTimeSince _lastIncomingPing;
 
 	// Static instance for external access (bottom bar toggle)
 	public static ChatPanel Instance { get; private set; }
@@ -304,6 +431,12 @@
 		{
 			hasUnread = true;
 			unreadCount++;
+			// Debounced ping: play once per 1.5s, never when focused
+			if (!IsChatFocused && _lastIncomingPing > 1.5f)
+			{
+				SoundManager.PlayHover();
+				_lastIncomingPing = 0;
+			}
 		}
 		else
 		{
@@ -362,6 +495,8 @@
 
 		if (currentChannel == "guild")
 			ChatManager.Instance?.SendGuildMessage(text);
+		else if (currentChannel == "trade")
+			ChatManager.Instance?.SendTradeMessage(text);
 		else
 			ChatManager.Instance?.SendMessage(text);
 
@@ -370,16 +505,19 @@
 		chatInputBox?.FocusInput();
 	}
 
+	private const string DiscordInviteUrl = "https://discord.gg/dJTTyCqKru";
+
 	// Discord copy button
 	private string discordBtnText = "Copy Link";
 
 	private async void CopyDiscordLink()
 	{
-		Clipboard.SetText( "https://discord.gg/dJTTyCqKru" );
-		discordBtnText = "Copied!";
+		SoundManager.PlayClick();
+		Clipboard.SetText( DiscordInviteUrl );
+		discordBtnText = L("ui.chat.copied");
 		StateHasChanged();
 		await Task.Delay( 2000 );
-		discordBtnText = "Copy Link";
+		discordBtnText = L("ui.chat.copy_link");
 		StateHasChanged();
 	}
 
@@ -388,7 +526,10 @@
 		var messages = ChatManager.Instance?.GetRecentMessages(100) ?? new List<ChatMessage>();
 		if (currentChannel == "guild")
 			return messages.Where(m => m.Type == ChatMessageType.GuildChat).TakeLast(50).ToList();
-		return messages.Where(m => m.Type != ChatMessageType.GuildChat).TakeLast(50).ToList();
+		if (currentChannel == "trade")
+			return messages.Where(m => m.Type == ChatMessageType.Trade).TakeLast(50).ToList();
+		// Global: everything except guild-only and trade-only messages
+		return messages.Where(m => m.Type != ChatMessageType.GuildChat && m.Type != ChatMessageType.Trade).TakeLast(50).ToList();
 	}
 
 	private int GetOnlineCount()
@@ -398,8 +539,9 @@
 
 	private void SetChannel(string channel)
 	{
+		if (currentChannel == channel) return;
 		currentChannel = channel;
-		SoundManager.PlayClick();
+		SoundManager.PlayTabSwitch();
 	}
 
 	private int GetPlayerLevel(ChatMessage message)

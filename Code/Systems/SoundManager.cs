@@ -97,9 +97,19 @@ public static class SoundManager
 
 	/// <summary>
 	/// Play when hovering over a button or interactive element.
+	///
+	/// Debounced to at most once per 80ms so fast mouse sweeps over many
+	/// buttons in the HUD (or rapid onmouseover↔onmouseout cycles when the
+	/// cursor grazes a button edge) don't fire overlapping sounds — which
+	/// the ear reads as a "glitch" or distortion. Intentional hovers are
+	/// still audible because players rarely sweep faster than 12Hz.
 	/// </summary>
+	private static RealTimeSince _lastHoverSoundTime = 1f;
+	private const float HOVER_SOUND_MIN_INTERVAL = 0.08f;
 	public static void PlayHover()
 	{
+		if ( _lastHoverSoundTime < HOVER_SOUND_MIN_INTERVAL ) return;
+		_lastHoverSoundTime = 0;
 		PlaySound( UI_HOVER, _uiVolume * 0.3f );
 	}
 

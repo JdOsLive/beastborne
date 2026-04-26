@@ -7,24 +7,25 @@ using System.Linq;
 namespace Beastborne.Core;
 
 /// <summary>
-/// Manages the player's tamer data, skills, and resources
+/// Manages the player's tamer data, skills, and resources.
+///
+/// Phase 2: state is owned by <see cref="SaveService"/>. All reads are
+/// hydrated from <c>SaveService.Instance.CurrentBlob.Tamer</c> on load;
+/// every mutation writes back into the blob and marks it dirty. The
+/// service handles batched/throttled cloud pushes + local-cache fallback.
 /// </summary>
 public sealed class TamerManager : Component
 {
 	public static TamerManager Instance { get; private set; }
 
-	private const string STAT_PREFIX = "tamer-";
-	private const float SAVE_INTERVAL = 30f;
-
-	/// <summary>
-	/// Get the full key with slot prefix
-	/// </summary>
-	private static string GetKey( string key ) => $"{SaveSlotManager.GetSlotPrefix()}{key}";
+	private const float AUTOSAVE_INTERVAL_SECONDS = 30f;
 
 	public Tamer CurrentTamer { get; private set; }
 	public SkillTree SkillTree { get; private set; }
 
-	private float lastSaveTime = 0f;
+	private float _lastAutosaveTime = 0f;
+	private float _playtimeAccumulator = 0f; // seconds since last blob push
+	private bool _hasHydrated;
 
 	// Events
 	public Action<int> OnGoldChanged;
@@ -32,8 +33,13 @@ public sealed class TamerManager : Component
 	public Action<int> OnBossTokensChanged;
 	public Action<int> OnLevelUp;
 	public Action<string> OnSkillUnlocked;
-	public Action<string> OnThemeChanged;
 	public Action<string> OnTitleChanged;
+
+	// Anything before this UTC moment counts as "alpha" — a player who
+	// loads any session before this gets PlayedDuringAlpha set to true,
+	// which sticks for life and unlocks the Alpha title.
+	// Bump if launch slips. Currently 2026-05-01 00:00 UTC as a placeholder.
+	public static readonly DateTime LaunchDate = new( 2026, 5, 1, 0, 0, 0, DateTimeKind.Utc );
 
 	protected override void OnAwake()
 	{
@@ -53,22 +59,60 @@ public sealed class TamerManager : Component
 	protected override void OnStart()
 	{
 		SkillTree = SkillTree.CreateDefault();
-		LoadFromCloud();
+
+		// Hydrate once SaveService.LoadAsync resolves. If it already has, run now;
+		// otherwise subscribe so we pick up the event when it fires.
+		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
+		{
+			Hydrate();
+		}
+		else if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveLoaded += Hydrate;
+		}
+		else
+		{
+			// No SaveService at all — shouldn't happen in practice, but don't crash.
+			Log.Warning( "[TamerManager] SaveService.Instance is null; starting with defaults" );
+			HydrateFromBlank();
+		}
+
+		// Reset hook: when the player hits "Reset Game Data", wipe in-memory state
+		// and re-hydrate from the fresh empty blob.
+		if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveReset += HandleSaveReset;
+		}
+	}
+
+	private void HandleSaveReset()
+	{
+		_hasHydrated = false;
+		CurrentTamer = null;
+		HydrateFromBlank();
+		Log.Info( "[TamerManager] reset to defaults" );
 	}
 
 	protected override void OnUpdate()
 	{
-		// Track playtime
-		if ( CurrentTamer != null )
-		{
-			CurrentTamer.TotalPlayTime += TimeSpan.FromSeconds( Time.Delta );
-		}
+		if ( CurrentTamer == null ) return;
 
-		// Periodic auto-save
-		if ( Time.Now - lastSaveTime > SAVE_INTERVAL )
+		// Track playtime in-memory every frame, but cap each tick at 1 second.
+		// Time.Delta can spike to huge values after a hot reload, alt-tab return,
+		// load-screen completion, or pause exit — without this cap, a single
+		// glitched frame could add hours/days to TotalPlayTime, which is how the
+		// dev save ended up at "1y 89d" after only a handful of test sessions.
+		var dt = MathF.Max( 0f, MathF.Min( Time.Delta, 1f ) );
+		CurrentTamer.TotalPlayTime += TimeSpan.FromSeconds( dt );
+		_playtimeAccumulator += dt;
+
+		// Periodic autosave: push the current tamer snapshot back into the blob
+		// and mark it dirty. SaveService throttles actual cloud writes.
+		if ( Time.Now - _lastAutosaveTime > AUTOSAVE_INTERVAL_SECONDS )
 		{
+			_lastAutosaveTime = Time.Now;
+			_playtimeAccumulator = 0f;
 			SaveToCloud();
-			lastSaveTime = Time.Now;
 		}
 	}
 
@@ -81,235 +125,277 @@ public sealed class TamerManager : Component
 		go.Components.Create<TamerManager>();
 	}
 
-	private void LoadFromCloud()
-	{
-		// Load gender from cookie
-		var genderStr = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}gender" ), "0" );
-		var gender = genderStr == "1" ? TamerGender.Female : TamerGender.Male;
+	// ═══════════════════════════════════════════════════════════════
+	// HYDRATION — pulls Tamer state out of SaveBlob on boot
+	// ═══════════════════════════════════════════════════════════════
 
-		// Load all values from cookies (not Stats, which are incremental)
-		// This prevents XP/gold duplication on editor restart
+	/// <summary>
+	/// Populate <see cref="CurrentTamer"/> from <c>SaveService.CurrentBlob.Tamer</c>.
+	/// Called once after the SaveService finishes loading.
+	/// </summary>
+	private void Hydrate()
+	{
+		if ( _hasHydrated ) return;
+		_hasHydrated = true;
+
+		var blob = SaveService.Instance?.CurrentBlob;
+		var section = blob?.Tamer;
+
+		if ( section?.Tamer != null )
+		{
+			CurrentTamer = section.Tamer;
+			// Rebind display name + last login from the connection (not saved).
+			CurrentTamer.Name = Connection.Local?.DisplayName ?? CurrentTamer.Name ?? "Tamer";
+			CurrentTamer.LastLogin = DateTime.UtcNow;
+
+			// Defensive: older snapshots may have null collections after a
+			// schema bump; re-initialise to empty so downstream nulls don't
+			// crash anything.
+			CurrentTamer.SkillRanks ??= new();
+			CurrentTamer.ClearedBosses ??= new();
+			CurrentTamer.UnlockedTitles ??= new();
+			CurrentTamer.Inventory ??= new();
+			CurrentTamer.EquippedRelics ??= new();
+			CurrentTamer.ActiveBoosts ??= new();
+			CurrentTamer.Achievements ??= new();
+			CurrentTamer.SpeciesMastery ??= new();
+			CurrentTamer.MatchHistory ??= new();
+			CurrentTamer.CollectedCards ??= new();
+			CurrentTamer.CardBadges ??= new();
+
+			// Purge expired boosts on load.
+			CurrentTamer.ActiveBoosts = CurrentTamer.ActiveBoosts.Where( b => !b.IsExpired ).ToList();
+
+			// Apply title grants (Alpha + Johnson) and prune any orphans
+			// from the post-cull title cleanup.
+			ApplySpecialTitleGrants();
+			PruneOrphanTitles();
+
+			// Overflow recovery (ported from old LoadFromCloud).
+			if ( CurrentTamer.Gold < 0 )
+			{
+				Log.Warning( $"Overflow recovery: Gold was {CurrentTamer.Gold}, restoring to {int.MaxValue}" );
+				CurrentTamer.Gold = int.MaxValue;
+			}
+			if ( CurrentTamer.TotalGoldEarned < 0 )
+			{
+				Log.Warning( $"Overflow recovery: TotalGoldEarned was {CurrentTamer.TotalGoldEarned}, restoring to {int.MaxValue}" );
+				CurrentTamer.TotalGoldEarned = int.MaxValue;
+			}
+			if ( CurrentTamer.TotalDamageDealt < 0 )
+			{
+				Log.Warning( $"Overflow recovery: TotalDamageDealt was {CurrentTamer.TotalDamageDealt}, restoring to {int.MaxValue}" );
+				CurrentTamer.TotalDamageDealt = int.MaxValue;
+			}
+
+			// One-shot SP/level migration (lifted verbatim from old LoadFromCloud).
+			if ( !section.SkillPointsMigratedV2 )
+			{
+				RunSkillPointMigrationV2();
+				section.SkillPointsMigratedV2 = true;
+				// Don't MarkDirty here — SaveService is still in _isHydrating scope,
+				// and it'll no-op anyway. The next mutation will push the flag.
+			}
+
+			// Clamp on LOAD as well as on save. Without this, a corrupted save
+			// (e.g. pre-launch dev build with inflated TotalPlayTime) would be
+			// displayed and submitted to the leaderboard before the next
+			// autosave clamps it on disk.
+			ClampStats();
+
+			Log.Info( $"[TamerManager] Hydrated: {CurrentTamer.Name} Lv{CurrentTamer.Level} XP={CurrentTamer.TotalXP}" );
+		}
+		else
+		{
+			HydrateFromBlank();
+		}
+	}
+
+	/// <summary>
+	/// Fresh-player init. Only runs when the blob has no tamer section at all.
+	/// </summary>
+	private void HydrateFromBlank()
+	{
 		CurrentTamer = new Tamer
 		{
 			Name = Connection.Local?.DisplayName ?? "Tamer",
-			Gender = gender,
-			Level = Math.Max( 1, Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}level" ), 1 ) ),
-			TotalXP = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}xp" ), 0 ),
-			Gold = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}gold" ), 100 ),
-			Gems = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}gems" ), 0 ),
-			ContractInk = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}ink" ), 10 ),
-			SkillPoints = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}skill-points" ), 1 ),
-			HighestExpeditionCleared = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}expedition-cleared" ), 0 ),
-			ArenaRank = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}arena-rank" ), "Unranked" ),
-			ArenaPoints = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-points" ), 0 ),
-			TotalBattlesWon = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}battles-won" ), 0 ),
-			TotalBattlesLost = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}battles-lost" ), 0 ),
-			ArenaWins = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-wins" ), 0 ),
-			ArenaLosses = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-losses" ), 0 ),
-			TotalMonstersCaught = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}caught" ), 0 ),
-			TotalMonstersBred = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}bred" ), 0 ),
-			TotalMonstersEvolved = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}evolved" ), 0 ),
-			BossTokens = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}boss-tokens" ), 0 ),
-			ActiveThemeId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-theme" ), "default" ),
-			ActiveTitleId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-title" ), null ),
-			ActiveLevelTitle = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-level-title" ), null ),
-			// Online update fields (safe defaults for existing saves)
-			TotalGoldEarned = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}gold-earned" ), 0 ),
-			TotalItemsBought = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}items-bought" ), 0 ),
-			TotalExpeditionsCompleted = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}expeditions-completed" ), 0 ),
-			TotalTradesCompleted = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}trades-completed" ), 0 ),
-			TotalMiniGamesPlayed = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}minigames-played" ), 0 ),
-			ChatMessagesSent = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}chat-sent" ), 0 ),
-			BossTokensSpent = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}boss-tokens-spent" ), 0 ),
-			TotalDamageDealt = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}total-damage" ), 0 ),
-			TotalKnockouts = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}total-knockouts" ), 0 ),
-			ArenaWinStreak = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-streak" ), 0 ),
-			ArenaSetsCompleted = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}arena-sets" ), 0 ),
-			FavoriteMonsterSpeciesId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}fav-monster" ), null ),
-			FavoriteExpeditionId = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}fav-expedition" ), null ),
-			HasMasterInk = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}master-ink" ), 0 ) == 1,
-			TotalPlayTime = TimeSpan.FromMinutes( Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}playtime-minutes" ), 0 ) )
+			Gender = TamerGender.Male,
+			Level = 1,
+			TotalXP = 0,
+			Gold = 100,
+			Gems = 0,
+			ContractInk = 10,
+			SkillPoints = 6,
+			HighestExpeditionCleared = 0,
+			ArenaRank = "Unranked",
+			ArenaPoints = 0,
+			LastLogin = DateTime.UtcNow,
+			CreatedAt = DateTime.UtcNow,
 		};
 
-		// Fix overflow damage: if gold went negative from int32 overflow, restore to max
-		if ( CurrentTamer.Gold < 0 )
+		// Mirror the defensive ??= block from the existing-save Hydrate path.
+		// Tamer.cs declares field initializers (= new()) on all collection
+		// fields, but this extra belt-and-suspenders guard protects against
+		// any future refactor that removes a default and guarantees downstream
+		// code (e.g. tamer.CollectedCards.Add(...) in OnSaveLoaded subscribers)
+		// never trips a NullReferenceException on a fresh save.
+		CurrentTamer.SkillRanks ??= new();
+		CurrentTamer.ClearedBosses ??= new();
+		CurrentTamer.UnlockedTitles ??= new();
+		CurrentTamer.Inventory ??= new();
+		CurrentTamer.EquippedRelics ??= new();
+		CurrentTamer.ActiveBoosts ??= new();
+		CurrentTamer.Achievements ??= new();
+		CurrentTamer.SpeciesMastery ??= new();
+		CurrentTamer.MatchHistory ??= new();
+		CurrentTamer.CollectedCards ??= new();
+		CurrentTamer.CardBadges ??= new();
+
+		// Fresh saves are pre-launch by definition (we cleared the launch gate
+		// in code) — apply special grants so Alpha + Johnson land immediately.
+		ApplySpecialTitleGrants();
+
+		Log.Info( "[TamerManager] Hydrated: fresh tamer (no existing save)" );
+	}
+
+	/// <summary>
+	/// Apply title grants that aren't tied to achievements:
+	///  • Johnson — granted to everyone, always (flavor title).
+	///  • Alpha — granted to anyone whose first session loaded before
+	///    <see cref="LaunchDate"/>. Sticks for life via PlayedDuringAlpha.
+	/// Idempotent — safe to call on every hydrate.
+	/// </summary>
+	private void ApplySpecialTitleGrants()
+	{
+		if ( CurrentTamer == null ) return;
+		CurrentTamer.UnlockedTitles ??= new();
+
+		// Johnson — everyone gets it.
+		if ( !CurrentTamer.UnlockedTitles.Contains( CosmeticDatabase.JohnsonTitleId ) )
 		{
-			Log.Warning( $"Overflow recovery: Gold was {CurrentTamer.Gold}, restoring to {int.MaxValue}" );
-			CurrentTamer.Gold = int.MaxValue;
-		}
-		if ( CurrentTamer.TotalGoldEarned < 0 )
-		{
-			Log.Warning( $"Overflow recovery: TotalGoldEarned was {CurrentTamer.TotalGoldEarned}, restoring to {int.MaxValue}" );
-			CurrentTamer.TotalGoldEarned = int.MaxValue;
-		}
-		if ( CurrentTamer.TotalDamageDealt < 0 )
-		{
-			Log.Warning( $"Overflow recovery: TotalDamageDealt was {CurrentTamer.TotalDamageDealt}, restoring to {int.MaxValue}" );
-			CurrentTamer.TotalDamageDealt = int.MaxValue;
+			CurrentTamer.UnlockedTitles.Add( CosmeticDatabase.JohnsonTitleId );
 		}
 
-		// Load skill ranks from cookie (Dictionary<string, int>)
-		var skillsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}skill-ranks" ), "{}" );
-		try
+		// Alpha — flag any pre-launch session, then grant if flagged.
+		if ( DateTime.UtcNow < LaunchDate )
 		{
-			CurrentTamer.SkillRanks = JsonSerializer.Deserialize<Dictionary<string, int>>( skillsJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.SkillRanks = new();
+			CurrentTamer.PlayedDuringAlpha = true;
 		}
 
-		// Migration: Try to load old format (List<string>) and convert to new format
-		if ( CurrentTamer.SkillRanks.Count == 0 )
+		if ( CurrentTamer.PlayedDuringAlpha
+			&& !CurrentTamer.UnlockedTitles.Contains( CosmeticDatabase.AlphaTitleId ) )
 		{
-			var oldSkillsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}skills" ), "[]" );
-			try
+			CurrentTamer.UnlockedTitles.Add( CosmeticDatabase.AlphaTitleId );
+		}
+	}
+
+	/// <summary>
+	/// Drop any UnlockedTitles entries that no longer exist in CosmeticDatabase
+	/// (e.g. titles that were cut in the launch cleanup pass). Also clears
+	/// ActiveTitleId if it pointed at a now-cut title.
+	/// </summary>
+	private void PruneOrphanTitles()
+	{
+		if ( CurrentTamer?.UnlockedTitles == null ) return;
+		int before = CurrentTamer.UnlockedTitles.Count;
+		CurrentTamer.UnlockedTitles = CurrentTamer.UnlockedTitles
+			.Where( id => CosmeticDatabase.GetTitle( id ) != null )
+			.ToList();
+
+		if ( !string.IsNullOrEmpty( CurrentTamer.ActiveTitleId )
+			&& CosmeticDatabase.GetTitle( CurrentTamer.ActiveTitleId ) == null )
+		{
+			CurrentTamer.ActiveTitleId = null;
+		}
+
+		int dropped = before - CurrentTamer.UnlockedTitles.Count;
+		if ( dropped > 0 )
+		{
+			Log.Info( $"[TamerManager] Pruned {dropped} orphan title(s) cut in cleanup pass" );
+		}
+	}
+
+	/// <summary>
+	/// SP/level migration v2. Clamp to <see cref="Tamer.MaxLevel"/> (50), re-derive
+	/// total earned SP, preserve surviving ranks (clamped to node MaxRank), prune
+	/// unknown IDs, deposit the remainder in the loose SP pool.
+	/// </summary>
+	private void RunSkillPointMigrationV2()
+	{
+		CurrentTamer.Level = Math.Min( CurrentTamer.Level, Tamer.MaxLevel );
+		int capLevel = CurrentTamer.Level;
+
+		int totalEarnedSp = 6;
+		for ( int level = 2; level <= capLevel; level++ )
+		{
+			totalEarnedSp += Tamer.GetSkillPointsForLevel( level );
+		}
+
+		int preservedRanks = 0;
+		int prunedIds = 0;
+		int spSpentOnPreserved = 0;
+		if ( CurrentTamer.SkillRanks != null && SkillTree != null )
+		{
+			var newRanks = new Dictionary<string, int>();
+			foreach ( var kv in CurrentTamer.SkillRanks )
 			{
-				var oldSkills = JsonSerializer.Deserialize<List<string>>( oldSkillsJson ) ?? new();
-				foreach ( var skillId in oldSkills )
-				{
-					CurrentTamer.SkillRanks[skillId] = 1;
-				}
+				var node = SkillTree.GetNode( kv.Key );
+				if ( node == null ) { prunedIds++; continue; }
+
+				int clamped = Math.Min( kv.Value, node.MaxRank );
+				if ( clamped <= 0 ) continue;
+
+				newRanks[kv.Key] = clamped;
+				preservedRanks += clamped;
+				spSpentOnPreserved += clamped * node.CostPerRank;
 			}
-			catch { }
+			CurrentTamer.SkillRanks = newRanks;
 		}
 
-		// Migration: Grant retroactive skill points for existing accounts (v0.4.0)
-		// Check if this account existed before the skill system was added
-		var skillPointsMigrated = Game.Cookies.Get<bool>( GetKey( $"{STAT_PREFIX}skill-points-migrated" ), false );
-		if ( !skillPointsMigrated && CurrentTamer.Level > 1 )
-		{
-			// Calculate total skill points they should have earned from leveling
-			// 1 starting SP + points from each level up
-			int totalPoints = 1; // Starting skill point
-			for ( int level = 2; level <= CurrentTamer.Level; level++ )
-			{
-				totalPoints += Tamer.GetSkillPointsForLevel( level );
-			}
+		CurrentTamer.SkillPoints = Math.Max( 0, totalEarnedSp - spSpentOnPreserved );
+		Log.Info( $"[Migration v2] Lv {capLevel} → earned {totalEarnedSp} SP. Preserved {preservedRanks} ranks ({spSpentOnPreserved} SP), pruned {prunedIds} cut talents, loose pool: {CurrentTamer.SkillPoints} SP" );
+	}
 
-			// Grant the full amount (replacing default of 1)
-			CurrentTamer.SkillPoints = totalPoints;
-			Log.Info( $"[Migration] Granted {totalPoints} retroactive skill points for level {CurrentTamer.Level} account" );
+	// ═══════════════════════════════════════════════════════════════
+	// PERSISTENCE — push the in-memory Tamer back into the blob
+	// ═══════════════════════════════════════════════════════════════
 
-			// Mark as migrated so we don't do this again
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}skill-points-migrated" ), true );
-		}
+	/// <summary>
+	/// Legacy name kept for call-site compatibility across the codebase.
+	/// Writes the current tamer snapshot into the save blob and marks it
+	/// dirty so <see cref="SaveService"/> flushes it on the next tick.
+	/// </summary>
+	public void SaveToCloud()
+	{
+		if ( CurrentTamer == null ) return;
+		WriteSnapshot();
+	}
 
-		// Load cleared bosses from cookie
-		var bossesJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}cleared-bosses" ), "[]" );
-		try
-		{
-			CurrentTamer.ClearedBosses = JsonSerializer.Deserialize<List<string>>( bossesJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.ClearedBosses = new();
-		}
+	private void WriteSnapshot()
+	{
+		var service = SaveService.Instance;
+		if ( service == null ) return;
 
-		// Load unlocked themes from cookie
-		var themesJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}unlocked-themes" ), "[\"default\"]" );
-		try
-		{
-			CurrentTamer.UnlockedThemes = JsonSerializer.Deserialize<List<string>>( themesJson ) ?? new() { "default" };
-		}
-		catch
-		{
-			CurrentTamer.UnlockedThemes = new() { "default" };
-		}
+		ClampStats();
 
-		// Load unlocked titles from cookie
-		var titlesJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}unlocked-titles" ), "[]" );
-		try
-		{
-			CurrentTamer.UnlockedTitles = JsonSerializer.Deserialize<List<string>>( titlesJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.UnlockedTitles = new();
-		}
+		var blob = service.CurrentBlob;
+		if ( blob == null ) return;
 
-		// Load inventory from cookie (Dictionary<string, int>)
-		var inventoryJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}inventory" ), "{}" );
-		try
-		{
-			CurrentTamer.Inventory = JsonSerializer.Deserialize<Dictionary<string, int>>( inventoryJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.Inventory = new();
-		}
+		blob.Tamer ??= new TamerSaveData();
 
-		// Load equipped relics from cookie (List<string>)
-		var relicsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}equipped-relics" ), "[]" );
-		try
-		{
-			CurrentTamer.EquippedRelics = JsonSerializer.Deserialize<List<string>>( relicsJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.EquippedRelics = new();
-		}
-
-		// Load active item boosts from cookie
-		var boostsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}active-boosts" ), "[]" );
-		try
-		{
-			CurrentTamer.ActiveBoosts = JsonSerializer.Deserialize<List<ActiveItemBoost>>( boostsJson ) ?? new();
-			// Remove expired boosts
+		// Clean expired boosts before persisting so the blob doesn't grow stale.
+		if ( CurrentTamer.ActiveBoosts != null )
 			CurrentTamer.ActiveBoosts = CurrentTamer.ActiveBoosts.Where( b => !b.IsExpired ).ToList();
-		}
-		catch
-		{
-			CurrentTamer.ActiveBoosts = new();
-		}
 
-		// Load achievement progress from cookie (Dictionary<string, AchievementProgress>)
-		var achievementsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}achievements" ), "{}" );
-		try
-		{
-			CurrentTamer.Achievements = JsonSerializer.Deserialize<Dictionary<string, AchievementProgress>>( achievementsJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.Achievements = new();
-		}
+		// Embed the entire Tamer object — it's already JSON-friendly.
+		blob.Tamer.Tamer = CurrentTamer;
+		// Preserve the migration flag (only flips once, sticky).
+		// section.SkillPointsMigratedV2 is set in Hydrate.
 
-		// Load collected tamer cards from cookie
-		var cardsJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}tamer-cards" ), "[]" );
-		try
-		{
-			CurrentTamer.CollectedCards = JsonSerializer.Deserialize<List<CollectedTamerCard>>( cardsJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.CollectedCards = new();
-		}
+		// Leaderboard fire-and-forget (keep existing behaviour).
+		Stats.SetValue( "total-playtime-launch", (int)CurrentTamer.TotalPlayTime.TotalMinutes );
 
-		// Load match history from cookie
-		var matchHistoryJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}match-history" ), "[]" );
-		try
-		{
-			CurrentTamer.MatchHistory = JsonSerializer.Deserialize<List<MatchHistoryEntry>>( matchHistoryJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.MatchHistory = new();
-		}
-
-		// Load card badges from cookie
-		var badgesJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}card-badges" ), "[]" );
-		try
-		{
-			CurrentTamer.CardBadges = JsonSerializer.Deserialize<List<string>>( badgesJson ) ?? new();
-		}
-		catch
-		{
-			CurrentTamer.CardBadges = new();
-		}
-
-		CurrentTamer.LastLogin = DateTime.UtcNow;
-
-		Log.Info( $"Loaded tamer: {CurrentTamer.Name}, Level {CurrentTamer.Level}, XP {CurrentTamer.TotalXP}" );
+		service.MarkDirty( "tamer" );
 	}
 
 	private double GetCloudStat( string statName )
@@ -332,23 +418,34 @@ public sealed class TamerManager : Component
 	{
 		if ( CurrentTamer == null ) return;
 
-		// Expedition highest: capped at number of expeditions (currently 16)
 		int maxExpeditions = ExpeditionManager.Instance?.Expeditions?.Count ?? 16;
 		CurrentTamer.HighestExpeditionCleared = Math.Clamp( CurrentTamer.HighestExpeditionCleared, 0, maxExpeditions );
 
-		// Level: capped at MaxLevel
 		CurrentTamer.Level = Math.Clamp( CurrentTamer.Level, 1, Tamer.MaxLevel );
 
-		// Playtime: cap at 90 days (in minutes) - game hasn't existed longer than that
-		int maxPlaytimeMinutes = 90 * 24 * 60; // 90 days
-		if ( CurrentTamer.TotalPlayTime.TotalMinutes > maxPlaytimeMinutes )
-			CurrentTamer.TotalPlayTime = TimeSpan.FromMinutes( maxPlaytimeMinutes );
+		// Playtime: anything over 1 year is treated as a corrupted save (most
+		// often from pre-launch dev builds where Time.Delta could spike during
+		// hot-reload, alt-tab, or pause exit and inject hours/days into the
+		// total in a single frame). Hard-reset to 0 in that case rather than
+		// clamping — the displayed "365d 0h" was misleading.
+		// Otherwise clamp to a sane max so even very heavy legit grinders
+		// can't push the leaderboard into garbage values.
+		const double absurdPlaytimeMin = 365.0 * 24.0 * 60.0;   // 1 year
+		const double maxPlaytimeMin = 90.0 * 24.0 * 60.0;        // 90 days
+		var totalMin = CurrentTamer.TotalPlayTime.TotalMinutes;
+		if ( totalMin > absurdPlaytimeMin )
+		{
+			Log.Warning( $"Overflow recovery: TotalPlayTime was {totalMin:F0} min — resetting to 0 (treated as corrupt)." );
+			CurrentTamer.TotalPlayTime = TimeSpan.Zero;
+		}
+		else if ( totalMin > maxPlaytimeMin )
+		{
+			CurrentTamer.TotalPlayTime = TimeSpan.FromMinutes( maxPlaytimeMin );
+		}
 
-		// Gold: prevent negative values (overflow already handled in AddGold)
 		if ( CurrentTamer.Gold < 0 ) CurrentTamer.Gold = 0;
 		if ( CurrentTamer.TotalGoldEarned < 0 ) CurrentTamer.TotalGoldEarned = 0;
 
-		// Prevent negative counts on all stats
 		if ( CurrentTamer.TotalExpeditionsCompleted < 0 ) CurrentTamer.TotalExpeditionsCompleted = 0;
 		if ( CurrentTamer.TotalMonstersCaught < 0 ) CurrentTamer.TotalMonstersCaught = 0;
 		if ( CurrentTamer.TotalMonstersBred < 0 ) CurrentTamer.TotalMonstersBred = 0;
@@ -356,116 +453,6 @@ public sealed class TamerManager : Component
 		if ( CurrentTamer.TotalBattlesWon < 0 ) CurrentTamer.TotalBattlesWon = 0;
 		if ( CurrentTamer.TotalDamageDealt < 0 ) CurrentTamer.TotalDamageDealt = 0;
 		if ( CurrentTamer.TotalKnockouts < 0 ) CurrentTamer.TotalKnockouts = 0;
-	}
-
-	public void SaveToCloud()
-	{
-		if ( CurrentTamer == null ) return;
-
-		// Validate stats before saving
-		ClampStats();
-
-		try
-		{
-			// Save all values to cookies (not Stats, which are incremental and would duplicate values)
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}level" ), CurrentTamer.Level );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}xp" ), CurrentTamer.TotalXP );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}gold" ), CurrentTamer.Gold );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}gems" ), CurrentTamer.Gems );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}ink" ), CurrentTamer.ContractInk );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}skill-points" ), CurrentTamer.SkillPoints );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}expedition-cleared" ), CurrentTamer.HighestExpeditionCleared );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-rank" ), CurrentTamer.ArenaRank );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-points" ), CurrentTamer.ArenaPoints );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}battles-won" ), CurrentTamer.TotalBattlesWon );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}battles-lost" ), CurrentTamer.TotalBattlesLost );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-wins" ), CurrentTamer.ArenaWins );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-losses" ), CurrentTamer.ArenaLosses );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}caught" ), CurrentTamer.TotalMonstersCaught );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}bred" ), CurrentTamer.TotalMonstersBred );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}evolved" ), CurrentTamer.TotalMonstersEvolved );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}boss-tokens" ), CurrentTamer.BossTokens );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-theme" ), CurrentTamer.ActiveThemeId ?? "default" );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-title" ), CurrentTamer.ActiveTitleId ?? "" );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-level-title" ), CurrentTamer.ActiveLevelTitle ?? "" );
-
-			// Online update fields
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}gold-earned" ), CurrentTamer.TotalGoldEarned );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}items-bought" ), CurrentTamer.TotalItemsBought );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}expeditions-completed" ), CurrentTamer.TotalExpeditionsCompleted );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}trades-completed" ), CurrentTamer.TotalTradesCompleted );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}minigames-played" ), CurrentTamer.TotalMiniGamesPlayed );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}chat-sent" ), CurrentTamer.ChatMessagesSent );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}boss-tokens-spent" ), CurrentTamer.BossTokensSpent );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}total-damage" ), CurrentTamer.TotalDamageDealt );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}total-knockouts" ), CurrentTamer.TotalKnockouts );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-streak" ), CurrentTamer.ArenaWinStreak );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}arena-sets" ), CurrentTamer.ArenaSetsCompleted );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}fav-monster" ), CurrentTamer.FavoriteMonsterSpeciesId ?? "" );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}fav-expedition" ), CurrentTamer.FavoriteExpeditionId ?? "" );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}master-ink" ), CurrentTamer.HasMasterInk ? 1 : 0 );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}playtime-minutes" ), (int)CurrentTamer.TotalPlayTime.TotalMinutes );
-
-			// Save achievement progress
-			var achievementsJson = JsonSerializer.Serialize( CurrentTamer.Achievements ?? new() );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}achievements" ), achievementsJson );
-
-			// Save collected tamer cards
-			var cardsJson = JsonSerializer.Serialize( CurrentTamer.CollectedCards ?? new() );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}tamer-cards" ), cardsJson );
-
-			// Save match history
-			var historyJson = JsonSerializer.Serialize( CurrentTamer.MatchHistory ?? new() );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}match-history" ), historyJson );
-
-			// Save card badges
-			var badgesJson = JsonSerializer.Serialize( CurrentTamer.CardBadges ?? new() );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}card-badges" ), badgesJson );
-
-			// Submit playtime to leaderboard
-			Stats.SetValue( "total-playtime-v2", (int)CurrentTamer.TotalPlayTime.TotalMinutes );
-
-			// Save skill ranks to cookie (Dictionary<string, int>)
-			var skillsJson = JsonSerializer.Serialize( CurrentTamer.SkillRanks );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}skill-ranks" ), skillsJson );
-
-			// Save cleared bosses to cookie
-			var bossesJson = JsonSerializer.Serialize( CurrentTamer.ClearedBosses );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}cleared-bosses" ), bossesJson );
-
-			// Save unlocked themes to cookie
-			var themesJson = JsonSerializer.Serialize( CurrentTamer.UnlockedThemes );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}unlocked-themes" ), themesJson );
-
-			// Save unlocked titles to cookie
-			var titlesJson = JsonSerializer.Serialize( CurrentTamer.UnlockedTitles );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}unlocked-titles" ), titlesJson );
-
-			// Save inventory to cookie
-			var inventoryJson = JsonSerializer.Serialize( CurrentTamer.Inventory );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}inventory" ), inventoryJson );
-
-			// Save equipped relics to cookie
-			var relicsJson = JsonSerializer.Serialize( CurrentTamer.EquippedRelics );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}equipped-relics" ), relicsJson );
-
-			// Save active item boosts to cookie (filter out expired ones)
-			var activeBoosts = CurrentTamer.ActiveBoosts?.Where( b => !b.IsExpired ).ToList() ?? new();
-			var boostsJson = JsonSerializer.Serialize( activeBoosts );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}active-boosts" ), boostsJson );
-
-			// Save gender to cookie
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}gender" ), CurrentTamer.Gender == TamerGender.Female ? "1" : "0" );
-
-			// Update slot info
-			SaveSlotManager.Instance?.UpdateActiveSlotInfo();
-
-			Log.Info( "Tamer data saved" );
-		}
-		catch ( Exception e )
-		{
-			Log.Warning( $"Failed to save tamer data: {e.Message}" );
-		}
 	}
 
 	// Resource management
@@ -491,7 +478,7 @@ public sealed class TamerManager : Component
 
 		OnGoldChanged?.Invoke( CurrentTamer.Gold );
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TotalGoldEarned, CurrentTamer.TotalGoldEarned );
-		Stats.SetValue( "total-gold-v2", (int)(CurrentTamer.TotalGoldEarned / 1000) );
+		Stats.SetValue( "total-gold-launch", (int)(CurrentTamer.TotalGoldEarned / 1000) );
 	}
 
 	public bool SpendGold( int amount )
@@ -554,6 +541,7 @@ public sealed class TamerManager : Component
 		{
 			CurrentTamer.ClearedBosses.Add( expeditionId );
 			Log.Info( $"[MarkBossCleared] Added '{expeditionId}' to ClearedBosses. Total: {CurrentTamer.ClearedBosses.Count}, List: [{string.Join( ", ", CurrentTamer.ClearedBosses )}]" );
+			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BossesCleared, CurrentTamer.ClearedBosses.Count );
 			SaveToCloud();
 		}
 		else
@@ -563,27 +551,6 @@ public sealed class TamerManager : Component
 	}
 
 	// Cosmetics
-	public bool HasTheme( string themeId )
-	{
-		return CurrentTamer.UnlockedThemes.Contains( themeId );
-	}
-
-	public bool UnlockTheme( string themeId )
-	{
-		if ( CurrentTamer.UnlockedThemes.Contains( themeId ) ) return false;
-		CurrentTamer.UnlockedThemes.Add( themeId );
-		SaveToCloud();
-		return true;
-	}
-
-	public void SetActiveTheme( string themeId )
-	{
-		if ( !CurrentTamer.UnlockedThemes.Contains( themeId ) ) return;
-		CurrentTamer.ActiveThemeId = themeId;
-		OnThemeChanged?.Invoke( themeId );
-		SaveToCloud();
-	}
-
 	public bool HasTitle( string titleId )
 	{
 		return CurrentTamer.UnlockedTitles.Contains( titleId );
@@ -638,6 +605,51 @@ public sealed class TamerManager : Component
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TamerLevel, CurrentTamer.Level );
 			Stats.SetValue( "tamer-level", CurrentTamer.Level );
 		}
+	}
+
+	// ─── DEV CONSOLE COMMANDS ─────────────────────────────────────────
+	// Quick testing helpers. Bypass boost multipliers so the value you
+	// ask for is what you get. Strip these before shipping.
+
+	[ConCmd( "dev_addxp" )]
+	public static void DevAddXp( int amount )
+	{
+		var tamer = Instance?.CurrentTamer;
+		if ( tamer == null ) { Log.Warning( "[dev_addxp] No current tamer." ); return; }
+		bool leveledUp = tamer.AddXP( amount );
+		if ( leveledUp )
+		{
+			Instance.OnLevelUp?.Invoke( tamer.Level );
+			Stats.SetValue( "tamer-level", tamer.Level );
+		}
+		Instance.SaveToCloud();
+		Log.Info( $"[dev_addxp] +{amount} XP → Lv {tamer.Level} ({tamer.TotalXP} total)" );
+	}
+
+	[ConCmd( "dev_setlevel" )]
+	public static void DevSetLevel( int level )
+	{
+		var tamer = Instance?.CurrentTamer;
+		if ( tamer == null ) { Log.Warning( "[dev_setlevel] No current tamer." ); return; }
+		level = Math.Clamp( level, 1, Tamer.MaxLevel );
+		// Walk forward via AddXP so level-up side effects fire correctly.
+		while ( tamer.Level < level )
+		{
+			int needed = tamer.XPForNextLevel - tamer.CurrentLevelXP;
+			if ( needed <= 0 ) break;
+			tamer.AddXP( needed );
+		}
+		Instance.OnLevelUp?.Invoke( tamer.Level );
+		Stats.SetValue( "tamer-level", tamer.Level );
+		Instance.SaveToCloud();
+		Log.Info( $"[dev_setlevel] Now Lv {tamer.Level}" );
+	}
+
+	[ConCmd( "dev_addgold" )]
+	public static void DevAddGold( int amount )
+	{
+		Instance?.AddGold( amount );
+		Log.Info( $"[dev_addgold] +{amount}g → {Instance?.CurrentTamer?.Gold}g total" );
 	}
 
 	// Skill management (ranked system)
@@ -767,7 +779,7 @@ public sealed class TamerManager : Component
 			Gems = 0,
 			ContractInk = 10,
 			BossTokens = 0,
-			SkillPoints = 1,
+			SkillPoints = 6,
 			HighestExpeditionCleared = 0,
 			ArenaRank = "Unranked",
 			ArenaPoints = 0,
@@ -778,28 +790,19 @@ public sealed class TamerManager : Component
 			TotalMonstersEvolved = 0,
 			SkillRanks = new(),
 			ClearedBosses = new(),
-			UnlockedThemes = new() { "default" },
 			UnlockedTitles = new(),
 			Inventory = new(),
 			EquippedRelics = new(),
 			ActiveBoosts = new(),
-			ActiveThemeId = "default",
 			ActiveTitleId = null,
 			ActiveLevelTitle = null,
 			LastLogin = DateTime.UtcNow
 		};
 
+		ApplySpecialTitleGrants();
+
 		SaveToCloud();
 		Log.Info( "Tamer data reset to defaults" );
-	}
-
-	/// <summary>
-	/// Reload data from the current save slot
-	/// </summary>
-	public void ReloadFromSlot()
-	{
-		LoadFromCloud();
-		Log.Info( $"TamerManager reloaded from slot {SaveSlotManager.Instance?.ActiveSlot}" );
 	}
 
 	// Get total number of skills available in the skill tree
@@ -871,6 +874,28 @@ public sealed class TamerManager : Component
 	public int GetMaxPossibleRanks()
 	{
 		return SkillTree?.AllNodes?.Sum( n => n.MaxRank ) ?? 0;
+	}
+
+	/// <summary>
+	/// Wipe every skill rank and refund the spent SP back to the tamer's pool.
+	/// Returns the number of SP refunded. UI/skill-tree panel calls this from
+	/// the inline two-stage confirm flow; gem/currency costs (if any) are
+	/// handled by callers that wrap this (currently none — reset is free).
+	/// </summary>
+	public int ResetSkillTree()
+	{
+		if ( CurrentTamer == null || SkillTree == null ) return 0;
+
+		int refundedPoints = GetTotalSkillPointsSpent();
+		CurrentTamer.SkillPoints += refundedPoints;
+		CurrentTamer.SkillRanks.Clear();
+
+		Stats.SetValue( "skills-unlocked", 0 );
+		Stats.SetValue( "skill-points", 0 );
+
+		SaveToCloud();
+		Log.Info( $"[TamerManager] Skill tree reset — refunded {refundedPoints} SP" );
+		return refundedPoints;
 	}
 
 	/// <summary>

@@ -6,6 +6,29 @@ namespace Beastborne.Systems;
 /// <summary>
 /// Generates contracts for caught monsters
 /// </summary>
+// ── Persuasion Approach Types ──
+
+public enum ApproachType
+{
+	// Always available (ink only)
+	Kindness,       // Timid, Loyal
+	Strength,       // Bold, Wild
+	Charm,          // Bold, Greedy
+	Respect,        // All (neutral)
+	Intimidate,     // Timid, Wild — critical fail risk
+
+	// Resource-based
+	Wealth,         // Greedy — costs gold
+	Offering,       // Timid, Greedy — costs consumable item
+	Tribute,        // Bold, Loyal — costs boss tokens
+
+	// Special mechanics
+	Sacrifice,      // Wild, Bold — your beast takes damage
+	Bond,           // Loyal, Wild — beast XP drain
+	Patience,       // Loyal, Timid — skip next 2 turns
+	Mystery         // All — random 10-90%
+}
+
 public static class ContractGenerator
 {
 	public static Contract GenerateContract( MonsterSpecies species )
@@ -183,26 +206,141 @@ public static class ContractGenerator
 		}
 	}
 
-	/// <summary>
-	/// Generate negotiable contract options for catching a wild monster
-	/// Returns 3-4 contract options with varying difficulty/demands
-	/// </summary>
-	public static List<NegotiationOption> GenerateNegotiationOptions( MonsterSpecies species, Monster target, bool isBossContract = false )
+	// ── Approach Definitions ──
+
+	private static readonly Dictionary<ApproachType, ApproachDef> Approaches = new()
 	{
-		var options = new List<NegotiationOption>();
-		var random = new Random();
+		[ApproachType.Kindness] = new ApproachDef
+		{
+			Name = "Kindness", Description = "Show compassion and patience",
+			BaseSuccess = 0.55f, ExtraInkCost = 1,
+			MatchPersonalities = new[] { BeastPersonality.Timid, BeastPersonality.Loyal },
+			DemandIntensityMod = -1, Color = "#4090d0"
+		},
+		[ApproachType.Strength] = new ApproachDef
+		{
+			Name = "Strength", Description = "Demonstrate your power",
+			BaseSuccess = 0.55f, ExtraInkCost = 1,
+			MatchPersonalities = new[] { BeastPersonality.Bold, BeastPersonality.Wild },
+			DemandIntensityMod = 1, Color = "#d05040"
+		},
+		[ApproachType.Charm] = new ApproachDef
+		{
+			Name = "Charm", Description = "Flattery and smooth talk",
+			BaseSuccess = 0.50f, ExtraInkCost = 1,
+			MatchPersonalities = new[] { BeastPersonality.Bold, BeastPersonality.Greedy },
+			DemandIntensityMod = -1, Color = "#d070a0"
+		},
+		[ApproachType.Respect] = new ApproachDef
+		{
+			Name = "Respect", Description = "Acknowledge them as equals",
+			BaseSuccess = 0.40f, ExtraInkCost = 0, IsNeutral = true,
+			MatchPersonalities = Array.Empty<BeastPersonality>(),
+			DemandIntensityMod = 0, Color = "#a0a0b0"
+		},
+		[ApproachType.Intimidate] = new ApproachDef
+		{
+			Name = "Intimidate", Description = "Threaten and pressure",
+			BaseSuccess = 0.65f, ExtraInkCost = 2, HasCriticalFail = true,
+			MatchPersonalities = new[] { BeastPersonality.Timid, BeastPersonality.Wild },
+			DemandIntensityMod = 1, Color = "#a03030"
+		},
+		[ApproachType.Wealth] = new ApproachDef
+		{
+			Name = "Wealth", Description = "Bribe with gold",
+			BaseSuccess = 0.55f, ExtraInkCost = 0, CostsGold = true,
+			MatchPersonalities = new[] { BeastPersonality.Greedy },
+			DemandIntensityMod = 0, Color = "#c8a840"
+		},
+		[ApproachType.Offering] = new ApproachDef
+		{
+			Name = "Offering", Description = "Gift a treat or berry",
+			BaseSuccess = 0.60f, ExtraInkCost = 0, CostsItem = true,
+			MatchPersonalities = new[] { BeastPersonality.Timid, BeastPersonality.Greedy },
+			DemandIntensityMod = -1, Color = "#50b060"
+		},
+		[ApproachType.Tribute] = new ApproachDef
+		{
+			Name = "Tribute", Description = "Offer rare tokens of power",
+			BaseSuccess = 0.70f, ExtraInkCost = 0, CostsBossTokens = true,
+			MatchPersonalities = new[] { BeastPersonality.Bold, BeastPersonality.Loyal },
+			DemandIntensityMod = 0, Color = "#9060c0"
+		},
+		[ApproachType.Sacrifice] = new ApproachDef
+		{
+			Name = "Sacrifice", Description = "Your beast offers its own strength",
+			BaseSuccess = 0.70f, ExtraInkCost = 0, CostsPlayerHP = true,
+			MatchPersonalities = new[] { BeastPersonality.Wild, BeastPersonality.Bold },
+			DemandIntensityMod = -2, Color = "#c02020"
+		},
+		[ApproachType.Bond] = new ApproachDef
+		{
+			Name = "Bond", Description = "Share your beast's energy",
+			BaseSuccess = 0.65f, ExtraInkCost = 0, CostsBeastXP = true,
+			MatchPersonalities = new[] { BeastPersonality.Loyal, BeastPersonality.Wild },
+			DemandIntensityMod = 0, Color = "#40b0a0"
+		},
+		[ApproachType.Patience] = new ApproachDef
+		{
+			Name = "Patience", Description = "Demonstrate commitment",
+			BaseSuccess = 0.55f, ExtraInkCost = 0, CostsSkipTurns = true,
+			MatchPersonalities = new[] { BeastPersonality.Loyal, BeastPersonality.Timid },
+			DemandIntensityMod = 0, Color = "#6090b0"
+		},
+		[ApproachType.Mystery] = new ApproachDef
+		{
+			Name = "Mystery", Description = "Take a wild gamble",
+			BaseSuccess = 0f, ExtraInkCost = 0, IsRandom = true, IsNeutral = true,
+			MatchPersonalities = Array.Empty<BeastPersonality>(),
+			DemandIntensityMod = 0, Color = "#e0e0e0"
+		},
+	};
 
-		// For Legendary/Mythic boss contracts, provide boosted success rates
-		bool isRareBoss = isBossContract && species.BaseRarity >= Rarity.Legendary;
+	/// <summary>
+	/// Get the approach definition for a given type
+	/// </summary>
+	public static ApproachDef GetApproach( ApproachType type ) => Approaches[type];
 
-		// Base catch difficulty from species
-		float baseDifficulty = 1.0f - species.BaseCatchRate;
+	/// <summary>
+	/// Check if an approach matches a personality
+	/// </summary>
+	public static bool IsPersonalityMatch( ApproachType approach, BeastPersonality personality )
+	{
+		var def = Approaches[approach];
+		return def.MatchPersonalities.Contains( personality );
+	}
+
+	/// <summary>
+	/// Calculate final success chance for an approach against a target
+	/// </summary>
+	public static float CalculateSuccessChance( ApproachType approach, MonsterSpecies species, Monster target, bool isBossContract = false )
+	{
+		var def = Approaches[approach];
+
+		// Mystery is fully random
+		if ( def.IsRandom )
+			return (float)(new Random().NextDouble() * 0.8f + 0.1f); // 10-90%
+
+		float baseChance = def.BaseSuccess;
+
+		// Personality matching
+		if ( !def.IsNeutral )
+		{
+			if ( IsPersonalityMatch( approach, species.Personality ) )
+				baseChance += 0.25f;
+			else
+				baseChance -= 0.15f;
+		}
+
+		// Intimidate penalty from previous failed intimidation
+		baseChance -= target.IntimidatePenalty;
 
 		// HP modifier - lower HP makes negotiation easier
-		float hpPercent = (float)target.CurrentHP / target.MaxHP;
-		float hpModifier = 1.0f - (hpPercent * 0.5f); // 50% at full HP, 100% at 0 HP
+		float hpPercent = target.MaxHP > 0 ? (float)target.CurrentHP / target.MaxHP : 1f;
+		float hpModifier = 1.0f - (hpPercent * 0.5f);
 
-		// Rarity modifier - boosted for rare bosses
+		// Rarity modifier
+		bool isRareBoss = isBossContract && species.BaseRarity >= Rarity.Legendary;
 		float rarityModifier = isRareBoss ? 0.9f : species.BaseRarity switch
 		{
 			Rarity.Common => 1.0f,
@@ -214,109 +352,242 @@ public static class ContractGenerator
 			_ => 1.0f
 		};
 
-		// Tamer skill bonus
+		// Skill/perk bonuses
 		float skillBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.CatchRateBonus ) ?? 0;
-
-		// Elite Ink bonus (+15% catch rate) - timed buff
 		bool hasEliteInk = TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt > DateTime.Now;
 		float eliteInkBonus = hasEliteInk ? 15f : 0f;
-
-		// Previously caught bonus - easier to re-catch species you've already contracted
 		bool previouslyCaught = BeastiaryManager.Instance?.IsDiscovered( species.Id ) ?? false;
 		float previousCatchBonus = previouslyCaught ? 15f : 0f;
-
-		// Guild catch rate perk (Lv6: +5%)
 		float guildCatchBonus = GuildManager.Instance?.GetCatchRateBonus() ?? 0f;
 
 		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus + previousCatchBonus + guildCatchBonus) / 100f);
 
-		// Boss contract bonus - makes rare bosses much more catchable
 		if ( isRareBoss )
+			finalModifier = Math.Max( finalModifier, 1.2f );
+
+		return Math.Min( 0.95f, Math.Max( 0.05f, baseChance * finalModifier ) );
+	}
+
+	/// <summary>
+	/// Calculate gold cost for the Wealth approach
+	/// </summary>
+	public static int CalculateGoldCost( MonsterSpecies species, Monster target )
+	{
+		return (int)(50 * (1 + (int)species.BaseRarity) * (1 + target.Level / 10f));
+	}
+
+	/// <summary>
+	/// Calculate boss token cost for the Tribute approach
+	/// </summary>
+	public static int CalculateTributeCost( MonsterSpecies species )
+	{
+		return species.BaseRarity switch
 		{
-			finalModifier = Math.Max( finalModifier, 1.2f ); // Ensure good rates for rare bosses
+			Rarity.Common => 1,
+			Rarity.Uncommon => 2,
+			Rarity.Rare => 3,
+			Rarity.Epic => 5,
+			Rarity.Legendary => 8,
+			Rarity.Mythic => 12,
+			_ => 2
+		};
+	}
+
+	/// <summary>
+	/// Calculate HP cost for the Sacrifice approach (% of player beast max HP)
+	/// </summary>
+	public static int CalculateSacrificeHP( Monster playerBeast )
+	{
+		return Math.Max( 1, (int)(playerBeast.MaxHP * 0.3f) ); // 30% of max HP
+	}
+
+	/// <summary>
+	/// Calculate XP drain for the Bond approach
+	/// </summary>
+	public static int CalculateBondXPCost( Monster playerBeast )
+	{
+		// Approximate XP cost based on level (scales with progression)
+		int xpCost = (int)(50 * Math.Pow( playerBeast.Level, 1.2 ));
+		return Math.Max( 10, xpCost );
+	}
+
+	/// <summary>
+	/// Generate 4 curated negotiation options from the pool of 12 approaches
+	/// </summary>
+	public static List<NegotiationOption> GenerateNegotiationOptions( MonsterSpecies species, Monster target, bool isBossContract = false )
+	{
+		var random = new Random();
+		var curated = CurateApproaches( species, target, random );
+		var options = new List<NegotiationOption>();
+
+		// Escalating retry cost
+		int retryPenalty = target.ContractAttemptsThisBattle;
+
+		foreach ( var approachType in curated )
+		{
+			var def = Approaches[approachType];
+			float successChance = CalculateSuccessChance( approachType, species, target, isBossContract );
+
+			// Calculate costs
+			int inkCost = def.ExtraInkCost + retryPenalty; // approach cost + retry penalty (entry fee already spent)
+			int goldCost = def.CostsGold ? CalculateGoldCost( species, target ) : 0;
+			int tokenCost = def.CostsBossTokens ? CalculateTributeCost( species ) : 0;
+
+			// Generate contract with approach-specific demand intensity
+			var contract = GenerateContract( species );
+			contract.PrimaryDemand.Intensity = Math.Clamp(
+				contract.PrimaryDemand.Intensity + def.DemandIntensityMod, 1, 3 );
+			if ( def.DemandIntensityMod <= -2 )
+				contract.SecondaryDemands.Clear();
+
+			options.Add( new NegotiationOption
+			{
+				Approach = approachType,
+				Name = def.Name,
+				Description = def.Description,
+				Contract = contract,
+				SuccessChance = successChance,
+				GoldCost = goldCost,
+				InkCost = inkCost,
+				BossTokenCost = tokenCost,
+				IsBossContract = isBossContract,
+				Color = def.Color,
+				IsPersonalityMatch = !def.IsNeutral && IsPersonalityMatch( approachType, species.Personality ),
+				HasCriticalFail = def.HasCriticalFail,
+				CostsPlayerHP = def.CostsPlayerHP,
+				CostsBeastXP = def.CostsBeastXP,
+				CostsSkipTurns = def.CostsSkipTurns,
+				CostsItem = def.CostsItem,
+			} );
 		}
-
-		// Generate 3-4 options with varying demands
-		// Option 1: Generous offer (easy acceptance, demanding contract) - 3 ink
-		var generousContract = GenerateContract( species );
-		generousContract.PrimaryDemand.Intensity = Math.Min( 3, generousContract.PrimaryDemand.Intensity + 1 );
-		options.Add( new NegotiationOption
-		{
-			Name = isRareBoss ? "Legendary Pact" : "Generous Offer",
-			Description = isRareBoss ? "Offer to be their champion" : "Promise them whatever they want",
-			Contract = generousContract,
-			SuccessChance = isRareBoss ? 0.85f : Math.Min( 0.95f, 0.7f * finalModifier ),
-			GoldCost = 0,
-			InkCost = isRareBoss ? 5 : 3,
-			IsBossContract = isBossContract
-		} );
-
-		// Option 2: Balanced offer (medium acceptance, normal contract) - 2 ink
-		var balancedContract = GenerateContract( species );
-		options.Add( new NegotiationOption
-		{
-			Name = isRareBoss ? "Mutual Respect" : "Fair Terms",
-			Description = isRareBoss ? "Acknowledge their power as equals" : "A reasonable agreement for both parties",
-			Contract = balancedContract,
-			SuccessChance = isRareBoss ? 0.70f : Math.Min( 0.85f, 0.5f * finalModifier ),
-			GoldCost = 0,
-			InkCost = isRareBoss ? 3 : 2,
-			IsBossContract = isBossContract
-		} );
-
-		// Option 3: Strict terms (harder acceptance, lighter contract) - 1 ink
-		var strictContract = GenerateContract( species );
-		strictContract.PrimaryDemand.Intensity = Math.Max( 1, strictContract.PrimaryDemand.Intensity - 1 );
-		strictContract.SecondaryDemands.Clear(); // No secondary demands
-		options.Add( new NegotiationOption
-		{
-			Name = isRareBoss ? "Bold Challenge" : "Strict Terms",
-			Description = isRareBoss ? "Prove you're worthy of their service" : "Minimal obligations on your part",
-			Contract = strictContract,
-			SuccessChance = isRareBoss ? 0.50f : Math.Min( 0.65f, 0.3f * finalModifier ),
-			GoldCost = 0,
-			InkCost = isRareBoss ? 2 : 1,
-			IsBossContract = isBossContract
-		} );
-
-		// Option 4: Bribery (gold for better chance) - 2 ink + gold
-		int bribeCost = (int)(50 * (1 + (int)species.BaseRarity) * (1 + target.Level / 10f));
-		if ( isRareBoss ) bribeCost *= 2; // Rare bosses cost more to bribe
-		var bribeContract = GenerateContract( species );
-		options.Add( new NegotiationOption
-		{
-			Name = isRareBoss ? "Royal Tribute" : "Golden Handshake",
-			Description = isRareBoss ? $"Offer {bribeCost} gold as tribute" : $"Sweeten the deal with {bribeCost} gold",
-			Contract = bribeContract,
-			SuccessChance = isRareBoss ? 0.90f : Math.Min( 0.90f, 0.6f * finalModifier + 0.15f ),
-			GoldCost = bribeCost,
-			InkCost = isRareBoss ? 3 : 2,
-			IsBossContract = isBossContract
-		} );
 
 		return options;
 	}
 
 	/// <summary>
-	/// Attempt to negotiate a contract with a wild monster
+	/// Curate 4 approaches from the pool of 12
+	/// Rules: always RESPECT + 2 personality-matched + 1 random/resource
 	/// </summary>
-	public static bool AttemptNegotiation( NegotiationOption option )
+	private static List<ApproachType> CurateApproaches( MonsterSpecies species, Monster target, Random random )
 	{
-		// Check if player can afford gold cost
+		var result = new List<ApproachType>();
+		var personality = species.Personality;
+
+		// 1. Always include RESPECT
+		result.Add( ApproachType.Respect );
+
+		// 2. Find personality-matched approaches
+		var matched = Approaches
+			.Where( kvp => kvp.Value.MatchPersonalities.Contains( personality ) )
+			.Select( kvp => kvp.Key )
+			.OrderBy( _ => random.Next() )
+			.Take( 2 )
+			.ToList();
+		result.AddRange( matched );
+
+		// 3. Fill remaining slot(s) with random/resource approach
+		var remaining = Approaches.Keys
+			.Where( a => !result.Contains( a ) )
+			.Where( a => CanAffordApproach( a, target ) )
+			.OrderBy( _ => random.Next() )
+			.ToList();
+
+		// Prefer MYSTERY occasionally (~30%)
+		if ( random.NextDouble() < 0.3f && !result.Contains( ApproachType.Mystery ) )
+			result.Add( ApproachType.Mystery );
+
+		// Fill to 4 total
+		foreach ( var approach in remaining )
+		{
+			if ( result.Count >= 4 ) break;
+			if ( !result.Contains( approach ) )
+				result.Add( approach );
+		}
+
+		return result.Take( 4 ).ToList();
+	}
+
+	/// <summary>
+	/// Check if the player can potentially use an approach (has the required resource type)
+	/// </summary>
+	private static bool CanAffordApproach( ApproachType approach, Monster target )
+	{
+		var def = Approaches[approach];
+		if ( def.CostsGold )
+			return (TamerManager.Instance?.CurrentTamer?.Gold ?? 0) > 0;
+		if ( def.CostsBossTokens )
+			return (TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0) > 0;
+		if ( def.CostsPlayerHP )
+			return true; // Always technically available, but will fail if beast faints
+		if ( def.CostsBeastXP )
+			return true;
+		if ( def.CostsItem )
+			return true; // Check actual item availability at negotiation time
+		return true;
+	}
+
+	/// <summary>
+	/// Attempt to negotiate a contract with a wild monster
+	/// Returns: (success, isCriticalFail)
+	/// </summary>
+	public static (bool success, bool criticalFail) AttemptNegotiation( NegotiationOption option )
+	{
+		// Spend gold if needed
 		if ( option.GoldCost > 0 )
 		{
 			var tamer = TamerManager.Instance?.CurrentTamer;
 			if ( tamer == null || tamer.Gold < option.GoldCost )
-				return false;
-
-			// Spend the gold
+				return (false, false);
 			TamerManager.Instance.SpendGold( option.GoldCost );
 		}
 
-		// Roll for success (Elite Ink is time-based, no consumption needed)
+		// Spend boss tokens if needed
+		if ( option.BossTokenCost > 0 )
+		{
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if ( tamer == null || tamer.BossTokens < option.BossTokenCost )
+				return (false, false);
+			tamer.BossTokens -= option.BossTokenCost;
+		}
+
+		// Roll for success
 		var random = new Random();
-		return random.NextDouble() < option.SuccessChance;
+		double roll = random.NextDouble();
+		bool success = roll < option.SuccessChance;
+
+		// Check for INTIMIDATE critical fail
+		bool criticalFail = false;
+		if ( !success && option.HasCriticalFail && roll >= (1.0 - 0.25) )
+		{
+			// Bottom 25% of failure range = critical fail
+			criticalFail = true;
+		}
+
+		return (success, criticalFail);
 	}
+}
+
+/// <summary>
+/// Definition of a persuasion approach
+/// </summary>
+public class ApproachDef
+{
+	public string Name { get; set; }
+	public string Description { get; set; }
+	public float BaseSuccess { get; set; }
+	public int ExtraInkCost { get; set; }
+	public BeastPersonality[] MatchPersonalities { get; set; } = Array.Empty<BeastPersonality>();
+	public int DemandIntensityMod { get; set; }
+	public string Color { get; set; }
+	public bool IsNeutral { get; set; }
+	public bool IsRandom { get; set; }
+	public bool HasCriticalFail { get; set; }
+	public bool CostsGold { get; set; }
+	public bool CostsBossTokens { get; set; }
+	public bool CostsPlayerHP { get; set; }
+	public bool CostsBeastXP { get; set; }
+	public bool CostsSkipTurns { get; set; }
+	public bool CostsItem { get; set; }
 }
 
 /// <summary>
@@ -324,13 +595,22 @@ public static class ContractGenerator
 /// </summary>
 public class NegotiationOption
 {
+	public ApproachType Approach { get; set; }
 	public string Name { get; set; }
 	public string Description { get; set; }
 	public Contract Contract { get; set; }
 	public float SuccessChance { get; set; }
 	public int GoldCost { get; set; }
 	public int InkCost { get; set; } = 1;
+	public int BossTokenCost { get; set; }
 	public bool IsBossContract { get; set; } = false;
+	public string Color { get; set; } = "#a0a0b0";
+	public bool IsPersonalityMatch { get; set; }
+	public bool HasCriticalFail { get; set; }
+	public bool CostsPlayerHP { get; set; }
+	public bool CostsBeastXP { get; set; }
+	public bool CostsSkipTurns { get; set; }
+	public bool CostsItem { get; set; }
 
 	public string GetSuccessText()
 	{

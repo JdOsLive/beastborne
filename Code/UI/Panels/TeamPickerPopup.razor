@@ -1,0 +1,988 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using System;
+@using System.Collections.Generic;
+@using System.Linq;
+@using System.Threading.Tasks;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@using Beastborne.UI.Components;
+@inherits Panel
+
+@{
+	var expedition = ExpeditionManager.Instance?.GetExpedition( PendingExpeditionId );
+}
+
+<root class="team-picker-root @_rootVisibleClass">
+	<div class="picker-overlay" onclick=@Close></div>
+
+	@if ( IsVisible && expedition != null )
+	{
+		var filled = _team.Count( m => m != null );
+		var roster = GetFilteredMonsters();
+		var coverage = GetTeamCoverage( expedition.Element );
+		var recommendedLevel = expedition.BaseEnemyLevel;
+
+		<div class="picker-modal">
+			<!-- ═══ HEADER ═══ -->
+			<div class="picker-header">
+				<div class="ph-left">
+					<div class="ph-kicker">EMBARK</div>
+					<div class="ph-title-row">
+						<span class="ph-title">@expedition.Name</span>
+						@if ( expedition.HasBoss )
+						{
+							<div class="ph-boss-chip">
+								<iconify icon="lucide:skull" Size=@(13) Color="#fca5a5" />
+								<span>BOSS</span>
+							</div>
+						}
+					</div>
+					<div class="ph-meta-row">
+						<span class="ph-meta-pill">
+							<iconify icon="lucide:swords" Size=@(12) Color="#fde68a" />
+							<span>Lv @recommendedLevel</span>
+						</span>
+						<span class="ph-meta-pill">
+							<iconify icon="lucide:layers" Size=@(12) Color="#c4b5fd" />
+							<span>@expedition.Waves waves</span>
+						</span>
+						<span class="ph-meta-pill element-@(expedition.Element.ToString().ToLower())">
+							<img class="ph-meta-element" src="ui/icons/elements/background/@(expedition.Element.ToString().ToLower()).svg" />
+							<span>@expedition.Element</span>
+						</span>
+					</div>
+				</div>
+				<button class="close-btn ph-close" onclick=@Close onmouseover=@(() => OnHover("tp-close"))>
+					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+				</button>
+			</div>
+
+			<!-- ═══ TWO-COLUMN BODY ═══ -->
+			<!-- Left: zone hero + team + controls. Right: filter bar + roster
+				 grid. Embark CTA is outside this block so it can span the
+				 whole modal width at the bottom. -->
+			<div class="picker-body">
+				<div class="picker-left">
+
+				<!-- Zone hero image (placeholder until 3D-scene portraits land) -->
+				<div class="zone-hero-image">
+					@if ( !string.IsNullOrEmpty( expedition.BackgroundImage ) )
+					{
+						<img class="zone-hero-img" src="@expedition.BackgroundImage" />
+					}
+					else
+					{
+						<div class="zone-hero-placeholder">
+							<iconify icon="lucide:image" Size=@(36) Color="#64748b" />
+						</div>
+					}
+					<div class="zone-hero-gradient"></div>
+					<div class="zone-hero-stamp">
+						<span class="zhs-kicker">RECOMMENDED</span>
+						<span class="zhs-level">Lv. @recommendedLevel</span>
+					</div>
+				</div>
+
+				<!-- Lore snippet -->
+				@if ( !string.IsNullOrEmpty( expedition.Description ) )
+				{
+					<div class="zone-lore-text">@expedition.Description</div>
+				}
+
+				<!-- ═══ TEAM SLOTS ═══ -->
+				<div class="picker-team-section">
+				<div class="ps-head-row">
+					<span class="ps-label">YOUR TEAM</span>
+					<span class="ps-count">@filled / 3</span>
+					@{
+						var teamPower = (int)_team.Where( m => m != null ).Sum( m => m.PowerRating );
+					}
+					@if ( teamPower > 0 )
+					{
+						<div class="ps-power">
+							<iconify icon="lucide:swords" Size=@(12) Color="#fde68a" />
+							<span class="ps-power-label">PWR</span>
+							<span class="ps-power-value">@teamPower</span>
+						</div>
+					}
+					@if ( coverage != TeamAdvantage.Empty )
+					{
+						<div class="ps-coverage @(GetCoverageClass(coverage))">
+							<iconify icon="@GetCoverageIcon(coverage)" Size=@(12) Color="@GetCoverageIconColor(coverage)" />
+							<span>@GetCoverageLabel(coverage)</span>
+						</div>
+					}
+				</div>
+
+				<div class="team-slots" onmouseup=@CancelDragIfAny>
+					@for ( int i = 0; i < 3; i++ )
+					{
+						var slotIdx = i;
+						var beast = _team[slotIdx];
+						var dragHover = _dragHoverSlot == slotIdx && _dragSource != null;
+						<div class="team-slot @(beast != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "")"
+							 onclick=@(() => OnTeamSlotClicked(slotIdx))
+							 onmousedown=@(() => OnSlotMouseDown(slotIdx))
+							 onmouseup=@(() => OnSlotMouseUp(slotIdx))
+							 onmouseover=@(() => OnSlotMouseOver(slotIdx))>
+							@if ( beast != null )
+							{
+								var species = MonsterManager.Instance?.GetSpecies( beast.SpeciesId );
+								var hpPct = beast.HPPercent * 100f;
+								var hpClass = hpPct > 60f ? "healthy" : hpPct > 25f ? "wounded" : "critical";
+								var heldItem = string.IsNullOrEmpty( beast.HeldItemId ) ? null : ItemManager.Instance?.GetItem( beast.HeldItemId );
+								var lowLevel = beast.Level < recommendedLevel - 5;
+								var ppLow = HasLowPP( beast );
+
+								<div class="slot-art-wrap">
+									<img class="slot-art" src="@(species?.IconPath ?? "ui/monsters/placeholder.png")" />
+									@if ( beast.IsFavorite )
+									{
+										<div class="slot-fav">
+											<iconify icon="lucide:star" Size=@(11) Color="#fbbf24" />
+										</div>
+									}
+									@if ( heldItem != null )
+									{
+										<div class="slot-item-badge">
+											<iconify icon="lucide:package" Size=@(10) Color="#c4b5fd" />
+										</div>
+									}
+									@if ( ppLow )
+									{
+										<div class="slot-pp-warn">
+											<iconify icon="lucide:battery-low" Size=@(10) Color="#fca5a5" />
+										</div>
+									}
+								</div>
+
+								<div class="slot-info">
+									<div class="slot-name-row">
+										<span class="slot-name">@(beast.Nickname ?? species?.Name ?? beast.SpeciesId)</span>
+										@if ( lowLevel )
+										{
+											<div class="slot-underlevel-chip">
+												<iconify icon="lucide:alert-triangle" Size=@(9) Color="#fca5a5" />
+											</div>
+										}
+									</div>
+									<div class="slot-meta-row">
+										<span class="slot-lv">Lv @beast.Level</span>
+										@if ( species != null )
+										{
+											<img class="slot-el" src="ui/icons/elements/background/@(species.Element.ToString().ToLower()).svg" />
+											@if ( species.SecondaryElement.HasValue && species.SecondaryElement.Value != species.Element )
+											{
+												<img class="slot-el" src="ui/icons/elements/background/@(species.SecondaryElement.Value.ToString().ToLower()).svg" />
+											}
+										}
+									</div>
+									<div class="slot-hp-row">
+										<span class="slot-hp-text @hpClass">@beast.CurrentHP / @beast.MaxHP</span>
+										<div class="slot-hp-bar">
+											<div class="slot-hp-fill @hpClass" style="width: @(hpPct)%"></div>
+										</div>
+									</div>
+								</div>
+
+								<div class="slot-remove">
+									<iconify icon="lucide:x" Size=@(14) Color="#cbd5e1" />
+								</div>
+							}
+							else
+							{
+								<div class="slot-empty-inner">
+									<iconify icon="lucide:plus" Size=@(28) Color="#cbd5e1" />
+									<span class="slot-empty-label">EMPTY SLOT</span>
+								</div>
+							}
+						</div>
+					}
+				</div>
+
+				<!-- Controls: split into two rows so nothing collapses.
+					 Row 1: Auto-fill + Clear (team actions).
+					 Row 2: PRESETS label + A/B/C slots (saved loadouts). -->
+				<div class="ps-controls-row">
+					<button class="ctrl-btn" onclick=@AutoFill onmouseover=@(() => OnHover("autofill"))>
+						<iconify icon="lucide:wand-2" Size=@(13) Color="#a78bfa" />
+						<span>Auto-fill</span>
+					</button>
+					<button class="ctrl-btn" onclick=@ClearTeam onmouseover=@(() => OnHover("clearteam"))>
+						<iconify icon="lucide:eraser" Size=@(13) Color="#94a3b8" />
+						<span>Clear</span>
+					</button>
+				</div>
+
+				<div class="ps-presets-row">
+					<span class="ps-preset-label">PRESETS</span>
+					@for ( int p = 0; p < 3; p++ )
+					{
+						var pIdx = p;
+						var preset = GetPreset( pIdx );
+						var label = preset != null && preset.MonsterIds.Count > 0
+							? (preset.Name ?? GetDefaultPresetName( pIdx ))
+							: GetDefaultPresetName( pIdx );
+						var hasData = preset != null && preset.MonsterIds.Count > 0;
+						<div class="preset-slot @(hasData ? "saved" : "empty")">
+							<button class="preset-btn @(hasData ? "saved" : "")"
+									onclick=@(() => LoadPreset(pIdx))
+									onmouseover=@(() => OnHover("preset-load-" + pIdx))>
+								<iconify icon="@(hasData ? "lucide:bookmark-check" : "lucide:bookmark")" Size=@(12) Color="@(hasData ? "#a78bfa" : "#64748b")" />
+								<span>@label</span>
+							</button>
+							<button class="preset-save-btn @(filled > 0 ? "" : "disabled")"
+									onclick=@(() => SavePreset(pIdx))
+									onmouseover=@(() => OnHover("preset-save-" + pIdx))>
+								<iconify icon="lucide:save" Size=@(11) Color="#cbd5e1" />
+							</button>
+						</div>
+					}
+				</div>
+			</div>
+
+				</div> <!-- /.picker-left -->
+
+				<div class="picker-right">
+
+				<!-- ═══ FILTERS ═══ -->
+				<div class="picker-filters">
+				<FilterBar @ref="filterBar"
+						   CurrentElement=@_currentFilter
+						   CurrentSort=@_currentSort
+						   CurrentRarity=@_currentRarity
+						   SortAscending=@_sortAscending
+						   ShowBeastiarySort=@false
+						   ShowRarityFilter=@true
+						   HideMonsterOnlySorts=@false
+						   OnElementChanged=@OnElementChanged
+						   OnSortChanged=@OnSortChanged
+						   OnRarityChanged=@OnRarityChanged
+						   OnNameFilterChanged=@OnNameFilterChanged
+						   OnSortDirectionChanged=@OnSortDirectionChanged
+						   AvailableNames=@GetMonsterNames() />
+			</div>
+
+			<!-- ═══ ROSTER GRID ═══ -->
+			<div class="picker-roster-section">
+				<div class="ps-head-row">
+					<span class="ps-label">ROSTER</span>
+					<span class="ps-count">@roster.Count / @(MonsterManager.Instance?.OwnedMonsters?.Count ?? 0)</span>
+				</div>
+				<div class="picker-roster-scroll">
+					<div class="picker-roster-grid">
+						@if ( roster.Count == 0 )
+						{
+							<div class="roster-empty">
+								<iconify icon="lucide:search-x" Size=@(28) Color="#64748b" />
+								<span>No beasts match</span>
+							</div>
+						}
+						else
+						{
+							@foreach ( var m in roster )
+							{
+								var beast = m;
+								var isPicked = _team.Any( t => t?.Id == beast.Id );
+								var isFainted = beast.CurrentHP <= 0;
+								var isUnpickable = isFainted;
+								<div class="picker-card-wrapper @(isPicked ? "picked" : "") @(isFainted ? "fainted" : "") @(isUnpickable ? "unpickable" : "")"
+									 onclick=@(() => OnRosterCardClicked(beast))
+									 onmousedown=@(() => OnRosterCardMouseDown(beast))
+									 onmouseover=@(() => OnCardHover(beast.Id))>
+									<MonsterCard Monster=@beast
+												 IsSelected=@isPicked
+												 ShouldAnimate=@(_hoveredCardId == beast.Id && !isFainted)
+												 IsMini=@true
+												 ShowGenes=@false
+												 AnimateOnHover=@true
+												 AnimationFrame=@SpriteAnimator.GlobalFrame
+												 ClickAction=@(() => {})
+												 HoverAction=@(() => {})
+												 LeaveAction=@(() => {}) />
+									@if ( isFainted )
+									{
+										<div class="card-fainted-overlay">
+											<span>KO</span>
+										</div>
+									}
+									@if ( isPicked )
+									{
+										<div class="card-picked-check">
+											<iconify icon="lucide:check" Size=@(14) Color="#ffffff" />
+										</div>
+									}
+								</div>
+							}
+						}
+					</div>
+				</div>
+			</div>
+
+				</div> <!-- /.picker-right -->
+			</div> <!-- /.picker-body -->
+
+			<!-- ═══ EMBARK CTA ═══ -->
+			<!-- Diamond-on-rail ceremonial CTA. Left diamond holds a counter-
+				 rotated compass icon, right rail carries kicker + zone name +
+				 optional coverage chip. Matches the achievement/main-menu
+				 diamond vocabulary elsewhere in the game. -->
+			<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled")"
+					onclick=@OnEmbarkClicked
+					onmouseover=@(() => OnHover("embark-cta"))>
+				<!-- Sweeping gold sheen — purely decorative. Plays on ready. -->
+				<div class="embark-sheen"></div>
+
+				<!-- Diamond with inner cross accent + outer glow ring. The
+					 cross is two absolutely-positioned lines that read as a
+					 crosshair / commander's insignia. -->
+				<div class="embark-diamond">
+					<div class="embark-diamond-glow"></div>
+					<div class="embark-diamond-cross-v"></div>
+					<div class="embark-diamond-cross-h"></div>
+					<iconify icon="lucide:compass" Size=@(22) Color="#ffffff" />
+				</div>
+
+				<div class="embark-rail">
+					<span class="embark-kicker">@(CanEmbark() ? "EMBARK" : (filled == 0 ? "SELECT A BEAST" : "ASSEMBLE YOUR TEAM"))</span>
+					@if ( CanEmbark() )
+					{
+						<span class="embark-subtitle">DEPART FOR @expedition.Name.ToUpper()</span>
+					}
+					else
+					{
+						<span class="embark-subtitle">at least one healthy beast required</span>
+					}
+				</div>
+
+				<!-- Double chevrons for stronger directional read on hover -->
+				<div class="embark-chevrons">
+					<iconify icon="lucide:chevron-right" Size=@(22) Color="#ffffff" />
+					<iconify icon="lucide:chevron-right" Size=@(22) Color="#ffffff" />
+				</div>
+			</button>
+		</div>
+	}
+</root>
+
+@code {
+	public static TeamPickerPopup Instance { get; private set; }
+	public static new bool IsVisible { get; private set; }
+	public static string PendingExpeditionId { get; private set; }
+
+	private string _rootVisibleClass => IsVisible ? "visible" : "";
+
+	// Team state — fixed-size 3 to keep slot logic simple. nulls = empty slots.
+	private List<Monster> _team = new() { null, null, null };
+
+	// Filter/sort state — mirrors MonsterRosterPanel naming for copy-paste sanity.
+	private string _currentFilter = "all";
+	private string _currentSort = "level";
+	private string _currentRarity = "all";
+	private string _currentNameFilter = "";
+	private bool _sortAscending = false;
+
+	private Guid? _hoveredCardId;
+	private string _hoveredKey;
+	private FilterBar filterBar;
+
+	// ─── DRAG-DROP STATE ───
+	// _dragSource is the beast currently being dragged (from roster OR a team slot).
+	// _dragFromSlot is the index of the source team slot, or null if dragging from
+	// the roster. _dragHoverSlot drives the yellow drop-target highlight.
+	//
+	// s&box Razor doesn't expose HTML5 drag events, so this is pure mouse-event
+	// drag: onmousedown starts, onmouseup on a slot commits, onmouseup anywhere
+	// else (via the .team-slots container's onmouseup) cancels.
+	private Monster _dragSource;
+	private int? _dragFromSlot;
+	private int? _dragHoverSlot;
+
+	private void OnHover( string key )
+	{
+		if ( _hoveredKey == key ) return;
+		_hoveredKey = key;
+		SoundManager.PlayHover();
+	}
+
+	private void OnCardHover( Guid id )
+	{
+		if ( _hoveredCardId == id ) return;
+		_hoveredCardId = id;
+	}
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			Instance = this;
+			// If Show(id) was called before this panel mounted (e.g. ExpeditionPanel
+			// triggered "Embark Again" → WorldMap swapped in → picker constructed
+			// AFTER the Show call), the static flags are already set. Finish the
+			// pre-fill now that the instance exists.
+			if ( IsVisible && !string.IsNullOrEmpty( PendingExpeditionId ) )
+			{
+				PreFillTeam( PendingExpeditionId );
+			}
+		}
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// LIFECYCLE
+	// ═══════════════════════════════════════════════════════════════
+
+	public static void Show( string expeditionId )
+	{
+		PendingExpeditionId = expeditionId;
+		IsVisible = true;
+		if ( Instance != null )
+		{
+			Instance._hoveredKey = null;
+			Instance._hoveredCardId = null;
+			Instance.PreFillTeam( expeditionId );
+		}
+		SoundManager.PlayPopup();
+	}
+
+	public static void Close()
+	{
+		IsVisible = false;
+		if ( Instance != null ) Instance._hoveredKey = null;
+		SoundManager.PlayPopdown();
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		if ( IsVisible && Input.Pressed( "Escape" ) )
+			Close();
+	}
+
+	/// <summary>
+	/// Pre-fill the team with, in order of preference:
+	/// 1. The last team used for this zone (from save data)
+	/// 2. ExpeditionManager.SelectedTeam (persisted across in-session clicks)
+	/// 3. Auto-pick: first 3 healthy beasts sorted by power
+	/// All picks skip fainted beasts regardless of source.
+	/// </summary>
+	private void PreFillTeam( string zoneId )
+	{
+		_team = new() { null, null, null };
+		var mm = MonsterManager.Instance;
+		if ( mm == null ) return;
+
+		// 1) Last-team-per-zone
+		var lastIds = GetSaveData()?.LastTeamPerZone?.TryGetValue( zoneId, out var ids ) == true ? ids : null;
+		if ( lastIds != null && lastIds.Count > 0 )
+		{
+			int slot = 0;
+			foreach ( var id in lastIds )
+			{
+				if ( slot >= 3 ) break;
+				var m = mm.OwnedMonsters.FirstOrDefault( x => x.Id == id );
+				if ( m == null || m.CurrentHP <= 0 ) continue;
+				_team[slot++] = m;
+			}
+			if ( _team.Any( t => t != null ) ) return;
+		}
+
+		// 2) Current SelectedTeam (alive)
+		var current = ExpeditionManager.Instance?.SelectedTeam?
+			.Where( m => m != null && m.CurrentHP > 0 )
+			.ToList() ?? new();
+		if ( current.Count > 0 )
+		{
+			for ( int i = 0; i < Math.Min( 3, current.Count ); i++ ) _team[i] = current[i];
+			return;
+		}
+
+		// 3) Auto-pick best
+		AutoFill();
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// TEAM / ROSTER CLICK HANDLING
+	// ═══════════════════════════════════════════════════════════════
+
+	private void OnRosterCardClicked( Monster m )
+	{
+		if ( m == null || m.CurrentHP <= 0 )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// If already picked, un-pick (remove from team).
+		int existing = _team.FindIndex( t => t?.Id == m.Id );
+		if ( existing >= 0 )
+		{
+			_team[existing] = null;
+			SoundManager.PlayClick();
+			return;
+		}
+
+		// Otherwise, add to first empty slot. If full, swap into slot 0 (most
+		// recent becomes slot 0; others shift). Keeps the click always useful.
+		int empty = _team.FindIndex( t => t == null );
+		if ( empty >= 0 )
+		{
+			_team[empty] = m;
+		}
+		else
+		{
+			_team[2] = _team[1];
+			_team[1] = _team[0];
+			_team[0] = m;
+		}
+		SoundManager.PlayClick();
+	}
+
+	private void OnTeamSlotClicked( int idx )
+	{
+		if ( idx < 0 || idx >= _team.Count ) return;
+		if ( _team[idx] == null ) return;
+		// If a drop just fired on this slot, onclick will also fire (mousedown
+		// and mouseup were both on this element). Suppress the default remove
+		// behaviour when a drag committed here so drag-to-same-slot isn't
+		// interpreted as "drag then click-to-clear."
+		if ( _consumeNextClickForSlot == idx )
+		{
+			_consumeNextClickForSlot = null;
+			return;
+		}
+		_team[idx] = null;
+		SoundManager.PlayClick();
+	}
+
+	private int? _consumeNextClickForSlot;
+
+	// ─── DRAG HANDLERS ─────────────────────────────────────────────
+
+	private void OnSlotMouseDown( int idx )
+	{
+		if ( idx < 0 || idx >= _team.Count ) return;
+		var beast = _team[idx];
+		if ( beast == null ) return;
+		_dragSource = beast;
+		_dragFromSlot = idx;
+	}
+
+	private void OnRosterCardMouseDown( Monster m )
+	{
+		if ( m == null || m.CurrentHP <= 0 ) return;
+		_dragSource = m;
+		_dragFromSlot = null;
+	}
+
+	private void OnSlotMouseOver( int idx )
+	{
+		OnHover( "slot-" + idx );
+		if ( _dragSource == null ) return;
+		_dragHoverSlot = idx;
+	}
+
+	private void OnSlotMouseUp( int idx )
+	{
+		if ( _dragSource == null ) return;
+		if ( idx < 0 || idx >= _team.Count )
+		{
+			CancelDragIfAny();
+			return;
+		}
+
+		if ( _dragFromSlot.HasValue )
+		{
+			// Slot → slot: swap regardless of whether target is filled or empty.
+			// Same-slot drag is a no-op (and onclick will fire normally).
+			if ( _dragFromSlot.Value == idx )
+			{
+				CancelDragIfAny();
+				return;
+			}
+			var tmp = _team[idx];
+			_team[idx] = _team[_dragFromSlot.Value];
+			_team[_dragFromSlot.Value] = tmp;
+		}
+		else
+		{
+			// Roster → slot: place the dragged beast in the target, displacing
+			// whatever was there. If the dragged beast was already picked in a
+			// different slot, clear that other slot first (no duplicates).
+			int existing = _team.FindIndex( t => t?.Id == _dragSource.Id );
+			if ( existing >= 0 && existing != idx ) _team[existing] = null;
+			_team[idx] = _dragSource;
+		}
+
+		_consumeNextClickForSlot = idx;
+		_dragSource = null;
+		_dragFromSlot = null;
+		_dragHoverSlot = null;
+		SoundManager.PlayClick();
+	}
+
+	private void CancelDragIfAny()
+	{
+		if ( _dragSource == null && _dragHoverSlot == null ) return;
+		_dragSource = null;
+		_dragFromSlot = null;
+		_dragHoverSlot = null;
+	}
+
+	private void AutoFill()
+	{
+		var mm = MonsterManager.Instance;
+		if ( mm == null ) return;
+		var taken = _team.Where( t => t != null ).Select( t => t.Id ).ToHashSet();
+		var candidates = mm.OwnedMonsters
+			.Where( m => m != null && m.CurrentHP > 0 && !taken.Contains( m.Id ) )
+			.OrderByDescending( m => m.PowerRating )
+			.ToList();
+		int ci = 0;
+		for ( int i = 0; i < _team.Count; i++ )
+		{
+			if ( _team[i] != null ) continue;
+			if ( ci >= candidates.Count ) break;
+			_team[i] = candidates[ci++];
+		}
+		SoundManager.PlayClick();
+	}
+
+	private void ClearTeam()
+	{
+		_team = new() { null, null, null };
+		SoundManager.PlayClick();
+	}
+
+	private bool CanEmbark() => _team.Any( m => m != null && m.CurrentHP > 0 );
+
+	private bool _isEmbarking;
+
+	private void OnEmbarkClicked()
+	{
+		if ( _isEmbarking ) return;
+		if ( !CanEmbark() )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		var liveTeam = _team.Where( m => m != null && m.CurrentHP > 0 ).ToList();
+		var em = ExpeditionManager.Instance;
+		if ( em == null || string.IsNullOrEmpty( PendingExpeditionId ) )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
+		// Remember this team for next time we open the picker on this zone.
+		var data = EnsureSaveData();
+		data.LastTeamPerZone[PendingExpeditionId] = liveTeam.Select( m => m.Id ).ToList();
+		SaveService.Instance?.MarkDirty( "teampresets" );
+
+		_isEmbarking = true;
+		SoundManager.PlayBattleStart();
+
+		// Hand the whole cinematic off to BattleTransition's static orchestrator.
+		// Critical: StartExpedition triggers GameHUD to swap WorldMapPanel out for
+		// ExpeditionPanel, which destroys this picker. If we awaited the sequence
+		// here, the continuation would die and Hide() would never fire, leaving
+		// the screen stuck on the black overlay and BattleView's UI permanently
+		// gated by `!BattleTransition.IsActive`. Running the sequence on
+		// BattleTransition (a persistent GameHUD child) keeps the async chain
+		// alive through the panel swap.
+		var zoneId = PendingExpeditionId;
+		_ = BattleTransition.PlayEmbarkSequence( () =>
+		{
+			em.SelectTeam( liveTeam );
+			em.StartExpedition( zoneId );
+		} );
+
+		IsVisible = false;
+		_isEmbarking = false;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// FILTER / SORT  (mirrors MonsterRosterPanel wiring)
+	// ═══════════════════════════════════════════════════════════════
+
+	private void OnElementChanged( string e ) { _currentFilter = e; SoundManager.PlayClick(); }
+	private void OnSortChanged( string s ) { _currentSort = s; SoundManager.PlayClick(); }
+	private void OnRarityChanged( string r ) { _currentRarity = r; SoundManager.PlayClick(); }
+	private void OnNameFilterChanged( string n ) { _currentNameFilter = n ?? ""; }
+	private void OnSortDirectionChanged( bool asc ) { _sortAscending = asc; SoundManager.PlayClick(); }
+
+	private List<string> GetMonsterNames()
+	{
+		var mm = MonsterManager.Instance;
+		if ( mm == null ) return new();
+		return mm.OwnedMonsters
+			.Select( m => m.Nickname ?? mm.GetSpecies( m.SpeciesId )?.Name ?? m.SpeciesId )
+			.Where( n => !string.IsNullOrEmpty( n ) )
+			.Distinct()
+			.OrderBy( n => n )
+			.ToList();
+	}
+
+	// Copy of MonsterRosterPanel.GetFilteredMonsters (trimmed: no fusion/beastiary
+	// modes) so filtering/sort behaviour reads identical to the roster panel.
+	private List<Monster> GetFilteredMonsters()
+	{
+		var mm = MonsterManager.Instance;
+		if ( mm == null ) return new();
+		var monsters = mm.OwnedMonsters?.ToList() ?? new();
+
+		if ( _currentFilter != "all" )
+		{
+			var elementType = _currentFilter switch
+			{
+				"fire" => ElementType.Fire,
+				"water" => ElementType.Water,
+				"earth" => ElementType.Earth,
+				"wind" => ElementType.Wind,
+				"electric" => ElementType.Electric,
+				"ice" => ElementType.Ice,
+				"nature" => ElementType.Nature,
+				"metal" => ElementType.Metal,
+				"shadow" => ElementType.Shadow,
+				"spirit" => ElementType.Spirit,
+				"neutral" => ElementType.Neutral,
+				_ => ElementType.Neutral
+			};
+			monsters = monsters.Where( m => mm.GetSpecies( m.SpeciesId )?.Element == elementType ).ToList();
+		}
+
+		if ( _currentRarity != "all" )
+		{
+			var r = _currentRarity switch
+			{
+				"common" => Rarity.Common,
+				"uncommon" => Rarity.Uncommon,
+				"rare" => Rarity.Rare,
+				"epic" => Rarity.Epic,
+				"legendary" => Rarity.Legendary,
+				"mythic" => Rarity.Mythic,
+				_ => Rarity.Common
+			};
+			monsters = monsters.Where( m => mm.GetSpecies( m.SpeciesId )?.BaseRarity == r ).ToList();
+		}
+
+		if ( _currentSort == "name" && !string.IsNullOrEmpty( _currentNameFilter ) )
+		{
+			monsters = monsters.Where( m =>
+				(mm.GetSpecies( m.SpeciesId )?.Name?.Equals( _currentNameFilter, StringComparison.OrdinalIgnoreCase ) ?? false)
+				|| (m.Nickname?.Equals( _currentNameFilter, StringComparison.OrdinalIgnoreCase ) ?? false)
+			).ToList();
+		}
+
+		monsters = _currentSort switch
+		{
+			"level" => _sortAscending ? monsters.OrderBy( m => m.Level ).ToList() : monsters.OrderByDescending( m => m.Level ).ToList(),
+			"power" => _sortAscending ? monsters.OrderBy( m => m.PowerRating ).ToList() : monsters.OrderByDescending( m => m.PowerRating ).ToList(),
+			"rarity" => _sortAscending
+				? monsters.OrderBy( m => (int)(mm.GetSpecies( m.SpeciesId )?.BaseRarity ?? Rarity.Common) ).ToList()
+				: monsters.OrderByDescending( m => (int)(mm.GetSpecies( m.SpeciesId )?.BaseRarity ?? Rarity.Common) ).ToList(),
+			"recent" => _sortAscending ? monsters.OrderBy( m => m.CaughtAt ).ToList() : monsters.OrderByDescending( m => m.CaughtAt ).ToList(),
+			"fav" => _sortAscending ? monsters.OrderBy( m => m.IsFavorite ).ThenBy( m => m.PowerRating ).ToList()
+				: monsters.OrderByDescending( m => m.IsFavorite ).ThenByDescending( m => m.PowerRating ).ToList(),
+			"name" => _sortAscending
+				? monsters.OrderByDescending( m => m.Nickname ?? mm.GetSpecies( m.SpeciesId )?.Name ?? "" ).ToList()
+				: monsters.OrderBy( m => m.Nickname ?? mm.GetSpecies( m.SpeciesId )?.Name ?? "" ).ToList(),
+			_ => monsters
+		};
+
+		return monsters;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// TYPE COVERAGE HINT
+	// ═══════════════════════════════════════════════════════════════
+
+	public enum TeamAdvantage { Empty, Weak, Disadvantage, Neutral, Advantage, Strong }
+
+	/// <summary>
+	/// Average effectiveness of the team's primary elements attacking into
+	/// the zone's element. Labelled into rough buckets so the player gets a
+	/// quick "are my types good?" read without seeing a matrix.
+	/// </summary>
+	private TeamAdvantage GetTeamCoverage( ElementType zoneElement )
+	{
+		var picks = _team.Where( m => m != null ).ToList();
+		if ( picks.Count == 0 ) return TeamAdvantage.Empty;
+
+		float total = 0f;
+		foreach ( var m in picks )
+		{
+			var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
+			if ( species == null ) continue;
+
+			float best = BattleAI.GetTypeEffectiveness( species.Element, zoneElement );
+			if ( species.SecondaryElement.HasValue && species.SecondaryElement.Value != species.Element )
+			{
+				var alt = BattleAI.GetTypeEffectiveness( species.SecondaryElement.Value, zoneElement );
+				if ( alt > best ) best = alt;
+			}
+			total += best;
+		}
+
+		float avg = total / picks.Count;
+		if ( avg >= 1.9f ) return TeamAdvantage.Strong;
+		if ( avg >= 1.3f ) return TeamAdvantage.Advantage;
+		if ( avg >= 0.9f ) return TeamAdvantage.Neutral;
+		if ( avg >= 0.6f ) return TeamAdvantage.Disadvantage;
+		return TeamAdvantage.Weak;
+	}
+
+	private string GetCoverageLabel( TeamAdvantage a ) => a switch
+	{
+		TeamAdvantage.Strong => "STRONG ADVANTAGE",
+		TeamAdvantage.Advantage => "ADVANTAGE",
+		TeamAdvantage.Neutral => "NEUTRAL",
+		TeamAdvantage.Disadvantage => "DISADVANTAGE",
+		TeamAdvantage.Weak => "WEAK MATCHUP",
+		_ => ""
+	};
+
+	private string GetCoverageClass( TeamAdvantage a ) => a switch
+	{
+		TeamAdvantage.Strong => "cov-strong",
+		TeamAdvantage.Advantage => "cov-advantage",
+		TeamAdvantage.Neutral => "cov-neutral",
+		TeamAdvantage.Disadvantage => "cov-disadvantage",
+		TeamAdvantage.Weak => "cov-weak",
+		_ => ""
+	};
+
+	private string GetCoverageIcon( TeamAdvantage a ) => a switch
+	{
+		TeamAdvantage.Strong => "lucide:trending-up",
+		TeamAdvantage.Advantage => "lucide:arrow-up-right",
+		TeamAdvantage.Neutral => "lucide:minus",
+		TeamAdvantage.Disadvantage => "lucide:arrow-down-right",
+		TeamAdvantage.Weak => "lucide:trending-down",
+		_ => "lucide:minus"
+	};
+
+	private string GetCoverageIconColor( TeamAdvantage a ) => a switch
+	{
+		TeamAdvantage.Strong => "#86efac",
+		TeamAdvantage.Advantage => "#bef264",
+		TeamAdvantage.Neutral => "#cbd5e1",
+		TeamAdvantage.Disadvantage => "#fdba74",
+		TeamAdvantage.Weak => "#fca5a5",
+		_ => "#cbd5e1"
+	};
+
+	// ═══════════════════════════════════════════════════════════════
+	// BEAST STATUS HELPERS
+	// ═══════════════════════════════════════════════════════════════
+
+	private bool HasLowPP( Monster m )
+	{
+		// MonsterMove only tracks CurrentPP — MaxPP lives on the MoveDefinition
+		// in MoveDatabase. Any move at or below 25% of its max counts as "low".
+		if ( m?.Moves == null ) return false;
+		foreach ( var move in m.Moves )
+		{
+			if ( move == null ) continue;
+			var def = MoveDatabase.GetMove( move.MoveId );
+			if ( def == null || def.MaxPP <= 0 ) continue;
+			if ( move.CurrentPP <= def.MaxPP / 4 ) return true;
+		}
+		return false;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// PRESETS
+	// ═══════════════════════════════════════════════════════════════
+
+	private TeamPresetSaveData GetSaveData() => SaveService.Instance?.CurrentBlob?.TeamPresets;
+
+	private TeamPresetSaveData EnsureSaveData()
+	{
+		var blob = SaveService.Instance?.CurrentBlob;
+		if ( blob == null ) return null;
+		blob.TeamPresets ??= new TeamPresetSaveData();
+		while ( blob.TeamPresets.Presets.Count < 3 ) blob.TeamPresets.Presets.Add( new TeamPreset() );
+		return blob.TeamPresets;
+	}
+
+	private TeamPreset GetPreset( int idx )
+	{
+		var data = GetSaveData();
+		if ( data?.Presets == null || idx < 0 || idx >= data.Presets.Count ) return null;
+		return data.Presets[idx];
+	}
+
+	private string GetDefaultPresetName( int idx ) => idx switch
+	{
+		0 => "A",
+		1 => "B",
+		2 => "C",
+		_ => "?"
+	};
+
+	private void SavePreset( int idx )
+	{
+		var data = EnsureSaveData();
+		if ( data == null ) return;
+		var preset = data.Presets[idx];
+		preset.MonsterIds = _team.Where( m => m != null ).Select( m => m.Id ).ToList();
+		preset.UpdatedTicks = DateTime.UtcNow.Ticks;
+		if ( string.IsNullOrEmpty( preset.Name ) ) preset.Name = GetDefaultPresetName( idx );
+		SaveService.Instance?.MarkDirty( "teampresets" );
+		NotificationManager.Instance?.AddNotification(
+			NotificationType.Success,
+			"Preset saved",
+			$"Team {preset.Name} stored." );
+		SoundManager.PlaySuccess();
+	}
+
+	private void LoadPreset( int idx )
+	{
+		var preset = GetPreset( idx );
+		if ( preset == null || preset.MonsterIds.Count == 0 )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+		var mm = MonsterManager.Instance;
+		if ( mm == null ) return;
+
+		_team = new() { null, null, null };
+		int slot = 0;
+		foreach ( var id in preset.MonsterIds )
+		{
+			if ( slot >= 3 ) break;
+			var m = mm.OwnedMonsters.FirstOrDefault( x => x.Id == id );
+			if ( m == null ) continue; // silently skip released beasts
+			_team[slot++] = m;
+		}
+		SoundManager.PlayClick();
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// RERENDER TRIGGERS
+	// ═══════════════════════════════════════════════════════════════
+
+	protected override int BuildHash()
+	{
+		var h = new HashCode();
+		h.Add( IsVisible );
+		h.Add( PendingExpeditionId );
+		h.Add( _currentFilter );
+		h.Add( _currentSort );
+		h.Add( _currentRarity );
+		h.Add( _currentNameFilter );
+		h.Add( _sortAscending );
+		foreach ( var t in _team ) h.Add( t?.Id ?? Guid.Empty );
+		h.Add( _hoveredCardId ?? Guid.Empty );
+		h.Add( _dragSource?.Id ?? Guid.Empty );
+		h.Add( _dragHoverSlot ?? -1 );
+		var mm = MonsterManager.Instance;
+		h.Add( mm?.OwnedMonsters?.Count ?? 0 );
+		return h.ToHashCode();
+	}
+}

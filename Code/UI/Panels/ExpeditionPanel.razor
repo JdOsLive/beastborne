@@ -7,10 +7,23 @@
 @using Beastborne.UI.Components;
 @using System.Linq;
 @using System.Collections.Generic;
+@using Beastborne.Battle3D;
 @inherits Panel
 
-<div class="expedition-panel @(currentView == "team" ? "team-view" : "") @(currentView == "battle" ? "battle-mode" : "") @GetExpeditionBackgroundClass()" onclick=@OnPanelClicked>
-	@if (currentView == "list")
+<div class="expedition-panel @(currentView == "team" ? "team-view" : "") @(currentView == "battle" ? "battle-mode" : "") @GetExpeditionBackgroundClass() @(currentView == "battle" && BattleSceneController.Instance?.IsActive == true ? "battle-3d" : "")" onclick=@OnPanelClicked>
+	@* ═══════════════════════════════════════════════════════════════
+	   POST-WORLDMAP: the "list" and "result" currentView branches below
+	   are legacy UI from before WorldMapPanel became the expedition entry
+	   point and ExpeditionResultPopup (a global GameHUD child) took over
+	   the result screen. The markup is kept for reference but gated off
+	   via `false` so it can never render and confuse the player (the
+	   "came back to old expedition screen" bug was this stale path
+	   reaching render because currentView defaulted to "list" on re-mount).
+	   SyncWithBackgroundExpedition now auto-finalizes stale resolved
+	   expeditions, and the "list" view specifically bails to nothing so
+	   the world-map swap happens on the next render.
+	   ═══════════════════════════════════════════════════════════════ *@
+	@if (false && currentView == "list")
 	{
 		<!-- Expedition List View -->
 		<div class="panel-header">
@@ -54,17 +67,6 @@
 						</div>
 					</div>
 				}
-			</div>
-
-			<div class="auto-toggles">
-				<div class="auto-battle-toggle @(autoRetry ? "active" : "")" onclick=@ToggleAutoRetry onmouseover=@(() => SoundManager.PlayHover())>
-					<div class="toggle-slider"></div>
-					<span class="toggle-label">@L("ui.expedition.auto_retry")</span>
-				</div>
-				<div class="auto-battle-toggle @(autoBattle ? "active" : "")" onclick=@ToggleAutoBattle onmouseover=@(() => SoundManager.PlayHover())>
-					<div class="toggle-slider"></div>
-					<span class="toggle-label">@L("ui.expedition.auto_battle")</span>
-				</div>
 			</div>
 
 			<!-- Auto Contract Dropdown -->
@@ -616,101 +618,95 @@
 		<!-- Battle View -->
 		<BattleView OnBattleEnd=@OnBattleComplete OnExpeditionCancelled=@OnExpeditionCancelled ExpeditionId="@(selectedExpedition?.Id ?? "")" />
 	}
-	else if (currentView == "negotiate")
+	else if (false && currentView == "result")
 	{
-		<!-- Contract Negotiation View -->
-		<ContractNegotiationPanel @ref=negotiationPanel IsVisible=@true
-								  TargetMonster=@negotiationTarget
-								  IsBossContract=@isBossContract
-								  OnNegotiationComplete=@OnNegotiationComplete />
-	}
-	else if (currentView == "result")
-	{
-		<!-- Result View -->
+		<!-- LEGACY: result view is now rendered by the global
+			 ExpeditionResultPopup (mounted in GameHUD) so it survives the
+			 panel-swap that fires when the expedition ends. This inline
+			 branch is unreachable — kept for reference only. -->
+		<!-- Result Popup — dark backdrop + centered modal so the run's end
+			 feels like a moment instead of a navigation. -->
 		@{
 			var isExpeditionComplete = lastBattleWon && currentWave >= (selectedExpedition?.Waves ?? 0);
-			var isWaveComplete = lastBattleWon && currentWave < (selectedExpedition?.Waves ?? 0);
 		}
-		<div class="result-view @(lastBattleWon ? "victory" : "defeat")">
-			<div class="result-banner">
-				@if (isExpeditionComplete)
-				{
-					<div class="result-icon">💎</div>
-					<div class="result-title">VICTORY!</div>
-				}
-				else if (isWaveComplete)
-				{
-					<img class="result-icon-svg" src="ui/icons/sword.svg" />
-					<div class="result-title">Wave @currentWave Complete</div>
-				}
-				else
-				{
-					<img class="result-icon-svg" src="ui/icons/sort/skull.svg" />
-					<div class="result-title">@L("ui.expedition.defeat")</div>
-				}
-			</div>
+		<div class="result-popup-root @(lastBattleWon ? "victory" : "defeat")">
+			<div class="result-popup-backdrop"></div>
+			<div class="result-popup-modal">
 
-			@if (lastBattleWon)
-			{
-				<div class="result-rewards">
-					<div class="reward-row">
-						<span class="reward-label">@L("ui.expedition.total_gold")</span>
-						<span class="reward-amount gold">+@battleGold <img class="currency-icon" src="ui/icons/currency/money.svg" /></span>
-					</div>
-					<div class="reward-row">
-						<span class="reward-label">@L("ui.expedition.total_xp")</span>
-						<span class="reward-amount xp">+@battleXP <img class="currency-icon" src="ui/icons/expedition_badges/xp.svg" /></span>
-					</div>
-					@if (battleTokens > 0)
+				<div class="result-popup-banner">
+					@if (isExpeditionComplete)
 					{
-						<div class="reward-row">
-							<span class="reward-label">@L("ui.expedition.boss_tokens")</span>
-							<span class="reward-amount tokens">+@battleTokens <img class="currency-icon" src="ui/icons/currency/token.svg" /></span>
+						<div class="result-popup-icon victory">
+							<img src="ui/icons/rarity/gold.svg" />
 						</div>
+						<div class="result-popup-kicker">EXPEDITION COMPLETE</div>
+						<div class="result-popup-title">VICTORY</div>
+						<div class="result-popup-subtitle">@selectedExpedition?.Name conquered</div>
+					}
+					else
+					{
+						<div class="result-popup-icon defeat">
+							<img src="ui/icons/sort/skull.svg" />
+						</div>
+						<div class="result-popup-kicker">EXPEDITION FAILED</div>
+						<div class="result-popup-title">DEFEATED</div>
+						<div class="result-popup-subtitle">Your team fell on Wave @currentWave of @(selectedExpedition?.Waves ?? 0)</div>
 					}
 				</div>
 
-				@if (isWaveComplete)
+				@if (lastBattleWon)
 				{
-					<div class="wave-indicator">
-						<span>Wave @currentWave of @selectedExpedition.Waves</span>
-						<div class="wave-progress-bar">
-							<div class="wave-progress-fill" style="width: @(100f * currentWave / selectedExpedition.Waves)%"></div>
+					<div class="result-popup-rewards">
+						<div class="result-reward-row">
+							<img class="result-reward-icon" src="ui/icons/currency/money.svg" />
+							<span class="result-reward-label">GOLD EARNED</span>
+							<span class="result-reward-amount gold">+@battleGold</span>
 						</div>
-					</div>
-					<div class="action-bar">
-						<button class="btn-success" onclick=@ContinueExpedition>
-							NEXT WAVE →
-						</button>
-					</div>
-				}
-				else
-				{
-					<div class="expedition-complete-banner">
-						<span class="complete-icon">🎉</span>
-						<span class="complete-text">Expedition Complete!</span>
-					</div>
-					<div class="action-bar">
-						<button class="btn-primary" onclick=@ReturnToList>
-							RETURN TO EXPEDITIONS
-						</button>
+						<div class="result-reward-row">
+							<img class="result-reward-icon" src="ui/icons/expedition_badges/xp.svg" />
+							<span class="result-reward-label">TAMER XP</span>
+							<span class="result-reward-amount xp">+@battleXP</span>
+						</div>
+						@if (battleTokens > 0)
+						{
+							<div class="result-reward-row">
+								<img class="result-reward-icon" src="ui/icons/currency/token.svg" />
+								<span class="result-reward-label">BOSS TOKENS</span>
+								<span class="result-reward-amount tokens">+@battleTokens</span>
+							</div>
+						}
 					</div>
 				}
-			}
-			else
-			{
-				<div class="defeat-info">
-					<span>Your team was defeated on Wave @currentWave</span>
+
+				<div class="result-popup-actions">
+					@if (lastBattleWon)
+					{
+						<button class="result-btn primary" onclick=@EmbarkAgain>
+							<iconify icon="lucide:compass" Size=@(16) Color="#ffffff" />
+							<span>EMBARK AGAIN</span>
+						</button>
+						<button class="result-btn secondary" onclick=@ReturnToList>
+							<iconify icon="lucide:map" Size=@(14) Color="#cbd5e1" />
+							<span>RETURN TO MAP</span>
+						</button>
+					}
+					else
+					{
+						<button class="result-btn primary" onclick=@(() => RetryExpedition(false))>
+							<iconify icon="lucide:rotate-ccw" Size=@(16) Color="#ffffff" />
+							<span>RETRY</span>
+						</button>
+						<button class="result-btn secondary" onclick=@EmbarkAgain>
+							<iconify icon="lucide:users" Size=@(14) Color="#cbd5e1" />
+							<span>CHANGE TEAM</span>
+						</button>
+						<button class="result-btn ghost" onclick=@ReturnToList>
+							<iconify icon="lucide:map" Size=@(14) Color="#94a3b8" />
+							<span>MAP</span>
+						</button>
+					}
 				</div>
-				<div class="action-bar">
-					<button class="btn-warning" onclick=@GoToTeam>
-						RETRY
-					</button>
-					<button class="btn-secondary" onclick=@ReturnToList>
-						RETURN
-					</button>
-				</div>
-			}
+			</div>
 		</div>
 	}
 
@@ -724,8 +720,6 @@
 	private string currentView = "list";
 	private Expedition selectedExpedition;
 	private List<Monster> selectedTeam = new();
-	private bool autoBattle = true;
-	private bool autoRetry = true;
 	private bool autoNegotiate = false;
 	private bool hardModeEnabled = false;
 	private bool isTransitioningToBattle = false;
@@ -786,11 +780,6 @@
 		if (!hoveredMonsterId.HasValue) return null;
 		return MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault(m => m.Id == hoveredMonsterId.Value);
 	}
-
-	// Negotiation state
-	private ContractNegotiationPanel negotiationPanel;
-	private Monster negotiationTarget;
-	private bool isBossContract = false;
 
 	// Monsters popup state
 	private bool showMonstersPopup = false;
@@ -927,15 +916,6 @@
 					}
 				}
 			}
-			// Toggle auto battle/retry with Q/E
-			else if (Input.Pressed("PrevWeapon"))
-			{
-				ToggleAutoBattle();
-			}
-			else if (Input.Pressed("NextWeapon"))
-			{
-				ToggleAutoRetry();
-			}
 			// Resume running expedition
 			else if (Input.Pressed("reload") && IsExpeditionRunning())
 			{
@@ -1027,11 +1007,6 @@
 				}
 			}
 		}
-		// Negotiate view - delegate to the negotiation panel
-		else if (currentView == "negotiate")
-		{
-			negotiationPanel?.TickInput();
-		}
 	}
 
 	/// <summary>
@@ -1045,8 +1020,6 @@
 		var oldView = currentView;
 
 		// Sync toggle states
-		autoBattle = expMgr.AutoBattle;
-		autoRetry = expMgr.AutoRetry;
 		autoNegotiate = expMgr.AutoNegotiate;
 		autoNegotiateStrategy = expMgr.AutoNegotiateStrategy;
 
@@ -1063,6 +1036,25 @@
 			if (BattleManager.Instance?.IsInBattle == true)
 			{
 				currentView = "battle";
+			}
+			// Post-battle result state: ResolveExpedition kept CurrentExpedition
+			// alive so the 3D scene could stay rendered behind the popup. Keep
+			// currentView on "battle" too so the scene + UI chrome don't flip
+			// to the stale "list" card view.
+			else if (ExpeditionResultPopup.IsVisible)
+			{
+				currentView = "battle";
+			}
+			// Stale state: CurrentExpedition is set but we're neither in battle
+			// nor showing the result popup. This happens when the player loses,
+			// the popup shows, they leave the tab WITHOUT clicking through, then
+			// come back. ExpeditionPanel re-mounts fresh (currentView = "list"),
+			// sees the stale expedition and would render the old card list.
+			// Finalize so GameHUD swaps us back to the WorldMap.
+			else
+			{
+				Log.Info("[ExpeditionPanel] Detected stale resolved-expedition state — finalizing to kick back to map");
+				expMgr.FinalizeExpedition();
 			}
 		}
 
@@ -1192,25 +1184,13 @@
 
 	private string GetBackgroundClass(Expedition expedition)
 	{
-		// Return CSS class for expeditions with background art (card view)
+		// CSS class hook for card backgrounds. Launch zones only; add more when
+		// post-launch expeditions come back.
 		return expedition.Id switch
 		{
-			"forest_entrance" => "has-background bg-forest_entrance",
-			"ember_cavern" => "has-background bg-ember_cavern",
-			"tear_lake" => "has-background bg-tear_lake",
-			"echo_canyon" => "has-background bg-echo_canyon",
-			"storm_spire" => "has-background bg-storm_spire",
-			"ancient_ruins" => "has-background bg-ancient_ruins",
-			"frozen_vale" => "has-background bg-frozen_vale",
-			"overgrown_heart" => "has-background bg-overgrown_heart",
-			"rusted_foundry" => "has-background bg-rusted_foundry",
-			"dawn_sanctuary" => "has-background bg-spirit_sanctum",
-			"shadow_depths" => "has-background bg-shadow_depths",
-			"elemental_nexus" => "has-background bg-elemental_nexus",
-			"primordial_rift" => "has-background bg-primordial_rift",
-			"garden_of_origins" => "has-background bg-garden_of_origins",
-			"mythweavers_realm" => "has-background bg-mythweavers_realm",
-			"origin_void" => "has-background bg-origin_void",
+			"saltmoor_cove" => "has-background bg-saltmoor_cove",
+			"saltmoor_forest" => "has-background bg-saltmoor_forest",
+			"old_saltmoor" => "has-background bg-old_saltmoor",
 			_ => ""
 		};
 	}
@@ -1223,22 +1203,9 @@
 
 		return expedition.Id switch
 		{
-			"forest_entrance" => "expedition-bg-forest",
-			"ember_cavern" => "expedition-bg-ember",
-			"tear_lake" => "expedition-bg-tear_lake",
-			"echo_canyon" => "expedition-bg-echo_canyon",
-			"storm_spire" => "expedition-bg-storm_spire",
-			"ancient_ruins" => "expedition-bg-ancient_ruins",
-			"frozen_vale" => "expedition-bg-frozen_vale",
-			"overgrown_heart" => "expedition-bg-overgrown_heart",
-			"rusted_foundry" => "expedition-bg-rusted_foundry",
-			"dawn_sanctuary" => "expedition-bg-spirit_sanctum",
-			"shadow_depths" => "expedition-bg-shadow_depths",
-			"elemental_nexus" => "expedition-bg-elemental_nexus",
-			"primordial_rift" => "expedition-bg-primordial_rift",
-			"garden_of_origins" => "expedition-bg-garden_of_origins",
-			"mythweavers_realm" => "expedition-bg-mythweavers_realm",
-			"origin_void" => "expedition-bg-origin_void",
+			"saltmoor_cove" => "expedition-bg-saltmoor_cove",
+			"saltmoor_forest" => "expedition-bg-saltmoor_forest",
+			"old_saltmoor" => "expedition-bg-old_saltmoor",
 			_ => ""
 		};
 	}
@@ -1255,30 +1222,6 @@
 		{
 			SoundManager.PlayDeny();
 		}
-	}
-
-	private void ToggleAutoBattle()
-	{
-		autoBattle = !autoBattle;
-		if (ExpeditionManager.Instance != null)
-			ExpeditionManager.Instance.AutoBattle = autoBattle;
-		if (autoBattle)
-			SoundManager.PlayToggleOn();
-		else
-			SoundManager.PlayToggleOff();
-		StateHasChanged();
-	}
-
-	private void ToggleAutoRetry()
-	{
-		autoRetry = !autoRetry;
-		if (ExpeditionManager.Instance != null)
-			ExpeditionManager.Instance.AutoRetry = autoRetry;
-		if (autoRetry)
-			SoundManager.PlayToggleOn();
-		else
-			SoundManager.PlayToggleOff();
-		StateHasChanged();
 	}
 
 	private bool IsHardModeUnlocked()
@@ -1630,15 +1573,14 @@
 		}
 
 		SoundManager.PlayBattleStart();
-
-		// Start slide-out transition
 		isTransitioningToBattle = true;
-		StateHasChanged();
 
-		// Wait for animation to complete
-		await Task.Delay(300);
+		// Step 1: Fade to black
+		BattleTransition.FadeIn();
+		await Task.Delay(350);
+		BattleTransition.Hold();
 
-		// Reset accumulated rewards
+		// Step 2: Screen is fully black — start the battle behind it
 		battleGold = 0;
 		battleXP = 0;
 		battleTokens = 0;
@@ -1649,18 +1591,33 @@
 		currentWave = 1;
 		currentView = "battle";
 		isTransitioningToBattle = false;
-
-		// If auto battle is enabled, start playback automatically
-		if (autoBattle && BattleManager.Instance != null)
-		{
-			BattleManager.Instance.StartPlayback();
-		}
-
 		StateHasChanged();
+
+		// Step 3: Let the 3D scene set up behind the black screen
+		await Task.Delay(1200);
+
+		// Step 4: Slide out, revealing the battle
+		BattleTransition.FadeOut();
+		await Task.Delay(700);
+		BattleTransition.Hide();
+
+		// Step 5: Now show the UI panels (they were hidden during transition)
+		// BattleView re-renders and panel slide animations play now
+		StateHasChanged();
+
 	}
 
 	private void OnBattleComplete(bool playerWon)
 	{
+		// Background mode: ExpeditionManager.OnBattleEndBackground handles the
+		// entire resolve/teardown path while the player is on another tab.
+		// Don't double-fire rewards + popup from the foreground handler.
+		if (ExpeditionManager.Instance?.IsRunningInBackground == true)
+		{
+			Log.Info("OnBattleComplete: skipping — expedition is in background mode, manager handles it");
+			return;
+		}
+
 		Log.Info($"OnBattleComplete: playerWon={playerWon}, currentWave={currentWave}, totalWaves={selectedExpedition?.Waves ?? 0}");
 		lastBattleWon = playerWon;
 
@@ -1681,12 +1638,10 @@
 		// Note: Catchable enemies are now stored in BattleView.HandleBattleEnd before this callback runs
 
 		// Determine if we're continuing to next wave (need transition-friendly exit)
-		var currentAutoRetry = ExpeditionManager.Instance?.AutoRetry ?? autoRetry;
 		bool willContinue = playerWon && currentWave < (selectedExpedition?.Waves ?? 0);
-		bool willAutoRetry = currentAutoRetry && (playerWon && currentWave >= (selectedExpedition?.Waves ?? 0) || !playerWon);
 
 		// Use transition-friendly exit if we're continuing, otherwise full exit
-		if (willContinue || willAutoRetry)
+		if (willContinue)
 		{
 			BattleManager.Instance?.PrepareForNextWave();
 			BattleManager.Instance?.ExitBattleForTransition();
@@ -1696,66 +1651,8 @@
 			BattleManager.Instance?.ExitBattle();
 		}
 
-		// Read current toggle states from manager (may have been changed in BattleView)
-		var currentAutoBattle = ExpeditionManager.Instance?.AutoBattle ?? autoBattle;
-		// currentAutoRetry already set above
-
-		// If player won, check if we can offer negotiation
-		// 10% chance for negotiation opportunity to appear
-		// EXCEPTION: Rare boss battles (Legendary/Celestial/Mythic) ALWAYS offer negotiation (100% chance)
-		var currentAutoNegotiate = ExpeditionManager.Instance?.AutoNegotiate ?? autoNegotiate;
-		var currentAutoNegotiateStrategy = ExpeditionManager.Instance?.AutoNegotiateStrategy ?? autoNegotiateStrategy;
-
-		// Check if this was a rare boss defeat
-		bool isRareBossDefeat = false;
-		bool isBossWave = ExpeditionManager.Instance?.IsBossWave ?? false;
-		if (playerWon && isBossWave && ExpeditionManager.Instance?.IsRareBossEncounter == true)
-		{
-			// Check if the boss monster is Legendary or Mythic
-			var bossSpeciesId = ExpeditionManager.Instance?.SelectedBoss?.SpeciesId;
-			if (!string.IsNullOrEmpty(bossSpeciesId))
-			{
-				var bossSpecies = MonsterManager.Instance?.GetSpecies(bossSpeciesId);
-				if (bossSpecies != null && bossSpecies.BaseRarity >= Rarity.Legendary)
-				{
-					isRareBossDefeat = true;
-					Log.Info($"RARE BOSS DEFEATED! {bossSpecies.Name} ({bossSpecies.BaseRarity}) - 100% contract chance!");
-				}
-			}
-		}
-
-		// Note: Manual negotiation is now handled by BattleView as an overlay
-		// ExpeditionPanel only handles auto-negotiate here
-		if (playerWon && HasContractInk() && ExpeditionManager.Instance?.HasCatchableEnemy == true)
-		{
-			// Auto-negotiate only runs if enabled AND not a rare boss (those show manual overlay in BattleView)
-			if (currentAutoNegotiate && !isRareBossDefeat)
-			{
-				// Apply 10% chance roll for auto-negotiate too
-				var random = new Random();
-				if (random.NextDouble() < 0.10f)
-				{
-					Monster autoTarget;
-					if (!string.IsNullOrEmpty(autoContractTargetSpecies))
-					{
-						// Only target the specific species the player wants
-						autoTarget = ExpeditionManager.Instance.CatchableEnemies
-							.FirstOrDefault(e => e.SpeciesId == autoContractTargetSpecies);
-					}
-					else
-					{
-						autoTarget = ExpeditionManager.Instance.GetRandomCatchableEnemy();
-					}
-					if (autoTarget != null)
-					{
-						TryAutoNegotiate(autoTarget, currentAutoNegotiateStrategy);
-					}
-				}
-				ExpeditionManager.Instance?.ClearCatchableEnemies();
-			}
-		}
-
-		// Clear catchable enemies since we're not negotiating
+		// Contracting is now handled mid-battle via the CONTRACT diamond button
+		// Clear any remaining catchable enemies
 		ExpeditionManager.Instance?.ClearCatchableEnemies();
 
 		// Track wave cleared for missions (foreground path)
@@ -1771,33 +1668,24 @@
 			ContinueExpedition();
 			return;
 		}
-		else if (playerWon && currentWave >= (selectedExpedition?.Waves ?? 0) && currentAutoRetry)
-		{
-			// Expedition complete but auto-retry is on - restart from wave 1
-			Log.Info("Auto-retry: Expedition complete, restarting from wave 1");
-
-			// Retry with rewards (awards completion rewards, keeps expedition active)
-			RetryExpedition(awardCompletionRewards: true);
-
-			// Track boss tokens that were just awarded
-			battleTokens += ExpeditionManager.Instance?.LastAwardedBossTokens ?? 0;
-			return;
-		}
-		else if (!playerWon && currentAutoRetry)
-		{
-			// Auto-retry the expedition from wave 1
-			Log.Info("Auto-retry: Restarting expedition");
-			RetryExpedition(awardCompletionRewards: false);
-			return;
-		}
 		else
 		{
 			// Either lost or completed all waves - show final result
 			Log.Info($"OnBattleComplete: Showing result view");
 
-			// Notify ExpeditionManager that expedition is complete
-			// This awards rewards and clears CurrentExpedition
-			ExpeditionManager.Instance?.OnWaveComplete(playerWon);
+			// Stash zone + team now so the popup has them for Retry / Embark
+			// Again. ResolveExpedition awards rewards but keeps CurrentExpedition
+			// and SelectedTeam alive so the 3D battle scene stays rendered
+			// behind the popup — the player drives the teardown from the
+			// popup's action buttons, not the battle-end event.
+			var resultZoneId = selectedExpedition?.Id;
+			var resultWave = currentWave;
+			var resultTeam = new List<Monster>( selectedTeam );
+
+			// Foreground result flow — awards rewards, fires events, but does
+			// NOT null CurrentExpedition. FinalizeExpedition (called from the
+			// popup buttons) handles that.
+			ExpeditionManager.Instance?.ResolveExpedition(playerWon);
 
 			// Track boss tokens that were just awarded (if won)
 			if (playerWon)
@@ -1805,134 +1693,19 @@
 				battleTokens = ExpeditionManager.Instance?.LastAwardedBossTokens ?? 0;
 			}
 
-			currentView = "result";
+			// Fire the global result popup. Keep currentView = "battle" so the
+			// BattleView + 3D scene stay visible behind the modal.
+			ExpeditionResultPopup.Show(
+				won: playerWon,
+				wave: resultWave,
+				zoneId: resultZoneId,
+				gold: battleGold,
+				xp: battleXP,
+				tokens: battleTokens,
+				team: resultTeam );
 		}
 
 		StateHasChanged();
-	}
-
-	private bool HasContractInk()
-	{
-		return (TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0) > 0;
-	}
-
-	private void TryAutoNegotiate(Monster target, int strategyIndex)
-	{
-		if (target == null) return;
-
-		// Skip catching if strategy is set to skip (-1)
-		if (strategyIndex == -1)
-		{
-			Log.Info("Auto-negotiate: Skipping catch (strategy set to Skip)");
-			return;
-		}
-
-		var species = MonsterManager.Instance?.GetSpecies(target.SpeciesId);
-		if (species == null) return;
-
-		// Generate negotiation options
-		var options = ContractGenerator.GenerateNegotiationOptions(species, target);
-		if (options == null || options.Count == 0) return;
-
-		// Clamp strategy index to valid range
-		strategyIndex = Math.Clamp(strategyIndex, 0, options.Count - 1);
-		var selectedOption = options[strategyIndex];
-		var currentInk = TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
-
-		// Check if we can afford this option (ink + gold)
-		if (currentInk < selectedOption.InkCost)
-		{
-			// Try to fall back to a cheaper option
-			var affordableOption = options.Where(o => currentInk >= o.InkCost).OrderByDescending(o => o.InkCost).FirstOrDefault();
-			if (affordableOption == null)
-			{
-				Log.Warning($"Auto-negotiate: Not enough ink! Have {currentInk}, need {selectedOption.InkCost}");
-				return;
-			}
-			Log.Info($"Auto-negotiate: Can't afford {selectedOption.Name} ({selectedOption.InkCost} ink), using {affordableOption.Name}");
-			selectedOption = affordableOption;
-		}
-
-		if (selectedOption.GoldCost > 0)
-		{
-			var gold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
-			if (gold < selectedOption.GoldCost)
-			{
-				// Can't afford golden handshake, fall back to fair terms (index 1)
-				Log.Info($"Auto-negotiate: Can't afford Golden Handshake ({selectedOption.GoldCost}g), using Fair Terms");
-				selectedOption = options[1]; // Fair Terms
-			}
-		}
-
-		// Check and spend contract ink based on option's cost
-		if (!TamerManager.Instance.SpendContractInk(selectedOption.InkCost))
-		{
-			Log.Warning($"Auto-negotiate: Not enough ink! Need {selectedOption.InkCost}");
-			return;
-		}
-
-		// Attempt the negotiation
-		bool success = ContractGenerator.AttemptNegotiation(selectedOption);
-
-		if (success)
-		{
-			SoundManager.PlayMonsterCatch();
-
-			// Create the caught monster
-			var caughtMonster = MonsterManager.Instance?.CreateMonster(
-				target.SpeciesId,
-				isBred: false,
-				target.Genetics
-			);
-
-			if (caughtMonster != null)
-			{
-				caughtMonster.Level = target.Level;
-				caughtMonster.Contract = selectedOption.Contract;
-				MonsterManager.Instance?.RecalculateStats(caughtMonster);
-
-				// Record catch (stats, leaderboard, beastiary, event)
-				ExpeditionManager.Instance?.RecordMonsterCatch(caughtMonster);
-				Log.Info($"Auto-caught {caughtMonster.Nickname} with {selectedOption.Name}!");
-			}
-		}
-		else
-		{
-			SoundManager.PlayDeny();
-			Log.Info($"Auto-negotiate failed for {target.Nickname} with {selectedOption.Name} ({selectedOption.GetSuccessText()})");
-		}
-	}
-
-	private void OnNegotiationComplete(bool caught, Monster monster)
-	{
-		Log.Info($"OnNegotiationComplete: caught={caught}, monster={monster?.Nickname ?? "null"}");
-
-		// Clear negotiation state
-		ExpeditionManager.Instance?.ClearCatchableEnemies();
-		negotiationTarget = null;
-		isBossContract = false;
-
-		var currentAutoRetry = ExpeditionManager.Instance?.AutoRetry ?? autoRetry;
-
-		// Continue with expedition flow
-		if (currentWave < (selectedExpedition?.Waves ?? 0))
-		{
-			// More waves to go
-			ContinueExpedition();
-		}
-		else if (currentAutoRetry)
-		{
-			// Expedition complete but auto-retry is on - restart
-			Log.Info("OnNegotiationComplete: Auto-retry enabled, restarting expedition");
-			RetryExpedition(awardCompletionRewards: true);
-		}
-		else
-		{
-			// Expedition complete, no auto-retry
-			ExpeditionManager.Instance?.OnWaveComplete(true);
-			currentView = "result";
-			StateHasChanged();
-		}
 	}
 
 	private void OnExpeditionCancelled()
@@ -1946,7 +1719,6 @@
 		battleGold = 0;
 		battleXP = 0;
 		battleTokens = 0;
-		negotiationTarget = null;
 
 		// Return to expedition list
 		currentView = "list";
@@ -1955,37 +1727,20 @@
 
 	private void ContinueExpedition()
 	{
-		// Only play sound during manual wave advancement, not during auto-battle
-		var currentAutoBattle = ExpeditionManager.Instance?.AutoBattle ?? autoBattle;
-		if (!currentAutoBattle)
-		{
-			SoundManager.PlayForward();
-		}
+		SoundManager.PlayForward();
 
 		// Start next wave (ExpeditionManager increments the wave counter)
 		ExpeditionManager.Instance?.StartNextWave();
 		currentWave = ExpeditionManager.Instance?.CurrentWave ?? currentWave + 1;
 
-		Log.Info($"ContinueExpedition: Wave={currentWave}, IsInBattle={BattleManager.Instance?.IsInBattle}, AutoBattle={ExpeditionManager.Instance?.AutoBattle}");
-
-		// Auto-start playback if auto-battle is enabled
-		if (currentAutoBattle && BattleManager.Instance != null)
-		{
-			BattleManager.Instance.StartPlayback();
-			Log.Info($"ContinueExpedition: Started playback, IsPlaying={BattleManager.Instance.IsPlaying}");
-		}
+		Log.Info($"ContinueExpedition: Wave={currentWave}, IsInBattle={BattleManager.Instance?.IsInBattle}");
 	}
 
 	private void RetryExpedition(bool awardCompletionRewards = false)
 	{
 		if (selectedExpedition == null || selectedTeam.Count == 0) return;
 
-		// Only play sound during manual retry, not during auto-retry
-		var currentAutoRetry = ExpeditionManager.Instance?.AutoRetry ?? autoRetry;
-		if (!currentAutoRetry)
-		{
-			SoundManager.PlayBattleStart();
-		}
+		SoundManager.PlayBattleStart();
 
 		// Reset accumulated rewards for the new attempt
 		battleGold = 0;
@@ -1996,13 +1751,36 @@
 		ExpeditionManager.Instance?.RetryExpedition(awardCompletionRewards);
 		currentWave = ExpeditionManager.Instance?.CurrentWave ?? 1;
 
-		Log.Info($"RetryExpedition: Wave={currentWave}, IsInBattle={BattleManager.Instance?.IsInBattle}, AutoBattle={ExpeditionManager.Instance?.AutoBattle}");
+		Log.Info($"RetryExpedition: Wave={currentWave}, IsInBattle={BattleManager.Instance?.IsInBattle}");
+	}
 
-		// Auto-start playback if auto-battle is enabled
-		var currentAutoBattle = ExpeditionManager.Instance?.AutoBattle ?? autoBattle;
-		if (currentAutoBattle && BattleManager.Instance != null)
+	// Return to world map AND immediately pop the team picker for the same
+	// zone, so the player can retry with a different team or just relaunch
+	// with the same loadout in one click. Bridges the post-result popup back
+	// into the picker without forcing a detour through the world map.
+	private void EmbarkAgain()
+	{
+		SoundManager.PlayForward();
+		var zoneId = selectedExpedition?.Id;
+
+		// Clear the current expedition state (also heals the roster).
+		ExpeditionManager.Instance?.CancelExpedition();
+
+		// Reset local UI state.
+		currentView = "list";
+		selectedExpedition = null;
+		selectedTeam.Clear();
+		currentWave = 0;
+		battleGold = 0;
+		battleXP = 0;
+		battleTokens = 0;
+
+		// Queue the picker to show once WorldMapPanel mounts. TeamPickerPopup
+		// handles the Instance==null case by stashing state statically; the
+		// popup pre-fills + animates in as soon as it mounts.
+		if ( !string.IsNullOrEmpty( zoneId ) )
 		{
-			BattleManager.Instance.StartPlayback();
+			TeamPickerPopup.Show( zoneId );
 		}
 	}
 
@@ -2077,8 +1855,6 @@
 			currentWave = expMgr.CurrentWave;
 			battleGold = expMgr.AccumulatedGold;
 			battleXP = expMgr.AccumulatedXP;
-			autoBattle = expMgr.AutoBattle;
-			autoRetry = expMgr.AutoRetry;
 			autoNegotiate = expMgr.AutoNegotiate;
 			autoNegotiateStrategy = expMgr.AutoNegotiateStrategy;
 		}
@@ -2124,8 +1900,6 @@
 		hash.Add(currentWave);
 		hash.Add(battleGold);
 		hash.Add(battleXP);
-		hash.Add(autoBattle);
-		hash.Add(autoRetry);
 		hash.Add(autoNegotiate);
 		hash.Add(autoNegotiateStrategy);
 		hash.Add(SpriteAnimator.GlobalFrame);
@@ -2138,8 +1912,6 @@
 		// Include running expedition state for the cancel bar
 		hash.Add(ExpeditionManager.Instance?.CurrentExpedition?.Id);
 		hash.Add(ExpeditionManager.Instance?.CurrentWave ?? 0);
-		// Include negotiation state
-		hash.Add(negotiationTarget?.Id);
 		// Include monsters popup state
 		hash.Add(showMonstersPopup);
 		hash.Add(monstersPopupExpedition?.Id);

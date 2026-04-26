@@ -548,7 +548,7 @@
 	}
 
 	<!-- Wave Indicator (top center) -->
-	@if (Use3DBattle && !BattleTransition.IsActive)
+	@if (Use3DBattle && !BattleTransition.IsActive && !ExpeditionResultPopup.IsVisible)
 	{
 		<div class="wave-indicator-container">
 			<div class="wave-badge @(IsBossWave() ? "wave-boss" : "")">
@@ -557,41 +557,28 @@
 		</div>
 	}
 
-	<!-- Battle Log Feed (bottom-left, auto-fade) -->
-	@if (Use3DBattle && !BattleTransition.IsActive)
+	<!-- Battle Ticker (bottom-center, one line at a time) -->
+	@if (Use3DBattle && !BattleTransition.IsActive && !ExpeditionResultPopup.IsVisible)
 	{
-		var recentEntries = GetRecentLogEntries();
-		@if (recentEntries.Count > 0)
+		var tickerEntry = GetTickerEntry();
+		@if (tickerEntry != null)
 		{
-			<div class="battle-log-feed">
-				@foreach (var (entry, age) in recentEntries)
-				{
-					var diamondClass = GetLogDiamondClass(entry);
-					var hasElementIcon = entry.MoveElement.HasValue && entry.Type is "damage" or "crit" or "super" or "resist";
-					var fadeClass = age > 3.0f ? "fading" : "";
-					<div class="blog-entry @entry.Type @(entry.IsPlayerAttacker ? "player-turn" : "enemy-turn") @fadeClass">
-						<div class="blog-diamond @diamondClass">
-							<iconify icon="@GetLogIconify(entry)" Size=@(14) Color="white" />
-						</div>
-						<div class="blog-content">
-							<span class="blog-text">@entry.Text</span>
-						</div>
-						@if (entry.IsCritical)
-						{
-							<div class="blog-badge crit"><span>CRIT</span></div>
-						}
-						else if (entry.IsSuperEffective)
-						{
-							<div class="blog-badge super"><span>2x</span></div>
-						}
+			var tickerVisible = IsTickerEntryVisible(tickerEntry);
+			var diamondClass = GetLogDiamondClass(tickerEntry);
+			var turnClass = tickerEntry.IsPlayerAttacker ? "player-turn" : "enemy-turn";
+			<div class="battle-ticker-host @(tickerVisible ? "visible" : "")">
+				<div class="battle-ticker @tickerEntry.Type @turnClass">
+					<div class="ticker-diamond @diamondClass">
+						<iconify icon="@GetLogIconify(tickerEntry)" Size=@(14) Color="white" />
 					</div>
-				}
+					<span class="ticker-text">@tickerEntry.Text</span>
+				</div>
 			</div>
 		}
 	}
 
 	<!-- 3D Action Bar (bottom) -->
-	@if (Use3DBattle && !BattleTransition.IsActive)
+	@if (Use3DBattle && !BattleTransition.IsActive && !ExpeditionResultPopup.IsVisible)
 	{
 	<div class="battle3d-action-bar">
 		@{
@@ -604,23 +591,29 @@
 		{
 			var turnsPlaying = BattleManager.Instance?.IsPlaying == true && !BattleManager.Instance.IsWaitingForPlayerInput;
 			var sceneAnimating = BattleSceneController.Instance != null && (BattleSceneController.Instance.IsWaveTransitioning);
-			var buttonsDisabled = turnsPlaying || sceneAnimating;
+			// Also gate on the 3D scene still playing queued turn animations
+			// or waiting for a faint to finish — simulation can flip
+			// IsWaitingForPlayerInput back on before the scene catches up, and
+			// the player shouldn't be able to queue a new move while the
+			// prior turn is mid-animation.
+			var scenePlayingTurns = BattleSceneController.Instance?.IsPlayingTurns == true;
+			var buttonsDisabled = turnsPlaying || sceneAnimating || scenePlayingTurns;
 			<div class="action3d-buttons panel-in">
 				<div class="action3d-btn fight @(awaitingInput ? "awaiting" : "") @(buttonsDisabled ? "disabled" : "")" onclick=@OnFight3D onmouseover=@(() => HoverBtn(1))>
 					<div class="action3d-diamond">
-						<iconify icon="lucide:swords" Size=@(28) Color="white" />
+						<iconify icon="lucide:swords" Size=@(36) Color="white" />
 					</div>
 					<span class="action3d-label">FIGHT</span>
 				</div>
 				<div class="action3d-btn swap @(buttonsDisabled ? "disabled" : "")" onclick=@OnSwapRequested onmouseover=@(() => HoverBtn(2))>
 					<div class="action3d-diamond">
-						<iconify icon="lucide:repeat-2" Size=@(28) Color="white" />
+						<iconify icon="lucide:repeat-2" Size=@(36) Color="white" />
 					</div>
 					<span class="action3d-label">SWITCH</span>
 				</div>
 				<div class="action3d-btn bag @(buttonsDisabled ? "disabled" : "")" onclick=@OnOpenBag onmouseover=@(() => HoverBtn(3))>
 					<div class="action3d-diamond">
-						<iconify icon="lucide:briefcase" Size=@(28) Color="white" />
+						<iconify icon="lucide:briefcase" Size=@(36) Color="white" />
 					</div>
 					<span class="action3d-label">BAG</span>
 				</div>
@@ -628,14 +621,14 @@
 				{
 					<div class="action3d-btn contract @(buttonsDisabled || !HasContractInk() ? "disabled" : "")" onclick=@OnContract3D onmouseover=@(() => HoverBtn(4))>
 						<div class="action3d-diamond">
-							<iconify icon="lucide:scroll-text" Size=@(28) Color="white" />
+							<iconify icon="lucide:scroll-text" Size=@(36) Color="white" />
 						</div>
 						<span class="action3d-label">CONTRACT</span>
 					</div>
 				}
 				<div class="action3d-end @(buttonsDisabled ? "disabled" : "")" onclick=@OnEndClicked onmouseover=@(() => HoverBtn(5))>
 					<div class="end-diamond">
-						<iconify icon="lucide:log-out" Size=@(16) Color="white" />
+						<iconify icon="lucide:log-out" Size=@(18) Color="white" />
 					</div>
 					<span class="end-label">END</span>
 				</div>
@@ -1177,9 +1170,9 @@
 
 		var bgPath = ExpeditionId switch
 		{
-			"forest_entrance" => "/ui/locations/whispering_woods_background.png",
-			"ember_cavern" => "/ui/locations/ember_cavern_background.png",
-			"tear_lake" => "/ui/locations/lake_of_tears_background.png",
+			"saltmoor_cove" => "/ui/locations/whispering_woods_background.png",
+			"saltmoor_forest" => "/ui/locations/ember_cavern_background.png",
+			"old_saltmoor" => "/ui/locations/lake_of_tears_background.png",
 			"echo_canyon" => "/ui/locations/echo_canyon_background.png",
 			"storm_spire" => "/ui/locations/storm_spire_background.png",
 			"ancient_ruins" => "/ui/locations/ancient_ruins_background.png",
@@ -1225,7 +1218,10 @@
 			BattleManager.Instance.OnMonsterDefeated -= HandleMonsterDefeated;
 		}
 		if ( BattleSceneController.Instance != null )
+		{
 			BattleSceneController.Instance.OnBillboardClicked = null;
+			BattleSceneController.Instance.OnTurnVisualsStarted -= OnTurnVisualsStarted;
+		}
 		isSubscribed = false;
 	}
 
@@ -1252,7 +1248,11 @@
 
 		// Wire 3D billboard clicking to target selection
 		if ( BattleSceneController.Instance != null )
+		{
 			BattleSceneController.Instance.OnBillboardClicked = OnBillboardClicked3D;
+			BattleSceneController.Instance.OnTurnVisualsStarted -= OnTurnVisualsStarted;
+			BattleSceneController.Instance.OnTurnVisualsStarted += OnTurnVisualsStarted;
+		}
 
 		isSubscribed = true;
 
@@ -1367,6 +1367,59 @@
 
 	private const float LOG_VISIBLE_DURATION = 5.0f; // seconds before fading starts
 	private const float LOG_FADE_DURATION = 1.5f; // seconds to fade out
+
+	// Ticker (bottom-center single-line chip) constants.
+	// Short visible window — lets new entries replace old ones mid-turn without pileup.
+	private const float TICKER_VISIBLE_DURATION = 2.25f; // seconds visible before fade-out
+	private const float TICKER_FADE_DURATION = 0.35f;    // seconds to fade after visible window
+
+	// Types that are already expressed by the 3D scene (floating damage numbers,
+	// crit colors, super VFX, miss popups) and should NOT be shown in the ticker.
+	// They still live in `battleLog` for the full-log dropdown history.
+	private static bool IsTickerSuppressedType(string type) => type switch
+	{
+		"damage" => true,
+		"crit" => true,
+		"super" => true,
+		"resist" => true,
+		"miss" => true,
+		_ => false,
+	};
+
+	/// <summary>
+	/// Returns the single most-recent ticker-worthy entry whose timestamp has
+	/// arrived and which has not fully faded out yet. Returns null if nothing
+	/// to show right now.
+	/// </summary>
+	private BattleLogEntry GetTickerEntry()
+	{
+		var now = RealTime.Now;
+		var maxAge = TICKER_VISIBLE_DURATION + TICKER_FADE_DURATION;
+		for (int i = battleLog.Count - 1; i >= 0; i--)
+		{
+			var entry = battleLog[i];
+			if (entry.Timestamp > now) continue;                   // scheduled in the future
+			if (IsTickerSuppressedType(entry.Type)) continue;      // redundant with 3D scene
+			var age = now - entry.Timestamp;
+			if (age > maxAge) return null;                         // newest candidate already expired
+			return entry;
+		}
+		return null;
+	}
+
+	/// <summary>
+	/// True while the entry is in its "fully visible" window. Once it crosses
+	/// TICKER_VISIBLE_DURATION, this returns false — which flips the .visible
+	/// class off and lets the CSS transition fade it out. GetTickerEntry keeps
+	/// returning the entry until TICKER_VISIBLE + TICKER_FADE, so the element
+	/// stays mounted long enough for the fade to play.
+	/// </summary>
+	private bool IsTickerEntryVisible(BattleLogEntry entry)
+	{
+		if (entry == null) return false;
+		var age = RealTime.Now - entry.Timestamp;
+		return age <= TICKER_VISIBLE_DURATION;
+	}
 
 	private List<(BattleLogEntry entry, float age)> GetRecentLogEntries()
 	{
@@ -1518,7 +1571,21 @@
 
 	private void OnTurnExecuted(BattleTurn turn)
 	{
+		// Tracked for other UI (e.g. last-turn readouts). Log entries are
+		// appended in OnTurnVisualsStarted instead so the bottom-center ticker
+		// reveals text in sync with the 3D attack animation, not ahead of it.
 		lastTurn = turn;
+	}
+
+	/// <summary>
+	/// Fires from BattleSceneController at the MOMENT a queued turn's visuals
+	/// begin playing. This is where per-turn log entries are appended so the
+	/// ticker text lands with the swing/impact rather than at simulation time
+	/// (which is 1-2 turns ahead of the on-screen animation).
+	/// </summary>
+	private void OnTurnVisualsStarted(BattleTurn turn)
+	{
+		if (turn == null) return;
 
 		// Log swap actions
 		if (turn.IsSwap && !string.IsNullOrEmpty(turn.SwapToName))
@@ -1526,13 +1593,23 @@
 			AddLogEntry(turn, $"{turn.SwapToName} entered the battle!", "swap");
 		}
 
-		// Log miss
+		// Log item use actions
+		if (turn.IsItemUse && !string.IsNullOrEmpty(turn.ItemName))
+		{
+			var msg = !string.IsNullOrEmpty(turn.ItemTargetName)
+				? $"You used {turn.ItemName} on {turn.ItemTargetName}!"
+				: $"You used {turn.ItemName}!";
+			AddLogEntry(turn, msg, "item");
+		}
+
+		// Log miss (kept for dropdown history; filtered from ticker)
 		if (turn.IsMiss)
 		{
 			AddLogEntry(turn, $"{turn.AttackerName}'s {turn.MoveName} missed!", "miss");
 		}
 
-		// Log damage
+		// Log damage (kept for dropdown history; filtered from ticker — the
+		// floating damage number + crit/super coloring already tell this story)
 		if (turn.Damage > 0)
 		{
 			var logType = turn.IsCritical ? "crit" : (turn.IsSuperEffective ? "super" : (turn.IsResisted ? "resist" : "damage"));
@@ -2330,6 +2407,10 @@
 		hash.Add(swapTargets?.Count);
 		hash.Add(isLogExpanded);
 		hash.Add(battleLog.Count);
+		// Ticker visibility flips off when the most recent entry ages out —
+		// include it explicitly so the fade-out class toggle triggers a re-render
+		// even when no sprites are animating.
+		hash.Add(GetTickerEntry() != null);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		hash.Add(selectedTargetId);
 		hash.Add(hoveredMoveId);

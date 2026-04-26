@@ -12,14 +12,7 @@ public sealed class TutorialManager : Component
 {
 	public static TutorialManager Instance { get; private set; }
 
-	private const string TUTORIAL_COMPLETED_KEY = "tutorial-completed";
-	private const string TUTORIAL_STEP_KEY = "tutorial-step";
-	private const string TUTORIAL_SKIPPED_KEY = "tutorial-skipped";
-
-	/// <summary>
-	/// Get the full key with slot prefix
-	/// </summary>
-	private static string GetKey( string key ) => $"{SaveSlotManager.GetSlotPrefix()}{key}";
+	private bool _hasHydrated;
 
 	/// <summary>
 	/// Whether the tutorial is currently being shown
@@ -74,7 +67,30 @@ public sealed class TutorialManager : Component
 
 	protected override void OnStart()
 	{
-		LoadState();
+		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
+		{
+			Hydrate();
+		}
+		else if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveLoaded += Hydrate;
+		}
+
+		if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveReset += HandleSaveReset;
+		}
+	}
+
+	private void HandleSaveReset()
+	{
+		_hasHydrated = false;
+		HasCompletedTutorial = false;
+		WasSkipped = false;
+		IsTutorialActive = false;
+		CurrentStepIndex = 0;
+		Hydrate();
+		Log.Info( "[TutorialManager] reset" );
 	}
 
 	public static void EnsureInstance( Scene scene )
@@ -229,34 +245,45 @@ public sealed class TutorialManager : Component
 	}
 
 	/// <summary>
-	/// Load tutorial state from cookies
+	/// Pull tutorial flags out of the save blob on boot.
 	/// </summary>
-	private void LoadState()
+	private void Hydrate()
 	{
-		HasCompletedTutorial = Game.Cookies.Get<bool>( GetKey( TUTORIAL_COMPLETED_KEY ), false );
-		WasSkipped = Game.Cookies.Get<bool>( GetKey( TUTORIAL_SKIPPED_KEY ), false );
-		CurrentStepIndex = Game.Cookies.Get<int>( GetKey( TUTORIAL_STEP_KEY ), 0 );
+		if ( _hasHydrated ) return;
+		_hasHydrated = true;
 
-		Log.Info( $"TutorialManager loaded: Completed={HasCompletedTutorial}, Skipped={WasSkipped}, Step={CurrentStepIndex}" );
+		var section = SaveService.Instance?.CurrentBlob?.Tutorial;
+		if ( section != null )
+		{
+			HasCompletedTutorial = section.Completed;
+			WasSkipped = section.Skipped;
+			CurrentStepIndex = section.StepIndex;
+		}
+		else
+		{
+			HasCompletedTutorial = false;
+			WasSkipped = false;
+			CurrentStepIndex = 0;
+		}
+
+		Log.Info( $"[TutorialManager] Hydrated: Completed={HasCompletedTutorial}, Skipped={WasSkipped}, Step={CurrentStepIndex}" );
 	}
 
 	/// <summary>
-	/// Save tutorial state to cookies
+	/// Push tutorial state back into the save blob.
 	/// </summary>
 	private void SaveState()
 	{
-		Game.Cookies.Set( GetKey( TUTORIAL_COMPLETED_KEY ), HasCompletedTutorial );
-		Game.Cookies.Set( GetKey( TUTORIAL_SKIPPED_KEY ), WasSkipped );
-		Game.Cookies.Set( GetKey( TUTORIAL_STEP_KEY ), CurrentStepIndex );
-	}
+		var service = SaveService.Instance;
+		if ( service == null ) return;
+		var blob = service.CurrentBlob;
+		if ( blob == null ) return;
 
-	/// <summary>
-	/// Reload state from the current save slot
-	/// </summary>
-	public void ReloadFromSlot()
-	{
-		LoadState();
-		Log.Info( $"TutorialManager reloaded from slot {SaveSlotManager.Instance?.ActiveSlot}" );
+		blob.Tutorial ??= new TutorialSaveData();
+		blob.Tutorial.Completed = HasCompletedTutorial;
+		blob.Tutorial.Skipped = WasSkipped;
+		blob.Tutorial.StepIndex = CurrentStepIndex;
+		service.MarkDirty( "tutorial" );
 	}
 
 	/// <summary>

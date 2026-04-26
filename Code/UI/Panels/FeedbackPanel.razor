@@ -1,0 +1,1092 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using System;
+@using System.Linq;
+@using System.Collections.Generic;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="fb-container @(IsVisible ? "visible" : "")">
+
+	@* Dimming overlay — click anywhere outside to close *@
+	<div class="fb-overlay" onclick=@Hide></div>
+
+	@* Center modal — large, scales-in from center origin *@
+	<div class="fb-modal">
+
+		@* Top accent line — 2px gradient bar (matches OptionsPanel / MenuPopup) *@
+		<div class="modal-top-line"></div>
+
+		@* HEADER — title icon + title left, my-posts chip + close right *@
+		<div class="modal-header">
+			<div class="header-left">
+				<div class="header-icon-frame">
+					<iconify icon="lucide:message-square-heart" Size=@(18) Color="#a78bfa" />
+				</div>
+				<div class="header-text">
+					<span class="header-title">COMMUNITY FEEDBACK</span>
+					<span class="header-subtitle">BUGS · IDEAS · UPVOTES</span>
+				</div>
+			</div>
+			<div class="header-right">
+				@if (myResolvedUnreadCount > 0 && currentTab != "mine")
+				{
+					<button class="dev-reply-chip"
+							onclick=@(() => SelectTab("mine"))
+							onmouseover=@(() => OnHover("dev-reply-chip"))>
+						<iconify icon="lucide:bell-dot" Size=@(12) Color="#fcd34d" />
+						<span>@myResolvedUnreadCount DEV REPLY</span>
+					</button>
+				}
+				<button class="close-btn"
+						onclick=@Hide
+						onmouseover=@(() => OnHover("close"))>
+					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+				</button>
+			</div>
+		</div>
+
+		@* TAB STRIP — segmented chip group with per-tab category color *@
+		<div class="modal-tabs">
+			<button class="fb-tab tab-bugs @(currentTab == "bugs" ? "active" : "")"
+					onclick=@(() => SelectTab("bugs"))
+					onmouseover=@(() => OnHover("tab-bugs"))>
+				<iconify icon="lucide:bug" Size=@(13) Color="@(currentTab == "bugs" ? "#fca5a5" : "rgba(252, 165, 165, 0.55)")" />
+				<span class="tab-label">Bugs</span>
+				@if (bugCount > 0)
+				{
+					<span class="tab-count">@bugCount</span>
+				}
+			</button>
+			<button class="fb-tab tab-ideas @(currentTab == "ideas" ? "active" : "")"
+					onclick=@(() => SelectTab("ideas"))
+					onmouseover=@(() => OnHover("tab-ideas"))>
+				<iconify icon="lucide:lightbulb" Size=@(13) Color="@(currentTab == "ideas" ? "#7dd3fc" : "rgba(125, 211, 252, 0.55)")" />
+				<span class="tab-label">Ideas</span>
+				@if (ideaCount > 0)
+				{
+					<span class="tab-count">@ideaCount</span>
+				}
+			</button>
+			<button class="fb-tab tab-resolved @(currentTab == "resolved" ? "active" : "")"
+					onclick=@(() => SelectTab("resolved"))
+					onmouseover=@(() => OnHover("tab-resolved"))>
+				<iconify icon="lucide:check-circle" Size=@(13) Color="@(currentTab == "resolved" ? "#4ade80" : "rgba(74, 222, 128, 0.55)")" />
+				<span class="tab-label">Resolved</span>
+			</button>
+			<button class="fb-tab tab-mine @(currentTab == "mine" ? "active" : "")"
+					onclick=@(() => SelectTab("mine"))
+					onmouseover=@(() => OnHover("tab-mine"))>
+				<iconify icon="lucide:user" Size=@(13) Color="@(currentTab == "mine" ? "#c4b5fd" : "rgba(196, 181, 253, 0.55)")" />
+				<span class="tab-label">My Posts</span>
+				@if (myResolvedUnreadCount > 0)
+				{
+					<span class="tab-unread">@myResolvedUnreadCount</span>
+				}
+			</button>
+		</div>
+
+		@* TOOLBAR — sort segmented control + tag filter chips + new button *@
+		<div class="modal-toolbar">
+			<div class="sort-toggle">
+				<button class="sort-opt @(currentSort == "top" ? "active" : "")"
+						onclick=@(() => SelectSort("top"))
+						onmouseover=@(() => OnHover("sort-top"))>
+					<iconify icon="lucide:flame" Size=@(12) Color="@(currentSort == "top" ? "#fb923c" : "rgba(255, 255, 255, 0.55)")" />
+					<span>Top</span>
+				</button>
+				<button class="sort-opt @(currentSort == "new" ? "active" : "")"
+						onclick=@(() => SelectSort("new"))
+						onmouseover=@(() => OnHover("sort-new"))>
+					<iconify icon="lucide:clock" Size=@(12) Color="@(currentSort == "new" ? "#a78bfa" : "rgba(255, 255, 255, 0.55)")" />
+					<span>New</span>
+				</button>
+			</div>
+
+			<div class="tag-filter-row">
+				<button class="tag-chip @(selectedTag == null ? "active" : "")"
+						onclick=@(() => SelectTag(null))
+						onmouseover=@(() => OnHover("tag-all"))>
+					<span>All</span>
+				</button>
+				@foreach (var tag in GetTagsForCurrentTab())
+				{
+					var color = GetTagColor(tag.Id);
+					var isActive = selectedTag == tag.Id;
+					<button class="tag-chip @(isActive ? "active" : "")"
+							style="@(isActive ? $"background-color: {Hex2Rgba(color, 0.22f)}; border-color: {Hex2Rgba(color, 0.7f)}; color: {color};" : "")"
+							onclick=@(() => SelectTag(tag.Id))
+							onmouseover=@(() => OnHover("tag-" + tag.Id))>
+						<div class="tag-dot" style="background-color: @color;"></div>
+						<span>@tag.Label</span>
+					</button>
+				}
+			</div>
+
+			@if (currentTab == "bugs" || currentTab == "ideas")
+			{
+				<button class="new-post-btn @(currentTab == "ideas" ? "is-idea" : "is-bug")"
+						onclick=@OpenComposer
+						onmouseover=@(() => OnHover("new-post"))>
+					<iconify icon="lucide:plus" Size=@(13) Color="#ffffff" />
+					<span>@(currentTab == "bugs" ? "REPORT BUG" : "POST IDEA")</span>
+				</button>
+			}
+		</div>
+
+		@* SCROLLABLE BODY — entry list / loading / empty *@
+		<div class="modal-scroll-wrap">
+			<div class="modal-scroll">
+				@if (isLoading)
+				{
+					<div class="fb-loading">
+						<div class="fb-loading-pulse"></div>
+						<span class="fb-loading-text">LOADING…</span>
+					</div>
+				}
+				else if (filteredEntries.Count == 0)
+				{
+					@RenderEmpty()
+				}
+				else
+				{
+					@foreach (var entry in filteredEntries)
+					{
+						@RenderEntry(entry)
+					}
+				}
+
+				@* Bottom spacer so the last card breathes above the footer *@
+				<div class="scroll-tail"></div>
+			</div>
+		</div>
+
+		@* FOOTER — entry count + (optional) admin export-style indicator *@
+		<div class="modal-footer">
+			<span class="footer-count">
+				@if (!isLoading)
+				{
+					<iconify icon="lucide:list" Size=@(11) Color="rgba(196, 181, 253, 0.7)" />
+					<span>@filteredEntries.Count @(filteredEntries.Count == 1 ? "post" : "posts")</span>
+				}
+			</span>
+			<button class="footer-refresh-btn"
+					onclick=@OnManualRefresh
+					onmouseover=@(() => OnHover("refresh"))>
+				<iconify icon="lucide:refresh-cw" Size=@(12) Color="#c4b5fd" />
+				<span>REFRESH</span>
+			</button>
+		</div>
+
+	</div>
+
+	@* COMPOSER — full-modal slide-in overlay (sits ABOVE the entries, INSIDE the modal). *@
+	<div class="composer-overlay @(composerOpen ? "visible" : "")" onclick=@CloseComposer></div>
+	<div class="composer-modal @(composerOpen ? "visible" : "")">
+
+		<div class="composer-top-line"></div>
+
+		<div class="composer-header">
+			<div class="header-left">
+				<div class="composer-icon-frame @(composerType == "bug" ? "tone-danger" : "tone-sky")">
+					<iconify icon="@(composerType == "bug" ? "lucide:bug" : "lucide:lightbulb")"
+							 Size=@(16)
+							 Color="@(composerType == "bug" ? "#fca5a5" : "#7dd3fc")" />
+				</div>
+				<div class="header-text">
+					<span class="header-title">@(composerType == "bug" ? "REPORT A BUG" : "POST AN IDEA")</span>
+					<span class="header-subtitle">SHARE SPECIFICS · HELP US BUILD</span>
+				</div>
+			</div>
+			<button class="close-btn"
+					onclick=@CloseComposer
+					onmouseover=@(() => OnHover("composer-close"))>
+				<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+			</button>
+		</div>
+
+		<div class="composer-scroll-wrap">
+			<div class="composer-scroll">
+
+				@* TIPS card *@
+				<div class="composer-tips">
+					<div class="tips-head">
+						<iconify icon="lucide:sparkles" Size=@(13) Color="#fcd34d" />
+						<span>@(composerType == "bug" ? "A great bug report includes:" : "A great idea includes:")</span>
+					</div>
+					@if (composerType == "bug")
+					{
+						<div class="tip-row"><iconify icon="lucide:check" Size=@(11) Color="#4ade80" /><span>Specific names — which monster, which panel, which button.</span></div>
+						<div class="tip-row"><iconify icon="lucide:check" Size=@(11) Color="#4ade80" /><span>Exact steps — imagine someone else reproducing it.</span></div>
+						<div class="tip-row"><iconify icon="lucide:check" Size=@(11) Color="#4ade80" /><span>What you expected vs. what actually happened.</span></div>
+					}
+					else
+					{
+						<div class="tip-row"><iconify icon="lucide:check" Size=@(11) Color="#4ade80" /><span>The problem it solves — not just "it would be cool if…"</span></div>
+						<div class="tip-row"><iconify icon="lucide:check" Size=@(11) Color="#4ade80" /><span>Who benefits — new players, veterans, everyone.</span></div>
+						<div class="tip-row"><iconify icon="lucide:check" Size=@(11) Color="#4ade80" /><span>A concrete example, even a rough one.</span></div>
+					}
+				</div>
+
+				@* CATEGORY tag picker *@
+				<div class="composer-field">
+					<span class="field-label">CATEGORY</span>
+					<div class="composer-tag-grid">
+						@foreach (var tag in GetTagsForType(composerType))
+						{
+							var color = GetTagColor(tag.Id);
+							var isActive = composerTag == tag.Id;
+							<button class="composer-tag @(isActive ? "active" : "")"
+									style="@(isActive ? $"background-color: {Hex2Rgba(color, 0.22f)}; border-color: {Hex2Rgba(color, 0.75f)}; color: {color};" : "")"
+									onclick=@(() => SelectComposerTag(tag.Id))
+									onmouseover=@(() => OnHover("ctag-" + tag.Id))>
+								<div class="tag-dot" style="background-color: @color;"></div>
+								<span>@tag.Label</span>
+							</button>
+						}
+					</div>
+				</div>
+
+				@* TITLE *@
+				<div class="composer-field">
+					<span class="field-label">TITLE <span class="field-hint">— short, one sentence</span></span>
+					<TextEntry class="composer-input" @ref="titleInput" Text=@titleDraft Placeholder=@(composerType == "bug" ? "Fusion popup soft-locks on cancel" : "Add a favourites tab to shop") />
+				</div>
+
+				@* Body field — ALWAYS rendered with the same @ref so it binds reliably.
+				   Putting it inside an @if/@else cascade caused the ref to not
+				   resolve cleanly when the composer type changed. *@
+				<div class="composer-field">
+					<span class="field-label">
+						@(composerType == "bug" ? "WHAT HAPPENED" : "YOUR IDEA")
+						<span class="field-hint">— @(composerType == "bug" ? "describe the problem" : "what + why")</span>
+					</span>
+					<TextEntry class="composer-input @(composerType == "bug" ? "composer-textarea" : "composer-textarea-tall")"
+							   @ref="whatInput"
+							   Text=@whatDraft
+							   Placeholder=@(composerType == "bug" ? "e.g. clicked Fuse, popup opened, clicked Cancel — everything froze" : "Describe the feature and what problem it solves. Specifics > vibes.") />
+				</div>
+
+				@* Bug-only extras — version, steps, expected, actual *@
+				@if (composerType == "bug")
+				{
+					<div class="composer-field">
+						<span class="field-label">GAME VERSION <span class="field-hint">— auto-filled</span></span>
+						<TextEntry class="composer-input readonly" @ref="versionInput" Text=@versionDraft />
+					</div>
+					<div class="composer-field">
+						<span class="field-label">STEPS TO REPRODUCE <span class="field-hint">— numbered list</span></span>
+						<TextEntry class="composer-input composer-textarea" @ref="stepsInput" Text=@stepsDraft Placeholder="1. Open Breeding&#10;2. Pick two monsters&#10;3. Click Fuse&#10;4. Click Cancel" />
+					</div>
+					<div class="composer-row">
+						<div class="composer-field composer-half">
+							<span class="field-label">EXPECTED</span>
+							<TextEntry class="composer-input" @ref="expectedInput" Text=@expectedDraft Placeholder="Popup closes cleanly" />
+						</div>
+						<div class="composer-field composer-half">
+							<span class="field-label">ACTUAL</span>
+							<TextEntry class="composer-input" @ref="actualInput" Text=@actualDraft Placeholder="UI froze — had to reopen" />
+						</div>
+					</div>
+				}
+
+				@if (!string.IsNullOrEmpty(submitError))
+				{
+					<div class="composer-error">
+						<iconify icon="lucide:alert-triangle" Size=@(14) Color="#fca5a5" />
+						<span>@submitError</span>
+					</div>
+				}
+
+				<div class="composer-tail"></div>
+			</div>
+		</div>
+
+		<div class="composer-footer">
+			<span class="char-count @(GetCharCount() > 3500 ? "warn" : "")">
+				<iconify icon="lucide:type" Size=@(11) Color="rgba(255, 255, 255, 0.5)" />
+				<span>@GetCharCount() / 4000</span>
+			</span>
+			<div class="composer-actions">
+				<button class="cancel-btn"
+						onclick=@CloseComposer
+						onmouseover=@(() => OnHover("composer-cancel"))>
+					<span>CANCEL</span>
+				</button>
+				<button class="submit-btn @(CanSubmit() ? "" : "disabled")"
+						onclick=@Submit
+						onmouseover=@(() => OnHover("composer-submit"))>
+					<iconify icon="@(isSubmitting ? "lucide:loader" : "lucide:send")" Size=@(13) Color="#ffffff" />
+					<span>@(isSubmitting ? "SUBMITTING…" : "SUBMIT")</span>
+				</button>
+			</div>
+		</div>
+
+	</div>
+
+</root>
+
+@code {
+	public static FeedbackPanel Instance { get; private set; }
+	public bool IsVisible { get; private set; }
+
+	// Current tab + filter + sort
+	private string currentTab = "bugs"; // bugs | ideas | resolved | mine
+	private string selectedTag;
+	private string currentSort = "top"; // top | new
+	private int? expandedId;
+	private bool isLoading;
+
+	// Seen resolved IDs (persisted to disk, used for unread badge on "My Posts")
+	private HashSet<int> seenResolvedIds = new();
+	private int myResolvedUnreadCount;
+	private const string SeenIdsFileName = "feedback-seen-ids.json";
+
+	// Data
+	private List<FeedbackEntry> entries = new();
+	private List<FeedbackEntry> filteredEntries = new();
+	private int bugCount;
+	private int ideaCount;
+
+	// Composer state
+	private bool composerOpen;
+	private string composerType = "bug";
+	private string composerTag;
+	private string titleDraft = "";
+	private string versionDraft = "";
+	private string whatDraft = "";
+	private string stepsDraft = "";
+	private string expectedDraft = "";
+	private string actualDraft = "";
+	private string submitError;
+	private bool isSubmitting;
+
+	private TextEntry titleInput;
+	private TextEntry versionInput;
+	private TextEntry whatInput;
+	private TextEntry stepsInput;
+	private TextEntry expectedInput;
+	private TextEntry actualInput;
+
+	// Admin state (resolve composer)
+	private int? resolvingId;
+	private string resolveNoteDraft = "";
+	private TextEntry resolveNoteInput;
+
+	// Hover sound dedupe — reset on Show/Hide
+	private string _lastHoveredKey;
+
+	// Tag metadata
+	private record TagDef(string Id, string Label);
+
+	private static readonly TagDef[] BugTags = new[]
+	{
+		new TagDef("battle", "Battle"),
+		new TagDef("breeding", "Breeding"),
+		new TagDef("fusion", "Fusion"),
+		new TagDef("shop", "Shop"),
+		new TagDef("inventory", "Inventory"),
+		new TagDef("expedition", "Expedition"),
+		new TagDef("arena", "Arena"),
+		new TagDef("chat", "Chat"),
+		new TagDef("ui_visual", "UI/Visual"),
+		new TagDef("crash", "Crash"),
+		new TagDef("save_load", "Save/Load"),
+		new TagDef("other", "Other"),
+	};
+
+	private static readonly TagDef[] SuggestionTags = new[]
+	{
+		new TagDef("monster", "Monster"),
+		new TagDef("move", "Move"),
+		new TagDef("item", "Item"),
+		new TagDef("ui", "UI"),
+		new TagDef("balance", "Balance"),
+		new TagDef("feature", "Feature"),
+		new TagDef("qol", "QoL"),
+		new TagDef("other", "Other"),
+	};
+
+	private TagDef[] GetTagsForCurrentTab()
+	{
+		if (currentTab == "ideas") return SuggestionTags;
+		if (currentTab == "mine" || currentTab == "resolved") return BugTags.Concat(SuggestionTags).GroupBy(t => t.Id).Select(g => g.First()).ToArray();
+		return BugTags;
+	}
+
+	private TagDef[] GetTagsForType(string type) => type == "suggestion" ? SuggestionTags : BugTags;
+
+	// Tag → color (charter palette). Saturated, matches game element badge feel.
+	private string GetTagColor(string tagId) => tagId switch
+	{
+		"battle"     => "#ef4444",
+		"breeding"   => "#ec4899",
+		"fusion"     => "#a78bfa",
+		"shop"       => "#fbbf24",
+		"inventory"  => "#f97316",
+		"expedition" => "#84cc16",
+		"arena"      => "#f59e0b",
+		"chat"       => "#3b82f6",
+		"ui_visual"  => "#c4b5fd",
+		"crash"      => "#dc2626",
+		"save_load"  => "#06b6d4",
+		"monster"    => "#22c55e",
+		"move"       => "#ef4444",
+		"item"       => "#fbbf24",
+		"ui"         => "#c4b5fd",
+		"balance"    => "#f59e0b",
+		"feature"    => "#a78bfa",
+		"qol"        => "#38bdf8",
+		"other"      => "#94a3b8",
+		_            => "#94a3b8",
+	};
+
+	// Tiny inline-style hex→rgba helper for the active-tag tinted bg.
+	// Hex must be #rrggbb form (the GetTagColor table guarantees this).
+	private string Hex2Rgba(string hex, float alpha)
+	{
+		if (string.IsNullOrEmpty(hex) || hex.Length != 7 || hex[0] != '#')
+			return $"rgba(148, 163, 184, {alpha.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
+		var r = Convert.ToInt32(hex.Substring(1, 2), 16);
+		var g = Convert.ToInt32(hex.Substring(3, 2), 16);
+		var b = Convert.ToInt32(hex.Substring(5, 2), 16);
+		var a = alpha.ToString(System.Globalization.CultureInfo.InvariantCulture);
+		return $"rgba({r}, {g}, {b}, {a})";
+	}
+
+	// ==========================================
+	// LIFECYCLE
+	// ==========================================
+
+	protected override void OnAfterTreeRender(bool firstTime)
+	{
+		if (firstTime)
+		{
+			Instance = this;
+			LoadSeenIdsFromDisk();
+			_ = RefreshUnreadCountAsync();
+		}
+	}
+
+	public static void Show()
+	{
+		if (Instance == null) return;
+		Instance.IsVisible = true;
+		Instance.composerOpen = false;
+		Instance.expandedId = null;
+		Instance.selectedTag = null;
+		Instance.currentTab = "bugs";
+		Instance._lastHoveredKey = null;
+		SoundManager.PlayPopup();
+		_ = Instance.RefreshAsync();
+	}
+
+	public void Hide()
+	{
+		IsVisible = false;
+		composerOpen = false;
+		expandedId = null;
+		resolvingId = null;
+		_lastHoveredKey = null;
+		SoundManager.PlayPopdown();
+	}
+
+	// NOTE: Esc is reserved by s&box (system pause / leave-game menu).
+	// Don't bind it. Close via overlay click + close button.
+
+	public override void Tick()
+	{
+		base.Tick();
+		if (!IsVisible) return;
+
+		// Poll TextEntry refs (s&box has no onchange). Use the FilterBar pattern:
+		// unconditional assign with null-coalescing. The earlier `!=` check
+		// pattern was producing whatDraft = "" / titleDraft = "" even after the
+		// user typed text — the comparison short-circuited before the assign.
+		if (titleInput != null) titleDraft = titleInput.Text ?? "";
+		if (whatInput != null) whatDraft = whatInput.Text ?? "";
+		if (stepsInput != null) stepsDraft = stepsInput.Text ?? "";
+		if (expectedInput != null) expectedDraft = expectedInput.Text ?? "";
+		if (actualInput != null) actualDraft = actualInput.Text ?? "";
+		if (resolveNoteInput != null) resolveNoteDraft = resolveNoteInput.Text ?? "";
+	}
+
+	protected override int BuildHash()
+	{
+		// Every render-affecting field. Missing = panel won't react to state change.
+		return HashCode.Combine(
+			HashCode.Combine(IsVisible, currentTab, selectedTag, currentSort, expandedId),
+			HashCode.Combine(composerOpen, composerType, composerTag, isLoading, isSubmitting),
+			HashCode.Combine(bugCount, ideaCount, myResolvedUnreadCount, filteredEntries.Count, resolvingId),
+			HashCode.Combine(titleDraft?.Length ?? 0, whatDraft?.Length ?? 0, stepsDraft?.Length ?? 0, expectedDraft?.Length ?? 0)
+		);
+	}
+
+	// ==========================================
+	// DATA
+	// ==========================================
+
+	private async System.Threading.Tasks.Task RefreshAsync()
+	{
+		isLoading = true;
+		StateHasChanged();
+
+		List<FeedbackEntry> list;
+		if (currentTab == "mine")
+		{
+			list = await FeedbackApiClient.ListAsync(
+				type: null,
+				tag: selectedTag,
+				resolved: null,
+				author: "me",
+				sort: currentSort,
+				limit: 200);
+		}
+		else
+		{
+			list = await FeedbackApiClient.ListAsync(
+				type: currentTab == "resolved" ? null : (currentTab == "bugs" ? "bug" : "suggestion"),
+				tag: selectedTag,
+				resolved: currentTab == "resolved" ? true : false,
+				sort: currentSort,
+				limit: 200);
+		}
+
+		entries = list ?? new List<FeedbackEntry>();
+		filteredEntries = entries;
+
+		// If viewing My Posts, mark any resolved entries as seen (clears unread badge)
+		if (currentTab == "mine") MarkMyResolvedAsSeen();
+
+		// Quick counts (separate lightweight queries — fire-and-forget, don't block)
+		_ = RefreshCountsAsync();
+
+		isLoading = false;
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Lightweight check — fetches the player's own resolved entries and compares
+	/// against the seen-set to show the unread badge on the "My Posts" tab.
+	/// Called once on panel mount and again after each refresh.
+	/// </summary>
+	private async System.Threading.Tasks.Task RefreshUnreadCountAsync()
+	{
+		var mine = await FeedbackApiClient.ListAsync(author: "me", resolved: true, limit: 200);
+		if (mine == null) { myResolvedUnreadCount = 0; return; }
+
+		int unread = 0;
+		foreach (var e in mine)
+		{
+			if (!seenResolvedIds.Contains(e.Id)) unread++;
+		}
+		myResolvedUnreadCount = unread;
+		StateHasChanged();
+	}
+
+	private void MarkMyResolvedAsSeen()
+	{
+		bool changed = false;
+		foreach (var e in entries)
+		{
+			if (e.Resolved && !seenResolvedIds.Contains(e.Id))
+			{
+				seenResolvedIds.Add(e.Id);
+				changed = true;
+			}
+		}
+		if (changed)
+		{
+			myResolvedUnreadCount = 0;
+			SaveSeenIdsToDisk();
+		}
+	}
+
+	private void LoadSeenIdsFromDisk()
+	{
+		try
+		{
+			if (FileSystem.Data == null || !FileSystem.Data.FileExists(SeenIdsFileName)) return;
+			var json = FileSystem.Data.ReadAllText(SeenIdsFileName);
+			if (string.IsNullOrEmpty(json)) return;
+			var ids = System.Text.Json.JsonSerializer.Deserialize<List<int>>(json);
+			if (ids != null) seenResolvedIds = new HashSet<int>(ids);
+		}
+		catch (Exception e) { Log.Warning($"FeedbackPanel: could not load seen ids: {e.Message}"); }
+	}
+
+	private void SaveSeenIdsToDisk()
+	{
+		try
+		{
+			var json = System.Text.Json.JsonSerializer.Serialize(seenResolvedIds.ToList());
+			FileSystem.Data?.WriteAllText(SeenIdsFileName, json);
+		}
+		catch (Exception e) { Log.Warning($"FeedbackPanel: could not save seen ids: {e.Message}"); }
+	}
+
+	private async System.Threading.Tasks.Task RefreshCountsAsync()
+	{
+		var bugs = await FeedbackApiClient.ListAsync(type: "bug", resolved: false, limit: 500);
+		var ideas = await FeedbackApiClient.ListAsync(type: "suggestion", resolved: false, limit: 500);
+		bugCount = bugs?.Count ?? 0;
+		ideaCount = ideas?.Count ?? 0;
+		StateHasChanged();
+	}
+
+	private void SelectTab(string tab)
+	{
+		if (currentTab == tab) return;
+		currentTab = tab;
+		selectedTag = null;
+		expandedId = null;
+		SoundManager.PlayClick();
+		_ = RefreshAsync();
+	}
+
+	private void SelectTag(string tag)
+	{
+		if (selectedTag == tag) return;
+		selectedTag = tag;
+		SoundManager.PlayClick();
+		_ = RefreshAsync();
+	}
+
+	private void SelectSort(string sort)
+	{
+		if (currentSort == sort) return;
+		currentSort = sort;
+		SoundManager.PlayClick();
+		_ = RefreshAsync();
+	}
+
+	private void SelectComposerTag(string id)
+	{
+		composerTag = id;
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void OnManualRefresh()
+	{
+		SoundManager.PlayClick();
+		_ = RefreshAsync();
+	}
+
+	private void ToggleExpand(int id)
+	{
+		expandedId = expandedId == id ? (int?)null : id;
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private async void OnVoteClick(int entryId)
+	{
+		SoundManager.PlayClick();
+		var result = await FeedbackApiClient.ToggleVoteAsync(entryId);
+		if (result == null) return;
+
+		var entry = entries.FirstOrDefault(e => e.Id == entryId);
+		if (entry != null)
+		{
+			entry.Votes = result.Votes;
+			entry.VotedByMe = result.VotedByMe;
+		}
+		StateHasChanged();
+	}
+
+	private void OnHover(string key)
+	{
+		if (_lastHoveredKey == key) return;
+		_lastHoveredKey = key;
+		SoundManager.PlayHover();
+	}
+
+	// ==========================================
+	// COMPOSER
+	// ==========================================
+
+	private void OpenComposer()
+	{
+		composerOpen = true;
+		composerType = currentTab == "ideas" ? "suggestion" : "bug";
+		composerTag = null;
+		titleDraft = "";
+		whatDraft = "";
+		stepsDraft = "";
+		expectedDraft = "";
+		actualDraft = "";
+		versionDraft = GetGameVersion();
+		submitError = null;
+		isSubmitting = false;
+		SoundManager.PlayForward();
+		StateHasChanged();
+	}
+
+	private void CloseComposer()
+	{
+		composerOpen = false;
+		submitError = null;
+		SoundManager.PlayPopdown();
+		StateHasChanged();
+	}
+
+	private bool CanSubmit()
+	{
+		if (isSubmitting) return false;
+		if (string.IsNullOrWhiteSpace(composerTag)) return false;
+		if (string.IsNullOrWhiteSpace(titleDraft) || titleDraft.Length < 3) return false;
+		if (string.IsNullOrWhiteSpace(whatDraft) || whatDraft.Length < 10) return false;
+		if (composerType == "bug" && string.IsNullOrWhiteSpace(stepsDraft)) return false;
+		return true;
+	}
+
+	private int GetCharCount() => BuildBody().Length;
+
+	private string BuildBody()
+	{
+		if (composerType == "bug")
+		{
+			var parts = new List<string>();
+			parts.Add($"**Game Version:** {versionDraft}");
+			parts.Add($"**What Happened:**\n{whatDraft}");
+			parts.Add($"**Steps to Reproduce:**\n{stepsDraft}");
+			if (!string.IsNullOrWhiteSpace(expectedDraft)) parts.Add($"**Expected:** {expectedDraft}");
+			if (!string.IsNullOrWhiteSpace(actualDraft)) parts.Add($"**Actual:** {actualDraft}");
+			return string.Join("\n\n", parts);
+		}
+		return whatDraft;
+	}
+
+	private async void Submit()
+	{
+		if (!CanSubmit()) return;
+
+		isSubmitting = true;
+		submitError = null;
+		StateHasChanged();
+
+		var body = BuildBody();
+		if (body.Length > 4000)
+		{
+			submitError = "Too long — trim to 4000 characters.";
+			isSubmitting = false;
+			StateHasChanged();
+			return;
+		}
+
+		var authorName = GetAuthorName();
+		var result = await FeedbackApiClient.CreateAsync(composerType, composerTag, titleDraft.Trim(), body, authorName);
+
+		isSubmitting = false;
+
+		if (result == null)
+		{
+			submitError = "Could not submit — server offline or rate-limited. Try again in 30s.";
+			StateHasChanged();
+			return;
+		}
+
+		composerOpen = false;
+		SoundManager.PlayForward();
+		await RefreshAsync();
+	}
+
+	// ==========================================
+	// ADMIN
+	// ==========================================
+
+	private void BeginResolve(int id)
+	{
+		resolvingId = id;
+		resolveNoteDraft = "";
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void CancelResolve()
+	{
+		resolvingId = null;
+		resolveNoteDraft = "";
+		SoundManager.PlayBack();
+		StateHasChanged();
+	}
+
+	private async void ConfirmResolve(int id)
+	{
+		SoundManager.PlayForward();
+		var updated = await FeedbackApiClient.PatchAsync(id, resolved: true, resolvedNote: resolveNoteDraft?.Trim());
+		resolvingId = null;
+		resolveNoteDraft = "";
+		if (updated != null) await RefreshAsync();
+		else StateHasChanged();
+	}
+
+	private async void ReopenEntry(int id)
+	{
+		SoundManager.PlayClick();
+		var updated = await FeedbackApiClient.PatchAsync(id, resolved: false, resolvedNote: "");
+		if (updated != null) await RefreshAsync();
+	}
+
+	private async void DeleteEntry(int id)
+	{
+		SoundManager.PlayClick();
+		var ok = await FeedbackApiClient.DeleteAsync(id);
+		if (ok)
+		{
+			expandedId = null;
+			await RefreshAsync();
+		}
+	}
+
+	// ==========================================
+	// HELPERS
+	// ==========================================
+
+	private bool IsDev()
+	{
+		var id = Connection.Local?.SteamId ?? 0;
+		return id == 76561198088759073;
+	}
+
+	private string GetAuthorName()
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if (tamer != null && !string.IsNullOrEmpty(tamer.Name)) return tamer.Name;
+		return Connection.Local?.DisplayName ?? "Anonymous";
+	}
+
+	private string GetGameVersion() => "1.0.1";
+
+	private string FormatTag(string tag)
+	{
+		if (string.IsNullOrEmpty(tag)) return "";
+		var all = BugTags.Concat(SuggestionTags).FirstOrDefault(t => t.Id == tag);
+		return all?.Label ?? tag;
+	}
+
+	private string FormatDate(string isoDate)
+	{
+		if (string.IsNullOrEmpty(isoDate)) return "";
+		if (!DateTime.TryParse(isoDate, out var dt)) return isoDate;
+		var delta = DateTime.UtcNow - dt.ToUniversalTime();
+		if (delta.TotalMinutes < 1) return "just now";
+		if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes}m ago";
+		if (delta.TotalHours < 24) return $"{(int)delta.TotalHours}h ago";
+		if (delta.TotalDays < 30) return $"{(int)delta.TotalDays}d ago";
+		return dt.ToLocalTime().ToString("MMM d");
+	}
+
+	private string GetEmptyIcon() => currentTab switch
+	{
+		"bugs" => "lucide:bug-off",
+		"ideas" => "lucide:lightbulb",
+		"resolved" => "lucide:check-circle",
+		"mine" => "lucide:user-plus",
+		_ => "lucide:inbox"
+	};
+
+	private string GetEmptyTitle() => currentTab switch
+	{
+		"bugs" => selectedTag != null ? "No bugs here" : "All clear — no open bugs",
+		"ideas" => selectedTag != null ? "No ideas here yet" : "Be the first idea-haver",
+		"resolved" => "Nothing resolved yet",
+		"mine" => "You haven't posted yet",
+		_ => "Nothing here"
+	};
+
+	private string GetEmptyBody() => currentTab switch
+	{
+		"bugs" => selectedTag != null ? "Try a different category, or post one yourself." : "Spot something broken? Be the first to report it — every bug we hear about is one we can fix.",
+		"ideas" => selectedTag != null ? "Try a different category, or post one yourself." : "Roguelite features, monster designs, QoL — what would make Beastborne yours?",
+		"resolved" => "When the dev marks something as resolved, it'll show up here with a reply note.",
+		"mine" => "Report a bug or share an idea — you'll get a notification when the dev replies.",
+		_ => "Try a different filter."
+	};
+
+	private string GetEmptyEmoji() => currentTab switch
+	{
+		"bugs" => "lucide:sparkles",
+		"ideas" => "lucide:rocket",
+		"resolved" => "lucide:hourglass",
+		"mine" => "lucide:hand",
+		_ => "lucide:inbox"
+	};
+
+	// ==========================================
+	// RENDER FRAGMENTS — match HelpPanel/OptionsPanel canonical lambda form.
+	// ==========================================
+
+	private RenderFragment RenderEmpty() => __builder =>
+	{
+		<div class="fb-empty">
+			<div class="empty-frame">
+				<div class="empty-frame-bg"></div>
+				<iconify class="empty-icon" icon="@GetEmptyIcon()" Size=@(56) Color="rgba(196, 181, 253, 0.85)" />
+			</div>
+			<div class="empty-text">
+				<span class="empty-title">@GetEmptyTitle()</span>
+				<span class="empty-body">@GetEmptyBody()</span>
+			</div>
+			@if (currentTab == "bugs" || currentTab == "ideas")
+			{
+				<button class="empty-cta @(currentTab == "ideas" ? "is-idea" : "is-bug")"
+						onclick=@OpenComposer
+						onmouseover=@(() => OnHover("empty-cta"))>
+					<iconify icon="@(currentTab == "bugs" ? "lucide:bug" : "lucide:lightbulb")" Size=@(13) Color="#ffffff" />
+					<span>@(currentTab == "bugs" ? "REPORT FIRST BUG" : "POST FIRST IDEA")</span>
+				</button>
+			}
+			else if (currentTab == "mine")
+			{
+				<button class="empty-cta is-bug"
+						onclick=@(() => SelectTab("bugs"))
+						onmouseover=@(() => OnHover("empty-cta"))>
+					<iconify icon="lucide:arrow-left" Size=@(13) Color="#ffffff" />
+					<span>BROWSE BUGS</span>
+				</button>
+			}
+		</div>
+	};
+
+	private RenderFragment RenderEntry(FeedbackEntry entry) => __builder =>
+	{
+		var color = GetTagColor(entry.Tag);
+		var isExpanded = expandedId == entry.Id;
+		var isResolved = entry.Resolved;
+		<div class="fb-entry @(isExpanded ? "expanded" : "") @(isResolved ? "resolved" : "")"
+			 onclick=@(() => ToggleExpand(entry.Id))
+			 onmouseover=@(() => OnHover("entry-" + entry.Id))>
+
+			@* Left vote column *@
+			<div class="entry-vote-col" onclick=@((e) => { e.StopPropagation(); OnVoteClick(entry.Id); })>
+				<div class="vote-btn @(entry.VotedByMe ? "voted" : "")"
+					 onmouseover=@(() => OnHover("vote-" + entry.Id))>
+					<iconify class="vote-arrow" icon="lucide:chevron-up" Size=@(18) Color="@(entry.VotedByMe ? "#ffffff" : "#a78bfa")" />
+				</div>
+				<span class="vote-count @(entry.VotedByMe ? "voted" : "")">@entry.Votes</span>
+			</div>
+
+			@* Tag rail — color-coded vertical strip on the LEFT edge of the entry *@
+			<div class="entry-rail" style="background-color: @color;"></div>
+
+			@* Body column *@
+			<div class="entry-body">
+				<div class="entry-header-row">
+					<span class="entry-title">@entry.Title</span>
+					<div class="tag-pill"
+						 style="background-color: @Hex2Rgba(color, 0.18f); border-color: @Hex2Rgba(color, 0.55f); color: @color;">
+						<div class="tag-pill-dot" style="background-color: @color;"></div>
+						<span>@FormatTag(entry.Tag)</span>
+					</div>
+					@if (isResolved)
+					{
+						<div class="resolved-pill">
+							<iconify icon="lucide:check" Size=@(11) Color="#4ade80" />
+							<span>RESOLVED</span>
+						</div>
+					}
+				</div>
+				<div class="entry-meta">
+					<iconify icon="lucide:user" Size=@(11) Color="rgba(255, 255, 255, 0.4)" />
+					<span class="entry-author">@entry.AuthorName</span>
+					<span class="entry-meta-dot">·</span>
+					<iconify icon="lucide:clock-3" Size=@(11) Color="rgba(255, 255, 255, 0.4)" />
+					<span class="entry-date">@FormatDate(entry.CreatedAt)</span>
+				</div>
+
+				@if (isExpanded)
+				{
+					<div class="entry-content">
+						<div class="entry-body-text">@entry.Body</div>
+
+						@if (isResolved && !string.IsNullOrEmpty(entry.ResolvedNote))
+						{
+							<div class="resolved-note">
+								<div class="resolved-note-head">
+									<div class="dev-badge">
+										<iconify icon="lucide:wrench" Size=@(11) Color="#4ade80" />
+										<span>DEV REPLY</span>
+									</div>
+								</div>
+								<span class="resolved-note-text">@entry.ResolvedNote</span>
+							</div>
+						}
+
+						@if (IsDev())
+						{
+							<div class="admin-row" onclick=@((e) => e.StopPropagation())>
+								<div class="admin-row-label">
+									<iconify icon="lucide:shield" Size=@(11) Color="rgba(252, 165, 165, 0.7)" />
+									<span>ADMIN</span>
+								</div>
+								<div class="admin-row-actions">
+									@if (!isResolved)
+									{
+										<button class="admin-btn resolve"
+												onclick=@(() => BeginResolve(entry.Id))
+												onmouseover=@(() => OnHover("admin-resolve-" + entry.Id))>
+											<iconify icon="lucide:check" Size=@(12) Color="#4ade80" />
+											<span>Resolve</span>
+										</button>
+									}
+									else
+									{
+										<button class="admin-btn"
+												onclick=@(() => ReopenEntry(entry.Id))
+												onmouseover=@(() => OnHover("admin-reopen-" + entry.Id))>
+											<iconify icon="lucide:rotate-ccw" Size=@(12) Color="rgba(255, 255, 255, 0.8)" />
+											<span>Reopen</span>
+										</button>
+									}
+									<button class="admin-btn delete"
+											onclick=@(() => DeleteEntry(entry.Id))
+											onmouseover=@(() => OnHover("admin-del-" + entry.Id))>
+										<iconify icon="lucide:trash-2" Size=@(12) Color="#fca5a5" />
+										<span>Delete</span>
+									</button>
+								</div>
+							</div>
+
+							@if (resolvingId == entry.Id)
+							{
+								<div class="resolve-form" onclick=@((e) => e.StopPropagation())>
+									<span class="field-label">DEV REPLY <span class="field-hint">— what changed, which version</span></span>
+									<TextEntry class="composer-input"
+											   @ref="resolveNoteInput"
+											   Text=@resolveNoteDraft
+											   Placeholder="Fixed in v0.8.1 — reduced fusion popup latency to 200ms" />
+									<div class="resolve-actions">
+										<button class="cancel-btn"
+												onclick=@CancelResolve
+												onmouseover=@(() => OnHover("resolve-cancel-" + entry.Id))>
+											<span>CANCEL</span>
+										</button>
+										<button class="submit-btn"
+												onclick=@(() => ConfirmResolve(entry.Id))
+												onmouseover=@(() => OnHover("resolve-confirm-" + entry.Id))>
+											<iconify icon="lucide:check-circle" Size=@(13) Color="#ffffff" />
+											<span>MARK RESOLVED</span>
+										</button>
+									</div>
+								</div>
+							}
+						}
+					</div>
+				}
+			</div>
+
+			@* Right chevron — rotates 180 when expanded *@
+			<div class="entry-chevron-col">
+				<iconify class="entry-chevron @(isExpanded ? "expanded" : "")"
+						 icon="lucide:chevron-down"
+						 Size=@(15)
+						 Color="rgba(255, 255, 255, 0.4)" />
+			</div>
+		</div>
+	};
+}

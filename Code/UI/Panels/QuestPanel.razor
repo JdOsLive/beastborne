@@ -1,0 +1,948 @@
+@namespace Beastborne.UI.Panels
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="quest-panel-root @_rootVisibleClass">
+	<div class="quest-overlay" onclick=@Close></div>
+
+	<div class="quest-modal">
+		<div class="bg-scroll"><img src="ui/bg-patterns/bg-missions.svg" /></div>
+
+		<!-- ═══ HEADER ═══ -->
+		<div class="quest-header">
+			<div class="header-left">
+				<iconify class="quest-title-icon" icon="lucide:scroll-text" Size=@(24) Color="#ffffff" />
+				<div class="header-title-stack">
+					<span class="quest-title">QUEST LOG</span>
+					<span class="quest-subtitle">Your tamer's journey</span>
+				</div>
+			</div>
+			<div class="header-right">
+				<button class="close-btn" onclick=@Close>
+					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+				</button>
+			</div>
+		</div>
+
+		<!-- ═══ BODY: SIDEBAR + CONTENT ═══ -->
+		<div class="quest-body">
+
+			<!-- Sidebar (Zelda-style vertical tabs) -->
+			<div class="quest-sidebar">
+				@foreach ( var tab in Tabs )
+				{
+					var badge = GetBadgeCount( tab.Id );
+					var isActive = _currentTab == tab.Id;
+					var tabIconColor = isActive ? "#ffffff" : "#a78bfa";
+					var tabActiveClass = isActive ? "active" : "";
+					var tabIdClass = "tab-" + tab.Id;
+					<div class="sidebar-btn @tabActiveClass @tabIdClass"
+						 onclick=@(() => SelectTab(tab.Id))
+						 onmouseover=@(() => OnHover("tab-" + tab.Id))>
+						<div class="sidebar-icon">
+							<iconify icon="@tab.Icon" Size=@(18) Color="@tabIconColor" />
+						</div>
+						<div class="sidebar-text">
+							<span class="sidebar-label">@tab.Name</span>
+							<span class="sidebar-sub">@tab.Sub</span>
+						</div>
+						@if ( badge > 0 )
+						{
+							<div class="sidebar-badge">@badge</div>
+						}
+					</div>
+				}
+			</div>
+
+			<!-- Content -->
+			<div class="quest-content">
+				<div class="content-inner" @ref="ContentInner">
+					@switch ( _currentTab )
+					{
+						case "main":
+							@RenderMain()
+							break;
+						case "side":
+							@RenderSide()
+							break;
+						case "daily":
+							@RenderDaily()
+							break;
+						case "weekly":
+							@RenderWeekly()
+							break;
+						case "monthly":
+							@RenderMonthly()
+							break;
+					}
+				</div>
+			</div>
+		</div>
+	</div>
+</root>
+
+@code {
+	private string L( string key ) => LocalizationManager.Get( key );
+
+	public static QuestPanel Instance { get; private set; }
+	public static bool IsVisible { get; private set; }
+
+	// Pre-computed class names used in attribute values — s&box Razor chokes on
+	// nested double-quotes like class="@(IsVisible ? "visible" : "")".
+	private string _rootVisibleClass => IsVisible ? "visible" : "";
+
+	// Hover-sound state guard. s&box has no onmouseenter, so onmouseover bubbles
+	// from every child mousemove — naive PlayHover() fires repeatedly. Track the
+	// last-hovered key and only play the sound when it actually changes.
+	private string _hoveredKey;
+	private void OnHover( string key )
+	{
+		if ( _hoveredKey == key ) return;
+		_hoveredKey = key;
+		SoundManager.PlayHover();
+	}
+
+	private string _currentTab = "daily";
+	private Panel ContentInner;
+
+	private record QuestTab( string Id, string Icon, string Name, string Sub );
+
+	private static readonly QuestTab[] Tabs = new[]
+	{
+		new QuestTab("main",    "lucide:book-open-text", "Main Quest",  "Story chapters"),
+		new QuestTab("side",    "lucide:map-pin",        "Side Quests", "Optional tales"),
+		new QuestTab("daily",   "lucide:sun",            "Daily",       "Resets in 24h"),
+		new QuestTab("weekly",  "lucide:calendar-days",  "Weekly",      "Resets Monday"),
+		new QuestTab("monthly", "lucide:trophy",         "Monthly",     "Big challenge"),
+	};
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime ) Instance = this;
+	}
+
+	public static void Show()
+	{
+		IsVisible = true;
+		if ( Instance != null ) Instance._hoveredKey = null;
+		SoundManager.PlayPopup();
+	}
+
+	public static void Close()
+	{
+		IsVisible = false;
+		if ( Instance != null ) Instance._hoveredKey = null;
+		SoundManager.PlayPopdown();
+	}
+
+	public static void Toggle()
+	{
+		IsVisible = !IsVisible;
+		if ( Instance != null ) Instance._hoveredKey = null;
+		if ( IsVisible ) SoundManager.PlayPopup();
+		else SoundManager.PlayPopdown();
+	}
+
+	public override void Tick()
+	{
+		base.Tick();
+		if ( IsVisible && Input.Pressed( "Escape" ) )
+			Close();
+	}
+
+	private void SelectTab( string tabId )
+	{
+		if ( _currentTab == tabId ) return;
+		_currentTab = tabId;
+		_hoveredKey = null; // content swaps — reset hover guard
+		SoundManager.PlayClick();
+		if ( ContentInner != null )
+			ContentInner.ScrollOffset = new Vector2( 0, 0 );
+	}
+
+	private int GetBadgeCount( string tabId )
+	{
+		var m = MissionManager.Instance;
+		return tabId switch
+		{
+			"daily" => (m?.ActiveDailyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0)
+					 + ((DailyRewardManager.Instance != null && !DailyRewardManager.Instance.TodayRewardClaimed) ? 1 : 0),
+			"weekly" => m?.ActiveWeeklyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0,
+			"monthly" => (m?.ActiveMonthlyChallenge is { Completed: true, Claimed: false }) ? 1 : 0,
+			"side" => SideQuestManager.Instance?.ActiveQuests?.Count( q => q.Completed && !q.RewardClaimed ) ?? 0,
+			_ => 0,
+		};
+	}
+
+	/// <summary>Total unclaimed across streak + missions, used by GameHUD button badge.</summary>
+	public static int GetTotalUnclaimedCount()
+	{
+		int count = 0;
+		count += DailyRewardManager.Instance?.GetUnclaimedCount() ?? 0;
+		count += MissionManager.Instance?.GetUnclaimedCount() ?? 0;
+		return count;
+	}
+
+	protected override int BuildHash()
+	{
+		var h = new HashCode();
+		h.Add( IsVisible );
+		h.Add( _currentTab );
+		h.Add( GetBadgeCount( "daily" ) );
+		h.Add( GetBadgeCount( "weekly" ) );
+		h.Add( GetBadgeCount( "monthly" ) );
+		h.Add( GetBadgeCount( "side" ) );
+		h.Add( MissionManager.Instance?.GetUnclaimedCount() ?? 0 );
+		h.Add( MissionManager.Instance?.DailyBonusClaimed ?? false );
+		h.Add( MissionManager.Instance?.WeeklyBonusClaimed ?? false );
+		h.Add( DailyRewardManager.Instance?.TodayRewardClaimed ?? false );
+		h.Add( DailyRewardManager.Instance?.DailyStreak ?? 0 );
+		h.Add( DailyRewardManager.Instance?.GetWeekMultiplier() ?? 1f );
+
+		// Include mission progress so bar refreshes when we track events.
+		foreach ( var mn in MissionManager.Instance?.ActiveDailyMissions ?? new() )
+			h.Add( mn.Progress + (mn.Claimed ? 1_000_000 : 0) );
+		foreach ( var mn in MissionManager.Instance?.ActiveWeeklyMissions ?? new() )
+			h.Add( mn.Progress + (mn.Claimed ? 1_000_000 : 0) );
+		if ( MissionManager.Instance?.ActiveMonthlyChallenge is { } mc )
+			h.Add( mc.Progress + (mc.Claimed ? 1_000_000 : 0) );
+
+		// Side quest state — re-render on accept/progress/claim.
+		foreach ( var sq in SideQuestManager.Instance?.ActiveQuests ?? new List<SideQuestState>() )
+			h.Add( sq.Progress + (sq.Completed ? 1_000_000 : 0) + (sq.RewardClaimed ? 2_000_000 : 0) );
+
+		return h.ToHashCode();
+	}
+
+	// ══════════════════════════════════════════════
+	// MISSION HELPERS
+	// ══════════════════════════════════════════════
+
+	private List<MissionState> GetDailyMissions() => MissionManager.Instance?.ActiveDailyMissions ?? new();
+	private List<MissionState> GetWeeklyMissions() => MissionManager.Instance?.ActiveWeeklyMissions ?? new();
+	private MissionState GetMonthlyMission() => MissionManager.Instance?.ActiveMonthlyChallenge;
+
+	private string GetMissionName( MissionState s ) => MissionManager.Instance?.GetDefinition( s.MissionId )?.Name ?? s.MissionId;
+	private string GetMissionDesc( MissionState s ) => MissionManager.Instance?.GetDefinition( s.MissionId )?.Description ?? "";
+	private int GetMissionTarget( MissionState s ) => MissionManager.Instance?.GetDefinition( s.MissionId )?.Target ?? 1;
+	private float GetMissionPercent( MissionState s )
+	{
+		var t = GetMissionTarget( s );
+		if ( t <= 0 ) return 100f;
+		return Math.Min( 100f, (float)s.Progress / t * 100f );
+	}
+	private string GetMissionIconify( MissionState s )
+	{
+		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
+		if ( def == null ) return "lucide:star";
+		return def.Category switch
+		{
+			MissionCategory.Battle => "lucide:swords",
+			MissionCategory.Expedition => "lucide:compass",
+			MissionCategory.Collection => "lucide:package",
+			MissionCategory.Economy => "lucide:coins",
+			MissionCategory.Social => "lucide:users",
+			_ => "lucide:star",
+		};
+	}
+
+	private string GetCategoryClass( MissionState s )
+	{
+		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
+		if ( def == null ) return "cat-other";
+		return def.Category switch
+		{
+			MissionCategory.Battle => "cat-battle",
+			MissionCategory.Expedition => "cat-expedition",
+			MissionCategory.Collection => "cat-collection",
+			MissionCategory.Economy => "cat-economy",
+			MissionCategory.Social => "cat-social",
+			_ => "cat-other",
+		};
+	}
+
+	private string GetCategoryIconColor( MissionState s )
+	{
+		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
+		if ( def == null ) return "#c4b5fd";
+		return def.Category switch
+		{
+			MissionCategory.Battle => "#fca5a5",
+			MissionCategory.Expedition => "#fcd34d",
+			MissionCategory.Collection => "#7dd3fc",
+			MissionCategory.Economy => "#fde047",
+			MissionCategory.Social => "#f0abfc",
+			_ => "#c4b5fd",
+		};
+	}
+
+	private string GetCategoryLabel( MissionState s )
+	{
+		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
+		if ( def == null ) return "";
+		return def.Category switch
+		{
+			MissionCategory.Battle => "BATTLE",
+			MissionCategory.Expedition => "EXPEDITION",
+			MissionCategory.Collection => "COLLECTION",
+			MissionCategory.Economy => "ECONOMY",
+			MissionCategory.Social => "SOCIAL",
+			_ => "",
+		};
+	}
+	private void ClaimMission( string id )
+	{
+		SoundManager.PlaySuccess();
+		MissionManager.Instance?.ClaimReward( id );
+	}
+	private string GetDailyTimer() => FormatDuration( MissionManager.Instance?.GetDailyTimeRemaining() ?? TimeSpan.Zero );
+	private string GetWeeklyTimer() => FormatDuration( MissionManager.Instance?.GetWeeklyTimeRemaining() ?? TimeSpan.Zero );
+	private string GetMonthlyTimer() => FormatDuration( MissionManager.Instance?.GetMonthlyTimeRemaining() ?? TimeSpan.Zero );
+
+	private static string FormatDuration( TimeSpan ts )
+	{
+		if ( ts.TotalDays >= 1 ) return $"{(int)ts.TotalDays}d {ts.Hours:D2}h";
+		if ( ts.TotalHours >= 1 ) return $"{(int)ts.TotalHours}h {ts.Minutes:D2}m";
+		return $"{ts.Minutes}m";
+	}
+
+	// ══════════════════════════════════════════════
+	// TAB RENDERERS
+	// ══════════════════════════════════════════════
+
+	private RenderFragment RenderMain() => __builder =>
+	{
+		<div class="tab-content">
+			<div class="tab-header">
+				<span class="tab-title">Main Quest</span>
+				<span class="tab-sub">Follow the tamer's journey through the three lands.</span>
+			</div>
+
+			<div class="empty-state">
+				<div class="empty-illus">
+					<iconify icon="lucide:book-open-text" Size=@(68) Color="#6d28d9" />
+				</div>
+				<span class="empty-title">Chapter 1 — Coming Soon</span>
+				<span class="empty-body">The main storyline arrives after launch. For now, explore the three expeditions, complete side quests, and build a team worthy of what lies ahead.</span>
+			</div>
+		</div>
+	};
+
+	private RenderFragment RenderSide() => __builder =>
+	{
+		var mgr = SideQuestManager.Instance;
+		var allDefs = mgr?.AllDefinitions ?? new List<SideQuest>();
+		var active = mgr?.ActiveQuests?.ToList() ?? new List<SideQuestState>();
+		var available = allDefs.Where( d => mgr != null && mgr.IsAvailable( d.Id ) ).ToList();
+		var completed = allDefs.Where( d => mgr != null && mgr.IsCompletedOneShot( d.Id ) ).ToList();
+
+		<div class="tab-content">
+			<div class="tab-header">
+				<span class="tab-title">Side Quests</span>
+				<span class="tab-sub">Optional requests from the villages, fields, and wilds.</span>
+			</div>
+
+			@if ( active.Count == 0 && available.Count == 0 && completed.Count == 0 )
+			{
+				<div class="empty-state">
+					<div class="empty-illus">
+						<iconify icon="lucide:map-pin" Size=@(68) Color="#6d28d9" />
+					</div>
+					<span class="empty-title">No side quests yet</span>
+					<span class="empty-body">Visit the world map and accept requests posted by the locals.</span>
+				</div>
+			}
+
+			@if ( active.Count > 0 )
+			{
+				<div class="section-label-row">
+					<div class="section-label-left">
+						<span class="section-label">IN PROGRESS</span>
+					</div>
+					<span class="section-count">@active.Count active</span>
+				</div>
+				@foreach ( var state in active )
+				{
+					@SideQuestCard( state )
+				}
+			}
+
+			@if ( available.Count > 0 )
+			{
+				<div class="section-label-row">
+					<div class="section-label-left">
+						<span class="section-label">AVAILABLE</span>
+					</div>
+					<span class="section-count">@available.Count open</span>
+				</div>
+				@foreach ( var def in available )
+				{
+					@AvailableSideQuestCard( def )
+				}
+			}
+
+			@if ( completed.Count > 0 )
+			{
+				<div class="section-label-row">
+					<div class="section-label-left">
+						<span class="section-label">COMPLETED</span>
+					</div>
+					<span class="section-count">@completed.Count done</span>
+				</div>
+				@foreach ( var def in completed )
+				{
+					@CompletedSideQuestCard( def )
+				}
+			}
+		</div>
+	};
+
+	private RenderFragment SideQuestCard( SideQuestState state ) => __builder =>
+	{
+		var def = SideQuestManager.Instance?.GetDefinition( state.Id );
+		if ( def == null ) return;
+
+		var pct = def.Target > 0 ? (state.Progress * 100f / def.Target) : 0f;
+		var cardClass = (state.Completed ? "completed" : "")
+			+ (!state.Completed && pct >= 75f ? " near" : "");
+
+		<div class="mission-card @cardClass"
+			 onmouseover=@(() => OnHover("sq-" + state.Id))>
+			<div class="mission-left">
+				<div class="mission-icon-wrap">
+					<iconify icon="lucide:scroll-text" Size=@(22) Color="#c4b5fd" />
+				</div>
+				<div class="mission-info">
+					<div class="mission-name-row">
+						<span class="mission-name">@def.Title</span>
+						@if ( !string.IsNullOrEmpty( def.NpcName ) )
+						{
+							<span class="mission-cat-chip">@def.NpcName</span>
+						}
+					</div>
+					<span class="mission-desc">@def.Description</span>
+					<div class="mission-progress-bar">
+						<div class="mission-progress-fill" style="width: @pct%"></div>
+					</div>
+				</div>
+			</div>
+
+			<div class="mission-right">
+				@if ( state.Completed )
+				{
+					<button class="claim-btn" onclick=@(() => ClaimSideQuest(state.Id)) onmouseover=@(() => OnHover("claim-sq-" + state.Id))>
+						<span>CLAIM</span>
+					</button>
+				}
+				else
+				{
+					<span class="mission-target">@state.Progress / @def.Target</span>
+				}
+
+				@SideQuestRewardPips( def )
+			</div>
+		</div>
+	};
+
+	private RenderFragment AvailableSideQuestCard( SideQuest def ) => __builder =>
+	{
+		<div class="mission-card"
+			 onmouseover=@(() => OnHover("sq-avail-" + def.Id))>
+			<div class="mission-left">
+				<div class="mission-icon-wrap">
+					<iconify icon="lucide:map-pin" Size=@(22) Color="#a78bfa" />
+				</div>
+				<div class="mission-info">
+					<div class="mission-name-row">
+						<span class="mission-name">@def.Title</span>
+						@if ( !string.IsNullOrEmpty( def.NpcName ) )
+						{
+							<span class="mission-cat-chip">@def.NpcName</span>
+						}
+					</div>
+					<span class="mission-desc">@def.Description</span>
+				</div>
+			</div>
+
+			<div class="mission-right">
+				<button class="claim-btn" onclick=@(() => AcceptSideQuest(def.Id)) onmouseover=@(() => OnHover("accept-sq-" + def.Id))>
+					<span>ACCEPT</span>
+				</button>
+				@SideQuestRewardPips( def )
+			</div>
+		</div>
+	};
+
+	private RenderFragment CompletedSideQuestCard( SideQuest def ) => __builder =>
+	{
+		<div class="mission-card claimed">
+			<div class="mission-left">
+				<div class="mission-icon-wrap">
+					<iconify icon="lucide:check-circle-2" Size=@(22) Color="#4ade80" />
+				</div>
+				<div class="mission-info">
+					<div class="mission-name-row">
+						<span class="mission-name">@def.Title</span>
+					</div>
+					<span class="mission-desc">@def.Description</span>
+				</div>
+			</div>
+			<div class="mission-right">
+				<div class="mission-status claimed-badge">
+					<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
+				</div>
+			</div>
+		</div>
+	};
+
+	private RenderFragment SideQuestRewardPips( SideQuest def ) => __builder =>
+	{
+		<div class="mission-rewards">
+			@if ( def.GoldReward > 0 )
+			{
+				<div class="reward-pip gold-pip">
+					<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
+					<span class="reward-pip-amount">@($"{def.GoldReward / 1000f:0.#}K")</span>
+				</div>
+			}
+			@if ( def.XPReward > 0 )
+			{
+				<div class="reward-pip xp-pip">
+					<iconify icon="lucide:arrow-up" Size=@(12) Color="#4ade80" />
+					<span class="reward-pip-amount">@($"{def.XPReward:N0}")</span>
+				</div>
+			}
+			@if ( def.SkillPointReward > 0 )
+			{
+				<div class="reward-pip gem-pip">
+					<iconify icon="lucide:sparkles" Size=@(12) Color="#a78bfa" />
+					<span class="reward-pip-amount">@def.SkillPointReward SP</span>
+				</div>
+			}
+		</div>
+	};
+
+	private void AcceptSideQuest( string id )
+	{
+		if ( SideQuestManager.Instance?.Accept( id ) == true )
+		{
+			SoundManager.PlayClick();
+		}
+	}
+
+	private void ClaimSideQuest( string id )
+	{
+		if ( SideQuestManager.Instance?.Claim( id ) == true )
+		{
+			SoundManager.PlaySuccess();
+		}
+	}
+
+	private RenderFragment RenderDaily() => __builder =>
+	{
+		var drm = DailyRewardManager.Instance;
+		var streak = drm?.DailyStreak ?? 0;
+		var totalDays = drm?.TotalLoginDays ?? 0;
+		var todayClaimed = drm?.TodayRewardClaimed ?? true;
+		var dayInCycle = drm?.GetStreakDay() ?? 1;
+		var dailies = GetDailyMissions();
+		var weekMult = drm?.GetWeekMultiplier() ?? 1f;
+		var weekMultLabel = weekMult.ToString( "0.#" );
+
+		<div class="tab-content">
+			<div class="tab-header">
+				<span class="tab-title">Daily</span>
+				<div class="tab-sub-row">
+					<span class="tab-sub">Resets in</span>
+					<span class="timer-pill">@GetDailyTimer()</span>
+				</div>
+			</div>
+
+			<!-- 7-DAY STREAK CALENDAR -->
+			<div class="section-label-row">
+				<div class="section-label-left">
+					<span class="section-label">LOGIN STREAK</span>
+					@if ( weekMult > 1f )
+					{
+						<div class="multiplier-badge">
+							<iconify icon="lucide:zap" Size=@(12) Color="#fde047" />
+							<span>&times;@weekMultLabel GOLD</span>
+						</div>
+					}
+				</div>
+				<span class="section-count">@streak days &middot; @totalDays total</span>
+			</div>
+
+			<div class="cal-strip">
+				@for ( int d = 1; d <= 7; d++ )
+				{
+					var day = d;
+					var isClaimed = day < dayInCycle || (day == dayInCycle && todayClaimed);
+					var isToday = day == dayInCycle && !todayClaimed;
+					var isFuture = day > dayInCycle || (day == dayInCycle && todayClaimed && day != dayInCycle);
+					var reward = drm?.GetDayReward( day ) ?? (0, 0, 0);
+					var isLegendary = day == 7;
+
+					var calDayClass = (isClaimed ? "claimed" : "") + " " + (isToday ? "today" : "") + " " + (isFuture ? "future" : "") + " " + (isLegendary ? "legendary" : "");
+					var calIcon = isLegendary ? "lucide:trophy" : reward.Gems > 0 ? "lucide:gem" : "lucide:coins";
+					var calIconColor = isClaimed
+						? "#6d28d9"
+						: isLegendary
+							? (isToday ? "#fbbf24" : "#fde68a")
+							: reward.Gems > 0 ? "#ec4899" : "#f59e0b";
+					<div class="cal-day @calDayClass">
+						<span class="cal-day-lbl">DAY @day</span>
+						<div class="cal-day-icon">
+							<iconify icon="@calIcon" Size=@(isLegendary ? 26 : 24) Color="@calIconColor" />
+						</div>
+						<div class="cal-day-rewards">
+							@if ( reward.Gold > 0 )
+							{
+								<span class="cal-day-amt gold">@($"{reward.Gold / 1000f:0.#}K")</span>
+							}
+							@if ( reward.Gems > 0 )
+							{
+								<span class="cal-day-amt gem">@reward.Gems&nbsp;&#9672;</span>
+							}
+						</div>
+						@if ( isLegendary )
+						{
+							<div class="cal-day-legendary-tag">
+								<span>&#9733; LEGENDARY BEAST</span>
+							</div>
+						}
+						@if ( isClaimed )
+						{
+							<div class="cal-day-check">
+								<iconify icon="lucide:check" Size=@(14) Color="#4ade80" />
+							</div>
+						}
+					</div>
+				}
+			</div>
+
+			@if ( !todayClaimed )
+			{
+				<button class="claim-streak-btn" onclick=@ClaimStreak onmouseover=@(() => OnHover("claim-streak"))>
+					<iconify icon="lucide:gift" Size=@(18) Color="#ffffff" />
+					<span>CLAIM DAY @dayInCycle REWARD</span>
+				</button>
+			}
+			else
+			{
+				<div class="claim-streak-done">
+					<iconify icon="lucide:check-circle" Size=@(16) Color="#4ade80" />
+					<span>Today's reward claimed &mdash; come back tomorrow!</span>
+				</div>
+			}
+
+			<!-- Daily Missions -->
+			<div class="section-label-row missions-header">
+				<span class="section-label">MISSIONS</span>
+				<span class="section-count">@dailies.Count( m => m.Completed && m.Claimed ) / @dailies.Count</span>
+			</div>
+
+			@if ( dailies.Count == 0 )
+			{
+				<div class="empty-state small">
+					<iconify icon="lucide:loader" Size=@(32) Color="#6d28d9" />
+					<span class="empty-title">No daily missions</span>
+				</div>
+			}
+			else
+			{
+				<div class="mission-list">
+					@foreach ( var m in dailies )
+					{
+						@MissionCard( m )
+					}
+				</div>
+
+				var claimedCount = dailies.Count( m => m.Claimed );
+				var totalCount = dailies.Count;
+				var allDone = MissionManager.Instance?.AreAllDailiesComplete() ?? false;
+				var bonusClaimed = MissionManager.Instance?.DailyBonusClaimed ?? false;
+				var bonusIcon = bonusClaimed ? "lucide:check-circle" : "lucide:gift";
+				var bonusColor = bonusClaimed ? "#4ade80" : allDone ? "#fde047" : "#a78bfa";
+				var bonusCardClass = (allDone && !bonusClaimed ? "ready" : "") + " " + (bonusClaimed ? "claimed" : "");
+				<div class="bonus-card @bonusCardClass">
+					<div class="bonus-left">
+						<div class="bonus-icon-wrap">
+							<iconify icon="@bonusIcon" Size=@(30) Color="@bonusColor" />
+						</div>
+						<div class="bonus-info">
+							<span class="bonus-title">DAILY BONUS</span>
+							<span class="bonus-sub">Complete all @totalCount missions &middot; @claimedCount / @totalCount</span>
+							<div class="bonus-dots">
+								@for ( int i = 0; i < totalCount; i++ )
+								{
+									var dotFill = i < claimedCount ? "filled" : "";
+									<div class="bonus-dot @dotFill"></div>
+								}
+							</div>
+						</div>
+					</div>
+					<div class="bonus-right">
+						<div class="bonus-rewards">
+							<div class="reward-pip gold-pip">
+								<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
+								<span class="reward-pip-amount">10K</span>
+							</div>
+							<div class="reward-pip gem-pip">
+								<img class="reward-pip-icon" src="ui/icons/currency/token.svg" />
+								<span class="reward-pip-amount">5</span>
+							</div>
+							<div class="reward-pip xp-pip">
+								<iconify icon="lucide:arrow-up" Size=@(12) Color="#4ade80" />
+								<span class="reward-pip-amount">1,000</span>
+							</div>
+						</div>
+						@if ( bonusClaimed )
+						{
+							<div class="mission-status claimed-badge">
+								<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
+							</div>
+						}
+						else if ( allDone )
+						{
+							<button class="claim-btn bonus-claim-btn" onclick=@ClaimDailyBonus onmouseover=@(() => OnHover("claim-daily-bonus"))>
+								<span>CLAIM ALL</span>
+							</button>
+						}
+						else
+						{
+							<span class="bonus-locked">LOCKED</span>
+						}
+					</div>
+				</div>
+			}
+		</div>
+	};
+
+	private void ClaimStreak()
+	{
+		SoundManager.PlaySuccess();
+		DailyRewardManager.Instance?.ClaimDailyReward();
+	}
+
+	private void ClaimDailyBonus()
+	{
+		SoundManager.PlaySuccess();
+		MissionManager.Instance?.ClaimDailyBonus();
+	}
+
+	private void ClaimWeeklyBonus()
+	{
+		SoundManager.PlaySuccess();
+		MissionManager.Instance?.ClaimWeeklyBonus();
+	}
+
+	private RenderFragment RenderWeekly() => __builder =>
+	{
+		var weeklies = GetWeeklyMissions();
+
+		<div class="tab-content">
+			<div class="tab-header">
+				<span class="tab-title">Weekly</span>
+				<div class="tab-sub-row">
+					<span class="tab-sub">Resets in</span>
+					<span class="timer-pill">@GetWeeklyTimer()</span>
+				</div>
+			</div>
+
+			@if ( weeklies.Count == 0 )
+			{
+				<div class="empty-state">
+					<iconify icon="lucide:calendar-days" Size=@(64) Color="#6d28d9" />
+					<span class="empty-title">No weekly missions</span>
+				</div>
+			}
+			else
+			{
+				<div class="section-label-row">
+					<span class="section-label">CHALLENGES</span>
+					<span class="section-count">@weeklies.Count( m => m.Completed && m.Claimed ) / @weeklies.Count</span>
+				</div>
+				<div class="mission-list">
+					@foreach ( var m in weeklies )
+					{
+						@MissionCard( m )
+					}
+				</div>
+
+				var wClaimed = weeklies.Count( m => m.Claimed );
+				var wTotal = weeklies.Count;
+				var wAllDone = MissionManager.Instance?.AreAllWeekliesComplete() ?? false;
+				var wBonusClaimed = MissionManager.Instance?.WeeklyBonusClaimed ?? false;
+				var wBonusIcon = wBonusClaimed ? "lucide:check-circle" : "lucide:gift";
+				var wBonusColor = wBonusClaimed ? "#4ade80" : wAllDone ? "#fde047" : "#a78bfa";
+				var wBonusCardClass = (wAllDone && !wBonusClaimed ? "ready" : "") + " " + (wBonusClaimed ? "claimed" : "");
+				<div class="bonus-card @wBonusCardClass">
+					<div class="bonus-left">
+						<div class="bonus-icon-wrap">
+							<iconify icon="@wBonusIcon" Size=@(30) Color="@wBonusColor" />
+						</div>
+						<div class="bonus-info">
+							<span class="bonus-title">WEEKLY BONUS</span>
+							<span class="bonus-sub">Complete all @wTotal challenges &middot; @wClaimed / @wTotal</span>
+							<div class="bonus-dots">
+								@for ( int i = 0; i < wTotal; i++ )
+								{
+									var wDotFill = i < wClaimed ? "filled" : "";
+									<div class="bonus-dot @wDotFill"></div>
+								}
+							</div>
+						</div>
+					</div>
+					<div class="bonus-right">
+						<div class="bonus-rewards">
+							<div class="reward-pip gold-pip">
+								<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
+								<span class="reward-pip-amount">50K</span>
+							</div>
+							<div class="reward-pip gem-pip">
+								<img class="reward-pip-icon" src="ui/icons/currency/token.svg" />
+								<span class="reward-pip-amount">10</span>
+							</div>
+						</div>
+						@if ( wBonusClaimed )
+						{
+							<div class="mission-status claimed-badge">
+								<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
+							</div>
+						}
+						else if ( wAllDone )
+						{
+							<button class="claim-btn bonus-claim-btn" onclick=@ClaimWeeklyBonus onmouseover=@(() => OnHover("claim-weekly-bonus"))>
+								<span>CLAIM ALL</span>
+							</button>
+						}
+						else
+						{
+							<span class="bonus-locked">LOCKED</span>
+						}
+					</div>
+				</div>
+			}
+		</div>
+	};
+
+	private RenderFragment RenderMonthly() => __builder =>
+	{
+		var monthly = GetMonthlyMission();
+
+		<div class="tab-content">
+			<div class="tab-header">
+				<span class="tab-title">Monthly Challenge</span>
+				<div class="tab-sub-row">
+					<span class="tab-sub">Resets in</span>
+					<span class="timer-pill">@GetMonthlyTimer()</span>
+				</div>
+			</div>
+
+			@if ( monthly == null )
+			{
+				<div class="empty-state">
+					<iconify icon="lucide:trophy" Size=@(64) Color="#6d28d9" />
+					<span class="empty-title">No monthly challenge</span>
+				</div>
+			}
+			else
+			{
+				<div class="mission-list">
+					@MissionCard( monthly, true )
+				</div>
+			}
+		</div>
+	};
+
+	// ══════════════════════════════════════════════
+	// MISSION CARD (shared)
+	// ══════════════════════════════════════════════
+
+	private RenderFragment MissionCard( MissionState m, bool large = false ) => __builder =>
+	{
+		var def = MissionManager.Instance?.GetDefinition( m.MissionId );
+		var pct = GetMissionPercent( m );
+		var near = !m.Claimed && !m.Completed && pct >= 75f;
+		var missionCardClass = GetCategoryClass(m)
+			+ (m.Claimed ? " claimed" : "")
+			+ (m.Completed ? " completed" : "")
+			+ (near ? " near" : "")
+			+ (large ? " large" : "");
+
+		<div class="mission-card @missionCardClass"
+			 onmouseover=@(() => OnHover("mission-" + m.MissionId))>
+
+			<div class="mission-left">
+				<div class="mission-icon-wrap">
+					<iconify icon="@GetMissionIconify(m)" Size=@(large ? 30 : 22) Color="@(GetCategoryIconColor(m))" />
+				</div>
+				<div class="mission-info">
+					<div class="mission-name-row">
+						<span class="mission-name">@GetMissionName( m )</span>
+						<span class="mission-cat-chip">@(GetCategoryLabel(m))</span>
+					</div>
+					<span class="mission-desc">@GetMissionDesc( m )</span>
+					<div class="mission-progress-bar">
+						<div class="mission-progress-fill" style="width: @pct%"></div>
+					</div>
+				</div>
+			</div>
+
+			<div class="mission-right">
+				@if ( m.Claimed )
+				{
+					<div class="mission-status claimed-badge">
+						<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
+					</div>
+				}
+				else if ( m.Completed )
+				{
+					<button class="claim-btn" onclick=@(() => ClaimMission(m.MissionId)) onmouseover=@(() => OnHover("claim-mission-" + m.MissionId))>
+						<span>CLAIM</span>
+					</button>
+				}
+				else
+				{
+					<span class="mission-target">@m.Progress / @GetMissionTarget( m )</span>
+				}
+
+				<div class="mission-rewards">
+					@if ( def?.GoldReward > 0 )
+					{
+						<div class="reward-pip gold-pip">
+							<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
+							<span class="reward-pip-amount">@($"{def.GoldReward / 1000f:0.#}K")</span>
+						</div>
+					}
+					@if ( def?.GemReward > 0 )
+					{
+						<div class="reward-pip gem-pip">
+							<img class="reward-pip-icon" src="ui/icons/currency/token.svg" />
+							<span class="reward-pip-amount">@def.GemReward</span>
+						</div>
+					}
+					@if ( def?.InkReward > 0 )
+					{
+						<div class="reward-pip ink-pip">
+							<img class="reward-pip-icon" src="ui/icons/currency/ink.svg" />
+							<span class="reward-pip-amount">@def.InkReward</span>
+						</div>
+					}
+					@if ( def?.XPReward > 0 )
+					{
+						<div class="reward-pip xp-pip">
+							<iconify icon="lucide:arrow-up" Size=@(12) Color="#4ade80" />
+							<span class="reward-pip-amount">@($"{def.XPReward:N0}")</span>
+						</div>
+					}
+				</div>
+			</div>
+		</div>
+	};
+}

@@ -1,0 +1,1715 @@
+// ════════════════════════════════════════════════════════════════
+// FeedbackPanel — Center modal, charter-aligned redesign.
+//
+// Layout: Center Modal (~700px wide, 84% screen height, max 880px) — same
+// envelope as OptionsPanel but slightly wider for the entry list.
+//
+// Identity: per-tab category color (red bugs / sky ideas / green resolved /
+// purple my-posts) drives the tab strip + sliding indicator + new-post
+// button. Per-tag color carries through the entry rail + tag pill so a
+// player can scan a list and tell at a glance "this is a Battle bug, this
+// is a Shop bug".
+//
+// Composer: full-modal slide-in overlay (NOT nested inside the scroll —
+// nesting an overlay inside a scroll container caused leakage in earlier
+// builds). Sits as a sibling at the same z-stack as the modal, rendered
+// only when composerOpen.
+//
+// All s&box quirks honored:
+//   - NEVER `transition: all` (lists specific properties)
+//   - NEVER `radial-gradient(circle, ...)` (drops shape word)
+//   - NEVER `transparent` keyword inside `linear-gradient` (uses rgba(0,0,0,0))
+//   - NEVER `display: block` (uses flex / none)
+//   - NEVER `box-shadow: inset` (uses darker bg + border)
+//   - NEVER `:focus-within` (TextEntry is the s&box `@ref` + Tick poll pattern)
+//   - NEVER `transition-delay` (silently dropped)
+//   - NEVER `flex: unset` (uses `flex: 0 0 auto`)
+//   - NO `box-shadow` on any element INSIDE the scroll container
+//   - NO `position: absolute` for moving form controls inside scroll
+//   - All hanging-diamond ancestors use `overflow: visible`
+//   - State-driven reveals via TRANSITION on `.visible` class, not @keyframes
+// ════════════════════════════════════════════════════════════════
+
+// ────────────────────────────────────────────────
+// CONTAINER + OVERLAY
+// ────────────────────────────────────────────────
+
+FeedbackPanel {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 1001;
+	pointer-events: none;
+}
+
+.fb-container {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.18s ease-out;
+
+	&.visible {
+		opacity: 1;
+		pointer-events: all;
+
+		.fb-overlay {
+			opacity: 1;
+		}
+		.fb-modal {
+			transform: scale(1);
+			opacity: 1;
+		}
+	}
+}
+
+.fb-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.72);
+	pointer-events: all;
+	opacity: 0;
+	transition: opacity 0.22s ease-out;
+}
+
+// ────────────────────────────────────────────────
+// MODAL — wider than Options to comfortably fit the vote+rail+body+chevron
+// columns of an entry. 720px keeps cards from feeling cramped and lets the
+// title + tag pill + resolved chip sit on a single row at typical lengths.
+// ────────────────────────────────────────────────
+
+.fb-modal {
+	position: relative;
+	width: 720px;
+	max-width: 92%;
+	height: 84%;
+	max-height: 880px;
+	display: flex;
+	flex-direction: column;
+	background-color: rgba(15, 15, 25, 0.985);
+	border: 1.5px solid rgba(139, 92, 246, 0.45);
+	border-radius: 16px;
+	overflow: hidden;
+	pointer-events: all;
+
+	// Scale + fade entrance from center origin (Center Modal pattern).
+	// Transitions (not @keyframes) so re-opening replays the animation.
+	transform: scale(0.94);
+	transform-origin: 50% 50%;
+	opacity: 0;
+	transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+				opacity 0.18s ease-out;
+
+	box-shadow:
+		0 24px 60px rgba(0, 0, 0, 0.65),
+		0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+
+// ────────────────────────────────────────────────
+// TOP EDGE ACCENT — 2px gradient bar, top only.
+// (Symmetric edges read as neon, not 3D-lit. NEVER mirror at the bottom.)
+// ────────────────────────────────────────────────
+
+.modal-top-line {
+	width: 100%;
+	height: 2px;
+	min-height: 2px;
+	flex-shrink: 0;
+	background-image: linear-gradient(to right,
+		rgba(139, 92, 246, 0) 0%,
+		rgba(167, 139, 250, 0.85) 30%,
+		rgba(196, 181, 253, 1.0) 50%,
+		rgba(167, 139, 250, 0.85) 70%,
+		rgba(139, 92, 246, 0) 100%);
+	z-index: 2;
+}
+
+// ────────────────────────────────────────────────
+// HEADER — title icon + title left, dev-reply chip + close right
+// ────────────────────────────────────────────────
+
+.modal-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	flex-shrink: 0;
+	background-color: rgba(8, 8, 14, 0.55);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	z-index: 1;
+}
+
+.header-left {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14px;
+}
+
+// Title icon — diamond frame (matches OptionsPanel pattern).
+.header-icon-frame {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	min-width: 34px;
+	min-height: 34px;
+	background-color: rgba(167, 139, 250, 0.18);
+	border: 1.5px solid rgba(167, 139, 250, 0.55);
+	border-radius: 7px;
+	transform: rotate(45deg);
+
+	iconify {
+		transform: rotate(-45deg);
+	}
+}
+
+.header-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.header-title {
+	font-size: 24px;
+	font-weight: 700;
+	color: #ffffff;
+	line-height: 26px;
+	white-space: nowrap;
+	letter-spacing: 0.04em;
+}
+
+.header-subtitle {
+	font-size: 10px;
+	font-weight: 700;
+	color: rgba(196, 181, 253, 0.6);
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.header-right {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+
+// Gold "DEV REPLY" chip — only shown when the player has unread resolved
+// posts and isn't currently on the My Posts tab. Click jumps to My Posts.
+.dev-reply-chip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	height: 28px;
+	font-size: 10px;
+	font-weight: 800;
+	color: #fcd34d;
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	background-color: rgba(251, 191, 36, 0.10);
+	border: 1px solid rgba(251, 191, 36, 0.45);
+	border-radius: 999px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(251, 191, 36, 0.22);
+		border-color: rgba(252, 211, 77, 0.85);
+		color: #ffffff;
+	}
+}
+
+// Close button with hover-spin (matches OptionsPanel close pattern).
+.close-btn {
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.10);
+	border-radius: 7px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	// Spin the X icon 90° on hover. Force flex-center on the iconify
+	// wrapper so the inner SVG is properly centered (s&box iconify doesn't
+	// auto-center its inner SVG without this).
+	iconify {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 15px;
+		height: 15px;
+		transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	&:hover iconify {
+		transform: rotate(90deg);
+	}
+
+	&:hover {
+		background-color: rgba(239, 68, 68, 0.22);
+		border-color: rgba(239, 68, 68, 0.55);
+	}
+}
+
+// ────────────────────────────────────────────────
+// TAB STRIP — P5 stamp slabs. Mirrors OnlineHubPanel .hub-pill pattern:
+// 11/16 padding, 4px radius, 2px dark border, hard 3px offset shadow,
+// uppercase letterspaced label. Active tab keeps its per-category color
+// on the border + offset shadow so each section retains identity.
+// ────────────────────────────────────────────────
+
+.modal-tabs {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 10px 14px;
+	gap: 6px;
+	flex-shrink: 0;
+	background-color: rgba(15, 12, 28, 0.85);
+	background-image: url(ui/icons/animated/tab-bg.webp);
+	background-size: cover;
+	background-position: center;
+	border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+	z-index: 1;
+}
+
+.fb-tab {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 11px 16px;
+	flex: 1 1 0;
+	min-width: 0;
+	border-radius: 4px;
+	cursor: pointer;
+	pointer-events: all;
+	white-space: nowrap;
+	background-color: rgba(20, 14, 32, 0.92);
+	border: 2px solid rgba(0, 0, 0, 0.55);
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
+	transition: all 0.18s ease;
+
+	&:hover {
+		background-color: rgba(40, 28, 60, 0.95);
+		.tab-label { color: #ffffff; }
+	}
+}
+
+.tab-label {
+	font-size: 13px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 1.4px;
+	text-transform: uppercase;
+	line-height: 14;
+	white-space: nowrap;
+	transition: color 0.18s ease;
+}
+
+.fb-tab.active .tab-label {
+	color: #ffffff;
+}
+
+.tab-count {
+	min-width: 22px;
+	padding: 2px 7px;
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.04em;
+	background-color: rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 5px;
+	text-align: center;
+	white-space: nowrap;
+}
+
+// Pulsing red dot — only on the My Posts tab when there are unread resolves.
+.tab-unread {
+	min-width: 22px;
+	padding: 2px 8px;
+	font-size: 10px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.04em;
+	background-color: rgba(239, 68, 68, 0.85);
+	border: 1px solid rgba(252, 165, 165, 0.6);
+	border-radius: 5px;
+	text-align: center;
+	white-space: nowrap;
+	// Always-mounted ambient pulse — @keyframes is OK for ALWAYS-mounted loops.
+	animation: fbUnreadPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes fbUnreadPulse {
+	0%   { transform: scale(1.0); }
+	50%  { transform: scale(1.10); }
+	100% { transform: scale(1.0); }
+}
+
+// Active state — purple base + per-category accent on border + offset shadow.
+// Keeps each section's identity color while reading as siblings of the same
+// component (same shape, same shadow geometry).
+.fb-tab.active {
+	background-color: rgba(88, 48, 150, 0.85);
+	border-color: rgba(139, 92, 246, 0.85);
+	box-shadow: 4px 4px 0 rgba(124, 58, 237, 0.4);
+}
+
+.fb-tab.tab-bugs.active {
+	background-color: rgba(135, 32, 32, 0.85);
+	border-color: rgba(239, 68, 68, 0.85);
+	box-shadow: 4px 4px 0 rgba(239, 68, 68, 0.35);
+}
+.fb-tab.tab-ideas.active {
+	background-color: rgba(28, 80, 130, 0.85);
+	border-color: rgba(125, 211, 252, 0.85);
+	box-shadow: 4px 4px 0 rgba(56, 189, 248, 0.35);
+}
+.fb-tab.tab-resolved.active {
+	background-color: rgba(28, 110, 60, 0.85);
+	border-color: rgba(74, 222, 128, 0.85);
+	box-shadow: 4px 4px 0 rgba(74, 222, 128, 0.35);
+}
+.fb-tab.tab-mine.active {
+	background-color: rgba(76, 50, 140, 0.85);
+	border-color: rgba(167, 139, 250, 0.85);
+	box-shadow: 4px 4px 0 rgba(167, 139, 250, 0.35);
+}
+
+// ────────────────────────────────────────────────
+// TOOLBAR — sort segmented control + tag chips + new-post button.
+// One row, wraps when chips overflow.
+// ────────────────────────────────────────────────
+
+.modal-toolbar {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12px;
+	padding: 12px 18px;
+	flex-shrink: 0;
+	background-color: rgba(20, 20, 35, 0.55);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	z-index: 1;
+}
+
+// Sort segmented control — flex-thumb pattern (NOT absolute positioning).
+// Track contains two flex children; the active one gets the purple bg.
+.sort-toggle {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 3px;
+	background-color: rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 999px;
+	flex-shrink: 0;
+	flex: 0 0 auto;
+}
+
+.sort-opt {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 12px;
+	height: 24px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.65);
+	letter-spacing: 0.04em;
+	background-color: rgba(0, 0, 0, 0);
+	border: 1px solid rgba(0, 0, 0, 0);
+	border-radius: 999px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(255, 255, 255, 0.06);
+		color: #ffffff;
+	}
+
+	&.active {
+		background-color: rgba(139, 92, 246, 0.45);
+		border-color: rgba(167, 139, 250, 0.7);
+		color: #ffffff;
+	}
+}
+
+.tag-filter-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+// Tag chip — small pill with a colored dot + label. Active state:
+// inline-style overrides bg/border/text color to the category palette.
+.tag-chip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 10px 4px 10px;
+	height: 24px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.7);
+	letter-spacing: 0.02em;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.10);
+	border-radius: 999px;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(255, 255, 255, 0.10);
+		border-color: rgba(255, 255, 255, 0.22);
+		color: #ffffff;
+	}
+}
+
+.tag-dot {
+	width: 8px;
+	height: 8px;
+	min-width: 8px;
+	min-height: 8px;
+	border-radius: 999px;
+	flex-shrink: 0;
+}
+
+// New-post primary button. Stronger fill than the tab/chip set so it
+// reads as a primary action. Per-mode tinting matches the active tab.
+.new-post-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 7px;
+	padding: 8px 16px;
+	height: 32px;
+	font-size: 11px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.08em;
+	border-radius: 8px;
+	cursor: pointer;
+	flex: 0 0 auto;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out,
+				transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+	iconify {
+		transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	&:hover {
+		transform: translateY(-1px);
+		iconify { transform: rotate(90deg); }
+	}
+
+	&.is-bug {
+		background-color: rgba(239, 68, 68, 0.25);
+		border: 1.5px solid rgba(252, 165, 165, 0.65);
+		&:hover {
+			background-color: rgba(239, 68, 68, 0.45);
+			border-color: rgba(254, 202, 202, 0.95);
+		}
+	}
+	&.is-idea {
+		background-color: rgba(56, 189, 248, 0.25);
+		border: 1.5px solid rgba(125, 211, 252, 0.65);
+		&:hover {
+			background-color: rgba(56, 189, 248, 0.45);
+			border-color: rgba(186, 230, 253, 0.95);
+		}
+	}
+}
+
+// ────────────────────────────────────────────────
+// SCROLL CONTAINER + ENTRY LIST
+// (s&box quirk: scroll children must be DIRECT children of overflow-y:scroll)
+// ────────────────────────────────────────────────
+
+.modal-scroll-wrap {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 0;
+	width: 100%;
+	overflow: hidden;
+	z-index: 1;
+}
+
+.modal-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 14px 18px 8px 18px;
+	overflow-y: scroll;
+}
+
+// Bottom spacer — gives the last entry breathing room above the footer.
+.scroll-tail {
+	width: 100%;
+	height: 16px;
+	min-height: 16px;
+	flex-shrink: 0;
+}
+
+// ────────────────────────────────────────────────
+// ENTRY CARD
+// Layout: [vote col 52px] [rail 3px] [body flex] [chevron 24px]
+// NO box-shadow (scroll-clip leak quirk). Hover/expanded state via
+// border + bg shift only.
+// ────────────────────────────────────────────────
+
+.fb-entry {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	gap: 12px;
+	padding: 12px 12px 12px 0;
+	width: 100%;
+	background-color: rgba(20, 20, 35, 0.85);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	border-radius: 10px;
+	cursor: pointer;
+	flex-shrink: 0;
+	overflow: hidden;        // clip the rail to the rounded corners
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(28, 24, 45, 0.95);
+		border-color: rgba(167, 139, 250, 0.4);
+	}
+
+	&.expanded {
+		background-color: rgba(28, 24, 45, 0.98);
+		border-color: rgba(167, 139, 250, 0.6);
+	}
+
+	&.resolved {
+		background-color: rgba(15, 22, 16, 0.85);
+
+		&:hover {
+			background-color: rgba(20, 30, 22, 0.95);
+			border-color: rgba(74, 222, 128, 0.45);
+		}
+	}
+}
+
+// Tag color rail — vertical 3px strip on the LEFT edge of the entry.
+// Filled inline-style with the per-tag color. Reads as a category cue
+// even at a glance.
+.entry-rail {
+	width: 3px;
+	min-width: 3px;
+	flex-shrink: 0;
+	background-color: rgba(167, 139, 250, 0.6);
+	// height: stretch = inherits from align-items: stretch on parent
+}
+
+// ── VOTE COLUMN ──
+// Pinned width so the entry body can flex without the vote button reflowing.
+// Click bubbling is stopped in razor (`e.StopPropagation()`).
+.entry-vote-col {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	width: 52px;
+	min-width: 52px;
+	flex: 0 0 52px;
+	padding: 4px 0 0 12px;
+}
+
+// The clickable vote button. Premium hover: bg fill + brighter border;
+// the chevron ICON gets the bounce (translateY on a child element inside
+// a 38×38 padded button stays bounded — the parent card has 4px padding
+// on the inner side, and the chevron only moves 2px so it can't escape
+// the entry's content box). The BUTTON itself does NOT translate — per
+// the s&box scroll-clip quirk, transforms on cards-inside-scroll-grids
+// can leak past the viewport. We get the "lift" feel from the chevron
+// motion + border-color flip alone.
+// Voted state: solid purple fill + white arrow.
+.vote-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	min-width: 38px;
+	min-height: 38px;
+	background-color: rgba(255, 255, 255, 0.05);
+	border: 1.5px solid rgba(167, 139, 250, 0.35);
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background-color 0.16s ease-out,
+				border-color 0.16s ease-out;
+
+	iconify {
+		// Counter-spring on the arrow — bumps up briefly on hover.
+		transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	&:hover {
+		background-color: rgba(167, 139, 250, 0.22);
+		border-color: rgba(196, 181, 253, 0.85);
+
+		iconify {
+			transform: translateY(-2px);
+		}
+	}
+
+	&.voted {
+		background-color: rgba(139, 92, 246, 0.7);
+		border-color: rgba(196, 181, 253, 0.95);
+
+		&:hover {
+			background-color: rgba(167, 139, 250, 0.85);
+			border-color: rgba(255, 255, 255, 0.95);
+		}
+	}
+}
+
+// Vote count — flips color when voted, scale-pops when the count changes
+// (unfortunately we can't trigger a one-shot reliably without remount keys
+// — the bigger font + bold weight + voted color flip carries enough payoff).
+.vote-count {
+	margin-top: 6px;
+	font-size: 13px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.02em;
+	transition: color 0.16s ease-out,
+				transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+	&.voted {
+		color: #c4b5fd;
+		// Tiny scale on voted — read as "your vote landed".
+		transform: scale(1.08);
+	}
+}
+
+// ── BODY COLUMN ──
+
+.entry-body {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+	padding: 4px 0 0 0;
+}
+
+.entry-header-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-bottom: 6px;
+}
+
+.entry-title {
+	font-size: 14px;
+	font-weight: 700;
+	color: #ffffff;
+	line-height: 18px;
+	letter-spacing: 0.01em;
+	white-space: normal;
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+// Tag pill — color-coded by category. Inline-style sets bg/border/text
+// color from the tag palette (charter section 2 tag colors).
+.tag-pill {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 10px;
+	height: 22px;
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	background-color: rgba(167, 139, 250, 0.18);
+	border: 1px solid rgba(167, 139, 250, 0.55);
+	border-radius: 999px;
+	color: #c4b5fd;
+	flex-shrink: 0;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out;
+}
+
+.tag-pill-dot {
+	width: 6px;
+	height: 6px;
+	min-width: 6px;
+	min-height: 6px;
+	border-radius: 999px;
+	flex-shrink: 0;
+}
+
+.resolved-pill {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 10px;
+	height: 22px;
+	background-color: rgba(74, 222, 128, 0.18);
+	border: 1px solid rgba(74, 222, 128, 0.55);
+	border-radius: 999px;
+	flex-shrink: 0;
+	white-space: nowrap;
+
+	span {
+		font-size: 10px;
+		font-weight: 800;
+		color: #4ade80;
+		letter-spacing: 0.10em;
+	}
+}
+
+.entry-meta {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+	font-size: 11px;
+	color: rgba(255, 255, 255, 0.45);
+}
+
+.entry-author {
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.78);
+	letter-spacing: 0.01em;
+}
+
+.entry-meta-dot {
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.25);
+	margin: 0 2px;
+}
+
+.entry-date {
+	color: rgba(255, 255, 255, 0.55);
+	letter-spacing: 0.02em;
+}
+
+// ── CHEVRON COLUMN ──
+.entry-chevron-col {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	min-width: 24px;
+	flex: 0 0 24px;
+	padding-right: 4px;
+}
+
+.entry-chevron {
+	width: 15px;
+	height: 15px;
+	transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+
+	&.expanded {
+		transform: rotate(180deg);
+	}
+}
+
+// ── EXPANDED CONTENT ──
+
+.entry-content {
+	display: flex;
+	flex-direction: column;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid rgba(167, 139, 250, 0.22);
+}
+
+.entry-body-text {
+	font-size: 13px;
+	line-height: 20;
+	color: rgba(255, 255, 255, 0.82);
+	white-space: normal;
+	margin-bottom: 8px;
+	letter-spacing: 0.01em;
+}
+
+// Resolved note — visually distinct green-tinted block with a "DEV REPLY"
+// badge at the top. Reads as an answer, not a continuation of the post.
+.resolved-note {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px 14px;
+	margin-top: 10px;
+	background-color: rgba(74, 222, 128, 0.10);
+	border: 1px solid rgba(74, 222, 128, 0.32);
+	border-radius: 10px;
+}
+
+.resolved-note-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.dev-badge {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+	padding: 3px 9px;
+	height: 22px;
+	background-color: rgba(74, 222, 128, 0.20);
+	border: 1px solid rgba(74, 222, 128, 0.55);
+	border-radius: 999px;
+	flex-shrink: 0;
+
+	span {
+		font-size: 10px;
+		font-weight: 800;
+		color: #4ade80;
+		letter-spacing: 0.12em;
+	}
+}
+
+.resolved-note-text {
+	font-size: 13px;
+	color: rgba(255, 255, 255, 0.92);
+	white-space: normal;
+	line-height: 20;
+	letter-spacing: 0.01em;
+}
+
+// ── ADMIN ROW ──
+// Only rendered when IsDev() == true. Distinct red-tinted treatment so it
+// reads as "danger zone" without being alarmist on every entry.
+.admin-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	margin-top: 14px;
+	padding: 10px 12px;
+	background-color: rgba(239, 68, 68, 0.06);
+	border: 1px solid rgba(239, 68, 68, 0.22);
+	border-radius: 10px;
+}
+
+.admin-row-label {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(252, 165, 165, 0.75);
+	letter-spacing: 0.14em;
+	flex-shrink: 0;
+}
+
+.admin-row-actions {
+	display: flex;
+	flex-direction: row;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.admin-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	height: 28px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.04em;
+	background-color: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	border-radius: 7px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(255, 255, 255, 0.14);
+		border-color: rgba(255, 255, 255, 0.35);
+		color: #ffffff;
+	}
+
+	&.resolve {
+		color: #4ade80;
+		background-color: rgba(74, 222, 128, 0.10);
+		border-color: rgba(74, 222, 128, 0.42);
+
+		&:hover {
+			background-color: rgba(74, 222, 128, 0.24);
+			border-color: rgba(134, 239, 172, 0.85);
+			color: #ffffff;
+		}
+	}
+
+	&.delete {
+		color: #fca5a5;
+		background-color: rgba(239, 68, 68, 0.10);
+		border-color: rgba(239, 68, 68, 0.42);
+
+		&:hover {
+			background-color: rgba(239, 68, 68, 0.28);
+			border-color: rgba(252, 165, 165, 0.85);
+			color: #ffffff;
+		}
+	}
+}
+
+// Resolve composer (inline form when the dev clicks Resolve on an entry).
+.resolve-form {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 10px;
+	padding: 12px 14px;
+	background-color: rgba(74, 222, 128, 0.08);
+	border: 1px solid rgba(74, 222, 128, 0.30);
+	border-radius: 10px;
+}
+
+.resolve-actions {
+	display: flex;
+	flex-direction: row;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+// ────────────────────────────────────────────────
+// FOOTER — entry count + manual refresh
+// ────────────────────────────────────────────────
+
+.modal-footer {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 18px;
+	width: 100%;
+	flex-shrink: 0;
+	background-color: rgba(8, 8, 14, 0.65);
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	z-index: 1;
+}
+
+.footer-count {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.55);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.footer-refresh-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	height: 28px;
+	font-size: 10px;
+	font-weight: 800;
+	color: #c4b5fd;
+	letter-spacing: 0.10em;
+	background-color: rgba(139, 92, 246, 0.10);
+	border: 1px solid rgba(139, 92, 246, 0.35);
+	border-radius: 999px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	iconify {
+		transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	&:hover iconify {
+		transform: rotate(180deg);
+	}
+
+	&:hover {
+		background-color: rgba(139, 92, 246, 0.22);
+		border-color: rgba(167, 139, 250, 0.7);
+		color: #ffffff;
+	}
+}
+
+// ────────────────────────────────────────────────
+// LOADING STATE — pulsing diamond placeholder
+// ────────────────────────────────────────────────
+
+.fb-loading {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 14px;
+	padding: 60px 20px;
+	flex: 1 1 0;
+	min-height: 200px;
+}
+
+.fb-loading-pulse {
+	width: 32px;
+	height: 32px;
+	background-color: rgba(167, 139, 250, 0.25);
+	border: 1.5px solid rgba(167, 139, 250, 0.65);
+	border-radius: 6px;
+	transform: rotate(45deg);
+	// Always-mounted ambient pulse — @keyframes safe.
+	animation: fbLoadingPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes fbLoadingPulse {
+	0%   { transform: rotate(45deg) scale(0.85); opacity: 0.5; }
+	50%  { transform: rotate(45deg) scale(1.10); opacity: 1.0; }
+	100% { transform: rotate(45deg) scale(0.85); opacity: 0.5; }
+}
+
+.fb-loading-text {
+	font-size: 11px;
+	font-weight: 800;
+	color: rgba(196, 181, 253, 0.7);
+	letter-spacing: 0.20em;
+}
+
+// ────────────────────────────────────────────────
+// EMPTY STATE — large icon in a frame, title + body, CTA button
+// Each tab gets a custom title/body — see GetEmpty* in razor.
+// ────────────────────────────────────────────────
+
+.fb-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	padding: 50px 30px;
+	flex: 1 1 0;
+	min-height: 360px;
+}
+
+// Diamond frame around the empty icon — visual echo of the section-icon-frame.
+// `position: relative` so the bg layer can sit underneath without absolute
+// positioning (which would leak past the scroll clip). The icon stays
+// rotated upright via counter-rotation.
+.empty-frame {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 88px;
+	height: 88px;
+	min-width: 88px;
+	min-height: 88px;
+	background-color: rgba(167, 139, 250, 0.10);
+	border: 1.5px solid rgba(167, 139, 250, 0.30);
+	border-radius: 18px;
+	transform: rotate(45deg);
+	// Always-mounted ambient breath — @keyframes safe.
+	animation: fbEmptyBreath 3.2s ease-in-out infinite;
+
+	iconify {
+		transform: rotate(-45deg);
+	}
+}
+
+@keyframes fbEmptyBreath {
+	0%   { transform: rotate(45deg) scale(1.00); }
+	50%  { transform: rotate(45deg) scale(1.04); }
+	100% { transform: rotate(45deg) scale(1.00); }
+}
+
+// In-flow soft glow layer behind the diamond. Rendered as a sibling element
+// (not child / not absolute) so it doesn't get clipped by the scroll container.
+// Currently empty (no rule needed for a transparent element); preserved as a
+// hook for future enhancement.
+.empty-frame-bg {
+	width: 0;
+	height: 0;
+}
+
+.empty-text {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	max-width: 460px;
+	text-align: center;
+}
+
+.empty-title {
+	font-size: 18px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.04em;
+	white-space: normal;
+	line-height: 24px;
+	text-align: center;
+}
+
+.empty-body {
+	font-size: 13px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.55);
+	line-height: 18;
+	white-space: normal;
+	text-align: center;
+}
+
+.empty-cta {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 22px;
+	margin-top: 4px;
+	height: 36px;
+	font-size: 11px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.10em;
+	border-radius: 8px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out,
+				transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+	&:hover {
+		transform: translateY(-2px);
+	}
+
+	&.is-bug {
+		background-color: rgba(239, 68, 68, 0.30);
+		border: 1.5px solid rgba(252, 165, 165, 0.7);
+		&:hover {
+			background-color: rgba(239, 68, 68, 0.50);
+			border-color: rgba(254, 202, 202, 0.95);
+		}
+	}
+	&.is-idea {
+		background-color: rgba(56, 189, 248, 0.30);
+		border: 1.5px solid rgba(125, 211, 252, 0.7);
+		&:hover {
+			background-color: rgba(56, 189, 248, 0.50);
+			border-color: rgba(186, 230, 253, 0.95);
+		}
+	}
+}
+
+// ════════════════════════════════════════════════════════════════
+// COMPOSER — full-modal slide-in overlay (sibling of the modal, not nested).
+// Rendered always (with `.visible` class); transitions on visibility.
+// State-driven reveal must be a transition, not @keyframes.
+// ════════════════════════════════════════════════════════════════
+
+.composer-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.78);
+	pointer-events: none;
+	opacity: 0;
+	z-index: 1100;
+	transition: opacity 0.22s ease-out;
+
+	&.visible {
+		pointer-events: all;
+		opacity: 1;
+	}
+}
+
+.composer-modal {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	margin-top: -360px;
+	margin-left: -340px;
+	width: 680px;
+	height: 720px;
+	max-height: 90%;
+	display: flex;
+	flex-direction: column;
+	background-color: rgba(15, 15, 25, 0.985);
+	border: 1.5px solid rgba(139, 92, 246, 0.55);
+	border-radius: 16px;
+	overflow: hidden;
+	pointer-events: none;
+	z-index: 1101;
+
+	// Slide-in from below with overshoot. Replays via class toggle so it
+	// fires every time the composer opens.
+	transform: translateY(40px) scale(0.94);
+	opacity: 0;
+	transition: transform 0.30s cubic-bezier(0.16, 1, 0.3, 1),
+				opacity 0.22s ease-out;
+
+	box-shadow:
+		0 28px 80px rgba(0, 0, 0, 0.75),
+		0 0 0 1px rgba(0, 0, 0, 0.35);
+
+	&.visible {
+		pointer-events: all;
+		transform: translateY(0) scale(1);
+		opacity: 1;
+	}
+}
+
+.composer-top-line {
+	width: 100%;
+	height: 2px;
+	min-height: 2px;
+	flex-shrink: 0;
+	background-image: linear-gradient(to right,
+		rgba(139, 92, 246, 0) 0%,
+		rgba(167, 139, 250, 0.85) 30%,
+		rgba(196, 181, 253, 1.0) 50%,
+		rgba(167, 139, 250, 0.85) 70%,
+		rgba(139, 92, 246, 0) 100%);
+	z-index: 2;
+}
+
+.composer-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 16px 20px;
+	flex-shrink: 0;
+	background-color: rgba(8, 8, 14, 0.60);
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	z-index: 1;
+}
+
+// Composer icon frame — variant of header-icon-frame, takes a tone class.
+.composer-icon-frame {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	min-width: 34px;
+	min-height: 34px;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1.5px solid rgba(255, 255, 255, 0.18);
+	border-radius: 7px;
+	transform: rotate(45deg);
+
+	iconify {
+		transform: rotate(-45deg);
+	}
+
+	&.tone-danger {
+		background-color: rgba(239, 68, 68, 0.18);
+		border-color: rgba(252, 165, 165, 0.55);
+	}
+	&.tone-sky {
+		background-color: rgba(56, 189, 248, 0.18);
+		border-color: rgba(125, 211, 252, 0.55);
+	}
+}
+
+.composer-scroll-wrap {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 0;
+	width: 100%;
+	overflow: hidden;
+	z-index: 1;
+}
+
+.composer-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	width: 100%;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 16px 22px 8px 22px;
+	overflow-y: scroll;
+}
+
+.composer-tail {
+	width: 100%;
+	height: 12px;
+	min-height: 12px;
+	flex-shrink: 0;
+}
+
+// Tips card — gold accent, opens with the "great X includes:" header
+// followed by a checklist. Reads as authored by a person, not generated.
+.composer-tips {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 14px;
+	background-color: rgba(251, 191, 36, 0.08);
+	border: 1px solid rgba(251, 191, 36, 0.28);
+	border-radius: 10px;
+	flex-shrink: 0;
+}
+
+.tips-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 7px;
+	margin-bottom: 4px;
+
+	span {
+		font-size: 12px;
+		font-weight: 800;
+		color: #fcd34d;
+		letter-spacing: 0.04em;
+	}
+}
+
+.tip-row {
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	gap: 7px;
+
+	span {
+		font-size: 12px;
+		font-weight: 500;
+		color: rgba(255, 255, 255, 0.82);
+		line-height: 16;
+		white-space: normal;
+		flex: 1 1 0;
+		min-width: 0;
+	}
+
+	iconify {
+		margin-top: 3px;
+		flex-shrink: 0;
+	}
+}
+
+.composer-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.composer-row {
+	display: flex;
+	flex-direction: row;
+	gap: 10px;
+	flex-shrink: 0;
+}
+
+.composer-half {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.field-label {
+	font-size: 11px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.field-hint {
+	font-size: 10px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.40);
+	text-transform: none;
+	letter-spacing: 0.02em;
+	margin-left: 4px;
+}
+
+// Composer tag picker — same pill style as toolbar tag chips, but always-on
+// and click-to-set rather than filter.
+.composer-tag-grid {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.composer-tag {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 12px;
+	height: 28px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.75);
+	letter-spacing: 0.02em;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(255, 255, 255, 0.10);
+	border-radius: 999px;
+	cursor: pointer;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(255, 255, 255, 0.10);
+		border-color: rgba(255, 255, 255, 0.24);
+		color: #ffffff;
+	}
+}
+
+// ── COMPOSER INPUT (TextEntry) ──
+// s&box TextEntry styling — dark recessed bg, purple border on hover.
+// `:focus-within` is rejected by s&box; we use `:hover` as the affordance,
+// and the @ref + Tick poll pattern handles state.
+.composer-input {
+	width: 100%;
+	height: 40px;
+	padding: 0 12px;
+	background-color: rgba(0, 0, 0, 0.4);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	border-radius: 8px;
+	color: #ffffff;
+	font-size: 13px;
+	font-weight: 500;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(0, 0, 0, 0.55);
+		border-color: rgba(167, 139, 250, 0.55);
+	}
+
+	&.readonly {
+		background-color: rgba(0, 0, 0, 0.28);
+		color: rgba(255, 255, 255, 0.55);
+	}
+}
+
+.composer-textarea {
+	height: 96px;
+	padding: 10px 12px;
+	white-space: normal;
+}
+
+.composer-textarea-tall {
+	height: 140px;
+	padding: 10px 12px;
+	white-space: normal;
+}
+
+.composer-error {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	padding: 10px 14px;
+	background-color: rgba(239, 68, 68, 0.12);
+	border: 1px solid rgba(239, 68, 68, 0.42);
+	border-radius: 8px;
+	flex-shrink: 0;
+
+	span {
+		font-size: 12px;
+		font-weight: 700;
+		color: #fca5a5;
+		line-height: 16;
+		white-space: normal;
+		flex: 1 1 0;
+		min-width: 0;
+	}
+}
+
+// ── COMPOSER FOOTER ──
+
+.composer-footer {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 20px;
+	width: 100%;
+	flex-shrink: 0;
+	background-color: rgba(8, 8, 14, 0.65);
+	border-top: 1px solid rgba(255, 255, 255, 0.06);
+	z-index: 1;
+}
+
+.char-count {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.55);
+	letter-spacing: 0.04em;
+	transition: color 0.14s ease-out;
+
+	&.warn {
+		color: #fcd34d;
+	}
+}
+
+.composer-actions {
+	display: flex;
+	flex-direction: row;
+	gap: 10px;
+}
+
+.cancel-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	padding: 8px 18px;
+	height: 34px;
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.08em;
+	background-color: rgba(255, 255, 255, 0.06);
+	border: 1.5px solid rgba(255, 255, 255, 0.18);
+	border-radius: 8px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out;
+
+	&:hover {
+		background-color: rgba(255, 255, 255, 0.14);
+		border-color: rgba(255, 255, 255, 0.40);
+		color: #ffffff;
+	}
+}
+
+// Submit button — primary purple with halo on hover (same treatment as
+// Options' DONE button). Spring-pop on the icon.
+.submit-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	padding: 8px 22px;
+	height: 34px;
+	font-size: 11px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.08em;
+	background-color: rgba(139, 92, 246, 0.85);
+	border: 1.5px solid rgba(196, 181, 253, 0.7);
+	border-radius: 8px;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				color 0.14s ease-out,
+				box-shadow 0.18s ease-out;
+
+	iconify {
+		transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	&:hover {
+		background-color: rgba(167, 139, 250, 1.0);
+		border-color: rgba(255, 255, 255, 0.85);
+		// Soft purple halo on hover — confirms primary-button feel.
+		// Note: composer-modal is OUTSIDE the entry scroll container so a
+		// box-shadow here is safe to render without leak risk.
+		box-shadow: 0 0 14px rgba(167, 139, 250, 0.55);
+
+		iconify {
+			transform: scale(1.18);
+		}
+	}
+
+	&.disabled {
+		background-color: rgba(255, 255, 255, 0.04);
+		border-color: rgba(255, 255, 255, 0.10);
+		color: rgba(255, 255, 255, 0.35);
+		cursor: default;
+
+		&:hover {
+			background-color: rgba(255, 255, 255, 0.04);
+			border-color: rgba(255, 255, 255, 0.10);
+			box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+			color: rgba(255, 255, 255, 0.35);
+
+			iconify { transform: scale(1); }
+		}
+	}
+}

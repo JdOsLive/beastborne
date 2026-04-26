@@ -105,6 +105,14 @@
 						 onmousedown=@(() => OnCardMouseDown(monster, idx))
 						 onmouseover=@(() => OnCardMouseEnter(monster, idx))
 						 onmouseup=@OnDragSelectEnd>
+						@if (justSelectedMonsterId.HasValue && justSelectedMonsterId.Value == monster.Id)
+						{
+							<!-- One-shot select pulse. Keyed on selectPulseVersion so
+							     each click remounts the overlay and @keyframes fire
+							     fresh (s&box quirk: keyframes only run on first mount).
+							     Removes itself visually via SCSS opacity: 0 end-state. -->
+							<div class="select-pulse pulse-@selectPulseVersion"></div>
+						}
 						@if (isMultiSelectMode)
 						{
 							<div class="select-checkbox @(isSelectedForRelease ? "checked" : "")">
@@ -659,16 +667,15 @@
 								</button>
 							}
 							<div class="action-v2-row">
-								<button class="action-v2 item" onclick=@OpenItemPicker onmouseover=@(() => SoundManager.PlayHover())>
+								<button class="action-v2 item @(HasSelectedHeldItem() ? "has-item" : "no-item")" onclick=@OpenItemPicker onmouseover=@(() => SoundManager.PlayHover())>
+									@* Ghost-child safety: always mount both icon slots, toggle
+									   visibility via has-item/no-item class on the button. Avoids
+									   s&box ghost-child bug when a Razor @if/else swaps different
+									   child tag types (img vs iconify) inside a button during
+									   state transitions. Mirrors shop GetBuyButtonContent. *@
 									<div class="action-v2-diamond item-diamond">
-										@if (HasSelectedHeldItem())
-										{
-											<img class="action-v2-item-img" src="@GetSelectedHeldItemIconPath()" />
-										}
-										else
-										{
-											<iconify icon="lucide:shield" Size=@(16) Color="white" />
-										}
+										<img class="action-v2-item-img" src="@GetSelectedHeldItemIconPath()" onerror="this.style.display='none'" />
+										<iconify class="action-v2-item-fallback" icon="lucide:shield" Size=@(16) Color="white" />
 									</div>
 									<span class="action-v2-text">@(HasSelectedHeldItem() ? GetSelectedHeldItemName() : L("ui.roster.item"))</span>
 								</button>
@@ -1154,59 +1161,7 @@
 							</div>
 						}
 
-						<!-- Battle Mastery Section -->
-						<div class="veteran-section">
-							<div class="section-title">@L("ui.roster.battle_mastery")</div>
-							<div class="veteran-info">
-								<div class="veteran-rank @GetSelectedVeteranRankClass()">
-									<div class="rank-diamond">
-										<iconify icon="lucide:trophy" Size=@(18) Color="white" />
-									</div>
-									<div class="rank-details">
-										<span class="rank-name">@GetSelectedVeteranRankName()</span>
-										@if (GetSelectedVeteranBonusPercent() > 0)
-										{
-											<span class="rank-bonus">+@GetSelectedVeteranBonusPercent()% Stats</span>
-										}
-									</div>
-								</div>
-								<div class="veteran-stats">
-									<div class="vet-stat">
-										<iconify icon="lucide:swords" Size=@(14) Color="rgba(255,255,255,0.4)" />
-										<span class="vet-stat-value">@SelectedMonster.BattlesFought.ToString("N0")</span>
-										<span class="vet-stat-label">@L("ui.roster.battles")</span>
-									</div>
-									<div class="vet-stat">
-										<iconify icon="lucide:skull" Size=@(14) Color="rgba(255,255,255,0.4)" />
-										<span class="vet-stat-value">@SelectedMonster.TotalKnockouts.ToString("N0")</span>
-										<span class="vet-stat-label">@L("ui.roster.kos")</span>
-									</div>
-									<div class="vet-stat">
-										<iconify icon="lucide:zap" Size=@(14) Color="rgba(255,255,255,0.4)" />
-										<span class="vet-stat-value">@FormatDamageValue(SelectedMonster.TotalDamageDealt)</span>
-										<span class="vet-stat-label">@L("ui.roster.damage")</span>
-									</div>
-									<div class="vet-stat">
-										<iconify icon="lucide:crown" Size=@(14) Color="rgba(255,255,255,0.4)" />
-										<span class="vet-stat-value">@SelectedMonster.BossesDefeated.ToString("N0")</span>
-										<span class="vet-stat-label">@L("ui.roster.bosses")</span>
-									</div>
-								</div>
-								<div class="veteran-progress">
-									<div class="progress-bar">
-										<div class="progress-fill" style="width: @GetSelectedVeteranProgress()%"></div>
-									</div>
-									@if (SelectedMonster.BattlesToNextRank() > 0)
-									{
-										<span class="progress-text">@SelectedMonster.BattlesToNextRank() @L("ui.roster.battles_to_next")</span>
-									}
-									else
-									{
-										<span class="progress-text">@L("ui.roster.max_rank")</span>
-									}
-								</div>
-							</div>
-						</div>
+						<!-- Battle Mastery removed — mastery is now species-level in the Beastbook -->
 
 					</div>
 
@@ -1646,6 +1601,15 @@
 	private string editingNickname = "";
 	private TextEntry nicknameInput;
 
+	// One-shot card-select pulse — a border flash that fires on the clicked
+	// monster card. `selectPulseVersion` increments on every click so the
+	// `.pulse-@N` CSS class remounts the overlay div in the DOM; @keyframes
+	// in s&box only run on first mount, so keying on the version number is
+	// how we re-fire the animation on subsequent clicks. Ported from the
+	// shop's `.select-pulse` pattern (see ShopPanelContent).
+	private Guid? justSelectedMonsterId = null;
+	private int selectPulseVersion = 0;
+
 	// Release confirmation state
 	private bool showReleaseConfirm = false;
 	private Monster monsterToRelease = null;
@@ -1888,6 +1852,13 @@
 		SelectedMonster = monster;
 		isDetailClosing = false;
 		isEditingNickname = false;
+
+		// One-shot card-select pulse — keyed on selectPulseVersion so the
+		// overlay div remounts each click, re-firing the @keyframes (s&box
+		// quirk: keyframes only play on initial DOM mount). Pattern lifted
+		// from ShopPanelContent.
+		justSelectedMonsterId = monster.Id;
+		selectPulseVersion++;
 
 		// Sync keyboard index with mouse selection to prevent both showing as selected
 		var monsters = GetFilteredMonsters();
@@ -3707,6 +3678,11 @@
 		hash.Add(isEvolving);
 		hash.Add(evolutionPhase);
 		hash.Add(evolvedIconPath);
+		// Select-pulse state — without these in the hash, the panel won't
+		// re-render on re-click of a card and the one-shot border flash
+		// won't remount. (Shop uses the same pair.)
+		hash.Add(justSelectedMonsterId);
+		hash.Add(selectPulseVersion);
 		return hash.ToHashCode();
 	}
 
@@ -3717,86 +3693,21 @@
 	}
 
 	// ==========================================
-	// Veteran System Helper Methods
+	// Species Mastery stat-bonus Helper
 	// ==========================================
 
-	private string GetSelectedVeteranRankClass()
-	{
-		if (SelectedMonster == null) return "rookie";
-		return SelectedMonster.GetVeteranRank().ToString().ToLower();
-	}
-
-	private string GetSelectedVeteranRankIcon()
-	{
-		if (SelectedMonster == null) return "⚔";
-		return SelectedMonster.GetVeteranRank() switch
-		{
-			VeteranRank.Rookie => "⚔",
-			VeteranRank.Trained => "🗡",
-			VeteranRank.Seasoned => "⚔️",
-			VeteranRank.Veteran => "🛡",
-			VeteranRank.Elite => "⭐",
-			VeteranRank.Champion => "👑",
-			VeteranRank.Legend => "🏆",
-			_ => "⚔"
-		};
-	}
-
-	private string GetSelectedVeteranRankName()
-	{
-		if (SelectedMonster == null) return "Rookie";
-		return SelectedMonster.GetVeteranRank().ToString();
-	}
-
-	private int GetSelectedVeteranBonusPercent()
-	{
-		if (SelectedMonster == null) return 0;
-		return (int)(SelectedMonster.GetVeteranBonusPercent() * 100);
-	}
-
-	// Calculate the veteran bonus amount for a stat (reverse calculate from final stat)
+	// Calculate the species-mastery bonus amount for a stat (reverse calculate from final stat).
+	// Used to show the "(+N)" suffix next to raw stat values in the detail pane.
 	private int GetStatVeteranBonus(int currentStat, bool isHP = false)
 	{
 		if (SelectedMonster == null) return 0;
-		float bonusPercent = SelectedMonster.GetVeteranBonusPercent();
+		float bonusPercent = BeastiaryManager.Instance?.GetMasteryBonus(SelectedMonster.SpeciesId) ?? 0f;
 		if (bonusPercent <= 0) return 0;
 
 		// HP gets half bonus, other stats get full bonus
 		float multiplier = isHP ? (1 + bonusPercent * 0.5f) : (1 + bonusPercent);
 		int baseStat = (int)(currentStat / multiplier);
 		return currentStat - baseStat;
-	}
-
-	private float GetSelectedVeteranProgress()
-	{
-		if (SelectedMonster == null) return 0;
-		var rank = SelectedMonster.GetVeteranRank();
-		if (rank == VeteranRank.Legend) return 100;
-
-		int currentBattles = SelectedMonster.BattlesFought;
-		int currentThreshold = rank switch
-		{
-			VeteranRank.Rookie => 0,
-			VeteranRank.Trained => 25,
-			VeteranRank.Seasoned => 100,
-			VeteranRank.Veteran => 200,
-			VeteranRank.Elite => 400,
-			VeteranRank.Champion => 750,
-			_ => 0
-		};
-		int nextThreshold = rank switch
-		{
-			VeteranRank.Rookie => 25,
-			VeteranRank.Trained => 100,
-			VeteranRank.Seasoned => 200,
-			VeteranRank.Veteran => 400,
-			VeteranRank.Elite => 750,
-			VeteranRank.Champion => 1500,
-			_ => 1500
-		};
-
-		float progress = (float)(currentBattles - currentThreshold) / (nextThreshold - currentThreshold) * 100f;
-		return Math.Clamp(progress, 0, 100);
 	}
 
 	private string FormatDamageValue(int damage)
@@ -3865,10 +3776,14 @@
 		// Map expedition IDs to background filenames
 		var bgName = zoneId switch
 		{
+			"saltmoor_cove" => "whispering_woods",
+			"saltmoor_forest" => "ember_cavern",
+			"old_saltmoor" => "lake_of_tears",
+			// Legacy journal entries — keep old IDs resolvable so historic KO
+			// records don't render broken portraits after the 2026-04-21 rename.
 			"forest_entrance" => "whispering_woods",
+			"ember_cavern" => "ember_cavern",
 			"tear_lake" => "lake_of_tears",
-			"dawn_sanctuary" => "spirit_sanctum",
-			"origin_void" => "the_origin_void",
 			_ => zoneId // Most IDs match the filename
 		};
 		return $"/ui/locations/{bgName}_background.png";

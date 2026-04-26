@@ -543,7 +543,7 @@ public sealed class TradingManager : Component, Component.INetworkListener
 			Bred = m.Contract == null,
 			OTN = m.OriginalTrainerName,
 			OTI = m.OriginalTrainerId,
-			BF = m.BattlesFought,
+			BF = 0, // Deprecated since species mastery replaced per-instance BattlesFought
 			TD = m.TotalDamageDealt,
 			TK = m.TotalKnockouts,
 			BD = m.BossesDefeated,
@@ -578,7 +578,6 @@ public sealed class TradingManager : Component, Component.INetworkListener
 			},
 			HeldItemId = d.I,
 			Generation = d.Gen,
-			BattlesFought = d.BF,
 			TotalDamageDealt = d.TD,
 			TotalKnockouts = d.TK,
 			BossesDefeated = d.BD,

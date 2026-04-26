@@ -1,0 +1,89 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using System;
+@using System.Linq;
+@using Beastborne.Battle3D;
+@inherits Panel
+
+@{
+	var mgr = DamageNumberManager.Instance;
+	var entries = mgr?.Active;
+}
+
+<root class="damage-number-overlay">
+	@if ( entries != null )
+	{
+		foreach ( var d in entries )
+		{
+			// Encode the spawn id into a class name so s&box's Razor diff
+			// has a chance to treat each spawn as a DISTINCT element instead
+			// of reusing the foreach slot by index. Without this, spawning a
+			// second number while the first is still alive would re-class
+			// the existing div — and CSS @keyframes only play on first mount
+			// (CLAUDE.md quirk), so the new number would skip its entry
+			// animation. The id-class is best-effort; if the diff still
+			// reuses slots, the second-spawn animation may not replay until
+			// the first one expires. Acceptable trade-off for turn-based
+			// combat where hits land one-at-a-time anyway.
+			var idTag = d.Id.ToString( "N" ).Substring( 0, 8 );
+			var anchorClass = $"dn-anchor dna-{idTag}";
+			var leftPct = (int)( d.SpawnScreenPos.x * 100 );
+			var topPct = (int)( d.SpawnScreenPos.y * 100 );
+			<div class="@anchorClass"
+			     style="left: @(leftPct)%; top: @(topPct)%;">
+				@if ( d.IsMiss )
+				{
+					<div class="miss-wrap">
+						<div class="miss-trail">
+							<span>MISS</span><span>MISS</span><span>MISS</span>
+						</div>
+						<div class="dn dn-miss">MISS</div>
+					</div>
+				}
+				else if ( d.IsCrit )
+				{
+					<div class="wedge"></div>
+					<div class="shards"></div>
+					<div class="crit-wrap">
+						<div class="dn dn-crit">@(d.Damage)!</div>
+					</div>
+				}
+				else if ( d.IsSuper )
+				{
+					<div class="super-wrap">
+						<span class="dn dn-super">@d.Damage<span class="super-chip">SUPER</span></span>
+					</div>
+				}
+				else
+				{
+					<div class="dn dn-normal">@d.Damage</div>
+				}
+			</div>
+		}
+	}
+</root>
+
+@code {
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		var mgr = DamageNumberManager.Instance;
+		var list = mgr?.Active;
+		if ( list == null )
+		{
+			hash.Add( 0 );
+			return hash.ToHashCode();
+		}
+		hash.Add( list.Count );
+		// Hash every active id so the panel re-renders ONLY when the
+		// list shape changes (add/remove). Position + animation are baked
+		// into inline style + CSS keyframes at first render — no need to
+		// re-render frame-by-frame.
+		foreach ( var d in list )
+		{
+			hash.Add( d.Id );
+		}
+		return hash.ToHashCode();
+	}
+}

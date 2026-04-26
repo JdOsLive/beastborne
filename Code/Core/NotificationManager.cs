@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Sandbox;
+using Beastborne.Data;
 using Beastborne.Systems;
+using Achievement = Beastborne.Data.Achievement;
 
 namespace Beastborne.Core;
 
@@ -20,8 +22,7 @@ public enum NotificationType
 	Catch,
 	TamerLevelUp,
 	ExpeditionUnlock,
-	GuildInvite,
-	GuildMemberJoined
+	Achievement
 }
 
 /// <summary>
@@ -97,6 +98,12 @@ public sealed class NotificationManager : Component
 			TamerManager.Instance.OnLevelUp += OnTamerLevelUp;
 		}
 
+		// Subscribe to achievement unlocks
+		if ( AchievementManager.Instance != null )
+		{
+			AchievementManager.Instance.OnAchievementUnlocked += OnAchievementUnlocked;
+		}
+
 		// Initialize previously unlocked expeditions
 		UpdateUnlockedExpeditions();
 	}
@@ -119,10 +126,21 @@ public sealed class NotificationManager : Component
 			TamerManager.Instance.OnLevelUp -= OnTamerLevelUp;
 		}
 
+		if ( AchievementManager.Instance != null )
+		{
+			AchievementManager.Instance.OnAchievementUnlocked -= OnAchievementUnlocked;
+		}
+
 		if ( Instance == this )
 		{
 			Instance = null;
 		}
+	}
+
+	private void OnAchievementUnlocked( Achievement achievement )
+	{
+		if ( achievement == null ) return;
+		NotifyAchievementUnlocked( achievement );
 	}
 
 	private void OnServerBoostActivated( Data.ServerBoost boost )
@@ -147,38 +165,50 @@ public sealed class NotificationManager : Component
 	private void OnTamerLevelUp( int newLevel )
 	{
 		NotifyTamerLevelUp( newLevel );
-		CheckForNewExpeditionUnlocks( newLevel );
+		// Expedition unlocks are gated on clearing the previous expedition,
+		// NOT on tamer level. RequiredLevel is just the recommended level
+		// shown to the player. Unlock notifications fire from the expedition
+		// complete path (see <see cref="CheckForNewExpeditionUnlocks"/>).
 	}
 
 	private void UpdateUnlockedExpeditions()
 	{
 		_previouslyUnlockedExpeditions.Clear();
-		var tamerLevel = TamerManager.Instance?.CurrentTamer?.Level ?? 1;
+		var tamer = TamerManager.Instance?.CurrentTamer;
 		var expeditions = ExpeditionManager.Instance?.Expeditions;
+		if ( tamer == null || expeditions == null ) return;
 
-		if ( expeditions == null ) return;
-
-		foreach ( var expedition in expeditions )
+		// Seed with every expedition the player has already unlocked via
+		// prior clears so we don't re-fire an "unlocked" toast on each boot.
+		// Cleared-index is 1-based count; zone at index N is unlocked once
+		// the player has cleared index N-1 (so HighestExpeditionCleared >= N).
+		int highest = tamer.HighestExpeditionCleared;
+		for ( int i = 0; i < expeditions.Count; i++ )
 		{
-			if ( tamerLevel >= expedition.RequiredLevel )
+			if ( i <= highest )
 			{
-				_previouslyUnlockedExpeditions.Add( expedition.Id );
+				_previouslyUnlockedExpeditions.Add( expeditions[i].Id );
 			}
 		}
 	}
 
-	private void CheckForNewExpeditionUnlocks( int newLevel )
+	/// <summary>
+	/// Called by ExpeditionManager after a successful expedition clear —
+	/// fires a one-shot toast announcing the next zone is now available.
+	/// </summary>
+	public void CheckForNewExpeditionUnlocks()
 	{
 		var expeditions = ExpeditionManager.Instance?.Expeditions;
-		if ( expeditions == null ) return;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( expeditions == null || tamer == null ) return;
 
-		foreach ( var expedition in expeditions )
+		int highest = tamer.HighestExpeditionCleared;
+		for ( int i = 0; i < expeditions.Count; i++ )
 		{
-			// Check if this expedition is now unlocked but wasn't before
-			if ( newLevel >= expedition.RequiredLevel && !_previouslyUnlockedExpeditions.Contains( expedition.Id ) )
+			if ( i <= highest && !_previouslyUnlockedExpeditions.Contains( expeditions[i].Id ) )
 			{
-				NotifyExpeditionUnlock( expedition.Name );
-				_previouslyUnlockedExpeditions.Add( expedition.Id );
+				NotifyExpeditionUnlock( expeditions[i].Name );
+				_previouslyUnlockedExpeditions.Add( expeditions[i].Id );
 			}
 		}
 	}
@@ -264,9 +294,56 @@ public sealed class NotificationManager : Component
 		}
 		UnreadCount++;
 
+		// Per-type sound
+		PlaySoundForType( type );
+
 		OnNotificationAdded?.Invoke( notification );
 
 		Log.Info( $"[Notification] {type}: {title} - {message}" );
+	}
+
+	private void PlaySoundForType( NotificationType type )
+	{
+		switch ( type )
+		{
+			case NotificationType.Achievement:
+			case NotificationType.Success:
+				SoundManager.PlaySuccess();
+				break;
+			case NotificationType.Evolution:
+				SoundManager.PlayEvolution();
+				break;
+			case NotificationType.Catch:
+				SoundManager.PlayMonsterCatch();
+				break;
+			case NotificationType.ServerBoost:
+			case NotificationType.RankedBattle:
+			case NotificationType.ExpeditionUnlock:
+			case NotificationType.TamerLevelUp:
+				SoundManager.PlayForward();
+				break;
+			case NotificationType.Warning:
+				SoundManager.PlayDeny();
+				break;
+			case NotificationType.Info:
+			default:
+				SoundManager.PlayNotification();
+				break;
+		}
+	}
+
+	/// <summary>
+	/// Notify that an achievement was unlocked
+	/// </summary>
+	public void NotifyAchievementUnlocked( Achievement achievement )
+	{
+		AddNotification(
+			NotificationType.Achievement,
+			LocalizationManager.Get( "ui.notification.achievement_title" ),
+			$"{achievement.Name} — {LocalizationManager.Get( "ui.notification.achievement_claim_hint" )}",
+			8f,
+			achievement.IconPath
+		);
 	}
 
 	/// <summary>
@@ -408,6 +485,7 @@ public sealed class NotificationManager : Component
 			NotificationType.Catch => "🎯",
 			NotificationType.TamerLevelUp => "⬆",
 			NotificationType.ExpeditionUnlock => "🗺",
+			NotificationType.Achievement => "★",
 			_ => "•"
 		};
 	}

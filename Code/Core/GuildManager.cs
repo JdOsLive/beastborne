@@ -22,23 +22,41 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	// CONSTANTS
 	// ═══════════════════════════════════════════════════════════════
 
-	private const string STAT_PREFIX = "guild-";
 	private const float SAVE_INTERVAL = 30f;
+	// Beta launch — guild UI is hidden but the data layer keeps running so
+	// existing guild members aren't corrupted. Flip this to true when guilds
+	// graduate from beta. Mirrors OnlineHubPanel.RankedEnabled pattern.
+	public const bool UiEnabled = false;
 	public const int GUILD_CREATION_COST = 50000;
 	public const int MIN_LEVEL_TO_JOIN = 10;
-	public const int MAX_MEMBERS = 30;
+	// Base member cap. Effective cap is GetMaxMembers() (perks at Lv15 → 35, Lv35 → 40).
+	public const int BASE_MAX_MEMBERS = 30;
+	// Legacy alias kept for non-perk-aware callsites that just need the absolute ceiling.
+	public const int MAX_MEMBERS = 40;
 	public const int MAX_LOG_ENTRIES = 50;
 	public const int GUILD_HOP_COOLDOWN_HOURS = 24;
-	public const int MAX_GUILD_LEVEL = 20;
+	public const int MAX_GUILD_LEVEL = 50;
 	public const int LEADER_INACTIVE_DAYS = 30;
-	public const int MAX_RAID_ATTEMPTS_PER_DAY = 3;
+	// Base raid attempts per day. Effective cap is GetRaidAttemptsPerDay() (perk at Lv25 → 4).
+	public const int BASE_RAID_ATTEMPTS_PER_DAY = 3;
+	// Legacy alias kept for non-perk-aware callsites that just need the absolute ceiling.
+	public const int MAX_RAID_ATTEMPTS_PER_DAY = 4;
 
-	// Raid boss curated species list (Legendary + Mythic)
+	// Raid boss species — drawn ONLY from the launch roster (Beastbook).
+	// Cycles every 14 days. 10 bosses = 140 days before repeat.
+	// Mix of starter final-evos, mid-evos, and boss-feeling wilds across all 3 zones.
 	private static readonly string[] RaidBossSpecies = new[]
 	{
-		"mythweaver", "worldserpent", "voiddragon", "primordius",
-		"genesis", "genisoul", "songborne", "namashira",
-		"chalkodon", "fujinara", "bluffrost"
+		"manehelm",     // Fire/Metal — Embrik final evo
+		"lochmaw",      // Water/Shadow — Pagefin final evo
+		"aurael",       // Wind — Cherune final evo
+		"coralheim",    // Water — Zone 3 boss-feel
+		"bloomguard",   // Nature — Zone 2 boss-feel
+		"curublast",    // Nature — Zone 2
+		"twincoil",     // Nature/Neutral — Zone 1
+		"pyrgard",      // Fire — Embrik mid-evo
+		"gothsire",     // Water — Pagefin mid-evo
+		"seraphiel"     // Wind — Cherune mid-evo
 	};
 
 	// ═══════════════════════════════════════════════════════════════
@@ -95,7 +113,16 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	// LIFECYCLE
 	// ═══════════════════════════════════════════════════════════════
 
-	private static string GetKey( string key ) => $"{SaveSlotManager.GetSlotPrefix()}{key}";
+	private static GuildSaveData GuildSection
+	{
+		get
+		{
+			var blob = SaveService.Instance?.CurrentBlob;
+			if ( blob == null ) return null;
+			blob.Guild ??= new GuildSaveData();
+			return blob.Guild;
+		}
+	}
 
 	protected override void OnAwake()
 	{
@@ -111,6 +138,22 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			Destroy();
 			return;
 		}
+	}
+
+	protected override void OnStart()
+	{
+		// Reset hook: on Reset Game Data, drop in-memory guild state (the player's
+		// remote guild record is NOT deleted — only their local linkage is cleared).
+		if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveReset += HandleSaveReset;
+		}
+	}
+
+	private void HandleSaveReset()
+	{
+		ClearGuildData();
+		Log.Info( "[GuildManager] local guild state cleared (remote guild record untouched)" );
 	}
 
 	public static void EnsureInstance( Scene scene )
@@ -618,6 +661,31 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		OnMembersUpdated?.Invoke();
 	}
 
+	/// <summary>
+	/// LAUNCH RESET — wipes local guild state so the player rejoins the world
+	/// guild-less. Call once during launch migration if SaveService brings in
+	/// pre-launch guild membership. The server-side wipe is a separate concern:
+	/// the API admin must DELETE all rows from the guild tables (guilds,
+	/// guild_members, guild_invites, guild_join_requests, guild_logs,
+	/// guild_raid_boss, guild_raid_attempts) on launch day. There is no
+	/// client-callable endpoint for that — it is intentionally a manual
+	/// operator step against the DB at 157.245.10.193.nip.io:3000.
+	/// </summary>
+	public void ResetGuildLocally()
+	{
+		var section = GuildSection;
+		if ( section != null )
+		{
+			section.LeaveTicks = 0;
+			section.LastWeeklyResetTicks = 0;
+		}
+		ClearGuildData();
+		VisibleGuilds.Clear();
+		cachedRaidAttemptsToday = 0;
+		SaveService.Instance?.MarkDirty( "guild" );
+		Log.Info( "[GuildManager] Local guild state reset for launch migration" );
+	}
+
 	// ═══════════════════════════════════════════════════════════════
 	// INVITES
 	// ═══════════════════════════════════════════════════════════════
@@ -625,7 +693,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	public void InvitePlayer( string targetConnectionId, string targetName, long targetSteamId )
 	{
 		if ( !IsInGuild || !IsOfficer ) return;
-		if ( Members.Count >= MAX_MEMBERS )
+		if ( Members.Count >= GetMaxMembers() )
 		{
 			OnGuildError?.Invoke( "Guild is full." );
 			return;
@@ -846,7 +914,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	public void ApproveJoinRequest( GuildJoinRequest request )
 	{
 		if ( !IsInGuild || !IsOfficer ) return;
-		if ( Members.Count >= MAX_MEMBERS )
+		if ( Members.Count >= GetMaxMembers() )
 		{
 			OnGuildError?.Invoke( "Guild is full." );
 			return;
@@ -1142,9 +1210,17 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	// GUILD XP & LEVELING
 	// ═══════════════════════════════════════════════════════════════
 
+	/// <summary>
+	/// CUMULATIVE lifetime guild XP threshold to BE at <paramref name="level"/>.
+	/// Curve: 200 + 1.2 × level³ — gentle 1-10, long 10-25, aspirational 25-50.
+	/// Per-level deltas grow sharply (L19→20 ≈ 1.4k XP, L49→50 ≈ 8.8k XP — 6.4× ramp).
+	/// Threshold to reach L20 ≈ 9.8k (vs old 20.5k — half — friendlier early).
+	/// Threshold to reach L50 ≈ 150.2k (~7.3× the old to-L20 budget).
+	/// </summary>
 	public static long GetXPForGuildLevel( int level )
 	{
-		return 500 + (long)level * level * 50;
+		// Stored as (long) to keep room for future cap raises beyond 50.
+		return 200 + (long)(1.2 * level * level * level);
 	}
 
 	public void AddGuildXP( int amount )
@@ -1194,48 +1270,81 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		// Weekly RP is synced to server via heartbeat
 	}
 
+	// ───────────── Guild perk effect hooks (10 perks, Lv 5/10/15/20/25/30/35/40/45/50) ─────────────
+	// See GuildPanel.GetPerkList() for the canonical perk descriptions.
+
 	/// <summary>
-	/// Get the guild XP perk multiplier for tamer XP (Lv4: +5%, Lv10: +15%)
+	/// Tamer XP multiplier (Lv10 perk "Pack Mentor": +10% Tamer XP).
 	/// </summary>
 	public float GetTamerXPMultiplier()
 	{
 		if ( !IsInGuild || Guild == null ) return 1.0f;
 		float bonus = 0f;
-		if ( Guild.Level >= 4 ) bonus += 0.05f;
 		if ( Guild.Level >= 10 ) bonus += 0.10f;
 		return 1.0f + bonus;
 	}
 
 	/// <summary>
-	/// Get the guild gold perk multiplier (Lv2: +5% expedition, Lv8: +10% all, Lv15: +25% all)
+	/// Gold multiplier (Lv5 perk "Coffer Cut": +5% expedition gold).
 	/// </summary>
 	public float GetGoldMultiplier( bool isExpedition = false )
 	{
 		if ( !IsInGuild || Guild == null ) return 1.0f;
 		float bonus = 0f;
-		if ( isExpedition && Guild.Level >= 2 ) bonus += 0.05f;
-		if ( Guild.Level >= 8 ) bonus += 0.10f;
-		if ( Guild.Level >= 15 ) bonus += 0.15f;
+		if ( isExpedition && Guild.Level >= 5 ) bonus += 0.05f;
 		return 1.0f + bonus;
 	}
 
 	/// <summary>
-	/// Get the guild catch rate bonus (Lv6: +5%)
+	/// Catch rate bonus (Lv30 perk "Sharper Eye": +10%).
 	/// </summary>
 	public float GetCatchRateBonus()
 	{
 		if ( !IsInGuild || Guild == null ) return 0f;
-		if ( Guild.Level >= 6 ) return 5f;
+		if ( Guild.Level >= 30 ) return 10f;
 		return 0f;
 	}
 
 	/// <summary>
-	/// Get the guild beast XP multiplier (Lv12: +10%)
+	/// Beast XP multiplier (Lv20 perk "Beast Trainer": +10% Beast XP).
 	/// </summary>
 	public float GetBeastXPMultiplier()
 	{
 		if ( !IsInGuild || Guild == null ) return 1.0f;
-		if ( Guild.Level >= 12 ) return 1.10f;
+		if ( Guild.Level >= 20 ) return 1.10f;
+		return 1.0f;
+	}
+
+	/// <summary>
+	/// Effective member cap. Base 30 → +5 at Lv15 ("Wider Banner") → +5 at Lv35 ("Halls of Renown").
+	/// </summary>
+	public int GetMaxMembers()
+	{
+		if ( !IsInGuild || Guild == null ) return BASE_MAX_MEMBERS;
+		int cap = BASE_MAX_MEMBERS;
+		if ( Guild.Level >= 15 ) cap += 5;
+		if ( Guild.Level >= 35 ) cap += 5;
+		return cap;
+	}
+
+	/// <summary>
+	/// Effective raid attempts per day. Base 3 → 4 at Lv25 ("Raid Vigor").
+	/// </summary>
+	public int GetRaidAttemptsPerDay()
+	{
+		if ( !IsInGuild || Guild == null ) return BASE_RAID_ATTEMPTS_PER_DAY;
+		if ( Guild.Level >= 25 ) return BASE_RAID_ATTEMPTS_PER_DAY + 1;
+		return BASE_RAID_ATTEMPTS_PER_DAY;
+	}
+
+	/// <summary>
+	/// Raid raw-damage multiplier (Lv45 perk "Boss Hunter's Cut": +15%).
+	/// Applied inside CompleteRaidAttempt before score conversion.
+	/// </summary>
+	public float GetRaidDamageMultiplier()
+	{
+		if ( !IsInGuild || Guild == null ) return 1.0f;
+		if ( Guild.Level >= 45 ) return 1.15f;
 		return 1.0f;
 	}
 
@@ -1436,7 +1545,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 	public bool CanAttemptRaid()
 	{
-		return IsInGuild && CurrentRaidBoss != null && cachedRaidAttemptsToday < MAX_RAID_ATTEMPTS_PER_DAY;
+		return IsInGuild && CurrentRaidBoss != null && cachedRaidAttemptsToday < GetRaidAttemptsPerDay();
 	}
 
 	/// <summary>
@@ -1533,7 +1642,9 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	public void CompleteRaidAttempt( int rawDamage, float comboMultiplier, string comboName, int roundsUsed )
 	{
 		if ( !IsInGuild || CurrentRaidBoss == null ) return;
-		_ = CompleteRaidAttemptAsync( rawDamage, comboMultiplier, comboName, roundsUsed );
+		// Apply Lv45 "Boss Hunter's Cut" perk to raw damage before submission.
+		int boostedDamage = (int)System.Math.Round( rawDamage * GetRaidDamageMultiplier() );
+		_ = CompleteRaidAttemptAsync( boostedDamage, comboMultiplier, comboName, roundsUsed );
 	}
 
 	private async Task CompleteRaidAttemptAsync( int rawDamage, float comboMultiplier, string comboName, int roundsUsed )
@@ -1584,9 +1695,32 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			self.WeeklyRaidDamage += rawDamage;
 		}
 
-		// Award XP and achievement
+		// Award guild XP and achievement
 		AddGuildXP( 50 );
 		IncrementAchievement( "raid" );
+
+		// Per-attempt gold reward — scaled to score, capped to keep guild raids
+		// from out-earning expeditions. New PB grants a small bonus.
+		int goldReward = System.Math.Min( 5000, totalScore / 50 );
+		if ( result.IsNewBest ) goldReward += 1000;
+		if ( goldReward > 0 )
+		{
+			TamerManager.Instance?.AddGold( goldReward );
+		}
+
+		// Personal milestone titles (lifetime unlock — one-shot, not per-period)
+		var newTitles = new System.Collections.Generic.List<string>();
+		if ( TamerManager.Instance != null )
+		{
+			if ( TamerManager.Instance.UnlockTitle( "Raid Slayer" ) )
+				newTitles.Add( "Raid Slayer" );
+
+			int bestScore = result.BestScore;
+			if ( bestScore >= 100000 && TamerManager.Instance.UnlockTitle( "Boss Hunter" ) )
+				newTitles.Add( "Boss Hunter" );
+			if ( bestScore >= 500000 && TamerManager.Instance.UnlockTitle( "Worldbreaker" ) )
+				newTitles.Add( "Worldbreaker" );
+		}
 
 		// Broadcast to guild via RPC for real-time update
 		var connId = Connection.Local?.Id.ToString() ?? "";
@@ -1596,12 +1730,19 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		if ( IsLeader )
 		{
 			Stats.SetValue( "guild-raid-s0", result.GuildTotalScore );
-			Stats.SetValue( "guild-rp-s0", TotalRP );
+			Stats.SetValue( "guild-rp-launch", TotalRP );
 		}
 
 		SoundManager.PlaySuccess();
+		string rewardLine = goldReward > 0 ? $" · +{goldReward:N0}g" : "";
 		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Raid Complete!",
-			$"Score: {totalScore:N0} ({comboName} {comboMultiplier:F1}x, {roundsUsed} rounds)", 5f );
+			$"Score: {totalScore:N0} ({comboName} {comboMultiplier:F1}x){rewardLine}", 5f );
+
+		foreach ( var titleId in newTitles )
+		{
+			NotificationManager.Instance?.AddNotification( NotificationType.Success, "Title Unlocked!",
+				$"\"{titleId}\" — equip in Tamer profile.", 6f );
+		}
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -1610,26 +1751,27 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 	public bool IsOnHopCooldown()
 	{
-		var ticksStr = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}leave-time" ), "0" );
-		if ( !long.TryParse( ticksStr, out var ticks ) || ticks == 0 ) return false;
-
-		var leaveTime = new DateTime( ticks, DateTimeKind.Utc );
+		var section = GuildSection;
+		if ( section == null || section.LeaveTicks == 0 ) return false;
+		var leaveTime = new DateTime( section.LeaveTicks, DateTimeKind.Utc );
 		return (DateTime.UtcNow - leaveTime).TotalHours < GUILD_HOP_COOLDOWN_HOURS;
 	}
 
 	public TimeSpan GetHopCooldownRemaining()
 	{
-		var ticksStr = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}leave-time" ), "0" );
-		if ( !long.TryParse( ticksStr, out var ticks ) || ticks == 0 ) return TimeSpan.Zero;
-
-		var leaveTime = new DateTime( ticks, DateTimeKind.Utc );
+		var section = GuildSection;
+		if ( section == null || section.LeaveTicks == 0 ) return TimeSpan.Zero;
+		var leaveTime = new DateTime( section.LeaveTicks, DateTimeKind.Utc );
 		var remaining = TimeSpan.FromHours( GUILD_HOP_COOLDOWN_HOURS ) - (DateTime.UtcNow - leaveTime);
 		return remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
 	}
 
 	private void SetHopCooldown()
 	{
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}leave-time" ), DateTime.UtcNow.Ticks.ToString() );
+		var section = GuildSection;
+		if ( section == null ) return;
+		section.LeaveTicks = DateTime.UtcNow.Ticks;
+		SaveService.Instance?.MarkDirty( "guild" );
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -1645,9 +1787,10 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		var daysUntilMonday = ((int)now.DayOfWeek - 1 + 7) % 7;
 		var thisMonday = now.Date.AddDays( -daysUntilMonday );
 
-		var resetKey = GetKey( $"{STAT_PREFIX}week-reset" );
-		var lastResetStr = Game.Cookies.Get<string>( resetKey, "0" );
-		if ( !long.TryParse( lastResetStr, out var lastResetTicks ) ) lastResetTicks = 0;
+		var section = GuildSection;
+		if ( section == null ) return;
+
+		var lastResetTicks = section.LastWeeklyResetTicks;
 
 		if ( lastResetTicks == 0 || new DateTime( lastResetTicks, DateTimeKind.Utc ) < thisMonday )
 		{
@@ -1662,7 +1805,8 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			// Also tell the API to reset (fire-and-forget, server handles idempotency)
 			_ = GuildApiClient.PostAsync( $"guilds/{Guild.Id}/weekly-reset" );
 
-			Game.Cookies.Set( resetKey, thisMonday.Ticks.ToString() );
+			section.LastWeeklyResetTicks = thisMonday.Ticks;
+			SaveService.Instance?.MarkDirty( "guild" );
 			Log.Info( "GuildManager: Weekly stats reset" );
 		}
 	}
@@ -1951,15 +2095,16 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		};
 	}
 
+	/// <summary>Lucide iconify name for the role badge (e.g. "lucide:crown").</summary>
 	public static string GetRoleIcon( GuildRole role )
 	{
 		return role switch
 		{
-			GuildRole.Beastlord => "👑",
-			GuildRole.Warden => "⭐",
-			GuildRole.Tamer => "💎",
-			GuildRole.Wanderer => "👤",
-			_ => "❓"
+			GuildRole.Beastlord => "lucide:crown",
+			GuildRole.Warden => "lucide:star",
+			GuildRole.Tamer => "lucide:gem",
+			GuildRole.Wanderer => "lucide:user",
+			_ => "lucide:circle-help"
 		};
 	}
 

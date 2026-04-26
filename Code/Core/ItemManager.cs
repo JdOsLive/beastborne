@@ -74,7 +74,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Uncommon,
 			EffectType = ItemEffectType.BoostATK,
 			EffectValue = 25,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 500,
 			SellPrice = 125
 		} );
@@ -89,7 +89,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Uncommon,
 			EffectType = ItemEffectType.BoostDEF,
 			EffectValue = 25,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 500,
 			SellPrice = 125
 		} );
@@ -104,7 +104,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Uncommon,
 			EffectType = ItemEffectType.BoostSPD,
 			EffectValue = 25,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 500,
 			SellPrice = 125
 		} );
@@ -119,7 +119,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Uncommon,
 			EffectType = ItemEffectType.BoostSpA,
 			EffectValue = 25,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 500,
 			SellPrice = 125
 		} );
@@ -134,7 +134,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Uncommon,
 			EffectType = ItemEffectType.BoostSpD,
 			EffectValue = 25,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 500,
 			SellPrice = 125
 		} );
@@ -149,7 +149,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Rare,
 			EffectType = ItemEffectType.BoostCrit,
 			EffectValue = 20,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 1000,
 			SellPrice = 250
 		} );
@@ -164,7 +164,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Rare,
 			EffectType = ItemEffectType.CatchRateBoost,
 			EffectValue = 15,
-			EffectDuration = 5,
+			EffectDuration = 12,
 			BuyPrice = 1500,
 			SellPrice = 375
 		} );
@@ -179,7 +179,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Epic,
 			EffectType = ItemEffectType.CatchRateBoost,
 			EffectValue = 30,
-			EffectDuration = 3,
+			EffectDuration = 8,
 			BuyPrice = 5000,
 			SellPrice = 1250
 		} );
@@ -222,7 +222,7 @@ public sealed class ItemManager : Component
 			Rarity = ItemRarity.Rare,
 			EffectType = ItemEffectType.GoldBoost,
 			EffectValue = 50,
-			EffectDuration = 5,
+			EffectDuration = 12,
 			BuyPrice = 2000,
 			SellPrice = 500
 		} );
@@ -1436,7 +1436,7 @@ public sealed class ItemManager : Component
 			IsStackable = true,
 			MaxStack = 10,
 			EffectType = ItemEffectType.ServerLuckyCharm,
-			EffectValue = 50f,
+			EffectValue = 2f,
 			BoostDurationMinutes = 60,
 			BuyPrice = 0,
 			SellPrice = 0
@@ -1453,7 +1453,7 @@ public sealed class ItemManager : Component
 			IsStackable = true,
 			MaxStack = 10,
 			EffectType = ItemEffectType.ServerLuckyCharm,
-			EffectValue = 50f,
+			EffectValue = 2f,
 			BoostDurationMinutes = 120,
 			BuyPrice = 0,
 			SellPrice = 0
@@ -1471,7 +1471,7 @@ public sealed class ItemManager : Component
 			IsStackable = true,
 			MaxStack = 10,
 			EffectType = ItemEffectType.ServerRareEncounter,
-			EffectValue = 50f,
+			EffectValue = 2f,
 			BoostDurationMinutes = 60,
 			BuyPrice = 0,
 			SellPrice = 0
@@ -1488,7 +1488,7 @@ public sealed class ItemManager : Component
 			IsStackable = true,
 			MaxStack = 10,
 			EffectType = ItemEffectType.ServerRareEncounter,
-			EffectValue = 50f,
+			EffectValue = 2f,
 			BoostDurationMinutes = 120,
 			BuyPrice = 0,
 			SellPrice = 0
@@ -1499,6 +1499,73 @@ public sealed class ItemManager : Component
 	{
 		_itemDatabase[item.Id] = item;
 	}
+
+	// ============================================
+	// BEAST SIGNATURE MATERIAL AUTO-REGISTRATION
+	// ============================================
+
+	/// <summary>
+	/// Register a themed Material item for every species in the launch roster.
+	/// Uses <c>MonsterSpecies.SignatureDropName</c> when set (e.g. "Snapped Twig"),
+	/// falls back to "{Species} Spirit" (e.g. "Streamling Spirit") otherwise.
+	/// Item IDs follow the pattern <c>mat_{speciesId}</c>.
+	///
+	/// Called by MonsterManager.LoadSpeciesDatabase after species are defined.
+	/// </summary>
+	public void RegisterBeastMaterials( Dictionary<string, MonsterSpecies> speciesDb, HashSet<string> launchRoster )
+	{
+		if ( speciesDb == null || launchRoster == null ) return;
+
+		int registered = 0;
+		foreach ( var speciesId in launchRoster )
+		{
+			if ( !speciesDb.TryGetValue( speciesId, out var species ) ) continue;
+
+			string itemId = $"mat_{speciesId}";
+			if ( _itemDatabase.ContainsKey( itemId ) ) continue; // idempotent
+
+			string displayName = !string.IsNullOrEmpty( species.SignatureDropName )
+				? species.SignatureDropName
+				: $"{species.Name} Spirit";
+
+			string description = !string.IsNullOrEmpty( species.SignatureDropDescription )
+				? species.SignatureDropDescription
+				: $"A memento left behind by a defeated {species.Name}. Used for trade requests and quests.";
+
+			AddItem( new ItemDefinition
+			{
+				Id = itemId,
+				Name = displayName,
+				Description = description,
+				// Placeholder icon — no per-species art yet. `ui/icons/sort/box.svg`
+				// is a generic open-box glyph that reads as "loot drop" until a
+				// proper themed icon ships per species.
+				IconPath = "ui/icons/sort/box.svg",
+				Category = ItemCategory.Material,
+				Rarity = MapSpeciesRarityToItemRarity( species.BaseRarity ),
+				EffectType = ItemEffectType.None,
+				EffectValue = 0,
+				BuyPrice = 0,         // Not sold — only obtained via drops
+				SellPrice = species.BaseRarity switch
+				{
+					Rarity.Common => 25,
+					Rarity.Uncommon => 60,
+					Rarity.Rare => 140,
+					_ => 50
+				}
+			} );
+			registered++;
+		}
+		Log.Info( $"[ItemManager] Registered {registered} beast signature material items" );
+	}
+
+	private static ItemRarity MapSpeciesRarityToItemRarity( Rarity r ) => r switch
+	{
+		Rarity.Common => ItemRarity.Common,
+		Rarity.Uncommon => ItemRarity.Uncommon,
+		Rarity.Rare => ItemRarity.Rare,
+		_ => ItemRarity.Common
+	};
 
 	// ============================================
 	// DROP TABLE INITIALIZATION
@@ -1703,6 +1770,58 @@ public sealed class ItemManager : Component
 				new() { ItemId = "held_shadow_cloak", Weight = 40, MinExpeditionLevel = 40 },
 				new() { ItemId = "relic_spelunker_lantern", Weight = 8, MinExpeditionLevel = 30 },
 				new() { ItemId = "relic_eternity_glass", Weight = 1, MinExpeditionLevel = 70 },
+			}
+		};
+
+		// ─── Launch zone tables (curated per-zone, override element tables) ───
+		// These keys follow the pattern `zone_{expeditionId}` — looked up before
+		// the element-keyed tables in CalculateDrop. Lets us tune launch rewards
+		// without affecting later expeditions that share an element.
+
+		// Saltmoor Cove (zone_saltmoor_cove, Lv 1) — starter zone, minimal loot.
+		// Primary reward loop here is consumables (rolled from "base" table) and
+		// the guaranteed per-KO signature material. One common held item only; no
+		// relics until the player unlocks Forest.
+		_dropTables["zone_saltmoor_cove"] = new DropTable
+		{
+			Id = "zone_saltmoor_cove",
+			BaseDropChance = 0.025f,
+			Entries = new()
+			{
+				new() { ItemId = "held_training_weight", Weight = 100 },
+			}
+		};
+
+		// Saltmoor Forest (zone_saltmoor_forest, Lv 15) — first common relics unlock.
+		// Mix of held items and first-tier relics. Level gates still respected.
+		_dropTables["zone_saltmoor_forest"] = new DropTable
+		{
+			Id = "zone_saltmoor_forest",
+			BaseDropChance = 0.04f,
+			Entries = new()
+			{
+				new() { ItemId = "held_growth_ring", Weight = 100 },
+				new() { ItemId = "held_training_weight", Weight = 60 },
+				new() { ItemId = "held_fortune_coin", Weight = 40 },
+				new() { ItemId = "relic_healers_brooch", Weight = 20, MinExpeditionLevel = 15 },
+				new() { ItemId = "relic_scholars_lens", Weight = 15, MinExpeditionLevel = 15 },
+			}
+		};
+
+		// Old Saltmoor (zone_old_saltmoor, Lv 30) — uncommon relics + richer held pool.
+		// Final launch zone; rewards should feel meaningfully better than Forest.
+		_dropTables["zone_old_saltmoor"] = new DropTable
+		{
+			Id = "zone_old_saltmoor",
+			BaseDropChance = 0.05f,
+			Entries = new()
+			{
+				new() { ItemId = "held_arcane_focus", Weight = 100 },
+				new() { ItemId = "held_stone_shell", Weight = 80 },
+				new() { ItemId = "held_titans_heart", Weight = 30, MinExpeditionLevel = 30 },
+				new() { ItemId = "relic_guardian_emblem", Weight = 20, MinExpeditionLevel = 15 },
+				new() { ItemId = "relic_iron_fortress", Weight = 15, MinExpeditionLevel = 30 },
+				new() { ItemId = "relic_vital_pendant", Weight = 12, MinExpeditionLevel = 15 },
 			}
 		};
 
@@ -2528,7 +2647,16 @@ public sealed class ItemManager : Component
 		else if ( isBoss )
 			tableKey = "boss";
 		else
-			tableKey = expeditionElement.ToString().ToLower();
+		{
+			// Prefer a per-zone curated table if present; otherwise fall back
+			// to the element-keyed table. This lets us hand-curate rewards for
+			// launch zones without disturbing element pools shared with later
+			// expeditions (e.g. Nature drops in Forest AND Garden of Origins).
+			string zoneKey = $"zone_{expeditionId}";
+			tableKey = !string.IsNullOrEmpty( expeditionId ) && _dropTables.ContainsKey( zoneKey )
+				? zoneKey
+				: expeditionElement.ToString().ToLower();
+		}
 
 		// Get element-specific or base table
 		if ( !_dropTables.TryGetValue( tableKey, out var table ) )

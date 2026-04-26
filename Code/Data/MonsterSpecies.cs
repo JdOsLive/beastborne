@@ -54,6 +54,13 @@ public class MonsterSpecies
 	public int BaseSpD { get; set; }  // Special Defense
 	public int BaseSPD { get; set; }  // Speed
 
+	/// <summary>
+	/// Base Stat Total — sum of six base stats. Pokemon convention.
+	/// Used for tier sorting and balance audits. NOT for in-game display —
+	/// that's PowerRating on the individual Monster (which accounts for level + genes).
+	/// </summary>
+	public int BaseStatTotal => BaseHP + BaseATK + BaseDEF + BaseSpA + BaseSpD + BaseSPD;
+
 	// Stat growth per level
 	public float HPGrowth { get; set; }
 	public float ATKGrowth { get; set; }
@@ -81,6 +88,36 @@ public class MonsterSpecies
 	public bool IsCatchable { get; set; } = true;
 	public float BaseCatchRate { get; set; } = 0.5f;
 
+	/// <summary>
+	/// Base XP this species yields when defeated. Used in Pokemon-style formula:
+	/// <c>xp = BaseExpYield × defeatedLevel / 7 × levelRatio</c>
+	/// where levelRatio = clamp(defeatedLevel / participantLevel, 0.5, 2.0).
+	/// Target bands (per .claude/balance-knowledge/reference-values.md):
+	///   Common: 50-80 · Uncommon: 120-160 · Rare: 200-280 · Starter: 100 (rare to fight)
+	/// Default 60 is a sane zone-1 Common baseline.
+	/// </summary>
+	public int BaseExpYield { get; set; } = 60;
+
+	/// <summary>
+	/// The themed Monster-Hunter-style material this species drops on every KO.
+	/// Item ID pattern is <c>mat_{speciesId}</c>; display name is the evocative word
+	/// (e.g. "Snapped Twig", "Lost Feather"). ItemManager auto-registers a Material
+	/// item from this for every species that has it set. Null/empty = no drop.
+	/// </summary>
+	public string SignatureDropName { get; set; }
+
+	/// <summary>
+	/// One-line flavor description for the signature material drop. Shown in the
+	/// inventory tooltip. e.g. "A springy green shoot snapped clean from the beast."
+	/// </summary>
+	public string SignatureDropDescription { get; set; }
+
+	/// <summary>Item ID of the material dropped on defeat. Pattern: <c>mat_{speciesId}</c>.</summary>
+	public string SignatureDropItemId => string.IsNullOrEmpty( SignatureDropName ) ? null : $"mat_{Id}";
+
+	/// <summary>True if this species has a themed signature material drop registered.</summary>
+	public bool HasSignatureDrop => !string.IsNullOrEmpty( SignatureDropName );
+
 	// Personality — affects contract negotiation approach effectiveness
 	public BeastPersonality Personality { get; set; } = BeastPersonality.Bold;
 	public string PersonalityHint { get; set; } = "This creature watches you cautiously...";
@@ -101,4 +138,36 @@ public class MonsterSpecies
 	// Per-monster icon offset for beastiary positioning (pixels)
 	public float IconOffsetX { get; set; } = 0f;
 	public float IconOffsetY { get; set; } = 0f;
+
+	// Per-species scale multiplier applied to grid-card sprites in the
+	// Beastbook. Native sprite art varies in pixel footprint — some beasts
+	// render smaller than siblings at the same CSS size. CardScale lets us
+	// nudge individual species up/down without touching the base layout.
+	// Default 1.0 = no scaling; only detail-pane portraits ignore this
+	// value (they already have room to show the full body).
+	public float CardScale { get; set; } = 1.0f;
+
+	// Per-species translate offsets (pixels) applied on the grid-card
+	// sprite, composed with CardScale inside the same transform. Lets us
+	// nudge individual beasts off-center when the art's natural anchor
+	// doesn't sit where the card wants it. Positive X = right, positive
+	// Y = down. Paired with transform-origin: center bottom, so scaling
+	// stays feet-grounded while the offset shifts the whole portrait.
+	// Defaults 0/0 = centered. Only the grid card uses these; detail-pane
+	// portraits, evolution sprites, and move icons ignore them.
+	public float CardOffsetX { get; set; } = 0f;
+	public float CardOffsetY { get; set; } = 0f;
+
+	// Per-species X offset (pixels) for the roster mini-card sprite's
+	// background-position. Positive = right. Used when a beast's body
+	// weight sits off-center in its 128×128 source canvas (e.g. wings
+	// bias one side), making the card read lopsided. Default 0 = centered.
+	public float MiniOffsetX { get; set; } = 0f;
+
+	// Beastbook UI metadata (art pipeline). None of these affect gameplay.
+	// IsAIGenerated = true → the UI shows an amber "AI placeholder" banner so
+	// players know the art is provisional. ArtistCredit is shown in the
+	// detail-pane footer when set; null = hide credit.
+	public bool IsAIGenerated { get; set; } = false;
+	public string ArtistCredit { get; set; } = null;
 }

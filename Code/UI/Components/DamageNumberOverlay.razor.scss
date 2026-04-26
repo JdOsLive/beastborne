@@ -1,0 +1,373 @@
+// =====================================================================
+// Damage Number Overlay — "Manga Impact" v2
+// =====================================================================
+// Ported from Damage Numbers v2.html mockup.
+//
+// Anatomy per spawn:
+//   .dn-anchor       absolutely-positioned at the captured screen pos
+//     .dn.dn-normal      gold slab number
+//     .dn.dn-crit        hot-red Bungee-Inline number, wrapped in shake
+//     .dn.dn-super       orange number with chromatic-split ghosts + ×2 chip
+//     .dn.dn-miss        wispy "WHIFF" with motion trail
+//
+// All keyframes use `forwards` (one-shot) instead of the mockup's
+// `infinite` — each spawn is mounted once via @key, runs to its rest
+// state, then unmounted by DamageNumberManager when its lifetime expires.
+//
+// s&box quirks navigated (see CLAUDE.md):
+//   - background-color: rgba(...)  (NOT background:)
+//   - linear-gradient `to bottom` form (degrees can misparse on narrow geometry)
+//   - background-color: transparent  (NOT background: none)
+//   - filter: brightness(1)  (NOT filter: none)
+//   - display: flex  (NOT block, NOT inline-flex)
+//   - uniform `border:` shorthand only (per-side with style word rejected)
+//   - empty divs render as gray rectangles → every layout div has content/sized class
+// =====================================================================
+
+// ── Font registration ─────────────────────────────────────────────────
+// Bungee + Bungee Inline are the design intent. Until the user drops
+// those TTFs into Assets/fonts/ (root, NOT a subfolder), we fall back to
+// Exo2 which is already registered globally. The font-family stacks below
+// reference Exo2 directly to avoid the s&box quirk where pointing at a
+// missing TTF can leave text invisible instead of cleanly falling through.
+//
+// TODO add font file at: Assets/fonts/Bungee-Regular.ttf
+// TODO add font file at: Assets/fonts/BungeeInline-Regular.ttf
+// TODO once added, swap `font-family: Exo2` to `Bungee, Exo2` (or
+//      BungeeInline for the heavier weights) in the rules below.
+
+// ── Root overlay ──────────────────────────────────────────────────────
+.damage-number-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	pointer-events: none;
+	// High z so numbers sit above the BattleView UI but below true modals.
+	z-index: 800;
+	overflow: hidden;
+}
+
+// Per-spawn anchor — captured screen pos is baked into inline style.
+.dn-anchor {
+	position: absolute;
+	width: 0;
+	height: 0;
+	pointer-events: none;
+}
+
+// ── Shared number anatomy ─────────────────────────────────────────────
+// 8-direction text-shadow stroke (same trick as the mockup), plus a warm
+// "sticker" drop-shadow so the slab sits ON the scene rather than IN it.
+.dn {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	font-family: Exo2;
+	color: #fff;
+	// s&box clips large text when line-height is "tight" — line-height MUST
+	// be numerically ≥ font-size for ≥30px text (e.g. 42px font needs
+	// line-height: 42). Per-variant rules below override to match each
+	// variant's font-size.
+	line-height: 80;
+	white-space: nowrap;
+	pointer-events: none;
+	// 3px + 2px stacked outline. Sticker-style warm shadow at +5y, +10y blur.
+	text-shadow:
+		 0px -3px 0px #09050f,  0px 3px 0px #09050f,
+		-3px  0px 0px #09050f,  3px 0px 0px #09050f,
+		-3px -3px 0px #09050f,  3px -3px 0px #09050f,
+		-3px  3px 0px #09050f,  3px 3px 0px #09050f,
+		 0px -2px 0px #09050f,  0px 2px 0px #09050f,
+		-2px  0px 0px #09050f,  2px 0px 0px #09050f,
+		 0px 5px 0px rgba(60, 10, 0, 0.55),
+		 0px 10px 14px rgba(0, 0, 0, 0.55);
+}
+
+// =====================================================================
+// NORMAL — slamRise
+// =====================================================================
+// Enters at -14° tilted, snaps to +2° on settle, drifts upward + arcs
+// rightward. Bungee gives the boxy slab silhouette.
+.dn.dn-normal {
+	color: #ffe066;
+	font-size: 66px;
+	line-height: 80;
+	letter-spacing: -1px;
+	animation: dnSlamRise 1.6s ease-out forwards;
+}
+
+@keyframes dnSlamRise {
+	  0% { transform: translate(-50%, 20px)              scale(0)    rotate(-14deg); opacity: 0; }
+	 10% { transform: translate(-50%, -6px)              scale(1.35) rotate(4deg);   opacity: 1; }
+	 20% { transform: translate(-50%, -18px)             scale(1.0)  rotate(2deg);   opacity: 1; }
+	 70% { transform: translate(-50%, -74px)             scale(1.0)  rotate(2deg);   opacity: 1; }
+	100% { transform: translate(-50%, -118px)            scale(0.92) rotate(5deg);   opacity: 0; }
+}
+
+// =====================================================================
+// CRIT — manga-impact KAPOW
+// =====================================================================
+// Two parts: a wrapper that does the lateral SHAKE in the first ~220ms,
+// and a child .dn that does the rise + wobble + scale overshoot. Splitting
+// them prevents the rotation wobble from cancelling the shake. Speed
+// shards radiate from behind, KAPOW wedge wedges in below.
+.crit-wrap {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 0;
+	height: 0;
+	pointer-events: none;
+	animation: dnCritShake 1.8s ease-out forwards;
+}
+
+@keyframes dnCritShake {
+	  0% { transform: translate(0, 0); }
+	  2% { transform: translate(-6px, 2px); }
+	  5% { transform: translate(7px, -3px); }
+	  8% { transform: translate(-5px, 4px); }
+	 11% { transform: translate(4px, -2px); }
+	 13% { transform: translate(0, 0); }
+	100% { transform: translate(0, 0); }
+}
+
+.dn.dn-crit {
+	color: #ff4d1f;
+	font-family: Exo2;
+	font-size: 102px;
+	line-height: 120;
+	letter-spacing: -2px;
+	// Crit: thicker outline (4px) + molten inner glow + deeper sticker shadow.
+	text-shadow:
+		 0px -4px 0px #09050f,  0px 4px 0px #09050f,
+		-4px  0px 0px #09050f,  4px 0px 0px #09050f,
+		-4px -4px 0px #09050f,  4px -4px 0px #09050f,
+		-4px  4px 0px #09050f,  4px 4px 0px #09050f,
+		 0px -2px 0px #09050f,  0px 2px 0px #09050f,
+		-2px  0px 0px #09050f,  2px 0px 0px #09050f,
+		 0px 0px 12px rgba(255, 210, 61, 0.95),
+		 0px 8px 0px rgba(120, 22, 0, 0.7),
+		 0px 16px 20px rgba(0, 0, 0, 0.7);
+	animation: dnCritRiseWobble 1.8s ease-out forwards;
+}
+
+@keyframes dnCritRiseWobble {
+	  0% { transform: translate(-50%, 16px)  scale(0)    rotate(-22deg); opacity: 0; }
+	 11% { transform: translate(-50%, -6px)  scale(1.45) rotate(8deg);   opacity: 1; }
+	 18% { transform: translate(-50%, -12px) scale(1.0)  rotate(-4deg);  opacity: 1; }
+	 26% { transform: translate(-50%, -22px) scale(1.05) rotate(3deg);   opacity: 1; }
+	 34% { transform: translate(-50%, -30px) scale(1.0)  rotate(-2deg);  opacity: 1; }
+	 70% { transform: translate(-50%, -86px) scale(1.0)  rotate(-2deg);  opacity: 1; }
+	100% { transform: translate(-50%, -128px) scale(0.94) rotate(0deg);  opacity: 0; }
+}
+
+// ── Crit shards ──────────────────────────────────────────────────────
+// CONFIRMED: s&box rejects both `conic-gradient` ("Cannot read a color
+// from 'from 0deg'") and `mask: radial-gradient(stops)` ("Extra text
+// found after color stop"). The mockup's 8-spoke radial-burst can't be
+// expressed in s&box CSS without manually layering 8 spoke divs — overkill
+// for the visual budget. Falling back to a soft yellow halo via plain
+// radial-gradient (no shape keyword, which IS supported), pulsing+fading
+// behind the number. Reads as "burst energy" if not as a literal sunburst.
+.shards {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 260px;
+	height: 260px;
+	margin-left: -130px;
+	margin-top: -130px;
+	pointer-events: none;
+	background-image: radial-gradient(rgba(255, 210, 61, 0.85) 0%, rgba(255, 77, 31, 0.4) 35%, rgba(255, 77, 31, 0) 70%);
+	border-radius: 130px;
+	opacity: 0;
+	animation: dnShardsPop 1.8s ease-out forwards;
+}
+
+@keyframes dnShardsPop {
+	  0% { transform: translate(-50%, -50%) scale(0.15) rotate(0deg);   opacity: 0; }
+	 11% { transform: translate(-50%, -50%) scale(1.25) rotate(14deg);  opacity: 1; }
+	 22% { transform: translate(-50%, -55%) scale(1.0)  rotate(22deg);  opacity: 0.75; }
+	 50% { transform: translate(-50%, -80%) scale(0.95) rotate(34deg);  opacity: 0.25; }
+	100% { transform: translate(-50%, -110%) scale(0.9) rotate(45deg);  opacity: 0; }
+}
+
+// ── Crit wedge (KAPOW) ────────────────────────────────────────────────
+// CONFIRMED: s&box rejects `clip-path: polygon(...)`. The mockup's spiky
+// 18-point manga-burst silhouette can't be expressed without dropping to
+// a custom mesh or pre-baked sprite — out of scope for a CSS pass.
+// Compromise: a tilted gradient blob with heavy border-radius reads as a
+// soft impact backdrop. Combined with the radial halo above and the
+// crit's shake + scale overshoot, the moment still feels heavy.
+.wedge {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 320px;
+	height: 180px;
+	margin-left: -160px;
+	margin-top: -90px;
+	background-image: linear-gradient(100deg, #ffd23d 0%, #ff4d1f 55%, #9a1200 100%);
+	border-radius: 90px;
+	opacity: 0;
+	animation: dnWedgePop 1.8s ease-out forwards;
+}
+
+@keyframes dnWedgePop {
+	  0% { transform: translate(-50%, -50%) rotate(-6deg) scale(0.2);  opacity: 0; }
+	 11% { transform: translate(-50%, -50%) rotate(-6deg) scale(1.1);  opacity: 0.95; }
+	 22% { transform: translate(-50%, -55%) rotate(-4deg) scale(1.0);  opacity: 0.7; }
+	 45% { transform: translate(-50%, -80%) rotate(-2deg) scale(0.95); opacity: 0.15; }
+	100% { transform: translate(-50%, -110%) rotate(0deg) scale(0.9);  opacity: 0; }
+}
+
+// =====================================================================
+// SUPER EFFECTIVE — chromatic split
+// =====================================================================
+// .super-wrap is a 0×0 anchor that does the rise. The base number sits
+// dead-center on it, and two ghost copies (magenta + cyan) sit on top
+// with mix-blend-mode: screen and a small horizontal jitter for the
+// chromatic-aberration shimmer.
+//
+// PRIMARY: mix-blend-mode: screen for the additive halo.
+// FALLBACK: if mix-blend-mode parses but renders wrong (or doesn't
+// parse), ghosts fall back to plain layered text at .55 alpha — still
+// reads as a colored halo, just less "glowing additive."
+.super-wrap {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 0;
+	height: 0;
+	pointer-events: none;
+	animation: dnSuperRise 1.8s ease-out forwards;
+}
+
+@keyframes dnSuperRise {
+	  0% { transform: translate(0, 14px)    scale(0)   rotate(-6deg); opacity: 0; }
+	 10% { transform: translate(0, -8px)    scale(1.3) rotate(3deg);  opacity: 1; }
+	 20% { transform: translate(0, -18px)   scale(1.0) rotate(-1deg); opacity: 1; }
+	 60% { transform: translate(-12px, -62px)  scale(1.0)  rotate(-1deg); opacity: 1; }
+	100% { transform: translate(-22px, -110px) scale(0.95) rotate(0deg); opacity: 0; }
+}
+
+.dn.dn-super {
+	color: #ff8a2a;
+	font-family: Exo2;
+	font-size: 72px;
+	line-height: 90;
+	left: 0;
+	top: 0;
+	transform: translate(-50%, -50%);
+	// Black 8-direction outline + a magenta + cyan colored glow halo so the
+	// number "sings" prismatically without needing duplicate ghost layers.
+	// The chromatic-split mockup direction can't work here (s&box rejects
+	// `mix-blend-mode: screen`, so ghosts paint as visible duplicates
+	// instead of additively blending). This colored-glow halo via stacked
+	// text-shadow is the supported substitute — same energy, single glyph.
+	text-shadow:
+		 0px -3px 0px #09050f,  0px 3px 0px #09050f,
+		-3px  0px 0px #09050f,  3px 0px 0px #09050f,
+		-3px -3px 0px #09050f,  3px -3px 0px #09050f,
+		-3px  3px 0px #09050f,  3px 3px 0px #09050f,
+		 0px 0px 14px rgba(255, 111, 191, 0.85),
+		 0px 0px 22px rgba(122, 230, 255, 0.6),
+		 0px 6px 0px rgba(90, 22, 0, 0.55),
+		 0px 12px 16px rgba(0, 0, 0, 0.6);
+}
+
+// SUPER chip — restyled to Beastborne palette.
+// Was: yellow→red sticker with 8° rotation and warm border (read as
+// "arcade prize" rather than "elemental advantage"). Beastborne's chip
+// vocabulary is dark-violet bg + soft purple border + crisp uppercase
+// caps text; this reframes the chip as a quiet "advantage seal" pinned to
+// the number rather than a circus sticker.
+.super-chip {
+	position: absolute;
+	left: 100%;
+	top: 14px;
+	margin-left: 8px;
+	background-color: rgba(20, 12, 38, 0.95);
+	color: #fb923c;
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 16;
+	letter-spacing: 2px;
+	padding: 4px 9px 3px 9px;
+	border-radius: 6px;
+	border: 1px solid rgba(251, 146, 60, 0.55);
+	transform: rotate(-3deg);
+	box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.55);
+	// No big text outline — the dark chip + warm orange text already pops.
+	text-shadow: 0px 1px 0px rgba(0, 0, 0, 0.6);
+}
+
+// =====================================================================
+// MISS — sideways "WHIFF" with motion trail
+// =====================================================================
+// .miss-wrap drives the lateral drift. Three faded copies of WHIFF stack
+// behind the main word as a horizontal motion trail.
+.miss-wrap {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	pointer-events: none;
+	animation: dnWhiffDrift 1.8s ease-out forwards;
+}
+
+@keyframes dnWhiffDrift {
+	  0% { transform: translate(-80px, -50%)  scale(0.7)  rotate(-10deg); opacity: 0; }
+	 12% { transform: translate(-58px, -52px) scale(1.05) rotate(-6deg);  opacity: 1; }
+	 20% { transform: translate(-50%, -52px)  scale(1.0)  rotate(-6deg);  opacity: 1; }
+	 70% { transform: translate(30px, -54px)  scale(1.0)  rotate(-3deg);  opacity: 0.85; }
+	100% { transform: translate(90px, -56px)  scale(0.98) rotate(-1deg);  opacity: 0; }
+}
+
+.dn.dn-miss {
+	color: #cfc2f5;
+	font-family: Exo2;
+	font-size: 54px;
+	line-height: 70;
+	letter-spacing: 2px;
+	position: relative;
+	left: auto;
+	top: auto;
+	transform: none;
+	// Thinner stroke (2px) — "it didn't land" feels lighter.
+	text-shadow:
+		 0px -2px 0px #09050f,  0px 2px 0px #09050f,
+		-2px  0px 0px #09050f,  2px 0px 0px #09050f,
+		-2px -2px 0px #09050f,  2px -2px 0px #09050f,
+		-2px  2px 0px #09050f,  2px 2px 0px #09050f,
+		 0px 4px 0px rgba(20, 10, 40, 0.5),
+		 0px 8px 12px rgba(0, 0, 0, 0.45);
+}
+
+// Motion trail — three stacked, fading copies to the LEFT of the main
+// word (since the word drifts right, the trail is what it left behind).
+.miss-trail {
+	display: flex;
+	flex-direction: row;
+	margin-right: 4px;
+	pointer-events: none;
+}
+.miss-trail span {
+	font-family: Exo2;
+	font-size: 54px;
+	line-height: 70;
+	color: #cfc2f5;
+	letter-spacing: 2px;
+	margin-right: 4px;
+	text-shadow:
+		-2px 0px 0px #09050f, 2px 0px 0px #09050f,
+		 0px -2px 0px #09050f, 0px 2px 0px #09050f;
+}
+.miss-trail span:nth-child(1) { opacity: 0.45; transform: scale(0.96); }
+.miss-trail span:nth-child(2) { opacity: 0.22; transform: scale(0.9); }
+.miss-trail span:nth-child(3) { opacity: 0.10; transform: scale(0.84); }

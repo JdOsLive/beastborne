@@ -16,9 +16,7 @@ public sealed class MissionManager : Component
 {
 	public static MissionManager Instance { get; private set; }
 
-	private const string STAT_PREFIX = "tamer-";
-
-	private static string GetKey( string key ) => $"{SaveSlotManager.GetSlotPrefix()}{key}";
+	private bool _hasHydrated;
 
 	// ═══════════════════════════════════════════════════════════════
 	// ACTIVE MISSIONS STATE
@@ -128,8 +126,37 @@ public sealed class MissionManager : Component
 
 	protected override void OnStart()
 	{
-		LoadFromCookies();
+		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
+		{
+			Hydrate();
+			CheckRefresh();
+		}
+		else if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveLoaded += () =>
+			{
+				Hydrate();
+				CheckRefresh();
+			};
+		}
+
+		if ( SaveService.Instance != null )
+		{
+			SaveService.Instance.OnSaveReset += HandleSaveReset;
+		}
+	}
+
+	private void HandleSaveReset()
+	{
+		_hasHydrated = false;
+		ActiveDailyMissions = new();
+		ActiveWeeklyMissions = new();
+		ActiveMonthlyChallenge = null;
+		DailyBonusClaimed = false;
+		WeeklyBonusClaimed = false;
+		Hydrate();
 		CheckRefresh();
+		Log.Info( "[MissionManager] reset" );
 	}
 
 	public static void EnsureInstance( Scene scene )
@@ -789,86 +816,62 @@ public sealed class MissionManager : Component
 	// PERSISTENCE (Cookie-based)
 	// ═══════════════════════════════════════════════════════════════
 
-	private void LoadFromCookies()
+	private void Hydrate()
 	{
-		// Load daily missions
-		var dailyJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}daily-missions" ), "[]" );
-		try
-		{
-			ActiveDailyMissions = JsonSerializer.Deserialize<List<MissionState>>( dailyJson ) ?? new();
-		}
-		catch
+		if ( _hasHydrated ) return;
+		_hasHydrated = true;
+
+		var section = SaveService.Instance?.CurrentBlob?.Missions;
+		if ( section == null )
 		{
 			ActiveDailyMissions = new();
-		}
-
-		// Load weekly missions
-		var weeklyJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}weekly-missions" ), "[]" );
-		try
-		{
-			ActiveWeeklyMissions = JsonSerializer.Deserialize<List<MissionState>>( weeklyJson ) ?? new();
-		}
-		catch
-		{
 			ActiveWeeklyMissions = new();
+			ActiveMonthlyChallenge = null;
+			DailyRefreshDate = DateTime.MinValue;
+			WeeklyRefreshDate = DateTime.MinValue;
+			MonthlyRefreshDate = DateTime.MinValue;
+			DailyBonusClaimed = false;
+			WeeklyBonusClaimed = false;
+			Log.Info( "[Missions] Hydrated: fresh (no existing save)" );
+			return;
 		}
 
-		// Load monthly challenge
-		var monthlyJson = Game.Cookies.Get<string>( GetKey( $"{STAT_PREFIX}monthly-challenge" ), "" );
-		if ( !string.IsNullOrEmpty( monthlyJson ) )
-		{
-			try
-			{
-				ActiveMonthlyChallenge = JsonSerializer.Deserialize<MissionState>( monthlyJson );
-			}
-			catch
-			{
-				ActiveMonthlyChallenge = null;
-			}
-		}
+		ActiveDailyMissions = section.DailyMissions ?? new();
+		ActiveWeeklyMissions = section.WeeklyMissions ?? new();
+		ActiveMonthlyChallenge = section.MonthlyChallenge;
 
-		// Load refresh dates
-		var dailyRefreshTicks = Game.Cookies.Get<long>( GetKey( $"{STAT_PREFIX}daily-refresh-ticks" ), 0 );
-		DailyRefreshDate = dailyRefreshTicks > 0 ? new DateTime( dailyRefreshTicks, DateTimeKind.Utc ) : DateTime.MinValue;
+		DailyRefreshDate = section.DailyRefreshTicks > 0 ? new DateTime( section.DailyRefreshTicks, DateTimeKind.Utc ) : DateTime.MinValue;
+		WeeklyRefreshDate = section.WeeklyRefreshTicks > 0 ? new DateTime( section.WeeklyRefreshTicks, DateTimeKind.Utc ) : DateTime.MinValue;
+		MonthlyRefreshDate = section.MonthlyRefreshTicks > 0 ? new DateTime( section.MonthlyRefreshTicks, DateTimeKind.Utc ) : DateTime.MinValue;
 
-		var weeklyRefreshTicks = Game.Cookies.Get<long>( GetKey( $"{STAT_PREFIX}weekly-refresh-ticks" ), 0 );
-		WeeklyRefreshDate = weeklyRefreshTicks > 0 ? new DateTime( weeklyRefreshTicks, DateTimeKind.Utc ) : DateTime.MinValue;
+		DailyBonusClaimed = section.DailyBonusClaimed;
+		WeeklyBonusClaimed = section.WeeklyBonusClaimed;
 
-		var monthlyRefreshTicks = Game.Cookies.Get<long>( GetKey( $"{STAT_PREFIX}monthly-refresh-ticks" ), 0 );
-		MonthlyRefreshDate = monthlyRefreshTicks > 0 ? new DateTime( monthlyRefreshTicks, DateTimeKind.Utc ) : DateTime.MinValue;
-
-		// Load bonus claimed state
-		DailyBonusClaimed = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}daily-bonus-claimed" ), 0 ) == 1;
-		WeeklyBonusClaimed = Game.Cookies.Get<int>( GetKey( $"{STAT_PREFIX}weekly-bonus-claimed" ), 0 ) == 1;
-
-		Log.Info( $"[Missions] Loaded: {ActiveDailyMissions.Count} daily, {ActiveWeeklyMissions.Count} weekly, monthly={ActiveMonthlyChallenge != null}" );
+		Log.Info( $"[Missions] Hydrated: {ActiveDailyMissions.Count} daily, {ActiveWeeklyMissions.Count} weekly, monthly={ActiveMonthlyChallenge != null}" );
 	}
 
+	/// <summary>
+	/// Push mission state back into the save blob. Kept private and named
+	/// <c>SaveToCookies</c> so the many internal call sites in this file
+	/// keep working without touching them all individually.
+	/// </summary>
 	private void SaveToCookies()
 	{
-		// Save daily missions
-		var dailyJson = JsonSerializer.Serialize( ActiveDailyMissions ?? new() );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}daily-missions" ), dailyJson );
+		var service = SaveService.Instance;
+		if ( service == null ) return;
+		var blob = service.CurrentBlob;
+		if ( blob == null ) return;
 
-		// Save weekly missions
-		var weeklyJson = JsonSerializer.Serialize( ActiveWeeklyMissions ?? new() );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}weekly-missions" ), weeklyJson );
-
-		// Save monthly challenge
-		if ( ActiveMonthlyChallenge != null )
-		{
-			var monthlyJson = JsonSerializer.Serialize( ActiveMonthlyChallenge );
-			Game.Cookies.Set( GetKey( $"{STAT_PREFIX}monthly-challenge" ), monthlyJson );
-		}
-
-		// Save refresh dates
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}daily-refresh-ticks" ), DailyRefreshDate.Ticks );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}weekly-refresh-ticks" ), WeeklyRefreshDate.Ticks );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}monthly-refresh-ticks" ), MonthlyRefreshDate.Ticks );
-
-		// Save bonus state
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}daily-bonus-claimed" ), DailyBonusClaimed ? 1 : 0 );
-		Game.Cookies.Set( GetKey( $"{STAT_PREFIX}weekly-bonus-claimed" ), WeeklyBonusClaimed ? 1 : 0 );
+		blob.Missions ??= new MissionSaveData();
+		blob.Missions.DailyMissions = ActiveDailyMissions ?? new();
+		blob.Missions.WeeklyMissions = ActiveWeeklyMissions ?? new();
+		blob.Missions.MonthlyChallenge = ActiveMonthlyChallenge;
+		blob.Missions.DailyRefreshTicks = DailyRefreshDate.Ticks;
+		blob.Missions.WeeklyRefreshTicks = WeeklyRefreshDate.Ticks;
+		blob.Missions.MonthlyRefreshTicks = MonthlyRefreshDate.Ticks;
+		blob.Missions.DailyBonusClaimed = DailyBonusClaimed;
+		blob.Missions.WeeklyBonusClaimed = WeeklyBonusClaimed;
+		service.MarkDirty( "missions" );
 	}
 
 	// ═══════════════════════════════════════════════════════════════

@@ -1,0 +1,297 @@
+@namespace Beastborne.UI.Components
+@using System.Collections.Generic
+@using System.Linq
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Systems;
+@inherits Panel
+
+<root class="gift-inbox-container @(IsVisible ? "visible" : "")">
+
+	@* Dim overlay — click outside to defer (same behavior as close X) *@
+	<div class="gift-inbox-overlay" onclick=@Close></div>
+
+	@* Center modal — scale+fade entrance *@
+	<div class="gift-inbox-modal">
+
+		@* Edge accent top *@
+		<div class="modal-top-line"></div>
+
+		@* Header: title + close X *@
+		<div class="gift-header">
+			<div class="header-left">
+				<div class="header-icon-frame">
+					<iconify icon="lucide:gift" Size=@(18) Color="#fcd34d" />
+				</div>
+				<div class="header-text">
+					<span class="header-title">GIFTS FROM THE DEVELOPERS</span>
+					<span class="header-subtitle">@GetSubtitle()</span>
+				</div>
+			</div>
+			<button class="close-btn"
+					onclick=@Close
+					onmouseover=@(() => OnHover("close"))>
+				<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+			</button>
+		</div>
+
+		@* Scrollable list of gifts (the scroll child MUST hold the rows directly) *@
+		<div class="gift-scroll-wrap">
+			<div class="gift-scroll">
+				@{
+					var gifts = GetGifts();
+				}
+				@foreach (var gift in gifts)
+				{
+					<div class="gift-row">
+						<div class="gift-icon-frame">
+							<iconify icon="lucide:sparkles" Size=@(22) Color="#fcd34d" />
+						</div>
+						<div class="gift-body">
+							<div class="gift-rewards">
+								<span class="gift-rewards-text">@FormatRewards(gift)</span>
+							</div>
+							@if (!string.IsNullOrWhiteSpace(gift.Reason))
+							{
+								<span class="gift-reason">"@gift.Reason"</span>
+							}
+							@if (!string.IsNullOrWhiteSpace(gift.CreatedBy))
+							{
+								<span class="gift-sender">from @gift.CreatedBy</span>
+							}
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+
+		@* Footer: CLAIM ALL big button *@
+		<div class="gift-footer">
+			<button class="claim-all-btn @(isClaiming ? "busy" : "")"
+					onclick=@OnClaimAllClicked
+					onmouseover=@(() => OnHover("claim-all"))
+					disabled=@isClaiming>
+				<iconify icon="@(isClaiming ? "lucide:loader" : "lucide:gift")" Size=@(16) Color="#ffffff" />
+				<span>@(isClaiming ? "CLAIMING..." : "CLAIM ALL")</span>
+			</button>
+		</div>
+
+		@* Edge accent bottom *@
+		<div class="modal-bottom-line"></div>
+	</div>
+</root>
+
+@code {
+	public static GiftInboxPopup Instance { get; private set; }
+	private static readonly List<GiftInboxPopup> _instances = new();
+
+	public bool IsVisible { get; private set; }
+
+	// Session-scoped "don't re-pop" latch — once the user closes the popup
+	// without claiming, the auto-show stays suppressed until game restart.
+	private static bool _suppressedThisSession;
+
+	private bool isClaiming;
+	private string _lastHoveredKey;
+
+	// Snapshot the gift list at Show() so the popup renders a stable view
+	// even if GiftManager.PendingGifts mutates mid-claim.
+	private List<PendingGift> _snapshot = new();
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		Instance = this;
+		if ( firstTime )
+		{
+			if ( !_instances.Contains( this ) ) _instances.Add( this );
+
+			// Subscribe to GiftManager events exactly once per instance.
+			if ( GiftManager.Instance != null )
+			{
+				GiftManager.Instance.OnGiftsAvailable -= HandleGiftsAvailable;
+				GiftManager.Instance.OnGiftsAvailable += HandleGiftsAvailable;
+				GiftManager.Instance.OnGiftsClaimed -= HandleGiftsClaimed;
+				GiftManager.Instance.OnGiftsClaimed += HandleGiftsClaimed;
+			}
+		}
+	}
+
+	public override void OnDeleted()
+	{
+		_instances.Remove( this );
+		if ( GiftManager.Instance != null )
+		{
+			GiftManager.Instance.OnGiftsAvailable -= HandleGiftsAvailable;
+			GiftManager.Instance.OnGiftsClaimed -= HandleGiftsClaimed;
+		}
+		base.OnDeleted();
+	}
+
+	private void HandleGiftsAvailable()
+	{
+		if ( _suppressedThisSession ) return;
+
+		// Auto-open ONLY while the player is on the main menu — avoid popping
+		// over battles / expedition UI if the refresh resolves mid-session.
+		if ( GameManager.Instance != null && GameManager.Instance.CurrentState != GameState.MainMenu )
+			return;
+
+		Show();
+	}
+
+	private void HandleGiftsClaimed()
+	{
+		// Rebuild the snapshot from the remaining pending list (if any) so a
+		// partial claim still renders cleanly. If empty, close the popup.
+		var remaining = GiftManager.Instance?.PendingGifts ?? new List<PendingGift>();
+		_snapshot = new List<PendingGift>( remaining );
+
+		if ( _snapshot.Count == 0 )
+		{
+			Hide();
+		}
+		else
+		{
+			StateHasChanged();
+		}
+	}
+
+	private bool IsInVisibleSubtree()
+	{
+		var p = this.Parent;
+		while ( p != null )
+		{
+			if ( p.HasClass( "hidden" ) ) return false;
+			p = p.Parent;
+		}
+		return true;
+	}
+
+	private static GiftInboxPopup PickActiveInstance()
+	{
+		foreach ( var inst in _instances )
+		{
+			if ( inst != null && inst.IsInVisibleSubtree() ) return inst;
+		}
+		return Instance;
+	}
+
+	public static void Show()
+	{
+		var target = PickActiveInstance();
+		if ( target == null ) return;
+
+		var gifts = GiftManager.Instance?.PendingGifts;
+		if ( gifts == null || gifts.Count == 0 ) return;
+
+		target._snapshot = new List<PendingGift>( gifts );
+		target.IsVisible = true;
+		target.isClaiming = false;
+		target._lastHoveredKey = null;
+		target.StateHasChanged();
+		SoundManager.PlayPopup();
+	}
+
+	public static void Hide()
+	{
+		foreach ( var inst in _instances )
+		{
+			if ( inst == null ) continue;
+			inst.IsVisible = false;
+			inst.isClaiming = false;
+			inst._lastHoveredKey = null;
+			inst.StateHasChanged();
+		}
+		SoundManager.PlayPopdown();
+	}
+
+	private void Close()
+	{
+		// Deferred close — don't flip the session latch if we're in the middle
+		// of a claim (post-claim auto-hide uses the same path).
+		if ( !isClaiming )
+		{
+			_suppressedThisSession = true;
+		}
+		Hide();
+	}
+
+	private void OnHover( string key )
+	{
+		if ( _lastHoveredKey == key ) return;
+		_lastHoveredKey = key;
+		SoundManager.PlayHover();
+	}
+
+	private async void OnClaimAllClicked()
+	{
+		if ( isClaiming ) return;
+		if ( GiftManager.Instance == null ) return;
+
+		isClaiming = true;
+		StateHasChanged();
+		SoundManager.PlayClick();
+
+		try
+		{
+			await GiftManager.Instance.ClaimAllAsync();
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[GiftInboxPopup] ClaimAllAsync threw: {ex.Message}" );
+		}
+
+		// HandleGiftsClaimed() will fire Hide() when the list drains to zero.
+		// If something partial remains, isClaiming resets so the user can retry.
+		isClaiming = false;
+		StateHasChanged();
+	}
+
+	private List<PendingGift> GetGifts()
+	{
+		// Prefer the local snapshot, fall back to live manager state if Show()
+		// was skipped (e.g. direct render during race).
+		if ( _snapshot != null && _snapshot.Count > 0 ) return _snapshot;
+		return GiftManager.Instance?.PendingGifts ?? new List<PendingGift>();
+	}
+
+	private string GetSubtitle()
+	{
+		var count = GetGifts().Count;
+		if ( count == 1 ) return "You received 1 reward";
+		return $"You received {count} rewards";
+	}
+
+	private string FormatRewards( PendingGift gift )
+	{
+		var parts = new List<string>();
+		if ( gift.Gold > 0 ) parts.Add( $"{gift.Gold:N0} gold" );
+		if ( gift.Gems > 0 ) parts.Add( $"{gift.Gems:N0} gems" );
+		if ( gift.Ink > 0 ) parts.Add( $"{gift.Ink:N0} ink" );
+		if ( gift.BossTokens > 0 ) parts.Add( $"{gift.BossTokens:N0} boss tokens" );
+		if ( gift.Items != null )
+		{
+			foreach ( var kv in gift.Items )
+			{
+				if ( string.IsNullOrEmpty( kv.Key ) || kv.Value <= 0 ) continue;
+				parts.Add( $"{kv.Value} × {kv.Key}" );
+			}
+		}
+		return parts.Count > 0 ? string.Join( " · ", parts ) : "Mystery reward";
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( IsVisible );
+		hash.Add( isClaiming );
+		hash.Add( _snapshot?.Count ?? 0 );
+		// Include the ids so a partial claim visibly refreshes the list.
+		if ( _snapshot != null )
+		{
+			foreach ( var g in _snapshot ) hash.Add( g.Id );
+		}
+		return hash.ToHashCode();
+	}
+}

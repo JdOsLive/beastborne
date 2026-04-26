@@ -24,9 +24,7 @@ public sealed class ExpeditionManager : Component
 	public int CurrentWave { get; private set; }
 	public List<Monster> SelectedTeam { get; private set; } = new();
 
-	// Auto-battle settings (default to OFF for better new player experience)
-	public bool AutoBattle { get; set; } = false;
-	public bool AutoRetry { get; set; } = false;
+	// Auto-contract settings
 	public bool AutoNegotiate { get; set; } = false;
 	public int AutoNegotiateStrategy { get; set; } = 0; // Index into negotiation options (0-3)
 	public string AutoContractTargetSpecies { get; set; } = null;
@@ -145,7 +143,7 @@ public sealed class ExpeditionManager : Component
 	// Boss state
 	public ActiveBossState CurrentBossState { get; private set; }
 	public BossData SelectedBoss { get; private set; }
-	public bool IsBossWave => CurrentExpedition != null && (CurrentExpedition.IsBossGauntlet || CurrentWave == CurrentExpedition.Waves);
+	public bool IsBossWave => CurrentExpedition != null && CurrentExpedition.HasBoss && (CurrentExpedition.IsBossGauntlet || CurrentWave == CurrentExpedition.Waves);
 	public bool IsRareBossEncounter { get; private set; } = false;
 	private List<BossData> GauntletBossOrder { get; set; } // Shuffled boss order for gauntlets
 
@@ -218,7 +216,9 @@ public sealed class ExpeditionManager : Component
 
 	/// <summary>
 	/// Called when any monster is defeated in battle.
-	/// Awards Tamer XP immediately when an enemy is defeated.
+	/// Awards Tamer XP + per-KO monster XP to the active player beast that scored the KO.
+	/// Uses Pokemon-style level-scaled formula with 0.5-2.0 caps to prevent grinding
+	/// and reward fighting over-leveled enemies. See balance-knowledge/reference-values.md.
 	/// </summary>
 	private void OnEnemyDefeated( Monster defeatedMonster )
 	{
@@ -230,17 +230,98 @@ public sealed class ExpeditionManager : Component
 		if ( BattleManager.Instance?.PlayerTeam?.Any( m => m.Id == defeatedMonster.Id ) == true )
 			return; // This is a player monster, not an enemy
 
-		// Calculate Tamer XP based on defeated monster's level
-		int baseXP = 1 + (defeatedMonster.Level / 3);
-
-		// Apply expedition XP bonus from tamer skills
+		// ═══ TAMER XP (unchanged behavior) ═══
+		int tamerBaseXP = 1 + (defeatedMonster.Level / 3);
 		float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
-		int totalXP = (int)(baseXP * (1 + xpBonus / 100f));
+		int tamerXP = (int)(tamerBaseXP * (1 + xpBonus / 100f));
+		TamerManager.Instance?.AddXP( tamerXP );
 
-		// Award XP to tamer
-		TamerManager.Instance?.AddXP( totalXP );
+		// ═══ PER-KO MONSTER XP ═══
+		// Award to the active player beast (the one on the field when KO landed).
+		// Future polish: could track the actual turn's attacker for precision, but
+		// active-at-defeat matches player intuition for most cases.
+		var activeBeast = BattleManager.Instance?.GetActivePlayerMonster();
+		if ( activeBeast != null && activeBeast.CurrentHP > 0 )
+		{
+			var defeatedSpecies = MonsterManager.Instance?.GetSpecies( defeatedMonster.SpeciesId );
+			int baseYield = defeatedSpecies?.BaseExpYield ?? 60;
 
-		Log.Info( $"Tamer gained {totalXP} XP from defeating {defeatedMonster.Nickname ?? "enemy"} (Level {defeatedMonster.Level})" );
+			// Level ratio: defeatedLevel / participantLevel, clamped 0.5..2.0
+			int participantLevel = Math.Max( 1, activeBeast.Level );
+			float ratio = defeatedMonster.Level / (float)participantLevel;
+			ratio = Math.Clamp( ratio, 0.5f, 2.0f );
+
+			// Pokemon-style formula: baseYield × defeatedLevel / 7 × ratio
+			int monsterXP = (int)(baseYield * defeatedMonster.Level / 7f * ratio);
+			monsterXP = (int)(monsterXP * (1 + xpBonus / 100f));
+			if ( monsterXP < 1 ) monsterXP = 1;
+
+			bool leveledUp = activeBeast.AddXP( monsterXP );
+			Log.Info( $"[XP] {activeBeast.Nickname ?? activeBeast.SpeciesId} gained {monsterXP} XP (defeatedLv={defeatedMonster.Level}, yourLv={participantLevel}, ratio={ratio:F2}, baseYield={baseYield}){(leveledUp ? " → LEVEL UP!" : "")}" );
+
+			if ( leveledUp )
+			{
+				NotificationManager.Instance?.AddNotification(
+					NotificationType.Success,
+					"Level Up!",
+					$"{activeBeast.Nickname ?? activeBeast.SpeciesId} reached Lv {activeBeast.Level}!" );
+				SoundManager.PlaySuccess();
+			}
+		}
+
+		Log.Info( $"Tamer gained {tamerXP} XP from defeating {defeatedMonster.Nickname ?? "enemy"} (Level {defeatedMonster.Level})" );
+
+		// ═══ SIGNATURE MATERIAL DROP ═══
+		// Every KO of a launch-roster species drops its themed material (MH-style).
+		// Guaranteed 1 per KO — predictable reward, feeds trade nodes + side quests.
+		var defeatedSpeciesForMat = MonsterManager.Instance?.GetSpecies( defeatedMonster.SpeciesId );
+		if ( defeatedSpeciesForMat != null && defeatedSpeciesForMat.HasSignatureDrop )
+		{
+			var materialId = defeatedSpeciesForMat.SignatureDropItemId;
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if ( tamer != null && !string.IsNullOrEmpty( materialId ) )
+			{
+				if ( tamer.Inventory.ContainsKey( materialId ) )
+					tamer.Inventory[materialId]++;
+				else
+					tamer.Inventory[materialId] = 1;
+				Log.Info( $"[Material] +1 {defeatedSpeciesForMat.SignatureDropName ?? materialId} from {defeatedSpeciesForMat.Name}" );
+				SideQuestManager.Instance?.TrackMaterialCollected( materialId, 1 );
+			}
+		}
+	}
+
+	/// <summary>
+	/// Distribute completion-bonus XP to every team member (active + bench) on
+	/// expedition victory. Uses the same 0.5-2.0 level-ratio clamp as per-KO
+	/// XP so overleveled beasts get less and underleveled beasts get more.
+	/// Per balance-knowledge/reference-values.md, this is ~30% of a run's total
+	/// monster XP (the other ~70% comes from per-KO during battle).
+	/// </summary>
+	private void AwardTeamCompletionXP( int baseXP )
+	{
+		if ( SelectedTeam == null || CurrentExpedition == null ) return;
+		int enemyLevel = Math.Max( 1, CurrentExpedition.BaseEnemyLevel );
+
+		foreach ( var monster in SelectedTeam )
+		{
+			if ( monster == null || monster.Level >= 100 ) continue;
+
+			float ratio = enemyLevel / (float)Math.Max( 1, monster.Level );
+			ratio = Math.Clamp( ratio, 0.5f, 2.0f );
+			int xp = Math.Max( 1, (int)(baseXP * ratio) );
+
+			bool leveledUp = monster.AddXP( xp );
+			Log.Info( $"[XP Completion] {monster.Nickname ?? monster.SpeciesId} gained {xp} (ratio={ratio:F2}){(leveledUp ? " → LEVEL UP!" : "")}" );
+
+			if ( leveledUp )
+			{
+				NotificationManager.Instance?.AddNotification(
+					NotificationType.Success,
+					"Level Up!",
+					$"{monster.Nickname ?? monster.SpeciesId} reached Lv {monster.Level}!" );
+			}
+		}
 	}
 
 	protected override void OnUpdate()
@@ -273,277 +354,84 @@ public sealed class ExpeditionManager : Component
 
 	private void GenerateExpeditions()
 	{
-		// Create expedition stages
+		// Create expedition stages.
 		_expeditions.Clear();
 
-		// Level 1 - Starter area with Whispering Woods creatures
+		// ═════════════════════════════════════════════════════════════════
+		// LAUNCH EXPEDITIONS — 3 zones, unlock-gated via HighestExpeditionCleared.
+		//
+		// Level jumps (1 → 15 → 30) force team investment instead of a
+		// 1→5→10 treadmill. Pre-launch scope: 13 post-launch expeditions
+		// were cut from this list 2026-04-21. Add new zones as a SECOND
+		// TOWN post-launch — do not re-inflate this list with element
+		// themeparks.
+		//
+		// Player-facing names are "Saltmoor Cove / Saltmoor Forest / Old
+		// Saltmoor" — IDs match. Legacy art paths kept (file rename is a
+		// post-launch cleanup).
+		// ═════════════════════════════════════════════════════════════════
+
+		// ─── Saltmoor Cove (Lv 1) — starter, 5 waves, no boss ──────────────
+		// Solarpunk coastal village; homes grown into the hillside, rooftop
+		// gardens, tide-pool paths. Beasts are kind; this is where players
+		// learn the catch/battle/team loop.
 		_expeditions.Add( new Expedition
 		{
-			Id = "forest_entrance",
-			Name = "Whispering Woods",
-			Description = "A quiet forest where young spirits gather",
+			Id = "saltmoor_cove",
+			Name = "Saltmoor Cove",
+			Description = "Hillside homes crowned with garden roofs. The tide pools teach soft lessons and the beasts here are mostly kind.",
 			RequiredLevel = 1,
-			Waves = 3,
+			Waves = 5,
 			BaseEnemyLevel = 1,
-			PossibleSpecies = new() { "twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom", "branchling" },
+			// Evolved forms (branchling) intentionally excluded from the
+			// wild pool — players get evolved beasts by levelling their own.
+			PossibleSpecies = new() { "twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom", "wishlift", "twincoil", "heartwell" },
 			Element = ElementType.Neutral,
-			GoldReward = 50,
-			XPReward = 35,
+			GoldReward = 60,
+			XPReward = 45,
+			HasBoss = false,
 			BackgroundImage = "ui/locations/whispering_woods_background.png"
 		} );
 
-		// Level 5 - Fire
+		// ─── Saltmoor Forest (Lv 15) — mid, 7 waves, has boss ──────────────
+		// The forest the village spent a generation healing. Paths wind
+		// between mangrove roots and old ceibas. Real teeth appear here.
 		_expeditions.Add( new Expedition
 		{
-			Id = "ember_cavern",
-			Name = "Ember Cavern",
-			Description = "Volcanic caves where fire spirits dwell",
-			RequiredLevel = 5,
-			Waves = 4,
-			BaseEnemyLevel = 5,
-			PossibleSpecies = new() { "embrik", "cinderscale", "blazefang", "magmite", "smolderpup", "emberhound", "hinobi", "enkong" },
-			Element = ElementType.Fire,
-			GoldReward = 100,
-			XPReward = 130,
+			Id = "saltmoor_forest",
+			Name = "Saltmoor Forest",
+			Description = "The woods the village has spent a generation healing. Mangrove roots, old ceibas, mist that doesn't burn off until noon.",
+			RequiredLevel = 15,
+			Waves = 7,
+			BaseEnemyLevel = 15,
+			PossibleSpecies = new() { "sproutkin", "thornveil", "mosswhisper", "pollenpuff", "bloomguard", "vinewhip", "fungrowth", "willowwisp", "curublast" },
+			Element = ElementType.Nature,
+			GoldReward = 220,
+			XPReward = 320,
+			HasBoss = true,
 			BackgroundImage = "ui/locations/ember_cavern_background.png"
 		} );
 
-		// Level 10 - Water
+		// ─── Old Saltmoor (Lv 30) — final launch zone, 10 waves, has boss ──
+		// The storm-lost first settlement — broken pier, hollow lighthouse,
+		// walls the sea keeps trying to take back. Oldest, strangest beasts.
 		_expeditions.Add( new Expedition
 		{
-			Id = "tear_lake",
-			Name = "Lake of Tears",
-			Description = "A melancholy lake shrouded in mist",
-			RequiredLevel = 10,
-			Waves = 4,
-			BaseEnemyLevel = 10,
-			PossibleSpecies = new() { "droskul", "puddlejaw", "mirrorpond", "weepfin", "streamling", "rivercrest", "bubblite", "coralheim" },
+			Id = "old_saltmoor",
+			Name = "Old Saltmoor",
+			Description = "The original settlement, lost to the storms two generations ago. Older, stranger beasts claim what the sea keeps taking back.",
+			RequiredLevel = 30,
+			Waves = 10,
+			BaseEnemyLevel = 30,
+			PossibleSpecies = new() { "puddlejaw", "mirrorpond", "weepfin", "streamling", "rivercrest", "bubblite", "coralheim" },
 			Element = ElementType.Water,
-			GoldReward = 115,
-			XPReward = 165,
+			GoldReward = 480,
+			XPReward = 720,
+			HasBoss = true,
 			BackgroundImage = "ui/locations/lake_of_tears_background.png"
 		} );
 
-		// Level 15 - Wind
-		_expeditions.Add( new Expedition
-		{
-			Id = "echo_canyon",
-			Name = "Echo Canyon",
-			Description = "Where winds carry voices of the forgotten",
-			RequiredLevel = 15,
-			Waves = 5,
-			BaseEnemyLevel = 15,
-			PossibleSpecies = new() { "wispryn", "driftmote", "galeclaw", "whistleshade", "zephyrmite", "cyclonyx", "featherwisp", "vortexel", "dandepuff" },
-			Element = ElementType.Wind,
-			GoldReward = 150,
-			XPReward = 230,
-			BackgroundImage = "ui/locations/echo_canyon_background.png"
-		} );
-
-		// Level 20 - Electric
-		_expeditions.Add( new Expedition
-		{
-			Id = "storm_spire",
-			Name = "Storm Spire",
-			Description = "A tower that attracts endless lightning",
-			RequiredLevel = 20,
-			Waves = 5,
-			BaseEnemyLevel = 20,
-			PossibleSpecies = new() { "sparklet", "voltweave", "staticling", "joltpaw", "thundermane", "zapfin", "boltgeist", "circuitsprite" },
-			Element = ElementType.Electric,
-			GoldReward = 165,
-			XPReward = 260,
-			BackgroundImage = "ui/locations/storm_spire_background.png"
-		} );
-
-		// Level 25 - Earth
-		_expeditions.Add( new Expedition
-		{
-			Id = "ancient_ruins",
-			Name = "Ancient Ruins",
-			Description = "Crumbling stones that remember when they were mountains",
-			RequiredLevel = 25,
-			Waves = 5,
-			BaseEnemyLevel = 25,
-			PossibleSpecies = new() { "rootling", "cragmaw", "rubblekin", "pebblit", "boulderon", "quartzite", "dustback", "terraclops", "terracub" },
-			Element = ElementType.Earth,
-			GoldReward = 180,
-			XPReward = 325,
-			BackgroundImage = "ui/locations/ancient_ruins_background.png"
-		} );
-
-		// Level 30 - Ice
-		_expeditions.Add( new Expedition
-		{
-			Id = "frozen_vale",
-			Name = "Frozen Vale",
-			Description = "A valley where warmth goes to die",
-			RequiredLevel = 30,
-			Waves = 6,
-			BaseEnemyLevel = 30,
-			PossibleSpecies = new() { "frostling", "glacimaw", "shivershard", "snowmite", "blizzardian", "iciclaw", "frostwisp", "sleethorn" },
-			Element = ElementType.Ice,
-			GoldReward = 215,
-			XPReward = 390,
-			BackgroundImage = "ui/locations/frozen_vale_background.png"
-		} );
-
-		// Level 35 - Nature
-		_expeditions.Add( new Expedition
-		{
-			Id = "overgrown_heart",
-			Name = "Overgrown Heart",
-			Description = "The center of a forest that refuses to stop growing",
-			RequiredLevel = 35,
-			Waves = 6,
-			BaseEnemyLevel = 35,
-			PossibleSpecies = new() { "sproutkin", "thornveil", "mosswhisper", "pollenpuff", "bloomguard", "vinewhip", "fungrowth", "willowwisp", "curublast" },
-			Element = ElementType.Nature,
-			GoldReward = 245,
-			XPReward = 455,
-			BackgroundImage = "ui/locations/overgrown_heart_background.png"
-		} );
-
-		// Level 40 - Metal
-		_expeditions.Add( new Expedition
-		{
-			Id = "rusted_foundry",
-			Name = "Rusted Foundry",
-			Description = "An ancient forge where metal learned to think",
-			RequiredLevel = 40,
-			Waves = 6,
-			BaseEnemyLevel = 40,
-			PossibleSpecies = new() { "coglet", "ironclad", "corrode", "scrapper", "junktitan", "bladefly", "bellguard", "chainlink" },
-			Element = ElementType.Metal,
-			GoldReward = 280,
-			XPReward = 555,
-			BackgroundImage = "ui/locations/rusted_foundry_background.png"
-		} );
-
-		// Level 45 - Spirit
-		_expeditions.Add( new Expedition
-		{
-			Id = "dawn_sanctuary",
-			Name = "Spirit Sanctum",
-			Description = "An ethereal place where spirits commune with the living",
-			RequiredLevel = 45,
-			Waves = 6,
-			BaseEnemyLevel = 45,
-			PossibleSpecies = new() { "dawnmote", "haloveil", "echomind", "wishling", "hopebringer", "memoryveil", "solmara", "soulflare", "dreamspark" },
-			Element = ElementType.Spirit,
-			GoldReward = 325,
-			XPReward = 650,
-			BackgroundImage = "ui/locations/spirit_sanctum_background.png"
-		} );
-
-		// Level 50 - Shadow
-		_expeditions.Add( new Expedition
-		{
-			Id = "shadow_depths",
-			Name = "Shadow Depths",
-			Description = "The place where even darkness is afraid",
-			RequiredLevel = 50,
-			Waves = 7,
-			BaseEnemyLevel = 50,
-			PossibleSpecies = new() { "murkmaw", "voidweep", "gloomling", "nightcrawl", "duskstalker", "fearling", "umbralynx", "secretkeeper" },
-			Element = ElementType.Shadow,
-			GoldReward = 360,
-			XPReward = 815,
-			BackgroundImage = "ui/locations/shadow_depths_background.png"
-		} );
-
-		// Level 55 - Elemental Champions (strongest evolved form of each element)
-		_expeditions.Add( new Expedition
-		{
-			Id = "elemental_nexus",
-			Name = "Elemental Nexus",
-			Description = "Where the elemental champions gather",
-			RequiredLevel = 55,
-			Waves = 7,
-			BaseEnemyLevel = 55,
-			PossibleSpecies = new() { "ashenmare", "infernowarg", "tidehollow", "oceanmaw", "vexstorm", "voltweave", "thundermane", "monoleth", "permafrost", "glacierback", "verdantis", "eldergrove", "forgeborn", "solmara", "nullgrave" },
-			Element = ElementType.Neutral,
-			GoldReward = 390,
-			XPReward = 2275,
-			HasBoss = true,
-			BossSpeciesId = "primordius",
-			BackgroundImage = "ui/locations/elemental_nexus_background.png"
-		} );
-
-		// Level 65 - Primordial Rift (reality-warping creatures only)
-		_expeditions.Add( new Expedition
-		{
-			Id = "primordial_rift",
-			Name = "Primordial Rift",
-			Description = "A tear in reality where dimensional beings emerge",
-			RequiredLevel = 65,
-			Waves = 8,
-			BaseEnemyLevel = 65,
-			PossibleSpecies = new() { "raijura", "arcferron", "devorah", "pucling", "scaldnip", "temporal", "eternawing", "nightmarex" },
-			Element = ElementType.Neutral,
-			GoldReward = 490,
-			XPReward = 3250,
-			HasBoss = true,
-			BossSpeciesId = "voiddragon",
-			BackgroundImage = "ui/locations/primordial_rift_background.png"
-		} );
-
-		// Level 75 - Garden of Origins (pure Nature primordial creatures)
-		_expeditions.Add( new Expedition
-		{
-			Id = "garden_of_origins",
-			Name = "Garden of Origins",
-			Description = "Where the first seeds of existence took root",
-			RequiredLevel = 75,
-			Waves = 9,
-			BaseEnemyLevel = 75,
-			PossibleSpecies = new() { "eldergrove", "primbloom", "thornveil", "verdantis", "bloomguard", "edenseed" },
-			Element = ElementType.Nature,
-			GoldReward = 650,
-			XPReward = 4875,
-			HasBoss = true,
-			BossSpeciesId = "songborne",
-			BackgroundImage = "ui/locations/garden_of_origins_background.png"
-		} );
-
-		// Level 85 - Mythweaver's Realm (Epic/Legendary beasts only)
-		_expeditions.Add( new Expedition
-		{
-			Id = "mythweavers_realm",
-			Name = "Mythweaver's Realm",
-			Description = "The place where legends are born",
-			RequiredLevel = 85,
-			Waves = 10,
-			BaseEnemyLevel = 85,
-			PossibleSpecies = new() { "sunforged", "absolutezero", "stormtyrant", "primbloom", "eclipsara", "primeflare", "voidbloom", "aquagenesis" },
-			Element = ElementType.Neutral,
-			GoldReward = 1140,
-			XPReward = 8125,
-			HasBoss = true,
-			BossSpeciesId = "mythweaver",
-			BackgroundImage = "ui/locations/mythweavers_realm_background.png"
-		} );
-
-		// Level 100 - Ultimate challenge: Boss Gauntlet (3 boss fights in a row)
-		_expeditions.Add( new Expedition
-		{
-			Id = "origin_void",
-			Name = "The Origin Void",
-			Description = "Face the primordial bosses in the ultimate gauntlet. No regular enemies - only boss battles.",
-			RequiredLevel = 100,
-			Waves = 3,
-			BaseEnemyLevel = 100,
-			PossibleSpecies = new(), // No regular species - boss gauntlet only
-			Element = ElementType.Neutral,
-			GoldReward = 3250,
-			XPReward = 22750,
-			HasBoss = true,
-			BossSpeciesId = "genesis",
-			BackgroundImage = "ui/locations/the_origin_void_background.png",
-			IsBossGauntlet = true
-		} );
-
-		Log.Info( $"Generated {_expeditions.Count} expeditions" );
+		Log.Info( $"Generated {_expeditions.Count} expeditions (launch)" );
 	}
 
 	public Expedition GetExpedition( string id )
@@ -551,15 +439,43 @@ public sealed class ExpeditionManager : Component
 		return _expeditions.FirstOrDefault( e => e.Id == id );
 	}
 
+	/// <summary>
+	/// Gate for starting an expedition. Progression is SEQUENTIAL — an
+	/// expedition is available only if the one before it in the list has
+	/// been cleared at least once. Tamer level is advisory (shown as
+	/// "Recommended Level" in UI), never a hard cap: an underleveled
+	/// player can still try if they want to push through a rough run.
+	/// </summary>
 	public bool CanStartExpedition( string expeditionId )
 	{
 		var expedition = GetExpedition( expeditionId );
 		if ( expedition == null ) return false;
+		if ( TamerManager.Instance?.CurrentTamer == null ) return false;
 
+		// First expedition in the ordered list is always open.
+		int idx = _expeditions.FindIndex( e => e.Id == expeditionId );
+		if ( idx <= 0 ) return true;
+
+		// Subsequent expeditions require the immediately-preceding
+		// expedition to have been cleared.
+		var prev = _expeditions[idx - 1];
+		return HasClearedExpedition( prev.Id );
+	}
+
+	/// <summary>
+	/// True iff the expedition has been successfully cleared at least once.
+	/// Uses <see cref="Tamer.HighestExpeditionCleared"/> (a 1-based count of
+	/// cleared expeditions) compared against the zone's 0-based index.
+	/// Side quests and trade nodes for a zone gate on this so the main loop
+	/// reads first, then side content opens up on the way back through.
+	/// </summary>
+	public bool HasClearedExpedition( string expeditionId )
+	{
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return false;
-
-		return tamer.Level >= expedition.RequiredLevel;
+		int idx = _expeditions.FindIndex( e => e.Id == expeditionId );
+		if ( idx < 0 ) return false;
+		return idx < tamer.HighestExpeditionCleared;
 	}
 
 	public void SelectTeam( List<Monster> team )
@@ -604,8 +520,6 @@ public sealed class ExpeditionManager : Component
 		if ( SettingsManager.Instance != null )
 		{
 			var settings = SettingsManager.Instance.Settings;
-			AutoBattle = settings.DefaultAutoBattle;
-			AutoRetry = settings.DefaultAutoRetry;
 			AutoNegotiate = settings.DefaultAutoContract;
 			AutoNegotiateStrategy = settings.DefaultNegotiationStrategy;
 			UseSpeciesFilter = settings.UseAutoContractSpeciesFilter;
@@ -636,7 +550,6 @@ public sealed class ExpeditionManager : Component
 		// Ensure playback is started when entering background mode
 		if ( BattleManager.Instance?.IsInBattle == true && !BattleManager.Instance.IsPlaying )
 		{
-			BattleManager.Instance.PlaybackSpeed = 4.0f; // Fast in background
 			BattleManager.Instance.StartPlayback();
 			Log.Info( $"Background mode: Started playback immediately" );
 		}
@@ -682,7 +595,7 @@ public sealed class ExpeditionManager : Component
 		}
 		tamer.TotalExpeditionsCompleted++;
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
-		Stats.SetValue( "expeditions-completed", tamer.TotalExpeditionsCompleted );
+		Stats.SetValue( "expeditions-completed-launch", tamer.TotalExpeditionsCompleted );
 	}
 
 	/// <summary>
@@ -713,6 +626,7 @@ public sealed class ExpeditionManager : Component
 			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
+			AwardTeamCompletionXP( finalXP ); // completion bonus to every team member
 			Log.Info( $"RetryExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
 
 			// Guild XP for expedition completion
@@ -727,6 +641,7 @@ public sealed class ExpeditionManager : Component
 
 			// Track mission progress for expedition completion (retry path)
 			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
+			SideQuestManager.Instance?.TrackExpeditionCleared( CurrentExpedition?.Id );
 		}
 
 		// Award accumulated item drops to inventory before resetting
@@ -765,6 +680,16 @@ public sealed class ExpeditionManager : Component
 			BattleManager.Instance.ExitBattle();
 		}
 
+		// Restore PP for the team BEFORE clearing it. The complete/retry paths
+		// already do this, but the early-end path (player hits "End Expedition"
+		// from the leave dialog) was missing it — moves stayed depleted into
+		// the next run and players had to pop ethers or wait for a successful
+		// expedition completion to refill. Match the complete-path behavior.
+		RestoreTeamPP();
+
+		// Heal the whole roster on the way out — no stuck 0-HP beasts on the map.
+		RestoreAllOwnedHP();
+
 		// Reset state
 		CurrentExpedition = null;
 		CurrentWave = 0;
@@ -798,7 +723,7 @@ public sealed class ExpeditionManager : Component
 			return;
 		}
 
-		Log.Info( $"[BG] Battle ended: PlayerWon={result?.PlayerWon}, Wave={CurrentWave}/{CurrentExpedition.Waves}, AutoRetry={AutoRetry}" );
+		Log.Info( $"[BG] Battle ended: PlayerWon={result?.PlayerWon}, Wave={CurrentWave}/{CurrentExpedition.Waves}" );
 
 		if ( result != null )
 		{
@@ -816,10 +741,8 @@ public sealed class ExpeditionManager : Component
 
 		bool playerWon = result?.PlayerWon ?? false;
 
-		// Determine if we'll continue to another battle
-		bool willContinue = (playerWon && CurrentWave < CurrentExpedition.Waves)
-			|| (playerWon && CurrentWave >= CurrentExpedition.Waves && AutoRetry)
-			|| (!playerWon && AutoRetry);
+		// Determine if we'll continue to another battle (only if won and more waves remain)
+		bool willContinue = playerWon && CurrentWave < CurrentExpedition.Waves;
 
 		// Use transition-friendly exit for continuous battles, otherwise full exit
 		if ( BattleManager.Instance?.IsInBattle == true )
@@ -844,70 +767,13 @@ public sealed class ExpeditionManager : Component
 		}
 		else if ( playerWon && CurrentWave >= CurrentExpedition.Waves )
 		{
-			Log.Info( $"[BG] Player completed all waves! AutoRetry={AutoRetry}" );
+			Log.Info( $"[BG] Player completed all waves!" );
 			MissionManager.Instance?.TrackWaveCleared();
-
-			if ( AutoRetry )
-			{
-				// Give expedition completion rewards (accumulated battle rewards already given per-wave)
-				// Apply skill bonuses and hard mode multiplier to rewards
-				float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
-				float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
-				float hardModeMultiplier = GetRewardMultiplier();
-				float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardModeMultiplier);
-				int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
-				TamerManager.Instance?.AddGold( finalGold );
-				TamerManager.Instance?.AddXP( finalXP );
-				Log.Info( $"[BG] Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
-
-				// Update highest cleared (only here since CompleteExpedition won't be called)
-				UpdateExpeditionStats();
-
-				// Award Boss Tokens before auto-retry resets (otherwise they're lost!)
-				if ( SelectedBoss != null )
-				{
-					AwardBossTokens();
-				}
-
-				// Award accumulated items before auto-retry resets them
-				AwardAccumulatedItems();
-
-				// Track mission progress for expedition completion (auto-retry path)
-				MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
-
-				// Auto-retry: reset to wave 1 and continue
-				Log.Info( $"[BG] Auto-retry enabled, restarting expedition from wave 1" );
-				AccumulatedGold = 0;
-				AccumulatedXP = 0;
-				AccumulatedItems = new();
-				CurrentWave = 0;
-				GauntletBossOrder = null;
-				SelectBossForExpedition(); // Re-shuffle bosses for gauntlets
-				_ = StartNextWaveDelayed();
-			}
-			else
-			{
-				// No auto-retry: complete and exit (CompleteExpedition handles rewards + stats)
-				CompleteExpedition( true );
-			}
-		}
-		else if ( !playerWon && AutoRetry )
-		{
-			Log.Info( $"[BG] Player lost, auto-retry enabled. Resetting to wave 0." );
-			// Award any accumulated items before reset
-			AwardAccumulatedItems();
-			AccumulatedGold = 0;
-			AccumulatedXP = 0;
-			AccumulatedItems = new();
-			CurrentWave = 0;
-			GauntletBossOrder = null;
-			SelectBossForExpedition(); // Re-shuffle bosses for gauntlets
-			_ = StartNextWaveDelayed();
+			CompleteExpedition( true );
 		}
 		else
 		{
-			Log.Info( $"[BG] Player lost, no auto-retry. Completing expedition as failed." );
+			Log.Info( $"[BG] Player lost. Completing expedition as failed." );
 			CompleteExpedition( false );
 		}
 	}
@@ -919,8 +785,8 @@ public sealed class ExpeditionManager : Component
 	{
 		Log.Info( $"[BG] StartNextWaveDelayed: Waiting 50ms before starting next wave. IsBackground={IsRunningInBackground}, CurrentExpedition={CurrentExpedition?.Id}" );
 
-		// Wait a frame to ensure battle cleanup is complete
-		await Task.Delay( 50 );
+		// Wait for attack VFX (0.8s) + faint animation (0.8s) + breathing room
+		await Task.Delay( 2200 );
 
 		Log.Info( $"[BG] StartNextWaveDelayed: After delay. IsBackground={IsRunningInBackground}, CurrentExpedition={CurrentExpedition?.Id}" );
 
@@ -945,6 +811,12 @@ public sealed class ExpeditionManager : Component
 		GauntletBossOrder = null;
 
 		if ( CurrentExpedition == null ) return;
+
+		if ( !CurrentExpedition.HasBoss )
+		{
+			Log.Info( $"Expedition {CurrentExpedition.Id} is boss-free — skipping boss selection" );
+			return;
+		}
 
 		var pool = BossPoolDatabase.GetPool( CurrentExpedition.Id );
 		if ( pool == null || pool.Bosses.Count == 0 )
@@ -1144,15 +1016,8 @@ public sealed class ExpeditionManager : Component
 			BattleManager.Instance.SetBossState( null );
 		}
 
-		// Use manual battle mode when auto-battle is off (horde system with target selection)
-		if ( !AutoBattle )
-		{
-			BattleManager.Instance.StartManualBattle( SelectedTeam, enemies );
-		}
-		else
-		{
-			BattleManager.Instance.StartBattle( SelectedTeam, enemies );
-		}
+		// Use manual battle mode (horde system with target selection)
+		BattleManager.Instance.StartManualBattle( SelectedTeam, enemies );
 	}
 
 	private List<Monster> GenerateWaveEnemies()
@@ -1363,9 +1228,40 @@ public sealed class ExpeditionManager : Component
 		}
 	}
 
-	private void CompleteExpedition( bool success )
+	/// <summary>
+	/// Foreground result path — call instead of <see cref="OnWaveComplete"/>
+	/// when a UI popup is going to sit over the battle and the player is
+	/// the one who decides when the expedition "ends." Awards rewards and
+	/// fires <see cref="OnExpeditionComplete"/> but keeps
+	/// <see cref="CurrentExpedition"/> + <see cref="SelectedTeam"/> set so
+	/// ExpeditionPanel stays rendered behind the popup. Caller must invoke
+	/// <see cref="FinalizeExpedition"/> once the popup is dismissed.
+	/// </summary>
+	public void ResolveExpedition( bool success )
 	{
-		Log.Info( $"CompleteExpedition: success={success}, Wave={CurrentWave}, IsBackground={IsRunningInBackground}" );
+		CompleteExpedition( success, tearDown: false );
+	}
+
+	/// <summary>
+	/// Finish the teardown started by <see cref="ResolveExpedition"/>.
+	/// Nulls the current expedition + clears the team so the HUD can
+	/// swap back to the world map. Idempotent — safe to call twice.
+	/// </summary>
+	public void FinalizeExpedition()
+	{
+		if ( CurrentExpedition == null ) return;
+
+		Log.Info( $"FinalizeExpedition: tearing down {CurrentExpedition.Id}" );
+		CurrentExpedition = null;
+		CurrentWave = 0;
+		IsRunningInBackground = false;
+		SelectedTeam?.Clear();
+		SelectedBoss = null;
+	}
+
+	private void CompleteExpedition( bool success, bool tearDown = true )
+	{
+		Log.Info( $"CompleteExpedition: success={success}, tearDown={tearDown}, Wave={CurrentWave}, IsBackground={IsRunningInBackground}" );
 
 		if ( success )
 		{
@@ -1381,6 +1277,7 @@ public sealed class ExpeditionManager : Component
 			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
+			AwardTeamCompletionXP( finalXP ); // completion bonus to every team member
 			Log.Info( $"CompleteExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
 
 			// Track expedition completions for veteran stats
@@ -1407,6 +1304,10 @@ public sealed class ExpeditionManager : Component
 
 			// Track mission progress for expedition completion
 			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
+			SideQuestManager.Instance?.TrackExpeditionCleared( CurrentExpedition?.Id );
+
+			// Fire "next zone unlocked" toast if the clear bumped HighestExpeditionCleared.
+			NotificationManager.Instance?.CheckForNewExpeditionUnlocks();
 		}
 
 		// Award accumulated item drops to inventory
@@ -1415,13 +1316,21 @@ public sealed class ExpeditionManager : Component
 		// Restore PP for all team monsters after expedition
 		RestoreTeamPP();
 
+		// Heal all owned beasts to full HP — fainted beasts shouldn't linger
+		// at 0 HP on the home/map screen between runs.
+		RestoreAllOwnedHP();
+
 		// Update Lazy demand progress for monsters that rested (weren't in expedition)
 		UpdateRestingMonstersContracts();
 
 		OnExpeditionComplete?.Invoke( success );
-		CurrentExpedition = null;
-		CurrentWave = 0;
-		IsRunningInBackground = false;
+
+		if ( tearDown )
+		{
+			CurrentExpedition = null;
+			CurrentWave = 0;
+			IsRunningInBackground = false;
+		}
 
 		Log.Info( $"CompleteExpedition done: CurrentExpedition={CurrentExpedition == null}, CurrentWave={CurrentWave}, IsBackground={IsRunningInBackground}" );
 	}
@@ -1543,6 +1452,33 @@ public sealed class ExpeditionManager : Component
 		}
 
 		Log.Info( $"Restored PP for {SelectedTeam.Count} team monsters" );
+	}
+
+	/// <summary>
+	/// Restore HP to full for every owned beast. Called whenever an expedition
+	/// resolves (success OR failure) so fainted beasts don't linger at 0 HP on
+	/// the world map / home screen. Pokemon-style "free Pokemon Center" — keeps
+	/// the between-run loop frictionless while the balance team figures out a
+	/// more punitive model.
+	/// </summary>
+	private void RestoreAllOwnedHP()
+	{
+		var mm = MonsterManager.Instance;
+		if ( mm?.OwnedMonsters == null ) return;
+
+		int healed = 0;
+		foreach ( var monster in mm.OwnedMonsters )
+		{
+			if ( monster == null ) continue;
+			if ( monster.CurrentHP >= monster.MaxHP ) continue;
+			monster.CurrentHP = monster.MaxHP;
+			healed++;
+		}
+
+		if ( healed > 0 )
+		{
+			Log.Info( $"[Expedition] Healed {healed} owned beasts to full HP on expedition end" );
+		}
 	}
 
 	/// <summary>
@@ -1691,7 +1627,7 @@ public sealed class ExpeditionManager : Component
 		if ( tamer == null ) return;
 
 		tamer.TotalMonstersCaught++;
-		Stats.SetValue( "monsters-caught", tamer.TotalMonstersCaught );
+		Stats.SetValue( "monsters-caught-launch", tamer.TotalMonstersCaught );
 
 		// Guild XP for monster catch
 		GuildManager.Instance?.AddGuildXP( 10 );
@@ -1705,6 +1641,7 @@ public sealed class ExpeditionManager : Component
 		var caughtSpecies = MonsterManager.Instance?.GetSpecies( caughtMonster.SpeciesId );
 		bool isRareOrHigher = caughtSpecies != null && caughtSpecies.BaseRarity >= Rarity.Rare;
 		MissionManager.Instance?.TrackMonsterCaught( isRareOrHigher: isRareOrHigher, isNewDiscovery: isNewDiscovery );
+		SideQuestManager.Instance?.TrackContract();
 
 		OnMonsterCaught?.Invoke( caughtMonster );
 
@@ -1727,7 +1664,7 @@ public class Expedition
 	public ElementType Element { get; set; }
 	public int GoldReward { get; set; }
 	public int XPReward { get; set; }
-	public bool HasBoss { get; set; }
+	public bool HasBoss { get; set; } = true;
 	public string BossSpeciesId { get; set; }
 	public string BackgroundImage { get; set; }
 	public bool IsBossGauntlet { get; set; } // Every wave is a boss fight

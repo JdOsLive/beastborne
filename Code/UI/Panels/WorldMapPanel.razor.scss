@@ -1,0 +1,879 @@
+// ═══════════════════════════════════════════════════════════════
+// WORLD MAP PANEL — illustrated backdrop with 3 zone markers
+// Renders INLINE as the Expedition tab's content (not a popup).
+// Click marker → zone-detail pane slides in from the right.
+// ═══════════════════════════════════════════════════════════════
+
+@keyframes mapMarkerPulse {
+	0%, 100% { transform: scale(1); opacity: 0.55; }
+	50% { transform: scale(1.45); opacity: 0; }
+}
+
+@keyframes mapMarkerBob {
+	0%, 100% { transform: translateY(0); }
+	50% { transform: translateY(-5px); }
+}
+
+@keyframes embarkBreath {
+	0%, 100% { transform: scale(1); }
+	50% { transform: scale(1.025); }
+}
+
+@keyframes zoneDetailEnter {
+	from { opacity: 0; transform: translateX(30px); }
+	to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes mapInlineEnter {
+	from { opacity: 0; }
+	to { opacity: 1; }
+}
+
+// ─── shell ───────────────────────────────────────────────────
+// Inline panel — fills the GameHUD content-area. No overlay, no modal
+// positioning. Tab switching mounts/unmounts this element, so the entrance
+// keyframe below plays cleanly each tab enter.
+WorldMapPanel {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	animation: mapInlineEnter 0.22s ease-out;
+}
+
+.world-map-root {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+	position: relative;
+}
+
+.map-modal {
+	width: 100%;
+	height: 100%;
+	background-color: rgb(12, 18, 30);
+	display: flex;
+	flex-direction: column;
+	position: relative;
+	overflow: hidden;
+}
+
+// ─── BACKDROP ────────────────────────────────────────────────
+// Placeholder until the artist ships the real map.
+// Layered gradients evoke a pastoral valley: sky, land, rolling hills.
+.map-backdrop {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+}
+
+.map-bg-layer {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.map-bg-gradient {
+	// Solarpunk-warm daylight: hazy gold sky → olive meadow → deep living green
+	background-image: linear-gradient(
+		to bottom,
+		rgb(210, 210, 185) 0%,
+		rgb(220, 190, 135) 22%,
+		rgb(170, 175, 115) 48%,
+		rgb(110, 140, 85) 78%,
+		rgb(55, 82, 52) 100%
+	);
+	opacity: 0.92;
+}
+
+.map-bg-texture {
+	// Soft radial vignette to focus the eye on the markers.
+	// s&box quirk: `circle at X% Y%` is rejected by the CSS parser. Default
+	// radial-gradient origin is element center, which is what we want here.
+	background-image: radial-gradient(
+		rgba(0, 0, 0, 0) 40%,
+		rgba(0, 0, 0, 0.55) 100%
+	);
+}
+
+// No header — map is full-bleed. Navbar tab identifies the surface.
+
+// ─── MARKERS ─────────────────────────────────────────────────
+.map-markers {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	bottom: 0;
+	pointer-events: none;
+}
+
+.zone-marker {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 120px;
+	// left/top set inline; transform centers the marker on its anchor point
+	transform: translate(-50%, -100%);
+	cursor: pointer;
+	pointer-events: all;
+	animation: mapMarkerBob 2.8s ease-in-out infinite;
+
+	&.locked {
+		cursor: default;
+		opacity: 0.55;
+		animation-play-state: paused;
+	}
+}
+
+// Children don't capture pointer events — otherwise moving the mouse from
+// the outer marker onto e.g. the label or the pin fires mouseout on the
+// outer div, which caused the hover preview to flicker in/out as the
+// cursor drifted between children.
+.zone-marker > * {
+	pointer-events: none;
+}
+
+// Subtle shaft that connects the pin to the ground anchor
+.marker-stem {
+	width: 2px;
+	height: 14px;
+	background-color: rgba(0, 0, 0, 0.55);
+	margin-bottom: -1px;
+}
+
+.marker-pin {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 52px;
+	height: 52px;
+	background-color: rgba(120, 30, 30, 0.95);
+	border: 2px solid rgba(253, 224, 71, 0.85);
+	border-radius: 26px;
+	position: relative;
+	z-index: 2;
+	transition: background-color 0.15s ease-out,
+				border-color 0.15s ease-out,
+				transform 0.12s ease-out;
+}
+
+.zone-marker.unlocked:hover .marker-pin {
+	background-color: rgba(180, 45, 45, 1);
+	border-color: rgba(253, 230, 138, 1);
+	transform: scale(1.08);
+}
+
+.zone-marker.locked .marker-pin {
+	background-color: rgba(30, 41, 59, 0.9);
+	border-color: rgba(100, 116, 139, 0.7);
+}
+
+// Outward ripple behind the pin (available-zone attention cue)
+.marker-pulse {
+	position: absolute;
+	top: 14px;
+	left: 50%;
+	width: 52px;
+	height: 52px;
+	margin-left: -26px;
+	background-color: rgba(253, 224, 71, 0.45);
+	border-radius: 26px;
+	pointer-events: none;
+	animation: mapMarkerPulse 2.2s ease-out infinite;
+	z-index: 1;
+}
+
+.zone-marker.locked .marker-pulse {
+	background-color: rgba(100, 116, 139, 0);
+	animation-play-state: paused;
+}
+
+.zone-label {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-top: 6px;
+	padding: 4px 10px;
+	background-color: rgba(12, 18, 30, 0.9);
+	border: 1px solid rgba(253, 224, 71, 0.4);
+	border-radius: 7px;
+	white-space: nowrap;
+}
+
+.zone-marker.locked .zone-label {
+	border-color: rgba(100, 116, 139, 0.5);
+}
+
+.zone-name {
+	font-size: 13px;
+	font-weight: 800;
+	color: rgb(254, 243, 199);
+	line-height: 15;
+	letter-spacing: 0.8px;
+}
+
+.zone-meta {
+	font-size: 10px;
+	font-weight: 700;
+	color: rgba(253, 224, 71, 0.85);
+	line-height: 12;
+	letter-spacing: 0.5px;
+	margin-top: 1px;
+}
+
+.zone-marker.locked .zone-name,
+.zone-marker.locked .zone-meta {
+	color: rgba(203, 213, 225, 0.7);
+}
+
+// ─── ZONE DETAIL OVERLAY ─────────────────────────────────────
+.zone-detail-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.55);
+	z-index: 50;
+}
+
+.zone-detail {
+	position: absolute;
+	right: 24px;
+	top: 84px;
+	width: 420px;
+	max-height: 80%;
+	background-color: rgba(12, 18, 30, 0.97);
+	border: 2px solid rgba(253, 224, 71, 0.55);
+	border-radius: 14px;
+	padding: 20px 22px 22px 22px;
+	z-index: 60;
+	display: flex;
+	flex-direction: column;
+	animation: zoneDetailEnter 0.22s ease-out;
+}
+
+.zd-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: flex-start;
+	flex-shrink: 0;
+	margin-bottom: 14px;
+}
+
+.zd-title-stack {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.zd-kicker {
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(253, 224, 71, 0.9);
+	line-height: 12;
+	letter-spacing: 2px;
+}
+
+.zd-title {
+	font-size: 26px;
+	font-weight: 800;
+	color: rgb(254, 243, 199);
+	line-height: 30;
+	letter-spacing: 0.5px;
+	margin-top: 2px;
+}
+
+.zd-meta {
+	font-size: 12px;
+	font-weight: 600;
+	color: rgba(226, 232, 240, 0.75);
+	line-height: 14;
+	margin-top: 4px;
+}
+
+// Zone-detail close button — only close button in this panel
+// (map-level close is gone; player leaves via HUD tab nav)
+.close-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	background-color: rgba(255, 255, 255, 0.06);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 8px;
+	cursor: pointer;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				transform 0.1s ease-out;
+
+	&:hover {
+		background-color: rgba(239, 68, 68, 0.25);
+		border-color: rgba(239, 68, 68, 0.55);
+		transform: scale(1.08);
+	}
+
+	.close-icon {
+		width: 14px;
+		height: 14px;
+	}
+}
+
+.zd-close {
+	flex-shrink: 0;
+	margin-left: 12px;
+}
+
+// Lore blurb
+.zd-lore {
+	display: flex;
+	flex-direction: column;
+	padding: 12px 14px;
+	margin-bottom: 14px;
+	background-color: rgba(253, 224, 71, 0.08);
+	border: 1px solid rgba(253, 224, 71, 0.2);
+	border-radius: 9px;
+}
+
+.zd-lore-text {
+	font-size: 13px;
+	font-weight: 500;
+	color: rgba(254, 243, 199, 0.9);
+	line-height: 18;
+}
+
+// Embark button — hero CTA
+.embark-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 54px;
+	margin-bottom: 20px;
+	background-color: rgb(239, 68, 68);
+	border: 2px solid rgba(252, 165, 165, 1);
+	border-radius: 10px;
+	cursor: pointer;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				transform 0.1s ease-out;
+	animation: embarkBreath 1.6s ease-in-out infinite;
+	flex-shrink: 0;
+
+	&:hover {
+		background-color: rgb(248, 113, 113);
+		border-color: rgba(254, 202, 202, 1);
+		transform: scale(1.015);
+		animation-play-state: paused;
+	}
+
+	span {
+		font-size: 15px;
+		font-weight: 800;
+		color: white;
+		line-height: 17;
+		letter-spacing: 2px;
+		margin-left: 8px;
+	}
+}
+
+// NPC section
+.zd-section-label {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	margin-bottom: 8px;
+	flex-shrink: 0;
+
+	span {
+		font-size: 11px;
+		font-weight: 800;
+		color: rgba(253, 224, 71, 0.85);
+		line-height: 13;
+		letter-spacing: 1.5px;
+	}
+
+	.zd-section-count {
+		color: rgba(148, 163, 184, 0.75);
+		font-weight: 600;
+	}
+}
+
+.zd-npc-list {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	flex-shrink: 0;
+}
+
+.zd-npc-slot {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	padding: 10px 12px;
+	margin-bottom: 6px;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	border-radius: 9px;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out;
+
+	&.locked {
+		cursor: default;
+	}
+}
+
+.zd-npc-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 34px;
+	height: 34px;
+	min-width: 34px;
+	margin-right: 10px;
+	background-color: rgba(148, 163, 184, 0.15);
+	border: 1px solid rgba(148, 163, 184, 0.3);
+	border-radius: 17px;
+	flex-shrink: 0;
+}
+
+.zd-npc-text {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.zd-npc-name {
+	font-size: 13px;
+	font-weight: 700;
+	color: rgba(226, 232, 240, 0.85);
+	line-height: 15;
+	letter-spacing: 0.3px;
+}
+
+.zd-npc-hook {
+	font-size: 11px;
+	font-weight: 500;
+	color: rgba(148, 163, 184, 0.75);
+	line-height: 13;
+	margin-top: 2px;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ZONE HOVER PREVIEW — Hyrule Warriors: Age of Calamity style
+// Landscape card anchored off the hovered marker. Flips to the other
+// side of the marker based on X% so it never falls off the map.
+// ═══════════════════════════════════════════════════════════════
+
+// Card always lands to the right of the marker. Marker outer is 120px
+// wide (translate -50%), so its right edge sits +60px from the anchor X%.
+// +140px clears the marker with ~80px of breathing room so the card
+// never crowds the pin. Vertically, the pin sits ~80px above anchor Y%,
+// so preview shifts -110px up so its top aligns roughly with the pin.
+// Keyframe bakes both into the `to` frame — s&box animations clobber
+// class-level transforms and would otherwise snap the card on end.
+@keyframes zonePreviewEnterRight {
+	from { opacity: 0; transform: translate(140px, -102px); }
+	to   { opacity: 1; transform: translate(140px, -110px); }
+}
+
+.zone-preview {
+	position: absolute;
+	width: 320px;
+	padding: 14px 14px 12px 14px;
+	background-color: rgba(12, 18, 30, 0.97);
+	border: 2px solid rgba(253, 224, 71, 0.55);
+	border-radius: 12px;
+	z-index: 50;
+	pointer-events: none;
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+}
+
+.zone-preview.flip-right {
+	transform: translate(140px, -110px);
+	animation: zonePreviewEnterRight 0.18s ease-out;
+}
+
+.zp-header {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 10px;
+	flex-shrink: 0;
+}
+
+.zp-title {
+	font-size: 17px;
+	font-weight: 800;
+	color: rgb(254, 243, 199);
+	line-height: 19;
+	letter-spacing: 0.3px;
+}
+
+.zp-badge {
+	display: flex;
+	align-items: center;
+	height: 20px;
+	padding: 0 7px;
+	font-size: 9px;
+	font-weight: 800;
+	letter-spacing: 1.4px;
+	line-height: 11;
+	border-radius: 10px;
+}
+
+.zp-badge.cleared {
+	background-color: rgba(34, 197, 94, 0.18);
+	border: 1px solid rgba(134, 239, 172, 0.65);
+	color: rgba(187, 247, 208, 0.95);
+}
+
+.zp-badge.locked {
+	background-color: rgba(71, 85, 105, 0.4);
+	border: 1px solid rgba(148, 163, 184, 0.5);
+	color: rgba(203, 213, 225, 0.8);
+}
+
+.zp-image-wrap {
+	position: relative;
+	width: 100%;
+	height: 148px;
+	margin-bottom: 10px;
+	background-color: rgba(0, 0, 0, 0.55);
+	border: 1px solid rgba(253, 224, 71, 0.25);
+	border-radius: 8px;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.zp-image {
+	width: 100%;
+	height: 100%;
+	background-repeat: no-repeat;
+	background-size: cover;
+	background-position: center;
+}
+
+.zp-image-veil {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(0, 0, 0, 0.7);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.zp-rec {
+	display: flex;
+	flex-direction: column;
+	margin-bottom: 10px;
+	flex-shrink: 0;
+}
+
+.zp-rec-label {
+	font-size: 9px;
+	font-weight: 800;
+	color: rgba(148, 163, 184, 0.85);
+	letter-spacing: 1.6px;
+	line-height: 11;
+	margin-bottom: 2px;
+}
+
+.zp-rec-value {
+	font-size: 22px;
+	font-weight: 900;
+	color: rgb(254, 243, 199);
+	line-height: 24;
+	letter-spacing: 0.5px;
+}
+
+.zp-stats {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	margin-bottom: 10px;
+	flex-shrink: 0;
+}
+
+.zp-stat {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 22px;
+	padding: 0 8px;
+	margin-right: 6px;
+	margin-bottom: 4px;
+	background-color: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(148, 163, 184, 0.3);
+	border-radius: 11px;
+
+	span {
+		margin-left: 5px;
+		font-size: 10px;
+		font-weight: 800;
+		color: rgba(226, 232, 240, 0.9);
+		letter-spacing: 1px;
+		line-height: 12;
+	}
+}
+
+.zp-stat.boss {
+	border-color: rgba(252, 165, 165, 0.55);
+	background-color: rgba(239, 68, 68, 0.12);
+
+	span { color: rgba(252, 165, 165, 0.95); }
+}
+
+.zp-stat-el {
+	width: 13px;
+	height: 13px;
+}
+
+.zp-lore {
+	font-size: 11px;
+	font-weight: 500;
+	color: rgba(203, 213, 225, 0.85);
+	line-height: 14;
+	margin-bottom: 10px;
+	flex-shrink: 0;
+}
+
+.zp-hint {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding-top: 8px;
+	border-top: 1px solid rgba(148, 163, 184, 0.2);
+
+	span {
+		margin-left: 5px;
+		font-size: 10px;
+		font-weight: 700;
+		color: rgba(253, 224, 71, 0.85);
+		letter-spacing: 0.8px;
+		line-height: 12;
+	}
+
+	&.locked span {
+		color: rgba(148, 163, 184, 0.75);
+	}
+}
+
+// Completed zone marker — green accent on pin + pulse
+.zone-marker.cleared .marker-pin {
+	background-color: rgba(22, 78, 43, 0.95);
+	border-color: rgba(134, 239, 172, 0.85);
+}
+
+.zone-marker.cleared .marker-pulse {
+	background-color: rgba(134, 239, 172, 0.3);
+}
+
+// Hovered marker subtle scale boost
+.zone-marker.hovered .marker-pin {
+	transform: scale(1.1);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRADE NODES — Age of Calamity "request tile" style markers.
+// Smaller than zone markers, parked around their host zone.
+// ═══════════════════════════════════════════════════════════════
+
+.trade-node {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	cursor: pointer;
+	pointer-events: all;
+	z-index: 3;
+}
+
+.tn-pin {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	background-color: rgba(76, 52, 22, 0.95);
+	border: 2px solid rgba(251, 191, 36, 0.85);
+	border-radius: 15px;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				transform 0.1s ease-out;
+}
+
+.trade-node:hover .tn-pin {
+	background-color: rgba(120, 82, 35, 1);
+	border-color: rgba(253, 224, 71, 1);
+	transform: scale(1.12);
+}
+
+.trade-node.done .tn-pin {
+	background-color: rgba(22, 52, 30, 0.85);
+	border-color: rgba(74, 222, 128, 0.75);
+}
+
+// Gold pulse — visible when the player has everything required to trade
+.tn-ready-pulse {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 30px;
+	height: 30px;
+	margin-top: -15px;
+	margin-left: -15px;
+	background-color: rgba(253, 224, 71, 0.35);
+	border-radius: 15px;
+	pointer-events: none;
+	animation: mapMarkerPulse 1.8s ease-out infinite;
+	z-index: -1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRADE POPUP — exchange dialog. Mirrors zone-detail shape so the
+// two overlays read as siblings (same column position, same chrome).
+// ═══════════════════════════════════════════════════════════════
+
+.trade-popup {
+	position: absolute;
+	right: 24px;
+	top: 84px;
+	width: 420px;
+	max-height: 80%;
+	background-color: rgba(12, 18, 30, 0.97);
+	border: 2px solid rgba(251, 191, 36, 0.55);
+	border-radius: 14px;
+	padding: 20px 22px 22px 22px;
+	z-index: 65;
+	display: flex;
+	flex-direction: column;
+	animation: zoneDetailEnter 0.22s ease-out;
+}
+
+// Give/Receive lists reuse .tn-line — compact two-line format
+.tn-line-list {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	margin-bottom: 14px;
+	flex-shrink: 0;
+}
+
+.tn-line {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	padding: 8px 10px;
+	margin-bottom: 4px;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(148, 163, 184, 0.2);
+	border-radius: 7px;
+}
+
+.tn-line.satisfied {
+	border-color: rgba(74, 222, 128, 0.45);
+	background-color: rgba(34, 197, 94, 0.08);
+}
+
+.tn-line.short {
+	border-color: rgba(239, 68, 68, 0.45);
+	background-color: rgba(239, 68, 68, 0.08);
+}
+
+.tn-line.reward {
+	border-color: rgba(251, 191, 36, 0.45);
+	background-color: rgba(251, 191, 36, 0.08);
+}
+
+.tn-line-name {
+	flex: 1 1 0;
+	min-width: 0;
+	margin-left: 8px;
+	font-size: 12px;
+	font-weight: 700;
+	color: rgba(226, 232, 240, 0.9);
+	line-height: 14;
+}
+
+.tn-line-amt {
+	font-size: 12px;
+	font-weight: 800;
+	color: rgba(253, 224, 71, 0.95);
+	line-height: 14;
+	letter-spacing: 0.5px;
+}
+
+// Disabled CTA state (player is short on mats or gold)
+.embark-btn.disabled {
+	background-color: rgba(100, 116, 139, 0.85);
+	border-color: rgba(148, 163, 184, 0.5);
+	cursor: default;
+	animation: none;
+
+	&:hover {
+		background-color: rgba(100, 116, 139, 0.85);
+		border-color: rgba(148, 163, 184, 0.5);
+		transform: scale(1);
+	}
+}
+
+.tn-done-banner {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 48px;
+	margin-bottom: 14px;
+	background-color: rgba(22, 52, 30, 0.75);
+	border: 2px solid rgba(74, 222, 128, 0.55);
+	border-radius: 10px;
+	flex-shrink: 0;
+
+	span {
+		margin-left: 8px;
+		font-size: 13px;
+		font-weight: 800;
+		color: rgba(187, 247, 208, 0.95);
+		letter-spacing: 1.2px;
+		line-height: 15;
+	}
+}
+
+.tn-times-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	margin-top: 4px;
+
+	span {
+		font-size: 10px;
+		font-weight: 600;
+		color: rgba(148, 163, 184, 0.7);
+		letter-spacing: 0.8px;
+		line-height: 12;
+	}
+}

@@ -12,7 +12,8 @@ public enum ItemCategory
 	Relic,       // Tamer passive effects (max 3 equipped)
 	HeldItem,    // Monster equipment (1 per monster)
 	QuestItem,   // Special unlocks (Cartographer modes)
-	Boost        // Server-wide boosts (XP, Gold, etc.)
+	Boost,       // Server-wide boosts (XP, Gold, etc.)
+	Material     // Signature drops from beasts — Monster Hunter-style themed mats
 }
 
 /// <summary>
@@ -32,6 +33,10 @@ public enum ItemRarity
 /// </summary>
 public enum ItemEffectType
 {
+	// Inert — used by Material items which drop from beasts and have no built-in
+	// effect. They're consumed by trade nodes / side quests, not used directly.
+	None,
+
 	// Consumable effects (temporary battle boosts)
 	BoostATK,
 	BoostDEF,
@@ -139,24 +144,24 @@ public class ItemDefinition
 	{
 		var desc = EffectType switch
 		{
-			ItemEffectType.BoostATK => $"+{EffectValue}% ATK for {EffectDuration} battles",
-			ItemEffectType.BoostDEF => $"+{EffectValue}% DEF for {EffectDuration} battles",
-			ItemEffectType.BoostSPD => $"+{EffectValue}% SPD for {EffectDuration} battles",
-			ItemEffectType.BoostSpA => $"+{EffectValue}% SpA for {EffectDuration} battles",
-			ItemEffectType.BoostSpD => $"+{EffectValue}% SpD for {EffectDuration} battles",
-			ItemEffectType.BoostCrit => $"+{EffectValue}% crit chance for {EffectDuration} battles",
-			ItemEffectType.CatchRateBoost => EffectDuration > 0 ? $"+{EffectValue}% catch rate for {EffectDuration} attempts" : $"+{EffectValue}% catch rate",
-			ItemEffectType.XPGrant => $"Grant {EffectValue} XP to a monster",
-			ItemEffectType.GoldBoost => $"+{EffectValue}% gold for {EffectDuration} battles",
+			ItemEffectType.BoostATK => $"+{EffectValue}% ATK for {EffectDuration} waves",
+			ItemEffectType.BoostDEF => $"+{EffectValue}% DEF for {EffectDuration} waves",
+			ItemEffectType.BoostSPD => $"+{EffectValue}% SPD for {EffectDuration} waves",
+			ItemEffectType.BoostSpA => $"+{EffectValue}% SpA for {EffectDuration} waves",
+			ItemEffectType.BoostSpD => $"+{EffectValue}% SpD for {EffectDuration} waves",
+			ItemEffectType.BoostCrit => $"+{EffectValue}% crit chance for {EffectDuration} waves",
+			ItemEffectType.CatchRateBoost => EffectDuration > 0 ? $"+{EffectValue}% contract rate for {EffectDuration} attempts" : $"+{EffectValue}% contract rate",
+			ItemEffectType.XPGrant => $"Grant {EffectValue:N0} XP to a monster",
+			ItemEffectType.GoldBoost => $"+{EffectValue}% gold for {EffectDuration} waves",
 			ItemEffectType.NatureChange => $"Set nature to {(NatureType)(int)EffectValue}",
 			ItemEffectType.TraitReroll => "Randomly reroll one trait from species pool",
 			ItemEffectType.GeneBoost => $"Boost a random gene by +{(int)EffectValue} (max 30)",
 			ItemEffectType.MasterInk => "Guarantees your next capture attempt succeeds",
 			ItemEffectType.ContractInkGrant => $"Grants {(int)EffectValue} Contract Ink",
-			ItemEffectType.EliteInkBuff => $"+{EffectValue}% catch rate for {EffectDuration} minutes",
+			ItemEffectType.EliteInkBuff => $"+{EffectValue}% contract rate for {EffectDuration} minutes",
 			ItemEffectType.PassiveGoldFind => $"+{EffectValue}% gold from all sources",
 			ItemEffectType.PassiveItemFind => $"+{EffectValue}% item drop chance",
-			ItemEffectType.PassiveCatchRate => $"+{EffectValue}% catch rate",
+			ItemEffectType.PassiveCatchRate => $"+{EffectValue}% contract rate",
 			ItemEffectType.PassiveXPGain => $"+{EffectValue}% monster XP",
 			ItemEffectType.PassiveATKBoost => $"+{EffectValue}% team ATK",
 			ItemEffectType.PassiveDEFBoost => $"+{EffectValue}% team DEF",
@@ -175,7 +180,7 @@ public class ItemDefinition
 			ItemEffectType.HeldCritChance => $"+{EffectValue}% crit chance",
 			ItemEffectType.HeldCritDamage => $"+{EffectValue}% crit damage",
 			ItemEffectType.HeldXPBonus => $"+{EffectValue}% XP gain",
-			ItemEffectType.HeldGoldBonus => $"+{EffectValue}% gold from battles",
+			ItemEffectType.HeldGoldBonus => $"+{EffectValue}% gold from waves",
 			ItemEffectType.HeldElementBoost => $"+{EffectValue}% {TargetElement} damage",
 			ItemEffectType.HeldFirstStrike => "Always move first on turn 1",
 			ItemEffectType.HeldPPReduction => $"-{EffectValue} PP cost on all moves",
@@ -190,8 +195,8 @@ public class ItemDefinition
 			ItemEffectType.ServerTamerXPBoost => $"{EffectValue}x Tamer XP for {BoostDurationMinutes / 60}h (Server-wide)",
 			ItemEffectType.ServerBeastXPBoost => $"{EffectValue}x Beast XP for {BoostDurationMinutes / 60}h (Server-wide)",
 			ItemEffectType.ServerGoldBoost => $"{EffectValue}x Gold for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerLuckyCharm => $"+{EffectValue}% Rare Item Drops for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerRareEncounter => $"+{EffectValue}% Rare Beast Encounters for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerLuckyCharm => $"{EffectValue}x Rare Item Drops for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerRareEncounter => $"{EffectValue}x Rare Beast Encounters for {BoostDurationMinutes / 60}h (Server-wide)",
 			_ => Description
 		};
 
@@ -206,7 +211,7 @@ public class ItemDefinition
 				ItemEffectType.HeldAccuracy when SecondaryEffectValue < 0 => $"{SecondaryEffectValue}% accuracy",
 				ItemEffectType.PassiveGoldFind => $"{sign}{SecondaryEffectValue}% gold find",
 				ItemEffectType.PassiveItemFind => $"{sign}{SecondaryEffectValue}% item find",
-				ItemEffectType.PassiveCatchRate => $"{sign}{SecondaryEffectValue}% catch rate",
+				ItemEffectType.PassiveCatchRate => $"{sign}{SecondaryEffectValue}% contract rate",
 				ItemEffectType.PassiveXPGain => $"{sign}{SecondaryEffectValue}% monster XP",
 				ItemEffectType.PassiveATKBoost => $"{sign}{SecondaryEffectValue}% team ATK",
 				ItemEffectType.PassiveDEFBoost => $"{sign}{SecondaryEffectValue}% team DEF",

@@ -14,7 +14,7 @@
 			<!-- Header -->
 			<div class="notif-header">
 				<div class="notif-header-left">
-					<img class="notif-icon" src="ui/icons/buttons/notification.svg" />
+					<iconify icon="lucide:bell" Size=@(22) Color="#c4b5fd" />
 					<span class="notif-title">@L("ui.notifications.title")</span>
 				</div>
 				<div class="notif-header-right">
@@ -58,7 +58,7 @@
 								}
 								else
 								{
-									<span>@notification.Icon</span>
+									<iconify icon="@GetNotificationIconName(notification.Type)" Size=@(20) Color="@GetNotificationIconColor(notification.Type)" />
 								}
 							</div>
 							<div class="nc">
@@ -80,23 +80,12 @@
 			}
 		</div>
 
-	<!-- Expand Button (always visible) -->
-	<button class="notification-expand-btn @(GetUnreadCount() > 0 ? "has-unread" : "")" onclick=@ToggleExpanded>
-		<img class="notification-btn-icon" src="ui/icons/buttons/notification.svg" />
-		<img class="notification-btn-icon-anim" src="ui/icons/animated/notification.webp" />
-		<span class="notification-btn-text">NOTIFICATIONS</span>
-		@if (GetUnreadCount() > 0)
-		{
-			<span class="unread-badge">@GetUnreadCount()</span>
-		}
-	</button>
-
 	@if (!isExpanded)
 	{
 		<!-- Toast Notifications (below button) -->
 		@foreach (var notification in GetNotifications())
 		{
-			<div class="notification @GetTypeClass(notification.Type)" onclick=@(() => DismissNotification(notification.Id))>
+			<div class="notification @GetTypeClass(notification.Type) @(_dismissingIds.Contains(notification.Id) ? "dismissing" : "")" onclick=@(() => DismissNotification(notification.Id))>
 				<div class="notification-icon">
 					@if (notification.HasImageIcon)
 					{
@@ -104,7 +93,7 @@
 					}
 					else
 					{
-						<span>@notification.Icon</span>
+						<iconify icon="@GetNotificationIconName(notification.Type)" Size=@(20) Color="@GetNotificationIconColor(notification.Type)" />
 					}
 				</div>
 				<div class="notification-content">
@@ -127,6 +116,7 @@
 
 	private bool isExpanded = false;
 	private string currentFilter = "all";
+	private HashSet<Guid> _dismissingIds = new();
 
 	// Static instance for external access
 	public static NotificationPanel Instance { get; private set; }
@@ -174,6 +164,8 @@
 			NotificationType.Catch => "game",
 			NotificationType.ServerBoost => "game",
 			NotificationType.ExpeditionUnlock => "game",
+			NotificationType.Achievement => "game",
+			NotificationType.TamerLevelUp => "game",
 			NotificationType.RankedBattle => "social",
 			_ => "system"
 		};
@@ -182,6 +174,40 @@
 	private int GetUnreadCount()
 	{
 		return NotificationManager.Instance?.UnreadCount ?? 0;
+	}
+
+	private string GetNotificationIconName(NotificationType type)
+	{
+		return type switch
+		{
+			NotificationType.Achievement    => "lucide:trophy",
+			NotificationType.Evolution      => "lucide:zap",
+			NotificationType.Catch          => "lucide:target",
+			NotificationType.ServerBoost    => "lucide:rocket",
+			NotificationType.TamerLevelUp   => "lucide:trending-up",
+			NotificationType.RankedBattle   => "lucide:swords",
+			NotificationType.ExpeditionUnlock => "lucide:map",
+			NotificationType.Warning        => "lucide:triangle-alert",
+			NotificationType.Success        => "lucide:check-circle",
+			_                               => "lucide:info"
+		};
+	}
+
+	private string GetNotificationIconColor(NotificationType type)
+	{
+		return type switch
+		{
+			NotificationType.Achievement    => "#fcd34d",
+			NotificationType.Evolution      => "#c4b5fd",
+			NotificationType.Catch          => "#60a5fa",
+			NotificationType.ServerBoost    => "#4ade80",
+			NotificationType.TamerLevelUp   => "#fbbf24",
+			NotificationType.RankedBattle   => "#f472b6",
+			NotificationType.ExpeditionUnlock => "#34d399",
+			NotificationType.Warning        => "#f87171",
+			NotificationType.Success        => "#34d399",
+			_                               => "#c4b5fd"
+		};
 	}
 
 	private string GetTypeClass(NotificationType type)
@@ -197,6 +223,7 @@
 			NotificationType.Catch => "catch",
 			NotificationType.TamerLevelUp => "tamer-level-up",
 			NotificationType.ExpeditionUnlock => "expedition-unlock",
+			NotificationType.Achievement => "achievement",
 			_ => "info"
 		};
 	}
@@ -212,14 +239,26 @@
 
 	private void SetFilter(string filter)
 	{
+		if (currentFilter == filter) return;
 		currentFilter = filter;
-		SoundManager.PlayClick();
+		SoundManager.PlayTabSwitch();
 	}
 
 	private void DismissNotification(Guid id)
 	{
-		NotificationManager.Instance?.RemoveNotification(id);
+		if (_dismissingIds.Contains(id)) return;
 		SoundManager.PlayClick();
+		_dismissingIds.Add(id);
+		StateHasChanged();
+		_ = RemoveAfterDismissAnimation(id);
+	}
+
+	private async Task RemoveAfterDismissAnimation(Guid id)
+	{
+		await Task.Delay(220);
+		_dismissingIds.Remove(id);
+		NotificationManager.Instance?.RemoveNotification(id);
+		StateHasChanged();
 	}
 
 	private void ToggleExpanded()
@@ -240,7 +279,7 @@
 	private void ClearHistory()
 	{
 		NotificationManager.Instance?.ClearHistory();
-		SoundManager.PlayClick();
+		SoundManager.PlayBack();
 	}
 
 	protected override int BuildHash()
@@ -251,10 +290,12 @@
 		hash.Add(GetNotifications().Count);
 		hash.Add(GetHistory().Count);
 		hash.Add(GetUnreadCount());
+		hash.Add(_dismissingIds.Count);
 		foreach (var n in GetNotifications())
 		{
 			hash.Add(n.Id);
 			hash.Add((int)(n.Progress * 100));
+			hash.Add(_dismissingIds.Contains(n.Id));
 		}
 		return hash.ToHashCode();
 	}

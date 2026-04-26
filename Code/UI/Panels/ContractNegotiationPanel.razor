@@ -5,164 +5,141 @@
 @using Beastborne.Data;
 @using Beastborne.Systems;
 @using Beastborne.UI.Components;
+@using Beastborne.Battle3D;
 @inherits Panel
 
-<div class="contract-negotiation-panel @(IsVisible ? "visible" : "") @GetResultClass()">
+<div class="contract-radial @(IsVisible ? "visible" : "") @GetResultClass()">
 	@if (currentState == NegotiationState.Selecting)
 	{
-		<div class="negotiation-header">
-			<div class="header-title">Contract Negotiation</div>
-			<div class="header-subtitle">Choose your approach to win this creature's trust</div>
-		</div>
-
-		<div class="negotiation-content">
-			<!-- Target Monster Display -->
-			<div class="target-monster">
-				<div class="monster-portrait @GetRarityClass()">
-					@if (HasSprite())
-					{
-						<img class="monster-icon" src="@GetMonsterIcon()" />
-					}
-					else
-					{
-						<div class="monster-icon-placeholder">?</div>
-					}
-				</div>
-				<div class="monster-info">
-					<div class="monster-name-row">
-						<div class="monster-name">@TargetMonster?.Nickname</div>
-						<div class="monster-level">Lv.@TargetMonster?.Level</div>
-						<div class="monster-element @GetElementClass()">
-						<img class="element-icon-inline" src="ui/icons/elements/transparent/@(GetElementClass()).svg" />
-						<span>@GetElementName()</span>
-					</div>
-					</div>
-					<div class="monster-stats">
-						<div class="stat-item">
-							<div class="stat-label">HP</div>
-							<div class="stat-value">@TargetMonster?.MaxHP</div>
-						</div>
-						<div class="stat-item">
-							<div class="stat-label">ATK</div>
-							<div class="stat-value">@TargetMonster?.ATK</div>
-						</div>
-						<div class="stat-item">
-							<div class="stat-label">DEF</div>
-							<div class="stat-value">@TargetMonster?.DEF</div>
-						</div>
-						<div class="stat-item">
-							<div class="stat-label">SpA</div>
-							<div class="stat-value">@TargetMonster?.SpA</div>
-						</div>
-						<div class="stat-item">
-							<div class="stat-label">SpD</div>
-							<div class="stat-value">@TargetMonster?.SpD</div>
-						</div>
-						<div class="stat-item">
-							<div class="stat-label">SPD</div>
-							<div class="stat-value">@TargetMonster?.SPD</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<!-- Ink Info Row -->
-			<div class="ink-info-row">
-				<div class="stamp-counter">
-					<div class="stamp-label">Ink Available:</div>
-					<div class="stamp-value">@GetStampCount()</div>
-				</div>
-				@if (HasMasterInk())
-				{
-					<div class="master-ink-toggle @(useMasterInk ? "active" : "")" onclick=@ToggleMasterInk>
-						<div class="toggle-slider"></div>
-						<span class="toggle-label">Master Ink</span>
-					</div>
-				}
-				else
-				{
-					<div class="master-ink-toggle disabled">
-						<div class="toggle-slider"></div>
-						<span class="toggle-label">No Master Ink</span>
-					</div>
-				}
-			</div>
-
-			<!-- Elite Ink Indicator -->
-			@if (HasEliteInk())
+		@{
+			var screenPos = GetBeastScreenPosition();
+			var leftPct = screenPos.x * 100f;
+			var topPct = screenPos.y * 100f;
+		}
+		<!-- Radial diamond container, centered on beast screen position -->
+		<div class="radial-container" style="left: @(leftPct)%; top: @(topPct)%">
+			<!-- 4 approach diamonds positioned absolutely -->
+			@if (negotiationOptions != null)
 			{
-				<div class="elite-ink-active">
-					<span class="elite-ink-icon">✨</span>
-					<span class="elite-ink-text">Elite Ink Active (+15%) - @GetEliteInkTimeRemaining() remaining</span>
-				</div>
+				int posIdx = 0;
+				@foreach (var option in negotiationOptions)
+				{
+					var opt = option;
+					var isSelected = selectedOption == opt;
+					var canAfford = CanAffordOption(opt);
+					var posClass = posIdx switch { 0 => "radial-top", 1 => "radial-right", 2 => "radial-bottom", 3 => "radial-left", _ => "radial-top" };
+					posIdx++;
+
+					<div class="radial-approach @posClass @(isSelected ? "selected" : "") @(!canAfford ? "cant-afford" : "") @(selectedOption != null && !isSelected ? "dimmed" : "")"
+						 onclick=@(() => SelectOption(opt))
+						 onmouseover=@(() => SoundManager.PlayHover())>
+						<div class="approach-diamond">
+							<div class="approach-diamond-inner"></div>
+							<span class="approach-pct">@(useMasterInk ? "100%" : ((int)(opt.SuccessChance * 100)).ToString() + "%")</span>
+						</div>
+						<div class="approach-label">
+							<div class="approach-name-row">
+								<span class="approach-name">@opt.Name</span>
+								@if (opt.IsPersonalityMatch)
+								{
+									<span class="approach-match">★</span>
+								}
+							</div>
+							<div class="approach-cost-row">
+								@if (opt.InkCost > 0)
+								{
+									<span class="cost-item">@opt.InkCost</span>
+									<img class="cost-icon" src="ui/icons/currency/ink.svg" />
+								}
+								@if (opt.GoldCost > 0)
+								{
+									<span class="cost-item">@opt.GoldCost</span>
+									<img class="cost-icon" src="ui/icons/currency/money.svg" />
+								}
+								@if (opt.BossTokenCost > 0)
+								{
+									<span class="cost-item">@opt.BossTokenCost</span>
+									<img class="cost-icon" src="ui/icons/currency/token.svg" />
+								}
+								@if (opt.CostsPlayerHP)
+								{
+									<span class="cost-special">HP</span>
+								}
+								@if (opt.CostsSkipTurns)
+								{
+									<span class="cost-special">2 turns</span>
+								}
+								@if (opt.InkCost == 0 && opt.GoldCost == 0 && opt.BossTokenCost == 0 && !opt.CostsPlayerHP && !opt.CostsSkipTurns)
+								{
+									<span class="cost-item">Free</span>
+								}
+							</div>
+						</div>
+					</div>
+				}
 			}
 
-				<!-- Negotiation Options -->
-			<div class="negotiation-options">
-				@if (negotiationOptions != null)
-				{
-					@foreach (var option in negotiationOptions)
+			<!-- Below radial: hint + info + buttons -->
+			<div class="radial-bottom-section">
+				<div class="radial-hint">
+					<span class="hint-text">@GetPersonalityHint()</span>
+				</div>
+				<div class="radial-info-bar">
+			<div class="info-beast">
+				<div class="info-beast-diamond el-bg-@GetElementClass()">
+					@if (HasSprite())
 					{
-						var opt = option;
-						var isSelected = selectedOption == opt;
-						var canAfford = CanAffordOption(opt);
-						<div class="option-card @(isSelected ? "selected" : "") @(!canAfford ? "cant-afford" : "")"
-							 onclick=@(() => SelectOption(opt))>
-							<div class="option-name">@opt.Name</div>
-							<div class="option-chance" style="color: @(useMasterInk ? "#4ade80" : opt.GetSuccessColor())">@(useMasterInk ? "100%" : opt.GetSuccessText())</div>
-							<div class="option-description">@opt.Description</div>
-
-							@if (opt.GoldCost > 0)
-							{
-								<div class="option-cost @(!canAfford ? "insufficient" : "")"><img class="currency-icon" src="ui/icons/currency/money.svg" /> @opt.GoldCost</div>
-							}
+						<img class="info-beast-sprite" src="@GetMonsterIcon()" />
+					}
+				</div>
+				<div class="info-beast-text">
+					<span class="info-name">@TargetMonster?.Nickname</span>
+					<span class="info-level">Lv @TargetMonster?.Level</span>
+					<span class="info-ink">Ink: @GetStampCount()</span>
+					@if (HasMasterInk())
+					{
+						<div class="info-master-ink @(useMasterInk ? "active" : "")" onclick=@ToggleMasterInk>
+							<span class="master-ink-label">Master Ink</span>
 						</div>
 					}
-				}
+				</div>
 			</div>
+		</div>
 
-			<!-- Action Buttons -->
-			<div class="negotiation-actions">
-				<button class="btn-negotiate @(selectedOption == null ? "disabled" : "")"
-						onclick=@AttemptNegotiation>
-					NEGOTIATE
-				</button>
-				<button class="btn-skip" onclick=@SkipNegotiation>
-					SKIP
-				</button>
+		<!-- Action buttons -->
+		<div class="radial-actions">
+			<div class="radial-btn attempt @(selectedOption == null ? "disabled" : "")" onclick=@AttemptNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="radial-btn-text">ATTEMPT</span>
+			</div>
+			<div class="radial-btn cancel" onclick=@SkipNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="radial-btn-text">CANCEL</span>
+			</div>
+		</div>
 			</div>
 		</div>
 	}
 	else if (currentState == NegotiationState.Success)
 	{
-		<div class="result-content success">
-			<div class="result-icon">🎉</div>
-			<div class="result-title">Contract Signed!</div>
-			<div class="result-monster">
-				@if (HasSprite())
-				{
-					<img class="result-monster-icon" src="@GetMonsterIcon()" />
-				}
-				else
-				{
-					<div class="result-monster-icon-placeholder">?</div>
-				}
-				<div class="result-monster-name">@TargetMonster?.Nickname joined your team!</div>
+		<div class="radial-result success">
+			<span class="result-title">Contract Signed!</span>
+			@if (HasSprite())
+			{
+				<img class="result-portrait" src="@GetMonsterIcon()" />
+			}
+			<span class="result-text">@TargetMonster?.Nickname joined your team!</span>
+			<div class="radial-btn continue" onclick=@FinishNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="radial-btn-text">CONTINUE</span>
 			</div>
-			<button class="btn-continue" onclick=@FinishNegotiation>
-				CONTINUE
-			</button>
 		</div>
 	}
 	else if (currentState == NegotiationState.Failed)
 	{
-		<div class="result-content failed">
-			<div class="result-icon">💨</div>
-			<div class="result-title">Negotiation Failed</div>
-			<div class="result-text">@TargetMonster?.Nickname rejected your offer and fled!</div>
-			<button class="btn-continue" onclick=@FinishNegotiation>
-				CONTINUE
-			</button>
+		<div class="radial-result failed">
+			<span class="result-title">Negotiation Failed</span>
+			<span class="result-text">@TargetMonster?.Nickname refused your contract!</span>
+			<div class="radial-btn continue" onclick=@FinishNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="radial-btn-text">CONTINUE</span>
+			</div>
 		</div>
 	}
 </div>
@@ -175,6 +152,7 @@
 	public Monster TargetMonster { get; set; }
 	public bool IsVisible { get; set; }
 	public bool IsBossContract { get; set; } = false;
+	public bool WasSkipped { get; set; } = false;
 	public Action<bool, Monster> OnNegotiationComplete { get; set; }
 
 	private enum NegotiationState { Selecting, Success, Failed }
@@ -199,6 +177,7 @@
 		currentState = NegotiationState.Selecting;
 		selectedOption = null;
 		selectedOptionIndex = 0;
+		WasSkipped = false;
 		useMasterInk = false;
 		GenerateOptions();
 		IsVisible = true;
@@ -282,8 +261,20 @@
 
 	private bool CanAffordOption(NegotiationOption option)
 	{
-		if (option.GoldCost <= 0) return true;
-		return (TamerManager.Instance?.CurrentTamer?.Gold ?? 0) >= option.GoldCost;
+		// Check ink (entry fee already spent, this is the approach cost)
+		int inkNeeded = option.InkCost - 1; // Subtract entry fee already spent
+		if ( inkNeeded > 0 && (TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0) < inkNeeded )
+			return false;
+
+		// Check gold
+		if ( option.GoldCost > 0 && (TamerManager.Instance?.CurrentTamer?.Gold ?? 0) < option.GoldCost )
+			return false;
+
+		// Check boss tokens
+		if ( option.BossTokenCost > 0 && (TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0) < option.BossTokenCost )
+			return false;
+
+		return true;
 	}
 
 	private void AttemptNegotiation()
@@ -333,7 +324,17 @@
 		else
 		{
 			// Normal negotiation attempt
-			success = ContractGenerator.AttemptNegotiation(selectedOption);
+			SoundManager.PlayContractAttempt();
+			var result = ContractGenerator.AttemptNegotiation(selectedOption);
+			success = result.success;
+
+			// Handle intimidate critical fail
+			if ( result.criticalFail && TargetMonster != null )
+			{
+				TargetMonster.IntimidatePenalty += 0.20f;
+				SoundManager.PlayIntimidateFail();
+				Log.Info( $"INTIMIDATE critical fail! {TargetMonster.Nickname} enraged. Penalty now: {TargetMonster.IntimidatePenalty}" );
+			}
 		}
 
 		if (success)
@@ -356,13 +357,21 @@
 
 				// Record catch (stats, leaderboard, beastiary, event)
 				ExpeditionManager.Instance?.RecordMonsterCatch(caughtMonster);
+
+				// Reveal personality in beastiary after any contract attempt
+				BeastiaryManager.Instance?.DiscoverSpecies( TargetMonster.SpeciesId );
+
 				Log.Info($"Caught {caughtMonster.Nickname} with contract!");
 			}
 		}
 		else
 		{
 			currentState = NegotiationState.Failed;
-			SoundManager.PlayDeny();
+			SoundManager.PlayContractFail();
+
+			// Reveal personality after failed attempt (so 2nd try is informed)
+			if ( TargetMonster != null )
+				BeastiaryManager.Instance?.DiscoverSpecies( TargetMonster.SpeciesId );
 		}
 
 		StateHasChanged();
@@ -370,6 +379,7 @@
 
 	private void SkipNegotiation()
 	{
+		WasSkipped = true;
 		SoundManager.PlayPopdown();
 		IsVisible = false;
 		OnNegotiationComplete?.Invoke(false, null);
@@ -475,6 +485,35 @@
 			NegotiationState.Failed => "result-failed",
 			_ => ""
 		};
+	}
+
+	private string GetCostText(NegotiationOption opt)
+	{
+		var parts = new List<string>();
+		if (opt.InkCost > 0) parts.Add($"{opt.InkCost} ink");
+		if (opt.GoldCost > 0) parts.Add($"{opt.GoldCost} gold");
+		if (opt.BossTokenCost > 0) parts.Add($"{opt.BossTokenCost} tokens");
+		if (opt.CostsPlayerHP) parts.Add("HP cost");
+		if (opt.CostsBeastXP) parts.Add("XP cost");
+		if (opt.CostsSkipTurns) parts.Add("Skip 2 turns");
+		return parts.Count > 0 ? string.Join(" · ", parts) : "Free";
+	}
+
+	private Vector2 GetBeastScreenPosition()
+	{
+		if ( TargetMonster == null ) return new Vector2( 0.5f, 0.4f );
+		var pos = BattleSceneController.Instance?.GetMonsterScreenPosition( TargetMonster.Id );
+		if ( pos.HasValue )
+			return pos.Value;
+		// Fallback: center-ish of screen
+		return new Vector2( 0.5f, 0.4f );
+	}
+
+	private string GetPersonalityHint()
+	{
+		if (TargetMonster == null) return "";
+		var species = MonsterManager.Instance?.GetSpecies(TargetMonster.SpeciesId);
+		return species?.PersonalityHint ?? "This creature watches you cautiously...";
 	}
 
 	protected override int BuildHash()

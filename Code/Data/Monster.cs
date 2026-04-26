@@ -24,8 +24,11 @@ public class Monster
 	public int MaxHP { get; set; }
 	public int ATK { get; set; }
 	public int DEF { get; set; }
+	[System.Text.Json.Serialization.JsonPropertyName("sp_a")]
 	public int SpA { get; set; }  // Special Attack
+	[System.Text.Json.Serialization.JsonPropertyName("sp_d")]
 	public int SpD { get; set; }  // Special Defense
+	[System.Text.Json.Serialization.JsonPropertyName("speed")]
 	public int SPD { get; set; }  // Speed
 
 	// Genetics system
@@ -64,8 +67,8 @@ public class Monster
 	public string OriginalTrainerName { get; set; }
 	public long OriginalTrainerId { get; set; }
 
-	// Veteran tracking - battles, damage, KOs
-	public int BattlesFought { get; set; } = 0;
+	// Combat counters (used for achievements, tamer leaderboards, journal milestones).
+	// Veteran-rank logic is gone; species-level mastery lives on Tamer.SpeciesMastery.
 	public int TotalDamageDealt { get; set; } = 0;
 	public int TotalKnockouts { get; set; } = 0;
 	public int BossesDefeated { get; set; } = 0;
@@ -76,6 +79,14 @@ public class Monster
 
 	// Boss flag (for expedition bosses)
 	public bool IsBoss { get; set; } = false;
+
+	// Contract battle state (not persisted)
+	[System.Text.Json.Serialization.JsonIgnore]
+	public bool WasContracted { get; set; } = false;
+	[System.Text.Json.Serialization.JsonIgnore]
+	public float IntimidatePenalty { get; set; } = 0f;
+	[System.Text.Json.Serialization.JsonIgnore]
+	public int ContractAttemptsThisBattle { get; set; } = 0;
 
 	// Alias for ObtainedAt (used by UI)
 	public DateTime CaughtAt => ObtainedAt;
@@ -146,64 +157,10 @@ public class Monster
 		return !string.IsNullOrEmpty( species?.EvolvesTo ) && Level >= species.EvolutionLevel;
 	}
 
-	// Get power rating (rough estimate of strength)
-	public int PowerRating => (MaxHP / 10) + ATK + DEF + SpA + SpD + (SPD / 2) + (Level * 5);
-
-	// ============================================
-	// BATTLE MASTERY SYSTEM
-	// ============================================
-
-	/// <summary>
-	/// Get the battle mastery rank based on battles fought
-	/// </summary>
-	public VeteranRank GetVeteranRank()
-	{
-		if ( BattlesFought >= 1500 ) return VeteranRank.Legend;
-		if ( BattlesFought >= 750 ) return VeteranRank.Champion;
-		if ( BattlesFought >= 400 ) return VeteranRank.Elite;
-		if ( BattlesFought >= 200 ) return VeteranRank.Veteran;
-		if ( BattlesFought >= 100 ) return VeteranRank.Seasoned;
-		if ( BattlesFought >= 25 ) return VeteranRank.Trained;
-		return VeteranRank.Rookie;
-	}
-
-	/// <summary>
-	/// Get stat bonus percentage from veteran rank (0-15%)
-	/// </summary>
-	public float GetVeteranBonusPercent()
-	{
-		return GetVeteranRank() switch
-		{
-			VeteranRank.Rookie => 0f,
-			VeteranRank.Trained => 0.02f,    // +2%
-			VeteranRank.Seasoned => 0.04f,   // +4%
-			VeteranRank.Veteran => 0.07f,    // +7%
-			VeteranRank.Elite => 0.10f,      // +10%
-			VeteranRank.Champion => 0.13f,   // +13%
-			VeteranRank.Legend => 0.15f,     // +15%
-			_ => 0f
-		};
-	}
-
-	/// <summary>
-	/// Get battles needed for next veteran rank
-	/// </summary>
-	public int BattlesToNextRank()
-	{
-		var rank = GetVeteranRank();
-		int threshold = rank switch
-		{
-			VeteranRank.Rookie => 25,
-			VeteranRank.Trained => 100,
-			VeteranRank.Seasoned => 200,
-			VeteranRank.Veteran => 400,
-			VeteranRank.Elite => 750,
-			VeteranRank.Champion => 1500,
-			VeteranRank.Legend => 0, // Max rank
-			_ => 0
-		};
-		return threshold > 0 ? threshold - BattlesFought : 0;
-	}
+	// Power rating — sum of current (leveled + gene-applied) stats. 1:1 weighting.
+	// No divisors, no rarity multiplier, no flat level bonus (growth already scales
+	// stats with level). See .claude/balance-knowledge/power-formula.md.
+	public int PowerRating => MaxHP + ATK + DEF + SpA + SpD + SPD;
 
 	/// <summary>
 	/// Add a journal entry for this monster
@@ -258,8 +215,7 @@ public class Monster
 			HasBeenNotifiedForEvolution = HasBeenNotifiedForEvolution,
 			ObtainedAt = ObtainedAt,
 			IsBoss = IsBoss,
-			// Veteran tracking
-			BattlesFought = BattlesFought,
+			// Combat counters
 			TotalDamageDealt = TotalDamageDealt,
 			TotalKnockouts = TotalKnockouts,
 			BossesDefeated = BossesDefeated,
@@ -280,20 +236,6 @@ public class Monster
 				move.RestorePP( def.MaxPP );
 		}
 	}
-}
-
-/// <summary>
-/// Veteran rank based on battles fought
-/// </summary>
-public enum VeteranRank
-{
-	Rookie,     // 0-4 battles
-	Trained,    // 5-19 battles
-	Seasoned,   // 20-49 battles
-	Veteran,    // 50-99 battles
-	Elite,      // 100-199 battles
-	Champion,   // 200-499 battles
-	Legend      // 500+ battles
 }
 
 /// <summary>

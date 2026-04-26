@@ -10,8 +10,10 @@
 
 		<!-- Header -->
 		<div class="rp-hdr">
-			<img class="rp-hdr-icon" src="ui/icons/buttons/music.svg" />
-			<span class="rp-hdr-title">Radio</span>
+			<div class="rp-hdr-left">
+				<iconify icon="lucide:radio" Size=@(22) Color="#c4b5fd" />
+				<span class="rp-hdr-title">Radio</span>
+			</div>
 			<button class="close-btn" onclick=@OnCloseClick>
 				<img class="close-icon" src="ui/icons/buttons/close.svg" />
 				<img class="close-icon-anim" src="ui/icons/animated/close.webp" />
@@ -23,7 +25,7 @@
 			<div class="rp-np-cover">
 				<span class="rp-np-emoji">@GetStationIcon()</span>
 			</div>
-			<div class="rp-np-info">
+			<div class="rp-np-info @(_trackChanged ? "track-changed" : "")">
 				<div class="rp-np-station">
 					<span class="rp-np-dot"></span>
 					<span>@GetStationName()</span>
@@ -112,7 +114,7 @@
 
 		<!-- Bottom: Volume -->
 		<div class="rp-bottom">
-			<img class="rp-vol-icon" src="@GetVolumeIcon()" />
+			<iconify icon="@GetVolumeIconName()" Size=@(16) Color="rgba(255,255,255,0.55)" />
 			<div class="rp-vol-track" @ref="VolumeTrack" onmousedown=@OnVolumeDown onmousemove=@OnVolumeMove onmouseup=@OnVolumeUp>
 				<div class="rp-vol-fill" style="width: @GetVolumePercent()%"></div>
 				<div class="rp-vol-thumb" style="left: @GetVolumePercent()%"></div>
@@ -133,6 +135,8 @@
 	private bool IsExpanded = false;
 	private Panel VolumeTrack;
 	private bool _isDraggingVolume = false;
+	private bool _trackChanged = false;
+	private string _lastKnownTrack = "";
 
 	// Static instance for external access
 	public static RadioWidget Instance { get; private set; }
@@ -169,6 +173,7 @@
 	private void OnPrevClick()
 	{
 		RadioManager.PreviousTrack();
+		SoundManager.PlayBack();
 	}
 
 	private void OnPlayClick()
@@ -180,18 +185,21 @@
 	private void OnNextClick()
 	{
 		RadioManager.NextTrack();
+		SoundManager.PlayForward();
 	}
 
 	private void OnShuffleClick()
 	{
 		RadioManager.ToggleShuffle();
-		SoundManager.PlayClick();
+		if (RadioManager.IsShuffle) SoundManager.PlayToggleOn();
+		else SoundManager.PlayToggleOff();
 	}
 
 	private void OnRepeatClick()
 	{
 		RadioManager.ToggleRepeat();
-		SoundManager.PlayClick();
+		if (RadioManager.IsRepeat) SoundManager.PlayToggleOn();
+		else SoundManager.PlayToggleOff();
 	}
 
 	private void OnStationSelect(RadioManager.Station station)
@@ -201,7 +209,7 @@
 		{
 			RadioManager.SetStation(index);
 		}
-		SoundManager.PlayClick();
+		SoundManager.PlaySelect();
 	}
 
 	private void OnTrackSelect(RadioManager.Track track)
@@ -213,7 +221,7 @@
 		{
 			RadioManager.SetTrack(index);
 		}
-		SoundManager.PlayClick();
+		SoundManager.PlaySelect();
 	}
 
 	private void OnVolumeDown(PanelEvent e)
@@ -296,6 +304,14 @@
 		return "ui/icons/buttons/volume.svg";
 	}
 
+	private string GetVolumeIconName()
+	{
+		float vol = RadioManager.Volume;
+		if (vol <= 0.01f) return "lucide:volume-x";
+		if (vol <= 0.4f) return "lucide:volume-1";
+		return "lucide:volume-2";
+	}
+
 	private int GetProgressPercent()
 	{
 		float duration = RadioManager.TrackDuration;
@@ -334,6 +350,27 @@
 		return RadioManager.Stations.Count > 0;
 	}
 
+	public override void Tick()
+	{
+		base.Tick();
+
+		// Detect track change — set _trackChanged for one frame to replay CSS animation
+		var currentTrack = GetTrackName();
+		if (currentTrack != _lastKnownTrack && !string.IsNullOrEmpty(_lastKnownTrack))
+		{
+			_trackChanged = true;
+			_ = ClearTrackChangedFlag();
+		}
+		_lastKnownTrack = currentTrack;
+	}
+
+	private async Task ClearTrackChangedFlag()
+	{
+		await Task.Delay(350);
+		_trackChanged = false;
+		StateHasChanged();
+	}
+
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
@@ -347,6 +384,7 @@
 		hash.Add(RadioManager.IsShuffle);
 		hash.Add(RadioManager.IsRepeat);
 		hash.Add((int)RadioManager.TrackPosition);
+		hash.Add(_trackChanged);
 		return hash.ToHashCode();
 	}
 }

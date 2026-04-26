@@ -34,11 +34,13 @@ public class Tamer
 	public List<string> ClearedBosses { get; set; } = new();
 
 	// Cosmetics
-	public List<string> UnlockedThemes { get; set; } = new() { "default" };
 	public List<string> UnlockedTitles { get; set; } = new();
-	public string ActiveThemeId { get; set; } = "default";
 	public string ActiveTitleId { get; set; } = null;
 	public string ActiveLevelTitle { get; set; } = null;
+
+	// Set true on any session loaded before <see cref="TamerManager.LaunchDate"/>.
+	// Sticky once true. Drives the "Alpha" title grant.
+	public bool PlayedDuringAlpha { get; set; } = false;
 
 	// Skill tree state (skill ID -> rank invested)
 	public Dictionary<string, int> SkillRanks { get; set; } = new();
@@ -106,6 +108,9 @@ public class Tamer
 	// Achievement system
 	public Dictionary<string, AchievementProgress> Achievements { get; set; } = new();
 
+	// Species-level mastery progress (keyed by SpeciesId) — replaces per-instance VeteranRank
+	public Dictionary<string, SpeciesMasteryData> SpeciesMastery { get; set; } = new();
+
 	// Match history (last 20 sets)
 	public List<MatchHistoryEntry> MatchHistory { get; set; } = new();
 
@@ -168,20 +173,20 @@ public class Tamer
 		return total;
 	}
 
-	// Maximum tamer level
-	public const int MaxLevel = 250;
+	// Maximum tamer level — lv 50 for launch. Scoped to the 3-expedition
+	// content and the 15-talent launch skill tree (55 SP max-all).
+	// Post-launch updates raise this alongside new talents.
+	public const int MaxLevel = 50;
 
 	/// <summary>
-	/// Get skill points earned for reaching a specific level.
-	/// Scales up at higher levels for faster progression later.
-	/// Levels 1-80: 1 SP, Levels 81-170: 2 SP, Levels 171-250: 3 SP
-	/// Total at max level: 80 + 180 + 240 + 1 starting = 501 SP
+	/// Get skill points earned for a level. Flat 1 SP per level for launch
+	/// (simple progression, no difficulty cliffs). Combined with 6 starting
+	/// SP at lv 1 this gives exactly 55 SP at lv 50, matching the launch
+	/// skill tree's 55 SP total. Player maxes the tree at level cap.
 	/// </summary>
 	public static int GetSkillPointsForLevel( int level )
 	{
-		if ( level <= 80 ) return 1;
-		if ( level <= 170 ) return 2;
-		return 3;
+		return 1;
 	}
 
 	// Add XP and handle level ups

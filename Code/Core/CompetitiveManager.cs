@@ -17,7 +17,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	// CONSTANTS
 	// ═══════════════════════════════════════════════════════════════
 
-	private const string LEADERBOARD_NAME = "arena-score-s0";
+	private const string LEADERBOARD_NAME = "arena-score-launch";
 	private const int RANKED_LEVEL = 50;
 	private const int BETWEEN_GAMES_SECONDS = 10;
 	private const float MATCH_TIMEOUT_SECONDS = 90f;
@@ -777,7 +777,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		{
 			SubmitScore( tamer.ArenaPoints );
 		}
-		Stats.SetValue( "arena-wins-total", tamer.ArenaWins );
+		Stats.SetValue( "arena-wins-launch", tamer.ArenaWins );
 
 		// Save
 		TamerManager.Instance?.SaveToCloud();
@@ -1397,8 +1397,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			{
 				Rank = (int)e.Rank,
 				Name = e.DisplayName,
-				Score = (int)e.Value,
-				RankTitle = GetRankFromPoints( (int)e.Value )
+				// e.Value is double in s&box; cast to long for our integer-only stats.
+				Score = (long)e.Value,
+				RankTitle = GetRankFromPoints( (int)Math.Min( e.Value, (double)int.MaxValue ) )
 			} ).ToList();
 
 			_lastLeaderboardFetch = DateTime.UtcNow;
@@ -1550,7 +1551,10 @@ public class LeaderboardEntry
 {
 	public int Rank { get; set; }
 	public string Name { get; set; }
-	public int Score { get; set; }
+	// Score is long because cumulative stats (gold earned, total damage, playtime
+	// minutes) can exceed int.MaxValue (~2.1B) and would silently overflow to
+	// negative values when displayed in the leaderboard.
+	public long Score { get; set; }
 	public string RankTitle { get; set; }
 	public long SteamId { get; set; }
 }

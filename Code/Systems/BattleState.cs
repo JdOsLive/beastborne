@@ -80,6 +80,9 @@ public class MoveChoice
 	public int SwapToIndex { get; set; }        // For Swap actions
 	public int Priority { get; set; }           // Move priority (higher goes first)
 	public int Speed { get; set; }              // Monster's speed for tiebreaking
+	public string ItemId { get; set; }          // For UseItem actions
+	public string ItemName { get; set; }        // Display name for the turn log
+	public string ItemTargetName { get; set; }  // Name of the monster the item was used on, if any
 }
 
 /// <summary>
@@ -117,6 +120,14 @@ public class BattleState
 	/// Index of the currently active enemy monster
 	/// </summary>
 	public int EnemyActiveIndex { get; set; } = 0;
+
+	/// <summary>
+	/// Item being used this turn (set by BattleManager.ExecutePlayerItem before ExecuteSingleTurn).
+	/// Cleared after the turn resolves.
+	/// </summary>
+	public string PendingItemId { get; set; }
+	public string PendingItemName { get; set; }
+	public string PendingItemTargetName { get; set; }
 
 	/// <summary>
 	/// Random seed for deterministic online battles (null for local battles)

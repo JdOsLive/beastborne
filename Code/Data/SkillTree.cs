@@ -4,8 +4,8 @@ using System.Linq;
 namespace Beastborne.Data;
 
 /// <summary>
-/// The complete skill tree containing all nodes organized into branches
-/// God of War style linear progression with multiple ranks per skill
+/// The complete skill tree containing all nodes organized into branches.
+/// Hex-cluster flower layout — keystone top, T1 petals left/right, T2 below.
 /// </summary>
 public class SkillTree
 {
@@ -52,13 +52,11 @@ public class SkillTree
 	private bool CanUnlockInternal( SkillNode node, Dictionary<string, int> skillRanks )
 	{
 		int currentRank = skillRanks.GetValueOrDefault( node.Id, 0 );
-		if ( currentRank >= node.MaxRank ) return false; // Already maxed
+		if ( currentRank >= node.MaxRank ) return false;
 
-		// Check branch point requirement (tier-based)
 		int branchPoints = GetPointsSpentInBranch( node.Branch, skillRanks );
 		if ( branchPoints < node.RequiredBranchPoints ) return false;
 
-		// Check specific skill prerequisite (for special chains like Crit Eye -> Devastating Blows)
 		if ( !string.IsNullOrEmpty( node.RequiredSkillId ) )
 		{
 			int reqRank = skillRanks.GetValueOrDefault( node.RequiredSkillId, 0 );
@@ -72,586 +70,164 @@ public class SkillTree
 	{
 		var node = GetNode( nodeId );
 		if ( node == null ) return false;
-		if ( availablePoints < node.CostPerRank ) return false; // Not enough points
+		if ( availablePoints < node.CostPerRank ) return false;
 
 		return CanUnlockInternal( node, skillRanks );
 	}
 
+	// Cluster-canvas is ~258px wide (260px cluster - 2px border). Hex-slot is
+	// 58px. Center column X = (258 - 58) / 2 = 100.
+	private const int KEYSTONE_X = 100;
+	private const int KEYSTONE_Y = 32;
+	private const int T1_LEFT_X  = 20;
+	private const int T1_LEFT_Y  = 108;
+	private const int T1_RIGHT_X = 180;
+	private const int T1_RIGHT_Y = 108;
+
+	// Capstone/T2 outer-ring slot constants intentionally removed for the
+	// launch tree. When post-launch updates introduce 4th/5th talents per
+	// branch, re-add the coord constants + Slot enum members + SlotCoords
+	// arms together — keeps the dead-code surface zero in the meantime.
+
 	/// <summary>
-	/// Generate the skill tree with 5 branches using tier-based progression
-	/// Each branch has 3 tiers: Foundation (always available), Advancement, Capstone
+	/// Generate the launch-set skill tree: 5 branches × 3 talents each (15 total).
+	/// Each branch = keystone + T1 petal + T2 advanced. Max-all = 55 SP, which
+	/// matches the lv 50 cap (5 starting SP + 50 from leveling). Players can
+	/// fully max the tree — post-launch updates raise the level cap AND add new
+	/// talents (Arcane Focus, Devastating Blows, Cost Reduction, Nature Bond,
+	/// Team Spirit, Pathfinder, Giant Killer, Phase Breaker, Mythbreaker, etc.)
+	/// so every update is a real progression beat.
 	/// </summary>
 	public static SkillTree CreateDefault()
 	{
 		var tree = new SkillTree();
 
-		// ==========================================
-		// POWER BRANCH (Combat Stats) - 80 SP total
-		// Tier 1: ATK, DEF, HP (0 pts)
-		// Tier 2: SpA, SpD, SPD (15 pts)
-		// Tier 3: Crit (40 pts)
-		// ==========================================
-
-		// TIER 1 - Foundation (no requirements)
-		tree.Nodes.Add( new SkillNode
+		void Add( string id, string name, string desc, SkillBranch branch, Slot slot,
+			int maxRank, int costPerRank, int gate, SkillEffectType effectType, float effectValue,
+			string requiredSkillId = null, int requiredSkillRank = 1 )
 		{
-			Id = "power_might",
-			Name = "Might",
-			Description = "Increase ATK for all monsters",
-			Branch = SkillBranch.Power,
-			Tier = 1,
-			GridRow = 0,
-			Order = 0,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.AllMonsterATKPercent, Value = 2 } }
-		} );
+			var (tier, x, y) = SlotCoords( slot );
+			tree.Nodes.Add( new SkillNode
+			{
+				Id = id,
+				Name = name,
+				Description = desc,
+				Branch = branch,
+				Tier = tier,
+				Order = tree.Nodes.Count(n => n.Branch == branch),
+				GridX = x,
+				GridY = y,
+				MaxRank = maxRank,
+				CostPerRank = costPerRank,
+				RequiredBranchPoints = gate,
+				RequiredSkillId = requiredSkillId,
+				RequiredSkillRank = requiredSkillRank,
+				Effects = new() { new SkillEffect { Type = effectType, Value = effectValue } }
+			} );
+		}
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_fortitude",
-			Name = "Fortitude",
-			Description = "Increase DEF for all monsters",
-			Branch = SkillBranch.Power,
-			Tier = 1,
-			GridRow = 1,
-			Order = 1,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.AllMonsterDEFPercent, Value = 2 } }
-		} );
+		// Progression is per-node prereq chain (not branch-point pools):
+		// keystone is free-to-invest; the two petals require 1 rank in the
+		// keystone. Simple "buy the top, then the branches unlock" model —
+		// reads clearer than tier-point gates and gives each investment an
+		// immediate downstream payoff.
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_vitality",
-			Name = "Vitality",
-			Description = "Increase HP for all monsters",
-			Branch = SkillBranch.Power,
-			Tier = 1,
-			GridRow = 2,
-			Order = 2,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.AllMonsterHPPercent, Value = 2 } }
-		} );
+		// ========== POWER — 3 talents, 12 SP ==========
+		Add( "power_might",    "Might",         "A tamer's first lesson: teach them to hit harder.",
+			SkillBranch.Power, Slot.Keystone, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.AllMonsterATKPercent, 3 );
 
-		// TIER 2 - Advancement (15 pts in Power branch)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_arcane",
-			Name = "Arcane Power",
-			Description = "Increase SpA for all monsters",
-			Branch = SkillBranch.Power,
-			Tier = 2,
-			GridRow = 0,
-			Order = 3,
-			RequiredBranchPoints = 15,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.AllMonsterSpAPercent, Value = 2 } }
-		} );
+		Add( "power_vitality", "Vitality",      "Deeper lungs, stronger hearts. Your beasts carry more fight.",
+			SkillBranch.Power, Slot.T1Left, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.AllMonsterHPPercent, 3,
+			requiredSkillId: "power_might", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_arcshield",
-			Name = "Arcane Shield",
-			Description = "Increase SpD for all monsters",
-			Branch = SkillBranch.Power,
-			Tier = 2,
-			GridRow = 1,
-			Order = 4,
-			RequiredBranchPoints = 15,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.AllMonsterSpDPercent, Value = 2 } }
-		} );
+		Add( "power_criteye",  "Critical Eye",  "Spot the opening, strike the weak point.",
+			SkillBranch.Power, Slot.T1Right, maxRank: 3, costPerRank: 2, gate: 0,
+			SkillEffectType.CritChanceBonus, 2,
+			requiredSkillId: "power_might", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_swiftness",
-			Name = "Swiftness",
-			Description = "Increase SPD for all monsters",
-			Branch = SkillBranch.Power,
-			Tier = 2,
-			GridRow = 2,
-			Order = 5,
-			RequiredBranchPoints = 15,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.AllMonsterSPDPercent, Value = 2 } }
-		} );
+		// ========== FORTUNE — 3 talents, 12 SP ==========
+		Add( "fortune_goldrush", "Gold Rush",   "Loose pockets, lucky finds. Every victory shines a little brighter.",
+			SkillBranch.Fortune, Slot.Keystone, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.GoldDropBonus, 5 );
 
-		// TIER 3 - Capstone (40 pts in Power branch)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_criteye",
-			Name = "Critical Eye",
-			Description = "Increase critical hit chance",
-			Branch = SkillBranch.Power,
-			Tier = 3,
-			GridRow = 0,
-			Order = 6,
-			RequiredBranchPoints = 40,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.CritChanceBonus, Value = 3 } }
-		} );
+		Add( "fortune_bargain",  "Bargain Hunter", "Know the value of a coin. Merchants respect it.",
+			SkillBranch.Fortune, Slot.T1Left, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.ShopDiscount, 3,
+			requiredSkillId: "fortune_goldrush", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "power_devastating",
-			Name = "Devastating Blows",
-			Description = "Increase critical hit damage",
-			Branch = SkillBranch.Power,
-			Tier = 3,
-			GridRow = 1,
-			Order = 7,
-			RequiredBranchPoints = 40,
-			RequiredSkillId = "power_criteye",  // Special chain: requires Crit Eye
-			RequiredSkillRank = 1,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.CritDamageBonus, Value = 10 } }
-		} );
+		Add( "fortune_jackpot",  "Jackpot",     "Fortune favours the ones who keep showing up.",
+			SkillBranch.Fortune, Slot.T1Right, maxRank: 3, costPerRank: 2, gate: 0,
+			SkillEffectType.DoubleDropChance, 2,
+			requiredSkillId: "fortune_goldrush", requiredSkillRank: 1 );
 
-		// ==========================================
-		// FUSION BRANCH (Breeding) - 96 SP total
-		// Tier 1: Gene Surge, Inheritance, Fusion Mastery (0 pts)
-		// Tier 2: Mutation, Trait Affinity, Twin Spirit (15 pts)
-		// Tier 3: Nature Bond, Gene Lock (35 pts)
-		// ==========================================
+		// ========== FUSION — 3 talents, 11 SP ==========
+		Add( "fusion_genesurge",    "Gene Surge",      "Awaken a deeper spark in every union.",
+			SkillBranch.Fusion, Slot.Keystone, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.GeneBonusFlat, 1 );
 
-		// TIER 1 - Foundation
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_genesurge",
-			Name = "Gene Surge",
-			Description = "Bonus gene points on fusion",
-			Branch = SkillBranch.Fusion,
-			Tier = 1,
-			GridRow = 0,
-			Order = 0,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.GeneBonusFlat, Value = 1 } }
-		} );
+		Add( "fusion_inheritance",  "Inheritance",     "Study the bloodline. Carry the best forward.",
+			SkillBranch.Fusion, Slot.T1Left, maxRank: 2, costPerRank: 2, gate: 0,
+			SkillEffectType.GeneticInheritanceBonus, 5,
+			requiredSkillId: "fusion_genesurge", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_inheritance",
-			Name = "Inheritance",
-			Description = "Better parent gene selection",
-			Branch = SkillBranch.Fusion,
-			Tier = 1,
-			GridRow = 1,
-			Order = 1,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.GeneticInheritanceBonus, Value = 5 } }
-		} );
+		Add( "fusion_mutation",     "Mutation Chance", "Sometimes the strange spark is the strongest.",
+			SkillBranch.Fusion, Slot.T1Right, maxRank: 2, costPerRank: 2, gate: 0,
+			SkillEffectType.MutationChance, 3,
+			requiredSkillId: "fusion_genesurge", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_mastery",
-			Name = "Fusion Mastery",
-			Description = "Reduced fusion costs",
-			Branch = SkillBranch.Fusion,
-			Tier = 1,
-			GridRow = 2,
-			Order = 2,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.BreedingCostReduction, Value = 10 } }
-		} );
+		// ========== EXPEDITION — 3 talents, 10 SP ==========
+		Add( "exp_prospector", "Prospector",  "Every expedition route has a few extra coins, if you know where to look.",
+			SkillBranch.Expedition, Slot.Keystone, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.ExpeditionGoldBonus, 5 );
 
-		// TIER 2 - Advancement (15 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_mutation",
-			Name = "Mutation Chance",
-			Description = "Increased positive mutation rate",
-			Branch = SkillBranch.Fusion,
-			Tier = 2,
-			GridRow = 0,
-			Order = 3,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.MutationChance, Value = 2 } }
-		} );
+		Add( "exp_scout",      "Scout",       "A trained eye finds beasts a careless tamer walks right past.",
+			SkillBranch.Expedition, Slot.T1Left, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.EncounterRateBonus, 5,
+			requiredSkillId: "exp_prospector", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_trait",
-			Name = "Trait Affinity",
-			Description = "Increased rare trait inheritance",
-			Branch = SkillBranch.Fusion,
-			Tier = 2,
-			GridRow = 1,
-			Order = 4,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.RareTraitChance, Value = 4 } }
-		} );
+		Add( "exp_luckyfind",  "Lucky Find",  "The best finds come to the patient and the curious.",
+			SkillBranch.Expedition, Slot.T1Right, maxRank: 2, costPerRank: 2, gate: 0,
+			SkillEffectType.RareItemChance, 4,
+			requiredSkillId: "exp_prospector", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_twin",
-			Name = "Twin Spirit",
-			Description = "Chance to get twins when fusing",
-			Branch = SkillBranch.Fusion,
-			Tier = 2,
-			GridRow = 2,
-			Order = 5,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.TwinChance, Value = 3 } }
-		} );
+		// ========== MASTERY — 3 talents, 10 SP ==========
+		Add( "mastery_slayer",     "Boss Slayer",     "You've walked this hallway before. Strike like you remember it.",
+			SkillBranch.Mastery, Slot.Keystone, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.BossDamageBonus, 5 );
 
-		// TIER 3 - Capstone (35 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_nature",
-			Name = "Nature Bond",
-			Description = "Chance to inherit parent's nature",
-			Branch = SkillBranch.Fusion,
-			Tier = 3,
-			GridRow = 0,
-			Order = 6,
-			RequiredBranchPoints = 35,
-			MaxRank = 3,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.NatureInheritance, Value = 25 } }
-		} );
+		Add( "mastery_resilience", "Resilience",      "The stone you don't flinch from can't hurt you.",
+			SkillBranch.Mastery, Slot.T1Left, maxRank: 3, costPerRank: 1, gate: 0,
+			SkillEffectType.BossDamageReduction, 3,
+			requiredSkillId: "mastery_slayer", requiredSkillRank: 1 );
 
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fusion_genelock",
-			Name = "Gene Lock",
-			Description = "Lock genes for guaranteed inheritance",
-			Branch = SkillBranch.Fusion,
-			Tier = 3,
-			GridRow = 2,
-			Order = 7,
-			RequiredBranchPoints = 35,
-			MaxRank = 3,
-			CostPerRank = 4,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.GeneLock, Value = 1 } }
-		} );
-
-		// ==========================================
-		// EXPEDITION BRANCH - 80 SP total
-		// Tier 1: Pathfinder, Treasure Hunter, Scout (0 pts)
-		// Tier 2: Team Spirit, Lucky Find, Endurance (15 pts)
-		// Tier 3: Cartographer (35 pts)
-		// ==========================================
-
-		// TIER 1 - Foundation
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "exp_pathfinder",
-			Name = "Prospector",
-			Description = "Find more gold on expeditions",
-			Branch = SkillBranch.Expedition,
-			Tier = 1,
-			GridRow = 0,
-			Order = 0,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.ExpeditionGoldBonus, Value = 5 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "exp_treasure",
-			Name = "Treasure Hunter",
-			Description = "Find more items on expeditions",
-			Branch = SkillBranch.Expedition,
-			Tier = 1,
-			GridRow = 1,
-			Order = 1,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.ItemFindBonus, Value = 3 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "exp_scout",
-			Name = "Scout",
-			Description = "Increased encounter rate",
-			Branch = SkillBranch.Expedition,
-			Tier = 1,
-			GridRow = 2,
-			Order = 2,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.EncounterRateBonus, Value = 10 } }
-		} );
-
-		// TIER 2 - Advancement (15 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "exp_teamspirit",
-			Name = "Team Spirit",
-			Description = "Bonus XP for expedition team",
-			Branch = SkillBranch.Expedition,
-			Tier = 2,
-			GridRow = 0,
-			Order = 3,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.ExpeditionXPBonus, Value = 5 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "exp_luckyfind",
-			Name = "Lucky Find",
-			Description = "Chance to find rare items",
-			Branch = SkillBranch.Expedition,
-			Tier = 2,
-			GridRow = 1,
-			Order = 4,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.RareItemChance, Value = 5 } }
-		} );
-
-		// TIER 3 - Capstone (35 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "exp_cartographer",
-			Name = "Cartographer",
-			Description = "Unlock special expedition modes",
-			Branch = SkillBranch.Expedition,
-			Tier = 3,
-			GridRow = 1,
-			Order = 6,
-			RequiredBranchPoints = 35,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.CartographerUnlock, Value = 1 } },
-			UnlocksAtRank = new() { "nightmare_mode", "element_hunt", "boss_rush", "rare_den", "relic_expedition" }
-		} );
-
-		// ==========================================
-		// MASTERY BRANCH (Boss Combat) - 82 SP total
-		// Tier 1: Boss Slayer, Resilience (0 pts)
-		// Tier 2: Giant Killer, Token Collector, Phase Breaker (10 pts)
-		// Tier 3: Mythbreaker, Boss Hunter (30 pts)
-		// ==========================================
-
-		// TIER 1 - Foundation
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_slayer",
-			Name = "Boss Slayer",
-			Description = "Deal more damage to bosses",
-			Branch = SkillBranch.Mastery,
-			Tier = 1,
-			GridRow = 0,
-			Order = 0,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.BossDamageBonus, Value = 3 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_resilience",
-			Name = "Resilience",
-			Description = "Take less damage from bosses",
-			Branch = SkillBranch.Mastery,
-			Tier = 1,
-			GridRow = 2,
-			Order = 1,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.BossDamageReduction, Value = 2 } }
-		} );
-
-		// TIER 2 - Advancement (10 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_giantkiller",
-			Name = "Giant Killer",
-			Description = "Bonus damage vs higher tier bosses",
-			Branch = SkillBranch.Mastery,
-			Tier = 2,
-			GridRow = 0,
-			Order = 2,
-			RequiredBranchPoints = 10,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.HigherTierDamageBonus, Value = 5 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_tokens",
-			Name = "Token Collector",
-			Description = "Earn more boss tokens",
-			Branch = SkillBranch.Mastery,
-			Tier = 2,
-			GridRow = 1,
-			Order = 3,
-			RequiredBranchPoints = 10,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.BossTokenBonus, Value = 10 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_phasebreaker",
-			Name = "Phase Breaker",
-			Description = "Bonus damage during phase transitions",
-			Branch = SkillBranch.Mastery,
-			Tier = 2,
-			GridRow = 2,
-			Order = 4,
-			RequiredBranchPoints = 10,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.PhaseDamageBonus, Value = 10 } }
-		} );
-
-		// TIER 3 - Capstone (30 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_mythbreaker",
-			Name = "Mythbreaker",
-			Description = "Massive bonus damage vs Mythic bosses",
-			Branch = SkillBranch.Mastery,
-			Tier = 3,
-			GridRow = 0,
-			Order = 5,
-			RequiredBranchPoints = 30,
-			RequiredSkillId = "mastery_slayer",  // Requires Boss Slayer rank 5
-			RequiredSkillRank = 5,
-			MaxRank = 3,
-			CostPerRank = 4,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.MythicDamageBonus, Value = 15 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "mastery_hunter",
-			Name = "Boss Hunter",
-			Description = "Increased boss spawn rate",
-			Branch = SkillBranch.Mastery,
-			Tier = 3,
-			GridRow = 2,
-			Order = 6,
-			RequiredBranchPoints = 30,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.BossSpawnBonus, Value = 5 } }
-		} );
-
-		// ==========================================
-		// FORTUNE BRANCH (Economy) - 82 SP total
-		// Tier 1: Bargain Hunter, Gold Rush, Lucky Star (0 pts)
-		// Tier 2: Investor, Jackpot, Merchant Prince (15 pts)
-		// Tier 3: Golden Touch (35 pts)
-		// ==========================================
-
-		// TIER 1 - Foundation
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fortune_bargain",
-			Name = "Bargain Hunter",
-			Description = "Reduced shop prices",
-			Branch = SkillBranch.Fortune,
-			Tier = 1,
-			GridRow = 0,
-			Order = 0,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.ShopDiscount, Value = 2 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fortune_goldrush",
-			Name = "Gold Rush",
-			Description = "Increased gold drops",
-			Branch = SkillBranch.Fortune,
-			Tier = 1,
-			GridRow = 1,
-			Order = 1,
-			MaxRank = 10,
-			CostPerRank = 1,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.GoldDropBonus, Value = 5 } }
-		} );
-
-		// TIER 2 - Advancement (15 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fortune_savvy",
-			Name = "Savvy Shopper",
-			Description = "Extra shop discount based on gold spent",
-			Branch = SkillBranch.Fortune,
-			Tier = 2,
-			GridRow = 0,
-			Order = 3,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 2,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.DiscountStackingBonus, Value = 1 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fortune_jackpot",
-			Name = "Jackpot",
-			Description = "Chance to double drops",
-			Branch = SkillBranch.Fortune,
-			Tier = 2,
-			GridRow = 1,
-			Order = 4,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.DoubleDropChance, Value = 3 } }
-		} );
-
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fortune_amplifier",
-			Name = "Amplifier",
-			Description = "Shop boosts are more powerful",
-			Branch = SkillBranch.Fortune,
-			Tier = 2,
-			GridRow = 2,
-			Order = 5,
-			RequiredBranchPoints = 15,
-			MaxRank = 5,
-			CostPerRank = 3,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.BoostPotencyBonus, Value = 5 } }
-		} );
-
-		// TIER 3 - Capstone (35 pts)
-		tree.Nodes.Add( new SkillNode
-		{
-			Id = "fortune_golden",
-			Name = "Golden Touch",
-			Description = "Bonus gold from all sources",
-			Branch = SkillBranch.Fortune,
-			Tier = 3,
-			GridRow = 1,
-			Order = 6,
-			RequiredBranchPoints = 35,
-			MaxRank = 3,
-			CostPerRank = 4,
-			Effects = new() { new SkillEffect { Type = SkillEffectType.GoldFromAllSources, Value = 10 } }
-		} );
+		Add( "mastery_tokens",     "Token Collector", "Every defeat leaves a mark; leave with it on you.",
+			SkillBranch.Mastery, Slot.T1Right, maxRank: 2, costPerRank: 2, gate: 0,
+			SkillEffectType.BossTokenBonus, 10,
+			requiredSkillId: "mastery_slayer", requiredSkillRank: 1 );
 
 		return tree;
+	}
+
+	// Slot positions within a 3-node cluster triangle. Launch tree uses only
+	// these three slots; outer-ring (Capstone/T2) entries will be added back
+	// alongside the new nodes when post-launch updates extend the tree.
+	private enum Slot { Keystone, T1Left, T1Right }
+
+	private static (int tier, int x, int y) SlotCoords( Slot slot )
+	{
+		// Launch tree has no tier gating — every node is freely available.
+		// T1Right is a POSITION label, not a tier. All visible nodes report
+		// tier 1 so the tooltip doesn't display misleading tier info.
+		// Post-launch updates can introduce real T2/T3 tiers alongside
+		// `RequiredBranchPoints` gates when the tree grows.
+		return slot switch
+		{
+			Slot.Keystone => (1, KEYSTONE_X, KEYSTONE_Y),
+			Slot.T1Left   => (1, T1_LEFT_X,  T1_LEFT_Y),
+			Slot.T1Right  => (1, T1_RIGHT_X, T1_RIGHT_Y),
+			_             => (1, KEYSTONE_X, KEYSTONE_Y),
+		};
 	}
 }

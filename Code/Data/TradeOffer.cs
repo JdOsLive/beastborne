@@ -108,8 +108,8 @@ public class TradeMonsterData
 	public string OTN { get; set; }       // OriginalTrainerName
 	public long OTI { get; set; }         // OriginalTrainerId
 
-	// Veteran stats
-	public int BF { get; set; }           // BattlesFought
+	// Combat counters (BF retained for network payload compat, always 0 post-veteran-rank removal)
+	public int BF { get; set; }           // Deprecated: always 0
 	public int TD { get; set; }           // TotalDamageDealt
 	public int TK { get; set; }           // TotalKnockouts
 	public int BD { get; set; }           // BossesDefeated

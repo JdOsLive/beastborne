@@ -2065,6 +2065,20 @@ public static class BattleSimulator
 				Speed = playerEffectiveSPD
 			};
 		}
+		else if ( playerMoveId == "item" )
+		{
+			// Item use takes a turn. The actual effect is applied by BattleManager before this runs.
+			// Item actions resolve at priority 6 (same as swap) so the player acts first this turn.
+			playerChoice = new MoveChoice
+			{
+				ActionType = BattleActionType.UseItem,
+				ItemId = state.PendingItemId,
+				ItemName = state.PendingItemName,
+				ItemTargetName = state.PendingItemTargetName,
+				Priority = 6,
+				Speed = playerEffectiveSPD
+			};
+		}
 		else
 		{
 			var move = MoveDatabase.GetMove( playerMoveId );
@@ -2310,6 +2324,24 @@ public static class BattleSimulator
 		BattleState state )
 	{
 		var turns = new List<BattleTurn>();
+
+		// Handle item use — the effect was already applied by BattleManager.ExecutePlayerItem
+		// before this turn ran. We just need a turn entry so the battle log shows it and
+		// the enemy still gets to attack this round.
+		if ( choice.ActionType == BattleActionType.UseItem )
+		{
+			turns.Add( new BattleTurn
+			{
+				TurnNumber = state.TurnNumber,
+				AttackerId = actor.Id,
+				AttackerName = actor.Nickname,
+				IsPlayerAttacker = isPlayer,
+				IsItemUse = true,
+				ItemName = choice.ItemName,
+				ItemTargetName = choice.ItemTargetName
+			} );
+			return turns;
+		}
 
 		// Handle swap
 		if ( choice.ActionType == BattleActionType.Swap )
@@ -2672,6 +2704,9 @@ public class BattleTurn
 	public string SwapToName { get; set; }
 	public string StatusMessage { get; set; }
 	public List<string> EffectMessages { get; set; }
+	public bool IsItemUse { get; set; }
+	public string ItemName { get; set; }
+	public string ItemTargetName { get; set; }
 }
 
 /// <summary>

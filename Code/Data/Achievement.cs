@@ -30,8 +30,7 @@ public enum AchievementRewardType
 	ContractInk,
 	Monster,
 	Item,
-	Title,
-	Theme
+	Title
 }
 
 /// <summary>
@@ -41,45 +40,23 @@ public enum AchievementRequirement
 {
 	// Collection
 	TotalMonstersCaught,
-	CaughtElementFire,
-	CaughtElementWater,
-	CaughtElementEarth,
-	CaughtElementWind,
-	CaughtElementElectric,
-	CaughtElementIce,
-	CaughtElementNature,
-	CaughtElementMetal,
-	CaughtElementShadow,
-	CaughtElementSpirit,
-	CaughtElementNeutral,
-	CaughtRarityRare,
-	CaughtRarityEpic,
-	CaughtRarityLegendary,
-	CaughtRarityMythic,
 	BeastiaryCompleted,
-	OwnedSameSpecies,
 
 	// Battle
 	TotalBattlesWon,
 	TotalDamageDealt,
 	TotalKnockouts,
-	WinWithoutLoss,
-	WinWithTypeDisadvantage,
-	UsedEveryElement,
 
 	// Expedition
 	HighestExpeditionCleared,
 	HighestHardModeCleared,
 	ExpeditionsCompleted,
-	ExpeditionWithoutCatch,
-	AllBossesDefeated,
+	BossesCleared,
 
 	// Breeding
 	TotalMonstersBred,
 	BredHighGenes,
 	BredPerfectGene,
-	GotTwins,
-	BredRareTrait,
 
 	// Economy
 	TotalGoldEarned,
@@ -92,7 +69,6 @@ public enum AchievementRequirement
 	ArenaWins,
 	ArenaRankReached,
 	ArenaWinStreak,
-	ArenaWinVsHigherRank,
 	ArenaSetsCompleted,
 	ArenaReverseSweep,
 
@@ -100,7 +76,6 @@ public enum AchievementRequirement
 	TotalTradesCompleted,
 	ChatMessagesSent,
 	BeastShowcased,
-	MiniGamesPlayed,
 	TamerCardsCollected,
 
 	// Mastery
@@ -109,9 +84,6 @@ public enum AchievementRequirement
 	MonstersEvolved,
 	MonsterVeteranMaxRank,
 	SkillPointsInvested,
-
-	// Secret
-	SecretCondition
 }
 
 /// <summary>

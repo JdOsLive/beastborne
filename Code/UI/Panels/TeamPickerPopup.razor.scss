@@ -1,0 +1,1125 @@
+// ═════════════════════════════════════════════════════════════════
+// TEAM PICKER POPUP
+// Centered modal overlay over the world map. Shares chrome vocabulary
+// with trade-popup / zone-detail (rgba(12, 18, 30, 0.97) bg, yellow
+// accent border, etc.) so the three overlays read as siblings.
+// ═════════════════════════════════════════════════════════════════
+
+// Bake translate(-50%, -50%) into the keyframe transforms — otherwise the
+// animation's raw `scale()` transform clobbers the centering translate for
+// the duration of the animation and the modal teleports from top-left to
+// centre when the animation ends.
+@keyframes teamPickerEnter {
+	from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
+	to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes teamSlotPulse {
+	0%, 100% { border-color: rgba(253, 224, 71, 0.55); }
+	50%      { border-color: rgba(253, 224, 71, 1); }
+}
+
+.team-picker-root {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.18s ease-out;
+
+	&.visible {
+		opacity: 1;
+		pointer-events: all;
+	}
+}
+
+.picker-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	// Darker backdrop so world-map markers don't leak through the modal.
+	background-color: rgba(0, 0, 0, 0.78);
+}
+
+// Bigger footprint so a 500-beast roster breathes. Sized to fit 1280×720
+// comfortably. max-height 92% so the left column (hero + lore + 3 slots
+// + controls + presets) has room above the Embark CTA.
+.picker-modal {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 88%;
+	max-width: 1120px;
+	height: 92%;
+	max-height: 840px;
+	background-color: rgba(12, 18, 30, 0.97);
+	border: 2px solid rgba(253, 224, 71, 0.55);
+	border-radius: 16px;
+	padding: 20px 24px;
+	display: flex;
+	flex-direction: column;
+	box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+	animation: teamPickerEnter 0.22s ease-out;
+	z-index: 70;
+}
+
+// ─── HEADER ──────────────────────────────────────────────────────
+.picker-header {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: flex-start;
+	margin-bottom: 14px;
+	flex-shrink: 0;
+}
+
+.ph-left {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.ph-kicker {
+	font-size: 10px;
+	font-weight: 800;
+	letter-spacing: 2.4px;
+	color: rgba(253, 224, 71, 0.8);
+	line-height: 12;
+	margin-bottom: 3px;
+}
+
+.ph-title-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 6px;
+}
+
+.ph-title {
+	font-size: 22px;
+	font-weight: 800;
+	color: rgb(254, 243, 199);
+	line-height: 24;
+	letter-spacing: 0.4px;
+	margin-right: 10px;
+}
+
+.ph-boss-chip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 22px;
+	padding: 0 8px;
+	background-color: rgba(239, 68, 68, 0.18);
+	border: 1px solid rgba(252, 165, 165, 0.55);
+	border-radius: 11px;
+
+	span {
+		margin-left: 5px;
+		font-size: 10px;
+		font-weight: 800;
+		color: rgba(252, 165, 165, 0.95);
+		letter-spacing: 1.2px;
+		line-height: 12;
+	}
+}
+
+.ph-meta-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.ph-meta-pill {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 22px;
+	padding: 0 8px;
+	margin-right: 6px;
+	background-color: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(148, 163, 184, 0.25);
+	border-radius: 11px;
+
+	span {
+		margin-left: 5px;
+		font-size: 11px;
+		font-weight: 700;
+		color: rgba(226, 232, 240, 0.9);
+		letter-spacing: 0.5px;
+		line-height: 13;
+	}
+}
+
+.ph-meta-element {
+	width: 14px;
+	height: 14px;
+}
+
+.ph-close {
+	flex-shrink: 0;
+}
+
+// ─── TWO-COLUMN BODY ─────────────────────────────────────────────
+// Left: hero side (zone image + lore + team slots + controls).
+// Right: roster side (filter bar + scrollable grid).
+// Embark CTA lives OUTSIDE this block, spanning the full modal width
+// at the bottom, so the commit action reads as the primary affordance.
+.picker-body {
+	display: flex;
+	flex-direction: row;
+	flex: 1 1 0;
+	min-height: 0;
+	width: 100%;
+	margin-bottom: 12px;
+}
+
+.picker-left {
+	display: flex;
+	flex-direction: column;
+	flex: 0 0 340px;
+	min-width: 340px;
+	width: 340px;
+	margin-right: 18px;
+}
+
+.picker-right {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+	min-height: 0;
+}
+
+// ─── ZONE HERO IMAGE ─────────────────────────────────────────────
+// Placeholder landscape area. When 3D-scene art lands, swap the <img>
+// for the real zone portrait; no SCSS changes required. Recommended-
+// level stamp overlays the bottom-left so the "Lv. X" number reads
+// instantly — the Hyrule Warriors pattern from the reference board.
+// Height 132 (down from 160) to reclaim space for the presets row,
+// which was overlapping the Embark CTA.
+.zone-hero-image {
+	position: relative;
+	width: 100%;
+	height: 132px;
+	margin-bottom: 10px;
+	background-color: rgba(0, 0, 0, 0.55);
+	border: 1px solid rgba(253, 224, 71, 0.35);
+	border-radius: 10px;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.zone-hero-img {
+	width: 100%;
+	height: 100%;
+	background-repeat: no-repeat;
+	background-size: cover;
+	background-position: center;
+}
+
+.zone-hero-placeholder {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: rgba(30, 22, 50, 0.85);
+}
+
+.zone-hero-gradient {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 70px;
+	background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.85) 100%);
+}
+
+.zone-hero-stamp {
+	position: absolute;
+	left: 12px;
+	bottom: 10px;
+	display: flex;
+	flex-direction: column;
+}
+
+.zhs-kicker {
+	font-size: 9px;
+	font-weight: 800;
+	color: rgba(253, 224, 71, 0.9);
+	letter-spacing: 1.6px;
+	line-height: 11;
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.zhs-level {
+	font-size: 22px;
+	font-weight: 900;
+	color: rgb(254, 243, 199);
+	line-height: 24;
+	letter-spacing: 0.4px;
+	text-shadow: 0 2px 5px rgba(0, 0, 0, 0.9);
+}
+
+// ─── ZONE LORE ───────────────────────────────────────────────────
+.zone-lore-text {
+	font-size: 11px;
+	font-weight: 500;
+	color: rgba(203, 213, 225, 0.85);
+	line-height: 14;
+	margin-bottom: 12px;
+	flex-shrink: 0;
+}
+
+// ─── TEAM SLOTS SECTION ──────────────────────────────────────────
+// Explicit flex-direction: column — s&box doesn't reliably inherit column
+// layout and will lay children out horizontally without it (symptom:
+// "YOUR TEAM" label renders vertically, one character per line, because
+// its parent row collapsed to zero width).
+.picker-team-section {
+	display: flex;
+	flex-direction: column;
+	flex-shrink: 0;
+	margin-bottom: 10px;
+}
+
+.ps-head-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+.ps-label {
+	font-size: 11px;
+	font-weight: 800;
+	color: rgba(253, 224, 71, 0.85);
+	letter-spacing: 1.5px;
+	line-height: 13;
+	margin-right: 10px;
+}
+
+.ps-count {
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(148, 163, 184, 0.75);
+	line-height: 13;
+	letter-spacing: 0.5px;
+	margin-right: 10px;
+}
+
+// Team Power chip — sum of each picked beast's PowerRating. Gives the
+// player a single-number read on team strength vs zone recommended level.
+.ps-power {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 22px;
+	padding: 0 9px;
+	margin-left: auto;
+	margin-right: 6px;
+	background-color: rgba(251, 191, 36, 0.08);
+	border: 1px solid rgba(251, 191, 36, 0.45);
+	border-radius: 11px;
+}
+
+.ps-power-label {
+	margin-left: 5px;
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(253, 224, 71, 0.85);
+	letter-spacing: 1.2px;
+	line-height: 12;
+}
+
+.ps-power-value {
+	margin-left: 4px;
+	font-size: 12px;
+	font-weight: 900;
+	color: rgb(254, 243, 199);
+	line-height: 14;
+	letter-spacing: 0.3px;
+}
+
+.ps-coverage {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 22px;
+	padding: 0 9px;
+	background-color: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(148, 163, 184, 0.35);
+	border-radius: 11px;
+	// When ps-power is absent (empty team), ps-coverage handles the
+	// "push to right" behaviour itself via margin-left: auto. When
+	// ps-power IS present, it owns margin-left: auto and this rule
+	// becomes a no-op since there's already content between us.
+	margin-left: auto;
+
+	span {
+		margin-left: 5px;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 1px;
+		line-height: 12;
+		color: rgba(226, 232, 240, 0.95);
+	}
+
+	&.cov-strong { border-color: rgba(134, 239, 172, 0.6); background-color: rgba(34, 197, 94, 0.12); }
+	&.cov-advantage { border-color: rgba(190, 242, 100, 0.55); background-color: rgba(132, 204, 22, 0.10); }
+	&.cov-neutral { border-color: rgba(148, 163, 184, 0.35); }
+	&.cov-disadvantage { border-color: rgba(253, 186, 116, 0.55); background-color: rgba(249, 115, 22, 0.10); }
+	&.cov-weak { border-color: rgba(252, 165, 165, 0.55); background-color: rgba(239, 68, 68, 0.12); }
+}
+
+// Slots stack vertically in the narrow left column (340px isn't enough
+// for three 256px slots side-by-side). Each slot is a compact horizontal
+// card: sprite left, info right, full column width.
+.team-slots {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	margin-bottom: 8px;
+}
+
+// Per CLAUDE.md: "Flex cards need explicit width + flex: 0 0 Npx" — without
+// all three the slot collapses to zero width and text inside reflows one
+// character per line. Nested `&.state` SCSS rules + border-color overrides
+// have tripped s&box's parser here ("Generic solid is not valid with
+// border-style"), so we flatten to separate, fully-qualified selectors.
+.team-slot {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	height: 82px;
+	margin-right: 0;
+	margin-bottom: 5px;
+	padding: 7px 10px;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 2px solid rgba(148, 163, 184, 0.25);
+	border-radius: 10px;
+	cursor: pointer;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out;
+}
+
+.team-slot.filled {
+	background-color: rgba(167, 139, 250, 0.08);
+	border: 2px solid rgba(167, 139, 250, 0.55);
+}
+
+.team-slot.filled:hover {
+	background-color: rgba(239, 68, 68, 0.08);
+	border: 2px solid rgba(252, 165, 165, 0.65);
+}
+
+.team-slot.filled:hover .slot-remove {
+	opacity: 1;
+}
+
+// Slots no longer have a right-margin since they stack vertically —
+// the `.team-slot:last-child` of the previous row-layout rule is gone.
+// Empty state gets a slightly stronger border + darker fill so it reads
+// as a clear "drop target" against the overlay, and the EMPTY SLOT label
+// / plus icon aren't buried.
+.team-slot.empty {
+	border: 2px solid rgba(148, 163, 184, 0.4);
+	background-color: rgba(12, 18, 30, 0.55);
+}
+
+.team-slot.empty:hover {
+	border: 2px solid rgba(253, 224, 71, 0.7);
+	background-color: rgba(253, 224, 71, 0.08);
+}
+
+// Drop-target highlight (applied via AddClass from OnDragEnter)
+.team-slot.drag-hover {
+	border: 2px solid rgba(253, 224, 71, 0.95);
+	background-color: rgba(253, 224, 71, 0.12);
+}
+
+// Selected beasts read as important — sprite is 66×66 in the 82px
+// slot. Up from the original 56×56 but compact enough that the lore
+// snippet + presets row both still fit above the Embark CTA.
+.slot-art-wrap {
+	position: relative;
+	width: 66px;
+	height: 66px;
+	min-width: 66px;
+	flex: 0 0 66px;
+	margin-right: 12px;
+	background-color: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(148, 163, 184, 0.22);
+	border-radius: 8px;
+}
+
+.slot-art {
+	width: 66px;
+	height: 66px;
+	background-repeat: no-repeat;
+}
+
+.slot-fav {
+	position: absolute;
+	top: 2px;
+	left: 2px;
+	width: 18px;
+	height: 18px;
+	background-color: rgba(0, 0, 0, 0.7);
+	border: 1px solid rgba(251, 191, 36, 0.8);
+	border-radius: 9px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.slot-item-badge {
+	position: absolute;
+	bottom: 2px;
+	left: 2px;
+	width: 18px;
+	height: 18px;
+	background-color: rgba(88, 28, 135, 0.85);
+	border: 1px solid rgba(196, 181, 253, 0.75);
+	border-radius: 9px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.slot-pp-warn {
+	position: absolute;
+	bottom: 2px;
+	right: 2px;
+	width: 18px;
+	height: 18px;
+	background-color: rgba(239, 68, 68, 0.3);
+	border: 1px solid rgba(252, 165, 165, 0.75);
+	border-radius: 9px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.slot-info {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+	justify-content: center;
+}
+
+.slot-name-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 2px;
+}
+
+.slot-name {
+	font-size: 13px;
+	font-weight: 800;
+	color: rgb(226, 232, 240);
+	line-height: 15;
+	letter-spacing: 0.3px;
+	margin-right: 5px;
+}
+
+.slot-underlevel-chip {
+	width: 16px;
+	height: 16px;
+	background-color: rgba(239, 68, 68, 0.25);
+	border: 1px solid rgba(252, 165, 165, 0.7);
+	border-radius: 8px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.slot-meta-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 3px;
+}
+
+.slot-lv {
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(253, 224, 71, 0.9);
+	letter-spacing: 0.8px;
+	line-height: 12;
+	margin-right: 6px;
+}
+
+.slot-el {
+	width: 12px;
+	height: 12px;
+	margin-right: 3px;
+}
+
+.slot-hp-row {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+}
+
+.slot-hp-text {
+	font-size: 9px;
+	font-weight: 700;
+	letter-spacing: 0.4px;
+	line-height: 11;
+	margin-bottom: 2px;
+
+	&.healthy { color: rgba(134, 239, 172, 0.9); }
+	&.wounded { color: rgba(253, 224, 71, 0.9); }
+	&.critical { color: rgba(252, 165, 165, 0.9); }
+}
+
+.slot-hp-bar {
+	width: 100%;
+	height: 4px;
+	background-color: rgba(0, 0, 0, 0.5);
+	border-radius: 2px;
+	overflow: hidden;
+}
+
+.slot-hp-fill {
+	height: 4px;
+	border-radius: 2px;
+	transition: width 0.25s ease-out, background-color 0.14s ease-out;
+
+	&.healthy { background-color: rgba(74, 222, 128, 0.85); }
+	&.wounded { background-color: rgba(251, 191, 36, 0.85); }
+	&.critical { background-color: rgba(239, 68, 68, 0.85); }
+}
+
+.slot-remove {
+	width: 22px;
+	height: 22px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	transition: opacity 0.12s ease-out;
+	flex-shrink: 0;
+	margin-left: 6px;
+}
+
+.slot-empty-inner {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+}
+
+.slot-empty-label {
+	margin-left: 8px;
+	font-size: 13px;
+	font-weight: 800;
+	color: rgba(203, 213, 225, 0.9);
+	letter-spacing: 1.8px;
+	line-height: 15;
+}
+
+// ─── TEAM CONTROLS ROW ───────────────────────────────────────────
+// Split into two rows so nothing collapses in the 340px left column
+// (cramming Auto-fill + Clear + PRESETS + A + B + C into one row was
+// producing one-character-per-line button labels).
+.ps-controls-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	height: 28px;
+	margin-bottom: 6px;
+	flex-shrink: 0;
+}
+
+.ps-presets-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	height: 28px;
+	flex-shrink: 0;
+}
+
+.ctrl-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 26px;
+	padding: 0 10px;
+	margin-right: 6px;
+	background-color: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(148, 163, 184, 0.3);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+
+	&:hover {
+		background-color: rgba(167, 139, 250, 0.14);
+		border-color: rgba(167, 139, 250, 0.55);
+	}
+
+	span {
+		margin-left: 5px;
+		font-size: 11px;
+		font-weight: 700;
+		color: rgba(226, 232, 240, 0.9);
+		letter-spacing: 0.4px;
+		line-height: 13;
+	}
+}
+
+.ctrl-divider {
+	width: 1px;
+	height: 18px;
+	margin: 0 8px;
+	background-color: rgba(148, 163, 184, 0.35);
+}
+
+.ps-preset-label {
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(148, 163, 184, 0.75);
+	letter-spacing: 1.2px;
+	line-height: 12;
+	margin-right: 8px;
+}
+
+.preset-slot {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-right: 6px;
+}
+
+.preset-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 26px;
+	padding: 0 8px;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(148, 163, 184, 0.25);
+	border-top-left-radius: 6px;
+	border-bottom-left-radius: 6px;
+	border-top-right-radius: 0;
+	border-bottom-right-radius: 0;
+	cursor: pointer;
+	transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+
+	&:hover {
+		background-color: rgba(167, 139, 250, 0.14);
+		border-color: rgba(167, 139, 250, 0.55);
+	}
+
+	&.saved {
+		background-color: rgba(167, 139, 250, 0.12);
+		border-color: rgba(167, 139, 250, 0.5);
+	}
+
+	span {
+		margin-left: 4px;
+		font-size: 11px;
+		font-weight: 800;
+		color: rgba(226, 232, 240, 0.9);
+		letter-spacing: 0.4px;
+		line-height: 13;
+	}
+}
+
+.preset-save-btn {
+	width: 22px;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	background-color: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(148, 163, 184, 0.25);
+	border-left-width: 0;
+	border-top-left-radius: 0;
+	border-bottom-left-radius: 0;
+	border-top-right-radius: 6px;
+	border-bottom-right-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.12s ease-out;
+
+	&:hover {
+		background-color: rgba(253, 224, 71, 0.18);
+	}
+
+	&.disabled {
+		opacity: 0.4;
+		cursor: default;
+
+		&:hover { background-color: rgba(255, 255, 255, 0.04); }
+	}
+}
+
+// ─── FILTERS ─────────────────────────────────────────────────────
+// Explicit z-index: 20 so FilterBar's dropdown menu renders ABOVE the
+// roster grid. Without it, the dropdown opens behind the beast cards —
+// the cards' own z-stacking order wins if the filter container isn't
+// raised.
+.picker-filters {
+	margin-bottom: 8px;
+	flex-shrink: 0;
+	z-index: 20;
+}
+
+// ─── ROSTER GRID ─────────────────────────────────────────────────
+// Explicit column direction — same reason as .picker-team-section.
+.picker-roster-section {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-height: 0;
+	overflow: hidden;
+	margin-bottom: 10px;
+}
+
+// Flat child requirement for s&box scroll height calc:
+// scroll child is direct child of a height-bounded parent,
+// grid items are direct children of the scroll div.
+.picker-roster-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-y: scroll;
+}
+
+.picker-roster-grid {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	width: 100%;
+	padding: 4px 2px;
+}
+
+// MonsterCard mini mode is 150w × 180h (MonsterCard.scss). The wrapper
+// MUST match these dimensions — a shorter wrapper clips the .mini-name-bar
+// at the bottom of the card (the 34px strip that holds the beast name +
+// element icon), which is what produced the "empty dark rectangle under
+// the sprite" bug on first render.
+.picker-card-wrapper {
+	width: 150px;
+	min-width: 150px;
+	flex: 0 0 150px;
+	height: 180px;
+	margin-right: 8px;
+	margin-bottom: 8px;
+	position: relative;
+	cursor: pointer;
+}
+
+.picker-card-wrapper.fainted {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.card-fainted-overlay {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0.45);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border-radius: 8px;
+	pointer-events: none;
+
+	span {
+		font-size: 18px;
+		font-weight: 900;
+		color: rgba(252, 165, 165, 0.95);
+		letter-spacing: 2px;
+		line-height: 20;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+	}
+}
+
+.card-picked-check {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+	width: 22px;
+	height: 22px;
+	background-color: rgba(74, 222, 128, 0.9);
+	border: 2px solid rgba(22, 101, 52, 0.95);
+	border-radius: 11px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 5;
+}
+
+.roster-empty {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 100px;
+
+	span {
+		margin-left: 10px;
+		font-size: 13px;
+		font-weight: 700;
+		color: rgba(148, 163, 184, 0.75);
+		line-height: 15;
+		letter-spacing: 0.4px;
+	}
+}
+
+// ─── EMBARK CTA ──────────────────────────────────────────────────
+// Cinematic ceremonial CTA. Rotated diamond badge with inner crosshair
+// + outer glow + sparkle breathe, gold sheen sweeps across the surface,
+// bold kicker + subtitle text rail, double-chevron on the right that
+// slides on hover, subtle scale-breathe on ready state.
+
+@keyframes embarkReadyBreath {
+	0%, 100% { transform: scale(1);    box-shadow: 0 0 0 rgba(251, 191, 36, 0); }
+	50%      { transform: scale(1.005); box-shadow: 0 0 40px rgba(251, 191, 36, 0.45); }
+}
+
+@keyframes embarkDiamondPulse {
+	0%, 100% { transform: rotate(45deg) scale(1); }
+	50%      { transform: rotate(45deg) scale(1.09); }
+}
+
+@keyframes embarkDiamondGlow {
+	0%, 100% { opacity: 0.5; }
+	50%      { opacity: 1; }
+}
+
+// Sheen sweeps left-to-right across the button surface, pauses, repeats.
+// 3.2s cycle keeps it subtle enough not to distract.
+@keyframes embarkSheen {
+	0%   { transform: translateX(-120%); opacity: 0; }
+	15%  { opacity: 0.9; }
+	55%  { transform: translateX(220%); opacity: 0; }
+	100% { transform: translateX(220%); opacity: 0; }
+}
+
+// NOTE: No `overflow: hidden` here. Per CLAUDE.md, overflow: hidden on a
+// flex child (and this button is a flex child of .picker-modal) collapses
+// the child's content to zero size in s&box, leaving an empty rectangle.
+// The sheen animation's corners might peek past the button edge by a
+// pixel or two during the sweep — acceptable trade for visible content.
+.picker-embark-btn {
+	position: relative;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 100%;
+	height: 76px;
+	flex-shrink: 0;
+	padding: 0 16px 0 18px;
+	background: linear-gradient(to right, rgba(127, 29, 29, 1) 0%, rgba(185, 28, 28, 1) 40%, rgba(239, 68, 68, 1) 100%);
+	border: 2px solid rgba(253, 224, 71, 0.7);
+	border-radius: 12px;
+	cursor: pointer;
+	transition: background-color 0.14s ease-out,
+				border-color 0.14s ease-out,
+				transform 0.12s ease-out;
+}
+
+.picker-embark-btn.ready {
+	animation: embarkReadyBreath 2.6s ease-in-out infinite;
+}
+
+.picker-embark-btn.ready:hover {
+	border-color: rgba(254, 202, 202, 1);
+	transform: translateY(-2px) scale(1.008);
+	box-shadow: 0 14px 36px rgba(239, 68, 68, 0.4), 0 0 50px rgba(251, 191, 36, 0.35);
+}
+
+.picker-embark-btn.disabled {
+	background: linear-gradient(to right, rgba(51, 65, 85, 0.95) 0%, rgba(71, 85, 105, 0.9) 100%);
+	border-color: rgba(148, 163, 184, 0.4);
+	cursor: default;
+	animation: none;
+}
+
+// Gold sweep — a narrow bright gradient strip that slides across on
+// ready state. Uses a rotated rectangle so the leading edge is diagonal,
+// which reads more like a sword-glint than a mirror wipe.
+.embark-sheen {
+	position: absolute;
+	top: -20%;
+	left: 0;
+	width: 80px;
+	height: 140%;
+	background: linear-gradient(to right, rgba(253, 224, 71, 0) 0%, rgba(253, 224, 71, 0.45) 50%, rgba(253, 224, 71, 0) 100%);
+	transform: translateX(-120%) rotate(18deg);
+	pointer-events: none;
+	opacity: 0;
+	z-index: 1;
+}
+
+.picker-embark-btn.ready .embark-sheen {
+	animation: embarkSheen 3.2s ease-in-out infinite;
+}
+
+// Diamond badge — rotated 45°. Inside: compass icon (counter-rotated),
+// plus two thin lines forming a crosshair that makes the badge feel
+// like a commander's insignia, plus a soft glow behind.
+.embark-diamond {
+	position: relative;
+	width: 52px;
+	height: 52px;
+	min-width: 52px;
+	flex: 0 0 52px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-right: 20px;
+	background: linear-gradient(135deg, rgba(12, 18, 30, 0.78) 0%, rgba(60, 20, 25, 0.88) 100%);
+	border: 2px solid rgba(254, 243, 199, 0.95);
+	border-radius: 10px;
+	transform: rotate(45deg);
+	z-index: 2;
+}
+
+.picker-embark-btn.ready .embark-diamond {
+	animation: embarkDiamondPulse 2.6s ease-in-out infinite;
+}
+
+.embark-diamond iconify {
+	transform: rotate(-45deg);
+	z-index: 3;
+}
+
+// Outer glow — gold halo behind the diamond on ready state
+.embark-diamond-glow {
+	position: absolute;
+	top: -6px;
+	left: -6px;
+	right: -6px;
+	bottom: -6px;
+	background-color: rgba(253, 224, 71, 0.18);
+	border-radius: 12px;
+	opacity: 0;
+	transition: opacity 0.2s ease-out;
+	z-index: 1;
+}
+
+.picker-embark-btn.ready .embark-diamond-glow {
+	opacity: 1;
+	animation: embarkDiamondGlow 2.6s ease-in-out infinite;
+}
+
+// Crosshair accents — two thin gold lines forming a plus through the
+// diamond. Counter-rotated back so they read as vertical/horizontal
+// relative to the badge's rotation.
+.embark-diamond-cross-v,
+.embark-diamond-cross-h {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	background-color: rgba(253, 224, 71, 0.35);
+	pointer-events: none;
+	z-index: 2;
+}
+
+.embark-diamond-cross-v {
+	width: 2px;
+	height: 38px;
+	margin-top: -19px;
+	margin-left: -1px;
+}
+
+.embark-diamond-cross-h {
+	width: 38px;
+	height: 2px;
+	margin-top: -1px;
+	margin-left: -19px;
+}
+
+.picker-embark-btn.disabled .embark-diamond-cross-v,
+.picker-embark-btn.disabled .embark-diamond-cross-h {
+	background-color: rgba(148, 163, 184, 0.25);
+}
+
+// Text rail
+.embark-rail {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	flex: 1 1 0;
+	min-width: 0;
+	z-index: 2;
+}
+
+.embark-kicker {
+	font-size: 22px;
+	font-weight: 900;
+	color: white;
+	line-height: 24;
+	letter-spacing: 5px;
+	text-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 18px rgba(253, 224, 71, 0.25);
+}
+
+.embark-subtitle {
+	font-size: 11px;
+	font-weight: 700;
+	color: rgba(253, 224, 71, 0.8);
+	line-height: 13;
+	letter-spacing: 2.5px;
+	margin-top: 3px;
+	text-transform: uppercase;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.picker-embark-btn.disabled .embark-kicker {
+	color: rgba(226, 232, 240, 0.9);
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+	letter-spacing: 3px;
+}
+
+.picker-embark-btn.disabled .embark-subtitle {
+	color: rgba(203, 213, 225, 0.7);
+	text-transform: none;
+	letter-spacing: 0.5px;
+	text-shadow: none;
+}
+
+// Double chevrons — second one is slightly dimmer. Both slide right
+// on hover with a tiny stagger via the parent's transition timing.
+.embark-chevrons {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-left: 10px;
+	z-index: 2;
+	transition: transform 0.18s ease-out;
+}
+
+.embark-chevrons iconify:first-child {
+	opacity: 0.55;
+	margin-right: -8px;
+}
+
+.picker-embark-btn.ready:hover .embark-chevrons {
+	transform: translateX(8px);
+}
+
+.picker-embark-btn.disabled .embark-chevrons {
+	opacity: 0.4;
+}

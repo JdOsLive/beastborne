@@ -47,9 +47,16 @@ public sealed class GameManager : Component
 
 	private void InitializeManagers()
 	{
-		// SaveSlotManager must be initialized FIRST since other managers use it for key prefixes
-		SaveSlotManager.EnsureInstance( Scene );
+		// SaveService owns the single Steam-id-scoped save blob and drives hydration
+		// for every save-owning manager. Must be first so other managers can
+		// subscribe to OnSaveLoaded (or race-check IsLoaded) in their OnStart.
+		SaveService.EnsureInstance( Scene );
+
 		TamerManager.EnsureInstance( Scene );
+		// GiftManager depends on BOTH SaveService (save-load hook) and
+		// TamerManager (Currency writes on claim). Keep it right after the tamer
+		// wire-up so its OnStart-time fetch can bind OnSaveLoaded cleanly.
+		GiftManager.EnsureInstance( Scene );
 		MonsterManager.EnsureInstance( Scene );
 		BeastiaryManager.EnsureInstance( Scene );
 		ExpeditionManager.EnsureInstance( Scene );
@@ -67,6 +74,9 @@ public sealed class GameManager : Component
 		GuildManager.EnsureInstance( Scene );
 		DailyRewardManager.EnsureInstance( Scene );
 		MissionManager.EnsureInstance( Scene );
+		SideQuestManager.EnsureInstance( Scene );
+		TradeNodeManager.EnsureInstance( Scene );
+		Battle3D.BattleSceneController.EnsureInstance( Scene );
 	}
 
 	public void ChangeState( GameState newState )
@@ -84,11 +94,9 @@ public sealed class GameManager : Component
 	{
 		ChangeState( GameState.Hub );
 
-		// Check if we should show the tutorial for new players
-		if ( TutorialManager.Instance?.ShouldShowTutorial() == true )
-		{
-			TutorialManager.Instance.StartTutorial();
-		}
+		// Tutorial auto-start intentionally disabled — the tutorial system is being
+		// redesigned. TutorialManager still exists and holds state for forward
+		// compatibility; a future rework will re-wire the trigger.
 
 		// Run retroactive achievement check for existing players
 		AchievementManager.Instance?.RetroactiveCheck();
