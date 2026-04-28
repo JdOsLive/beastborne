@@ -23,10 +23,12 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	// ═══════════════════════════════════════════════════════════════
 
 	private const float SAVE_INTERVAL = 30f;
-	// Beta launch — guild UI is hidden but the data layer keeps running so
-	// existing guild members aren't corrupted. Flip this to true when guilds
-	// graduate from beta. Mirrors OnlineHubPanel.RankedEnabled pattern.
-	public const bool UiEnabled = false;
+	// Guild UI is open. Raid bosses (the group-coordination surface) ship
+	// disabled via RaidsEnabled — guilds without raids still give chat,
+	// roster, leaderboard contributions, and donation/perk progression.
+	// Flip RaidsEnabled when raids are ready for community playtest.
+	public const bool UiEnabled = true;
+	public const bool RaidsEnabled = false;
 	public const int GUILD_CREATION_COST = 50000;
 	public const int MIN_LEVEL_TO_JOIN = 10;
 	// Base member cap. Effective cap is GetMaxMembers() (perks at Lv15 → 35, Lv35 → 40).
@@ -70,7 +72,14 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	public List<GuildJoinRequest> JoinRequests { get; private set; } = new();
 	public List<GuildInvite> PendingInvites { get; private set; } = new();
 	public Dictionary<string, GuildAdvertisement> VisibleGuilds { get; private set; } = new();
-	public GuildRaidBoss CurrentRaidBoss { get; private set; }
+	private GuildRaidBoss _currentRaidBoss;
+	// Gated by RaidsEnabled — when raids are off, every consumer (UI cards,
+	// monument, attempt logic) sees null and the entire raid surface vanishes.
+	public GuildRaidBoss CurrentRaidBoss
+	{
+		get => RaidsEnabled ? _currentRaidBoss : null;
+		private set => _currentRaidBoss = value;
+	}
 
 	private float lastSaveTime = 0f;
 	private float lastWeeklyCheckTime = 0f;
@@ -313,6 +322,10 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		{
 			Log.Warning( $"GuildManager: Refresh failed: {e.Message}" );
 		}
+
+		// Pull weekly goals alongside the main guild fetch so the Quests panel
+		// renders the correct progress when it opens.
+		_ = RefreshWeeklyGoals();
 	}
 
 	/// <summary>
@@ -1181,6 +1194,29 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		BroadcastRefreshGuild( Connection.Local?.Id.ToString() ?? "", Guild.Id );
 	}
 
+	public void UpdateDescription( string description )
+	{
+		if ( !IsInGuild || !IsOfficer ) return;
+		_ = UpdateDescriptionAsync( description );
+	}
+
+	private async Task UpdateDescriptionAsync( string description )
+	{
+		var result = await GuildApiClient.PutAsync<UpdateGuildResponse>( $"guilds/{Guild.Id}", new
+		{
+			description
+		} );
+
+		if ( result?.Guild == null )
+		{
+			OnGuildError?.Invoke( "Failed to update description." );
+			return;
+		}
+
+		await RefreshGuildData();
+		BroadcastRefreshGuild( Connection.Local?.Id.ToString() ?? "", Guild.Id );
+	}
+
 	public void UpdateEmblem( string color, string icon, string shape )
 	{
 		if ( !IsInGuild || !IsOfficer ) return;
@@ -1212,15 +1248,27 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 	/// <summary>
 	/// CUMULATIVE lifetime guild XP threshold to BE at <paramref name="level"/>.
-	/// Curve: 200 + 1.2 × level³ — gentle 1-10, long 10-25, aspirational 25-50.
-	/// Per-level deltas grow sharply (L19→20 ≈ 1.4k XP, L49→50 ≈ 8.8k XP — 6.4× ramp).
-	/// Threshold to reach L20 ≈ 9.8k (vs old 20.5k — half — friendlier early).
-	/// Threshold to reach L50 ≈ 150.2k (~7.3× the old to-L20 budget).
+	/// Curve: 200 + 30 × level³ — early levels feel earnable from a week of
+	/// active guild play, mid-levels (20-30) take a few weeks to a couple
+	/// months, and Lv 50 is a multi-year aspirational goal for the most
+	/// dedicated guilds (~3.75M cumulative XP). Designed per launch decision
+	/// that Lv 50 should be VERY hard to reach.
+	///
+	/// Sample thresholds:
+	///   L10 →  30,200 XP    (~1 week of active members)
+	///   L20 → 240,200 XP    (~3-4 weeks)
+	///   L30 → 810,200 XP    (~2-3 months)
+	///   L40 → 1.92M XP      (~6 months)
+	///   L50 → 3.75M XP      (year+)
 	/// </summary>
 	public static long GetXPForGuildLevel( int level )
 	{
+		// Lv 1 is the starting level — every guild begins there with 0 XP.
+		// Without this clamp, a new guild's XP bar reads (0 - 230)/210 = -109%.
+		if ( level <= 1 ) return 0;
+
 		// Stored as (long) to keep room for future cap raises beyond 50.
-		return 200 + (long)(1.2 * level * level * level);
+		return 200 + (long)(30L * level * level * level);
 	}
 
 	public void AddGuildXP( int amount )
@@ -1268,6 +1316,220 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		if ( self != null )
 			self.WeeklyRP += amount;
 		// Weekly RP is synced to server via heartbeat
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// WEEKLY GOALS — community missions, 3 active, reset Monday 00:00 UTC
+	// ═══════════════════════════════════════════════════════════════
+	//
+	// Three guild-wide goals that aggregate progress across every member.
+	// Big chunks of guild XP awarded on completion. Pairs with the passive
+	// XP trickle (1% of expedition XP) and donation conversion to make up
+	// the three approved guild XP sources.
+	//
+	// Server-side aggregation is the source of truth. Client tracks
+	// optimistically (Progress bumps on every event so the UI feels
+	// responsive); a refresh from /guilds/{id}/goals reconciles with the
+	// authoritative server state. If the API is offline, local progress
+	// still ticks so single-player / dev runs aren't dead.
+
+	public List<GuildWeeklyGoal> WeeklyGoals { get; private set; } = new();
+	public DateTime WeeklyGoalsResetAt { get; private set; } = GetNextMondayMidnightUtc();
+
+	// Reward sizing per the guild XP design memo (~5,000-7,500 XP per goal).
+	// Targets sized for an active 10-15 person guild to clear most weeks
+	// without trivializing the multi-year Lv 50 climb.
+	private static readonly List<GuildWeeklyGoal> WeeklyGoalsPool = new()
+	{
+		new() { Id = "wild_hunt",        Type = GuildGoalType.WildBeastsKO,       Title = "Wild Hunt",         Description = "KO 100 wild Beasts as a guild",         Target = 100,    XpReward = 6000 },
+		new() { Id = "contract_drive",   Type = GuildGoalType.BeastsContracted,   Title = "Contract Drive",    Description = "Contract 50 Beasts as a guild",         Target = 50,     XpReward = 7000 },
+		new() { Id = "treasury_push",    Type = GuildGoalType.GoldEarned,         Title = "Treasury Push",     Description = "Earn 500,000 gold across all members",  Target = 500000, XpReward = 7500 },
+		new() { Id = "expedition_blitz", Type = GuildGoalType.ExpeditionsCleared, Title = "Expedition Blitz",  Description = "Clear 75 expeditions as a guild",       Target = 75,     XpReward = 5000 },
+		new() { Id = "boss_breaker",     Type = GuildGoalType.BossesDefeated,     Title = "Boss Breaker",      Description = "Down 25 expedition bosses",             Target = 25,     XpReward = 6500 },
+		new() { Id = "fusion_forge",     Type = GuildGoalType.FusionsCompleted,   Title = "Fusion Forge",      Description = "Fuse 30 Beasts as a guild",             Target = 30,     XpReward = 5500 }
+	};
+
+	private static DateTime GetNextMondayMidnightUtc()
+	{
+		var now = DateTime.UtcNow;
+		var daysUntilMonday = ((int)DayOfWeek.Monday - (int)now.DayOfWeek + 7) % 7;
+		if ( daysUntilMonday == 0 ) daysUntilMonday = 7;
+		var next = now.Date.AddDays( daysUntilMonday );
+		return next;
+	}
+
+	/// <summary>
+	/// Seed three weekly goals from the pool. Called when the local cache is
+	/// empty (first guild fetch in a session, or after a Monday rollover) and
+	/// the server hasn't returned authoritative data yet.
+	/// </summary>
+	private void SeedLocalWeeklyGoals()
+	{
+		WeeklyGoals.Clear();
+		var rand = new Random( DateTime.UtcNow.Year * 100 + (int)(DateTime.UtcNow.DayOfYear / 7) ); // deterministic per ISO-week
+		var picks = WeeklyGoalsPool.OrderBy( _ => rand.Next() ).Take( 3 ).ToList();
+		foreach ( var p in picks )
+		{
+			WeeklyGoals.Add( new GuildWeeklyGoal
+			{
+				Id = p.Id,
+				Type = p.Type,
+				Title = p.Title,
+				Description = p.Description,
+				Target = p.Target,
+				XpReward = p.XpReward,
+				Progress = 0,
+				Claimed = false
+			} );
+		}
+		WeeklyGoalsResetAt = GetNextMondayMidnightUtc();
+	}
+
+	/// <summary>
+	/// Bump progress on whichever active goal matches `type`. Optimistic local
+	/// update + fire-and-forget API call. Safe to call from any track site.
+	/// </summary>
+	public void TrackGuildGoal( GuildGoalType type, int amount = 1 )
+	{
+		if ( !IsInGuild || Guild == null || amount <= 0 ) return;
+
+		// Lazy-seed on first track if the server hasn't populated yet.
+		if ( WeeklyGoals.Count == 0 ) SeedLocalWeeklyGoals();
+
+		var goal = WeeklyGoals.FirstOrDefault( g => g.Type == type && !g.Claimed );
+		if ( goal == null ) return;
+
+		bool wasComplete = goal.Completed;
+		goal.Progress = Math.Min( goal.Target, goal.Progress + amount );
+
+		if ( !wasComplete && goal.Completed )
+		{
+			SoundManager.PlaySuccess();
+			NotificationManager.Instance?.AddNotification( NotificationType.Success,
+				"Guild Goal Complete!", $"{goal.Title} — claim {goal.XpReward:N0} XP in Quests", 5f );
+		}
+
+		OnGuildUpdated?.Invoke();
+		_ = TrackGuildGoalAsync( type, amount );
+	}
+
+	private async Task TrackGuildGoalAsync( GuildGoalType type, int amount )
+	{
+		try
+		{
+			var result = await GuildApiClient.PostAsync<WeeklyGoalsResponse>( $"guilds/{Guild.Id}/goals/track", new
+			{
+				type = type.ToString(),
+				amount
+			} );
+			// Only overwrite if the server returned a non-empty list. An empty
+			// response (404 / endpoint not deployed yet / server returned {})
+			// would otherwise clobber our seeded local goals.
+			if ( result?.Goals != null && result.Goals.Count > 0 )
+			{
+				WeeklyGoals = result.Goals;
+				if ( result.ResetAt.HasValue ) WeeklyGoalsResetAt = result.ResetAt.Value;
+				OnGuildUpdated?.Invoke();
+			}
+		}
+		catch ( Exception e )
+		{
+			// API offline / endpoint not deployed — local optimistic state stands.
+			Log.Info( $"[GuildManager] TrackGuildGoal API call failed (using local state): {e.Message}" );
+		}
+	}
+
+	/// <summary>
+	/// Claim a completed weekly goal. Awards the XP reward and marks the goal
+	/// as claimed so it can't be re-claimed before the Monday reset.
+	/// </summary>
+	public void ClaimWeeklyGoal( string goalId )
+	{
+		if ( !IsInGuild || Guild == null ) return;
+		var goal = WeeklyGoals.FirstOrDefault( g => g.Id == goalId );
+		if ( goal == null || !goal.Completed || goal.Claimed ) return;
+
+		goal.Claimed = true;
+		AddGuildXP( goal.XpReward );
+		SoundManager.PlaySuccess();
+		OnGuildUpdated?.Invoke();
+		_ = ClaimWeeklyGoalAsync( goalId );
+	}
+
+	private async Task ClaimWeeklyGoalAsync( string goalId )
+	{
+		try
+		{
+			var result = await GuildApiClient.PostAsync<WeeklyGoalsResponse>( $"guilds/{Guild.Id}/goals/claim", new
+			{
+				goalId
+			} );
+			// Only overwrite when the server returned actual goals — empty
+			// list = endpoint not deployed yet, keep our local state.
+			if ( result?.Goals != null && result.Goals.Count > 0 )
+			{
+				WeeklyGoals = result.Goals;
+				OnGuildUpdated?.Invoke();
+			}
+		}
+		catch ( Exception e )
+		{
+			Log.Info( $"[GuildManager] ClaimWeeklyGoal API call failed (using local state): {e.Message}" );
+		}
+	}
+
+	/// <summary>
+	/// Pull the authoritative goals list from the server. Called on guild fetch
+	/// and after any track/claim mutation. Falls back to local seed if the API
+	/// returns nothing — and seeds *up front* so the UI never sits on a
+	/// "Loading…" placeholder while the HTTP roundtrip completes.
+	/// </summary>
+	public async Task RefreshWeeklyGoals()
+	{
+		if ( !IsInGuild || Guild == null ) return;
+
+		// Seed locally first so the Quests panel has something to render the
+		// instant it opens. The API response (if/when it lands) is authoritative
+		// and overwrites this; if the endpoint doesn't exist yet, the local
+		// state stands and the goal system still works in single-player.
+		if ( WeeklyGoals.Count == 0 )
+		{
+			SeedLocalWeeklyGoals();
+			OnGuildUpdated?.Invoke();
+		}
+
+		try
+		{
+			var result = await GuildApiClient.GetAsync<WeeklyGoalsResponse>( $"guilds/{Guild.Id}/goals" );
+			if ( result?.Goals != null && result.Goals.Count > 0 )
+			{
+				WeeklyGoals = result.Goals;
+				if ( result.ResetAt.HasValue ) WeeklyGoalsResetAt = result.ResetAt.Value;
+				OnGuildUpdated?.Invoke();
+			}
+		}
+		catch ( Exception e )
+		{
+			Log.Info( $"[GuildManager] RefreshWeeklyGoals API call failed (using local state): {e.Message}" );
+		}
+	}
+
+	/// <summary>
+	/// Idempotent — if the local cache is empty (e.g. opened Quests before
+	/// any guild fetch landed), seed three goals so the UI renders.
+	/// </summary>
+	public void EnsureWeeklyGoalsSeeded()
+	{
+		if ( !IsInGuild || Guild == null ) return;
+		if ( WeeklyGoals.Count > 0 ) return;
+		SeedLocalWeeklyGoals();
+		OnGuildUpdated?.Invoke();
+	}
+
+	private class WeeklyGoalsResponse
+	{
+		public List<GuildWeeklyGoal> Goals { get; set; } = new();
+		public DateTime? ResetAt { get; set; }
 	}
 
 	// ───────────── Guild perk effect hooks (10 perks, Lv 5/10/15/20/25/30/35/40/45/50) ─────────────

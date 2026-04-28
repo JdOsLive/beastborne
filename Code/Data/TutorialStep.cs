@@ -53,4 +53,31 @@ public class TutorialStep
 	/// Hint text for what action the player should take (e.g., "Click MONSTERS tab")
 	/// </summary>
 	public string ActionHint { get; set; }
+
+	// ============================================================
+	// PHASE-2 EXTENSIONS — interactive walkthrough fields
+	// ============================================================
+
+	/// <summary>
+	/// CSS-style class selector for the UI element to spotlight + point at.
+	/// Examples: ".embark-btn", ".close-btn", ".help-subtab.active".
+	/// Empty/null = no highlight, just centered info bubble.
+	/// </summary>
+	public string TargetSelector { get; set; }
+
+	/// <summary>
+	/// Event id that triggers automatic advance to the next step. Systems call
+	/// `TutorialManager.NotifyEvent("foo")` when relevant actions happen; if it
+	/// matches the current step's AdvanceEvent, the tutorial advances.
+	/// Empty/null = "info-only" step, advance via Next button.
+	/// Examples: "expedition.embarked", "battle.move-selected", "contract.confirmed".
+	/// </summary>
+	public string AdvanceEvent { get; set; }
+
+	/// <summary>
+	/// If true, certain systems should rig their outcome to succeed during this step.
+	/// Currently used by ContractGenerator (force success) and ExpeditionManager
+	/// (force easy enemy spawn).
+	/// </summary>
+	public bool RiggedSuccess { get; set; }
 }

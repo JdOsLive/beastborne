@@ -227,7 +227,20 @@ else if ( guildView == "browse" )
 			<iconify class="browse-title-icon" icon="lucide:search" Size=@(18) Color="#fbbf24" />
 			<span class="browse-title-text">@L("ui.guild.browse_title")</span>
 		</div>
-		<div class="browse-topbar-spacer"></div>
+
+		<!-- Search input — filters visible guilds by name/tag as you type.
+		     Polled in Tick() since TextEntry doesn't expose onchange. -->
+		<div class="browse-search-wrap">
+			<iconify class="browse-search-icon" icon="lucide:search" Size=@(14) Color="rgba(167, 139, 250, 0.85)" />
+			<TextEntry class="browse-search-input" @ref="browseSearchInput" Text="@browseSearchQuery" Placeholder="Search guild name or tag…" />
+			@if ( !string.IsNullOrEmpty( browseSearchQuery ) )
+			{
+				<button class="browse-search-clear" onclick=@(() => { browseSearchQuery = ""; if (browseSearchInput != null) browseSearchInput.Text = ""; SoundManager.PlayBack(); })>
+					<iconify icon="lucide:x" Size=@(12) Color="rgba(255, 255, 255, 0.65)" />
+				</button>
+			}
+		</div>
+
 		<!-- Refresh -->
 		<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayClick(); LoadGuildsFromApi(); })>
 			<iconify icon="lucide:refresh-cw" Size=@(16) Color="rgba(255,255,255,0.85)" />
@@ -245,7 +258,7 @@ else if ( guildView == "browse" )
 			<!-- GUILD DETAIL -->
 			<div class="guild-detail">
 				<div class="detail-header">
-					<div class="detail-emblem" style="background-color: @viewingGuild.EmblemColor">
+					<div class="detail-emblem shape-@(viewingGuild.EmblemShape ?? "square")" style="background-color: @viewingGuild.EmblemColor">
 						<iconify class="detail-emblem-icon" icon="@GetEmblemIcon( viewingGuild.EmblemIcon )" Size=@(32) Color="#ffffff" />
 					</div>
 					<div class="detail-header-info">
@@ -348,54 +361,65 @@ else if ( guildView == "browse" )
 			{
 				<span class="browse-empty">@L("ui.guild.no_guilds")</span>
 			}
-			@foreach ( var guild in guilds )
+
+			@* 3-column grid via explicit row triples — flex-wrap on a scroll
+			   container miscalculates height in s&box, so we chunk manually
+			   into rows of 3. Empty placeholders fill incomplete trailing
+			   rows so each row's cards stay 1/3 width. *@
+			@for ( int i = 0; i < guilds.Count; i += 3 )
 			{
-				var isLocked = guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly;
-				<div class="browse-card-v2" onclick=@(() => ViewGuildDetail( guild ))>
-					<!-- LEFT-edge accent in the guild's emblem color (absolute child — per-side borders w/ style word are rejected in s&box) -->
-					<div class="browse-card-edge" style="background-color: @guild.EmblemColor"></div>
-					<!-- Halftone diagonal slash decoration in the bottom-right -->
-					<div class="browse-card-halftone"></div>
-					<!-- Top-right diagonal corner-cut in the emblem color (decorative, pointer-events: none) -->
-					<div class="browse-card-corner-cut" style="background-image: linear-gradient(225deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 28%, @guild.EmblemColor 28%, @guild.EmblemColor 36%, rgba(0,0,0,0) 36%, rgba(0,0,0,0) 100%)"></div>
+				var iCopy = i;
+				<div class="browse-row-3">
+					@for ( int j = 0; j < 3; j++ )
+					{
+						var idx = iCopy + j;
+						if ( idx < guilds.Count )
+						{
+							var guild = guilds[idx];
+							var isLocked = guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly;
+							<div class="browse-card-v2" onclick=@(() => ViewGuildDetail( guild ))>
+								<div class="browse-card-edge" style="background-color: @guild.EmblemColor"></div>
 
-					<!-- Emblem stamp — angular slab w/ hard border -->
-					<div class="browse-card-emblem" style="background-color: @guild.EmblemColor">
-						<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(22) Color="#ffffff" />
-					</div>
-
-					<!-- Identity stack -->
-					<div class="browse-card-info">
-						<div class="browse-card-titlerow">
-							<!-- Tag pill — purple stamp on the left, italic uppercase white text -->
-							<div class="browse-card-tag-pill">
-								<span>@guild.GuildTag</span>
-							</div>
-							<span class="browse-card-name">@guild.GuildName</span>
-						</div>
-						<div class="browse-card-meta-row">
-							<div class="browse-card-meta-chip">
-								<iconify icon="lucide:users" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
-								<span>@guild.MemberCount</span>
-							</div>
-							<div class="browse-card-meta-chip">
-								<iconify icon="lucide:trending-up" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
-								<span>@($"{guild.TotalRP:N0}") RP</span>
-							</div>
-							@if ( isLocked )
-							{
-								<div class="browse-card-meta-chip locked-chip">
-									<iconify icon="lucide:lock" Size=@(10) Color="rgba(252, 165, 165, 0.85)" />
-									<span>@L("ui.guild.invite_only")</span>
+								<div class="browse-card-emblem shape-@(guild.EmblemShape ?? "square")" style="background-color: @guild.EmblemColor">
+									<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(22) Color="#ffffff" />
 								</div>
-							}
-						</div>
-					</div>
 
-					<!-- Right side: gold level stamp pill (decorative, rotated -2°) -->
-					<div class="browse-card-level-stamp">
-						<span>Lv @guild.Level</span>
-					</div>
+								<div class="browse-card-info">
+									<div class="browse-card-titlerow">
+										<div class="browse-card-tag-pill">
+											<span>@guild.GuildTag</span>
+										</div>
+										<span class="browse-card-name">@guild.GuildName</span>
+									</div>
+									<div class="browse-card-meta-row">
+										<div class="browse-card-meta-chip">
+											<iconify icon="lucide:users" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
+											<span>@guild.MemberCount</span>
+										</div>
+										<div class="browse-card-meta-chip">
+											<iconify icon="lucide:trending-up" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
+											<span>@($"{guild.TotalRP:N0}") RP</span>
+										</div>
+										@if ( isLocked )
+										{
+											<div class="browse-card-meta-chip locked-chip">
+												<iconify icon="lucide:lock" Size=@(10) Color="rgba(252, 165, 165, 0.85)" />
+												<span>@L("ui.guild.invite_only")</span>
+											</div>
+										}
+									</div>
+								</div>
+
+								<div class="browse-card-level-stamp">
+									<span>Lv @guild.Level</span>
+								</div>
+							</div>
+						}
+						else
+						{
+							<div class="browse-card-empty"></div>
+						}
+					}
 				</div>
 			}
 		}
@@ -406,116 +430,145 @@ else if ( guildView == "myguild" )
 {
 	@if ( !(GuildManager.Instance?.IsInGuild ?? false) )
 	{
-		<!-- NO GUILD - CREATE -->
-		<div class="guild-header-bar">
-			<div class="guild-header-left">
-				<img class="panel-title-icon" src="ui/icons/buttons/guild.svg" />
-				<span class="guild-header-title">@L("ui.guild.create_title")</span>
+		<!-- NO GUILD - CREATE (Persona-stamp pass) -->
+		<div class="guild-create-root">
+
+			<!-- Header strip — matches the rest of the Guild sub-panels.
+			     Title slab + skewed yellow corner stamp + back button. -->
+			<div class="create-header-stamp">
+				<div class="create-header-titleblock">
+					<iconify icon="lucide:hammer" Size=@(18) Color="#a78bfa" />
+					<div class="create-header-textcol">
+						<span class="create-header-title">FOUND A GUILD</span>
+						<span class="create-header-sub">Stamp your colors on the Public Square</span>
+					</div>
+				</div>
+				<div class="create-header-tag"><span>NEW · GUILD</span></div>
+				<button class="create-back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; errorMessage = ""; })>
+					<iconify icon="lucide:arrow-left" Size=@(13) Color="rgba(255,255,255,0.85)" />
+					<span>BACK</span>
+				</button>
 			</div>
-			<div class="guild-header-right">
-				<button class="back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; errorMessage = ""; })><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
-			</div>
-		</div>
-		<div class="guild-content-card">
-		<div class="guild-no-guild">
 
 			@if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN )
 			{
-				<div class="guild-level-gate">
-					<iconify class="gate-icon" icon="lucide:lock" Size=@(20) Color="rgba(255, 200, 100, 0.85)" />
-					<span class="gate-text">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
-					<span class="gate-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
+				<div class="create-level-gate-stamp">
+					<div class="gate-stamp-iconwrap">
+						<iconify icon="lucide:lock" Size=@(28) Color="#fbbf24" />
+					</div>
+					<div class="gate-stamp-text">
+						<span class="gate-stamp-title">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
+						<span class="gate-stamp-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
+					</div>
 				</div>
 			}
 			else
 			{
-				<div class="guild-create-layout">
-					<!-- Form Side -->
-					<div class="guild-create-form">
-						<div class="guild-create-card">
-							<span class="create-title">@L("ui.guild.guild_identity")</span>
-							<div class="create-inputs">
-								<div class="create-field">
-									<span class="field-label">@L("ui.guild.guild_name_hint")</span>
-									<TextEntry class="guild-input" @ref="createNameInput" Text=@createName />
-								</div>
-								<div class="create-field">
-									<span class="field-label">@L("ui.guild.tag_hint")</span>
-									<TextEntry class="guild-input tag-input" @ref="createTagInput" Text=@createTag />
-								</div>
+				<div class="create-stamp-grid">
+
+					<!-- LEFT: Identity + Emblem stack -->
+					<div class="create-stamp-form">
+
+						<!-- Identity card -->
+						<div class="create-stamp-section">
+							<div class="create-stamp-section-head">
+								<iconify icon="lucide:tag" Size=@(13) Color="#a78bfa" />
+								<span>IDENTITY</span>
+							</div>
+
+							<div class="create-stamp-field">
+								<span class="create-stamp-field-label">GUILD NAME</span>
+								<TextEntry class="create-stamp-input" @ref="createNameInput" Text=@createName />
+								<span class="create-stamp-field-hint">3–24 characters · must be unique</span>
+							</div>
+
+							<div class="create-stamp-field">
+								<span class="create-stamp-field-label">TAG</span>
+								<TextEntry class="create-stamp-input tag" @ref="createTagInput" Text=@createTag />
+								<span class="create-stamp-field-hint">2–5 characters · shown next to your name in chat</span>
 							</div>
 						</div>
 
-						<!-- Emblem pickers in create form -->
-						<div class="guild-create-card">
-							<span class="create-title">@L("ui.guild.emblem")</span>
-							<div class="emblem-section">
-								<span class="emblem-section-label">@L("ui.guild.color")</span>
-								<div class="emblem-picker-row">
-									@foreach ( var chunk in ChunkArray( EmblemColors, 4 ) )
-									{
-										<div class="emblem-picker-row-inner">
-											@foreach ( var color in chunk )
-											{
-												<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
-											}
-										</div>
-									}
-								</div>
+						<!-- Emblem card -->
+						<div class="create-stamp-section">
+							<div class="create-stamp-section-head">
+								<iconify icon="lucide:shield" Size=@(13) Color="#a78bfa" />
+								<span>EMBLEM</span>
 							</div>
-							<div class="emblem-section">
-								<span class="emblem-section-label">@L("ui.guild.icon")</span>
-								<div class="emblem-picker-row">
-									@foreach ( var icon in EmblemIcons )
-									{
-										<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
-											<iconify icon="@icon.Value" Size=@(18) Color="#ffffff" />
-										</div>
-									}
-								</div>
+
+							<span class="create-stamp-pick-caption">COLOR</span>
+							<div class="create-stamp-pick-row">
+								@foreach ( var color in EmblemColors )
+								{
+									<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
+								}
 							</div>
-							<div class="emblem-section">
-								<span class="emblem-section-label">@L("ui.guild.shape")</span>
-								<div class="emblem-picker-row">
-									@foreach ( var shape in EmblemShapes )
-									{
-										<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
-											<iconify icon="@shape.Value" Size=@(16) Color="#ffffff" />
-										</div>
-									}
-								</div>
+
+							<span class="create-stamp-pick-caption">ICON</span>
+							<div class="create-stamp-pick-row">
+								@foreach ( var icon in EmblemIcons )
+								{
+									<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
+										<iconify icon="@icon.Value" Size=@(18) Color="#ffffff" />
+									</div>
+								}
+							</div>
+
+							<span class="create-stamp-pick-caption">SHAPE</span>
+							<div class="create-stamp-pick-row">
+								@foreach ( var shape in EmblemShapes )
+								{
+									<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
+										<iconify icon="@shape.Value" Size=@(16) Color="#ffffff" />
+									</div>
+								}
 							</div>
 						</div>
+
 					</div>
 
-					<!-- Preview Side -->
-					<div class="guild-create-preview">
-						<div class="preview-emblem-wrap">
-							<div class="preview-emblem shape-@emblemShape" style="background-color: @emblemColor">
-								<iconify class="preview-emblem-icon" icon="@GetEmblemIcon( emblemIcon )" Size=@(48) Color="#ffffff" />
-							</div>
+					<!-- RIGHT: Live preview + cost + CTA -->
+					<div class="create-stamp-preview">
+						<span class="create-stamp-preview-eyebrow">PREVIEW</span>
+						<div class="create-stamp-preview-emblem shape-@emblemShape" style="background-color: @emblemColor">
+							<iconify icon="@GetEmblemIcon( emblemIcon )" Size=@(56) Color="#ffffff" />
 						</div>
-						<span class="preview-name">@(string.IsNullOrEmpty( createNameInput?.Text ) ? "Guild Name" : createNameInput.Text)</span>
-						<span class="preview-tag">[@(string.IsNullOrEmpty( createTagInput?.Text ) ? "TAG" : createTagInput.Text)]</span>
-						<div class="preview-cost-banner">
-							<span class="preview-cost-text">Cost: @($"{GuildManager.GUILD_CREATION_COST:N0}") gold</span>
+						<span class="create-stamp-preview-name">@(string.IsNullOrEmpty( createNameInput?.Text ) ? "Guild Name" : createNameInput.Text)</span>
+						<div class="create-stamp-preview-meta">
+							<div class="create-stamp-preview-stamp tag-stamp"><span>[@(string.IsNullOrEmpty( createTagInput?.Text ) ? "TAG" : createTagInput.Text)]</span></div>
+							<div class="create-stamp-preview-stamp lv-stamp"><span>LV 1</span></div>
 						</div>
-						<div class="guild-btn create-btn" onclick=@OnCreateGuild><span>@L("ui.guild.create_guild")</span></div>
+
+						<div class="create-stamp-cost">
+							<iconify icon="lucide:coins" Size=@(13) Color="#fbbf24" />
+							<span class="cost-amount">@($"{GuildManager.GUILD_CREATION_COST:N0}")</span>
+							<span class="cost-label">gold to found</span>
+						</div>
+
+						<button class="create-stamp-cta" onclick=@OnCreateGuild>
+							<iconify icon="lucide:hammer" Size=@(15) Color="#ffffff" />
+							<span>FOUND GUILD</span>
+						</button>
+
 						@if ( !string.IsNullOrEmpty( errorMessage ) )
 						{
-							<span class="error-msg">@errorMessage</span>
+							<div class="create-stamp-error">
+								<iconify icon="lucide:triangle-alert" Size=@(12) Color="#fca5a5" />
+								<span>@errorMessage</span>
+							</div>
 						}
 					</div>
+
 				</div>
 
 				@if ( GuildManager.Instance?.IsOnHopCooldown() ?? false )
 				{
-					<div class="hop-cooldown-notice">
-						<span class="cooldown-text">@string.Format(L("ui.guild.hop_cooldown"), FormatCooldown())</span>
+					<div class="create-stamp-cooldown">
+						<iconify icon="lucide:hourglass" Size=@(12) Color="#fbbf24" />
+						<span>@string.Format(L("ui.guild.hop_cooldown"), FormatCooldown())</span>
 					</div>
 				}
 			}
-		</div>
 		</div>
 	}
 	else
@@ -537,9 +590,8 @@ else if ( guildView == "myguild" )
 			}
 			<div class="guild-raid-scene">
 				<div class="raid-scene-topbar">
-					<!-- Title slab — italic uppercase "RAID — [boss name]" -->
+					<!-- Title slab — clean Persona-stamp, no corner-cut decoration -->
 					<div class="raid-title-slab">
-						<div class="raid-title-cut" style="background-image: linear-gradient(225deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 28%, #ef4444 28%, #ef4444 36%, rgba(0,0,0,0) 36%, rgba(0,0,0,0) 100%)"></div>
 						<iconify class="raid-title-icon" icon="lucide:swords" Size=@(16) Color="#ef4444" />
 						<span class="raid-title-text">@L("ui.guild.tab_raids")</span>
 						<span class="raid-title-sep">—</span>
@@ -551,17 +603,9 @@ else if ( guildView == "myguild" )
 					</button>
 				</div>
 
-				<!-- BOSS HERO — P5 stamp slab with corner-cut, halftone, and rotated BOSS stamp -->
+				<!-- BOSS HERO — Persona-stamp slab. Corner-cut / halftone / BOSS stamp
+				     decorations removed for clean slab vocabulary. -->
 				<div class="raid-boss-hero p5-stamp" style="border-color: @(elementColor)55">
-					<!-- Diagonal corner-cut accent in element color (decorative) -->
-					<div class="raid-hero-corner-cut" style="background-image: linear-gradient(225deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 24%, @elementColor 24%, @elementColor 30%, rgba(0,0,0,0) 30%, rgba(0,0,0,0) 100%)"></div>
-					<!-- Halftone slash texture (decorative) -->
-					<div class="raid-hero-halftone"></div>
-					<!-- BOSS rotated stamp — sits in the top-right (decorative, pointer-events: none) -->
-					<div class="raid-hero-boss-stamp">
-						<span>BOSS</span>
-					</div>
-
 					<div class="raid-hero-top">
 						<div class="raid-hero-sprite-col">
 							<div class="raid-boss-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
@@ -569,15 +613,13 @@ else if ( guildView == "myguild" )
 						<div class="raid-hero-info-col">
 							<span class="raid-boss-name" style="color: @elementColor">@raid.BossName</span>
 							<div class="raid-boss-tags">
-								<!-- Element stamp pill — solid element bg, rotated -2° (decorative) -->
+								<!-- Meta-pill stamps (Persona vocabulary, no rotation) -->
 								<div class="raid-stamp-pill element-stamp" style="background-color: @elementColor">
 									<span>@raid.BossElement</span>
 								</div>
-								<!-- Level gold stamp pill, rotated +2° -->
 								<div class="raid-stamp-pill level-stamp">
 									<span>Lv @raid.BossLevel</span>
 								</div>
-								<!-- Rarity purple stamp pill, rotated -2° -->
 								<div class="raid-stamp-pill rarity-stamp">
 									<span>@GetRaidBossRarity()</span>
 								</div>
@@ -630,8 +672,6 @@ else if ( guildView == "myguild" )
 
 				<div class="raid-info-columns">
 					<div class="raid-combos-card p5-stamp">
-						<!-- Halftone overlay -->
-						<div class="raid-combos-halftone"></div>
 						<span class="raid-section-title">@L("ui.guild.combo_bonuses")</span>
 						<div class="combo-entry">
 							<div class="combo-edge" style="background-color: #ef4444"></div>
@@ -812,93 +852,90 @@ else if ( guildView == "myguild" )
 		}
 		else
 		{
-			<!-- THE PLAZA — guild-as-a-place. One scene, no tabs. -->
+			<!-- THE PLAZA — guild-as-a-place. One scene, no tabs.
+			     Halftone paper texture removed — clean dark stage backdrop. -->
 			<div class="guild-plaza">
-				<!-- Plaza-wide halftone paper texture (very low alpha) -->
-				<div class="plaza-halftone"></div>
-
-				<!-- TOPBAR — right-aligned action icons. Browse stays here so in-guild
-				     users can still find other guilds without leaving the plaza first. -->
-				<div class="plaza-topbar">
-					@if ( pendingRequests.Count > 0 )
-					{
-						<div class="plaza-requests-pill" onclick=@(() => { showRequestsModal = true; SoundManager.PlayClick(); })>
-							<iconify icon="lucide:mailbox" Size=@(13) Color="#fbbf24" />
-							<span>@pendingRequests.Count pending</span>
-						</div>
-					}
-					<div class="plaza-topbar-spacer"></div>
-					<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; viewingGuild = null; LoadGuildsFromApi(); })>
-						<iconify icon="lucide:search" Size=@(16) Color="rgba(255,255,255,0.8)" />
+				<!-- ACTION TILES — pinned absolutely top-right of the plaza.
+				     Sits OUTSIDE the header row so flex math doesn't fight with
+				     the banner's full-width layout. No back button on hub. -->
+				<div class="plaza-action-grid">
+					<button class="plaza-action-tile" onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; viewingGuild = null; LoadGuildsFromApi(); })>
+						<iconify icon="lucide:search" Size=@(22) Color="#a78bfa" />
+						<span>Browse</span>
 					</button>
 					@if ( gm.IsOfficer )
 					{
-						<button class="plaza-icon-btn" onclick=@(() => { OnInviteClicked(); })>
-							<iconify icon="lucide:user-plus" Size=@(16) Color="#4ade80" />
+						<button class="plaza-action-tile officer" onclick=@(() => { OnInviteClicked(); })>
+							<iconify icon="lucide:user-plus" Size=@(22) Color="#4ade80" />
+							<span>Invite</span>
+							@if ( pendingRequests.Count > 0 )
+							{
+								<div class="plaza-action-badge">@pendingRequests.Count</div>
+							}
 						</button>
-						<button class="plaza-icon-btn" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
-							<iconify icon="lucide:settings" Size=@(16) Color="rgba(255,255,255,0.8)" />
+						<button class="plaza-action-tile officer" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
+							<iconify icon="lucide:settings" Size=@(22) Color="#fbbf24" />
+							<span>Settings</span>
 						</button>
 					}
-					<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayBack(); OnBack?.Invoke(); })>
-						<iconify icon="lucide:arrow-left" Size=@(16) Color="rgba(255,255,255,0.8)" />
-					</button>
 				</div>
 
-				<!-- BANNER — P5 headline stamp. Angular emblem slab on the LEFT,
-				     guild name + meta stack to the RIGHT, XP slab at the bottom. -->
-				<div class="plaza-banner">
-					<!-- Halftone overlay on the banner block for paper texture -->
-					<div class="banner-halftone"></div>
-
-					<div class="banner-row">
-						<!-- Emblem SLAB — angular 96x96 with corner-cut accent -->
-						<div class="banner-emblem-slab" style="background-color: @guild.EmblemColor">
-							<div class="banner-emblem-cut"></div>
-							<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(64) Color="#ffffff" />
+				<!-- HEADER ROW — compact banner on the left, action tiles float
+				     in via absolute positioning. -->
+				<div class="plaza-header-row">
+					<!-- BANNER — compact slab. Emblem + name + tag/level +
+					     XP bar all stacked tight. -->
+					<div class="plaza-banner">
+						<div class="banner-row">
+							<div class="banner-emblem-slab shape-@guild.EmblemShape" style="background-color: @guild.EmblemColor">
+								<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(56) Color="#ffffff" />
+							</div>
+							<div class="banner-stack">
+								<span class="banner-name">@guild.Name</span>
+								<div class="banner-stamps">
+									<div class="banner-stamp tag-stamp">
+										<span>[@guild.Tag]</span>
+									</div>
+									<div class="banner-stamp lv-stamp">
+										<span>LV @guild.Level</span>
+									</div>
+									@* Rank tier stamp removed — guilds don't have ranking
+									   tiers like Bronze/Silver/Gold in this game. *@
+								</div>
+							</div>
 						</div>
 
-						<!-- Name + stamps stack -->
-						<div class="banner-stack">
-							<span class="banner-name">@guild.Name</span>
-							<div class="banner-stamps">
-								<div class="banner-stamp tag-stamp">
-									<span>[@guild.Tag]</span>
-								</div>
-								<div class="banner-stamp lv-stamp">
-									<span>LV @guild.Level</span>
-								</div>
-								<div class="banner-stamp rank-stamp" style="background-color: @rankColor">
-									<span>@gm.GuildRankTier</span>
+						<div class="banner-xp-slab">
+							<div class="banner-xp-bar">
+								<div class="banner-xp-fill" style="width: @GetGuildXPPercent()%"></div>
+								<div class="banner-xp-overlay">
+									<span class="banner-xp-pct">@GetGuildXPPercent()%</span>
+									<span class="banner-xp-text">@($"{GetGuildXPInLevel():N0}") / @($"{GetGuildXPNeededForNext():N0}") XP</span>
 								</div>
 							</div>
 						</div>
 					</div>
 
-					<!-- XP slab — chunky 14px bar with overlaid % text -->
-					<div class="banner-xp-slab">
-						<div class="banner-xp-bar">
-							<div class="banner-xp-fill" style="width: @GetGuildXPPercent()%"></div>
-							<div class="banner-xp-overlay">
-								<span class="banner-xp-pct">@GetGuildXPPercent()%</span>
-								<span class="banner-xp-text">@($"{GetGuildXPInLevel():N0}") / @($"{GetGuildXPNeededForNext():N0}") XP</span>
-							</div>
-						</div>
-					</div>
 				</div>
 
-				<!-- MONUMENTS — MOTD stone (left) + Raid monument (right) -->
+				<!-- MONUMENTS — Announcement + Description side by side (+ Raid card
+				     as a third column when raids active). Clean Persona-stamp slab
+				     vocabulary; no corner-cut / halftone / index. Splitting the
+				     announcement into two equal cards kills the "super long strip"
+				     problem and gives officers a place to edit the long-form
+				     description without diving into Settings. -->
 				<div class="plaza-monuments">
-					<!-- MOTD stone -->
+					<!-- Announcement card -->
 					<div class="motd-stone">
-						<!-- P5 stamp layers: corner-cut (gold) + halftone + index "01" -->
-						<div class="monument-cut gold"></div>
-						<div class="monument-halftone"></div>
-						<div class="monument-index gold"><span>01</span></div>
-
 						<div class="motd-stone-header">
 							<iconify icon="lucide:megaphone" Size=@(13) Color="#fbbf24" />
 							<span class="motd-stone-title">Announcement</span>
+							@if ( gm.IsOfficer && !editingMotd )
+							{
+								<button class="motd-edit-inline" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })>
+									<iconify icon="lucide:pencil" Size=@(10) Color="rgba(255,255,255,0.55)" />
+								</button>
+							}
 						</div>
 						@if ( editingMotd )
 						{
@@ -911,25 +948,41 @@ else if ( guildView == "myguild" )
 						else
 						{
 							<span class="motd-text">@(string.IsNullOrEmpty( guild.Motd ) ? L("ui.guild.no_announcement") : guild.Motd)</span>
-							@if ( gm.IsOfficer )
-							{
-								<button class="motd-edit-btn" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })>
-									<iconify icon="lucide:pencil" Size=@(11) Color="rgba(255,255,255,0.6)" />
-									<span>Edit</span>
-								</button>
-							}
 						}
 					</div>
 
-					<!-- Raid monument -->
+					<!-- Description card — long-form pitch shown to browsers and
+					     members. Lives next to Announcement (not inside Settings)
+					     so officers can iterate on it without opening a drawer. -->
+					<div class="desc-stone">
+						<div class="motd-stone-header">
+							<iconify icon="lucide:file-text" Size=@(13) Color="#a78bfa" />
+							<span class="motd-stone-title">Description</span>
+							@if ( gm.IsOfficer && !editingDescription )
+							{
+								<button class="motd-edit-inline" onclick=@(() => { StartEditDescription(); SoundManager.PlayClick(); })>
+									<iconify icon="lucide:pencil" Size=@(10) Color="rgba(255,255,255,0.55)" />
+								</button>
+							}
+						</div>
+						@if ( editingDescription )
+						{
+							<TextEntry class="motd-input" @ref="descriptionDraftInput" Text=@descriptionDraft />
+							<div class="motd-actions">
+								<div class="guild-btn accept-btn" onclick=@(() => { SaveDescription(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
+								<div class="guild-btn deny-btn" onclick=@CancelDescription><span>@L("ui.common.cancel")</span></div>
+							</div>
+						}
+						else
+						{
+							<span class="motd-text">@(string.IsNullOrEmpty( guild.Description ) ? "No description yet — pitch your guild to recruits." : guild.Description)</span>
+						}
+					</div>
+
+					<!-- Raid monument (gated via GuildManager.RaidsEnabled — raid == null when off) -->
 					@if ( raid != null )
 					{
 						<div class="raid-monument" onclick=@(() => { SoundManager.PlayForward(); raidViewOpen = true; })>
-							<!-- P5 stamp layers: corner-cut (red) + halftone + index "BOSS" -->
-							<div class="monument-cut red"></div>
-							<div class="monument-halftone"></div>
-							<div class="monument-index red"><span>BOSS</span></div>
-
 							<div class="raid-monument-header">
 								<iconify icon="lucide:swords" Size=@(13) Color="#fca5a5" />
 								<span class="raid-monument-title">RAID</span>
@@ -964,13 +1017,12 @@ else if ( guildView == "myguild" )
 					<!-- MEMBERS -->
 					<div class="plaza-members">
 						<div class="plaza-members-row">
-							<!-- P5 stamp layers: ROSTER stamp + halftone bg + count chip -->
-							<div class="plaza-box-halftone"></div>
-							<div class="plaza-box-stamp roster-stamp">
-								<span>ROSTER</span>
-							</div>
-							<div class="plaza-box-count">
-								<span>@members.Count · @gm.OnlineCount ONLINE</span>
+							<!-- Plain gold section header + dark count chip — no stamp tag, no halftone -->
+							<div class="plaza-box-header">
+								<span class="plaza-box-section-title">ROSTER</span>
+								<div class="plaza-box-count">
+									<span>@members.Count · @gm.OnlineCount ONLINE</span>
+								</div>
 							</div>
 
 							<div class="plaza-portraits-grid">
@@ -1005,10 +1057,9 @@ else if ( guildView == "myguild" )
 					<!-- PERKS shrine -->
 					<div class="plaza-perks">
 						<div class="plaza-perks-list">
-							<!-- P5 stamp layers: PERKS stamp + halftone bg -->
-							<div class="plaza-box-halftone"></div>
-							<div class="plaza-box-stamp perks-stamp">
-								<span>PERKS</span>
+							<!-- Plain gold section header — no stamp tag, no halftone -->
+							<div class="plaza-box-header">
+								<span class="plaza-box-section-title">PERKS</span>
 							</div>
 
 							<div class="plaza-perks-rows">
@@ -1023,13 +1074,8 @@ else if ( guildView == "myguild" )
 										{
 											<div class="perk-row-edge"></div>
 										}
-										else
-										{
-											<!-- LOCKED corner stamp (decorative, non-clickable, no rotate) -->
-											<div class="perk-row-locked-stamp">
-												<span>LOCKED</span>
-											</div>
-										}
+										@* LOCKED stamp removed — the dimmed row + grey body
+										   already conveys "locked" without a separate badge. *@
 
 										<div class="perk-row-disc">
 											<iconify icon="@GetPerkIcon( p.Level )" Size=@(18) Color="@(unlocked ? "#1a1100" : "rgba(255,255,255,0.28)")" />
@@ -1086,140 +1132,153 @@ else if ( guildView == "myguild" )
 		}
 
 		<!-- SETTINGS MODAL — replaces the old Settings tab. Folds emblem editor + guild settings. -->
-		@if ( showSettingsModal )
-		{
-			<div class="confirm-overlay" onclick=@(() => { showSettingsModal = false; })>
-				<div class="settings-modal" onclick:stopPropagation>
-					<div class="settings-modal-header">
+		<!-- SETTINGS DRAWER — slides in from the right. Markup is always
+		     mounted so the slide transition replays every open; visibility
+		     is controlled via the .open class. The dim layer + drawer share
+		     the .settings-drawer-root wrapper which controls pointer-events
+		     so the plaza behind stays interactive when the drawer is closed. -->
+		<div class="settings-drawer-root @(showSettingsModal ? "open" : "")">
+			<div class="settings-drawer-dim" onclick=@(() => { showSettingsModal = false; })></div>
+			<div class="settings-drawer" onclick:stopPropagation>
+				<div class="settings-drawer-header">
+					<div class="settings-drawer-titleblock">
 						<iconify icon="lucide:settings" Size=@(16) Color="#a78bfa" />
-						<span class="settings-modal-title">Guild Settings</span>
-						<button class="settings-modal-close" onclick=@(() => showSettingsModal = false)>
-							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
-						</button>
+						<span class="settings-drawer-title">Guild Settings</span>
 					</div>
-					<div class="settings-modal-body">
+					<button class="settings-drawer-close" onclick=@(() => showSettingsModal = false)>
+						<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.85)" />
+					</button>
+				</div>
 
-						<!-- Emblem block -->
-						<div class="settings-modal-section">
-							<div class="settings-modal-section-label">
-								<iconify icon="lucide:shield" Size=@(12) Color="#a78bfa" />
-								<span>Emblem</span>
-							</div>
-							<div class="settings-emblem-row">
-								<div class="settings-emblem-preview shape-@emblemShape" style="background-color: @emblemColor">
-									<iconify icon="@GetEmblemIcon( emblemIcon )" Size=@(40) Color="#ffffff" />
-								</div>
-								<div class="settings-emblem-pickers">
-									<div class="settings-pick-row">
-										@foreach ( var color in EmblemColors )
-										{
-											<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
-										}
-									</div>
-									<div class="settings-pick-row">
-										@foreach ( var icon in EmblemIcons )
-										{
-											<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
-												<iconify icon="@icon.Value" Size=@(16) Color="#ffffff" />
-											</div>
-										}
-									</div>
-									<div class="settings-pick-row">
-										@foreach ( var shape in EmblemShapes )
-										{
-											<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
-												<iconify icon="@shape.Value" Size=@(14) Color="#ffffff" />
-											</div>
-										}
-									</div>
-								</div>
-							</div>
-						</div>
-
-						<!-- Description -->
-						<div class="settings-modal-section">
-							<div class="settings-modal-section-label">
-								<iconify icon="lucide:file-text" Size=@(12) Color="#a78bfa" />
-								<span>@L("ui.guild.description")</span>
-							</div>
-							<TextEntry class="setting-desc-input" @ref="settingsDescInput" Text=@settingsDescription></TextEntry>
-						</div>
-
-						<!-- Membership rules -->
-						<div class="settings-modal-section">
-							<div class="settings-modal-section-label">
-								<iconify icon="lucide:users-round" Size=@(12) Color="#a78bfa" />
-								<span>Membership</span>
-							</div>
-							<div class="settings-row">
-								<span class="settings-row-label">@L("ui.guild.join_mode")</span>
-								<div class="settings-row-options">
-									@foreach ( GuildJoinMode mode in Enum.GetValues( typeof( GuildJoinMode ) ) )
-									{
-										<div class="setting-option @(settingsJoinMode == mode ? "selected" : "")" onclick=@(() => { settingsJoinMode = mode; SoundManager.PlayClick(); })>
-											<span>@mode.ToString()</span>
-										</div>
-									}
-								</div>
-							</div>
-							<div class="settings-row">
-								<span class="settings-row-label">@L("ui.guild.min_level")</span>
-								<div class="settings-row-options">
-									@foreach ( var lvl in new[] { 1, 10, 25, 50 } )
-									{
-										<div class="setting-option @(settingsMinLevel == lvl ? "selected" : "")" onclick=@(() => { settingsMinLevel = lvl; SoundManager.PlayClick(); })>
-											<span>@(lvl == 1 ? "None" : $"Lv {lvl}")</span>
-										</div>
-									}
-								</div>
-							</div>
-							<div class="settings-row">
-								<span class="settings-row-label">@L("ui.guild.min_rank")</span>
-								<div class="settings-row-options">
-									@foreach ( var rank in new[] { "Unranked", "Bronze", "Silver", "Gold" } )
-									{
-										<div class="setting-option @(settingsMinRank == rank ? "selected" : "")" onclick=@(() => { settingsMinRank = rank; SoundManager.PlayClick(); })>
-											<span>@rank</span>
-										</div>
-									}
-								</div>
-							</div>
-							<div class="settings-row">
-								<span class="settings-row-label">@L("ui.guild.auto_kick")</span>
-								<div class="setting-toggle @(settingsAutoKick ? "active" : "")" onclick=@(() => { settingsAutoKick = !settingsAutoKick; SoundManager.PlayClick(); })>
-									<span>@(settingsAutoKick ? "ON" : "OFF")</span>
-								</div>
-							</div>
-							@if ( settingsAutoKick )
-							{
-								<div class="settings-row">
-									<span class="settings-row-label">@L("ui.guild.inactive_days")</span>
-									<div class="settings-row-options">
-										@foreach ( var days in new[] { 3, 7, 14, 30 } )
-										{
-											<div class="setting-option @(settingsInactiveDays == days ? "selected" : "")" onclick=@(() => { settingsInactiveDays = days; SoundManager.PlayClick(); })>
-												<span>@days days</span>
-											</div>
-										}
-									</div>
-								</div>
-							}
-						</div>
-
+				<!-- Section nav — quick anchors. Pure visual cue; the body
+				     scrolls and each section is a labeled slab below. -->
+				<div class="settings-drawer-nav">
+					<div class="settings-drawer-nav-pill active">
+						<iconify icon="lucide:shield" Size=@(11) Color="#a78bfa" />
+						<span>Emblem</span>
 					</div>
-					<div class="settings-modal-footer">
-						<button class="guild-btn deny-btn" onclick=@(() => showSettingsModal = false)><span>@L("ui.common.cancel")</span></button>
-						@if ( gm.IsOfficer )
-						{
-							<button class="guild-btn accept-btn" onclick=@(() => { SaveEmblem(); SaveSettings(); showSettingsModal = false; })>
-								<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
-								<span>Save Changes</span>
-							</button>
-						}
+					<div class="settings-drawer-nav-pill">
+						<iconify icon="lucide:users-round" Size=@(11) Color="#a78bfa" />
+						<span>Membership</span>
 					</div>
 				</div>
+
+				<div class="settings-drawer-body">
+
+					<!-- Emblem block -->
+					<div class="settings-drawer-section">
+						<div class="settings-drawer-section-label">
+							<iconify icon="lucide:shield" Size=@(12) Color="#a78bfa" />
+							<span>Emblem</span>
+						</div>
+						<div class="settings-emblem-row">
+							<div class="settings-emblem-preview shape-@emblemShape" style="background-color: @emblemColor">
+								<iconify icon="@GetEmblemIcon( emblemIcon )" Size=@(40) Color="#ffffff" />
+							</div>
+							<div class="settings-emblem-pickers">
+								<span class="settings-pick-caption">Color</span>
+								<div class="settings-pick-row">
+									@foreach ( var color in EmblemColors )
+									{
+										<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
+									}
+								</div>
+								<span class="settings-pick-caption">Icon</span>
+								<div class="settings-pick-row">
+									@foreach ( var icon in EmblemIcons )
+									{
+										<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
+											<iconify icon="@icon.Value" Size=@(16) Color="#ffffff" />
+										</div>
+									}
+								</div>
+								<span class="settings-pick-caption">Shape</span>
+								<div class="settings-pick-row">
+									@foreach ( var shape in EmblemShapes )
+									{
+										<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
+											<iconify icon="@shape.Value" Size=@(14) Color="#ffffff" />
+										</div>
+									}
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Membership rules -->
+					<div class="settings-drawer-section">
+						<div class="settings-drawer-section-label">
+							<iconify icon="lucide:users-round" Size=@(12) Color="#a78bfa" />
+							<span>Membership</span>
+						</div>
+						<div class="settings-row">
+							<span class="settings-row-label">@L("ui.guild.join_mode")</span>
+							<div class="settings-row-options">
+								@foreach ( GuildJoinMode mode in Enum.GetValues( typeof( GuildJoinMode ) ) )
+								{
+									<div class="setting-option @(settingsJoinMode == mode ? "selected" : "")" onclick=@(() => { settingsJoinMode = mode; SoundManager.PlayClick(); })>
+										<span>@mode.ToString()</span>
+									</div>
+								}
+							</div>
+						</div>
+						<div class="settings-row">
+							<span class="settings-row-label">@L("ui.guild.min_level")</span>
+							<div class="settings-row-options">
+								@foreach ( var lvl in new[] { 1, 10, 25, 50 } )
+								{
+									<div class="setting-option @(settingsMinLevel == lvl ? "selected" : "")" onclick=@(() => { settingsMinLevel = lvl; SoundManager.PlayClick(); })>
+										<span>@(lvl == 1 ? "None" : $"Lv {lvl}")</span>
+									</div>
+								}
+							</div>
+						</div>
+						<div class="settings-row">
+							<span class="settings-row-label">@L("ui.guild.min_rank")</span>
+							<div class="settings-row-options">
+								@foreach ( var rank in new[] { "Unranked", "Bronze", "Silver", "Gold" } )
+								{
+									<div class="setting-option @(settingsMinRank == rank ? "selected" : "")" onclick=@(() => { settingsMinRank = rank; SoundManager.PlayClick(); })>
+										<span>@rank</span>
+									</div>
+								}
+							</div>
+						</div>
+						<div class="settings-row">
+							<span class="settings-row-label">@L("ui.guild.auto_kick")</span>
+							<div class="setting-toggle @(settingsAutoKick ? "active" : "")" onclick=@(() => { settingsAutoKick = !settingsAutoKick; SoundManager.PlayClick(); })>
+								<span>@(settingsAutoKick ? "ON" : "OFF")</span>
+							</div>
+						</div>
+						@if ( settingsAutoKick )
+						{
+							<div class="settings-row">
+								<span class="settings-row-label">@L("ui.guild.inactive_days")</span>
+								<div class="settings-row-options">
+									@foreach ( var days in new[] { 3, 7, 14, 30 } )
+									{
+										<div class="setting-option @(settingsInactiveDays == days ? "selected" : "")" onclick=@(() => { settingsInactiveDays = days; SoundManager.PlayClick(); })>
+											<span>@days days</span>
+										</div>
+									}
+								</div>
+							</div>
+						}
+					</div>
+
+				</div>
+				<div class="settings-drawer-footer">
+					<button class="guild-btn deny-btn" onclick=@(() => showSettingsModal = false)><span>@L("ui.common.cancel")</span></button>
+					@if ( gm.IsOfficer )
+					{
+						<button class="guild-btn accept-btn" onclick=@(() => { SaveEmblem(); SaveSettings(); showSettingsModal = false; })>
+							<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
+							<span>Save Changes</span>
+						</button>
+					}
+				</div>
 			</div>
-		}
+		</div>
 
 		<!-- MEMBER ACTION MODAL — promote/demote/kick (officer-only) on member click -->
 		@if ( showMemberMenu && selectedMember != null )
@@ -1316,18 +1375,7 @@ else if ( guildView == "myguild" )
 		}
 
 		<!-- Confirm Dialog -->
-		@if ( showConfirmDialog )
-		{
-			<div class="confirm-overlay" onclick=@(() => showConfirmDialog = false)>
-				<div class="confirm-dialog">
-					<span class="confirm-text">@confirmMessage</span>
-					<div class="confirm-actions">
-						<div class="guild-btn confirm-yes-btn" onclick=@ConfirmAction><span>Yes</span></div>
-						<div class="guild-btn confirm-no-btn" onclick=@(() => showConfirmDialog = false)><span>@L("ui.common.cancel")</span></div>
-					</div>
-				</div>
-			</div>
-		}
+		@* Confirm dialogs use shared <ConfirmDialog> component (mounted globally in GameHUD) *@
 
 		<!-- Raid Results Overlay -->
 		@if ( showRaidResults )
@@ -1443,6 +1491,12 @@ else if ( guildView == "myguild" )
 	private bool editingMotd = false;
 	private string motdDraft = "";
 
+	// Description editing — pulled out of Settings so officers can edit
+	// the long-form pitch right from the plaza, next to Announcement.
+	private bool editingDescription = false;
+	private string descriptionDraft = "";
+	private TextEntry descriptionDraftInput;
+
 	// Emblem editing
 	private string emblemColor = "#7c3aed";
 	private string emblemIcon = "dragon";
@@ -1455,12 +1509,8 @@ else if ( guildView == "myguild" )
 	private bool settingsAutoKick = false;
 	private int settingsInactiveDays = 3;
 	private string settingsDescription = "";
-	private TextEntry settingsDescInput;
 
-	// Confirm dialog
-	private bool showConfirmDialog = false;
-	private string confirmMessage = "";
-	private Action confirmAction;
+	// Confirm dialog state moved to shared ConfirmDialog component (mounted globally in GameHUD)
 
 	// Picker overlay
 	private bool showPicker = false;
@@ -1500,15 +1550,16 @@ else if ( guildView == "myguild" )
 		{ "crown",   "lucide:crown" },
 		{ "shield",  "lucide:shield" },
 		{ "wolf",    "game-icons:wolf-head" },
-		{ "phoenix", "game-icons:phoenix" },
+		{ "phoenix", "game-icons:eagle-emblem" },
 		{ "anchor",  "lucide:anchor" },
 		{ "skull",   "lucide:skull" }
 	};
 
 	private static readonly Dictionary<string, string> EmblemShapes = new()
 	{
-		{ "square", "lucide:square" },
-		{ "circle", "lucide:circle" }
+		{ "square",  "lucide:square" },
+		{ "rounded", "ph:square" },
+		{ "circle",  "lucide:circle" }
 	};
 
 	private static IEnumerable<T[]> ChunkArray<T>( T[] source, int size )
@@ -1562,6 +1613,28 @@ else if ( guildView == "myguild" )
 	{
 		base.Tick();
 		SpriteAnimator.Update();
+
+		// Poll browse-search input — TextEntry has no onchange in s&box, so
+		// we sync the backing field every tick when the browse view is open.
+		if ( guildView == "browse" && browseSearchInput != null )
+		{
+			var t = browseSearchInput.Text ?? "";
+			if ( t != browseSearchQuery )
+			{
+				browseSearchQuery = t;
+			}
+		}
+
+		// Poll plaza description editor while open — keeps draft in sync so
+		// SaveDescription() picks up the latest text (TextEntry has no onchange).
+		if ( editingDescription && descriptionDraftInput != null )
+		{
+			var t = descriptionDraftInput.Text ?? "";
+			if ( t != descriptionDraft )
+			{
+				descriptionDraft = t;
+			}
+		}
 	}
 
 	protected override int BuildHash()
@@ -1573,7 +1646,6 @@ else if ( guildView == "myguild" )
 		hash.Add( showRaidTeamSelect );
 		hash.Add( showRaidBattle );
 		hash.Add( showRaidResults );
-		hash.Add( showConfirmDialog );
 		hash.Add( showPicker );
 		hash.Add( showPermissionMatrix );
 		hash.Add( showSettingsModal );
@@ -1582,6 +1654,9 @@ else if ( guildView == "myguild" )
 		hash.Add( raidViewOpen );
 		hash.Add( hoveredMember );
 		hash.Add( hoveredPerk );
+		hash.Add( browseSearchQuery );
+		hash.Add( editingMotd );
+		hash.Add( editingDescription );
 		return hash.ToHashCode();
 	}
 
@@ -1678,6 +1753,11 @@ else if ( guildView == "myguild" )
 	private List<GuildAdvertisement> apiGuilds = new();
 	private bool isLoadingGuilds = false;
 
+	// Browse search — filters visible guilds by name OR tag as you type.
+	// Uses TextEntry + polling pattern (TextEntry doesn't expose onchange).
+	private TextEntry browseSearchInput;
+	private string browseSearchQuery = "";
+
 	private List<GuildAdvertisement> GetVisibleGuilds()
 	{
 		// Combine RPC-discovered guilds (nearby) with API-fetched guilds (all)
@@ -1692,7 +1772,19 @@ else if ( guildView == "myguild" )
 		foreach ( var g in rpcGuilds )
 			combined[g.GuildId] = g;
 
-		return combined.Values.ToList();
+		var all = combined.Values.ToList();
+
+		// Filter by search query (name OR tag, case-insensitive contains).
+		if ( !string.IsNullOrWhiteSpace( browseSearchQuery ) )
+		{
+			var q = browseSearchQuery.Trim();
+			all = all.Where( g =>
+				(g.GuildName != null && g.GuildName.Contains( q, StringComparison.OrdinalIgnoreCase )) ||
+				(g.GuildTag != null && g.GuildTag.Contains( q, StringComparison.OrdinalIgnoreCase ))
+			).ToList();
+		}
+
+		return all;
 	}
 
 	private async void LoadGuildsFromApi()
@@ -1776,6 +1868,26 @@ else if ( guildView == "myguild" )
 		editingMotd = false;
 	}
 
+	// Description (long-form pitch, lives next to Announcement on the plaza)
+	private void StartEditDescription()
+	{
+		descriptionDraft = GuildManager.Instance?.Guild?.Description ?? "";
+		editingDescription = true;
+	}
+
+	private void SaveDescription()
+	{
+		descriptionDraft = descriptionDraftInput?.Text ?? "";
+		GuildManager.Instance?.UpdateDescription( descriptionDraft );
+		settingsDescription = descriptionDraft;
+		editingDescription = false;
+	}
+
+	private void CancelDescription()
+	{
+		editingDescription = false;
+	}
+
 	// Emblem
 	private void SaveEmblem()
 	{
@@ -1786,25 +1898,37 @@ else if ( guildView == "myguild" )
 	// Settings
 	private void SaveSettings()
 	{
-		settingsDescription = settingsDescInput?.Text ?? settingsDescription;
+		// Description editing moved to the plaza card; pull the live value
+		// from the Guild so a Settings save doesn't clobber a fresh edit.
+		var liveDesc = GuildManager.Instance?.Guild?.Description ?? settingsDescription;
 		GuildManager.Instance?.UpdateGuildSettings( settingsJoinMode, settingsMinLevel, settingsMinRank, settingsAutoKick, settingsInactiveDays,
-			settingsDescription );
+			liveDesc );
 		SoundManager.PlaySuccess();
 	}
 
-	// Danger Zone
+	// Danger Zone — uses shared ConfirmDialog (mounted globally in GameHUD)
 	private void OnLeaveGuild()
 	{
-		confirmMessage = "Are you sure you want to leave this guild? You can't rejoin for 24 hours.";
-		confirmAction = () => { GuildManager.Instance?.LeaveGuild(); showConfirmDialog = false; };
-		showConfirmDialog = true;
+		ConfirmDialog.Show(
+			title: "Leave this guild?",
+			body: "You can't rejoin for 24 hours.",
+			destructiveLabel: "LEAVE",
+			cancelLabel: "STAY",
+			tone: "red",
+			iconName: "lucide:door-open",
+			onConfirm: () => GuildManager.Instance?.LeaveGuild() );
 	}
 
 	private void OnDisbandGuild()
 	{
-		confirmMessage = "Are you sure you want to disband this guild? This cannot be undone.";
-		confirmAction = () => { GuildManager.Instance?.DisbandGuild(); showConfirmDialog = false; };
-		showConfirmDialog = true;
+		ConfirmDialog.Show(
+			title: "Disband this guild?",
+			body: "This cannot be undone. Every member will be removed.",
+			destructiveLabel: "DISBAND",
+			cancelLabel: "CANCEL",
+			tone: "red",
+			iconName: "lucide:triangle-alert",
+			onConfirm: () => GuildManager.Instance?.DisbandGuild() );
 	}
 
 	private void OnTransferOwnership()
@@ -1817,24 +1941,26 @@ else if ( guildView == "myguild" )
 
 	private void OnClaimLeadership()
 	{
-		confirmMessage = "Claim leadership of this guild? The current leader has been inactive for 30+ days.";
-		confirmAction = () => { GuildManager.Instance?.ClaimLeadership(); showConfirmDialog = false; };
-		showConfirmDialog = true;
+		ConfirmDialog.Show(
+			title: "Claim leadership?",
+			body: "The current leader has been inactive for 30+ days.",
+			destructiveLabel: "CLAIM",
+			cancelLabel: "CANCEL",
+			tone: "purple",
+			iconName: "lucide:crown",
+			onConfirm: () => GuildManager.Instance?.ClaimLeadership() );
 	}
 
 	private void ConfirmKick( GuildMemberInfo member )
 	{
-		confirmMessage = $"Kick {member.Name}? They won't be able to rejoin for 24 hours.";
-		confirmAction = () => { GuildManager.Instance?.KickMember( member.SteamId ); showConfirmDialog = false; };
-		showConfirmDialog = true;
-	}
-
-	private void ConfirmAction()
-	{
-		confirmAction?.Invoke();
-		confirmAction = null;
-		confirmMessage = "";
-		showConfirmDialog = false;
+		ConfirmDialog.Show(
+			title: $"Kick {member.Name}?",
+			body: "They won't be able to rejoin for 24 hours.",
+			destructiveLabel: "KICK",
+			cancelLabel: "CANCEL",
+			tone: "red",
+			iconName: "lucide:user-x",
+			onConfirm: () => GuildManager.Instance?.KickMember( member.SteamId ) );
 	}
 
 	// Raids — helpers

@@ -103,144 +103,166 @@ public sealed class TutorialManager : Component
 	}
 
 	/// <summary>
-	/// Initialize all tutorial steps
+	/// Initialize all tutorial steps. Walks the player through one full expedition +
+	/// one rigged contract success on a tutorial-only zone. Real rewards stick.
+	///
+	/// Steps fall into three groups:
+	///     1. INFO STEPS — no AdvanceEvent. Show a centered bubble; player clicks Next.
+	///     2. ACTION STEPS — have AdvanceEvent. Show a hint near a TargetSelector;
+	///        the system advances when the player does the thing.
+	///     3. RIGGED STEPS — RiggedSuccess flips on. Other systems read this to
+	///        force friendly outcomes (easy enemy spawn / contract success).
 	/// </summary>
 	private void InitializeSteps()
 	{
 		Steps = new List<TutorialStep>
 		{
+			// 1 — Welcome (info)
 			new TutorialStep
 			{
 				Id = "welcome",
-				Title = "Welcome, Tamer!",
-				Message = "Welcome to Beastborne! I'll guide you through your journey as a Beast Tamer. Together, we'll explore, battle, and catch powerful beasts!",
-				BackgroundImage = "ui/main menu/mainmenu_background.png",
-				Position = TutorialPosition.Center
+				Title = "Welcome, Tamer.",
+				Message = "I'll walk you through your first expedition. We'll explore a zone, fight a few wild Beasts, and tame one to add to your roster. Take it at your own pace.",
+				Position = TutorialPosition.Center,
 			},
+
+			// 2 — Open the World Map (action: player clicks World Map)
 			new TutorialStep
 			{
-				Id = "beasts_intro",
-				Title = "Your Beasts",
-				Message = "This is your beast collection. You start with one loyal companion who will fight by your side. Take good care of them!",
-				TargetTab = "monsters",
-				BackgroundImage = "ui/menus/monsters_background.png",
-				Position = TutorialPosition.Center
+				Id = "open-map",
+				Title = "Open the World Map",
+				Message = "Every expedition starts here. Click the Expedition tab on the bottom command bar.",
+				ActionHint = "Click the Expedition tab.",
+				TargetSelector = ".cb-tab-expedition",
+				AdvanceEvent = "worldmap.opened",
 			},
+
+			// 3 — Pick the tutorial zone
 			new TutorialStep
 			{
-				Id = "beast_stats",
-				Title = "Beast Stats",
-				Message = "Each beast has 6 stats: HP, ATK, DEF, SpA (Special Attack), SpD (Special Defense), and SPD. Genetics affect their growth - higher genes mean stronger stats!",
-				TargetTab = "monsters",
-				BackgroundImage = "ui/menus/monsters_background.png",
-				Position = TutorialPosition.Center
+				Id = "pick-zone",
+				Title = "Saltmoor Approach",
+				Message = "Click your first zone — a friendly stretch of coast just north of Saltmoor Cove. Perfect for a first run.",
+				ActionHint = "Pick Saltmoor Approach.",
+				TargetSelector = ".zone-card.tutorial-zone",
+				AdvanceEvent = "worldmap.zone-selected",
 			},
+
+			// 4 — Build a team
 			new TutorialStep
 			{
-				Id = "fusion_intro",
-				Title = "Fusion Basics",
-				Message = "Fusion lets you combine TWO beasts of the SAME SPECIES to create a new offspring. Both parents are consumed in the process, but the child inherits their best genetics!",
-				TargetTab = "monsters",
-				BackgroundImage = "ui/menus/fusion_background.png",
-				Position = TutorialPosition.Center
+				Id = "build-team",
+				Title = "Build Your Team",
+				Message = "Add your starter to the team slot. You only need one Beast for now — once you tame more, fill all three slots before tougher zones.",
+				ActionHint = "Drag your starter into Slot 1.",
+				TargetSelector = ".picker-monster.starter",
+				AdvanceEvent = "team.beast-added",
 			},
+
+			// 5 — Embark
 			new TutorialStep
 			{
-				Id = "fusion_benefits",
-				Title = "Why Fuse?",
-				Message = "Fused beasts inherit genes from BOTH parents, so you can breed for perfect stats over generations. Best of all - fused beasts have NO CONTRACT DEMANDS! They're loyal forever.",
-				TargetTab = "monsters",
-				BackgroundImage = "ui/menus/fusion_background.png",
-				Position = TutorialPosition.Center
+				Id = "embark",
+				Title = "Embark",
+				Message = "When you're ready, embark. The run starts on the next click.",
+				ActionHint = "Click Embark.",
+				TargetSelector = ".embark-btn",
+				AdvanceEvent = "expedition.embarked",
 			},
+
+			// 6 — First move (action: player picks a move)
 			new TutorialStep
 			{
-				Id = "expedition_intro",
-				Title = "Expeditions",
-				Message = "Battle wild beasts in expeditions to earn Gold and XP. Each area has multiple waves of enemies and unique beasts to discover!",
-				TargetTab = "expedition",
-				BackgroundImage = "ui/menus/expedition_background.png",
-				Position = TutorialPosition.Center
+				Id = "wave-move",
+				Title = "Pick a Move",
+				Message = "Each Beast has up to four moves. Match a move's element to your Beast's element for a 1.5× STAB damage bonus. Tap any move to commit.",
+				ActionHint = "Pick a move to attack.",
+				TargetSelector = ".move-pill",
+				AdvanceEvent = "battle.move-selected",
+				RiggedSuccess = true, // tells ExpeditionManager to spawn a weak enemy
 			},
+
+			// 7 — Wave clear (info)
 			new TutorialStep
 			{
-				Id = "team_select",
-				Title = "Select Your Team",
-				Message = "Choose up to 3 beasts for your expedition team. Pick wisely - element matchups matter! Fire beats Nature, Water beats Fire, and so on.",
-				TargetTab = "expedition",
-				BackgroundImage = "ui/menus/expedition_background.png",
-				Position = TutorialPosition.Center
+				Id = "wave-result",
+				Title = "First Win",
+				Message = "Nice. Wild Beasts hit for chip damage; bosses hit much harder. Your HP carries between waves but PP refills, so don't be afraid to use your strongest moves.",
+				Position = TutorialPosition.Center,
 			},
+
+			// 8 — Weaken (action: player drops enemy HP below 50%)
 			new TutorialStep
 			{
-				Id = "battle_basics",
-				Title = "Battle System",
-				Message = "Each beast has 4 moves to use in battle! You can toggle AUTO mode to let them fight automatically, or MANUAL mode to choose moves yourself. Faster beasts attack first!",
-				TargetTab = "expedition",
-				BackgroundImage = "ui/menus/expedition_background.png",
-				Position = TutorialPosition.Center
+				Id = "weaken",
+				Title = "A Tameable Beast",
+				Message = "This wild Beast can be added to your roster — but only if you weaken it first. The lower its HP, the higher your contract odds. Keep attacking until it's around half HP.",
+				ActionHint = "Lower its HP to ~50%.",
+				TargetSelector = ".enemy-hp",
+				AdvanceEvent = "battle.enemy-hp-low",
 			},
+
+			// 9 — Open contract (action: player opens contract panel)
 			new TutorialStep
 			{
-				Id = "catching_intro",
-				Title = "Catching Beasts",
-				Message = "After winning a battle, you can negotiate contracts to catch wild beasts! Each negotiation style has different success rates and contract terms.",
-				TargetTab = "expedition",
-				BackgroundImage = "ui/menus/expedition_background.png",
-				Position = TutorialPosition.Center
+				Id = "open-contract",
+				Title = "Open Negotiations",
+				Message = "Now's the moment. Open contract negotiations to start the deal.",
+				ActionHint = "Click Contract.",
+				TargetSelector = ".contract-btn",
+				AdvanceEvent = "contract.opened",
 			},
+
+			// 10 — Pick approach (action: player selects any approach)
 			new TutorialStep
 			{
-				Id = "contract_ink",
-				Title = "Contract Ink",
-				Message = "You need Contract Ink to catch beasts. You can buy more in the Shop, or earn it from expeditions. Caught beasts have contract demands you must satisfy!",
-				BackgroundImage = "ui/menus/shop_background.png",
-				Position = TutorialPosition.Center
+				Id = "pick-approach",
+				Title = "Choose an Approach",
+				Message = "Twelve approaches available, each with different costs. Kindness costs 1 Contract Ink and works on most Beasts. Pick whichever feels right — there's no wrong answer here.",
+				ActionHint = "Select an approach.",
+				TargetSelector = ".approach-pill.kindness",
+				AdvanceEvent = "contract.approach-selected",
 			},
+
+			// 11 — Confirm (action: rigged success)
 			new TutorialStep
 			{
-				Id = "skills_intro",
-				Title = "Tamer Skills",
-				Message = "As you level up, you earn Skill Points. Spend them on the skill tree to unlock powerful abilities that buff ALL your beasts!",
-				TargetTab = "skills",
-				BackgroundImage = "ui/menus/skilltree_background.png",
-				Position = TutorialPosition.Center
+				Id = "confirm-contract",
+				Title = "Confirm",
+				Message = "Lock it in. The Beast will join your roster.",
+				ActionHint = "Click Confirm.",
+				TargetSelector = ".contract-confirm-btn",
+				AdvanceEvent = "contract.confirmed",
+				RiggedSuccess = true, // ContractGenerator forces success during this step
 			},
+
+			// 12 — Contract success (info)
 			new TutorialStep
 			{
-				Id = "arena_intro",
-				Title = "The Arena",
-				Message = "Ready for a challenge? Battle other tamers in ranked PvP matches! Climb the leaderboard and prove you're the best!",
-				TargetTab = "arena",
-				BackgroundImage = "ui/menus/arena_background.png",
-				Position = TutorialPosition.Center
+				Id = "contract-success",
+				Title = "It Joined Your Roster",
+				Message = "That's how taming works. Every species you contract fills out your Beastbook and unlocks species-wide mastery bonuses for every future Beast of that type.",
+				Position = TutorialPosition.Center,
 			},
+
+			// 13 — Finish the run (action: ExpeditionManager fires complete event)
 			new TutorialStep
 			{
-				Id = "beastiary_intro",
-				Title = "Beastiary",
-				Message = "Track all the beasts you've seen and caught in the Beastiary. Can you discover them all? Some are rarer than others!",
-				TargetTab = "beastiary",
-				BackgroundImage = "ui/menus/beastiary_background.png",
-				Position = TutorialPosition.Center
+				Id = "finish-run",
+				Title = "Finish the Run",
+				Message = "Beat the rest of the waves to bank your rewards. Dying or fleeing forfeits everything — so push only when you can win.",
+				AdvanceEvent = "expedition.completed",
+				Position = TutorialPosition.Center,
 			},
-			new TutorialStep
-			{
-				Id = "shop_intro",
-				Title = "The Shop",
-				Message = "Buy XP boosts, Gold boosts, Contract Ink, and storage expansions with Gold. Server boosts help everyone playing!",
-				TargetTab = "shop",
-				BackgroundImage = "ui/menus/shop_background.png",
-				Position = TutorialPosition.Center
-			},
+
+			// 14 — Complete (info, ends tutorial)
 			new TutorialStep
 			{
 				Id = "complete",
-				Title = "You're Ready!",
-				Message = "That's the basics! Now go explore, battle, catch beasts, and become the ultimate Beast Tamer. Good luck on your journey!",
-				BackgroundImage = "ui/main menu/mainmenu_background.png",
-				Position = TutorialPosition.Center
-			}
+				Title = "That's the Loop",
+				Message = "Tame · Fuse · Expedition · Ascend. Every system in the game feeds back into those four pillars. Open the Game Guide any time you want a deeper dive — and welcome to Beastborne.",
+				Position = TutorialPosition.Center,
+			},
 		};
 	}
 
@@ -317,8 +339,10 @@ public sealed class TutorialManager : Component
 
 		Log.Info( $"[Tutorial] Tamer: Level={tamer.Level}, ExpCleared={tamer.HighestExpeditionCleared}" );
 
-		// If they're level 1 with no expeditions cleared, they're new
-		bool isNew = tamer.Level <= 1 && tamer.HighestExpeditionCleared == 0;
+		// Newness signal: the player has cleared zero expeditions. Level alone
+		// is unreliable because a fresh starter spawns at Lv 3, so a strict
+		// "Level <= 1" check would block every new player from seeing the tutorial.
+		bool isNew = tamer.HighestExpeditionCleared == 0;
 		Log.Info( $"[Tutorial] IsNewPlayer={isNew}" );
 		return isNew;
 	}
@@ -374,7 +398,32 @@ public sealed class TutorialManager : Component
 		{
 			SaveState();
 			Log.Info( $"Tutorial step {CurrentStepIndex}: {CurrentStep?.Title}" );
+			ApplyStepEntryEffects();
 			OnStepChanged?.Invoke( CurrentStep );
+		}
+	}
+
+	/// <summary>
+	/// One-shot effects that fire when a specific tutorial step becomes active.
+	/// Top-up failsafes go here so the player can't brick the walkthrough by
+	/// being short on resources (e.g. Contract Ink) when they reach the contract
+	/// flow on a replayed tutorial.
+	/// </summary>
+	private void ApplyStepEntryEffects()
+	{
+		var step = CurrentStep;
+		if ( step == null ) return;
+
+		if ( step.Id == "open-contract" )
+		{
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if ( tamer != null && tamer.ContractInk < 5 )
+			{
+				int topUp = 5 - tamer.ContractInk;
+				tamer.ContractInk = 5;
+				TamerManager.Instance?.SaveToCloud();
+				Log.Info( $"[Tutorial] Topped up Contract Ink (+{topUp} → 5) so the player can finish the contract walkthrough." );
+			}
 		}
 	}
 
@@ -408,7 +457,9 @@ public sealed class TutorialManager : Component
 	}
 
 	/// <summary>
-	/// Complete the tutorial normally
+	/// Complete the tutorial normally. Pays a small Contract Ink reward as a
+	/// thank-you for finishing — the contracted Beast and the run rewards are
+	/// the centerpiece, this is the cherry on top.
 	/// </summary>
 	private void CompleteTutorial()
 	{
@@ -416,6 +467,16 @@ public sealed class TutorialManager : Component
 		HasCompletedTutorial = true;
 		WasSkipped = false;
 		SaveState();
+
+		// Completion bonus: 50 Contract Ink. Lets the player run a few more taming
+		// attempts immediately without grinding for ink first.
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer != null )
+		{
+			tamer.ContractInk += 50;
+			TamerManager.Instance?.SaveToCloud();
+			Log.Info( "[Tutorial] Awarded 50 Contract Ink completion bonus." );
+		}
 
 		Log.Info( "Tutorial completed!" );
 		OnTutorialCompleted?.Invoke();
@@ -430,4 +491,50 @@ public sealed class TutorialManager : Component
 	/// Get completion percentage (0-1)
 	/// </summary>
 	public float Progress => Steps.Count > 0 ? (float)CurrentStepIndex / Steps.Count : 0;
+
+	// ============================================================
+	// PHASE-2 EXTENSIONS — event-driven advancement
+	// ============================================================
+
+	/// <summary>
+	/// Returns true if the tutorial is active and the current step's Id matches.
+	/// Used by other systems to gate tutorial-only behavior:
+	///     if ( TutorialManager.Instance?.IsActiveStep( "rig-the-contract" ) == true ) ...
+	/// </summary>
+	public bool IsActiveStep( string id )
+	{
+		return IsTutorialActive && CurrentStep?.Id == id;
+	}
+
+	/// <summary>
+	/// Returns true if the tutorial is active and the current step has RiggedSuccess set.
+	/// Used by ContractGenerator + ExpeditionManager to know when to force a friendly outcome.
+	/// </summary>
+	public bool IsRiggedStep()
+	{
+		return IsTutorialActive && CurrentStep?.RiggedSuccess == true;
+	}
+
+	/// <summary>
+	/// Notify the tutorial system that a player action happened. If the current
+	/// step's AdvanceEvent matches the given id, the tutorial advances.
+	/// No-op if tutorial is inactive or the event doesn't match.
+	///
+	/// Other systems call this from event handlers, e.g.:
+	///     TutorialManager.Instance?.NotifyEvent( "battle.move-selected" );
+	/// </summary>
+	public void NotifyEvent( string eventId )
+	{
+		if ( !IsTutorialActive ) return;
+		if ( string.IsNullOrEmpty( eventId ) ) return;
+
+		var step = CurrentStep;
+		if ( step == null || string.IsNullOrEmpty( step.AdvanceEvent ) ) return;
+
+		if ( step.AdvanceEvent == eventId )
+		{
+			Log.Info( $"[Tutorial] Auto-advance: step '{step.Id}' got matching event '{eventId}'" );
+			NextStep();
+		}
+	}
 }

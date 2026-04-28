@@ -49,14 +49,10 @@
 							<iconify icon="lucide:layers" Size=@(12) Color="#c4b5fd" />
 							<span>@expedition.Waves waves</span>
 						</span>
-						<span class="ph-meta-pill element-@(expedition.Element.ToString().ToLower())">
-							<img class="ph-meta-element" src="ui/icons/elements/background/@(expedition.Element.ToString().ToLower()).svg" />
-							<span>@expedition.Element</span>
-						</span>
 					</div>
 				</div>
 				<button class="close-btn ph-close" onclick=@Close onmouseover=@(() => OnHover("tp-close"))>
-					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
 				</button>
 			</div>
 
@@ -108,13 +104,8 @@
 							<span class="ps-power-value">@teamPower</span>
 						</div>
 					}
-					@if ( coverage != TeamAdvantage.Empty )
-					{
-						<div class="ps-coverage @(GetCoverageClass(coverage))">
-							<iconify icon="@GetCoverageIcon(coverage)" Size=@(12) Color="@GetCoverageIconColor(coverage)" />
-							<span>@GetCoverageLabel(coverage)</span>
-						</div>
-					}
+					@* Team coverage pill removed — relies on zone element which
+					   isn't a meaningful expedition attribute right now. *@
 				</div>
 
 				<div class="team-slots" onmouseup=@CancelDragIfAny>
@@ -244,6 +235,16 @@
 				</div>
 			</div>
 
+					@* Compact red Persona-stamp CTA — pinned at the bottom of
+					   the LEFT column so the right roster grid can extend the
+					   full modal height. *@
+					<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled")"
+							onclick=@OnEmbarkClicked
+							onmouseover=@(() => OnHover("embark-cta"))>
+						<iconify icon="lucide:compass" Size=@(22) Color="#ffffff" />
+						<span class="embark-label">@(CanEmbark() ? "EMBARK" : (filled == 0 ? "PICK A BEAST" : "FILL YOUR TEAM"))</span>
+					</button>
+
 				</div> <!-- /.picker-left -->
 
 				<div class="picker-right">
@@ -324,46 +325,6 @@
 
 				</div> <!-- /.picker-right -->
 			</div> <!-- /.picker-body -->
-
-			<!-- ═══ EMBARK CTA ═══ -->
-			<!-- Diamond-on-rail ceremonial CTA. Left diamond holds a counter-
-				 rotated compass icon, right rail carries kicker + zone name +
-				 optional coverage chip. Matches the achievement/main-menu
-				 diamond vocabulary elsewhere in the game. -->
-			<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled")"
-					onclick=@OnEmbarkClicked
-					onmouseover=@(() => OnHover("embark-cta"))>
-				<!-- Sweeping gold sheen — purely decorative. Plays on ready. -->
-				<div class="embark-sheen"></div>
-
-				<!-- Diamond with inner cross accent + outer glow ring. The
-					 cross is two absolutely-positioned lines that read as a
-					 crosshair / commander's insignia. -->
-				<div class="embark-diamond">
-					<div class="embark-diamond-glow"></div>
-					<div class="embark-diamond-cross-v"></div>
-					<div class="embark-diamond-cross-h"></div>
-					<iconify icon="lucide:compass" Size=@(22) Color="#ffffff" />
-				</div>
-
-				<div class="embark-rail">
-					<span class="embark-kicker">@(CanEmbark() ? "EMBARK" : (filled == 0 ? "SELECT A BEAST" : "ASSEMBLE YOUR TEAM"))</span>
-					@if ( CanEmbark() )
-					{
-						<span class="embark-subtitle">DEPART FOR @expedition.Name.ToUpper()</span>
-					}
-					else
-					{
-						<span class="embark-subtitle">at least one healthy beast required</span>
-					}
-				</div>
-
-				<!-- Double chevrons for stronger directional read on hover -->
-				<div class="embark-chevrons">
-					<iconify icon="lucide:chevron-right" Size=@(22) Color="#ffffff" />
-					<iconify icon="lucide:chevron-right" Size=@(22) Color="#ffffff" />
-				</div>
-			</button>
 		</div>
 	}
 </root>
@@ -443,6 +404,7 @@
 			Instance._hoveredKey = null;
 			Instance._hoveredCardId = null;
 			Instance.PreFillTeam( expeditionId );
+			Instance.NotifyTutorialIfTeamPopulated();
 		}
 		SoundManager.PlayPopup();
 	}
@@ -503,6 +465,19 @@
 		AutoFill();
 	}
 
+	/// <summary>
+	/// Called after _team is populated by ANY of the PreFillTeam paths. Fires the
+	/// tutorial event if at least one slot got filled — new players have a
+	/// single starter that always auto-fills, never goes through the click path.
+	/// </summary>
+	private void NotifyTutorialIfTeamPopulated()
+	{
+		if ( _team.Any( t => t != null ) )
+		{
+			Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "team.beast-added" );
+		}
+	}
+
 	// ═══════════════════════════════════════════════════════════════
 	// TEAM / ROSTER CLICK HANDLING
 	// ═══════════════════════════════════════════════════════════════
@@ -538,6 +513,9 @@
 			_team[0] = m;
 		}
 		SoundManager.PlayClick();
+
+		// Tutorial: notify that a beast was added to the team.
+		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "team.beast-added" );
 	}
 
 	private void OnTeamSlotClicked( int idx )
@@ -640,14 +618,22 @@
 			.Where( m => m != null && m.CurrentHP > 0 && !taken.Contains( m.Id ) )
 			.OrderByDescending( m => m.PowerRating )
 			.ToList();
-		int ci = 0;
+		int added = 0;
 		for ( int i = 0; i < _team.Count; i++ )
 		{
 			if ( _team[i] != null ) continue;
-			if ( ci >= candidates.Count ) break;
-			_team[i] = candidates[ci++];
+			if ( added >= candidates.Count ) break;
+			_team[i] = candidates[added++];
 		}
 		SoundManager.PlayClick();
+
+		// Tutorial: notify if AutoFill actually added at least one beast.
+		// New players have a single starter that lands here without ever
+		// clicking the roster card path.
+		if ( added > 0 )
+		{
+			Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "team.beast-added" );
+		}
 	}
 
 	private void ClearTeam()

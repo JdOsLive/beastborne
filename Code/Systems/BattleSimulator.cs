@@ -321,6 +321,19 @@ public static class BattleSimulator
 		}
 
 		target.CurrentHP = Math.Max( 0, target.CurrentHP - damage );
+
+		// Tutorial: notify when an enemy drops below 50% HP. Only fires for ENEMY
+		// targets (player team is in BattleManager.PlayerTeam) so a player Beast
+		// taking damage doesn't accidentally advance the weaken step.
+		var bm = Beastborne.Core.BattleManager.Instance;
+		if ( bm != null && bm.EnemyTeam != null && bm.EnemyTeam.Contains( target ) )
+		{
+			float pct = target.MaxHP > 0 ? (float)target.CurrentHP / target.MaxHP : 0f;
+			if ( pct <= 0.5f && pct > 0f )
+			{
+				Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "battle.enemy-hp-low" );
+			}
+		}
 	}
 
 	/// <summary>

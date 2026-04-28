@@ -168,6 +168,11 @@
 		if (firstTime && TargetMonster != null)
 		{
 			GenerateOptions();
+
+			// Tutorial: notify that contract negotiations are open. Initialize() is
+			// only called from the legacy Tame Workshop flow; mid-battle contracts
+			// instantiate this panel via @ref so the hook has to live here too.
+			Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "contract.opened" );
 		}
 	}
 
@@ -183,6 +188,9 @@
 		IsVisible = true;
 		SoundManager.PlayPopup();
 		StateHasChanged();
+
+		// Tutorial: notify that contract negotiations are open.
+		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "contract.opened" );
 	}
 
 	private void GenerateOptions()
@@ -257,6 +265,9 @@
 		selectedOptionIndex = negotiationOptions?.IndexOf(option) ?? 0;
 		SoundManager.PlaySelect();
 		StateHasChanged();
+
+		// Tutorial: notify that an approach was selected (any approach counts).
+		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "contract.approach-selected" );
 	}
 
 	private bool CanAffordOption(NegotiationOption option)
@@ -285,14 +296,20 @@
 			return;
 		}
 
-		if (!CanAffordOption(selectedOption))
+		// Tutorial rig — bypass cost checks during the tutorial confirm step so
+		// the player can't brick themselves out of finishing the walkthrough.
+		bool tutorialFreeContract =
+			Beastborne.Core.TutorialManager.Instance?.IsRiggedStep() == true
+			&& Beastborne.Core.TutorialManager.Instance.IsActiveStep( "confirm-contract" );
+
+		if (!tutorialFreeContract && !CanAffordOption(selectedOption))
 		{
 			SoundManager.PlayDeny();
 			return;
 		}
 
-		// Check and spend contract ink based on option's cost
-		if (!TamerManager.Instance.SpendContractInk(selectedOption.InkCost))
+		// Check and spend contract ink based on option's cost (skipped during tutorial)
+		if (!tutorialFreeContract && !TamerManager.Instance.SpendContractInk(selectedOption.InkCost))
 		{
 			SoundManager.PlayDeny();
 			Log.Warning($"Not enough contract ink! Need {selectedOption.InkCost}");
@@ -300,6 +317,10 @@
 		}
 
 		SoundManager.PlayClick();
+
+		// Tutorial: notify that the contract was confirmed (advances past pick-approach).
+		// Tutorial-rigged success is handled below in the success branch.
+		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "contract.confirmed" );
 
 		// Master Ink guarantees capture
 		bool success;
@@ -320,6 +341,15 @@
 			TamerManager.Instance.CurrentTamer.HasMasterInk = false;
 			TamerManager.Instance.SaveToCloud();
 			Log.Info("Master Ink used! Guaranteed contract negotiation.");
+		}
+		else if ( Beastborne.Core.TutorialManager.Instance?.IsRiggedStep() == true
+		           && Beastborne.Core.TutorialManager.Instance.IsActiveStep( "confirm-contract" ) )
+		{
+			// Tutorial rig — first contract is a guaranteed success so the player
+			// gets the satisfying "it joined your roster" beat on their first try.
+			SoundManager.PlayContractAttempt();
+			success = true;
+			Log.Info( "[Tutorial] Rigged contract success." );
 		}
 		else
 		{

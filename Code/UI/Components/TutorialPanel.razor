@@ -6,134 +6,326 @@
 @using Beastborne.Systems;
 @inherits Panel
 
+@*
+    Two render modes based on the active step:
+        - INFO STEPS (no AdvanceEvent) — centered speech bubble with the tamer
+          sprite. Player clicks Next/Back to advance. Existing chrome.
+        - ACTION STEPS (has AdvanceEvent) — top-banner hint card. Compact and
+          non-blocking so the player can see + click the target the bubble
+          would otherwise cover. Auto-advances when the system fires the matching
+          event; no Next button needed.
+
+    Plus a persistent "Skip" pill in the corner that's always visible while the
+    tutorial is active.
+*@
+
 @if (IsVisible())
 {
-	<root class="tutorial-popup">
-		<div class="tutorial-content">
-			<!-- Tamer character -->
-			<div class="popup-character">
-				<img src="@GetTamerSprite()" class="tamer-sprite" />
-			</div>
+    <root class="tutorial-popup mode-@GetMode()">
 
-			<!-- Speech bubble -->
-			<div class="popup-bubble">
-				<div class="popup-header">
-					<div class="popup-title">@GetTitle()</div>
-					<button class="popup-close" onclick=@OnClose>✕</button>
-				</div>
+        @* Spotlight + arrow — only when an action step has a found target.
+           Four darken rectangles form a "hole" around the target rect; pointer
+           events on each are 'none' so the target underneath remains clickable.
+           A diamond arrow sits to the left of the target as a pointer. *@
+        @if (GetMode() == "action" && _hasTarget)
+        {
+            <div class="spot-darken spot-top" style="top: 0; left: 0; right: 0; height: @(_targetTop)px;"></div>
+            <div class="spot-darken spot-bottom" style="top: @(_targetBottom)px; left: 0; right: 0; bottom: 0;"></div>
+            <div class="spot-darken spot-left" style="top: @(_targetTop)px; left: 0; width: @(_targetLeft)px; height: @(_targetMidHeight)px;"></div>
+            <div class="spot-darken spot-right" style="top: @(_targetTop)px; left: @(_targetRight)px; right: 0; height: @(_targetMidHeight)px;"></div>
 
-				<div class="popup-message">@GetMessage()</div>
+            <div class="tutorial-arrow" style="left: @(_arrowX)px; top: @(_arrowY)px;">
+                <iconify icon=@GetArrowIcon() Size=@(48) Color="#fbbf24" />
+            </div>
+        }
 
-				@if (!string.IsNullOrEmpty(GetActionHint()))
-				{
-					<div class="popup-hint">
-						@GetActionHint()
-					</div>
-				}
+        @* Skip pill — always visible while the tutorial is active. *@
+        <button class="tutorial-skip-pill" onclick=@OnSkipClicked>
+            <iconify icon="lucide:x" Size=@(13) Color="rgba(255, 255, 255, 0.85)" />
+            <span>Skip Tutorial</span>
+        </button>
 
-				<div class="popup-footer">
-					<div class="popup-progress">
-						@GetStepCounter()
-					</div>
-					<div class="popup-actions">
-						@if (CanGoPrevious())
-						{
-							<button class="btn-prev" onclick=@OnPrevious>Back</button>
-						}
-						<button class="btn-next" onclick=@OnNext>
-							@GetNextButtonText()
-						</button>
-					</div>
-				</div>
-			</div>
-		</div>
-	</root>
+        @if (GetMode() == "info")
+        {
+            @* Centered card — info-only steps (welcome / wave-result / contract-success / complete).
+               Pixel-art tamer sprite removed — the modal-style card alone is the look. *@
+            <div class="tutorial-content">
+                <div class="popup-bubble">
+                    <div class="popup-header">
+                        <div class="popup-title">@GetTitle()</div>
+                    </div>
+
+                    <div class="popup-message">@GetMessage()</div>
+
+                    <div class="popup-footer">
+                        <div class="popup-progress">@GetStepCounter()</div>
+                        <div class="popup-actions">
+                            @if (CanGoPrevious())
+                            {
+                                <button class="btn-prev" onclick=@OnPrevious>Back</button>
+                            }
+                            <button class="btn-next" onclick=@OnNext>@GetNextButtonText()</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* Top banner — action steps. Doesn't cover the screen; player can click the target. *@
+            <div class="tutorial-banner">
+                <div class="banner-icon">
+                    <iconify icon="lucide:lightbulb" Size=@(16) Color="#fbbf24" />
+                </div>
+                <div class="banner-text">
+                    <span class="banner-title">@GetTitle()</span>
+                    <span class="banner-message">@GetMessage()</span>
+                    @if (!string.IsNullOrEmpty(GetActionHint()))
+                    {
+                        <span class="banner-hint">@GetActionHint()</span>
+                    }
+                </div>
+                <div class="banner-progress">@GetStepCounter()</div>
+            </div>
+        }
+    </root>
 }
 
 @code {
-	private bool IsVisible()
-	{
-		return TutorialManager.Instance?.IsTutorialActive == true;
-	}
+    private bool IsVisible()
+    {
+        return TutorialManager.Instance?.IsTutorialActive == true;
+    }
 
-	private string GetTamerSprite()
-	{
-		// Use the player's chosen gender for the tamer sprite
-		var gender = TamerManager.Instance?.CurrentTamer?.Gender ?? TamerGender.Male;
-		return gender == TamerGender.Female
-			? "ui/characters/female/female_tamer.png"
-			: "ui/characters/male/male_tamer.png";
-	}
+    /// <summary>
+    /// "info" = centered speech bubble; "action" = top-banner hint.
+    /// Decided by whether the current step has an AdvanceEvent.
+    /// </summary>
+    private string GetMode()
+    {
+        var step = TutorialManager.Instance?.CurrentStep;
+        return string.IsNullOrEmpty(step?.AdvanceEvent) ? "info" : "action";
+    }
 
-	private string GetTitle()
-	{
-		return TutorialManager.Instance?.CurrentStep?.Title ?? "Tutorial";
-	}
+    private string GetTamerSprite()
+    {
+        var gender = TamerManager.Instance?.CurrentTamer?.Gender ?? TamerGender.Male;
+        return gender == TamerGender.Female
+            ? "ui/characters/female/female_tamer.png"
+            : "ui/characters/male/male_tamer.png";
+    }
 
-	private string GetMessage()
-	{
-		return TutorialManager.Instance?.CurrentStep?.Message ?? "";
-	}
+    private string GetTitle() => TutorialManager.Instance?.CurrentStep?.Title ?? "Tutorial";
+    private string GetMessage() => TutorialManager.Instance?.CurrentStep?.Message ?? "";
+    private string GetActionHint() => TutorialManager.Instance?.CurrentStep?.ActionHint ?? "";
 
-	private string GetActionHint()
-	{
-		return TutorialManager.Instance?.CurrentStep?.ActionHint ?? "";
-	}
+    private string GetStepCounter()
+    {
+        var current = GetCurrentIndex() + 1;
+        var total = GetTotalSteps();
+        return $"{current} / {total}";
+    }
 
-	private string GetStepCounter()
-	{
-		var current = GetCurrentIndex() + 1;
-		var total = GetTotalSteps();
-		return $"{current} / {total}";
-	}
+    private int GetCurrentIndex() => TutorialManager.Instance?.CurrentStepIndex ?? 0;
+    private int GetTotalSteps() => TutorialManager.Instance?.TotalSteps ?? 1;
 
-	private int GetCurrentIndex()
-	{
-		return TutorialManager.Instance?.CurrentStepIndex ?? 0;
-	}
+    private bool CanGoPrevious() => GetCurrentIndex() > 0;
 
-	private int GetTotalSteps()
-	{
-		return TutorialManager.Instance?.TotalSteps ?? 1;
-	}
+    private string GetNextButtonText()
+    {
+        if (GetCurrentIndex() >= GetTotalSteps() - 1) return "Finish";
+        return "Next";
+    }
 
-	private bool CanGoPrevious()
-	{
-		return GetCurrentIndex() > 0;
-	}
+    private void OnNext()
+    {
+        SoundManager.PlayClick();
+        TutorialManager.Instance?.NextStep();
+    }
 
-	private string GetNextButtonText()
-	{
-		// Last step shows "Finish" instead of "Next"
-		if (GetCurrentIndex() >= GetTotalSteps() - 1)
-			return "Finish";
-		return "Next";
-	}
+    private void OnPrevious()
+    {
+        SoundManager.PlayBack();
+        TutorialManager.Instance?.PreviousStep();
+    }
 
-	private void OnNext()
-	{
-		SoundManager.PlayClick();
-		TutorialManager.Instance?.NextStep();
-	}
+    private void OnSkipClicked()
+    {
+        ConfirmDialog.Show(
+            title: "Skip the tutorial?",
+            body: "You can replay it any time from Options. Some pacing scaffolding (the Saltmoor Approach zone, the rigged first contract) is tutorial-only and won't return.",
+            destructiveLabel: "SKIP",
+            cancelLabel: "KEEP GOING",
+            tone: "gold",
+            iconName: "lucide:fast-forward",
+            onConfirm: () => TutorialManager.Instance?.SkipTutorial() );
+    }
 
-	private void OnPrevious()
-	{
-		SoundManager.PlayBack();
-		TutorialManager.Instance?.PreviousStep();
-	}
+    protected override int BuildHash()
+    {
+        var hash = new HashCode();
+        hash.Add(IsVisible());
+        hash.Add(GetCurrentIndex());
+        hash.Add(GetTitle());
+        hash.Add(GetMode());
+        // Round target rect to int pixels — keeps BuildHash stable enough that
+        // we don't re-render every frame just because the target shifted 0.3px.
+        hash.Add(_hasTarget);
+        hash.Add(_targetTop);
+        hash.Add(_targetLeft);
+        return hash.ToHashCode();
+    }
 
-	private void OnClose()
-	{
-		SoundManager.PlayBack();
-		TutorialManager.Instance?.SkipTutorial();
-	}
+    // ============================================================
+    // Spotlight + arrow target tracking
+    //
+    // Each frame we search the panel tree for an element matching the current
+    // step's TargetSelector (a CSS-class string like ".embark-btn"). When
+    // found, cache its Box.Rect and compute the four darken rectangles + the
+    // arrow position. When not found, _hasTarget stays false and the spotlight
+    // markup doesn't render — the banner alone provides guidance.
+    // ============================================================
 
-	protected override int BuildHash()
-	{
-		var hash = new HashCode();
-		hash.Add(IsVisible());
-		hash.Add(GetCurrentIndex());
-		hash.Add(GetTitle());
-		return hash.ToHashCode();
-	}
+    private bool _hasTarget;
+    private int _targetTop;
+    private int _targetBottom;
+    private int _targetLeft;
+    private int _targetRight;
+    private int _targetMidHeight;
+    private int _arrowX;
+    private int _arrowY;
+    // "above" | "below" | "left" | "right" — which side of the target the arrow sits on
+    private string _arrowSide = "above";
+
+    public override void Tick()
+    {
+        base.Tick();
+        UpdateTargetRect();
+    }
+
+    /// <summary>
+    /// Pick the lucide arrow icon that visually points AT the target from the
+    /// arrow's current side. e.g. arrow sits above target → arrow points down.
+    /// </summary>
+    private string GetArrowIcon()
+    {
+        return _arrowSide switch
+        {
+            "above" => "lucide:arrow-big-down",
+            "below" => "lucide:arrow-big-up",
+            "left"  => "lucide:arrow-big-right",
+            "right" => "lucide:arrow-big-left",
+            _       => "lucide:arrow-big-down",
+        };
+    }
+
+    private void UpdateTargetRect()
+    {
+        if (!IsVisible() || GetMode() != "action")
+        {
+            _hasTarget = false;
+            return;
+        }
+
+        var step = TutorialManager.Instance?.CurrentStep;
+        var sel = step?.TargetSelector;
+        if (string.IsNullOrEmpty(sel))
+        {
+            _hasTarget = false;
+            return;
+        }
+
+        // Strip leading '.' if present (CSS-style class selector).
+        var className = sel.StartsWith(".") ? sel.Substring(1) : sel;
+
+        var found = FindByClass(FindRootPanel(), className);
+        if (found == null || found.Box.Rect.Width < 1f)
+        {
+            _hasTarget = false;
+            return;
+        }
+
+        var rect = found.Box.Rect;
+        _targetTop = (int)rect.Top;
+        _targetBottom = (int)rect.Bottom;
+        _targetLeft = (int)rect.Left;
+        _targetRight = (int)rect.Right;
+        _targetMidHeight = Math.Max(0, _targetBottom - _targetTop);
+
+        // Choose arrow placement based on where the target sits on screen.
+        // Bottom-bar elements → arrow above pointing down (most natural).
+        // Top-bar elements → arrow below pointing up.
+        // Otherwise → arrow on the left side pointing right (or flip right if
+        // the target is too close to the left edge).
+        const int ARROW_SIZE = 48;
+        const int ARROW_OFFSET = 12;
+        var screenH = (int)Box.Rect.Height;
+        var screenW = (int)Box.Rect.Width;
+        if (screenH <= 0) screenH = 1080;
+        if (screenW <= 0) screenW = 1920;
+
+        int targetCenterY = (_targetTop + _targetBottom) / 2;
+        int targetCenterX = (_targetLeft + _targetRight) / 2;
+
+        if (targetCenterY > screenH * 0.6f)
+        {
+            // Target near bottom → arrow above
+            _arrowSide = "above";
+            _arrowX = targetCenterX - ARROW_SIZE / 2;
+            _arrowY = _targetTop - ARROW_SIZE - ARROW_OFFSET;
+        }
+        else if (targetCenterY < screenH * 0.25f)
+        {
+            // Target near top → arrow below
+            _arrowSide = "below";
+            _arrowX = targetCenterX - ARROW_SIZE / 2;
+            _arrowY = _targetBottom + ARROW_OFFSET;
+        }
+        else if (_targetLeft > ARROW_SIZE + ARROW_OFFSET + 8)
+        {
+            // Plenty of room on the left → arrow left, pointing right
+            _arrowSide = "left";
+            _arrowX = _targetLeft - ARROW_SIZE - ARROW_OFFSET;
+            _arrowY = targetCenterY - ARROW_SIZE / 2;
+        }
+        else
+        {
+            // Too close to left edge → arrow right, pointing left
+            _arrowSide = "right";
+            _arrowX = _targetRight + ARROW_OFFSET;
+            _arrowY = targetCenterY - ARROW_SIZE / 2;
+        }
+
+        _hasTarget = true;
+    }
+
+    /// <summary>
+    /// Walk up from this panel until the parent chain ends. Returns the
+    /// topmost ancestor (i.e. the root UI panel that owns the whole tree).
+    /// </summary>
+    private Panel FindRootPanel()
+    {
+        Panel p = this;
+        while (p.Parent != null) p = p.Parent;
+        return p;
+    }
+
+    /// <summary>
+    /// Walk the panel tree from root and return the first descendant with the
+    /// given class. Returns null if not found.
+    /// </summary>
+    private static Panel FindByClass(Panel root, string className)
+    {
+        if (root == null) return null;
+        if (root.HasClass(className)) return root;
+        foreach (var child in root.Children)
+        {
+            if (child is Panel p)
+            {
+                var hit = FindByClass(p, className);
+                if (hit != null) return hit;
+            }
+        }
+        return null;
+    }
 }

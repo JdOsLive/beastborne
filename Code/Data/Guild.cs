@@ -178,3 +178,42 @@ public class GuildAchievement
 	public int GuildXPReward { get; set; }
 	public string Icon { get; set; }
 }
+
+// ─── WEEKLY GOALS ──────────────────────────────────────────────
+//
+// Community missions that aggregate across every member of the guild.
+// 3 active goals at a time, all members contribute, big chunks of guild
+// XP awarded on completion. Pairs with the passive XP trickle and the
+// donation conversion to make up the three approved guild XP sources.
+//
+// Server-side aggregation lives at /guilds/{id}/goals. The client tracks
+// optimistically too (local Progress bumps on every event) so the UI feels
+// responsive — the server response is authoritative on refresh.
+//
+// Reset cadence: every Monday 00:00 UTC. Goals roll over to a new random 3
+// from the pool; unclaimed XP is forfeited to discourage hoarding.
+
+public enum GuildGoalType
+{
+	WildBeastsKO,        // wild Beasts KO'd in expeditions
+	BeastsContracted,    // successful contracts across all members
+	GoldEarned,          // total gold pulled from expeditions
+	ExpeditionsCleared,  // expedition runs completed
+	BossesDefeated,      // expedition bosses downed
+	FusionsCompleted     // beast fusions performed
+}
+
+public class GuildWeeklyGoal
+{
+	public string Id { get; set; }
+	public GuildGoalType Type { get; set; }
+	public string Title { get; set; }
+	public string Description { get; set; }
+	public int Target { get; set; }
+	public int Progress { get; set; }
+	public int XpReward { get; set; }
+	public bool Claimed { get; set; }
+
+	public bool Completed => Progress >= Target;
+	public float PercentComplete => Target <= 0 ? 100f : Math.Min( 100f, Progress * 100f / Target );
+}

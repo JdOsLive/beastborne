@@ -14,6 +14,28 @@
 		<div class="skill-header-left">
 			<iconify class="skill-title-icon" icon="lucide:sparkles" Size=@(24) Color="#c4b5fd" />
 			<div class="skill-title">@L("ui.skill.title")</div>
+
+			@* Tab pills sit immediately right of the title, grouped on the left
+			   side of the header (not centered). *@
+			<div class="stree-tabs">
+				<div class="stree-tab @(currentTab == "tree" ? "active" : "")"
+					 onclick=@(() => SetTab("tree"))
+					 onmouseover=@(() => OnTabHover("tree"))>
+					<iconify icon="lucide:sparkles" Size=@(16) Color="@(currentTab == "tree" ? "#ffffff" : "rgba(255, 255, 255, 0.7)")" />
+					<span class="stree-tab-label">TREE</span>
+				</div>
+				<div class="stree-tab @(currentTab == "stats" ? "active" : "")"
+					 onclick=@(() => SetTab("stats"))
+					 onmouseover=@(() => OnTabHover("stats"))>
+					<iconify icon="lucide:bar-chart-3" Size=@(16) Color="@(currentTab == "stats" ? "#ffffff" : "rgba(255, 255, 255, 0.7)")" />
+					<span class="stree-tab-label">STATS</span>
+					@{ var activeStats = GetActiveStatCount(); }
+					@if (activeStats > 0)
+					{
+						<span class="stree-tab-count">@activeStats</span>
+					}
+				</div>
+			</div>
 		</div>
 
 		<div class="skill-header-right">
@@ -65,6 +87,8 @@
 	</div>
 
 	@* =========================== Branch Clusters Row =========================== *@
+	@if (currentTab == "tree")
+	{
 	<div class="skill-body">
 		<div class="clusters-row">
 			@foreach (var branch in AllBranches)
@@ -206,6 +230,153 @@
 			}
 		</div>
 	</div>
+	}
+	else
+	{
+		@* =========================== STATS TAB =========================== *@
+		var statRows = PlayerStatsSummary.GetAll();
+		var activeCount = statRows.Count(r => r.HasContributions);
+		var sampleGold = PlayerStatsSummary.GetSampleGoldExample(1000);
+		var groupOrder = new[] { StatGroup.Economy, StatGroup.Progression, StatGroup.Expedition, StatGroup.Combat, StatGroup.Boss, StatGroup.Fusion };
+
+		<div class="stats-body">
+
+			@* Top row: worked example slab on the left, eye-toggle hint on
+			   the right. Slab sizes to content; hint fills the remaining
+			   horizontal space. *@
+			<div class="stats-top-row">
+				<div class="stats-summary-bar">
+					<div class="ssb-halftone"></div>
+					<div class="ssb-left">
+						<iconify icon="lucide:calculator" Size=@(22) Color="#fbbf24" />
+						<div class="ssb-text">
+							<span class="ssb-label">SAMPLE EXPEDITION</span>
+							<span class="ssb-sub">1,000g base → @($"{sampleGold:N0}")g with current bonuses</span>
+						</div>
+					</div>
+					<div class="ssb-right">
+						<span class="ssb-pill-label">ACTIVE</span>
+						<span class="ssb-pill-num">@activeCount</span>
+						<span class="ssb-pill-sep">/</span>
+						<span class="ssb-pill-max">@statRows.Count</span>
+					</div>
+					@* Eye toggle — hides/reveals the empty "available bonus" rows.
+					   Default = hidden (compact). Tap to reveal what you haven't
+					   unlocked yet. *@
+					<div class="ssb-eye @(showInactiveStats ? "active" : "")"
+						 onclick=@ToggleShowInactiveStats
+						 onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="@(showInactiveStats ? "lucide:eye" : "lucide:eye-off")" Size=@(14) Color="@(showInactiveStats ? "#fbbf24" : "rgba(255, 255, 255, 0.6)")" />
+					</div>
+				</div>
+
+				@* Hint sits adjacent to the summary slab so the eye reference
+				   is right next to the toggle button. *@
+				<div class="stats-footer-hint">
+					<iconify icon="lucide:info" Size=@(11) Color="rgba(196, 181, 253, 0.55)" />
+					<span>@(showInactiveStats ? "Cards without sources show bonuses you haven't unlocked yet. Tap the eye to hide them." : "Tap the eye to reveal every bonus you can still unlock.")</span>
+				</div>
+			</div>
+
+			@* Card grid — 3-up rows. Direct children of the scroll container
+			   are .stats-card-row banners, each holding up to 3 cards. Per
+			   CLAUDE.md, s&box can't compute scroll height under flex-wrap,
+			   so we chunk into explicit rows server-side. *@
+			@{
+				var visibleRows = showInactiveStats
+					? statRows.OrderBy(r => groupOrder.ToList().IndexOf(r.Group)).ThenBy(r => r.Name).ToList()
+					: statRows.Where(r => r.HasContributions)
+						.OrderBy(r => groupOrder.ToList().IndexOf(r.Group)).ThenBy(r => r.Name).ToList();
+				const int CardsPerRow = 3;
+				var cardRows = new List<List<StatRow>>();
+				for (int i = 0; i < visibleRows.Count; i += CardsPerRow)
+				{
+					cardRows.Add(visibleRows.Skip(i).Take(CardsPerRow).ToList());
+				}
+			}
+
+			<div class="stats-scroll">
+
+				@if (visibleRows.Count == 0)
+				{
+					<div class="stats-empty-card">
+						<iconify icon="lucide:sparkles" Size=@(28) Color="rgba(196, 181, 253, 0.5)" />
+						<span class="se-title">No active bonuses yet</span>
+						<span class="se-sub">Invest in the skill tree, equip relics, or activate boosts. Tap the eye above to see what's available.</span>
+					</div>
+				}
+
+				@foreach (var chunk in cardRows)
+				{
+					<div class="stats-card-row">
+						@foreach (var row in chunk)
+						{
+							var hasAny = row.HasContributions;
+							var net = row.NetPercentBonus;
+							var sign = net >= 0 ? "+" : "";
+							var totalText = hasAny
+								? (row.IsFlat ? $"{sign}{net:0.#}" : $"{sign}{net:0.#}%")
+								: "—";
+							var groupClass = row.Group.ToString().ToLower();
+
+							<div class="stat-card @groupClass @(hasAny ? "active" : "inactive")">
+								@* Group tag — small italic-skewed pill at top. *@
+								<div class="sc-group" style="background-color: @PlayerStatsSummary.GetGroupColor(row.Group);">
+									<span>@PlayerStatsSummary.GetGroupName(row.Group)</span>
+								</div>
+
+								<div class="sc-head">
+									<div class="sc-icon-wrap @(hasAny ? "" : "inactive")">
+										<iconify icon="@row.Icon" Size=@(14) Color="@(hasAny ? "#ffffff" : "rgba(255,255,255,0.35)")" />
+									</div>
+									<span class="sc-name @(hasAny ? "" : "inactive")">@row.Name</span>
+									<div class="sc-total @(hasAny ? "active" : "inactive") @(net < 0 ? "negative" : "")">
+										<span class="sc-total-value">@totalText</span>
+									</div>
+								</div>
+
+								@if (hasAny)
+								{
+									<div class="sc-sources">
+										@foreach (var src in row.Sources)
+										{
+											var valTxt = src.Op == StatOp.Multiply
+												? $"×{src.Value:0.0#}"
+												: (row.IsFlat ? $"+{src.Value:0.#}" : $"+{src.Value:0.#}%");
+											<div class="sc-src">
+												<div class="sc-src-tag" style="background-color: @src.TagColor;">
+													<span>@src.Tag</span>
+												</div>
+												<span class="sc-src-label">@src.Label</span>
+												@if (src.TimeRemaining.HasValue)
+												{
+													<span class="sc-src-timer @(src.TimeRemaining.Value.TotalMinutes < 5 ? "expiring" : "")">@FormatBoostTime(src.TimeRemaining.Value)</span>
+												}
+												<span class="sc-src-value @(src.Op == StatOp.Multiply ? "multiply" : "add")">@valTxt</span>
+											</div>
+										}
+									</div>
+								}
+								else
+								{
+									<div class="sc-empty">
+										<span>@row.Description</span>
+									</div>
+								}
+							</div>
+						}
+						@* Pad short rows so the last row's cards don't blow up
+						   to fill the band. *@
+						@for (int pad = chunk.Count; pad < CardsPerRow; pad++)
+						{
+							<div class="stat-card-spacer"></div>
+						}
+					</div>
+				}
+
+			</div>
+		</div>
+	}
 
 	@* =========================== Tooltip (follows cursor) =========================== *@
 	@if (hoveredNode != null)
@@ -331,6 +502,23 @@
 	// =========================================================================
 	// State
 	// =========================================================================
+
+	// Tab state — "tree" shows the existing flower clusters; "stats" shows
+	// the player-wide modifier breakdown. Defaults to tree to preserve the
+	// pre-existing landing experience.
+	private string currentTab = "tree";
+	private string lastTabHover = null; // sound guard (s&box onmouseover fires repeatedly)
+
+	// When false (default), the stats list hides every row that has zero
+	// contributions, plus any group with no active rows. Cuts ~80% of
+	// vertical space at typical investment levels. Toggle in the summary
+	// bar flips it on so the player can see every available bonus channel.
+	private bool showInactiveStats = false;
+	// Stats subtab refresh tick — boost timers count down live, so we bump a
+	// version int every second and feed it into BuildHash.
+	private int statsTickVersion = 0;
+	private TimeSince sinceStatsTick = 0f;
+
 	private SkillNode hoveredNode;
 	private string lastHoveredId = null; // hover-sound guard (s&box onmouseover fires repeatedly)
 
@@ -418,6 +606,14 @@
 		{
 			resetConfirming = false;
 			resetBtnVersion++;
+		}
+
+		// Stats tab needs a 1Hz heartbeat so boost-timer text updates in
+		// real time. Only relevant on the stats tab — skip otherwise.
+		if (currentTab == "stats" && sinceStatsTick > 1.0f)
+		{
+			statsTickVersion++;
+			sinceStatsTick = 0f;
 		}
 	}
 
@@ -594,6 +790,50 @@
 		if (lastResetHoverState == "reset") return;
 		lastResetHoverState = "reset";
 		SoundManager.PlayHover();
+	}
+
+	// =========================================================================
+	// Stats subtab — tab switching + helpers
+	// =========================================================================
+	private void SetTab(string tab)
+	{
+		if (currentTab == tab) return;
+		currentTab = tab;
+		// Clear any tree-specific transient state so it doesn't bleed into
+		// the stats view (or vice-versa when switching back).
+		hoveredNode = null;
+		lastHoveredId = null;
+		showBurst = false;
+		// Nudge timer baseline so the first second on stats tab is fresh.
+		sinceStatsTick = 0f;
+		SoundManager.PlayTabSwitch();
+	}
+
+	private void OnTabHover(string tab)
+	{
+		if (lastTabHover == tab) return;
+		lastTabHover = tab;
+		SoundManager.PlayHover();
+	}
+
+	private void ToggleShowInactiveStats()
+	{
+		showInactiveStats = !showInactiveStats;
+		SoundManager.PlayClick();
+	}
+
+	private int GetActiveStatCount()
+	{
+		// Cheap call — read once per frame is fine. The list build itself is
+		// O(skills + relics + boosts) which is small.
+		return PlayerStatsSummary.CountActiveRows();
+	}
+
+	private string FormatBoostTime(TimeSpan ts)
+	{
+		if (ts.TotalSeconds <= 0) return "0:00";
+		if (ts.TotalHours >= 1) return $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+		return $"{ts.Minutes:D1}:{ts.Seconds:D2}";
 	}
 
 	// Tuple-render helper. Mirrors ShopPanelContent.GetBuyButtonContent — keeps
@@ -811,6 +1051,9 @@
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
+		hash.Add(currentTab);
+		hash.Add(showInactiveStats);
+		hash.Add(statsTickVersion);
 		hash.Add(GetSkillPoints());
 		hash.Add(GetTotalSkillPointsSpent());
 		hash.Add(GetTotalRanksUnlocked());

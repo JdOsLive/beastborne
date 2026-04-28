@@ -131,6 +131,9 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		// Limit message length
 		content = content.Length > 500 ? content.Substring( 0, 500 ) : content;
 
+		// Profanity filter (sender side)
+		content = ProfanityFilter.Filter( content );
+
 		// Track chat message stats
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer != null )
@@ -449,6 +452,9 @@ public sealed class ChatManager : Component, Component.INetworkListener
 			return;
 		}
 
+		// Profanity filter (receiver side — protects against modded clients)
+		content = ProfanityFilter.Filter( content );
+
 		var message = new ChatMessage
 		{
 			SteamId = steamId,
@@ -633,6 +639,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		if ( string.IsNullOrWhiteSpace( content ) ) return;
 
 		content = content.Length > 500 ? content.Substring( 0, 500 ) : content;
+		content = ProfanityFilter.Filter( content );
 
 		var message = new ChatMessage
 		{
@@ -653,6 +660,8 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	public void BroadcastTradeChat( string senderConnectionId, long steamId, string playerName, string content, long timestampTicks )
 	{
 		if ( senderConnectionId == LocalConnectionId.ToString() ) return;
+
+		content = ProfanityFilter.Filter( content );
 
 		var msg = new ChatMessage
 		{
@@ -682,6 +691,8 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		var connId = Connection.Local?.Id.ToString() ?? "";
 		var guildId = guild.Guild.Id;
 
+		content = ProfanityFilter.Filter( content );
+
 		BroadcastGuildChat( connId, steamId, name, content, guildId, DateTime.UtcNow.Ticks );
 	}
 
@@ -692,6 +703,8 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		// Only show to guild members of the same guild
 		var guild = GuildManager.Instance;
 		if ( guild == null || !guild.IsInGuild || guild.Guild.Id != guildId ) return;
+
+		content = ProfanityFilter.Filter( content );
 
 		var msg = new ChatMessage
 		{

@@ -839,6 +839,11 @@ public sealed class BattleManager : Component
 		if ( CurrentBossState != null && CurrentResult.PlayerWon )
 		{
 			MissionManager.Instance?.TrackBossDefeated();
+
+			// Guild "Boss Breaker" weekly goal — only count expedition bosses,
+			// not raid bosses (raids are gated and have their own progression).
+			if ( !IsRaidMode )
+				GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.BossesDefeated, 1 );
 		}
 
 		// Accumulate tamer-level damage/knockout totals for leaderboards.
@@ -872,6 +877,11 @@ public sealed class BattleManager : Component
 				MissionManager.Instance?.TrackDamageDealt( battleDamage );
 			if ( battleKOs > 0 )
 				MissionManager.Instance?.TrackKnockouts( battleKOs );
+
+			// Guild "Wild Hunt" weekly goal — KOs in non-arena battles count.
+			// Already gated to non-raid by the surrounding block.
+			if ( battleKOs > 0 && CurrentBattleState?.IsArenaMode != true )
+				GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.WildBeastsKO, battleKOs );
 		}
 	}
 
@@ -1456,6 +1466,18 @@ public sealed class BattleManager : Component
 				{
 					defender.CurrentHP = turn.DefenderHPAfter;
 					OnMonsterDamaged?.Invoke( defender, turn.Damage );
+
+					// Tutorial: notify when an enemy drops to ~50% HP. Manual battles
+					// bypass BattleSimulator.ApplyDamage (HP is set from pre-resolved
+					// turn data here), so the hook lives at the point of mutation.
+					if ( EnemyTeam != null && EnemyTeam.Contains( defender ) )
+					{
+						float pct = defender.MaxHP > 0 ? (float)defender.CurrentHP / defender.MaxHP : 0f;
+						if ( pct <= 0.5f && pct > 0f )
+						{
+							Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "battle.enemy-hp-low" );
+						}
+					}
 
 					// Check for boss phase transition
 					if ( defender.IsBoss && defender.CurrentHP > 0 )

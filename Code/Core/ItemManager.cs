@@ -1575,28 +1575,23 @@ public sealed class ItemManager : Component
 	{
 		_dropTables.Clear();
 
-		// Base drop table (all expeditions) - consumables
+		// Base drop table (all expeditions). Pre-launch cull — medicines
+		// (boost_*), XP treats, and catch lures were pulled from the wild
+		// drop pool and are now shop-only purchases. Beasts in the wild
+		// drop their signature material (handled separately in
+		// GetDropsForExpedition) plus the rare currency relic below.
 		_dropTables["base"] = new DropTable
 		{
 			Id = "base",
 			BaseDropChance = 0.03f,
 			Entries = new()
 			{
-				new() { ItemId = "boost_atk", Weight = 100 },
-				new() { ItemId = "boost_def", Weight = 100 },
-				new() { ItemId = "boost_spd", Weight = 100 },
-				new() { ItemId = "boost_spa", Weight = 100 },
-				new() { ItemId = "boost_spd_def", Weight = 100 },
-				new() { ItemId = "xp_treat", Weight = 80 },
-				new() { ItemId = "boost_crit", Weight = 40, MinExpeditionLevel = 20 },
-				new() { ItemId = "xp_feast", Weight = 30, MinExpeditionLevel = 30 },
-				new() { ItemId = "catch_lure", Weight = 25, MinExpeditionLevel = 15 },
-				new() { ItemId = "gold_bell", Weight = 20, MinExpeditionLevel = 25 },
-				new() { ItemId = "catch_prime", Weight = 10, MinExpeditionLevel = 50 },
+				new() { ItemId = "gold_bell", Weight = 20, MinExpeditionLevel = 5 },
 			}
 		};
 
-		// Neutral expeditions - general held items + XP relics
+		// Neutral expeditions — held items only at first, relics gated to
+		// later levels so the early loot pool stays compact.
 		_dropTables["neutral"] = new DropTable
 		{
 			Id = "neutral",
@@ -1606,9 +1601,7 @@ public sealed class ItemManager : Component
 			{
 				new() { ItemId = "held_training_weight", Weight = 100 },
 				new() { ItemId = "held_growth_ring", Weight = 50, MinExpeditionLevel = 20 },
-				new() { ItemId = "held_fortune_coin", Weight = 50, MinExpeditionLevel = 20 },
-				new() { ItemId = "relic_scholars_lens", Weight = 15, MinExpeditionLevel = 15 },
-				new() { ItemId = "relic_veterans_medal", Weight = 8, MinExpeditionLevel = 35 },
+				new() { ItemId = "relic_scholars_lens", Weight = 15, MinExpeditionLevel = 25 },
 			}
 		};
 
@@ -1989,23 +1982,35 @@ public sealed class ItemManager : Component
 			}
 		}
 
-		// For neutral expeditions, also include items from multiple elements
-		if ( elementKey == "neutral" )
+		// (Removed: previous code pulled the first 2 items from EVERY element
+		// table into Neutral zones, ballooning the drop list to ~14 items per
+		// zone. Pre-launch decision is to keep zones tightly scoped — Neutral
+		// zones drop from the base + neutral tables only, plus beast materials
+		// added below.)
+
+		// Beast signature materials — append a `mat_{speciesId}` for every
+		// species in the expedition's spawn pool (and boss). These are the
+		// real "beast drops" the player is hunting; the held/relic items
+		// in the element tables are bonus loot on top.
+		if ( expedition.PossibleSpecies != null )
 		{
-			// Neutral expeditions can drop general items from any table
-			foreach ( var tableKey in new[] { "fire", "water", "earth", "wind", "electric", "ice" } )
+			foreach ( var speciesId in expedition.PossibleSpecies )
 			{
-				if ( _dropTables.TryGetValue( tableKey, out var table ) )
+				var matId = $"mat_{speciesId}";
+				if ( _itemDatabase.TryGetValue( matId, out var matItem ) )
 				{
-					foreach ( var entry in table.Entries.Take( 2 ) ) // Just first 2 items from each
-					{
-						if ( _itemDatabase.TryGetValue( entry.ItemId, out var item ) )
-						{
-							if ( !drops.Any( d => d.Id == item.Id ) )
-								drops.Add( item );
-						}
-					}
+					if ( !drops.Any( d => d.Id == matItem.Id ) )
+						drops.Add( matItem );
 				}
+			}
+		}
+		if ( expedition.HasBoss && !string.IsNullOrEmpty( expedition.BossSpeciesId ) )
+		{
+			var bossMatId = $"mat_{expedition.BossSpeciesId}";
+			if ( _itemDatabase.TryGetValue( bossMatId, out var bossMat ) )
+			{
+				if ( !drops.Any( d => d.Id == bossMat.Id ) )
+					drops.Add( bossMat );
 			}
 		}
 

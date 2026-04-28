@@ -1504,6 +1504,28 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	}
 
 	/// <summary>
+	/// Lucide iconify name per rank — escalates in visual weight from
+	/// Bronze (half-shield) to Mythic (sparkles). Project standard is
+	/// iconify lucide icons; this replaces the Unicode glyphs returned
+	/// by GetRankIcon() at panels that use the iconify renderer.
+	/// </summary>
+	public static string GetRankLucideIcon( string rank )
+	{
+		return rank switch
+		{
+			"Mythic" => "lucide:sparkles",
+			"Legendary" => "lucide:crown",
+			"Master" => "lucide:trophy",
+			"Diamond" => "lucide:gem",
+			"Platinum" => "lucide:medal",
+			"Gold" => "lucide:award",
+			"Silver" => "lucide:shield",
+			"Bronze" => "lucide:shield-half",
+			_ => "lucide:user-round"
+		};
+	}
+
+	/// <summary>
 	/// Get a numeric tier for rank comparison (used by achievements)
 	/// </summary>
 	public static int GetRankTier( int points )

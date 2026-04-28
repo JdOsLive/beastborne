@@ -14,6 +14,7 @@ public class Monster
 	public string Nickname { get; set; }
 
 	// Level and XP
+	public const int MaxLevel = 50;
 	public int Level { get; set; } = 1;
 	public int CurrentXP { get; set; } = 0;
 
@@ -92,7 +93,7 @@ public class Monster
 	public DateTime CaughtAt => ObtainedAt;
 
 	// XP required for next level (easier early, harder late)
-	// L1: ~25, L10: ~90, L20: ~260, L50: ~2050, L100: ~9100
+	// L1: ~25, L10: ~90, L20: ~260, L40: ~1280, L50: ~2050
 	public int XPForNextLevel => (int)(25 + Math.Pow(Level, 2.2) * 0.5);
 
 	// Alias for XPForNextLevel (used by UI)
@@ -109,7 +110,7 @@ public class Monster
 	public bool AddXP( int amount )
 	{
 		// Don't gain XP if already at max level
-		if ( Level >= 100 )
+		if ( Level >= MaxLevel )
 		{
 			CurrentXP = 0;
 			return false;
@@ -118,7 +119,7 @@ public class Monster
 		CurrentXP += amount;
 		bool leveledUp = false;
 
-		while ( CurrentXP >= XPForNextLevel && Level < 100 )
+		while ( CurrentXP >= XPForNextLevel && Level < MaxLevel )
 		{
 			CurrentXP -= XPForNextLevel;
 			Level++;
@@ -126,7 +127,7 @@ public class Monster
 		}
 
 		// Cap XP at 0 if we just hit max level
-		if ( Level >= 100 )
+		if ( Level >= MaxLevel )
 			CurrentXP = 0;
 
 		return leveledUp;

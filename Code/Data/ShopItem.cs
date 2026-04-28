@@ -20,7 +20,8 @@ public enum ShopItemType
 	ElementOrb,     // Boost a specific element
 	PartySlot,      // Increase party size
 	StatBoost,      // Permanent stat boost item
-	NameChange      // Change monster name
+	NameChange,     // Change monster name
+	Consumable      // Generic consumable — purchase grants ItemDefinition by id
 }
 
 /// <summary>

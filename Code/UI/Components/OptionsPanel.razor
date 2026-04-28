@@ -88,6 +88,21 @@
 							ToggleShowDiscoveryAlerts,
 							"discovery-alerts")
 
+						@* Replay tutorial — fires the 14-step walkthrough fresh. *@
+						<div class="setting-row" onmouseover=@(() => OnHover("replay-tutorial"))>
+							<div class="setting-icon-frame">
+								<iconify icon="lucide:graduation-cap" Size=@(14) Color="rgba(255, 255, 255, 0.65)" />
+							</div>
+							<div class="setting-text">
+								<span class="setting-label">Replay Tutorial</span>
+								<span class="setting-desc">Walk through the first expedition and contract again.</span>
+							</div>
+							<button class="reset-chip" onclick=@OnReplayTutorialClicked>
+								<iconify icon="lucide:rotate-ccw" Size=@(12) Color="#c4b5fd" />
+								<span>Replay</span>
+							</button>
+						</div>
+
 					</div>
 				</div>
 
@@ -247,9 +262,17 @@
 									<iconify icon="lucide:trash-2" Size=@(13) Color="#fca5a5" />
 									<span class="danger-label">Reset Game Data</span>
 								</div>
-								<span class="danger-desc">Permanently deletes ALL progress — beasts, items, missions, achievements. Cannot be undone.</span>
+								<span class="danger-desc">@(IsTutorialActive() ? "Locked while the tutorial is in progress — finish or skip it first." : "Permanently deletes ALL progress — beasts, items, missions, achievements. Cannot be undone.")</span>
 							</div>
-							@if (!showResetConfirm)
+							@if (IsTutorialActive())
+							{
+								<button class="danger-btn disabled"
+										onmouseover=@(() => OnHover("reset-game"))>
+									<iconify icon="lucide:lock" Size=@(13) Color="rgba(255, 255, 255, 0.4)" />
+									<span class="danger-btn-text">LOCKED</span>
+								</button>
+							}
+							else if (!showResetConfirm)
 							{
 								<button class="danger-btn"
 										onclick=@OnResetGameClicked
@@ -603,12 +626,39 @@
 		NotificationManager.Instance?.AddNotification( NotificationType.Info, L("ui.options.settings_reset"), L("ui.options.settings_reset_desc") );
 	}
 
+	private void OnReplayTutorialClicked()
+	{
+		SoundManager.PlayClick();
+		// Restart re-fires from step 0 even if HasCompletedTutorial was set.
+		// Closes the Options panel so the tutorial banner isn't covered.
+		TutorialManager.Instance?.RestartTutorial();
+		Close();
+	}
+
 	// ============================================
 	// DANGER ZONE — Full game data wipe
 	// ============================================
 
+	/// <summary>
+	/// Reset Game Data is locked during the tutorial. Wiping mid-tutorial would
+	/// strip the tutorial-only Saltmoor Approach zone and the rigged contract
+	/// and leave the player in a broken intermediate state.
+	/// </summary>
+	private bool IsTutorialActive()
+	{
+		return TutorialManager.Instance?.IsTutorialActive == true;
+	}
+
 	private void OnResetGameClicked()
 	{
+		// Defense-in-depth: button is hidden when tutorial is active, but if
+		// something bypasses the UI gate, refuse here too.
+		if ( IsTutorialActive() )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+
 		SoundManager.PlayClick();
 		showResetConfirm = true;
 		StateHasChanged();
@@ -730,6 +780,7 @@
 		hash.Add( IsVisible );
 		hash.Add( showResetConfirm );
 		hash.Add( isResetting );
+		hash.Add( IsTutorialActive() );
 		hash.Add( LocalizationManager.CurrentLanguage );
 		if ( SettingsManager.Instance?.Settings != null )
 		{

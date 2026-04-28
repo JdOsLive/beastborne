@@ -5,8 +5,10 @@
 // ═══════════════════════════════════════════════════════════════
 
 @keyframes mapMarkerPulse {
-	0%, 100% { transform: scale(1); opacity: 0.55; }
-	50% { transform: scale(1.45); opacity: 0; }
+	// Keyframe transforms include the diamond's rotation so the pulse stays
+	// shaped as a diamond instead of snapping back to a square mid-animation.
+	0%, 100% { transform: rotate(45deg) scale(1); opacity: 0.55; }
+	50% { transform: rotate(45deg) scale(1.45); opacity: 0; }
 }
 
 @keyframes mapMarkerBob {
@@ -59,9 +61,10 @@ WorldMapPanel {
 	overflow: hidden;
 }
 
-// ─── BACKDROP ────────────────────────────────────────────────
-// Placeholder until the artist ships the real map.
-// Layered gradients evoke a pastoral valley: sky, land, rolling hills.
+// ─── BACKDROP — Serpinglin illustrated map ────────────────────
+// The artist's map is rendered as a `<img>` with object-fit: contain to
+// preserve aspect ratio. Landmarks are absolutely positioned over the
+// .map-art-frame in % so they stay locked to the artwork.
 .map-backdrop {
 	position: absolute;
 	top: 0;
@@ -69,42 +72,369 @@ WorldMapPanel {
 	width: 100%;
 	height: 100%;
 	pointer-events: none;
+	background-color: rgb(40, 60, 35);
 }
 
-.map-bg-layer {
+// Soft outer vignette layered ON TOP of the map for visual focus
+.map-bg-vignette {
 	position: absolute;
 	top: 0;
 	left: 0;
 	width: 100%;
 	height: 100%;
+	background-image: radial-gradient(rgba(0, 0, 0, 0) 50%, rgba(0, 0, 0, 0.50) 100%);
+	pointer-events: none;
+	z-index: 6;
 }
 
-.map-bg-gradient {
-	// Solarpunk-warm daylight: hazy gold sky → olive meadow → deep living green
-	background-image: linear-gradient(
-		to bottom,
-		rgb(210, 210, 185) 0%,
-		rgb(220, 190, 135) 22%,
-		rgb(170, 175, 115) 48%,
-		rgb(110, 140, 85) 78%,
-		rgb(55, 82, 52) 100%
-	);
-	opacity: 0.92;
+// Wrap that holds the map base + landmark overlays. Centered, contains
+// width:100% / height:100% so child %-positioning is relative to it.
+.map-art-frame {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	overflow: hidden;
 }
 
-.map-bg-texture {
-	// Soft radial vignette to focus the eye on the markers.
-	// s&box quirk: `circle at X% Y%` is rejected by the CSS parser. Default
-	// radial-gradient origin is element center, which is what we want here.
-	background-image: radial-gradient(
-		rgba(0, 0, 0, 0) 40%,
-		rgba(0, 0, 0, 0.55) 100%
-	);
+// Base map illustration — stretched to fill the frame so landmark %
+// positioning matches the artist's coordinate system regardless of
+// viewport aspect. The map is ~1.61 native, stretched ~10% wider on
+// 16:9 displays. Forgiving since the art has organic edges.
+.map-base {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-image: url("ui/worldmap/serpinglin/map_without_elements.png");
+	background-size: 100% 100%;
+	background-repeat: no-repeat;
+	pointer-events: none;
 }
 
-// No header — map is full-bleed. Navbar tab identifies the surface.
+// Soft drifting cloud overlay. Same stretch trick + low opacity. Sits
+// ABOVE the base + landmarks but below markers / tooltips.
+.map-clouds {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-image: url("ui/worldmap/serpinglin/clouds.png");
+	background-size: 100% 100%;
+	background-repeat: no-repeat;
+	pointer-events: none;
+	opacity: 0.55;
+	z-index: 4;
+	animation: serpinglinCloudDrift 60s ease-in-out infinite;
+}
 
-// ─── MARKERS ─────────────────────────────────────────────────
+@keyframes serpinglinCloudDrift {
+	0%, 100% { transform: translate(0, 0); }
+	50%      { transform: translate(-1.5%, 0.5%); }
+}
+
+// Map title stamp — top-left over the map. Persona-stamp slab with
+// skewed eyebrow + bold uppercase region name.
+.map-title-stamp {
+	position: absolute;
+	top: 22px;
+	left: 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px 14px;
+	background-color: rgba(15, 15, 25, 0.96);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 4px 4px 0 rgba(124, 58, 237, 0.65);
+	z-index: 8;
+	pointer-events: none;
+}
+
+.map-title-eyebrow {
+	font-size: 9px;
+	font-weight: 900;
+	color: #fbbf24;
+	letter-spacing: 0.22em;
+	line-height: 11px;
+	text-transform: uppercase;
+}
+
+.map-title-name {
+	font-size: 22px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.10em;
+	line-height: 26px;
+	text-transform: uppercase;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+}
+
+.map-title-meta {
+	font-size: 10px;
+	font-weight: 700;
+	color: rgba(196, 181, 253, 0.9);
+	letter-spacing: 0.14em;
+	line-height: 12px;
+	text-transform: uppercase;
+}
+
+// ─── DEV: drag-to-place editor ────────────────────────────────
+// EDIT button bottom-left, SAVE button next to it when editing.
+// Fullscreen drag-shield mounts only while dragging — captures
+// onmousemove/onmouseup reliably even when the cursor leaves the
+// landmark or marker mid-drag.
+
+.map-dev-toolbar {
+	position: absolute;
+	top: 22px;
+	left: 24px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	z-index: 14;
+	pointer-events: none;
+}
+
+.map-dev-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	padding: 7px 12px;
+	background-color: rgba(15, 15, 25, 0.92);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+	cursor: pointer;
+	pointer-events: all;
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out, transform 0.1s ease-out;
+
+	span {
+		font-size: 11px;
+		font-weight: 900;
+		letter-spacing: 0.14em;
+		color: rgba(255, 255, 255, 0.85);
+		line-height: 13px;
+		text-transform: uppercase;
+	}
+
+	&:hover {
+		background-color: rgba(40, 28, 60, 0.95);
+		border-color: rgba(167, 139, 250, 0.65);
+		transform: translateY(-1px);
+	}
+
+	&.active {
+		background-color: rgba(251, 191, 36, 0.85);
+		border-color: rgba(0, 0, 0, 0.85);
+		box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.65);
+
+		span { color: #1a1610; }
+	}
+}
+
+.map-dev-save {
+	box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.55);
+
+	&:hover {
+		border-color: rgba(74, 222, 128, 0.65);
+	}
+}
+
+// Fullscreen drag shield — mounts only while a drag is in flight. Captures
+// move/up reliably even when the cursor leaves the source element.
+.map-drag-shield {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 100;
+	pointer-events: all;
+	cursor: grabbing;
+}
+
+// Visible highlight on every draggable element while edit mode is active.
+.landmark.editable {
+	cursor: grab;
+
+	.landmark-art {
+		filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.85))
+			drop-shadow(0 0 6px rgba(251, 191, 36, 0.85))
+			drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
+	}
+}
+
+.zone-marker.editable {
+	cursor: grab;
+
+	.marker-pin {
+		box-shadow: 0 0 0 2px #fbbf24, 3px 3px 0 rgba(0, 0, 0, 0.55);
+	}
+}
+
+.trade-node.editable {
+	cursor: grab;
+
+	.tn-pin {
+		box-shadow: 0 0 0 2px #fbbf24, 2px 2px 0 rgba(0, 0, 0, 0.55);
+	}
+}
+
+// Top-right hint stamp — gentle nudge that landmarks are hoverable.
+.map-hint-stamp {
+	position: absolute;
+	top: 22px;
+	right: 24px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	padding: 7px 12px;
+	background-color: rgba(15, 15, 25, 0.92);
+	border: 2px solid rgba(0, 0, 0, 0.55);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.45);
+	z-index: 8;
+	pointer-events: none;
+	opacity: 0.85;
+
+	span {
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.10em;
+		color: rgba(255, 255, 255, 0.78);
+		line-height: 13px;
+		text-transform: uppercase;
+	}
+}
+
+// ─── LANDMARKS — hoverable village PNGs ──────────────────────
+// Each landmark is positioned in % over .map-art-frame. On hover, the
+// art lifts slightly and a Persona-stamp tooltip floats above it.
+.map-landmarks {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 3;
+}
+
+.landmark {
+	position: absolute;
+	pointer-events: all;
+	cursor: help;
+	transition: transform 0.15s ease-out;
+
+	&:hover, &.hovered {
+		transform: translateY(-3px);
+		filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45)) drop-shadow(0 0 12px rgba(251, 191, 36, 0.55));
+	}
+}
+
+.landmark-art {
+	width: 100%;
+	height: auto;
+	pointer-events: none;
+	filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
+	transition: filter 0.15s ease-out;
+}
+
+// Landmark hover tooltip — Persona stamp slab. Anchors at the bottom-
+// center of the landmark (left/top set inline) and floats UP via
+// negative offsets + translateY so it sits ABOVE the hovered art.
+.landmark-tooltip {
+	position: absolute;
+	width: 280px;
+	// Anchor X is the landmark's horizontal center (set inline); the
+	// negative margin-left shifts the tooltip box LEFT of that anchor.
+	// Bumped past 50% (-180 vs the geometric -140) because the landmark
+	// PNGs have transparent padding that pushes visible art toward the
+	// upper-left of the sprite — the geometric center reads as "right of"
+	// the visible building.
+	margin-left: -200px;
+	margin-top: -16px;
+	transform: translateY(-100%);
+	padding: 12px 14px 11px 14px;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 4px 4px 0 rgba(217, 119, 6, 0.65);
+	z-index: 12;
+	pointer-events: none;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	animation: landmarkTooltipIn 0.18s ease-out;
+}
+
+@keyframes landmarkTooltipIn {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+
+.landmark-tooltip-tag {
+	position: absolute;
+	top: -12px;
+	left: -6px;
+	padding: 3px 10px;
+	background-color: #fbbf24;
+	border: 1.5px solid rgba(0, 0, 0, 0.85);
+	border-radius: 3px;
+	transform: rotate(-3deg);
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+
+	span {
+		font-size: 9px;
+		font-weight: 900;
+		letter-spacing: 0.18em;
+		color: #1a1610;
+		text-transform: uppercase;
+		line-height: 11px;
+	}
+}
+
+// HOME tag — purple variant for the player's cottage
+.landmark-tooltip.tag-home {
+	box-shadow: 4px 4px 0 rgba(124, 58, 237, 0.65);
+
+	.landmark-tooltip-tag {
+		background-color: #a78bfa;
+
+		span { color: #1a0f30; }
+	}
+}
+
+.landmark-tooltip-title {
+	font-size: 15px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	line-height: 19px;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+}
+
+.landmark-tooltip-body {
+	font-size: 12px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.85);
+	line-height: 17px;
+	white-space: normal;
+}
+
+// ─── MARKERS — Persona-stamp pins ────────────────────────────
+// Diamond stamp pin (square rotated 45°) instead of round button. Sharp
+// 4px corners on the label, hard offset purple shadow under both. Sits
+// ABOVE landmarks so the lore tooltips can layer cleanly.
 .map-markers {
 	position: absolute;
 	top: 0;
@@ -112,6 +442,7 @@ WorldMapPanel {
 	width: 100%;
 	bottom: 0;
 	pointer-events: none;
+	z-index: 7;
 }
 
 .zone-marker {
@@ -119,16 +450,23 @@ WorldMapPanel {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	width: 120px;
+	width: 140px;
+	// 12px top padding gives the rotated diamond room — without it, the
+	// pin's `transform: rotate(45deg)` visual extension gets clipped by
+	// the marker's stacking context (most visible on `&.locked` where
+	// the grayscale filter creates a fresh clip context).
+	padding-top: 12px;
 	// left/top set inline; transform centers the marker on its anchor point
 	transform: translate(-50%, -100%);
 	cursor: pointer;
 	pointer-events: all;
 	animation: mapMarkerBob 2.8s ease-in-out infinite;
 
+	// Locked zones — fully visible but desaturated to gray so the player
+	// can read what's there without being unsure if it's clickable.
 	&.locked {
 		cursor: default;
-		opacity: 0.55;
+		filter: grayscale(1);
 		animation-play-state: paused;
 	}
 }
@@ -141,51 +479,64 @@ WorldMapPanel {
 	pointer-events: none;
 }
 
-// Subtle shaft that connects the pin to the ground anchor
+// Stem — thicker stamp pin, anchored to the map.
 .marker-stem {
-	width: 2px;
-	height: 14px;
-	background-color: rgba(0, 0, 0, 0.55);
-	margin-bottom: -1px;
+	width: 3px;
+	height: 16px;
+	background-color: rgba(0, 0, 0, 0.75);
+	margin-bottom: 2px;
+	box-shadow: 1px 0 0 rgba(0, 0, 0, 0.45);
 }
 
+// Diamond stamp pin — Persona vocabulary. The 45° rotation is on the
+// outer container so children read upright.
 .marker-pin {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 52px;
-	height: 52px;
-	background-color: rgba(120, 30, 30, 0.95);
-	border: 2px solid rgba(253, 224, 71, 0.85);
-	border-radius: 26px;
+	width: 44px;
+	height: 44px;
+	background-color: rgba(180, 45, 45, 0.96);
+	border: 2.5px solid rgba(0, 0, 0, 0.85);
+	border-radius: 4px;
+	transform: rotate(45deg);
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
 	position: relative;
 	z-index: 2;
 	transition: background-color 0.15s ease-out,
 				border-color 0.15s ease-out,
 				transform 0.12s ease-out;
+
+	// Iconify needs to counter-rotate so it reads upright
+	iconify {
+		transform: rotate(-45deg);
+	}
 }
 
 .zone-marker.unlocked:hover .marker-pin {
-	background-color: rgba(180, 45, 45, 1);
-	border-color: rgba(253, 230, 138, 1);
-	transform: scale(1.08);
+	background-color: rgba(220, 60, 60, 1);
+	transform: rotate(45deg) scale(1.10);
 }
 
 .zone-marker.locked .marker-pin {
-	background-color: rgba(30, 41, 59, 0.9);
-	border-color: rgba(100, 116, 139, 0.7);
+	background-color: rgba(40, 50, 60, 0.92);
+	border-color: rgba(100, 116, 139, 0.85);
 }
 
-// Outward ripple behind the pin (available-zone attention cue)
+// Outward ripple behind the pin (available-zone attention cue) — keep
+// the diamond shape so it reads as the same vocabulary as the pin itself.
 .marker-pulse {
 	position: absolute;
-	top: 14px;
+	// Match the marker's 12px top padding so the pulse aligns with the pin
+	// (without this it sat 12px ABOVE the pin and looked detached).
+	top: 12px;
 	left: 50%;
-	width: 52px;
-	height: 52px;
-	margin-left: -26px;
+	width: 44px;
+	height: 44px;
+	margin-left: -22px;
 	background-color: rgba(253, 224, 71, 0.45);
-	border-radius: 26px;
+	border-radius: 4px;
+	transform: rotate(45deg);
 	pointer-events: none;
 	animation: mapMarkerPulse 2.2s ease-out infinite;
 	z-index: 1;
@@ -196,42 +547,56 @@ WorldMapPanel {
 	animation-play-state: paused;
 }
 
+// Label — Persona-stamp slab under the pin.
 .zone-label {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	margin-top: 6px;
-	padding: 4px 10px;
-	background-color: rgba(12, 18, 30, 0.9);
-	border: 1px solid rgba(253, 224, 71, 0.4);
-	border-radius: 7px;
+	margin-top: 12px;
+	padding: 5px 12px 5px 12px;
+	background-color: rgba(15, 15, 25, 0.96);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.55);
 	white-space: nowrap;
 }
 
 .zone-marker.locked .zone-label {
-	border-color: rgba(100, 116, 139, 0.5);
+	border-color: rgba(100, 116, 139, 0.55);
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
 }
 
 .zone-name {
-	font-size: 13px;
-	font-weight: 800;
+	font-size: 12px;
+	font-weight: 900;
 	color: rgb(254, 243, 199);
-	line-height: 15;
-	letter-spacing: 0.8px;
+	line-height: 14px;
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
 }
 
 .zone-meta {
 	font-size: 10px;
-	font-weight: 700;
-	color: rgba(253, 224, 71, 0.85);
-	line-height: 12;
-	letter-spacing: 0.5px;
-	margin-top: 1px;
+	font-weight: 800;
+	color: #fbbf24;
+	line-height: 12px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	margin-top: 2px;
 }
 
 .zone-marker.locked .zone-name,
 .zone-marker.locked .zone-meta {
 	color: rgba(203, 213, 225, 0.7);
+}
+
+.zone-marker.cleared .marker-pin {
+	background-color: rgba(22, 78, 43, 0.95);
+}
+
+.zone-marker.cleared .marker-pulse {
+	background-color: rgba(134, 239, 172, 0.35);
 }
 
 // ─── ZONE DETAIL OVERLAY ─────────────────────────────────────
@@ -245,20 +610,484 @@ WorldMapPanel {
 	z-index: 50;
 }
 
+// ─── ZONE DETAIL — Hyrule Warriors hero-card style ─────────────
+// One column, hero image at the top, breathable spacing, single CTA.
 .zone-detail {
 	position: absolute;
 	right: 24px;
 	top: 84px;
-	width: 420px;
-	max-height: 80%;
-	background-color: rgba(12, 18, 30, 0.97);
-	border: 2px solid rgba(253, 224, 71, 0.55);
-	border-radius: 14px;
-	padding: 20px 22px 22px 22px;
+	width: 460px;
+	max-height: 82%;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 6px 6px 0 rgba(124, 58, 237, 0.65), 0 18px 48px rgba(0, 0, 0, 0.7);
+	padding: 0;
 	z-index: 60;
 	display: flex;
 	flex-direction: column;
+	overflow: hidden;
 	animation: zoneDetailEnter 0.22s ease-out;
+}
+
+// ── HERO IMAGE ─────────────────────────────────────────────────
+// Big landscape image at top with element-tinted gradient overlay
+// and the title/stats sitting on top in the lower-left corner.
+.zd-hero {
+	position: relative;
+	width: 100%;
+	height: 180px;
+	flex-shrink: 0;
+	overflow: hidden;
+	background-color: rgba(20, 14, 32, 0.85);
+}
+
+.zd-hero-img {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	background-repeat: no-repeat;
+}
+
+// Dark gradient over the image so the title text stays readable.
+// Element-tinted variants override the bottom color.
+.zd-hero-veil {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-image: linear-gradient(to bottom, rgba(15, 15, 25, 0) 0%, rgba(15, 15, 25, 0.65) 60%, rgba(15, 15, 25, 0.95) 100%);
+}
+
+// Per-element veil tints removed — expeditions don't have a meaningful
+// element attribute, so every zone uses the same neutral dark gradient.
+
+.zd-hero-info {
+	position: absolute;
+	bottom: 14px;
+	left: 18px;
+	right: 60px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.zd-hero-kicker {
+	font-size: 10px;
+	font-weight: 900;
+	color: #fbbf24;
+	letter-spacing: 0.20em;
+	line-height: 12px;
+	text-transform: uppercase;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
+}
+
+.zd-hero-title {
+	font-size: 26px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.06em;
+	line-height: 30px;
+	text-transform: uppercase;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85);
+}
+
+.zd-hero-stats {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+.zd-hero-stat {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	font-size: 11px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.10em;
+	line-height: 13px;
+	text-transform: uppercase;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.65);
+
+	&.element { color: #fbbf24; }
+	&.boss    { color: #fca5a5; }
+}
+
+.zd-hero-dot {
+	font-size: 12px;
+	font-weight: 900;
+	color: rgba(255, 255, 255, 0.45);
+	line-height: 13px;
+}
+
+// Close button bumped to top-right corner over the hero
+.zone-detail > .zd-close {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 5;
+}
+
+// ── HW-STYLE BODY ────────────────────────────────────────────
+// Lore line, beast portraits, drop beads, embark — all stacked
+// in a clean column inside the card, padded for breathing room.
+.zd-lore-line {
+	flex-shrink: 0;
+	padding: 14px 22px 4px 22px;
+	font-size: 13px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.78);
+	line-height: 19px;
+	white-space: normal;
+}
+
+.zd-row-label {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 22px 8px 22px;
+
+	font-size: 10px;
+	font-weight: 900;
+	color: #fbbf24;
+	letter-spacing: 0.22em;
+	line-height: 12px;
+	text-transform: uppercase;
+
+	.zd-row-sub {
+		font-size: 10px;
+		font-weight: 700;
+		color: rgba(196, 181, 253, 0.75);
+		letter-spacing: 0.10em;
+	}
+}
+
+// ── BEAST PORTRAITS ─────────────────────────────────────────
+// Square portrait tiles with name underneath, side-by-side in a row.
+.zd-beast-row {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 10px;
+	padding: 0 22px;
+}
+
+.zd-beast-portrait {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 88px;
+	gap: 4px;
+}
+
+.zd-portrait-icon {
+	width: 72px;
+	height: 72px;
+	background-color: rgba(20, 14, 32, 0.65);
+	border: 2px solid rgba(148, 163, 184, 0.45);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+	image-rendering: pixelated;
+	object-fit: contain;
+	background-repeat: no-repeat;
+}
+
+.zd-beast-portrait.rarity-uncommon  .zd-portrait-icon { border-color: rgba(74, 222, 128, 0.65);  box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.55); }
+.zd-beast-portrait.rarity-rare      .zd-portrait-icon { border-color: rgba(96, 165, 250, 0.65);  box-shadow: 2px 2px 0 rgba(37, 99, 235, 0.55); }
+.zd-beast-portrait.rarity-epic      .zd-portrait-icon { border-color: rgba(167, 139, 250, 0.75); box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.55); }
+.zd-beast-portrait.rarity-legendary .zd-portrait-icon { border-color: rgba(251, 191, 36, 0.75);  box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.55); }
+.zd-beast-portrait.rarity-mythic    .zd-portrait-icon { border-color: rgba(236, 72, 153, 0.75);  box-shadow: 2px 2px 0 rgba(190, 24, 93, 0.55); }
+.zd-beast-portrait.boss             .zd-portrait-icon { border-color: rgba(252, 165, 165, 0.85); box-shadow: 2px 2px 0 rgba(220, 38, 38, 0.65); }
+
+.zd-portrait-name {
+	width: 100%;
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.85);
+	letter-spacing: 0.04em;
+	line-height: 12px;
+	text-align: center;
+	white-space: nowrap;
+}
+
+.zd-portrait-skull {
+	position: absolute;
+	top: 4px;
+	right: 4px;
+}
+
+// ── DROP CARDS — 2-column grid grouped by source ────────────────
+// Outer scroll container holds the section labels + grids as flat
+// children so s&box scroll math works.
+.zd-drop-scroll {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 0 22px;
+	max-height: 240px;
+	overflow-x: hidden;
+	overflow-y: scroll;
+}
+
+.zd-drop-scroll > * {
+	flex-shrink: 0;
+}
+
+// Small section label between groups (BEAST DROPS / RANDOM DROPS)
+.zd-drop-group-label {
+	font-size: 9px;
+	font-weight: 900;
+	color: rgba(196, 181, 253, 0.85);
+	letter-spacing: 0.22em;
+	line-height: 11px;
+	text-transform: uppercase;
+	margin-top: 8px;
+	margin-bottom: 6px;
+
+	&:first-child { margin-top: 0; }
+}
+
+// Explicit pair row — two cards side-by-side via flex-row + flex: 1.
+// Avoids s&box's flex-wrap + calc(50%) collapse to character-width columns.
+.zd-drop-pair {
+	display: flex;
+	flex-direction: row;
+	gap: 6px;
+	margin-bottom: 6px;
+}
+
+.zd-drop-card {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	flex: 1 1 0;
+	min-width: 0;
+	padding: 6px 8px 6px 6px;
+	background-color: rgba(20, 14, 32, 0.55);
+	border: 1.5px solid rgba(148, 163, 184, 0.45);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+
+	&.rarity-uncommon  { border-color: rgba(74, 222, 128, 0.65);  box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.45); }
+	&.rarity-rare      { border-color: rgba(96, 165, 250, 0.65);  box-shadow: 2px 2px 0 rgba(37, 99, 235, 0.45); }
+	&.rarity-epic      { border-color: rgba(167, 139, 250, 0.75); box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.45); }
+	&.rarity-legendary { border-color: rgba(251, 191, 36, 0.75);  box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.45); }
+}
+
+// Empty placeholder when an odd number of drops — preserves grid alignment
+.zd-drop-card-empty {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+.zd-drop-icon {
+	width: 36px;
+	height: 36px;
+	min-width: 36px;
+	min-height: 36px;
+	flex-shrink: 0;
+	background-color: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.10);
+	border-radius: 3px;
+	image-rendering: pixelated;
+	object-fit: contain;
+	background-repeat: no-repeat;
+}
+
+.zd-drop-meta {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+	gap: 2px;
+}
+
+.zd-drop-name {
+	font-size: 12px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.04em;
+	line-height: 14px;
+	white-space: nowrap;
+}
+
+.zd-drop-source {
+	font-size: 10px;
+	font-weight: 600;
+	color: rgba(196, 181, 253, 0.85);
+	line-height: 13px;
+	white-space: normal;
+}
+
+// ── EMBARK CTA — pinned at the bottom of the card ──
+.embark-btn.hw-embark {
+	flex-shrink: 0;
+	margin: 18px 22px 22px 22px;
+	width: auto;
+}
+
+// Left tab column — vertical buttons
+.zd-tabs {
+	flex: 0 0 150px;
+	display: flex;
+	flex-direction: column;
+	padding: 12px 8px 12px 12px;
+	gap: 6px;
+	background-color: rgba(0, 0, 0, 0.30);
+	border-right: 2px solid rgba(167, 139, 250, 0.25);
+}
+
+.zd-tab {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	padding: 9px 10px;
+	background-color: rgba(20, 14, 32, 0.55);
+	border: 2px solid rgba(0, 0, 0, 0.55);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+	cursor: pointer;
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out, transform 0.1s ease-out;
+
+	span {
+		font-size: 11px;
+		font-weight: 800;
+		letter-spacing: 0.10em;
+		color: rgba(255, 255, 255, 0.75);
+		line-height: 13px;
+		text-transform: uppercase;
+		flex: 1 1 0;
+		min-width: 0;
+		white-space: nowrap;
+	}
+
+	&:hover {
+		background-color: rgba(40, 28, 60, 0.8);
+		border-color: rgba(167, 139, 250, 0.55);
+		transform: translateY(-1px);
+
+		span { color: #ffffff; }
+	}
+
+	&.active {
+		background-color: rgba(124, 58, 237, 0.85);
+		border-color: rgba(196, 181, 253, 0.85);
+		box-shadow: 2px 2px 0 rgba(76, 29, 149, 0.65);
+
+		span { color: #ffffff; }
+	}
+
+	&.locked {
+		opacity: 0.65;
+
+		span { color: rgba(255, 255, 255, 0.55); }
+	}
+
+	&.locked.active {
+		opacity: 1;
+	}
+}
+
+// Right content area — fills remaining width, holds either Overview
+// (lore + embark + scroll list) or a Side-Quest placeholder.
+.zd-content {
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 14px 18px 14px 18px;
+}
+
+// Scrollable list inside Overview — flat children only (s&box scroll
+// quirk). flex-row wrap so beast tiles sit 2-per-row, section labels +
+// drop chips force their own row via 100% width.
+.zd-body-scroll {
+	flex: 1 1 0;
+	min-height: 0;
+	overflow-y: scroll;
+	padding-right: 4px;
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-content: flex-start;
+	justify-content: center;
+}
+
+.zd-body-scroll > * {
+	flex-shrink: 0;
+}
+
+// ─── Side-quest placeholder — shown when a quest tab is active ──
+.zd-quest-placeholder {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	padding: 30px 20px;
+	gap: 12px;
+}
+
+.zd-quest-portrait {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 72px;
+	height: 72px;
+	background-color: rgba(20, 14, 32, 0.65);
+	border: 2px solid rgba(148, 163, 184, 0.45);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+.zd-quest-name {
+	font-size: 18px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	line-height: 22px;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+	text-align: center;
+}
+
+.zd-quest-tag {
+	padding: 3px 10px;
+	background-color: #fbbf24;
+	border: 1.5px solid rgba(0, 0, 0, 0.85);
+	border-radius: 3px;
+	transform: rotate(-2deg);
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+	font-size: 10px;
+	font-weight: 900;
+	color: #1a1610;
+	letter-spacing: 0.18em;
+	line-height: 12px;
+	text-transform: uppercase;
+}
+
+.zd-quest-body {
+	margin-top: 4px;
+	font-size: 13px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.78);
+	line-height: 19px;
+	text-align: center;
+	white-space: normal;
 }
 
 .zd-header {
@@ -268,6 +1097,7 @@ WorldMapPanel {
 	align-items: flex-start;
 	flex-shrink: 0;
 	margin-bottom: 14px;
+	width: 100%;
 }
 
 .zd-title-stack {
@@ -277,21 +1107,97 @@ WorldMapPanel {
 	min-width: 0;
 }
 
+// Skewed yellow eyebrow stamp — same as patchnotes
 .zd-kicker {
+	display: flex;
+	align-self: flex-start;
+	padding: 3px 10px;
+	background-color: #fbbf24;
+	border: 1.5px solid rgba(0, 0, 0, 0.85);
+	border-radius: 3px;
+	transform: rotate(-2deg);
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+	margin-bottom: 10px;
+
 	font-size: 10px;
-	font-weight: 800;
-	color: rgba(253, 224, 71, 0.9);
-	line-height: 12;
-	letter-spacing: 2px;
+	font-weight: 900;
+	color: #1a1610;
+	line-height: 12px;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+}
+
+// Stat-pill row — quick-scan info under the title
+.zd-stat-strip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.zd-stat-pill {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+	padding: 5px 10px;
+	background-color: rgba(20, 14, 32, 0.85);
+	border: 1.5px solid rgba(167, 139, 250, 0.55);
+	border-radius: 3px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+
+	.zd-stat-label {
+		font-size: 9px;
+		font-weight: 900;
+		letter-spacing: 0.18em;
+		color: rgba(196, 181, 253, 0.85);
+		line-height: 11px;
+		text-transform: uppercase;
+	}
+
+	.zd-stat-value {
+		font-size: 12px;
+		font-weight: 900;
+		letter-spacing: 0.06em;
+		color: #ffffff;
+		line-height: 13px;
+		text-transform: uppercase;
+		text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+	}
+
+	&.stat-boss {
+		background-color: rgba(239, 68, 68, 0.18);
+		border-color: rgba(252, 165, 165, 0.65);
+		box-shadow: 2px 2px 0 rgba(220, 38, 38, 0.55);
+
+		.zd-stat-value { color: #fca5a5; }
+	}
+
+	// Element tints — match the project's element palette
+	&.element-fire     { border-color: rgba(251, 146, 60, 0.65); box-shadow: 2px 2px 0 rgba(234, 88, 12, 0.45); }
+	&.element-water    { border-color: rgba(96, 165, 250, 0.65); box-shadow: 2px 2px 0 rgba(37, 99, 235, 0.45); }
+	&.element-earth    { border-color: rgba(180, 130, 60, 0.65);  box-shadow: 2px 2px 0 rgba(120, 80, 30, 0.45); }
+	&.element-wind     { border-color: rgba(167, 243, 208, 0.65); box-shadow: 2px 2px 0 rgba(74, 222, 128, 0.45); }
+	&.element-electric { border-color: rgba(251, 191, 36, 0.65); box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.45); }
+	&.element-ice      { border-color: rgba(186, 230, 253, 0.65); box-shadow: 2px 2px 0 rgba(96, 165, 250, 0.45); }
+	&.element-nature   { border-color: rgba(74, 222, 128, 0.65);  box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.45); }
+	&.element-metal    { border-color: rgba(203, 213, 225, 0.65); box-shadow: 2px 2px 0 rgba(100, 116, 139, 0.45); }
+	&.element-shadow   { border-color: rgba(167, 139, 250, 0.65); box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.45); }
+	&.element-spirit   { border-color: rgba(244, 114, 182, 0.65); box-shadow: 2px 2px 0 rgba(190, 24, 93, 0.45); }
+	&.element-neutral  { border-color: rgba(148, 163, 184, 0.65); box-shadow: 2px 2px 0 rgba(71, 85, 105, 0.45); }
 }
 
 .zd-title {
-	font-size: 26px;
-	font-weight: 800;
-	color: rgb(254, 243, 199);
-	line-height: 30;
-	letter-spacing: 0.5px;
+	font-size: 24px;
+	font-weight: 900;
+	color: #ffffff;
+	line-height: 28px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
 	margin-top: 2px;
+	white-space: normal;
 }
 
 .zd-meta {
@@ -302,69 +1208,48 @@ WorldMapPanel {
 	margin-top: 4px;
 }
 
-// Zone-detail close button — only close button in this panel
-// (map-level close is gone; player leaves via HUD tab nav)
-.close-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 34px;
-	height: 34px;
-	background-color: rgba(255, 255, 255, 0.06);
-	border: 1px solid rgba(255, 255, 255, 0.12);
-	border-radius: 8px;
-	cursor: pointer;
-	transition: background-color 0.14s ease-out,
-				border-color 0.14s ease-out,
-				transform 0.1s ease-out;
-
-	&:hover {
-		background-color: rgba(239, 68, 68, 0.25);
-		border-color: rgba(239, 68, 68, 0.55);
-		transform: scale(1.08);
-	}
-
-	.close-icon {
-		width: 14px;
-		height: 14px;
-	}
-}
-
+// Close button — uses universal .close-btn from GameHUD (canonical iconify-spin pattern)
+// .zd-close is a positioning helper only (margin-left to push button to right edge of detail header)
 .zd-close {
 	flex-shrink: 0;
 	margin-left: 12px;
 }
 
-// Lore blurb
+// Lore blurb — Persona-stamp inset slab
 .zd-lore {
 	display: flex;
 	flex-direction: column;
 	padding: 12px 14px;
 	margin-bottom: 14px;
-	background-color: rgba(253, 224, 71, 0.08);
-	border: 1px solid rgba(253, 224, 71, 0.2);
-	border-radius: 9px;
+	background-color: rgba(20, 14, 32, 0.55);
+	border: 1px solid rgba(167, 139, 250, 0.35);
+	border-radius: 4px;
+	flex-shrink: 0;
+	width: 100%;
 }
 
 .zd-lore-text {
 	font-size: 13px;
 	font-weight: 500;
-	color: rgba(254, 243, 199, 0.9);
-	line-height: 18;
+	color: rgba(255, 255, 255, 0.85);
+	line-height: 19px;
+	white-space: normal;
 }
 
-// Embark button — hero CTA
+// Embark button — Persona-stamp hero CTA in red. Hard offset RED shadow
+// (was purple — felt mismatched against the red body), sharp 4px corners,
+// breath animation preserved.
 .embark-btn {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: center;
 	width: 100%;
-	height: 54px;
-	margin-bottom: 20px;
-	background-color: rgb(239, 68, 68);
-	border: 2px solid rgba(252, 165, 165, 1);
-	border-radius: 10px;
+	height: 48px;
+	background-color: rgb(220, 38, 38);
+	border: 2px solid rgba(0, 0, 0, 0.75);
+	border-radius: 4px;
+	box-shadow: 4px 4px 0 rgba(127, 29, 29, 0.85);
 	cursor: pointer;
 	transition: background-color 0.14s ease-out,
 				border-color 0.14s ease-out,
@@ -373,43 +1258,59 @@ WorldMapPanel {
 	flex-shrink: 0;
 
 	&:hover {
-		background-color: rgb(248, 113, 113);
-		border-color: rgba(254, 202, 202, 1);
-		transform: scale(1.015);
+		background-color: rgb(239, 68, 68);
+		border-color: rgba(254, 202, 202, 0.65);
+		transform: translateY(-2px);
 		animation-play-state: paused;
 	}
 
 	span {
-		font-size: 15px;
-		font-weight: 800;
+		font-size: 14px;
+		font-weight: 900;
 		color: white;
-		line-height: 17;
-		letter-spacing: 2px;
+		line-height: 16px;
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
 		margin-left: 8px;
 	}
 }
 
-// NPC section
+// Section header — first span becomes a skewed yellow stamp pill,
+// optional count/sub on the right stays plain typography. Width 100%
+// forces a fresh row in the flex-wrap scroll body.
 .zd-section-label {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: space-between;
 	width: 100%;
-	margin-bottom: 8px;
+	flex: 0 0 100%;
+	margin-bottom: 6px;
+	margin-top: 4px;
 	flex-shrink: 0;
 
-	span {
-		font-size: 11px;
-		font-weight: 800;
-		color: rgba(253, 224, 71, 0.85);
-		line-height: 13;
-		letter-spacing: 1.5px;
+	span:first-child {
+		padding: 3px 10px;
+		background-color: #fbbf24;
+		border: 1.5px solid rgba(0, 0, 0, 0.85);
+		border-radius: 3px;
+		transform: rotate(-2deg);
+		box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+		font-size: 10px;
+		font-weight: 900;
+		letter-spacing: 0.18em;
+		color: #1a1610;
+		line-height: 12px;
+		text-transform: uppercase;
 	}
 
 	.zd-section-count {
-		color: rgba(148, 163, 184, 0.75);
-		font-weight: 600;
+		font-size: 10px;
+		font-weight: 800;
+		letter-spacing: 0.10em;
+		color: rgba(196, 181, 253, 0.85);
+		line-height: 12px;
+		text-transform: uppercase;
 	}
 }
 
@@ -418,6 +1319,153 @@ WorldMapPanel {
 	flex-direction: column;
 	width: 100%;
 	flex-shrink: 0;
+}
+
+// ─── BEAST TILES — big square cards, 2 per row, name under icon ──
+// flex: 0 0 calc(50% - 4px) so two tiles share a row with the 8px gap
+// from the parent scroll body. Border + shadow color come from the
+// chip's rarity modifier class so the whole tile reads as that rarity,
+// not just the small tag at the bottom.
+.zd-beast-chip {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	flex: 0 0 calc(33.333% - 6px);
+	width: calc(33.333% - 6px);
+	height: 180px;
+	padding: 10px 8px 8px 8px;
+	background-color: rgba(20, 14, 32, 0.65);
+	border: 2px solid rgba(148, 163, 184, 0.45);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+
+	// Rarity-tinted border + shadow on the tile itself — the rarity tag
+	// at the bottom carries the same color so the whole tile reads as
+	// that tier of beast.
+	&.tile-uncommon {
+		border-color: rgba(74, 222, 128, 0.65);
+		box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.55);
+	}
+	&.tile-rare {
+		border-color: rgba(96, 165, 250, 0.65);
+		box-shadow: 2px 2px 0 rgba(37, 99, 235, 0.55);
+	}
+	&.tile-epic {
+		border-color: rgba(167, 139, 250, 0.75);
+		box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.55);
+	}
+	&.tile-legendary {
+		border-color: rgba(251, 191, 36, 0.75);
+		box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.55);
+	}
+	&.tile-mythic {
+		border-color: rgba(236, 72, 153, 0.75);
+		box-shadow: 2px 2px 0 rgba(190, 24, 93, 0.55);
+	}
+
+	&.boss {
+		border-color: rgba(252, 165, 165, 0.85);
+		background-color: rgba(239, 68, 68, 0.12);
+		box-shadow: 2px 2px 0 rgba(220, 38, 38, 0.65);
+	}
+}
+
+.zd-beast-icon {
+	width: 96px;
+	height: 96px;
+	min-width: 96px;
+	min-height: 96px;
+	flex-shrink: 0;
+	background-color: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 4px;
+	image-rendering: pixelated;
+	background-repeat: no-repeat;
+	margin-bottom: 8px;
+}
+
+.zd-beast-name {
+	width: 100%;
+	font-size: 13px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	line-height: 15px;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+	white-space: nowrap;
+	margin-bottom: 4px;
+	text-align: center;
+}
+
+.zd-beast-rarity {
+	flex-shrink: 0;
+	padding: 2px 8px;
+	background-color: rgba(0, 0, 0, 0.45);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 3px;
+	font-size: 9px;
+	font-weight: 900;
+	letter-spacing: 0.16em;
+	line-height: 11px;
+	text-transform: uppercase;
+
+	&.rarity-common    { color: rgba(203, 213, 225, 0.95); }
+	&.rarity-uncommon  { color: #4ade80; border-color: rgba(74, 222, 128, 0.45); }
+	&.rarity-rare      { color: #60a5fa; border-color: rgba(96, 165, 250, 0.45); }
+	&.rarity-epic      { color: #a78bfa; border-color: rgba(167, 139, 250, 0.55); }
+	&.rarity-legendary { color: #fbbf24; border-color: rgba(251, 191, 36, 0.55); }
+	&.rarity-mythic    { color: #ec4899; border-color: rgba(236, 72, 153, 0.55); }
+	&.boss-tag         { color: #fca5a5; background-color: rgba(239, 68, 68, 0.18); border-color: rgba(252, 165, 165, 0.45); }
+}
+
+// ─── DROP TILES — small icon-on-top tiles, 3 per row. Mirror the
+// beast-chip vocabulary at a smaller scale. ──────────────────────
+.zd-drop-tile {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: flex-start;
+	flex: 0 0 calc(33.333% - 6px);
+	width: calc(33.333% - 6px);
+	height: 92px;
+	padding: 8px 6px 6px 6px;
+	background-color: rgba(20, 14, 32, 0.55);
+	border: 1.5px solid rgba(148, 163, 184, 0.45);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
+
+	&.rarity-uncommon  { border-color: rgba(74, 222, 128, 0.65);  box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.45); }
+	&.rarity-rare      { border-color: rgba(96, 165, 250, 0.65);  box-shadow: 2px 2px 0 rgba(37, 99, 235, 0.45); }
+	&.rarity-epic      { border-color: rgba(167, 139, 250, 0.75); box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.45); }
+	&.rarity-legendary { border-color: rgba(251, 191, 36, 0.75);  box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.45); }
+	&.rarity-mythic    { border-color: rgba(236, 72, 153, 0.75);  box-shadow: 2px 2px 0 rgba(190, 24, 93, 0.45); }
+}
+
+.zd-drop-icon {
+	width: 36px;
+	height: 36px;
+	min-width: 36px;
+	min-height: 36px;
+	flex-shrink: 0;
+	background-color: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.10);
+	border-radius: 3px;
+	image-rendering: pixelated;
+	background-repeat: no-repeat;
+	margin-bottom: 6px;
+}
+
+.zd-drop-name {
+	width: 100%;
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.88);
+	letter-spacing: 0.04em;
+	line-height: 12px;
+	text-align: center;
+	white-space: nowrap;
 }
 
 .zd-npc-slot {
@@ -497,14 +1545,14 @@ WorldMapPanel {
 	position: absolute;
 	width: 320px;
 	padding: 14px 14px 12px 14px;
-	background-color: rgba(12, 18, 30, 0.97);
-	border: 2px solid rgba(253, 224, 71, 0.55);
-	border-radius: 12px;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 4px 4px 0 rgba(124, 58, 237, 0.65), 0 14px 40px rgba(0, 0, 0, 0.55);
 	z-index: 50;
 	pointer-events: none;
 	display: flex;
 	flex-direction: column;
-	box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
 }
 
 .zone-preview.flip-right {
@@ -522,35 +1570,39 @@ WorldMapPanel {
 }
 
 .zp-title {
-	font-size: 17px;
-	font-weight: 800;
-	color: rgb(254, 243, 199);
-	line-height: 19;
-	letter-spacing: 0.3px;
+	font-size: 16px;
+	font-weight: 900;
+	color: #ffffff;
+	line-height: 19px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
 }
 
+// Zone-state badge — skewed Persona stamp pill
 .zp-badge {
 	display: flex;
 	align-items: center;
 	height: 20px;
-	padding: 0 7px;
+	padding: 0 9px;
 	font-size: 9px;
-	font-weight: 800;
-	letter-spacing: 1.4px;
-	line-height: 11;
-	border-radius: 10px;
+	font-weight: 900;
+	letter-spacing: 0.18em;
+	line-height: 11px;
+	border: 1.5px solid rgba(0, 0, 0, 0.85);
+	border-radius: 3px;
+	box-shadow: 1.5px 1.5px 0 rgba(0, 0, 0, 0.55);
+	transform: rotate(-2deg);
 }
 
 .zp-badge.cleared {
-	background-color: rgba(34, 197, 94, 0.18);
-	border: 1px solid rgba(134, 239, 172, 0.65);
-	color: rgba(187, 247, 208, 0.95);
+	background-color: #4ade80;
+	color: #052e16;
 }
 
 .zp-badge.locked {
-	background-color: rgba(71, 85, 105, 0.4);
-	border: 1px solid rgba(148, 163, 184, 0.5);
-	color: rgba(203, 213, 225, 0.8);
+	background-color: rgba(100, 116, 139, 0.95);
+	color: rgba(15, 23, 42, 0.95);
 }
 
 .zp-image-wrap {
@@ -681,19 +1733,9 @@ WorldMapPanel {
 	}
 }
 
-// Completed zone marker — green accent on pin + pulse
-.zone-marker.cleared .marker-pin {
-	background-color: rgba(22, 78, 43, 0.95);
-	border-color: rgba(134, 239, 172, 0.85);
-}
-
-.zone-marker.cleared .marker-pulse {
-	background-color: rgba(134, 239, 172, 0.3);
-}
-
-// Hovered marker subtle scale boost
+// Hovered marker — keep the rotation, just scale up
 .zone-marker.hovered .marker-pin {
-	transform: scale(1.1);
+	transform: rotate(45deg) scale(1.10);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -706,45 +1748,136 @@ WorldMapPanel {
 	transform: translate(-50%, -50%);
 	cursor: pointer;
 	pointer-events: all;
-	z-index: 3;
+	z-index: 8;
 }
 
+// Children pass-through — cursor always reads as "on the trade-node"
+// no matter which inner element it's over. Without this, moving from
+// the outer hit-box onto the iconify pin fires onmouseout on the
+// trade-node and the tooltip flickers off mid-hover.
+.trade-node > * {
+	pointer-events: none;
+}
+
+// Diamond stamp pin — gold/amber across ALL zones (no per-zone tint).
+// Side quests + requests share one universal color so they read as
+// "NPC has something for you" regardless of which expedition they belong
+// to. Distinct from the red expedition zone diamonds.
 .tn-pin {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 30px;
-	height: 30px;
-	background-color: rgba(76, 52, 22, 0.95);
-	border: 2px solid rgba(251, 191, 36, 0.85);
-	border-radius: 15px;
+	width: 32px;
+	height: 32px;
+	background-color: rgba(217, 119, 6, 0.95);
+	border: 2px solid rgba(0, 0, 0, 0.85);
+	border-radius: 4px;
+	transform: rotate(45deg);
+	box-shadow: 2px 2px 0 rgba(120, 53, 5, 0.65);
 	transition: background-color 0.14s ease-out,
 				border-color 0.14s ease-out,
 				transform 0.1s ease-out;
+
+	iconify { transform: rotate(-45deg); }
 }
 
 .trade-node:hover .tn-pin {
-	background-color: rgba(120, 82, 35, 1);
-	border-color: rgba(253, 224, 71, 1);
-	transform: scale(1.12);
+	background-color: rgba(245, 158, 11, 1);
+	transform: rotate(45deg) scale(1.10);
 }
 
 .trade-node.done .tn-pin {
-	background-color: rgba(22, 52, 30, 0.85);
-	border-color: rgba(74, 222, 128, 0.75);
+	background-color: rgba(22, 78, 43, 0.95);
+	box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.55);
 }
 
-// Gold pulse — visible when the player has everything required to trade
+// (Per-zone tints removed — all requests share the gold/amber tone
+// defined on the base .tn-pin selector above.)
+
+// Host zone is locked — visually NO different from unlocked while we're
+// still placing positions. When ready to ship, either hide locked-zone
+// nodes entirely (one-line filter in GetVisibleTradeNodes) or restore
+// the greyscale/opacity treatment here.
+// .trade-node.host-locked {
+// 	filter: grayscale(0.85);
+// 	opacity: 0.55;
+// }
+
+// Hover tooltip — small Persona stamp pill above the pin. Anchored at
+// the pin's center; lifts via translateY -100% + offset.
+.tn-tooltip {
+	position: absolute;
+	left: 50%;
+	top: 0;
+	width: 200px;
+	margin-left: -100px;
+	margin-top: -12px;
+	transform: translateY(-100%);
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 2px;
+	padding: 8px 10px;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
+	pointer-events: none;
+	z-index: 30;
+	animation: tradeTooltipIn 0.14s ease-out;
+}
+
+@keyframes tradeTooltipIn {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+
+.tn-tip-title {
+	font-size: 12px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.06em;
+	line-height: 14px;
+	text-transform: uppercase;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+	white-space: nowrap;
+	text-align: center;
+}
+
+.tn-tip-npc {
+	font-size: 10px;
+	font-weight: 800;
+	color: #fbbf24;
+	letter-spacing: 0.16em;
+	line-height: 12px;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.tn-tip-locked {
+	font-size: 9px;
+	font-weight: 700;
+	color: rgba(196, 181, 253, 0.85);
+	letter-spacing: 0.10em;
+	line-height: 11px;
+	text-transform: uppercase;
+	margin-top: 2px;
+	white-space: nowrap;
+}
+
+// Gold pulse — diamond ring rendered behind the pin. Same pulse keyframe
+// as the zone markers so the two share the visual rhythm.
 .tn-ready-pulse {
 	position: absolute;
 	top: 50%;
 	left: 50%;
-	width: 30px;
-	height: 30px;
-	margin-top: -15px;
-	margin-left: -15px;
-	background-color: rgba(253, 224, 71, 0.35);
-	border-radius: 15px;
+	width: 32px;
+	height: 32px;
+	margin-top: -16px;
+	margin-left: -16px;
+	background-color: rgba(253, 224, 71, 0.45);
+	border-radius: 4px;
+	transform: rotate(45deg);
 	pointer-events: none;
 	animation: mapMarkerPulse 1.8s ease-out infinite;
 	z-index: -1;
@@ -761,14 +1894,238 @@ WorldMapPanel {
 	top: 84px;
 	width: 420px;
 	max-height: 80%;
-	background-color: rgba(12, 18, 30, 0.97);
-	border: 2px solid rgba(251, 191, 36, 0.55);
-	border-radius: 14px;
-	padding: 20px 22px 22px 22px;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 6px 6px 0 rgba(217, 119, 6, 0.65), 0 18px 48px rgba(0, 0, 0, 0.7);
+	padding: 22px 24px 22px 24px;
 	z-index: 65;
 	display: flex;
 	flex-direction: column;
 	animation: zoneDetailEnter 0.22s ease-out;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// REQUEST POPUP — redesigned from the trade-popup. NPC band at
+// the top, GIVE / RECEIVE columns, P5-stamp accept CTA. Sharper
+// vocabulary than the old zd-* shared chrome.
+// ═══════════════════════════════════════════════════════════════
+.request-popup {
+	position: absolute;
+	right: 24px;
+	top: 84px;
+	width: 460px;
+	max-height: 84%;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 6px 6px 0 rgba(217, 119, 6, 0.65), 0 18px 48px rgba(0, 0, 0, 0.7);
+	padding: 0;
+	z-index: 65;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	animation: zoneDetailEnter 0.22s ease-out;
+}
+
+.rp-close {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	z-index: 5;
+}
+
+// NPC band — diamond portrait + kicker + title. Establishes the
+// requestor before the player reads the description.
+.rp-npc-band {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14px;
+	padding: 18px 22px 14px 22px;
+	background-color: rgba(124, 58, 237, 0.16);
+	border-bottom: 2px solid rgba(167, 139, 250, 0.45);
+	flex-shrink: 0;
+}
+
+.rp-npc-portrait {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 52px;
+	height: 52px;
+	min-width: 52px;
+	background-color: rgba(20, 14, 32, 0.85);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(124, 58, 237, 0.65);
+	transform: rotate(45deg);
+	flex-shrink: 0;
+
+	iconify { transform: rotate(-45deg); }
+}
+
+.rp-npc-meta {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 0;
+	min-width: 0;
+	gap: 4px;
+}
+
+.rp-npc-kicker {
+	font-size: 10px;
+	font-weight: 900;
+	color: #fbbf24;
+	letter-spacing: 0.20em;
+	line-height: 12px;
+	text-transform: uppercase;
+}
+
+.rp-title {
+	font-size: 22px;
+	font-weight: 900;
+	color: #ffffff;
+	line-height: 26px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+}
+
+// Description — short line under the band
+.rp-desc {
+	padding: 14px 22px 6px 22px;
+	font-size: 13px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.82);
+	line-height: 19px;
+	white-space: normal;
+	flex-shrink: 0;
+}
+
+// Section labels — plain bold gold (no stamp)
+.rp-section-label {
+	padding: 14px 22px 8px 22px;
+	font-size: 10px;
+	font-weight: 900;
+	color: #fbbf24;
+	letter-spacing: 0.22em;
+	line-height: 12px;
+	text-transform: uppercase;
+	flex-shrink: 0;
+}
+
+// Line list of give/receive items
+.rp-line-list {
+	display: flex;
+	flex-direction: column;
+	padding: 0 22px;
+	gap: 6px;
+	flex-shrink: 0;
+}
+
+.rp-line {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 12px 7px 8px;
+	background-color: rgba(20, 14, 32, 0.55);
+	border: 1.5px solid rgba(148, 163, 184, 0.45);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
+
+	&.satisfied {
+		border-color: rgba(74, 222, 128, 0.65);
+		background-color: rgba(34, 197, 94, 0.10);
+		box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.45);
+	}
+
+	&.short {
+		// Soft amber instead of harsh red — "you don't have enough yet"
+		// reads as a goal/in-progress state, not a critical error.
+		border-color: rgba(251, 146, 60, 0.65);
+		background-color: rgba(251, 146, 60, 0.08);
+		box-shadow: 2px 2px 0 rgba(194, 65, 12, 0.40);
+	}
+
+	&.reward {
+		border-color: rgba(251, 191, 36, 0.55);
+		background-color: rgba(251, 191, 36, 0.08);
+		box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.45);
+	}
+}
+
+.rp-line-icon {
+	width: 28px;
+	height: 28px;
+	min-width: 28px;
+	flex-shrink: 0;
+	background-color: rgba(0, 0, 0, 0.35);
+	border: 1px solid rgba(255, 255, 255, 0.10);
+	border-radius: 3px;
+	image-rendering: pixelated;
+	object-fit: contain;
+	background-repeat: no-repeat;
+}
+
+.rp-line-name {
+	flex: 1 1 0;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 800;
+	color: #ffffff;
+	letter-spacing: 0.04em;
+	line-height: 16px;
+	white-space: nowrap;
+}
+
+.rp-line-amt {
+	flex-shrink: 0;
+	font-size: 13px;
+	font-weight: 900;
+	color: #ffffff;
+	letter-spacing: 0.04em;
+	line-height: 16px;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.rp-line-slash {
+	margin: 0 4px;
+	font-weight: 700;
+	color: rgba(255, 255, 255, 0.45);
+}
+
+// Accept CTA — red Persona-stamp slab (matches embark vocabulary)
+.embark-btn.rp-accept {
+	margin: 18px 22px 22px 22px;
+	width: auto;
+	flex-shrink: 0;
+}
+
+// Already-completed banner replaces the CTA when isLocked
+.rp-done-banner {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	margin: 18px 22px 22px 22px;
+	padding: 12px 16px;
+	background-color: rgba(34, 197, 94, 0.14);
+	border: 2px solid rgba(74, 222, 128, 0.65);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.45);
+	flex-shrink: 0;
+
+	span {
+		font-size: 13px;
+		font-weight: 900;
+		color: #bbf7d0;
+		letter-spacing: 0.10em;
+		line-height: 15px;
+		text-transform: uppercase;
+	}
 }
 
 // Give/Receive lists reuse .tn-line — compact two-line format
@@ -825,18 +2182,23 @@ WorldMapPanel {
 	letter-spacing: 0.5px;
 }
 
-// Disabled CTA state (player is short on mats or gold)
+// Disabled CTA state — neutral grey body + neutral dark drop shadow (the
+// red shadow on a grey button read as a clashing warning even when the
+// state was just "not yet ready").
 .embark-btn.disabled {
 	background-color: rgba(100, 116, 139, 0.85);
-	border-color: rgba(148, 163, 184, 0.5);
+	border-color: rgba(0, 0, 0, 0.55);
+	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
 	cursor: default;
 	animation: none;
 
 	&:hover {
 		background-color: rgba(100, 116, 139, 0.85);
-		border-color: rgba(148, 163, 184, 0.5);
+		border-color: rgba(0, 0, 0, 0.55);
 		transform: scale(1);
 	}
+
+	span { color: rgba(255, 255, 255, 0.65); }
 }
 
 .tn-done-banner {

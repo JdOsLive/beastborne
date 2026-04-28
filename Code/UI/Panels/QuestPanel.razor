@@ -23,7 +23,7 @@
 			</div>
 			<div class="header-right">
 				<button class="close-btn" onclick=@Close>
-					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
 				</button>
 			</div>
 		</div>
@@ -78,6 +78,9 @@
 						case "monthly":
 							@RenderMonthly()
 							break;
+						case "guild":
+							@RenderGuild()
+							break;
 					}
 				</div>
 			</div>
@@ -118,6 +121,7 @@
 		new QuestTab("daily",   "lucide:sun",            "Daily",       "Resets in 24h"),
 		new QuestTab("weekly",  "lucide:calendar-days",  "Weekly",      "Resets Monday"),
 		new QuestTab("monthly", "lucide:trophy",         "Monthly",     "Big challenge"),
+		new QuestTab("guild",   "lucide:shield",         "Guild",       "Community goals"),
 	};
 
 	protected override void OnAfterTreeRender( bool firstTime )
@@ -129,6 +133,9 @@
 	{
 		IsVisible = true;
 		if ( Instance != null ) Instance._hoveredKey = null;
+		// Lazy-seed guild goals so the Guild tab never opens to "Loading…".
+		// Idempotent — no-op if already seeded or not in a guild.
+		GuildManager.Instance?.EnsureWeeklyGoalsSeeded();
 		SoundManager.PlayPopup();
 	}
 
@@ -152,6 +159,16 @@
 		base.Tick();
 		if ( IsVisible && Input.Pressed( "Escape" ) )
 			Close();
+
+		// Safety net: if the user is sitting on the Guild tab with an empty
+		// goals list (panel mounted before guild data loaded, hot-reload edge,
+		// stale instance), seed locally so the loader resolves.
+		if ( IsVisible && _currentTab == "guild" )
+		{
+			var gm = GuildManager.Instance;
+			if ( gm != null && gm.IsInGuild && gm.WeeklyGoals.Count == 0 )
+				gm.EnsureWeeklyGoalsSeeded();
+		}
 	}
 
 	private void SelectTab( string tabId )
@@ -162,11 +179,17 @@
 		SoundManager.PlayClick();
 		if ( ContentInner != null )
 			ContentInner.ScrollOffset = new Vector2( 0, 0 );
+
+		// Tab-specific lazy-load. Guild goals seed locally if the cache is
+		// empty so the Guild tab is never blank.
+		if ( tabId == "guild" )
+			GuildManager.Instance?.EnsureWeeklyGoalsSeeded();
 	}
 
 	private int GetBadgeCount( string tabId )
 	{
 		var m = MissionManager.Instance;
+		var gm = GuildManager.Instance;
 		return tabId switch
 		{
 			"daily" => (m?.ActiveDailyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0)
@@ -174,6 +197,9 @@
 			"weekly" => m?.ActiveWeeklyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0,
 			"monthly" => (m?.ActiveMonthlyChallenge is { Completed: true, Claimed: false }) ? 1 : 0,
 			"side" => SideQuestManager.Instance?.ActiveQuests?.Count( q => q.Completed && !q.RewardClaimed ) ?? 0,
+			"guild" => (gm?.IsInGuild ?? false)
+				? gm.WeeklyGoals.Count( g => g.Completed && !g.Claimed )
+				: 0,
 			_ => 0,
 		};
 	}
@@ -214,6 +240,12 @@
 		// Side quest state — re-render on accept/progress/claim.
 		foreach ( var sq in SideQuestManager.Instance?.ActiveQuests ?? new List<SideQuestState>() )
 			h.Add( sq.Progress + (sq.Completed ? 1_000_000 : 0) + (sq.RewardClaimed ? 2_000_000 : 0) );
+
+		// Guild weekly goals — refresh card progress when any member contributes.
+		var gm = GuildManager.Instance;
+		h.Add( gm?.IsInGuild ?? false );
+		foreach ( var g in gm?.WeeklyGoals ?? new List<GuildWeeklyGoal>() )
+			h.Add( g.Progress + (g.Claimed ? 1_000_000 : 0) );
 
 		return h.ToHashCode();
 	}
@@ -858,6 +890,157 @@
 				</div>
 			}
 		</div>
+	};
+
+	private RenderFragment RenderGuild() => __builder =>
+	{
+		var gm = GuildManager.Instance;
+		var inGuild = gm?.IsInGuild ?? false;
+
+		<div class="tab-content">
+			<div class="tab-header">
+				<span class="tab-title">Guild Goals</span>
+				<div class="tab-sub-row">
+					@if ( inGuild )
+					{
+						<span class="tab-sub">Resets in</span>
+						<span class="timer-pill">@GetGuildGoalsTimer()</span>
+					}
+					else
+					{
+						<span class="tab-sub">Join a guild to contribute to community goals.</span>
+					}
+				</div>
+			</div>
+
+			@if ( !inGuild )
+			{
+				<div class="empty-state">
+					<div class="empty-illus">
+						<iconify icon="lucide:shield" Size=@(68) Color="#6d28d9" />
+					</div>
+					<span class="empty-title">No guild yet</span>
+					<span class="empty-body">Open the Guild panel to join one — every member contributes to weekly community goals that pour XP into your guild's level.</span>
+				</div>
+			}
+			else
+			{
+				var goals = gm.WeeklyGoals;
+				<div class="section-label-row">
+					<span class="section-label">COMMUNITY GOALS</span>
+					<span class="section-count">@goals.Count( g => g.Claimed ) / @goals.Count</span>
+				</div>
+
+				@if ( goals.Count == 0 )
+				{
+					<div class="empty-state small">
+						<iconify icon="lucide:loader" Size=@(32) Color="#6d28d9" />
+						<span class="empty-title">Loading goals…</span>
+					</div>
+				}
+				else
+				{
+					<div class="mission-list">
+						@foreach ( var g in goals )
+						{
+							@GuildGoalCard( g )
+						}
+					</div>
+				}
+			}
+		</div>
+	};
+
+	private RenderFragment GuildGoalCard( GuildWeeklyGoal g ) => __builder =>
+	{
+		var pct = g.PercentComplete;
+		var near = !g.Claimed && !g.Completed && pct >= 75f;
+		var cardClass = "cat-guild"
+			+ (g.Claimed ? " claimed" : "")
+			+ (g.Completed ? " completed" : "")
+			+ (near ? " near" : "");
+
+		<div class="mission-card @cardClass"
+			 onmouseover=@(() => OnHover("guildgoal-" + g.Id))>
+			<div class="mission-left">
+				<div class="mission-icon-wrap">
+					<iconify icon="@GetGuildGoalIcon(g.Type)" Size=@(22) Color="@GetGuildGoalColor(g.Type)" />
+				</div>
+				<div class="mission-info">
+					<div class="mission-name-row">
+						<span class="mission-name">@g.Title</span>
+						<span class="mission-cat-chip">GUILD</span>
+					</div>
+					<span class="mission-desc">@g.Description</span>
+					<div class="mission-progress-bar">
+						<div class="mission-progress-fill" style="width: @pct%"></div>
+					</div>
+				</div>
+			</div>
+
+			<div class="mission-right">
+				@if ( g.Claimed )
+				{
+					<div class="mission-status claimed-badge">
+						<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
+					</div>
+				}
+				else if ( g.Completed )
+				{
+					<button class="claim-btn" onclick=@(() => ClaimGuildGoal(g.Id)) onmouseover=@(() => OnHover("claim-guildgoal-" + g.Id))>
+						<span>CLAIM</span>
+					</button>
+				}
+				else
+				{
+					<span class="mission-target">@($"{g.Progress:N0}") / @($"{g.Target:N0}")</span>
+				}
+
+				<div class="mission-rewards">
+					<div class="reward-pip xp-pip">
+						<iconify icon="lucide:shield" Size=@(12) Color="#a78bfa" />
+						<span class="reward-pip-amount">@($"{g.XpReward:N0} XP")</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	};
+
+	private void ClaimGuildGoal( string id )
+	{
+		SoundManager.PlaySuccess();
+		GuildManager.Instance?.ClaimWeeklyGoal( id );
+	}
+
+	private string GetGuildGoalsTimer()
+	{
+		var gm = GuildManager.Instance;
+		if ( gm == null ) return "—";
+		var ts = gm.WeeklyGoalsResetAt - DateTime.UtcNow;
+		if ( ts.TotalSeconds <= 0 ) return "soon";
+		return FormatDuration( ts );
+	}
+
+	private static string GetGuildGoalIcon( GuildGoalType type ) => type switch
+	{
+		GuildGoalType.WildBeastsKO => "lucide:swords",
+		GuildGoalType.BeastsContracted => "lucide:scroll",
+		GuildGoalType.GoldEarned => "lucide:coins",
+		GuildGoalType.ExpeditionsCleared => "lucide:compass",
+		GuildGoalType.BossesDefeated => "lucide:skull",
+		GuildGoalType.FusionsCompleted => "lucide:atom",
+		_ => "lucide:shield"
+	};
+
+	private static string GetGuildGoalColor( GuildGoalType type ) => type switch
+	{
+		GuildGoalType.WildBeastsKO => "#fca5a5",
+		GuildGoalType.BeastsContracted => "#7dd3fc",
+		GuildGoalType.GoldEarned => "#fde047",
+		GuildGoalType.ExpeditionsCleared => "#fcd34d",
+		GuildGoalType.BossesDefeated => "#f0abfc",
+		GuildGoalType.FusionsCompleted => "#a78bfa",
+		_ => "#c4b5fd"
 	};
 
 	// ══════════════════════════════════════════════

@@ -1,0 +1,113 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Systems;
+@inherits Panel
+
+@*
+    ConfirmDialog — canonical "are you sure?" modal for destructive or
+    irreversible actions. Replaces 5 hand-rolled confirm dialogs.
+
+    Convention (Beastborne house style, decided here):
+        - Destructive button on the LEFT, cancel on the RIGHT.
+        - Cancel is the safe default; player's eye + cursor naturally rest
+          there after reading. Destructive requires deliberate movement.
+        - Frame: 16px radius, dark rgba(12,10,22,0.98) bg, 1px tone-tinted
+          border (red destructive, gold warning, purple benign).
+        - 24/28 padding, 14px gap between body and buttons.
+
+    Usage (static, mounted globally — see GameHUD):
+        ConfirmDialog.Show(
+            title: "Release this beast?",
+            body: "This action cannot be undone.",
+            destructiveLabel: "RELEASE",
+            tone: "red",
+            onConfirm: () => DoRelease());
+*@
+
+<root class="bb-confirm-root @(IsVisible ? "visible" : "")">
+    <div class="bb-confirm-overlay" onclick=@Close></div>
+    <div class="bb-confirm-frame tone-@_tone" onclick:stopPropagation>
+        @if (!string.IsNullOrEmpty(_iconName))
+        {
+            <div class="bb-confirm-icon">
+                <iconify icon="@_iconName" Size=@(28) Color="@GetIconColor()" />
+            </div>
+        }
+        <span class="bb-confirm-title">@_title</span>
+        @if (!string.IsNullOrEmpty(_body))
+        {
+            <span class="bb-confirm-body">@_body</span>
+        }
+        <div class="bb-confirm-buttons">
+            <button class="bb-confirm-btn destructive" onclick=@OnConfirmClick onmouseover=@(() => SoundManager.PlayHover())>
+                <span>@_destructiveLabel</span>
+            </button>
+            <button class="bb-confirm-btn cancel" onclick=@Close onmouseover=@(() => SoundManager.PlayHover())>
+                <span>@_cancelLabel</span>
+            </button>
+        </div>
+    </div>
+</root>
+
+@code {
+    public static bool IsVisible { get; private set; }
+
+    private static string _title = "";
+    private static string _body = "";
+    private static string _destructiveLabel = "CONFIRM";
+    private static string _cancelLabel = "CANCEL";
+    private static string _tone = "red"; // red | gold | purple
+    private static string _iconName = "";
+    private static Action _onConfirm;
+
+    public static void Show(
+        string title,
+        string body = "",
+        string destructiveLabel = "CONFIRM",
+        string cancelLabel = "CANCEL",
+        string tone = "red",
+        string iconName = "lucide:triangle-alert",
+        Action onConfirm = null)
+    {
+        _title = title;
+        _body = body;
+        _destructiveLabel = destructiveLabel;
+        _cancelLabel = cancelLabel;
+        _tone = tone;
+        _iconName = iconName;
+        _onConfirm = onConfirm;
+        IsVisible = true;
+        SoundManager.PlayClick();
+    }
+
+    public static void Close()
+    {
+        IsVisible = false;
+        _onConfirm = null;
+        SoundManager.PlayBack();
+    }
+
+    private void OnConfirmClick()
+    {
+        IsVisible = false;
+        var action = _onConfirm;
+        _onConfirm = null;
+        action?.Invoke();
+    }
+
+    private string GetIconColor()
+    {
+        return _tone switch
+        {
+            "gold" => "#fbbf24",
+            "purple" => "#a78bfa",
+            _ => "#ef4444",
+        };
+    }
+
+    protected override int BuildHash()
+    {
+        return HashCode.Combine(IsVisible, _title, _body, _tone, _destructiveLabel, _cancelLabel);
+    }
+}

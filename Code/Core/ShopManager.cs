@@ -374,6 +374,126 @@ public sealed class ShopManager : Component
 				Price = 300000,
 				Quantity = 100,
 				RequiredLevel = 20
+			},
+
+			// ─── Battle consumables ──────────────────────────────────
+			// Pulled from the wild drop pool at launch — players buy them
+			// here. ShopItem.Id intentionally matches the ItemDefinition.Id
+			// so the Consumable case in ApplyItemEffect grants the right
+			// item via ItemManager.AddItem.
+			new ShopItem
+			{
+				Id = "boost_atk",
+				Name = "Berserk Tonic",
+				Description = "+25% ATK for 8 waves. A fierce brew that amplifies physical power.",
+				IconPath = "ui/items/consumables/berserk_tonic.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 500,
+				Quantity = 1
+			},
+			new ShopItem
+			{
+				Id = "boost_def",
+				Name = "Iron Skin Oil",
+				Description = "+25% DEF for 8 waves. Hardens scales and hide against incoming damage.",
+				IconPath = "ui/items/consumables/iron_skin_oil.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 500,
+				Quantity = 1
+			},
+			new ShopItem
+			{
+				Id = "boost_spd",
+				Name = "Quickstep Powder",
+				Description = "+25% SPD for 8 waves. A stimulant that enhances reaction time.",
+				IconPath = "ui/items/consumables/quickstep_powder.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 500,
+				Quantity = 1
+			},
+			new ShopItem
+			{
+				Id = "boost_spa",
+				Name = "Arcane Draught",
+				Description = "+25% SpA for 8 waves. Sharpens magical focus.",
+				IconPath = "ui/items/consumables/arcane_draught.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 500,
+				Quantity = 1
+			},
+			new ShopItem
+			{
+				Id = "boost_spd_def",
+				Name = "Warding Salve",
+				Description = "+25% SpD for 8 waves. Shields against magical damage.",
+				IconPath = "ui/items/consumables/warding_salve.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 500,
+				Quantity = 1
+			},
+			new ShopItem
+			{
+				Id = "boost_crit",
+				Name = "Hunter's Focus",
+				Description = "+20% crit chance for 8 waves. Reveals weak points.",
+				IconPath = "ui/items/consumables/hunters_focus.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 1000,
+				Quantity = 1,
+				RequiredLevel = 15
+			},
+			new ShopItem
+			{
+				Id = "xp_treat",
+				Name = "Training Treat",
+				Description = "Grants 500 XP to a beast on use. A nutritious snack.",
+				IconPath = "ui/items/consumables/training_treat.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 750,
+				Quantity = 1
+			},
+			new ShopItem
+			{
+				Id = "xp_feast",
+				Name = "Training Feast",
+				Description = "Grants 2000 XP to a beast on use. A hearty meal for serious training.",
+				IconPath = "ui/items/consumables/training_feast.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 2500,
+				Quantity = 1,
+				RequiredLevel = 20
+			},
+			new ShopItem
+			{
+				Id = "catch_lure",
+				Name = "Contract Incense",
+				Description = "+15% contract success for 12 waves. Makes beasts more receptive.",
+				IconPath = "ui/items/consumables/contract_incense.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 1500,
+				Quantity = 1,
+				RequiredLevel = 10
+			},
+			new ShopItem
+			{
+				Id = "catch_prime",
+				Name = "Premium Incense",
+				Description = "+30% contract success for 8 waves. Crafted from legendary herbs.",
+				IconPath = "ui/items/consumables/premium_incense.png",
+				Type = ShopItemType.Consumable,
+				Currency = CurrencyType.Gold,
+				Price = 5000,
+				Quantity = 1,
+				RequiredLevel = 25
 			}
 		};
 	}
@@ -687,6 +807,13 @@ public sealed class ShopManager : Component
 					return true;
 				}
 				return false;
+
+			case ShopItemType.Consumable:
+				// Generic item-grant — ShopItem.Id matches an ItemDefinition.Id
+				// in ItemManager. Used for medicines, XP treats, catch lures —
+				// anything that previously dropped in zones but is now shop-only.
+				ItemManager.Instance?.AddItem( item.Id, item.Quantity );
+				return true;
 
 			case ShopItemType.SkillReset:
 				ResetSkills();

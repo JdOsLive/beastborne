@@ -11,33 +11,103 @@
 
 <root class="world-map-root">
 	<div class="map-modal">
-		<!-- ═══ ILLUSTRATED MAP BACKDROP ═══ -->
+		<!-- ═══ ILLUSTRATED MAP BACKDROP — Serpinglin (temporary art) ═══
+			 Layered:
+				1. base — the empty land/water/forest illustration
+				2. landmarks — village PNGs (houses, statue, mine, bridge, fences)
+				   each with hover-lore tooltip; not zone markers
+				3. clouds — subtle perimeter cloud overlay -->
 		<div class="map-backdrop">
-			<div class="map-bg-layer map-bg-gradient"></div>
-			<div class="map-bg-layer map-bg-texture"></div>
-		</div>
+			<div class="map-bg-vignette"></div>
+			<div class="map-art-frame">
+				@* Map base + clouds rendered as background-image (stretch to fill)
+				   so the landmark % positions stay locked to the artwork
+				   regardless of viewport aspect ratio. <img object-fit: contain>
+				   would letterbox in widescreen and detach the landmarks. *@
+				<div class="map-base"></div>
 
-		<!-- No header chrome — the navbar tab already identifies this surface.
-			 The map IS the content; let it breathe full-bleed. -->
+				@* Hoverable lore landmarks. Decorative, not playable.
+				   Each landmark is positioned in % over the .map-art-frame so
+				   it lines up with the same illustration from the artist. *@
+				<div class="map-landmarks">
+					@foreach ( var lm in Landmarks )
+					{
+						var landmark = lm;
+						var lmKey = "lm-" + landmark.Id;
+						var isHovered = _hoveredLandmarkId == landmark.Id;
+						var lmPos = GetLandmarkPos( landmark );
+						if ( landmark.IsDecoration )
+						{
+							// Decoration — no hover/tooltip. Drag still works in edit mode.
+							<div class="landmark decoration @(_editMode ? "editable" : "")"
+								 style="left: @(lmPos.X)%; top: @(lmPos.Y)%; width: @(lmPos.Width)%;"
+								 onmousedown=@(() => StartDragLandmark(landmark.Id))>
+								<img class="landmark-art" src="@landmark.ImagePath" />
+							</div>
+						}
+						else
+						{
+							<div class="landmark @(isHovered ? "hovered" : "") @(_editMode ? "editable" : "")"
+								 style="left: @(lmPos.X)%; top: @(lmPos.Y)%; width: @(lmPos.Width)%;"
+								 onmouseover=@(() => OnLandmarkHover(landmark.Id, lmKey))
+								 onmouseout=@(() => OnLandmarkLeave(landmark.Id))
+								 onmousedown=@(() => StartDragLandmark(landmark.Id))>
+								<img class="landmark-art" src="@landmark.ImagePath" />
+							</div>
+						}
+					}
+				</div>
+
+				<!-- Subtle cloud overlay around the map perimeter — soft drift -->
+				<div class="map-clouds"></div>
+			</div>
+
+			@* Top-left intentionally left empty — reserved for the zoom UI
+			   that the next pass will mount here. *@
+
+@* Bottom-right hint — let players know landmarks are interactive *@
+			<div class="map-hint-stamp">
+				<iconify icon="lucide:mouse-pointer-2" Size=@(13) Color="#fbbf24" />
+				<span>Hover the village landmarks for lore</span>
+			</div>
+
+			@* Landmark hover tooltip — floats above the hovered landmark *@
+			@if ( _hoveredLandmarkId != null )
+			{
+				var hl = GetLandmark( _hoveredLandmarkId );
+				if ( hl != null && !hl.IsDecoration )
+				{
+					var hlPos = GetLandmarkPos( hl );
+					<div class="landmark-tooltip @(hl.TagLabel == "Home" ? "tag-home" : "")"
+						 style="left: @(hlPos.X + hlPos.Width / 2)%; top: @(hlPos.Y)%;">
+						<div class="landmark-tooltip-tag"><span>@hl.TagLabel</span></div>
+						<div class="landmark-tooltip-title">@hl.Name</div>
+						<div class="landmark-tooltip-body">@hl.Lore</div>
+					</div>
+				}
+			}
+		</div>
 
 		<!-- ═══ ZONE MARKERS (absolute positioned on backdrop) ═══ -->
 		<div class="map-markers">
 			@foreach ( var z in Zones )
 			{
 				var zone = z;
+				if ( !IsZoneVisible( zone ) ) { continue; }
 				var isUnlocked = IsZoneUnlocked( zone );
 				var isCleared = ExpeditionManager.Instance?.HasClearedExpedition( zone.ExpeditionId ) ?? false;
 				var unlockedClass = isUnlocked ? "unlocked" : "locked";
 				var clearedClass = isCleared ? "cleared" : "";
 				var zoneKey = "zone-" + zone.Id;
 				var isHovered = _hoveredZoneId == zone.Id;
-				<div class="zone-marker @unlockedClass @clearedClass @(isHovered ? "hovered" : "")"
-					 style="left: @(zone.X)%; top: @(zone.Y)%;"
+				var zonePos = GetZonePos( zone );
+				<div class="zone-marker @unlockedClass @clearedClass @(isHovered ? "hovered" : "") @(_editMode ? "editable" : "")"
+					 style="left: @(zonePos.X)%; top: @(zonePos.Y)%;"
 					 onclick=@(() => SelectZone(zone.Id))
 					 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
-					 onmouseout=@(() => OnZoneMarkerLeave(zone.Id))>
+					 onmouseout=@(() => OnZoneMarkerLeave(zone.Id))
+					 onmousedown=@(() => StartDragZone(zone.Id))>
 
-					<div class="marker-stem"></div>
 					<div class="marker-pin">
 						@if ( !isUnlocked )
 						{
@@ -75,8 +145,9 @@
 					// supplementary detail rather than a sidetrack. Right-edge
 					// overflow is accepted in exchange for consistency.
 					var cardImg = !string.IsNullOrEmpty( hexp?.BackgroundImage ) ? hexp.BackgroundImage : "ui/locations/placeholder_zone.png";
+					var hzPos = GetZonePos( hz );
 					<div class="zone-preview flip-right"
-						 style="left: @(hz.X)%; top: @(hz.Y)%;">
+						 style="left: @(hzPos.X)%; top: @(hzPos.Y)%;">
 						<div class="zp-header">
 							<span class="zp-title">@hz.Name</span>
 							@if ( hCleared )
@@ -146,12 +217,20 @@
 				var n = node;
 				var isLocked = TradeNodeManager.Instance?.IsLocked( n.Id ) ?? true;
 				var canAfford = TradeNodeManager.Instance?.CanAfford( n.Id ) ?? false;
-				var tnClass = (isLocked ? "done" : "") + " " + (canAfford ? "ready" : "");
+				// Color-tint requests by host zone so the player can read at a
+				// glance which expedition area each marker belongs to.
+				var hostZone = GetZone( n.ZoneId );
+				var hostUnlocked = hostZone != null && IsZoneUnlocked( hostZone );
+				var zoneClass = "zone-" + ( n.ZoneId ?? "" ).Replace( "_", "-" );
+				var tnClass = (isLocked ? "done" : "") + " " + (canAfford ? "ready" : "") + " " + zoneClass + (hostUnlocked ? "" : " host-locked");
 				var tnKey = "tn-" + n.Id;
-				<div class="trade-node @tnClass"
-					 style="left: @(n.MapPosX)%; top: @(n.MapPosY)%;"
+				@{ var tnPos = GetTradeNodePos( n ); var tnHovered = _hoveredTradeNodeId == n.Id; }
+				<div class="trade-node @tnClass @(_editMode ? "editable" : "") @(tnHovered ? "hovered" : "")"
+					 style="left: @(tnPos.X)%; top: @(tnPos.Y)%;"
 					 onclick=@(() => OpenTradeNode(n.Id))
-					 onmouseover=@(() => OnHover(tnKey))>
+					 onmouseover=@(() => { OnHover(tnKey); _hoveredTradeNodeId = n.Id; })
+					 onmouseout=@(() => { if (_hoveredTradeNodeId == n.Id) _hoveredTradeNodeId = null; })
+					 onmousedown=@(() => StartDragTradeNode(n.Id))>
 					<div class="tn-pin">
 						@if ( isLocked )
 						{
@@ -159,12 +238,29 @@
 						}
 						else
 						{
-							<iconify icon="lucide:handshake" Size=@(16) Color="#fef3c7" />
+							@* "?" badge = JRPG quest marker — reads as "an NPC
+							   wants something" instantly. Replaced lucide:handshake
+							   which read as a generic trade. *@
+							<iconify icon="lucide:badge-help" Size=@(18) Color="#fef3c7" />
 						}
 					</div>
 					@if ( canAfford && !isLocked )
 					{
 						<div class="tn-ready-pulse"></div>
+					}
+
+					@* Hover tooltip — Persona stamp pill above the pin showing
+					   request title + NPC + zone hint when host is locked. *@
+					@if ( tnHovered )
+					{
+						<div class="tn-tooltip">
+							<span class="tn-tip-title">@n.Name</span>
+							<span class="tn-tip-npc">@n.NpcName</span>
+							@if ( !hostUnlocked && hostZone != null )
+							{
+								<span class="tn-tip-locked">Unlocks with @hostZone.Name</span>
+							}
+						</div>
 					}
 				</div>
 			}
@@ -181,102 +277,100 @@
 				var state = TradeNodeManager.Instance?.GetState( tnode.Id );
 
 				<div class="zone-detail-overlay" onclick=@CloseTradePopup></div>
-				<div class="trade-popup">
-					<div class="zd-header">
-						<div class="zd-title-stack">
-							<span class="zd-kicker">TRADE REQUEST</span>
-							<span class="zd-title">@tnode.Name</span>
-							@if ( !string.IsNullOrEmpty( tnode.NpcName ) )
-							{
-								<span class="zd-meta">@tnode.NpcName</span>
-							}
+				<div class="request-popup">
+					<button class="close-btn rp-close" onclick=@CloseTradePopup onmouseover=@(() => OnHover("tn-close"))>
+						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+					</button>
+
+					@* NPC band — portrait diamond + kicker + name. Identifies the
+					   requestor at a glance before the request title. *@
+					<div class="rp-npc-band">
+						<div class="rp-npc-portrait">
+							<iconify icon="lucide:user" Size=@(28) Color="#fbbf24" />
 						</div>
-						<button class="close-btn zd-close" onclick=@CloseTradePopup onmouseover=@(() => OnHover("tn-close"))>
-							<img class="close-icon" src="ui/icons/buttons/close.svg" />
-						</button>
+						<div class="rp-npc-meta">
+							<span class="rp-npc-kicker">REQUEST · @tnode.NpcName</span>
+							<span class="rp-title">@tnode.Name</span>
+						</div>
 					</div>
 
-					<div class="zd-lore">
-						<span class="zd-lore-text">@tnode.Description</span>
-					</div>
+					<div class="rp-desc">@tnode.Description</div>
 
-					<div class="zd-section-label">
-						<span>GIVE</span>
-					</div>
-					<div class="tn-line-list">
+					@* GIVE — what the player needs to hand over *@
+					<div class="rp-section-label">YOU GIVE</div>
+					<div class="rp-line-list">
 						@foreach ( var (itemId, qty) in tnode.Requirements )
 						{
 							var item = ItemManager.Instance?.GetItem( itemId );
 							var have = TamerManager.Instance?.CurrentTamer?.Inventory != null
 								&& TamerManager.Instance.CurrentTamer.Inventory.TryGetValue( itemId, out var h ) ? h : 0;
 							var lineClass = have >= qty ? "satisfied" : "short";
-							<div class="tn-line @lineClass">
-								<iconify icon="lucide:package" Size=@(14) Color="#c4b5fd" />
-								<span class="tn-line-name">@(item?.Name ?? itemId)</span>
-								<span class="tn-line-amt">@have / @qty</span>
+							<div class="rp-line @lineClass">
+								<img class="rp-line-icon" src="@(item?.IconPath)" />
+								<span class="rp-line-name">@(item?.Name ?? itemId)</span>
+								<span class="rp-line-amt">@have / @qty</span>
 							</div>
 						}
 						@if ( tnode.GoldCost > 0 )
 						{
 							var gold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
 							var lineClass = gold >= tnode.GoldCost ? "satisfied" : "short";
-							<div class="tn-line @lineClass">
-								<iconify icon="lucide:coins" Size=@(14) Color="#fbbf24" />
-								<span class="tn-line-name">Gold</span>
-								<span class="tn-line-amt">@gold / @tnode.GoldCost</span>
+							<div class="rp-line @lineClass">
+								<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
+								<span class="rp-line-name">Gold</span>
+								<span class="rp-line-amt">@gold / @tnode.GoldCost</span>
 							</div>
 						}
 					</div>
 
-					<div class="zd-section-label">
-						<span>RECEIVE</span>
-					</div>
-					<div class="tn-line-list">
+					@* RECEIVE — rewards laid out the same so the trade reads symmetrically *@
+					<div class="rp-section-label">YOU RECEIVE</div>
+					<div class="rp-line-list">
 						@foreach ( var (itemId, qty) in tnode.ItemRewards )
 						{
 							var item = ItemManager.Instance?.GetItem( itemId );
-							<div class="tn-line reward">
-								<iconify icon="lucide:gift" Size=@(14) Color="#4ade80" />
-								<span class="tn-line-name">@(item?.Name ?? itemId)</span>
-								<span class="tn-line-amt">x@qty</span>
+							<div class="rp-line reward">
+								<img class="rp-line-icon" src="@(item?.IconPath)" />
+								<span class="rp-line-name">@(item?.Name ?? itemId)</span>
+								<span class="rp-line-amt">×@qty</span>
 							</div>
 						}
 						@if ( tnode.GoldReward > 0 )
 						{
-							<div class="tn-line reward">
-								<iconify icon="lucide:coins" Size=@(14) Color="#fbbf24" />
-								<span class="tn-line-name">Gold</span>
-								<span class="tn-line-amt">+@tnode.GoldReward</span>
+							<div class="rp-line reward">
+								<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
+								<span class="rp-line-name">Gold</span>
+								<span class="rp-line-amt">+@tnode.GoldReward</span>
 							</div>
 						}
 						@if ( tnode.XPReward > 0 )
 						{
-							<div class="tn-line reward">
-								<iconify icon="lucide:arrow-up" Size=@(14) Color="#4ade80" />
-								<span class="tn-line-name">Tamer XP</span>
-								<span class="tn-line-amt">+@tnode.XPReward</span>
+							<div class="rp-line reward">
+								<iconify icon="lucide:arrow-up" Size=@(20) Color="#4ade80" />
+								<span class="rp-line-name">Tamer XP</span>
+								<span class="rp-line-amt">+@tnode.XPReward</span>
 							</div>
 						}
 						@if ( tnode.SkillPointReward > 0 )
 						{
-							<div class="tn-line reward">
-								<iconify icon="lucide:sparkles" Size=@(14) Color="#a78bfa" />
-								<span class="tn-line-name">Skill Points</span>
-								<span class="tn-line-amt">+@tnode.SkillPointReward</span>
+							<div class="rp-line reward">
+								<iconify icon="lucide:sparkles" Size=@(20) Color="#a78bfa" />
+								<span class="rp-line-name">Skill Points</span>
+								<span class="rp-line-amt">+@tnode.SkillPointReward</span>
 							</div>
 						}
 					</div>
 
 					@if ( isDone )
 					{
-						<div class="tn-done-banner">
+						<div class="rp-done-banner">
 							<iconify icon="lucide:check-circle-2" Size=@(18) Color="#4ade80" />
-							<span>Already completed</span>
+							<span>Already Completed</span>
 						</div>
 					}
 					else
 					{
-						<button class="embark-btn @(canAfford ? "" : "disabled")"
+						<button class="embark-btn rp-accept @(canAfford ? "" : "disabled")"
 								onclick=@(() => ExecuteTrade(tnode.Id))
 								onmouseover=@(() => OnHover("tn-exec-" + tnode.Id))>
 							<iconify icon="lucide:handshake" Size=@(20) Color="#ffffff" />
@@ -303,55 +397,155 @@
 				var exp = GetExpedition( sz.ExpeditionId );
 
 				<div class="zone-detail-overlay" onclick=@CloseZoneDetail></div>
-				<div class="zone-detail">
-					<div class="zd-header">
-						<div class="zd-title-stack">
-							<span class="zd-kicker">EXPEDITION</span>
-							<span class="zd-title">@sz.Name</span>
-							<span class="zd-meta">Level @sz.Level &middot; @(exp?.Waves ?? 0) waves</span>
+				@{
+					var drops = ItemManager.Instance?.GetDropsForExpedition( sz.ExpeditionId ) ?? new System.Collections.Generic.List<ItemDefinition>();
+					var heroImg = !string.IsNullOrEmpty( exp?.BackgroundImage ) ? exp.BackgroundImage : "ui/locations/placeholder_zone.png";
+					var elClassZone = exp?.Element.ToString().ToLower() ?? "neutral";
+				}
+				@* Hyrule-Warriors style hero card — image up top, title overlay,
+				   stat strip, lore, beast portraits, drop strip, single CTA. *@
+				<div class="zone-detail hw-card">
+					<button class="close-btn zd-close" onclick=@CloseZoneDetail onmouseover=@(() => OnHover("zd-close"))>
+						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+					</button>
+
+					@* Hero image — zone art with element-tinted gradient + title overlay *@
+					<div class="zd-hero element-@elClassZone">
+						<img class="zd-hero-img" src="@heroImg" />
+						<div class="zd-hero-veil"></div>
+						<div class="zd-hero-info">
+							<span class="zd-hero-kicker">EXPEDITION</span>
+							<span class="zd-hero-title">@sz.Name</span>
+							<div class="zd-hero-stats">
+								<span class="zd-hero-stat">Lv @sz.Level</span>
+								<span class="zd-hero-dot">·</span>
+								<span class="zd-hero-stat">@(exp?.Waves ?? 0) Waves</span>
+								@if ( exp != null && exp.HasBoss )
+								{
+									<span class="zd-hero-dot">·</span>
+									<span class="zd-hero-stat boss">
+										<iconify icon="lucide:skull" Size=@(12) Color="#fca5a5" />
+										BOSS
+									</span>
+								}
+							</div>
 						</div>
-						<button class="close-btn zd-close" onclick=@CloseZoneDetail onmouseover=@(() => OnHover("zd-close"))>
-							<img class="close-icon" src="ui/icons/buttons/close.svg" />
-						</button>
 					</div>
 
-					<div class="zd-lore">
-						<span class="zd-lore-text">@sz.Lore</span>
-					</div>
+					@* Lore — short, breathable *@
+					<div class="zd-lore-line">@sz.Lore</div>
 
-					<!-- Embark CTA -->
-					<button class="embark-btn" onclick=@(() => Embark(sz.ExpeditionId)) onmouseover=@(() => OnHover("embark-" + sz.Id))>
+					@* Wild beasts — circular portraits in a row, names below *@
+					@if ( exp != null && exp.PossibleSpecies.Count > 0 )
+					{
+						<div class="zd-row-label">WILD BEASTS</div>
+						<div class="zd-beast-row">
+							@foreach ( var speciesId in exp.PossibleSpecies )
+							{
+								var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+								if ( sp == null ) { continue; }
+								var rClass = sp.BaseRarity.ToString().ToLower();
+								<div class="zd-beast-portrait rarity-@rClass">
+									<img class="zd-portrait-icon" src="@sp.IconPath" />
+									<span class="zd-portrait-name">@sp.Name</span>
+								</div>
+							}
+							@if ( exp.HasBoss && !string.IsNullOrEmpty( exp.BossSpeciesId ) )
+							{
+								var boss = MonsterManager.Instance?.GetSpecies( exp.BossSpeciesId );
+								if ( boss != null )
+								{
+									<div class="zd-beast-portrait boss">
+										<img class="zd-portrait-icon" src="@boss.IconPath" />
+										<span class="zd-portrait-name">@boss.Name</span>
+										<iconify class="zd-portrait-skull" icon="lucide:skull" Size=@(11) Color="#fca5a5" />
+									</div>
+								}
+							}
+						</div>
+					}
+
+					@* Primary CTA — sits above drops so the action is the anchor
+					   point and drops are secondary info beneath it. *@
+					<button class="embark-btn hw-embark" onclick=@(() => Embark(sz.ExpeditionId)) onmouseover=@(() => OnHover("embark-" + sz.Id))>
 						<iconify icon="lucide:compass" Size=@(20) Color="#ffffff" />
 						<span>EMBARK</span>
 					</button>
 
-					<!-- NPC quest-giver slots (side quest acceptance — placeholder for now) -->
-					<div class="zd-section-label">
-						<span>SIDE QUESTS</span>
-						<span class="zd-section-count">Coming soon</span>
-					</div>
-					<div class="zd-npc-list">
-						@foreach ( var npc in sz.NpcPlaceholders )
-						{
-							var npcName = npc;
-							<div class="zd-npc-slot locked" onmouseover=@(() => OnHover("npc-" + sz.Id + "-" + npcName))>
-								<div class="zd-npc-icon">
-									<iconify icon="lucide:user" Size=@(18) Color="#94a3b8" />
+					@* Drops — 2 cards per row. Built with explicit row pairs so
+					   each card has a stable parent width (s&box flex-wrap +
+					   calc(50%) collapses to character-width columns). *@
+					@if ( drops.Count > 0 )
+					{
+						<div class="zd-row-label">
+							<span>POSSIBLE DROPS</span>
+							<span class="zd-row-sub">@drops.Count items</span>
+						</div>
+						<div class="zd-drop-scroll">
+							@for ( int i = 0; i < drops.Count; i += 2 )
+							{
+								var leftDrop = drops[i];
+								var rightDrop = i + 1 < drops.Count ? drops[i + 1] : null;
+								<div class="zd-drop-pair">
+									<div class="zd-drop-card rarity-@(leftDrop.Rarity.ToString().ToLower())">
+										<img class="zd-drop-icon" src="@leftDrop.IconPath" />
+										<div class="zd-drop-meta">
+											<span class="zd-drop-name">@leftDrop.Name</span>
+											<span class="zd-drop-source">@GetDropSource(leftDrop, sz, exp)</span>
+										</div>
+									</div>
+									@if ( rightDrop != null )
+									{
+										<div class="zd-drop-card rarity-@(rightDrop.Rarity.ToString().ToLower())">
+											<img class="zd-drop-icon" src="@rightDrop.IconPath" />
+											<div class="zd-drop-meta">
+												<span class="zd-drop-name">@rightDrop.Name</span>
+												<span class="zd-drop-source">@GetDropSource(rightDrop, sz, exp)</span>
+											</div>
+										</div>
+									}
+									else
+									{
+										<div class="zd-drop-card-empty"></div>
+									}
 								</div>
-								<div class="zd-npc-text">
-									<span class="zd-npc-name">@npcName</span>
-									<span class="zd-npc-hook">No quests yet &mdash; check back later</span>
-								</div>
-								<iconify icon="lucide:lock" Size=@(14) Color="#64748b" />
-							</div>
-						}
-					</div>
+							}
+						</div>
+					}
 				</div>
 			}
 		}
 
 		<!-- ═══ TEAM PICKER POPUP (overlays the whole map when Embark is clicked) ═══ -->
 		<TeamPickerPopup />
+
+		@* ═══ DEV: DRAG-TO-PLACE EDITOR ═══
+		   Hidden behind ShowDevTools. Flip the const back to `true` in the
+		   @code block to reveal the EDIT / SAVE → CONSOLE buttons for further
+		   placement work. *@
+		@if ( ShowDevTools )
+		{
+			<div class="map-dev-toolbar">
+				<button class="map-dev-btn @(_editMode ? "active" : "")" onclick=@ToggleEditMode>
+					<iconify icon="lucide:move" Size=@(13) Color="#fbbf24" />
+					<span>EDIT @(_editMode ? "ON" : "OFF")</span>
+				</button>
+				@if ( _editMode )
+				{
+					<button class="map-dev-btn map-dev-save" onclick=@PrintPositions>
+						<iconify icon="lucide:save" Size=@(13) Color="#4ade80" />
+						<span>SAVE → CONSOLE</span>
+					</button>
+				}
+			</div>
+		}
+
+		@if ( !string.IsNullOrEmpty( _draggingId ) )
+		{
+			<div class="map-drag-shield"
+				 onmousemove=@OnEditDragMove
+				 onmouseup=@OnEditDragEnd></div>
+		}
 	</div>
 </root>
 
@@ -360,9 +554,34 @@
 
 	private string _selectedZoneId;
 	private string _tradePopupNodeId;
+	// Hovered request marker — shows a small tooltip with name + NPC above the pin.
+	private string _hoveredTradeNodeId;
 	// Tracked separately from _hoveredKey so mousing over child elements of
 	// the marker (label, pin) doesn't flicker the preview card off and back.
 	private string _hoveredZoneId;
+	// Lore-only village landmarks (houses, statue, mine, bridge, fences).
+	// Shows a stamp tooltip on hover; not connected to any expedition.
+	private string _hoveredLandmarkId;
+
+	// ───────────────────── DEV: DRAG-TO-PLACE EDITOR ─────────────────────
+	// Toggle EDIT MODE to grab any landmark or zone marker and reposition it
+	// on the map. Hit SAVE → CONSOLE to dump the current X/Y values to the
+	// log so you can paste them back into the static Landmarks/Zones arrays.
+	// Drag-shield pattern matches ChatPanel — onmousemove/onmouseup live on a
+	// fullscreen shield that mounts only while dragging.
+	//
+	// Set ShowDevTools = true to surface the toolbar in-game. Hidden during
+	// release / screenshot passes so the buttons don't appear in marketing.
+	private const bool ShowDevTools = false;
+	private bool _editMode = false;
+	private string _draggingId;       // null when not dragging
+	private string _draggingType;     // "landmark" or "zone"
+	private float _dragStartMouseX, _dragStartMouseY;
+	private float _dragStartItemX, _dragStartItemY;
+	private bool _needsDragAnchor;
+	private Dictionary<string, (float X, float Y, float Width)> _landmarkOverrides = new();
+	private Dictionary<string, (float X, float Y)> _zoneOverrides = new();
+	private Dictionary<string, (float X, float Y)> _tradeOverrides = new();
 
 	// Hover-sound guard — onmouseover bubbles from children in s&box, so gate
 	// sound playback behind a key change.
@@ -389,6 +608,150 @@
 		if ( _hoveredZoneId == zoneId ) _hoveredZoneId = null;
 	}
 
+	// Landmark hover — village lore tooltip. Same flicker-guard pattern as
+	// zone markers; OnLandmarkHover sets _hoveredLandmarkId so the tooltip
+	// follows the cursor across the .landmark element's children.
+	private void OnLandmarkHover( string landmarkId, string hoverKey )
+	{
+		OnHover( hoverKey );
+		_hoveredLandmarkId = landmarkId;
+	}
+
+	private void OnLandmarkLeave( string landmarkId )
+	{
+		if ( _hoveredLandmarkId == landmarkId ) _hoveredLandmarkId = null;
+	}
+
+	private Landmark GetLandmark( string id ) => Landmarks.FirstOrDefault( l => l.Id == id );
+
+	/// <summary>
+	/// Player-facing subtitle on each drop card. For beast-signature materials
+	/// (`mat_{speciesId}`), shows "Drops from {Beast}". For held items / relics
+	/// / consumables, shows the gameplay effect (`+5% ATK`, `+25% gold`, etc.)
+	/// so the player can see at a glance what the item actually does.
+	/// </summary>
+	private string GetDropSource( ItemDefinition drop, MapZone zone, Expedition exp )
+	{
+		if ( drop == null ) return "";
+
+		if ( drop.Id.StartsWith( "mat_" ) )
+		{
+			var speciesId = drop.Id.Substring( 4 );
+			var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+			var beastName = sp?.Name ?? "this beast";
+			return $"Drops from {beastName}.";
+		}
+
+		// Held items + relics + consumables show their stat effect.
+		var effect = drop.GetEffectDescription();
+		return !string.IsNullOrEmpty( effect ) ? effect : drop.Description;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// Village landmarks — lore-only PNG overlays on the map
+	// ═══════════════════════════════════════════════════════════════
+	// Each Landmark is a hover-lore element placed on the illustrated
+	// map. They're decorative — clicking does nothing; hovering shows a
+	// stamp-styled tooltip with one paragraph of village flavor.
+	//
+	// X/Y/Width are percent values relative to .map-art-frame so the
+	// landmarks stay in alignment with the artist's illustration regardless
+	// of viewport size. The Width is the landmark sprite's % width — Y/X
+	// are the top-left anchor, NOT the center.
+	//
+	// Positions are eyeballed from map_whole.png. Tweak in art-direction
+	// passes by swapping these numbers — no code logic depends on them.
+	private record Landmark( string Id, string Name, string Lore, string ImagePath, float X, float Y, float Width, bool IsDecoration = false, string TagLabel = "Landmark" );
+
+	private static readonly Landmark[] Landmarks = new[]
+	{
+		// Positions baked from the live SAVE → CONSOLE dev tool — these are
+		// the canonical map placements. Adjust further by re-entering EDIT
+		// mode in-game and re-saving; the JSON in FileSystem.Data overrides
+		// these defaults at runtime when present.
+		new Landmark(
+			Id: "embrik_statue",
+			Name: "Embrik's Watch",
+			Lore: "A weathered statue of the village's first companion, carved by the founder's own hands. Tradition says new tamers leave a single ember at its base before their first run.",
+			ImagePath: "ui/worldmap/serpinglin/embrik_statue.png",
+			X: 46.2f, Y: 49.6f, Width: 3f ),
+
+		new Landmark(
+			Id: "house_001_home",
+			Name: "Your Cottage",
+			Lore: "Yours. Inherited from a grandparent you barely remember, kept livable by the kindness of neighbors. The hearth is older than the house, and the garden out back has a fence that was never quite finished.",
+			ImagePath: "ui/worldmap/serpinglin/house_001.png",
+			X: 37.8f, Y: 46.2f, Width: 3.8f,
+			TagLabel: "Home" ),
+
+		new Landmark(
+			Id: "house_001b",
+			Name: "",
+			Lore: "",
+			ImagePath: "ui/worldmap/serpinglin/house_001.png",
+			X: 35.1f, Y: 49.0f, Width: 3.8f,
+			IsDecoration: true ),
+
+		new Landmark(
+			Id: "house_001c",
+			Name: "",
+			Lore: "",
+			ImagePath: "ui/worldmap/serpinglin/house_001.png",
+			X: 37.4f, Y: 51.5f, Width: 3.8f,
+			IsDecoration: true ),
+
+		new Landmark(
+			Id: "house_001d",
+			Name: "",
+			Lore: "",
+			ImagePath: "ui/worldmap/serpinglin/house_001.png",
+			X: 44.3f, Y: 61.9f, Width: 3.8f,
+			IsDecoration: true ),
+
+		new Landmark(
+			Id: "house_002_almonry",
+			Name: "The Almonry",
+			Lore: "Was the village grain store; now a guesthouse. Every traveler gets one bowl on the house. Every contract with a starving beast gets two.",
+			ImagePath: "ui/worldmap/serpinglin/house_002.png",
+			X: 42.7f, Y: 37.7f, Width: 4.2f ),
+
+		new Landmark(
+			Id: "house_002b",
+			Name: "",
+			Lore: "",
+			ImagePath: "ui/worldmap/serpinglin/house_002.png",
+			X: 47.9f, Y: 59.3f, Width: 4.2f,
+			IsDecoration: true ),
+
+		new Landmark(
+			Id: "house_003",
+			Name: "Sundial House",
+			Lore: "Built around the village's only working clock. The chime at sundown calls trainers home; the bell at noon means a new contract has been signed somewhere.",
+			ImagePath: "ui/worldmap/serpinglin/house_003.png",
+			X: 47.0f, Y: 37.0f, Width: 6.5f ),
+
+		new Landmark(
+			Id: "fences",
+			Name: "The Holding Pens",
+			Lore: "Where contracted beasts rest between expeditions. The fence posts are warded against startled stampedes. Step lightly when you visit — they remember you.",
+			ImagePath: "ui/worldmap/serpinglin/fences.png",
+			X: 30.8f, Y: 34.7f, Width: 11f ),
+
+		new Landmark(
+			Id: "mine",
+			Name: "The Quiet Pit",
+			Lore: "A spent vein that still hums, faintly, when the wind is right. Nobody mines here anymore, but the hum has its admirers — and a few small beasts that won't leave.",
+			ImagePath: "ui/worldmap/serpinglin/mine.png",
+			X: 31.4f, Y: 66.5f, Width: 5.5f ),
+
+		new Landmark(
+			Id: "bridge",
+			Name: "The Long Bridge",
+			Lore: "A long bridge to somewhere. Nobody in the village seems to remember exactly what's on the far side anymore — only that the boards keep getting replaced and the iron pins are still the originals.",
+			ImagePath: "ui/worldmap/serpinglin/bridge.png",
+			X: 15.3f, Y: 39.5f, Width: 11f ),
+	};
+
 	// Zone definitions — visual/narrative layer on top of the ExpeditionManager
 	// data. Each zone maps to one of the first three Expedition entries until we
 	// cut the rest on the Apr 25 retheme pass.
@@ -404,34 +767,47 @@
 
 	private static readonly MapZone[] Zones = new[]
 	{
+		// Tutorial-only zone — filtered out of the map by IsZoneVisible
+		// once the tutorial completes/skips. Sits visually near the bridge.
+		// Positions baked from the live SAVE → CONSOLE dev tool.
+		new MapZone(
+			Id: "saltmoor_approach",
+			ExpeditionId: "saltmoor_approach",
+			Name: "Serpinglin Approach",
+			Lore: "A friendly stretch of path just past the Long Bridge. Perfect for a first run.",
+			Level: 1,
+			X: 14f,
+			Y: 78f,
+			NpcPlaceholders: new[] { "Trail Marker" } ),
+
 		new MapZone(
 			Id: "saltmoor_cove",
 			ExpeditionId: "saltmoor_cove",
-			Name: "Saltmoor Cove",
-			Lore: "A small coastal village where homes are grown into the curve of the hillside and every rooftop turns its face to the sun. The tide pools teach soft lessons, and the beasts here are mostly kind.",
+			Name: "Training Grounds",
+			Lore: "The fenced loop the village set aside for young tamers to practice on. The beasts that wander in are gentle and curious — perfect for trying out your first contracts without anyone getting hurt.",
 			Level: 1,
-			X: 22f,
-			Y: 62f,
+			X: 27.8f,
+			Y: 49.2f,
 			NpcPlaceholders: new[] { "Elder Mira", "Saltkeeper Bram", "Lost-Cat Kera" } ),
 
 		new MapZone(
 			Id: "saltmoor_forest",
 			ExpeditionId: "saltmoor_forest",
-			Name: "Saltmoor Forest",
-			Lore: "The woods the village has spent a generation healing. Paths wind between mangrove roots and old ceibas, the canopy holding the morning mist. The beasts here are bolder — territorial, not unfriendly, but not to be tested alone.",
+			Name: "The Witherwood",
+			Lore: "The local pinewood east of Hollow Creek. A handful of folk keep cabins back among the trees — woodcutters, herbalists, the occasional retired tamer. The beasts here are wilder than the village pens but the paths are still well-walked.",
 			Level: 15,
-			X: 52f,
-			Y: 38f,
+			X: 68.6f,
+			Y: 53.3f,
 			NpcPlaceholders: new[] { "Ranger Tasha", "The Herbalist", "A Nervous Trader" } ),
 
 		new MapZone(
 			Id: "old_saltmoor",
 			ExpeditionId: "old_saltmoor",
-			Name: "Old Saltmoor",
-			Lore: "The original settlement, lost to the storms two generations ago. A broken pier, a hollow lighthouse, walls the sea keeps trying to take back. The beasts that claim it now are older, stranger, and less willing to share.",
+			Name: "Mirrorpond",
+			Lore: "A spring-fed pond hidden above the witherwood line. The water never moves, even when it should. Older beasts come here to listen to whatever the pond is saying back.",
 			Level: 30,
-			X: 78f,
-			Y: 68f,
+			X: 69.1f,
+			Y: 27.4f,
 			NpcPlaceholders: new[] { "Archaeologist Ven", "A Wary Scout", "The Collector" } ),
 	};
 
@@ -442,6 +818,7 @@
 			Instance = this;
 			_hoveredKey = null;
 			_selectedZoneId = null;
+			LoadSavedPositions();
 		}
 	}
 
@@ -459,6 +836,10 @@
 
 	private void SelectZone( string zoneId )
 	{
+		// Don't open the zone-detail pane while the player is repositioning
+		// markers in dev edit mode — the click is part of a drag.
+		if ( _editMode ) return;
+
 		var zone = GetZone( zoneId );
 		if ( zone == null ) return;
 		if ( !IsZoneUnlocked( zone ) )
@@ -469,6 +850,9 @@
 		_selectedZoneId = zoneId;
 		_hoveredKey = null;
 		SoundManager.PlayClick();
+
+		// Tutorial: notify that a zone was picked.
+		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "worldmap.zone-selected" );
 	}
 
 	private void CloseZoneDetail()
@@ -512,12 +896,249 @@
 	private Expedition GetExpedition( string id ) =>
 		ExpeditionManager.Instance?.Expeditions.FirstOrDefault( e => e.Id == id );
 
+	// ───────────────────── DEV: DRAG-TO-PLACE ─────────────────────
+
+	/// <summary>Returns the live (overridden or default) position of a landmark.</summary>
+	private (float X, float Y, float Width) GetLandmarkPos( Landmark lm )
+	{
+		if ( _landmarkOverrides.TryGetValue( lm.Id, out var pos ) ) return pos;
+		return (lm.X, lm.Y, lm.Width);
+	}
+
+	/// <summary>Returns the live (overridden or default) position of a zone marker.</summary>
+	private (float X, float Y) GetZonePos( MapZone z )
+	{
+		if ( _zoneOverrides.TryGetValue( z.Id, out var pos ) ) return pos;
+		return (z.X, z.Y);
+	}
+
+	/// <summary>Returns the live (overridden or default) position of a trade-node request marker.</summary>
+	private (float X, float Y) GetTradeNodePos( TradeNode n )
+	{
+		if ( _tradeOverrides.TryGetValue( n.Id, out var pos ) ) return pos;
+		return (n.MapPosX, n.MapPosY);
+	}
+
+	private void ToggleEditMode()
+	{
+		_editMode = !_editMode;
+		if ( !_editMode ) { _draggingId = null; _draggingType = null; }
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void StartDragLandmark( string id )
+	{
+		if ( !_editMode ) return;
+		var lm = GetLandmark( id );
+		if ( lm == null ) return;
+		var pos = GetLandmarkPos( lm );
+		_draggingId = id;
+		_draggingType = "landmark";
+		_dragStartItemX = pos.X;
+		_dragStartItemY = pos.Y;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
+	private void StartDragZone( string id )
+	{
+		if ( !_editMode ) return;
+		var z = GetZone( id );
+		if ( z == null ) return;
+		var pos = GetZonePos( z );
+		_draggingId = id;
+		_draggingType = "zone";
+		_dragStartItemX = pos.X;
+		_dragStartItemY = pos.Y;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
+	private void StartDragTradeNode( string id )
+	{
+		if ( !_editMode ) return;
+		var n = TradeNodeManager.Instance?.GetNode( id );
+		if ( n == null ) return;
+		var pos = GetTradeNodePos( n );
+		_draggingId = id;
+		_draggingType = "trade";
+		_dragStartItemX = pos.X;
+		_dragStartItemY = pos.Y;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
+	private void OnEditDragMove( PanelEvent e )
+	{
+		if ( string.IsNullOrEmpty( _draggingId ) ) return;
+
+		// First move after drag start — anchor mouse coords on the shield
+		// (which is fullscreen + static, so its coords are immune to the
+		// landmark/marker moving as we drag it).
+		if ( _needsDragAnchor )
+		{
+			_dragStartMouseX = MousePosition.x;
+			_dragStartMouseY = MousePosition.y;
+			_needsDragAnchor = false;
+			return;
+		}
+
+		var rect = Box.Rect;
+		if ( rect.Width <= 0 || rect.Height <= 0 ) return;
+
+		float dxPct = ( MousePosition.x - _dragStartMouseX ) / rect.Width * 100f;
+		float dyPct = ( MousePosition.y - _dragStartMouseY ) / rect.Height * 100f;
+		float newX = _dragStartItemX + dxPct;
+		float newY = _dragStartItemY + dyPct;
+
+		if ( _draggingType == "landmark" )
+		{
+			var lm = GetLandmark( _draggingId );
+			if ( lm != null )
+			{
+				var existing = GetLandmarkPos( lm );
+				_landmarkOverrides[_draggingId] = (newX, newY, existing.Width);
+			}
+		}
+		else if ( _draggingType == "zone" )
+		{
+			_zoneOverrides[_draggingId] = (newX, newY);
+		}
+		else if ( _draggingType == "trade" )
+		{
+			_tradeOverrides[_draggingId] = (newX, newY);
+		}
+		StateHasChanged();
+	}
+
+	private void OnEditDragEnd( PanelEvent e )
+	{
+		_draggingId = null;
+		_draggingType = null;
+		StateHasChanged();
+	}
+
+	// ───── Saved-positions persistence ─────────────────────────────
+	// JSON file in FileSystem.Data so dragged positions actually persist
+	// across sessions (was previously log-only — print and manually paste).
+	private const string SavedPositionsFile = "serpinglin_map_positions.json";
+
+	private class SavedLandmark { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } public float Width { get; set; } }
+	private class SavedZone { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
+	private class SavedTrade { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
+	private class MapPositionsData { public List<SavedLandmark> Landmarks { get; set; } = new(); public List<SavedZone> Zones { get; set; } = new(); public List<SavedTrade> TradeNodes { get; set; } = new(); }
+
+	/// <summary>
+	/// Persist current landmark + zone positions to FileSystem.Data, AND dump
+	/// them to the engine log so they can be pasted into the static arrays.
+	/// </summary>
+	private void PrintPositions()
+	{
+		// 1) Persist to disk so the next session loads them automatically
+		var data = new MapPositionsData();
+		foreach ( var lm in Landmarks )
+		{
+			var pos = GetLandmarkPos( lm );
+			data.Landmarks.Add( new SavedLandmark { Id = lm.Id, X = pos.X, Y = pos.Y, Width = pos.Width } );
+		}
+		foreach ( var z in Zones )
+		{
+			var pos = GetZonePos( z );
+			data.Zones.Add( new SavedZone { Id = z.Id, X = pos.X, Y = pos.Y } );
+		}
+		foreach ( var n in TradeNodeManager.Instance?.AllNodes ?? new System.Collections.Generic.List<TradeNode>() )
+		{
+			var pos = GetTradeNodePos( n );
+			data.TradeNodes.Add( new SavedTrade { Id = n.Id, X = pos.X, Y = pos.Y } );
+		}
+
+		try
+		{
+			var json = System.Text.Json.JsonSerializer.Serialize( data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true } );
+			FileSystem.Data.WriteAllText( SavedPositionsFile, json );
+			Log.Info( $"[MapEdit] Saved {data.Landmarks.Count} landmark(s) + {data.Zones.Count} zone(s) → FileSystem.Data/{SavedPositionsFile}" );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[MapEdit] Failed to write positions: {ex.Message}" );
+		}
+
+		// 2) Print to log for paste-back into the static arrays
+		var sb = new System.Text.StringBuilder();
+		sb.AppendLine();
+		sb.AppendLine( "=== MAP POSITIONS — paste back into WorldMapPanel.razor ===" );
+		sb.AppendLine( "Landmarks:" );
+		foreach ( var lm in Landmarks )
+		{
+			var pos = GetLandmarkPos( lm );
+			sb.AppendLine( $"  {lm.Id,-22}  X: {pos.X,5:0.0}f, Y: {pos.Y,5:0.0}f, Width: {pos.Width,4:0.0}f" );
+		}
+		sb.AppendLine();
+		sb.AppendLine( "Zones:" );
+		foreach ( var z in Zones )
+		{
+			var pos = GetZonePos( z );
+			sb.AppendLine( $"  {z.Id,-22}  X: {pos.X,5:0.0}f, Y: {pos.Y,5:0.0}f" );
+		}
+		sb.AppendLine();
+		sb.AppendLine( "Trade Nodes / Requests:" );
+		foreach ( var n in TradeNodeManager.Instance?.AllNodes ?? new System.Collections.Generic.List<TradeNode>() )
+		{
+			var pos = GetTradeNodePos( n );
+			sb.AppendLine( $"  {n.Id,-30}  MapPosX: {pos.X,5:0.0}f, MapPosY: {pos.Y,5:0.0}f" );
+		}
+		sb.AppendLine( "===========================================================" );
+		Log.Info( sb.ToString() );
+		SoundManager.PlaySuccess();
+	}
+
+	/// <summary>
+	/// Load saved positions on panel init. If the file exists, populates
+	/// the override dictionaries so the stored positions render immediately.
+	/// </summary>
+	private void LoadSavedPositions()
+	{
+		try
+		{
+			if ( !FileSystem.Data.FileExists( SavedPositionsFile ) ) return;
+			var json = FileSystem.Data.ReadAllText( SavedPositionsFile );
+			var data = System.Text.Json.JsonSerializer.Deserialize<MapPositionsData>( json );
+			if ( data == null ) return;
+
+			foreach ( var lm in data.Landmarks )
+			{
+				if ( string.IsNullOrEmpty( lm.Id ) ) continue;
+				_landmarkOverrides[lm.Id] = (lm.X, lm.Y, lm.Width);
+			}
+			foreach ( var z in data.Zones )
+			{
+				if ( string.IsNullOrEmpty( z.Id ) ) continue;
+				_zoneOverrides[z.Id] = (z.X, z.Y);
+			}
+			if ( data.TradeNodes != null )
+			{
+				foreach ( var t in data.TradeNodes )
+				{
+					if ( string.IsNullOrEmpty( t.Id ) ) continue;
+					_tradeOverrides[t.Id] = (t.X, t.Y);
+				}
+			}
+			Log.Info( $"[MapEdit] Loaded {data.Landmarks.Count} landmark(s) + {data.Zones.Count} zone(s) + {data.TradeNodes?.Count ?? 0} request(s) from {SavedPositionsFile}" );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[MapEdit] Failed to load saved positions: {ex.Message}" );
+		}
+	}
+
 	// ───────────────────── TRADE NODE HELPERS ─────────────────────
 
 	/// <summary>
-	/// Trade nodes appear only AFTER the player has cleared the zone at least
-	/// once. Keeps the first trip through each expedition focused on the main
-	/// loop; side content unlocks on the way back. Matches SideQuest gating.
+	/// Trade nodes / requests only show on the map after the player has
+	/// cleared their host expedition at least once. Until then the zone's
+	/// requests stay hidden — players discover them as a reward for
+	/// progressing through expeditions.
 	/// </summary>
 	private IEnumerable<TradeNode> GetVisibleTradeNodes()
 	{
@@ -534,6 +1155,10 @@
 
 	private void OpenTradeNode( string nodeId )
 	{
+		// Don't open the request popup while the player is repositioning
+		// markers in dev edit mode — the click is part of a drag.
+		if ( _editMode ) return;
+
 		_tradePopupNodeId = nodeId;
 		_hoveredKey = null;
 		SoundManager.PlayClick();
@@ -570,10 +1195,37 @@
 		var em = ExpeditionManager.Instance;
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( em == null || tamer == null ) return zone.Id == "saltmoor_cove"; // fail-safe: only the starter
+
 		var exp = em.Expeditions.FirstOrDefault( e => e.Id == zone.ExpeditionId );
 		if ( exp == null ) return false;
-		int idx = em.Expeditions.ToList().IndexOf( exp );
+
+		// Tutorial-only zones are always unlocked while the tutorial is active.
+		if ( exp.TutorialOnly )
+		{
+			return Beastborne.Core.TutorialManager.Instance?.IsTutorialActive == true;
+		}
+
+		// Compute the index against the non-tutorial chain so a player who skipped
+		// the tutorial isn't gated by an expedition they can't see anymore.
+		var realChain = em.Expeditions.Where( e => !e.TutorialOnly ).ToList();
+		int idx = realChain.IndexOf( exp );
 		return idx <= tamer.HighestExpeditionCleared;
+	}
+
+	/// <summary>
+	/// Tutorial-only zones only show on the map while the tutorial is active.
+	/// All other zones are always visible (their unlocked-state controls clickability).
+	/// </summary>
+	private bool IsZoneVisible( MapZone zone )
+	{
+		var em = ExpeditionManager.Instance;
+		var exp = em?.Expeditions.FirstOrDefault( e => e.Id == zone.ExpeditionId );
+		if ( exp == null ) return true;
+		if ( exp.TutorialOnly )
+		{
+			return Beastborne.Core.TutorialManager.Instance?.IsTutorialActive == true;
+		}
+		return true;
 	}
 
 	protected override int BuildHash()
@@ -583,6 +1235,18 @@
 		h.Add( _selectedZoneId );
 		h.Add( _tradePopupNodeId );
 		h.Add( _hoveredZoneId );
+		h.Add( _hoveredLandmarkId );
+		h.Add( _hoveredTradeNodeId );
+		h.Add( _editMode );
+		h.Add( _draggingId );
+		// Override dictionaries change on every drag tick — hash their counts +
+		// a couple of values so re-render fires when positions shift.
+		h.Add( _landmarkOverrides.Count );
+		h.Add( _zoneOverrides.Count );
+		h.Add( _tradeOverrides.Count );
+		foreach ( var kv in _landmarkOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
+		foreach ( var kv in _zoneOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
+		foreach ( var kv in _tradeOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
 		h.Add( TamerManager.Instance?.CurrentTamer?.Level ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.HighestExpeditionCleared ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Gold ?? 0 );

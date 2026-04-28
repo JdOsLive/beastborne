@@ -542,7 +542,7 @@
 			<div class="history-header">
 				<span class="history-title">MATCH HISTORY</span>
 				<button class="close-btn" onclick=@ReturnToModeSelect>
-					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
 				</button>
 			</div>
 			<div class="history-list">
@@ -575,7 +575,7 @@
 			<div class="rules-header">
 				<span class="rules-title">ARENA RULES</span>
 				<button class="close-btn" onclick=@ReturnToModeSelect>
-					<img class="close-icon" src="ui/icons/buttons/close.svg" />
+					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
 				</button>
 			</div>
 
@@ -635,21 +635,7 @@
 		</div>
 	}
 
-	@if (showExpeditionWarning)
-	{
-		<div class="confirm-overlay" onclick=@CancelExpeditionWarning>
-			<div class="confirm-panel" onclick:stopPropagation>
-				<div class="confirm-title">Expedition In Progress</div>
-				<div class="confirm-content">
-					<div class="confirm-warning">Joining an arena match will end your current expedition. Any progress will be lost.</div>
-				</div>
-				<div class="confirm-buttons">
-					<button class="confirm-btn cancel" onclick=@CancelExpeditionWarning>Cancel</button>
-					<button class="confirm-btn release" onclick=@ConfirmExpeditionWarning>Continue</button>
-				</div>
-			</div>
-		</div>
-	}
+	@* Expedition warning now uses shared ConfirmDialog (mounted globally in GameHUD) *@
 </div>
 
 @code {
@@ -677,8 +663,9 @@
 	private string matchmakingError = null;
 	private bool isWaitingForOpponent = false;
 
-	// Expedition warning state
-	private bool showExpeditionWarning = false;
+	// Expedition warning state — uses shared ConfirmDialog (chrome lives in
+	// Code/UI/Components/ConfirmDialog.razor, mounted globally in GameHUD).
+	// Only the pending action is held locally so the Confirm callback can fire it.
 	private Action pendingArenaAction = null;
 
 	// Team selection state (expedition-style)
@@ -1099,9 +1086,7 @@
 		if (ExpeditionManager.Instance?.CurrentExpedition != null)
 		{
 			pendingArenaAction = () => FindAIOpponentInternal();
-			showExpeditionWarning = true;
-			SoundManager.PlayClick();
-			StateHasChanged();
+			ShowExpeditionWarning();
 			return;
 		}
 
@@ -1158,9 +1143,7 @@
 		if (ExpeditionManager.Instance?.CurrentExpedition != null)
 		{
 			pendingArenaAction = () => FindOnlineOpponentInternal();
-			showExpeditionWarning = true;
-			SoundManager.PlayClick();
-			StateHasChanged();
+			ShowExpeditionWarning();
 			return;
 		}
 
@@ -1320,17 +1303,21 @@
 		currentView = "team-select";
 	}
 
-	private void CancelExpeditionWarning()
+	private void ShowExpeditionWarning()
 	{
-		SoundManager.PlayBack();
-		showExpeditionWarning = false;
-		pendingArenaAction = null;
+		ConfirmDialog.Show(
+			title: "Expedition In Progress",
+			body: "Joining an arena match will end your current expedition. Any progress will be lost.",
+			destructiveLabel: "CONTINUE",
+			cancelLabel: "CANCEL",
+			tone: "gold",
+			iconName: "lucide:triangle-alert",
+			onConfirm: ConfirmExpeditionWarning );
 	}
 
 	private void ConfirmExpeditionWarning()
 	{
 		SoundManager.PlayForward();
-		showExpeditionWarning = false;
 		ExpeditionManager.Instance?.CancelExpedition();
 		var action = pendingArenaAction;
 		pendingArenaAction = null;

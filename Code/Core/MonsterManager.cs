@@ -290,6 +290,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "manehelm",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.4f,
+			SignatureDropName = "Vigil Ember",
+			SignatureDropDescription = "A coal-bright ember pried from the rim of Pyrgard's burning helm. Still warm, still watching.",
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "It positions itself between danger and those nearby, as if remembering a debt it can never repay.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
@@ -340,6 +342,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "pyrgard",
 			BaseCatchRate = 0.2f,
+			SignatureDropName = "Sentinel Bristle",
+			SignatureDropDescription = "A single forged hair from Manehelm's flame-mane. Holds its heat days after it falls, as if still on duty.",
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "It stands like a sentinel, its burning gaze sweeping for threats to those it has chosen to shield.",
 			PossibleTraits = new() { "kindle_heart", "infernal_rage", "flame_eater" },
@@ -460,6 +464,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "lochmaw",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.35f,
+			SignatureDropName = "Mourning Scale",
+			SignatureDropDescription = "A pearlescent black scale shed when Gothsire turns its brooding gaze toward the open water.",
 			Personality = BeastPersonality.Loyal,
 			PersonalityHint = "Beneath the brooding exterior, it keeps one eye always turned toward those it guards.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
@@ -506,6 +512,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "gothsire",
 			BaseCatchRate = 0.15f,
+			SignatureDropName = "Abyss Tooth",
+			SignatureDropDescription = "A serrated fang from Lochmaw's outer ring of teeth. Still hums with the pressure of the deep that grew it.",
 			Personality = BeastPersonality.Bold,
 			PersonalityHint = "The deep waters part before it, and even the currents know to change course.",
 			PossibleTraits = new() { "torrent_soul", "tidal_wrath", "aqua_siphon" },
@@ -627,6 +635,8 @@ public sealed class MonsterManager : Component
 			EvolvesTo = "aurael",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.3f,
+			SignatureDropName = "Warden Plume",
+			SignatureDropDescription = "A long primary feather whose edge glints with the silver of Seraphiel's blade-light.",
 			Personality = BeastPersonality.Wild,
 			PersonalityHint = "The air trembles in its wake, unsettled by something that refuses to hold a single shape.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
@@ -684,6 +694,8 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "seraphiel",
 			BaseCatchRate = 0.18f,
+			SignatureDropName = "Halo Shard",
+			SignatureDropDescription = "A broken arc of Aurael's crown, glowing softly with the warmth of every soul it once shielded.",
 			Personality = BeastPersonality.Wild,
 			PersonalityHint = "It crackles with a fury that existed long before it had a body to carry it.",
 			PossibleTraits = new() { "gale_spirit", "phantom_step", "momentum" },
@@ -7405,10 +7417,13 @@ public sealed class MonsterManager : Component
 			if ( MigrateMonsterToV2( monster ) )
 				needsSave = true;
 
-			// Cap monster level at 100
-			if ( monster.Level > 100 )
+			// Cap monster level at MaxLevel — clamps any beta saves above 50.
+			if ( monster.Level > Monster.MaxLevel )
 			{
-				monster.Level = 100;
+				monster.Level = Monster.MaxLevel;
+				monster.CurrentXP = 0;
+				RecalculateStats( monster );
+				monster.FullHeal();
 				needsSave = true;
 			}
 		}
@@ -7882,9 +7897,9 @@ public sealed class MonsterManager : Component
 
 	public Monster AddMonster( Monster monster )
 	{
-		// Cap monster level at 100
-		if ( monster.Level > 100 )
-			monster.Level = 100;
+		// Cap monster level at MaxLevel
+		if ( monster.Level > Monster.MaxLevel )
+			monster.Level = Monster.MaxLevel;
 
 		Log.Info( $"AddMonster: OwnedMonsters.Count={OwnedMonsters.Count}, MaxMonsters={MaxMonsters}" );
 		if ( OwnedMonsters.Count >= MaxMonsters )
@@ -8104,6 +8119,9 @@ public sealed class MonsterManager : Component
 			// Track mission progress for fusion
 			MissionManager.Instance?.TrackFusion( totalGenes: totalGenes );
 			SideQuestManager.Instance?.TrackFusion();
+
+			// Guild "Fusion Forge" weekly goal.
+			GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.FusionsCompleted, 1 );
 		}
 
 		// Species mastery — mark both parent species as "fused"

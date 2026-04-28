@@ -305,7 +305,7 @@ public sealed class ExpeditionManager : Component
 
 		foreach ( var monster in SelectedTeam )
 		{
-			if ( monster == null || monster.Level >= 100 ) continue;
+			if ( monster == null || monster.Level >= Monster.MaxLevel ) continue;
 
 			float ratio = enemyLevel / (float)Math.Max( 1, monster.Level );
 			ratio = Math.Clamp( ratio, 0.5f, 2.0f );
@@ -371,6 +371,27 @@ public sealed class ExpeditionManager : Component
 		// post-launch cleanup).
 		// ═════════════════════════════════════════════════════════════════
 
+		// ─── Saltmoor Approach (tutorial-only, 3 waves, no boss) ───────────
+		// One-shot tutorial expedition. Hand-tuned to be a clean ~5-minute
+		// first-run experience with a guaranteed contractable Beast at wave 2.
+		// Filtered from the World Map after tutorial completes/skips.
+		_expeditions.Add( new Expedition
+		{
+			Id = "saltmoor_approach",
+			Name = "Saltmoor Approach",
+			Description = "A friendly stretch of coast just north of Saltmoor Cove. Perfect for a first run.",
+			RequiredLevel = 1,
+			Waves = 3,
+			BaseEnemyLevel = 1,
+			PossibleSpecies = new() { "twigsnap", "dewdrop", "mosscreep" },
+			Element = ElementType.Neutral,
+			GoldReward = 30,
+			XPReward = 20,
+			HasBoss = false,
+			BackgroundImage = "ui/locations/whispering_woods_background.png",
+			TutorialOnly = true,
+		} );
+
 		// ─── Saltmoor Cove (Lv 1) — starter, 5 waves, no boss ──────────────
 		// Solarpunk coastal village; homes grown into the hillside, rooftop
 		// gardens, tide-pool paths. Beasts are kind; this is where players
@@ -378,14 +399,15 @@ public sealed class ExpeditionManager : Component
 		_expeditions.Add( new Expedition
 		{
 			Id = "saltmoor_cove",
-			Name = "Saltmoor Cove",
-			Description = "Hillside homes crowned with garden roofs. The tide pools teach soft lessons and the beasts here are mostly kind.",
+			Name = "Training Grounds",
+			Description = "The fenced loop the village set aside for young tamers to practice on. The beasts that wander in are gentle and curious — perfect for trying out your first contracts without anyone getting hurt.",
 			RequiredLevel = 1,
 			Waves = 5,
 			BaseEnemyLevel = 1,
-			// Evolved forms (branchling) intentionally excluded from the
-			// wild pool — players get evolved beasts by levelling their own.
-			PossibleSpecies = new() { "twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom", "wishlift", "twincoil", "heartwell" },
+			// Pasture Round (level 1) — only the three Spookior wilds spawn
+			// here. The rest of the original starter pool (twigsnap/dewdrop/
+			// etc.) was pulled to keep the very first zone tight and themed.
+			PossibleSpecies = new() { "wishlift", "heartwell", "twincoil" },
 			Element = ElementType.Neutral,
 			GoldReward = 60,
 			XPReward = 45,
@@ -399,8 +421,8 @@ public sealed class ExpeditionManager : Component
 		_expeditions.Add( new Expedition
 		{
 			Id = "saltmoor_forest",
-			Name = "Saltmoor Forest",
-			Description = "The woods the village has spent a generation healing. Mangrove roots, old ceibas, mist that doesn't burn off until noon.",
+			Name = "The Witherwood",
+			Description = "The local pinewood east of Hollow Creek. A handful of folk keep cabins back among the trees — woodcutters, herbalists, the occasional retired tamer. The beasts here are wilder than the village pens but the paths are still well-walked.",
 			RequiredLevel = 15,
 			Waves = 7,
 			BaseEnemyLevel = 15,
@@ -452,13 +474,23 @@ public sealed class ExpeditionManager : Component
 		if ( expedition == null ) return false;
 		if ( TamerManager.Instance?.CurrentTamer == null ) return false;
 
-		// First expedition in the ordered list is always open.
-		int idx = _expeditions.FindIndex( e => e.Id == expeditionId );
+		// Tutorial-only expeditions: always startable while the tutorial is active,
+		// never startable after. Don't gate on the sequential-clear chain.
+		if ( expedition.TutorialOnly )
+		{
+			return TutorialManager.Instance?.IsTutorialActive == true;
+		}
+
+		// First non-tutorial expedition in the ordered list is always open.
+		// Skip tutorial-only expeditions when computing prev/idx so the chain
+		// isn't broken for players who skipped the tutorial.
+		var realChain = _expeditions.Where( e => !e.TutorialOnly ).ToList();
+		int idx = realChain.FindIndex( e => e.Id == expeditionId );
 		if ( idx <= 0 ) return true;
 
 		// Subsequent expeditions require the immediately-preceding
 		// expedition to have been cleared.
-		var prev = _expeditions[idx - 1];
+		var prev = realChain[idx - 1];
 		return HasClearedExpedition( prev.Id );
 	}
 
@@ -531,6 +563,9 @@ public sealed class ExpeditionManager : Component
 
 		OnExpeditionStarted?.Invoke( CurrentExpedition );
 
+		// Tutorial: notify that the player embarked on an expedition.
+		TutorialManager.Instance?.NotifyEvent( "expedition.embarked" );
+
 		// Start first wave
 		StartNextWave();
 	}
@@ -586,10 +621,17 @@ public sealed class ExpeditionManager : Component
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null || CurrentExpedition == null ) return;
 
-		int expeditionIndex = _expeditions.IndexOf( CurrentExpedition );
+		// Don't bump HighestExpeditionCleared / TotalExpeditionsCompleted on
+		// tutorial-only runs — they don't count as canonical progression.
+		if ( CurrentExpedition.TutorialOnly ) return;
+
+		// Compute index against the non-tutorial chain so the highest-cleared
+		// counter matches the chain the player actually sees.
+		var realChain = _expeditions.Where( e => !e.TutorialOnly ).ToList();
+		int expeditionIndex = realChain.IndexOf( CurrentExpedition );
 		if ( expeditionIndex >= 0 && expeditionIndex >= tamer.HighestExpeditionCleared )
 		{
-			tamer.HighestExpeditionCleared = Math.Min( expeditionIndex + 1, _expeditions.Count );
+			tamer.HighestExpeditionCleared = Math.Min( expeditionIndex + 1, realChain.Count );
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
 			Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
 		}
@@ -642,6 +684,11 @@ public sealed class ExpeditionManager : Component
 			// Track mission progress for expedition completion (retry path)
 			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
 			SideQuestManager.Instance?.TrackExpeditionCleared( CurrentExpedition?.Id );
+
+			// Guild weekly goals — Expedition Blitz (count) + Treasury Push (gold).
+			GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.ExpeditionsCleared, 1 );
+			if ( finalGold > 0 )
+				GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.GoldEarned, finalGold );
 		}
 
 		// Award accumulated item drops to inventory before resetting
@@ -1306,6 +1353,11 @@ public sealed class ExpeditionManager : Component
 			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
 			SideQuestManager.Instance?.TrackExpeditionCleared( CurrentExpedition?.Id );
 
+			// Guild weekly goals — Expedition Blitz (count) + Treasury Push (gold).
+			GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.ExpeditionsCleared, 1 );
+			if ( finalGold > 0 )
+				GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.GoldEarned, finalGold );
+
 			// Fire "next zone unlocked" toast if the clear bumped HighestExpeditionCleared.
 			NotificationManager.Instance?.CheckForNewExpeditionUnlocks();
 		}
@@ -1324,6 +1376,9 @@ public sealed class ExpeditionManager : Component
 		UpdateRestingMonstersContracts();
 
 		OnExpeditionComplete?.Invoke( success );
+
+		// Tutorial: notify that the expedition completed (any outcome).
+		TutorialManager.Instance?.NotifyEvent( "expedition.completed" );
 
 		if ( tearDown )
 		{
@@ -1598,8 +1653,8 @@ public sealed class ExpeditionManager : Component
 			var caughtMonster = MonsterManager.Instance?.CreateMonster( target.SpeciesId, isBred: false, target.Genetics );
 			if ( caughtMonster != null )
 			{
-				// Set level to match the wild monster's level (capped at 100)
-				caughtMonster.Level = Math.Min( target.Level, 100 );
+				// Set level to match the wild monster's level (capped at MaxLevel)
+				caughtMonster.Level = Math.Min( target.Level, Monster.MaxLevel );
 				MonsterManager.Instance?.RecalculateStats( caughtMonster );
 
 				// Refresh moves to match the correct level (CreateMonster uses level 1)
@@ -1643,6 +1698,9 @@ public sealed class ExpeditionManager : Component
 		MissionManager.Instance?.TrackMonsterCaught( isRareOrHigher: isRareOrHigher, isNewDiscovery: isNewDiscovery );
 		SideQuestManager.Instance?.TrackContract();
 
+		// Guild "Contract Drive" weekly goal.
+		GuildManager.Instance?.TrackGuildGoal( Data.GuildGoalType.BeastsContracted, 1 );
+
 		OnMonsterCaught?.Invoke( caughtMonster );
 
 		TamerManager.Instance?.SaveToCloud();
@@ -1668,4 +1726,10 @@ public class Expedition
 	public string BossSpeciesId { get; set; }
 	public string BackgroundImage { get; set; }
 	public bool IsBossGauntlet { get; set; } // Every wave is a boss fight
+
+	/// <summary>
+	/// True if this expedition is only shown when the tutorial is active.
+	/// Filtered out of the World Map list once the player completes/skips the tutorial.
+	/// </summary>
+	public bool TutorialOnly { get; set; }
 }

@@ -37,31 +37,43 @@ public sealed class TradeNodeManager : Component
 	// ═══════════════════════════════════════════════════════════════
 	private static readonly List<TradeNode> Defs = new()
 	{
-		// ── Saltmoor Cove cluster ────────────────────────────────────
+		// ── Pasture Round cluster (Hollow Creek village) ────────────
 		new()
 		{
-			Id = "cove_dewdrop_exchange",
-			Name = "Well-keeper's Request",
-			Description = "The well-keeper needs fresh Dewdroplets to bless the village cisterns before the dry season.",
-			NpcName = "Well-keeper Nia",
+			Id = "cove_wishlift_request",
+			Name = "Mom's Wish Jar",
+			Description = "Mom's been keeping a little glass jar by the kitchen window since you were a kid. She wants to fill it with proper Wishlift drifts now that you can fetch them yourself.",
+			NpcName = "Mom",
 			ZoneId = "saltmoor_cove",
-			MapPosX = 14f, MapPosY = 56f,
-			Requirements = new() { ("mat_dewdrop", 6) },
-			GoldReward = 300,
+			MapPosX = 42.7f, MapPosY = 50.2f,
+			Requirements = new() { ("mat_wishlift", 4) },
+			GoldReward = 250,
 			XPReward = 80,
 			ItemRewards = new() { ("boost_def", 2) }
 		},
 		new()
 		{
-			Id = "cove_twig_bundle",
-			Name = "Kindling Bundle",
-			Description = "Trade a bundle of Snapped Twigs for a handful of lures the fisherfolk have set aside.",
-			NpcName = "Saltkeeper Bram",
+			Id = "cove_heartwell_request",
+			Name = "Garden Watering",
+			Description = "Old Lyle's tomato beds are wilting and the well's run shallow. He'll trade a bag of training treats for a few Heartwell springs to keep the garden going.",
+			NpcName = "Farmer Lyle",
 			ZoneId = "saltmoor_cove",
-			MapPosX = 29f, MapPosY = 68f,
-			Requirements = new() { ("mat_twigsnap", 4) },
-			GoldReward = 150,
-			ItemRewards = new() { ("catch_lure", 3) }
+			MapPosX = 31.4f, MapPosY = 31.7f,
+			Requirements = new() { ("mat_heartwell", 3) },
+			GoldReward = 200,
+			ItemRewards = new() { ("xp_treat", 2) }
+		},
+		new()
+		{
+			Id = "cove_twincoil_request",
+			Name = "Old Sol's Tinkering",
+			Description = "The retired miner spends his days fixing lanterns and shaping odd lures from scrap. Bring him Twincoil scales — both faces, mind — and he'll cobble you something useful.",
+			NpcName = "Old Sol",
+			ZoneId = "saltmoor_cove",
+			MapPosX = 40.0f, MapPosY = 69.4f,
+			Requirements = new() { ("mat_twincoil", 5) },
+			GoldReward = 350,
+			ItemRewards = new() { ("catch_lure", 2) }
 		},
 
 		// ── Saltmoor Forest cluster ──────────────────────────────────
@@ -72,7 +84,7 @@ public sealed class TradeNodeManager : Component
 			Description = "The Forest Elder grants a single skill point in exchange for elder moss only found deep in the canopy.",
 			NpcName = "Elder Mira",
 			ZoneId = "saltmoor_forest",
-			MapPosX = 46f, MapPosY = 32f,
+			MapPosX = 71.7f, MapPosY = 66.3f,
 			Requirements = new() { ("mat_mosscreep", 10) },
 			GoldCost = 500,
 			SkillPointReward = 1
@@ -84,7 +96,7 @@ public sealed class TradeNodeManager : Component
 			Description = "The Herbalist will brew a strong elixir for anyone who brings enough Pollen Burst sacs.",
 			NpcName = "The Herbalist",
 			ZoneId = "saltmoor_forest",
-			MapPosX = 58f, MapPosY = 44f,
+			MapPosX = 76.9f, MapPosY = 46.1f,
 			Requirements = new() { ("mat_pollenpuff", 5) },
 			GoldCost = 300,
 			ItemRewards = new() { ("xp_feast", 1), ("boost_atk", 2) }
@@ -96,7 +108,7 @@ public sealed class TradeNodeManager : Component
 			Description = "A wandering weaver offers rare thread in trade for Whiskerwind whiskers.",
 			NpcName = "A Nervous Trader",
 			ZoneId = "saltmoor_forest",
-			MapPosX = 49f, MapPosY = 46f,
+			MapPosX = 61.0f, MapPosY = 59.5f,
 			Requirements = new() { ("mat_whiskerwind", 8) },
 			GoldReward = 800,
 			XPReward = 150,
@@ -111,7 +123,7 @@ public sealed class TradeNodeManager : Component
 			Description = "The Collector will part with a prized relic — if enough Mirrorpond shards can be gathered.",
 			NpcName = "The Collector",
 			ZoneId = "old_saltmoor",
-			MapPosX = 72f, MapPosY = 74f,
+			MapPosX = 66.1f, MapPosY = 33.6f,
 			Requirements = new() { ("mat_mirrorpond", 6) },
 			GoldCost = 2000,
 			ItemRewards = new() { ("relic_guardian_emblem", 1) }
@@ -123,7 +135,7 @@ public sealed class TradeNodeManager : Component
 			Description = "The archaeologist traces old coastal maps in exchange for Coralheim fragments.",
 			NpcName = "Archaeologist Ven",
 			ZoneId = "old_saltmoor",
-			MapPosX = 85f, MapPosY = 62f,
+			MapPosX = 73.9f, MapPosY = 27.0f,
 			Requirements = new() { ("mat_coralheim", 4) },
 			GoldReward = 1500,
 			XPReward = 300,
@@ -136,7 +148,7 @@ public sealed class TradeNodeManager : Component
 			Description = "A scout buried a cache before the great storm. The scout will dig it up again for enough Streamling essence.",
 			NpcName = "A Wary Scout",
 			ZoneId = "old_saltmoor",
-			MapPosX = 80f, MapPosY = 80f,
+			MapPosX = 62.3f, MapPosY = 23.3f,
 			Requirements = new() { ("mat_streamling", 5) },
 			GoldCost = 800,
 			ItemRewards = new() { ("catch_prime", 1), ("gold_bell", 2) }
