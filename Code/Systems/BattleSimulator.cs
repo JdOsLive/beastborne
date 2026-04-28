@@ -458,10 +458,13 @@ public static class BattleSimulator
 		// Apply beast XP boost from shop
 		float beastXPBoost = ShopManager.Instance?.GetBoostMultiplier( ShopItemType.BeastXPBoost ) ?? 1.0f;
 
+		// Apply server-driven live-event XP boost (player-wide week-long boosts, etc.)
+		float liveEventXPBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "xp" ) ?? 1.0);
+
 		// Apply relic bonus
 		float relicXPBonus = ItemManager.Instance?.GetRelicBonus( ItemEffectType.PassiveXPGain ) ?? 0;
 
-		return (int)(baseXP * rarityMultiplier * levelModifier * (1 + xpBonus / 100f) * beastXPBoost * (1 + relicXPBonus / 100f));
+		return (int)(baseXP * rarityMultiplier * levelModifier * (1 + xpBonus / 100f) * beastXPBoost * liveEventXPBoost * (1 + relicXPBonus / 100f));
 	}
 
 	/// <summary>

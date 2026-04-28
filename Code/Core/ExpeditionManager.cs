@@ -254,6 +254,8 @@ public sealed class ExpeditionManager : Component
 			// Pokemon-style formula: baseYield × defeatedLevel / 7 × ratio
 			int monsterXP = (int)(baseYield * defeatedMonster.Level / 7f * ratio);
 			monsterXP = (int)(monsterXP * (1 + xpBonus / 100f));
+			float liveEventXPBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "xp" ) ?? 1.0);
+			monsterXP = (int)(monsterXP * liveEventXPBoost);
 			if ( monsterXP < 1 ) monsterXP = 1;
 
 			bool leveledUp = activeBeast.AddXP( monsterXP );
@@ -309,7 +311,8 @@ public sealed class ExpeditionManager : Component
 
 			float ratio = enemyLevel / (float)Math.Max( 1, monster.Level );
 			ratio = Math.Clamp( ratio, 0.5f, 2.0f );
-			int xp = Math.Max( 1, (int)(baseXP * ratio) );
+			float liveEventXPBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "xp" ) ?? 1.0);
+			int xp = Math.Max( 1, (int)(baseXP * ratio * liveEventXPBoost) );
 
 			bool leveledUp = monster.AddXP( xp );
 			Log.Info( $"[XP Completion] {monster.Nickname ?? monster.SpeciesId} gained {xp} (ratio={ratio:F2}){(leveledUp ? " → LEVEL UP!" : "")}" );
@@ -500,12 +503,19 @@ public sealed class ExpeditionManager : Component
 	/// cleared expeditions) compared against the zone's 0-based index.
 	/// Side quests and trade nodes for a zone gate on this so the main loop
 	/// reads first, then side content opens up on the way back through.
+	///
+	/// Index MUST be computed against the non-tutorial chain — UpdateExpeditionStats
+	/// writes HighestExpeditionCleared against that same chain. Indexing against
+	/// the full _expeditions list (which includes Saltmoor Approach at 0) puts
+	/// every real zone one slot too high, so a freshly-cleared first zone reads
+	/// as "not cleared" and the next zone stays locked.
 	/// </summary>
 	public bool HasClearedExpedition( string expeditionId )
 	{
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return false;
-		int idx = _expeditions.FindIndex( e => e.Id == expeditionId );
+		var realChain = _expeditions.Where( e => !e.TutorialOnly ).ToList();
+		int idx = realChain.FindIndex( e => e.Id == expeditionId );
 		if ( idx < 0 ) return false;
 		return idx < tamer.HighestExpeditionCleared;
 	}

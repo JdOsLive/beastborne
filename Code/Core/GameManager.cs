@@ -76,6 +76,7 @@ public sealed class GameManager : Component
 		MissionManager.EnsureInstance( Scene );
 		SideQuestManager.EnsureInstance( Scene );
 		TradeNodeManager.EnsureInstance( Scene );
+		LiveEventManager.EnsureInstance( Scene );
 		Battle3D.BattleSceneController.EnsureInstance( Scene );
 	}
 

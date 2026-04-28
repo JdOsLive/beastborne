@@ -648,7 +648,10 @@ public sealed class TamerManager : Component
 		// Apply guild XP perk (Lv4: +5%, Lv10: +15%)
 		float guildXPMultiplier = GuildManager.Instance?.GetTamerXPMultiplier() ?? 1.0f;
 
-		int boostedAmount = (int)(amount * tamerXPBoost * (1 + relicTamerXP / 100f) * eventMultiplier * guildXPMultiplier);
+		// Apply server-driven live-event XP boost (player-wide week-long boosts, etc.)
+		float liveEventXPBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "xp" ) ?? 1.0);
+
+		int boostedAmount = (int)(amount * tamerXPBoost * (1 + relicTamerXP / 100f) * eventMultiplier * guildXPMultiplier * liveEventXPBoost);
 
 		if ( CurrentTamer.AddXP( boostedAmount ) )
 		{
