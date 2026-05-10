@@ -132,9 +132,13 @@ public static class BattleAI
 				score -= 100f; // Immune
 		}
 
-		// STAB bonus (Same Type Attack Bonus)
-		if ( attackerSpecies != null && move.Element == attackerSpecies.Element )
+		// STAB bonus (Same Type Attack Bonus) — matches EstimateDamage dual-type check
+		if ( attackerSpecies != null && (
+			move.Element == attackerSpecies.Element ||
+			(attackerSpecies.SecondaryElement.HasValue && move.Element == attackerSpecies.SecondaryElement.Value)
+		) )
 		{
+			Log.Info( "RETBLEED TESTING GROUND A" );
 			score += 5f;
 		}
 
