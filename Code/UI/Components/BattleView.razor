@@ -10,12 +10,97 @@
 @using Iconify;
 @inherits Panel
 
-<root class="battle-view @(IsBossWave() ? "boss-battle" : "") @(Use3DBattle ? "mode-3d" : "")" style="@(Use3DBattle ? "" : GetBackgroundStyle())">
+<root class="battle-view @(IsBossWave() ? "boss-battle" : "") @(Use3DBattle ? "mode-3d" : "") @(bossSplashTimer > 0f ? "bb-splash-active" : "")" style="@(Use3DBattle ? "" : GetBackgroundStyle())">
 	<!-- Dark overlay for readability (hidden in 3D mode) -->
 	@if (!Use3DBattle)
 	{
 		<div class="background-overlay @(IsBossWave() ? "boss-overlay" : "") @(IsRaidBattle ? "raid-overlay" : "")"></div>
+		<!-- P5-style yellow corner slabs (boss battles use legendary-gold variant) -->
+		<div class="bb-corner-slab tl @(IsBossWave() ? "legendary" : "")"></div>
+		<div class="bb-corner-slab br @(IsBossWave() ? "legendary" : "")"></div>
 	}
+
+	<!-- ── Cinematic CRITICAL stamp ─────────────────────────────────────
+	     Fired sub-second over the 3D scene whenever a damaging hit lands
+	     with turn.IsCritical == true. The flash + stamp are SEPARATE
+	     elements and complement (not replace) the existing manga-impact
+	     damage number in DamageNumberOverlay. Render-key class swap
+	     (.bb-crit-flash-@N) re-mounts the keyframes on every fire so
+	     back-to-back crits each get their own animation. -->
+	@if (critCinematicTimer > 0f)
+	{
+		<div class="bb-crit-flash bb-crit-flash-@(critCinematicKey % 4)"></div>
+		<div class="bb-crit-stamp-wrap bb-crit-stamp-wrap-@(critCinematicKey % 4)">
+			<div class="bb-crit-stamp">
+				<span class="bb-crit-stamp-text">CRITICAL!</span>
+				<div class="bb-crit-stamp-underline"></div>
+			</div>
+		</div>
+	}
+
+	<!-- ── Cinematic BOSS splash ────────────────────────────────────────
+	     Fires once on wave-start when IsBossWave() — full-bleed slanted
+	     slab with title + species name. ~2.0s total on-screen, slides in
+	     from the LEFT, holds, slides out to the RIGHT. The .bb-splash-active
+	     modifier on .battle-view dims action diamonds + ticker + wave
+	     indicator while the splash is up. -->
+	@if (bossSplashTimer > 0f)
+	{
+		<div class="bb-boss-splash-overlay bb-boss-splash-overlay-@(bossSplashKey % 4)"></div>
+		<div class="bb-boss-splash bb-boss-splash-@(bossSplashKey % 4) @(bossSplashIsRare ? "legendary" : "")">
+			<div class="bb-boss-splash-edge top"></div>
+			<div class="bb-boss-splash-body">
+				<span class="bb-boss-splash-title">@bossSplashTitle</span>
+				<span class="bb-boss-splash-name">@bossSplashName</span>
+				@if (!string.IsNullOrEmpty(bossSplashSubtitle))
+				{
+					<span class="bb-boss-splash-sub">@bossSplashSubtitle</span>
+				}
+			</div>
+			<div class="bb-boss-splash-edge bottom"></div>
+		</div>
+	}
+
+	<!-- ── Cinematic WAVE CLEAR banner ─────────────────────────────────
+	     Fires for ~1.6s after a non-final wave is cleared. Two slanted
+	     yellow/red strips slam in horizontally; centered "VICTORY" label
+	     + giant italic "CLEAR!" + optional reward chip. Render-key class
+	     swap (.bb-wave-clear-key-@N % 4) re-mounts on every fire. -->
+	@if (waveClearTimer > 0f)
+	{
+		<div class="bb-wave-clear-overlay bb-wave-clear-key-@(waveClearKey % 4)"></div>
+		<div class="bb-wave-clear bb-wave-clear-key-@(waveClearKey % 4)">
+			<div class="bb-wave-clear-strip a"></div>
+			<div class="bb-wave-clear-strip b"></div>
+			<div class="bb-wave-clear-text">
+				<span class="bb-wave-clear-label">★ @waveClearWaveLabel ★</span>
+				<span class="bb-wave-clear-big">CLEAR!</span>
+				@if (!string.IsNullOrEmpty(waveClearRewardLine))
+				{
+					<span class="bb-wave-clear-reward">
+						<span class="bb-wave-clear-reward-inner">@waveClearRewardLine</span>
+					</span>
+				}
+			</div>
+		</div>
+	}
+
+	<!-- ── Status stamp ────────────────────────────────────────────────
+	     Big slanted slab announcing "POISONED!" / "BURNED!" etc. when a
+	     status condition lands on a monster. Sits roughly above the
+	     affected monster's side of the arena. Render-key class swap so
+	     back-to-back status applications each get their own animation. -->
+	@if (statusStampTimer > 0f)
+	{
+		<div class="bb-status-stamp bb-status-stamp-@statusStampColor bb-status-stamp-key-@(statusStampKey % 4) @(statusStampIsPlayerSide ? "player-side" : "enemy-side")">
+			<span class="bb-status-stamp-text">@statusStampLabel</span>
+		</div>
+	}
+
+	<!-- Intentionally no scene-framing chrome on .battle-view.mode-3d — the 3D
+	     scene should read as a 2.5D battle, not a boxed-in UI panel. The skewed
+	     WAVE badge + halftone wash live below; those are localized polish, not
+	     framing. Don't reintroduce a top-edge strip or framing chevrons here. -->
 
 	<!-- Boss Battle Banner -->
 	@if (IsBossWave() && !IsArenaBattle && !Use3DBattle)
@@ -92,12 +177,15 @@
 		<!-- Turn Order Display (hidden in arena/raid) -->
 		@if (!IsArenaBattle && !IsRaidBattle)
 		{
-			<div class="turn-order">
+			<div class="turn-order bb-skewed-strip">
 				<span class="turn-order-label">@L("ui.battle.next")</span>
+				@{ int turnOrderIdx = 0; }
 				@foreach (var monster in GetTurnOrder().Take(4))
 				{
 					var isPlayer = IsPlayerMonster(monster);
-					<div class="turn-order-icon @(isPlayer ? "player" : "enemy")">
+					var stagger = turnOrderIdx;
+					turnOrderIdx++;
+					<div class="turn-order-icon @(isPlayer ? "player" : "enemy") bb-stagger-@stagger">
 						@if (HasSprite(monster))
 						{
 							<div class="turn-icon-sprite" style="background-image: url(@GetAnimatedSpritePath(monster))"></div>
@@ -108,6 +196,7 @@
 						}
 					</div>
 				}
+				<div class="bb-strip-underline"></div>
 			</div>
 		}
 
@@ -133,7 +222,7 @@
 					var isActive = monster == playerActive;
 					var isAttacker = IsAttacker(monster);
 					var isDefender = IsDefender(monster);
-					var hpPercent = GetHPPercent(monster);
+					var hpPercent = GetDisplayedHPPercent(monster);
 					var isKO = monster.CurrentHP <= 0;
 					var canSwapTo = false; // Swap is now handled by carousel UI
 
@@ -162,10 +251,10 @@
 								</div>
 								<div class="monster-info">
 									<div class="name-row">
-										<span class="monster-name">@(monster.Nickname ?? "Monster")</span>
+										<span class="monster-name @((monster.Nickname ?? "Monster").Length > 9 ? "long-name" : "")">@(monster.Nickname ?? "Monster")</span>
 										<span class="monster-level">Lv.@monster.Level</span>
 									</div>
-									<div class="hp-bar">
+									<div class="hp-bar @(IsShaking(monster) ? "taking-hit" : "") shake-cycle-@(GetShakeKey(monster) % 4)">
 										<div class="hp-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
 									</div>
 									<div class="stats-row">
@@ -186,7 +275,10 @@
 											<div class="status-row">
 												@foreach (var status in statuses)
 												{
-													<span class="status-badge @status.ToLower()">@GetStatusIcon(status)</span>
+													@{ var sbInfo = GetStatusBadgeInfo(status); }
+								<span class="status-badge @status.ToLower()">
+									<iconify icon="@sbInfo.Icon" Size=@(13) Color="@sbInfo.Color" />
+								</span>
 												}
 												@foreach (var (statName, stage, isPositive) in statStages)
 												{
@@ -206,7 +298,7 @@
 						@if (isActive && CanSelectMoves())
 						{
 							<div class="move-popup">
-								<div class="move-popup-content" onmouseleave=@(() => SetHoveredMove(null))>
+								<div class="move-popup-content bb-slanted" onmouseleave=@(() => SetHoveredMove(null))>
 									<div class="popup-moves">
 										@{
 											var moves = GetActiveMoves();
@@ -276,10 +368,13 @@
 
 		<!-- Center: Action Display -->
 		<div class="battle-center">
+			<!-- Halftone wash — pulses while a move announcement is on-screen -->
+			<div class="bb-center-wash @(string.IsNullOrEmpty(currentMoveAnnouncement) ? "" : "active")"></div>
 			@if (!string.IsNullOrEmpty(currentMoveAnnouncement))
 			{
-				<div class="move-announcement">
-					@currentMoveAnnouncement
+				<!-- Render-key class makes the slam-in animation re-fire on each new announcement -->
+				<div class="move-announcement slam-@announcementKey">
+					<span class="move-announcement-text">@currentMoveAnnouncement</span>
 				</div>
 			}
 			@if (GetLastTurn() != null)
@@ -294,8 +389,20 @@
 					}
 					@if (!turn.IsMiss && !turn.IsSwap && turn.Damage > 0)
 					{
-						<div class="action-damage @(turn.IsCritical ? "crit" : "") @(turn.IsSuperEffective && ShouldShowTypeEffectiveness() ? "super" : "") @(turn.IsResisted && ShouldShowTypeEffectiveness() ? "resisted" : "")">
-							@turn.Damage
+						var impactClass = turn.IsCritical ? "crit" : (turn.IsSuperEffective && ShouldShowTypeEffectiveness() ? "super" : "");
+						<div class="action-damage @impactClass @(turn.IsResisted && ShouldShowTypeEffectiveness() ? "resisted" : "") @(string.IsNullOrEmpty(impactClass) ? "" : "manga-impact") impact-@(turn.TurnNumber)">
+							@if (!string.IsNullOrEmpty(impactClass))
+							{
+								<!-- Manga-impact starburst (5 white rays, low opacity) -->
+								<div class="bb-starburst">
+									<div class="bb-ray r1"></div>
+									<div class="bb-ray r2"></div>
+									<div class="bb-ray r3"></div>
+									<div class="bb-ray r4"></div>
+									<div class="bb-ray r5"></div>
+								</div>
+							}
+							<span class="damage-number">@turn.Damage</span>
 							@if (turn.IsCritical) { <span class="damage-tag">@L("ui.battle.crit")</span> }
 							@if (turn.IsSuperEffective && ShouldShowTypeEffectiveness()) { <span class="damage-tag super">@L("ui.battle.super")</span> }
 							@if (turn.IsResisted && ShouldShowTypeEffectiveness()) { <span class="damage-tag resist">@L("ui.battle.resist")</span> }
@@ -307,7 +414,11 @@
 					}
 					@if (turn.IsSwap)
 					{
-						<div class="action-swap">SWAP → @turn.SwapToName</div>
+						<!-- P5 slanted swap banner — re-fires on each swap via key class -->
+						<div class="action-swap-banner swap-key-@(turn.TurnNumber)">
+							<span class="action-swap-text">SWITCHING IN</span>
+							<span class="action-swap-name">@turn.SwapToName</span>
+						</div>
 					}
 				</div>
 			}
@@ -340,7 +451,7 @@
 					var isTargeted = !IsArenaBattle && IsCurrentTarget(monster); // No targeting in arena
 					var isAttacker = IsAttacker(monster);
 					var isDefender = IsDefender(monster);
-					var hpPercent = GetHPPercent(monster);
+					var hpPercent = GetDisplayedHPPercent(monster);
 					var isKO = monster.CurrentHP <= 0;
 					var isBoss = IsBossWave() && !IsArenaBattle && IsBossMonster(monster);
 					var isRareBoss = isBoss && IsRareBossEncounter();
@@ -376,10 +487,10 @@
 								</div>
 								<div class="monster-info">
 									<div class="name-row">
-										<span class="monster-name">@(monster.Nickname ?? "Monster")</span>
+										<span class="monster-name @((monster.Nickname ?? "Monster").Length > 9 ? "long-name" : "")">@(monster.Nickname ?? "Monster")</span>
 										<span class="monster-level">Lv.@monster.Level</span>
 									</div>
-									<div class="hp-bar">
+									<div class="hp-bar @(IsShaking(monster) ? "taking-hit" : "") shake-cycle-@(GetShakeKey(monster) % 4)">
 										<div class="hp-fill @GetHPColor(hpPercent)" style="width: @hpPercent%"></div>
 									</div>
 									<div class="hp-text">@(IsRaidBattle ? L("ui.battle.raid_boss") : $"{monster.CurrentHP} / {monster.MaxHP}")</div>
@@ -391,7 +502,10 @@
 											<div class="status-row">
 												@foreach (var status in enemyStatuses)
 												{
-													<span class="status-badge @status.ToLower()">@GetStatusIcon(status)</span>
+													@{ var sbInfo = GetStatusBadgeInfo(status); }
+								<span class="status-badge @status.ToLower()">
+									<iconify icon="@sbInfo.Icon" Size=@(13) Color="@sbInfo.Color" />
+								</span>
 												}
 												@foreach (var (statName, stage, isPositive) in enemyStatStages)
 												{
@@ -430,7 +544,7 @@
 		var isWaveEntering = sceneCtrl != null && sceneCtrl.IsWaveTransitioning;
 		var enterProgress = sceneCtrl?.WaveEnterProgress ?? 1f;
 		// Render cached defeated enemies that are still fading out (may no longer be in current team)
-		@foreach (var cachedEnemy in defeatedMonsterCache.Values.Where(m => m != null && (enemyTeam3D == null || !enemyTeam3D.Contains(m)) && defeatedFadeTimers.ContainsKey(m.Id)))
+		@foreach (var cachedEnemy in defeatedMonsterCache.Values.Where(m => m != null && (enemyTeam3D == null || !enemyTeam3D.Contains(m)) && defeatedFadeTimers.ContainsKey(m.Id)).Reverse())
 		{
 			var species = MonsterManager.Instance?.GetSpecies(cachedEnemy.SpeciesId);
 			var idx = enemyIdx3D;
@@ -439,30 +553,41 @@
 			var isInHoldPhase = defeatTimeLeft > DEFEAT_FADE_DURATION;
 			var fadeProgress = isInHoldPhase ? 1f : MathF.Max(0f, defeatTimeLeft / DEFEAT_FADE_DURATION);
 			var fadeSlide = !isInHoldPhase ? (int)(60 * (1f - fadeProgress)) : 0;
-			<div class="panel3d-diamond-wrapper enemy-panel-wrapper wave-entering fading-out secondary"
-				 style="top: @(12 + idx * 90)px; right: @(20 - fadeSlide)px; position: absolute; opacity: @fadeProgress;">
+			var cachedHasDual = species?.SecondaryElement.HasValue == true;
+			var cachedSecondaryElClass = cachedHasDual ? GetElementIconName(species.SecondaryElement.Value) : "neutral";
+			<div class="panel3d-diamond-wrapper enemy-panel-wrapper wave-entering fading-out secondary @(cachedHasDual ? "dual-typed" : "")"
+				 style="top: @(28 + idx * 110)px; right: @(36 - fadeSlide)px; position: absolute; opacity: @fadeProgress;">
 				<div class="panel3d-card enemy-card">
-					<div class="panel3d-header">
-						<span class="panel3d-name">@(species?.Name ?? "???")</span>
-						<span class="panel3d-level">Lv @(cachedEnemy.Level)</span>
-					</div>
-					<div class="panel3d-hp-row">
-						<span class="panel3d-hp-label">HP</span>
-						<div class="panel3d-hp-track">
-							<div class="panel3d-hp-fill danger" style="width: 0%"></div>
+					<div class="panel3d-card-content">
+						<div class="panel3d-header">
+							<span class="panel3d-name">@(species?.Name ?? "???")</span>
+							<span class="panel3d-level">Lv @(cachedEnemy.Level)</span>
+							<span class="panel3d-target-num">#@GetEnemyTargetSlot(cachedEnemy)</span>
 						</div>
-						<span class="panel3d-hp-nums">0 / @(cachedEnemy.MaxHP.ToString("N0"))</span>
+						<div class="panel3d-hp-row">
+							<span class="panel3d-hp-label">HP</span>
+							<div class="panel3d-hp-track">
+								<div class="panel3d-hp-fill danger" style="width: 0%"></div>
+							</div>
+							<span class="panel3d-hp-nums">0 / @(cachedEnemy.MaxHP.ToString("N0"))</span>
+						</div>
 					</div>
 				</div>
 				<div class="panel3d-diamond enemy-diamond el-bg-@enemyElClass">
-					<img class="panel3d-diamond-icon" src="ui/icons/elements/transparent/@(enemyElClass).svg" />
+					<img class="panel3d-diamond-icon" src="ui/icons/elements/element_white/@(enemyElClass).svg" />
 				</div>
+				@if (cachedHasDual)
+				{
+					<div class="panel3d-diamond-secondary enemy-secondary el-bg-@cachedSecondaryElClass">
+						<img class="panel3d-diamond-icon-secondary" src="ui/icons/elements/element_white/@(cachedSecondaryElClass).svg" />
+					</div>
+				}
 			</div>
 			enemyIdx3D++;
 		}
 		if (enemyTeam3D != null && (!isWaveEntering || enterProgress > 0f))
 		{
-		@foreach (var enemy in enemyTeam3D.Where(e => e != null && (e.CurrentHP > 0 || defeatedFadeTimers.ContainsKey(e.Id))))
+		@foreach (var enemy in BuildEnemyHpCardOrder3D(enemyTeam3D))
 		{
 			var species = MonsterManager.Instance?.GetSpecies(enemy.SpeciesId);
 			var isActive = enemy == activeEnemy3D;
@@ -476,25 +601,36 @@
 			var panelOpacity = isWaveEntering ? enterProgress : (isFading ? fadeProgress : 1f);
 			var enterSlide = isWaveEntering ? (int)(60 * (1f - enterProgress)) : 0;
 			var fadeSlide = isFading && !isInHoldPhase ? (int)(60 * (1f - fadeProgress)) : 0;
-			<div class="panel3d-diamond-wrapper enemy-panel-wrapper @(isWaveEntering || hasCompletedWaveTransition ? "wave-entering" : "") @(isFading ? "fading-out" : "") @(isActive ? "" : "secondary") @(isTargeted ? "targeted" : "") "
-				 style="@(!Use3DBattle ? "display: none;" : "") top: @(12 + idx * 90)px; right: @(20 - fadeSlide - enterSlide)px; position: absolute; opacity: @panelOpacity;"
+			var enemyHasDual = species?.SecondaryElement.HasValue == true;
+			var enemySecondaryElClass = enemyHasDual ? GetElementIconName(species.SecondaryElement.Value) : "neutral";
+			<div class="panel3d-diamond-wrapper enemy-panel-wrapper @(isWaveEntering || hasCompletedWaveTransition ? "wave-entering" : "") @(isFading ? "fading-out" : "") @(idx == 0 ? "" : "secondary") @(isTargeted ? "targeted" : "") @(enemyHasDual ? "dual-typed" : "") "
+				 style="@(!Use3DBattle ? "display: none;" : "") top: @(28 + idx * 110)px; right: @(36 - fadeSlide - enterSlide)px; position: absolute; opacity: @panelOpacity;"
 				>
 				<div class="panel3d-card enemy-card">
-					<div class="panel3d-header">
-						<span class="panel3d-name">@(species?.Name ?? "???")</span>
-						<span class="panel3d-level">Lv @(enemy.Level)</span>
-					</div>
-					<div class="panel3d-hp-row">
-						<span class="panel3d-hp-label">HP</span>
-						<div class="panel3d-hp-track">
-							<div class="panel3d-hp-fill @GetHPColorClass3D(enemy)" style="width: @GetHPPercent(enemy)%"></div>
+					<div class="panel3d-card-content">
+						<div class="panel3d-header">
+							<span class="panel3d-name">@(species?.Name ?? "???")</span>
+							<span class="panel3d-level">Lv @(enemy.Level)</span>
+							<span class="panel3d-target-num">#@GetEnemyTargetSlot(enemy)</span>
 						</div>
-						<span class="panel3d-hp-nums">@(enemy.CurrentHP.ToString("N0")) / @(enemy.MaxHP.ToString("N0"))</span>
+						<div class="panel3d-hp-row">
+							<span class="panel3d-hp-label">HP</span>
+							<div class="panel3d-hp-track @(IsShaking(enemy) ? "taking-hit" : "") shake-cycle-@(GetShakeKey(enemy) % 4)">
+								<div class="panel3d-hp-fill @GetHPColorClass3D(enemy)" style="width: @GetDisplayedHPPercent(enemy)%"></div>
+							</div>
+							<span class="panel3d-hp-nums">@(GetDisplayedHP(enemy).ToString("N0")) / @(enemy.MaxHP.ToString("N0"))</span>
+						</div>
 					</div>
 				</div>
 				<div class="panel3d-diamond enemy-diamond el-bg-@enemyElClass">
-					<img class="panel3d-diamond-icon" src="ui/icons/elements/transparent/@(enemyElClass).svg" />
+					<img class="panel3d-diamond-icon" src="ui/icons/elements/element_white/@(enemyElClass).svg" />
 				</div>
+				@if (enemyHasDual)
+				{
+					<div class="panel3d-diamond-secondary enemy-secondary el-bg-@enemySecondaryElClass">
+						<img class="panel3d-diamond-icon-secondary" src="ui/icons/elements/element_white/@(enemySecondaryElClass).svg" />
+					</div>
+				}
 			</div>
 			enemyIdx3D++;
 		}
@@ -510,24 +646,34 @@
 		var playerInHold = playerDefeatTimeLeft > DEFEAT_FADE_DURATION;
 		var playerFadeProgress = playerFading ? (playerInHold ? 1f : MathF.Max(0f, playerDefeatTimeLeft / DEFEAT_FADE_DURATION)) : 1f;
 		var playerFadeSlide = playerFading && !playerInHold ? (int)(60 * (1f - playerFadeProgress)) : 0;
-		<div class="panel3d-diamond-wrapper player-panel-wrapper @(playerFading ? "fading-out" : "")" style="@(!Use3DBattle ? "display: none;" : "") top: 12px; left: @(20 - playerFadeSlide)px; position: absolute; opacity: @playerFadeProgress;">
+		var playerHasDual = playerSpecies3D?.SecondaryElement.HasValue == true;
+		var playerSecondaryElClass = playerHasDual ? GetElementIconName(playerSpecies3D.SecondaryElement.Value) : "neutral";
+		<div class="panel3d-diamond-wrapper player-panel-wrapper @(playerHasDual ? "dual-typed" : "") @(playerFading ? "fading-out" : "")" style="@(!Use3DBattle ? "display: none;" : "") top: 28px; left: @(36 - playerFadeSlide)px; position: absolute; opacity: @playerFadeProgress;">
 			<div class="panel3d-diamond el-bg-@playerElClass">
-				<img class="panel3d-diamond-icon" src="ui/icons/elements/transparent/@(playerElClass).svg" />
+				<img class="panel3d-diamond-icon" src="ui/icons/elements/element_white/@(playerElClass).svg" />
 			</div>
+			@if (playerHasDual)
+			{
+				<div class="panel3d-diamond-secondary el-bg-@playerSecondaryElClass">
+					<img class="panel3d-diamond-icon-secondary" src="ui/icons/elements/element_white/@(playerSecondaryElClass).svg" />
+				</div>
+			}
 			<div class="panel3d-card">
-				<div class="panel3d-header">
-					<span class="panel3d-name">@(playerMon3D.Nickname ?? playerSpecies3D?.Name ?? "???")</span>
-					<span class="panel3d-level">Lv @(playerMon3D.Level)</span>
-				</div>
-				<div class="panel3d-hp-row">
-					<span class="panel3d-hp-label">HP</span>
-					<div class="panel3d-hp-track">
-						<div class="panel3d-hp-fill @GetHPColorClass3D(playerMon3D)" style="width: @GetHPPercent(playerMon3D)%"></div>
+				<div class="panel3d-card-content">
+					<div class="panel3d-header">
+						<span class="panel3d-name">@(playerMon3D.Nickname ?? playerSpecies3D?.Name ?? "???")</span>
+						<span class="panel3d-level">Lv @(playerMon3D.Level)</span>
 					</div>
-					<span class="panel3d-hp-nums">@(playerMon3D.CurrentHP.ToString("N0")) / @(playerMon3D.MaxHP.ToString("N0"))</span>
-				</div>
-				<div class="panel3d-xp-bar">
-					<div class="panel3d-xp-fill" style="width: @GetXPPercent(playerMon3D)%"></div>
+					<div class="panel3d-hp-row">
+						<span class="panel3d-hp-label">HP</span>
+						<div class="panel3d-hp-track @(IsShaking(playerMon3D) ? "taking-hit" : "") shake-cycle-@(GetShakeKey(playerMon3D) % 4)">
+							<div class="panel3d-hp-fill @GetHPColorClass3D(playerMon3D)" style="width: @GetDisplayedHPPercent(playerMon3D)%"></div>
+						</div>
+						<span class="panel3d-hp-nums">@(GetDisplayedHP(playerMon3D).ToString("N0")) / @(playerMon3D.MaxHP.ToString("N0"))</span>
+					</div>
+					<div class="panel3d-xp-bar">
+						<div class="panel3d-xp-fill" style="width: @GetXPPercent(playerMon3D)%"></div>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -551,8 +697,11 @@
 	@if (Use3DBattle && !BattleTransition.IsActive && !ExpeditionResultPopup.IsVisible)
 	{
 		<div class="wave-indicator-container">
-			<div class="wave-badge @(IsBossWave() ? "wave-boss" : "")">
-				<span class="wave-text">@(IsBossWave() ? "BOSS" : $"WAVE {GetCurrentWave()}")</span>
+			<div class="wave-badge bb-skewed-badge @(IsBossWave() ? "wave-boss" : "")">
+				<div class="bb-skewed-badge-inner">
+					<span class="wave-text">@GetWaveBadgeText()</span>
+				</div>
+				<div class="bb-skewed-badge-underline"></div>
 			</div>
 		</div>
 	}
@@ -586,8 +735,13 @@
 			var awaitingInput = CanSelectMoves();
 		}
 
-		<!-- Diamond Action Buttons (state: actions, hidden during negotiation) -->
-		@if (barState == "actions" && !showNegotiationOverlay)
+		<!-- Diamond Action Buttons (state: actions OR moves OR targets; FIGHT
+		     is shared and toggles. In moves state the 4 secondaries are
+		     replaced by 4 element-tinted move diamonds; in targets state, by
+		     up to 3 element-tinted enemy diamonds in the SWITCH/BAG/CONTRACT
+		     slots. Clicking FIGHT in either sub-state returns to actions or
+		     moves.) -->
+		@if ((barState == "actions" || barState == "moves" || barState == "targets" || barState == "swap") && !showNegotiationOverlay)
 		{
 			var turnsPlaying = BattleManager.Instance?.IsPlaying == true && !BattleManager.Instance.IsWaitingForPlayerInput;
 			var sceneAnimating = BattleSceneController.Instance != null && (BattleSceneController.Instance.IsWaveTransitioning);
@@ -598,94 +752,234 @@
 			// prior turn is mid-animation.
 			var scenePlayingTurns = BattleSceneController.Instance?.IsPlayingTurns == true;
 			var buttonsDisabled = turnsPlaying || sceneAnimating || scenePlayingTurns;
-			<div class="action3d-buttons panel-in">
-				<div class="action3d-btn fight @(awaitingInput ? "awaiting" : "") @(buttonsDisabled ? "disabled" : "")" onclick=@OnFight3D onmouseover=@(() => HoverBtn(1))>
-					<div class="action3d-diamond">
-						<iconify icon="lucide:swords" Size=@(36) Color="white" />
-					</div>
-					<span class="action3d-label">FIGHT</span>
-				</div>
-				<div class="action3d-btn swap @(buttonsDisabled ? "disabled" : "")" onclick=@OnSwapRequested onmouseover=@(() => HoverBtn(2))>
-					<div class="action3d-diamond">
-						<iconify icon="lucide:repeat-2" Size=@(36) Color="white" />
-					</div>
-					<span class="action3d-label">SWITCH</span>
-				</div>
-				<div class="action3d-btn bag @(buttonsDisabled ? "disabled" : "")" onclick=@OnOpenBag onmouseover=@(() => HoverBtn(3))>
-					<div class="action3d-diamond">
-						<iconify icon="lucide:briefcase" Size=@(36) Color="white" />
-					</div>
-					<span class="action3d-label">BAG</span>
-				</div>
-				@if (!IsArenaBattle && !IsRaidBattle)
+			var inMoves = barState == "moves";
+			var inTargets = barState == "targets";
+			var inSwap = barState == "swap";
+			var inContractTargeting = inTargets && isContractTargeting;
+			var inSubState = inMoves || inTargets || inSwap;
+			// FIGHT acts as BACK in moves + (move-)targets sub-states. In CONTRACT
+			// targeting we hide FIGHT and render a normal-sized contract diamond
+			// as the back button instead. In SWAP, FIGHT is replaced by the
+			// ▶ rotate-right secondary diamond.
+			var showFightButton = !inContractTargeting && !inSwap;
+			var fightIcon = inSubState ? "lucide:arrow-left" : "lucide:swords";
+			var fightLabel = inSubState ? "BACK" : "FIGHT";
+			var clusterClass = inMoves ? "in-moves" : (inTargets ? "in-targets" : (inSwap ? "in-swap" : "")) + (inContractTargeting ? " in-contract" : "");
+			if (barState != lastObservedBarState)
+			{
+				lastObservedBarState = barState;
+				clusterPulseKey++;
+				clusterFlashSince = 0f;
+			}
+			var fightClass = (awaitingInput ? "awaiting" : "") + " " + (buttonsDisabled ? "disabled" : "") + " " + ((inMoves || inTargets) ? "is-back" : "");
+			// Shared move-info panel: rendered BEFORE cluster-bg in DOM so it
+			// stacks BEHIND the dark slab + yellow border. Content updates
+			// based on hoveredMoveSlot. All data prep goes through
+			// TryFillHoveredMove3D and TryFillHoveredEnemy3D — keeps generics
+			// out of the markup body.
+			string hoveredPP = "";
+			string hoveredPwr = "";
+			string hoveredDesc = "";
+			string hoveredMoveName = "";
+			bool sharedPanelActive = false;
+			if (inMoves)
+			{
+				sharedPanelActive = TryFillHoveredMove3D( hoveredMoveSlot, out hoveredMoveName, out hoveredPP, out hoveredPwr, out hoveredDesc );
+			}
+
+			string hoveredEnemyName = "";
+			string hoveredEnemySub = "";
+			string hoveredEnemyHP = "";
+			bool targetPanelActive = false;
+			if (inTargets)
+			{
+				targetPanelActive = TryFillHoveredEnemy3D( hoveredTargetSlot, out hoveredEnemyName, out hoveredEnemySub, out hoveredEnemyHP );
+			}
+
+			string swapBeastName = "";
+			string swapBeastSub = "";
+			string swapBeastHP = "";
+			bool swapPanelActive = false;
+			if (inSwap)
+			{
+				swapPanelActive = TryFillCurrentSwapTarget3D( out swapBeastName, out swapBeastSub, out swapBeastHP );
+			}
+
+			<div class="action3d-buttons panel-in @clusterClass">
+				@if (inMoves)
 				{
-					<div class="action3d-btn contract contract-btn @(buttonsDisabled || !HasContractInk() ? "disabled" : "")" onclick=@OnContract3D onmouseover=@(() => HoverBtn(4))>
-						<div class="action3d-diamond">
-							<iconify icon="lucide:scroll-text" Size=@(36) Color="white" />
-						</div>
-						<span class="action3d-label">CONTRACT</span>
+					<div class="move-info-panel-shared @(sharedPanelActive ? "active" : "")">
+						@if (sharedPanelActive)
+						{
+							<div class="mvi-name">@hoveredMoveName</div>
+							<div class="mvi-stats">
+								<span class="mvi-pp">@hoveredPP</span>
+								<span class="mvi-pwr">@hoveredPwr</span>
+							</div>
+							<div class="mvi-desc">@hoveredDesc</div>
+						}
 					</div>
 				}
-				<div class="action3d-end @(buttonsDisabled ? "disabled" : "")" onclick=@OnEndClicked onmouseover=@(() => HoverBtn(5))>
-					<div class="end-diamond">
-						<iconify icon="lucide:log-out" Size=@(18) Color="white" />
-					</div>
-					<span class="end-label">END</span>
-				</div>
-			</div>
-		}
-
-		<!-- Move Picker (state: moves) -->
-		@if (barState == "moves")
-		{
-			<div class="move-picker3d panel-in">
-				<div class="moves3d-row">
-					@{
-						var moveMon = GetPlayerActiveMonster();
-						var moves3D = GetAvailableMoves3D(moveMon);
-					}
-					@if (moves3D.Count > 0)
-					{
-						@foreach (var move in moves3D)
+				@if (inTargets)
+				{
+					<div class="move-info-panel-shared @(targetPanelActive ? "active" : "")">
+						@if (targetPanelActive)
 						{
-							var moveData = MoveDatabase.GetMove(move.MoveId);
-							if (moveData == null) continue;
-							var elementClass = moveData.Element.ToString().ToLowerInvariant();
-							var haspp = move.CurrentPP > 0;
-							<div class="move3d-btn @elementClass @(!haspp ? "no-pp" : "")" onclick=@(() => { if (haspp) OnMoveChosen3D(move.MoveId); }) onmouseover=@(() => HoverBtn(10 + move.MoveId.GetHashCode()))>
-								<div class="move3d-diamond-indicator">
-									<div class="move3d-element-diamond el-bg-@elementClass">
-										<img class="move3d-element-icon" src="ui/icons/elements/transparent/@(GetElementIconName(moveData.Element)).svg" />
-									</div>
-								</div>
-								<div class="move3d-info">
-									<span class="move3d-name">@moveData.Name</span>
-									<div class="move3d-bottom">
-										<span class="move3d-pp">PP <span>@move.CurrentPP/@moveData.MaxPP</span></span>
-										@if (moveData.BasePower > 0)
-										{
-											<span class="move3d-power">PWR @moveData.BasePower</span>
-										}
-									</div>
-								</div>
-								@if (!string.IsNullOrEmpty(moveData.Description))
-								{
-									<div class="move3d-desc">
-										<span class="move3d-desc-text">@moveData.Description</span>
-									</div>
-								}
+							<div class="mvi-name">@hoveredEnemyName</div>
+							<div class="mvi-stats">
+								<span class="mvi-pp">@hoveredEnemySub</span>
+								<span class="mvi-pwr">@hoveredEnemyHP</span>
 							</div>
 						}
-					}
-					<div class="move3d-back" onmouseover=@(() => HoverBtn(20)) onclick=@(() => { actionBarState = "actions"; BattleSceneController.Instance?.GetCameraController()?.FocusDefault(); StateHasChanged(); })>
-						<iconify icon="ph:arrow-left-bold" Size=@(24) Color="white" />
 					</div>
+				}
+				@if (inSwap)
+				{
+					<div class="move-info-panel-shared @(swapPanelActive ? "active" : "")">
+						@if (swapPanelActive)
+						{
+							<div class="mvi-name">@swapBeastName</div>
+							<div class="mvi-stats">
+								<span class="mvi-pp">@swapBeastSub</span>
+								<span class="mvi-pwr">@swapBeastHP</span>
+							</div>
+						}
+					</div>
+				}
+				<div class="action3d-cluster-bg">
 				</div>
+				@if (inContractTargeting)
+				{
+					<div class="action3d-btn contract-back is-secondary" onclick=@OnContractBack onmouseover=@(() => HoverBtn(41))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:arrow-left" Size=@(28) Color="white" />
+						</div>
+						<span class="action3d-label">BACK</span>
+					</div>
+				}
+				@if (showFightButton)
+				{
+				<div class="action3d-btn fight @fightClass" onclick=@OnFight3D onmouseover=@(() => HoverBtn(1))>
+					<div class="action3d-diamond">
+						<div class="fight-flame-stack">
+							<div class="fight-flame-layer fl-back"></div>
+							<div class="fight-flame-layer fl-mid"></div>
+							<div class="fight-flame-layer fl-front"></div>
+						</div>
+						<div class="fight-ring"></div>
+						<iconify icon="@fightIcon" Size=@(44) Color="white" />
+						@if (IsFightBurstActive)
+						{
+							<div class="fight-burst burst-@fightBurstKey">
+								<div class="fb-ember fb-e1"></div>
+								<div class="fb-ember fb-e2"></div>
+								<div class="fb-ember fb-e3"></div>
+								<div class="fb-ember fb-e4"></div>
+								<div class="fb-ember fb-e5"></div>
+								<div class="fb-ember fb-e6"></div>
+								<div class="fb-ember fb-e7"></div>
+								<div class="fb-ember fb-e8"></div>
+							</div>
+						}
+					</div>
+					<span class="action3d-label">@fightLabel</span>
+				</div>
+				}
+
+				@if (!inSubState)
+				{
+					<div class="action3d-btn swap is-secondary @(buttonsDisabled ? "disabled" : "")" onclick=@OnSwapRequested onmouseover=@(() => HoverBtn(2))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:repeat-2" Size=@(28) Color="white" />
+						</div>
+						<span class="action3d-label">SWITCH</span>
+					</div>
+					<div class="action3d-btn bag is-secondary @(buttonsDisabled ? "disabled" : "")" onclick=@OnOpenBag onmouseover=@(() => HoverBtn(3))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:briefcase" Size=@(28) Color="white" />
+						</div>
+						<span class="action3d-label">BAG</span>
+					</div>
+					@if (!IsArenaBattle && !IsRaidBattle)
+					{
+						<div class="action3d-btn contract contract-btn is-secondary @(buttonsDisabled || !HasContractInk() ? "disabled" : "")" onclick=@OnContract3D onmouseover=@(() => HoverBtn(4))>
+							<div class="action3d-diamond">
+								<iconify icon="lucide:scroll-text" Size=@(28) Color="white" />
+							</div>
+							<span class="action3d-label">CONTRACT</span>
+						</div>
+					}
+					<div class="action3d-end @(buttonsDisabled ? "disabled" : "")" onclick=@OnEndClicked onmouseover=@(() => HoverBtn(5))>
+						<div class="end-diamond">
+							<iconify icon="lucide:log-out" Size=@(22) Color="white" />
+						</div>
+						<span class="end-label">END</span>
+					</div>
+				}
+				else if (inMoves)
+				{
+					@foreach (var moveSlot in BuildMoveSlots3D(buttonsDisabled))
+					{
+						<div class="action3d-btn move is-secondary el-bg-@moveSlot.ElementClass @moveSlot.SlotClass @moveSlot.DisabledClass" onclick=@(() => { if (!moveSlot.IsDisabled) OnMoveChosen3D(moveSlot.MoveId); }) onmouseover=@(() => OnMoveSlotHover(moveSlot.Index))>
+							<div class="action3d-diamond">
+								<img class="action3d-element-icon" src="@moveSlot.IconSrc" />
+							</div>
+							<span class="action3d-label">@moveSlot.MoveName</span>
+						</div>
+					}
+				}
+				else if (inTargets)
+				{
+					@foreach (var enemySlot in BuildEnemySlots3D(buttonsDisabled))
+					{
+						<div class="action3d-btn enemy is-secondary el-bg-@enemySlot.ElementClass @enemySlot.SlotClass @enemySlot.DisabledClass" onclick=@(() => { if (!enemySlot.IsDisabled) OnTargetChosen3D(enemySlot.EnemyRef); }) onmouseover=@(() => OnTargetSlotHover(enemySlot.Index))>
+							<div class="action3d-diamond">
+								<img class="action3d-beast-icon" src="@enemySlot.SpriteSrc" />
+								<div class="beast-num-badge">@enemySlot.SlotNum</div>
+							</div>
+							<span class="action3d-label">@enemySlot.DisplayName</span>
+						</div>
+					}
+				}
+				else if (inSwap)
+				{
+					var canConfirmSwap = !IsSwapTargetActive() && !buttonsDisabled;
+					var confirmDisabledClass = canConfirmSwap ? "" : "disabled";
+					<div class="action3d-btn swap-back is-secondary sw-back-slot" onclick=@OnSwapBack onmouseover=@(() => HoverBtn(60))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:arrow-left" Size=@(28) Color="white" />
+						</div>
+						<span class="action3d-label">BACK</span>
+					</div>
+					<div class="action3d-btn swap-rotate is-secondary sw-left-slot @(buttonsDisabled ? "disabled" : "")" onclick=@OnSwapCarouselLeft onmouseover=@(() => HoverBtn(61))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:chevron-left" Size=@(32) Color="white" />
+						</div>
+						<span class="action3d-label">PREV</span>
+					</div>
+					<div class="action3d-btn swap-rotate is-secondary sw-right-slot @(buttonsDisabled ? "disabled" : "")" onclick=@OnSwapCarouselRight onmouseover=@(() => HoverBtn(62))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:chevron-right" Size=@(32) Color="white" />
+						</div>
+						<span class="action3d-label">NEXT</span>
+					</div>
+					<div class="action3d-btn swap-confirm is-secondary sw-confirm-slot @confirmDisabledClass" onclick=@(() => { if (canConfirmSwap) OnSwapConfirm(); }) onmouseover=@(() => HoverBtn(63))>
+						<div class="action3d-diamond">
+							<iconify icon="lucide:check" Size=@(32) Color="white" />
+						</div>
+						<span class="action3d-label">SWAP</span>
+					</div>
+				}
 			</div>
 		}
 
-		<!-- Swap Mode: arrows + name + confirm all in action bar -->
-		@if (barState == "swap" && swapTargets != null && swapTargets.Count > 0)
+		<!-- (Move picker is now rendered as element-tinted diamonds inside the
+		     action-bar cluster above — see the else branch in the
+		     actions/moves conditional. The old linear pill row was retired.) -->
+
+		<!-- (Swap-bar legacy carousel disabled — replaced by the 4-diamond
+		     swap layout inside the action-buttons cluster above.) -->
+		@if (false && barState == "swap" && swapTargets != null && swapTargets.Count > 0)
 		{
 			var swapMon = swapCarouselIndex < swapTargets.Count ? swapTargets[swapCarouselIndex] : null;
 			var swapSpecies = swapMon != null ? MonsterManager.Instance?.GetSpecies(swapMon.SpeciesId) : null;
@@ -729,43 +1023,8 @@
 	</div>
 	}
 
-	<!-- Target Picker (outside action bar) -->
-	@if (Use3DBattle && !BattleTransition.IsActive && GetActionBarState() == "targets")
-	{
-		<div class="target-picker-overlay panel-in">
-			@{
-				var tgtEnemies = GetEnemyTeam()?.Where(e => e != null && e.CurrentHP > 0 && !e.WasContracted).ToList();
-			}
-			@if (tgtEnemies != null)
-			{
-				int tgtIdx = 0;
-				@foreach (var enemy in tgtEnemies)
-				{
-					tgtIdx++;
-					var tSpecies = MonsterManager.Instance?.GetSpecies(enemy.SpeciesId);
-					var elementClass = tSpecies != null ? tSpecies.Element.ToString().ToLowerInvariant() : "neutral";
-					<div class="target3d-card" onclick=@(() => OnTargetChosen3D(enemy)) onmouseover=@(() => HoverBtn(100 + enemy.GetHashCode()))>
-						<div class="target3d-diamond-indicator">
-							<div class="target3d-element-diamond el-bg-@elementClass">
-								<img class="target3d-sprite-icon" src="@(tSpecies?.IconPath ?? "")" />
-							</div>
-							<div class="target3d-number">@tgtIdx</div>
-						</div>
-						<div class="target3d-info">
-							<span class="target3d-name">@(tSpecies?.Name ?? "???")</span>
-							<div class="target3d-bottom">
-								<span class="target3d-level">Lv @(enemy.Level)</span>
-								<span class="target3d-hp">HP @(enemy.CurrentHP)/@(enemy.MaxHP)</span>
-							</div>
-						</div>
-					</div>
-				}
-			}
-			<div class="move3d-back" onmouseover=@(() => HoverBtn(21)) onclick=@OnCancelTargetPicker3D>
-				<iconify icon="ph:arrow-left-bold" Size=@(24) Color="white" />
-			</div>
-		</div>
-	}
+	<!-- (Legacy target picker overlay removed — replaced by element-tinted
+	     enemy diamonds rendered inside the action-buttons cluster above.) -->
 
 	<!-- Bottom Action Bar (2D mode only) -->
 	<div class="action-bar" style="@(Use3DBattle ? "display: none;" : "")">
@@ -872,6 +1131,99 @@
 								  OnNegotiationComplete=@OnNegotiationComplete />
 	}
 
+	<!-- ============================================================
+	     PASS 2 — Chat & Radio docks (in-battle)
+	     Compact panels at the bottom corners of the battle view.
+	     Show live state inline, click body to open the full popup.
+	     Visible in BOTH 2D AND 3D combat — for 3D this is the only
+	     chat/radio access point since the command bar is hidden.
+	     ============================================================ -->
+	@if (!BattleTransition.IsActive)
+	{
+		var latestChat = GetLatestBattleChat();
+		var hasChat = latestChat != null;
+		var radioStation = RadioManager.CurrentStation;
+		var radioTrack = RadioManager.CurrentTrack;
+		var hasRadio = radioStation != null && radioTrack != null;
+
+		<!-- Chat dock — bottom-left -->
+		<div class="battle-dock-chat @(hasChat ? "" : "empty")" onclick=@OnDockChatClick>
+			<!-- Tab prefix: dark purple slab on the left edge with a chat glyph,
+			     reads as "press to open." Inner content counter-skewed so the
+			     icon doesn't shear with the parent's skewX(-4deg). -->
+			<div class="dock-tab dock-tab-chat">
+				<div class="dock-tab-inner">
+					<iconify icon="lucide:message-square" Size=@(18) Color="#1a0e2e" />
+				</div>
+			</div>
+			@if (hasChat)
+			{
+				<div class="dock-content">
+					<div class="dock-chat-avatar av-@latestChat.ResolvedNameColor">
+						<img src="avatar:@latestChat.SteamId" />
+					</div>
+					<div class="dock-chat-body">
+						<span class="dock-chat-line">
+							<span class="dock-chat-name c-@latestChat.ResolvedNameColor">@latestChat.PlayerName</span>
+							<span class="dock-chat-text">@TruncateChat(latestChat.Content)</span>
+						</span>
+					</div>
+				</div>
+			}
+			else
+			{
+				<div class="dock-content dock-content-empty">
+					<span class="dock-empty-label">Open chat</span>
+				</div>
+			}
+		</div>
+
+		<!-- Radio dock — bottom-right (hidden if no station playing) -->
+		@if (hasRadio)
+		{
+			<div class="battle-dock-radio">
+				<!-- Tab prefix: yellow slab on the left edge, reads as the
+				     "alive" half of the dock pair. Inner content counter-skewed. -->
+				<div class="dock-tab dock-tab-radio">
+					<div class="dock-tab-inner">
+						<iconify icon="lucide:radio" Size=@(18) Color="#1a0e2e" />
+					</div>
+				</div>
+				<div class="dock-content">
+					<div class="dock-radio-cover" onclick=@OnDockRadioBodyClick>
+						<span class="dock-radio-emoji">@(radioStation?.Icon ?? "📻")</span>
+					</div>
+					<div class="dock-radio-info" onclick=@OnDockRadioBodyClick>
+						<span class="dock-radio-station">@radioStation.Name</span>
+						<span class="dock-radio-track">@radioTrack.Name</span>
+					</div>
+					<!-- Tiny EQ bar — 4 vertical yellow bars with staggered scaleY
+					     anim. Continuous infinite animation. Hidden when paused. -->
+					@if (RadioManager.IsPlaying)
+					{
+						<div class="dock-radio-eq">
+							<span class="eq-bar"></span>
+							<span class="eq-bar"></span>
+							<span class="eq-bar"></span>
+							<span class="eq-bar"></span>
+						</div>
+					}
+					<div class="dock-radio-controls">
+						<button class="dock-radio-btn" onclick=@OnDockRadioPrev>
+							<iconify icon="lucide:skip-back" Size=@(14) Color="rgba(255,255,255,0.85)" />
+						</button>
+						<button class="dock-radio-btn dock-radio-btn-play" onclick=@OnDockRadioToggle>
+							<iconify icon="@(RadioManager.IsPlaying ? "lucide:pause" : "lucide:play")" Size=@(14) Color="#ffffff" />
+						</button>
+						<button class="dock-radio-btn" onclick=@OnDockRadioNext>
+							<iconify icon="lucide:skip-forward" Size=@(14) Color="rgba(255,255,255,0.85)" />
+						</button>
+					</div>
+				</div>
+			</div>
+		}
+	}
+
 	@if (contractTargetSearchOpen)
 	{
 		<div class="contract-search-overlay" onclick=@CloseContractTargetSearch>
@@ -927,6 +1279,17 @@
 	private float announcementTimer = 0f;
 	private const float ANNOUNCEMENT_DURATION = 2.0f;
 
+	// Pass 3: counter that increments every time a new announcement comes in,
+	// so the .slam-@key class re-applies and the keyframes animation replays
+	// (s&box only plays @keyframes on first mount per element).
+	private int announcementKey = 0;
+
+	// Pass 3: counter for HP-bar shake replays, plus per-monster timers so the
+	// shake class only sticks to the actual damage taker for ~240ms.
+	private Dictionary<Guid, int> shakeKeys = new();
+	private Dictionary<Guid, float> shakeTimers = new();
+	private const float SHAKE_DURATION = 0.24f;
+
 	// Track recently defeated monsters for fade-out animation
 	// Total time = TurnAnimDelay (0.8s hold) + fade out (0.8s) to sync with 3D faint
 	private Dictionary<Guid, float> defeatedFadeTimers = new();
@@ -935,8 +1298,89 @@
 	private const float DEFEAT_FADE_DURATION = 0.45f; // Then fade out during faint animation
 	private const float DEFEAT_TOTAL_DURATION = DEFEAT_HOLD_DURATION + DEFEAT_FADE_DURATION;
 
+	// HP-bar display lag: the simulation drops Monster.CurrentHP the instant a
+	// turn resolves (which is BEFORE the on-screen attack visual lands). To keep
+	// the bar from shrinking pre-emptively, we render against this dictionary
+	// of "displayed" HP values per monster instead of CurrentHP directly.
+	//
+	// Flow:
+	//   • OnTurnExecuted(turn) — defender already had its CurrentHP dropped by
+	//     the simulator. We reconstruct the OLD value (CurrentHP + turn.Damage)
+	//     and store it here so the bar HOLDS at the pre-damage width.
+	//   • OnTurnVisualsStarted(turn) — fires when the 3D scene starts the swing
+	//     animation. We sync displayedHP back to actual CurrentHP, which lets the
+	//     existing CSS `.panel3d-hp-fill { transition: width 0.6s ease; }` lerp
+	//     the bar down in sync with the visible impact.
+	//   • For 2D mode (no OnTurnVisualsStarted event), we use a per-monster
+	//     release timer ticked in Tick() — about 200ms after OnTurnExecuted,
+	//     which lines up with the move-name slam-in.
+	//
+	// Fallback: GetDisplayedHPPercent reads CurrentHP if no entry is present
+	// (initial render, swap-in, wave-spawn — all cases where there's no lag to apply).
+	private Dictionary<Guid, int> displayedHP = new();
+	private Dictionary<Guid, float> displayedHPReleaseTimers = new(); // 2D mode: catchup delay before snapping to actual
+	private const float DISPLAYED_HP_RELEASE_2D = 0.20f; // ~200ms after OnTurnExecuted in 2D, then sync
+	// Bumped per release so BuildHash picks up the change (HP value alone wouldn't differ for 0-damage cases).
+	private int displayedHPVersion = 0;
+
 	// True after the first wave transition — suppresses CSS entrance animation on subsequent waves
 	private bool hasCompletedWaveTransition = false;
+
+	// ── Cinematic CRITICAL hit ────────────────────────────────────────
+	// On every damaging crit, we fire a screen flash (~100ms) + a giant
+	// CRITICAL stamp that slams in from the left, holds, slides out right.
+	// Total on-screen time ≈ 600ms. The render-key class trick (.bb-crit-flash-@N
+	// cycling 0..3) re-mounts the elements on every fire, which is the only
+	// way s&box re-runs @keyframes for the same DOM slot — so back-to-back
+	// crits each get their own animation rather than stalling on the first.
+	private int critCinematicKey = 0;
+	private float critCinematicTimer = 0f;
+	private const float CRIT_CINEMATIC_DURATION = 1.5f;
+
+	// ── Cinematic BOSS splash ─────────────────────────────────────────
+	// Fired once on wave-start when IsBossWave() — slanted slab + title +
+	// species name slams in from off-screen-LEFT, holds, slides out to the
+	// RIGHT. Total ~2.0s on-screen. The .bb-splash-active modifier on
+	// .battle-view dims action diamonds + ticker + wave indicator while
+	// the splash is up so they don't compete with the moment.
+	private int bossSplashKey = 0;
+	private float bossSplashTimer = 0f;
+	private string bossSplashTitle = "";
+	private string bossSplashName = "";
+	private string bossSplashSubtitle = "";
+	private bool bossSplashIsRare = false;
+	private const float BOSS_SPLASH_DURATION = 2.05f;
+	// Tracks the last wave we fired the splash for so wave-start fires per
+	// wave entry but not on every restart of the same wave (e.g. retries).
+	private string lastBossSplashWaveKey = "";
+
+	// ── Cinematic WAVE CLEAR banner ───────────────────────────────────
+	// Fires sub-2-second when ExpeditionManager.OnWaveCompleted emits — two
+	// slanted yellow/red strips slam in across the screen, "WAVE N" label +
+	// "CLEAR!" big italic text, optional reward chip with the wave's
+	// total XP/gold gained. Same render-key class trick as the crit
+	// cinematic so back-to-back wave clears (rare but possible) replay
+	// cleanly. Does NOT fire on the FINAL wave clear — that goes straight
+	// to the expedition-complete screen, which is its own setpiece.
+	private int waveClearKey = 0;
+	private float waveClearTimer = 0f;
+	private string waveClearWaveLabel = "";   // "WAVE 03"
+	private string waveClearRewardLine = "";  // "+ 320 XP · 80 GOLD"  (optional)
+	private const float WAVE_CLEAR_DURATION = 1.6f;
+
+	// ── Status stamp ──────────────────────────────────────────────────
+	// Fires when a status effect lands on a monster (poison/burn/paralyze/
+	// sleep/freeze/confuse). Big italic slanted slab over the affected
+	// monster's side of the arena. Latest-wins: only one stamp on screen at
+	// a time — back-to-back applications replace the previous. Detected by
+	// scanning turn.EffectMessages for the canonical status-application
+	// strings emitted by BattleSimulator (no core-side change required).
+	private int statusStampKey = 0;
+	private float statusStampTimer = 0f;
+	private string statusStampLabel = "";    // "POISONED!"
+	private string statusStampColor = "";    // "poison" | "burn" | etc — class suffix
+	private bool statusStampIsPlayerSide = false;
+	private const float STATUS_STAMP_DURATION = 1.7f;
 
 	private List<Monster> cachedPlayerTeam = new();
 	private List<Monster> cachedEnemyTeam = new();
@@ -968,6 +1412,34 @@
 	// Battle action bar state: "actions" | "moves" | "targets" | "executing"
 	private string actionBarState = "actions";
 	private string pendingMoveId3D = null;
+	// Tracks which move slot (0-3) is currently hovered, so a SHARED info
+	// panel rendered before cluster-bg in DOM can show the right move's data
+	// while still rendering BEHIND the cluster bg's yellow border.
+	private int hoveredMoveSlot = -1;
+	// Same idea for the swap state — tracks hovered beast slot (0-2).
+	private int hoveredSwapSlot = -1;
+	// Tracks hovered enemy slot in the targets state (0-2) for the shared
+	// enemy info panel.
+	private int hoveredTargetSlot = -1;
+	// Key that increments on every FIGHT click — combined with a time-based
+	// active flag so the burst only renders for ~700ms after a click. Without
+	// this, the burst element would persist in DOM and replay the keyframe
+	// animation whenever the FIGHT button re-mounts (e.g. after move execution
+	// returns the bar to "actions" state).
+	private int fightBurstKey = 0;
+	private RealTimeSince fightBurstSince = 1000f;
+	private bool IsFightBurstActive => fightBurstSince < 0.7f;
+	// Tracks the previous barState so we can fire a cluster-bg "pulse" key
+	// increment whenever the state actually changes. The Razor render uses
+	// this to swap the cluster-bg's class, re-mounting it so the pulse
+	// keyframe replays on every transition.
+	private string lastObservedBarState = "actions";
+	private int clusterPulseKey = 0;
+	// Time-gated flash overlay for state transitions — re-mounts on every
+	// state change and fades out over ~0.4s, marking the transition with a
+	// per-state colored wash.
+	private RealTimeSince clusterFlashSince = 1000f;
+	private bool IsClusterFlashActive => clusterFlashSince < 0.4f;
 
 	private string currentAnnouncement = "";
 	private string currentAnnouncementTag = "";
@@ -976,7 +1448,9 @@
 	private string GetHPColorClass3D(Monster mon)
 	{
 		if (mon == null) return "high";
-		var pct = GetHPPercent(mon);
+		// Use DISPLAYED HP so the green→yellow→red threshold transitions in
+		// sync with the bar's visible drop, not the simulation's instant drop.
+		var pct = GetDisplayedHPPercent(mon);
 		if (pct > 50) return "high";
 		if (pct > 20) return "medium";
 		return "low";
@@ -1028,12 +1502,360 @@
 	}
 
 	/// <summary>
-	/// FIGHT button: open move picker
+	/// View-model row for an action-bar move slot in 3D mode. Built by
+	/// BuildMoveSlots3D so the markup foreach can stay simple — keeps the
+	/// generic `for` loop OUT of the Razor markup body (where the `less-than`
+	/// in `i less count` confuses the parser and breaks BuildRenderTree).
+	/// </summary>
+	private class MoveSlot3D
+	{
+		public string MoveId;
+		public string MoveName;
+		public string ElementClass;
+		public string SlotClass;
+		public string DisabledClass;
+		public bool IsDisabled;
+		public string IconSrc;
+		public int Index;
+	}
+
+	private List<MoveSlot3D> BuildMoveSlots3D( bool buttonsDisabled )
+	{
+		var result = new List<MoveSlot3D>();
+		var moveMon = GetPlayerActiveMonster();
+		var moves3D = GetAvailableMoves3D( moveMon );
+		if ( moves3D == null ) return result;
+		var slotClasses = new[] { "mv-slot-1", "mv-slot-2", "mv-slot-3", "mv-slot-4" };
+		var moveCount = System.Math.Min( 4, moves3D.Count );
+		for ( int i = 0; i < moveCount; i++ )
+		{
+			var move = moves3D[i];
+			var moveData = MoveDatabase.GetMove( move.MoveId );
+			if ( moveData == null ) continue;
+			var elementClass = moveData.Element.ToString().ToLowerInvariant();
+			var hasPP = move.CurrentPP > 0;
+			var moveDisabled = !hasPP || buttonsDisabled;
+			var iconName = GetElementIconName( moveData.Element );
+			result.Add( new MoveSlot3D
+			{
+				MoveId = move.MoveId,
+				MoveName = moveData.Name,
+				ElementClass = elementClass,
+				SlotClass = slotClasses[i],
+				DisabledClass = moveDisabled ? "disabled" : "",
+				IsDisabled = moveDisabled,
+				IconSrc = "ui/icons/elements/transparent/" + iconName + ".svg",
+				Index = i,
+			} );
+		}
+		return result;
+	}
+
+	private class EnemySlot3D
+	{
+		public Monster EnemyRef;
+		public string DisplayName;
+		public string ElementClass;
+		public string SlotClass;
+		public string DisabledClass;
+		public bool IsDisabled;
+		public string SpriteSrc;
+		public int Index;
+		public int SlotNum;
+	}
+
+	private List<EnemySlot3D> BuildEnemySlots3D( bool buttonsDisabled )
+	{
+		var result = new List<EnemySlot3D>();
+		var enemies = GetEnemyTargetList3D();
+		if ( enemies == null ) return result;
+		// Reverse so top diamond = leftmost enemy in the 3D scene, bottom
+		// diamond = rightmost. Player reads target picker left-to-right by
+		// matching the on-screen position.
+		enemies = new List<Monster>( enemies );
+		enemies.Reverse();
+		// Contract picker uses a different slot layout: enemy 1 → LEFT (BAG),
+		// enemy 2 → TOP (SWITCH), enemy 3 → RIGHT (FIGHT slot, normal-sized).
+		// BACK button takes the BOTTOM (CONTRACT) slot. Standard target picker
+		// uses TOP/LEFT/BOTTOM for enemies 1/2/3 and the right is FIGHT-back.
+		string[] slotClasses;
+		if ( isContractTargeting )
+		{
+			slotClasses = new[] { "cn-slot-1", "cn-slot-2", "cn-slot-3" };
+		}
+		else
+		{
+			slotClasses = new[] { "tg-slot-1", "tg-slot-2", "tg-slot-3" };
+		}
+		var enemyCount = System.Math.Min( 3, enemies.Count );
+		for ( int i = 0; i < enemyCount; i++ )
+		{
+			var enemy = enemies[i];
+			if ( enemy == null ) continue;
+			var species = MonsterManager.Instance?.GetSpecies( enemy.SpeciesId );
+			var elementClass = species != null ? species.Element.ToString().ToLowerInvariant() : "neutral";
+			result.Add( new EnemySlot3D
+			{
+				EnemyRef = enemy,
+				DisplayName = species?.Name ?? "???",
+				ElementClass = elementClass,
+				SlotClass = slotClasses[i],
+				DisabledClass = buttonsDisabled ? "disabled" : "",
+				IsDisabled = buttonsDisabled,
+				SpriteSrc = species?.IconPath ?? "",
+				Index = i,
+				SlotNum = i + 1,
+			} );
+		}
+		return result;
+	}
+
+	private List<Monster> GetEnemyTargetList3D()
+	{
+		var team = GetEnemyTeam();
+		if ( team == null ) return null;
+		return team.Where( e => e != null && e.CurrentHP > 0 && !e.WasContracted ).ToList();
+	}
+
+	/// <summary>
+	/// Build the HP card display order: simple left-to-right (reversed from
+	/// the raw team list). Top card = leftmost = slot 1 in the target picker.
+	/// The TOP card always gets the prominent (non-".secondary") styling so
+	/// the yellow border highlight rides on the slot-1 card regardless of
+	/// which enemy is actually currently attacking.
+	/// </summary>
+	private List<Monster> BuildEnemyHpCardOrder3D( List<Monster> team )
+	{
+		if ( team == null ) return new List<Monster>();
+		var alive = team.Where( e => e != null && (e.CurrentHP > 0 || defeatedFadeTimers.ContainsKey( e.Id )) ).ToList();
+		alive.Reverse();
+		return alive;
+	}
+
+	/// <summary>
+	/// Returns the 1-based target-picker slot number for an enemy, matching
+	/// the badge shown on the action-bar enemy diamonds. Top diamond in the
+	/// picker = leftmost enemy in the scene = slot 1.
+	/// </summary>
+	private int GetEnemyTargetSlot( Monster enemy )
+	{
+		if ( enemy == null ) return 0;
+		var list = GetEnemyTargetList3D();
+		if ( list == null ) return 0;
+		var idx = list.IndexOf( enemy );
+		if ( idx < 0 ) return 0;
+		// Reversed: slot 1 = LAST in raw list (leftmost in scene).
+		return list.Count - idx;
+	}
+
+	/// <summary>
+	/// Populate hovered-move display strings for the shared info panel.
+	/// Returns true if a valid move was found at the given slot. Mirrors
+	/// TryFillHoveredEnemy3D — keeps the slot-bounds check (which uses a
+	/// less-than operator) out of the Razor markup body.
+	/// </summary>
+	private bool TryFillHoveredMove3D( int slot, out string name, out string pp, out string pwr, out string desc )
+	{
+		name = "";
+		pp = "";
+		pwr = "";
+		desc = "";
+		if ( slot < 0 ) return false;
+		var moveMon = GetPlayerActiveMonster();
+		var moves = GetAvailableMoves3D( moveMon );
+		if ( moves == null || slot >= moves.Count ) return false;
+		var move = moves[slot];
+		if ( move == null ) return false;
+		var moveData = MoveDatabase.GetMove( move.MoveId );
+		if ( moveData == null ) return false;
+		name = moveData.Name;
+		pp = "PP " + move.CurrentPP + "/" + moveData.MaxPP;
+		pwr = moveData.BasePower > 0 ? "PWR " + moveData.BasePower : "";
+		desc = string.IsNullOrEmpty( moveData.Description ) ? "" : moveData.Description;
+		return true;
+	}
+
+	/// <summary>
+	/// True if the target picker has at least one valid enemy. Cheap bool
+	/// check for the markup branch — avoids declaring a generic-list local
+	/// in the Razor code-block (which corrupts the generated
+	/// BuildRenderTree output).
+	/// </summary>
+	private bool HasTargetEnemies3D()
+	{
+		var team = GetEnemyTeam();
+		if ( team == null ) return false;
+		foreach ( var e in team )
+		{
+			if ( e != null && e.CurrentHP > 0 && !e.WasContracted ) return true;
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// Populate the shared info panel with the currently-selected swap target
+	/// (the beast pointed at by swapCarouselIndex). Used during swap state.
+	/// </summary>
+	private bool TryFillCurrentSwapTarget3D( out string name, out string sub, out string hp )
+	{
+		name = "";
+		sub = "";
+		hp = "";
+		if ( swapTargets == null || swapCarouselIndex < 0 || swapCarouselIndex >= swapTargets.Count ) return false;
+		var beast = swapTargets[swapCarouselIndex];
+		if ( beast == null ) return false;
+		var species = MonsterManager.Instance?.GetSpecies( beast.SpeciesId );
+		var displayName = beast.Nickname;
+		if ( string.IsNullOrEmpty( displayName ) ) { displayName = species?.Name ?? "???"; }
+		name = displayName;
+		var active = BattleManager.Instance?.GetActivePlayerMonster();
+		var activeSuffix = (beast == active) ? " · Active" : "";
+		sub = "Lv " + beast.Level + activeSuffix;
+		hp = "HP " + beast.CurrentHP + "/" + beast.MaxHP;
+		return true;
+	}
+
+	/// <summary>
+	/// Populate hovered-enemy display strings for the shared info panel.
+	/// Returns true if a valid enemy was found at the given slot.
+	/// </summary>
+	private bool TryFillHoveredEnemy3D( int slot, out string name, out string sub, out string hp )
+	{
+		name = "";
+		sub = "";
+		hp = "";
+		if ( slot < 0 ) return false;
+		var enemies = GetEnemyTargetList3D();
+		if ( enemies == null || slot >= enemies.Count ) return false;
+		var enemy = enemies[slot];
+		if ( enemy == null ) return false;
+		name = MonsterManager.Instance?.GetSpecies( enemy.SpeciesId )?.Name ?? "???";
+		sub = "Lv " + enemy.Level;
+		hp = "HP " + enemy.CurrentHP + "/" + enemy.MaxHP;
+		return true;
+	}
+
+	/// <summary>
+	/// Set hovered move slot for the shared info panel. Guarded so we don't
+	/// re-render on every mouse move — only when the slot actually changes.
+	/// </summary>
+	private void OnMoveSlotHover( int slot )
+	{
+		if ( hoveredMoveSlot == slot ) { return; }
+		hoveredMoveSlot = slot;
+		HoverBtn( 10 + slot );
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Set hovered swap slot for the shared beast info panel.
+	/// </summary>
+	private void OnSwapSlotHover( int slot )
+	{
+		if ( hoveredSwapSlot == slot ) { return; }
+		hoveredSwapSlot = slot;
+		HoverBtn( 30 + slot );
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Set hovered enemy slot in the target picker for the shared info panel.
+	/// </summary>
+	private void OnTargetSlotHover( int slot )
+	{
+		if ( hoveredTargetSlot == slot ) { return; }
+		hoveredTargetSlot = slot;
+		HoverBtn( 50 + slot );
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// BACK button when in CONTRACT targeting — returns to actions and
+	/// cancels contract targeting. Replaces the big FIGHT diamond in the
+	/// contract picker since "fight" is the wrong semantic here.
+	/// </summary>
+	private void OnContractBack()
+	{
+		isContractTargeting = false;
+		actionBarState = "actions";
+		hoveredTargetSlot = -1;
+		BattleSceneController.Instance?.GetCameraController()?.FocusDefault();
+		Beastborne.Systems.SoundManager.PlayBack();
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// BACK button in the target picker — returns to move selection without
+	/// committing to an attack.
+	/// </summary>
+	private void OnTargetBack()
+	{
+		actionBarState = "moves";
+		pendingMoveId3D = null;
+		hoveredTargetSlot = -1;
+		BattleSceneController.Instance?.GetCameraController()?.FocusPlayer();
+		Beastborne.Systems.SoundManager.PlayFightBackWhoosh();
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// Direct-click swap to a specific beast — skips the carousel + confirm
+	/// two-step. Just executes the swap if the beast is available.
+	/// </summary>
+	private void OnSwapToBeast( Monster beast )
+	{
+		if ( beast == null || beast.CurrentHP <= 0 ) { return; }
+		if ( beast == BattleManager.Instance?.GetActivePlayerMonster() ) { return; }
+
+		int idx = BattleManager.Instance?.GetMonsterIndex( beast ) ?? -1;
+		if ( idx < 0 ) { return; }
+
+		BattleManager.Instance.ExecutePlayerSwap( idx );
+		actionBarState = "executing";
+
+		BattleSceneController.Instance?.ExitSwapMode();
+		BattleSceneController.Instance?.GetCameraController()?.FocusDefault();
+
+		swapTargets = null;
+		swapCarouselIndex = 0;
+		hoveredSwapSlot = -1;
+		Beastborne.Systems.SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	/// <summary>
+	/// FIGHT button: open move picker. If already in moves state, toggle back
+	/// to actions — the FIGHT diamond doubles as the back button now that the
+	/// 4 moves bloom out around it as element-tinted diamonds.
 	/// </summary>
 	private void OnFight3D()
 	{
-		actionBarState = "moves";
-		BattleSceneController.Instance?.GetCameraController()?.FocusPlayer();
+		if (actionBarState == "targets")
+		{
+			// In targets, FIGHT acts as BACK to moves picker.
+			actionBarState = "moves";
+			pendingMoveId3D = null;
+			hoveredTargetSlot = -1;
+			BattleSceneController.Instance?.GetCameraController()?.FocusPlayer();
+			Beastborne.Systems.SoundManager.PlayFightBackWhoosh();
+			StateHasChanged();
+			return;
+		}
+
+		if (actionBarState == "moves")
+		{
+			actionBarState = "actions";
+			BattleSceneController.Instance?.GetCameraController()?.FocusDefault();
+			Beastborne.Systems.SoundManager.PlayFightBackWhoosh();
+		}
+		else
+		{
+			actionBarState = "moves";
+			BattleSceneController.Instance?.GetCameraController()?.FocusPlayer();
+			Beastborne.Systems.SoundManager.PlayFightWhoosh();
+			fightBurstKey++;
+			fightBurstSince = 0f;
+		}
 		StateHasChanged();
 	}
 
@@ -1217,6 +2039,10 @@
 			BattleManager.Instance.OnMoveUsed -= HandleMoveAnnouncement;
 			BattleManager.Instance.OnMonsterDefeated -= HandleMonsterDefeated;
 		}
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.OnWaveCompleted -= HandleWaveCompleted;
+		}
 		if ( BattleSceneController.Instance != null )
 		{
 			BattleSceneController.Instance.OnBillboardClicked = null;
@@ -1245,6 +2071,14 @@
 		BattleManager.Instance.OnBattleEnd += HandleBattleEnd;
 		BattleManager.Instance.OnMoveUsed += HandleMoveAnnouncement;
 		BattleManager.Instance.OnMonsterDefeated += HandleMonsterDefeated;
+
+		// Wave-clear cinematic — bind/rebind to ExpeditionManager. Fires per
+		// non-final wave clear (final-wave clear handled by expedition complete).
+		if (ExpeditionManager.Instance != null)
+		{
+			ExpeditionManager.Instance.OnWaveCompleted -= HandleWaveCompleted;
+			ExpeditionManager.Instance.OnWaveCompleted += HandleWaveCompleted;
+		}
 
 		// Wire 3D billboard clicking to target selection
 		if ( BattleSceneController.Instance != null )
@@ -1286,6 +2120,12 @@
 		swapTargets = null;
 		BattleSceneController.Instance?.ClearSwapHighlights();
 
+		// HP-bar lag: clear any leftover state from a prior battle so monsters
+		// render at their fresh CurrentHP via the fallback path. Per-monster
+		// entries get seeded on their first OnTurnExecuted.
+		displayedHP.Clear();
+		displayedHPReleaseTimers.Clear();
+
 		var currentWave = ExpeditionManager.Instance?.CurrentWave ?? 1;
 
 		// Check if this is a new expedition or continuing the same one
@@ -1309,12 +2149,67 @@
 			AddLogEntry($"--- {waveLabel} ---", "wave");
 			lastLoggedWave = currentWave;
 		}
+
+		// ── Boss splash trigger ──
+		// Fire once per wave-entry when this is a boss wave and we're in 3D
+		// mode (the 2D mode already has its own boss-banner element above).
+		// The wave key (expedition id + wave number) prevents re-firing on
+		// retries that re-enter HandleBattleStart on the same wave.
+		var splashWaveKey = $"{currentExpeditionId}#{currentWave}";
+		if (Use3DBattle && IsBossWave() && !IsArenaBattle && splashWaveKey != lastBossSplashWaveKey)
+		{
+			TriggerBossSplash();
+			lastBossSplashWaveKey = splashWaveKey;
+		}
+	}
+
+	// Populate strings + start timer + bump render key. Called once per
+	// boss wave entry from HandleBattleStart. Strings are read off the
+	// current enemy team's first alive boss-tier monster so the splash
+	// names the actual encounter.
+	private void TriggerBossSplash()
+	{
+		var enemyTeam = GetEnemyTeam();
+		Monster boss = null;
+		if (enemyTeam != null)
+		{
+			foreach (var m in enemyTeam)
+			{
+				if (m == null) continue;
+				if (IsBossMonster(m)) { boss = m; break; }
+			}
+			// Fallback: first alive enemy if no explicit boss-flagged monster.
+			if (boss == null)
+			{
+				foreach (var m in enemyTeam)
+				{
+					if (m != null && m.CurrentHP > 0) { boss = m; break; }
+				}
+			}
+		}
+
+		var species = boss != null ? MonsterManager.Instance?.GetSpecies(boss.SpeciesId) : null;
+		bossSplashIsRare = IsRareBossEncounter();
+		bossSplashTitle = bossSplashIsRare ? "LEGENDARY ENCOUNTER" : "BOSS BATTLE";
+		bossSplashName = species?.Name?.ToUpperInvariant() ?? (boss?.Nickname?.ToUpperInvariant() ?? "???");
+
+		var currentWave = ExpeditionManager.Instance?.CurrentWave ?? 0;
+		var totalWaves = ExpeditionManager.Instance?.CurrentExpedition?.Waves ?? 0;
+		var lvl = boss?.Level ?? 0;
+		bossSplashSubtitle = (currentWave > 0 && totalWaves > 0 && lvl > 0)
+			? $"WAVE {currentWave}/{totalWaves}  ·  LV {lvl}"
+			: (lvl > 0 ? $"LV {lvl}" : "");
+
+		bossSplashTimer = BOSS_SPLASH_DURATION;
+		bossSplashKey++;
 	}
 
 	private void HandleMoveAnnouncement(string announcement)
 	{
 		currentMoveAnnouncement = announcement;
 		announcementTimer = ANNOUNCEMENT_DURATION;
+		// Bump the render-key so the slam-in animation replays on each announcement
+		announcementKey++;
 
 		// Add to battle log
 		var logType = "normal";
@@ -1547,6 +2442,69 @@
 			}
 		}
 
+		// Cinematic CRITICAL — decrement so the .bb-crit-flash + .bb-crit-stamp
+		// elements fall out of the DOM after ~0.62s.
+		if (critCinematicTimer > 0f)
+		{
+			critCinematicTimer -= RealTime.Delta;
+			if (critCinematicTimer < 0f) critCinematicTimer = 0f;
+		}
+
+		// Cinematic BOSS splash — decrement so the splash falls out of the DOM
+		// after ~2.05s and the .bb-splash-active modifier clears.
+		if (bossSplashTimer > 0f)
+		{
+			bossSplashTimer -= RealTime.Delta;
+			if (bossSplashTimer < 0f)
+			{
+				bossSplashTimer = 0f;
+				bossSplashTitle = "";
+				bossSplashName = "";
+				bossSplashSubtitle = "";
+			}
+		}
+
+		// Cinematic WAVE CLEAR banner — decrement so the banner falls out of
+		// the DOM after ~1.6s.
+		if (waveClearTimer > 0f)
+		{
+			waveClearTimer -= RealTime.Delta;
+			if (waveClearTimer < 0f)
+			{
+				waveClearTimer = 0f;
+				waveClearWaveLabel = "";
+				waveClearRewardLine = "";
+			}
+		}
+
+		// Status stamp — decrement so the stamp falls out of the DOM after
+		// ~1.7s. Latest-wins; never queues.
+		if (statusStampTimer > 0f)
+		{
+			statusStampTimer -= RealTime.Delta;
+			if (statusStampTimer < 0f)
+			{
+				statusStampTimer = 0f;
+				statusStampLabel = "";
+				statusStampColor = "";
+			}
+		}
+
+		// Pass 3: tick HP-bar shake timers — clear when expired so the
+		// .taking-hit class falls off and the bar settles back at rest.
+		if (shakeTimers.Count > 0)
+		{
+			var expiredShake = new List<Guid>();
+			var keys = shakeTimers.Keys.ToList();
+			foreach (var key in keys)
+			{
+				var remaining = shakeTimers[key] - RealTime.Delta;
+				shakeTimers[key] = remaining;
+				if (remaining <= 0f) expiredShake.Add(key);
+			}
+			foreach (var id in expiredShake) shakeTimers.Remove(id);
+		}
+
 		// Tick defeat fade-out timers
 		if (defeatedFadeTimers.Count > 0)
 		{
@@ -1566,6 +2524,31 @@
 			}
 		}
 
+		// HP-bar lag release (2D mode): tick the catchup timers and, when one
+		// expires, sync displayedHP back to actual CurrentHP. This is the 2D
+		// equivalent of OnTurnVisualsStarted (which only fires in 3D mode).
+		if (displayedHPReleaseTimers.Count > 0)
+		{
+			var expiredRelease = new List<Guid>();
+			var keys = displayedHPReleaseTimers.Keys.ToList();
+			foreach (var key in keys)
+			{
+				var remaining = displayedHPReleaseTimers[key] - RealTime.Delta;
+				displayedHPReleaseTimers[key] = remaining;
+				if (remaining <= 0f) expiredRelease.Add(key);
+			}
+			foreach (var id in expiredRelease)
+			{
+				displayedHPReleaseTimers.Remove(id);
+				var mon = FindMonsterById(id);
+				if (mon != null)
+				{
+					displayedHP[id] = mon.CurrentHP;
+					displayedHPVersion++;
+				}
+			}
+		}
+
 		SpriteAnimator.Update();
 	}
 
@@ -1575,6 +2558,154 @@
 		// appended in OnTurnVisualsStarted instead so the bottom-center ticker
 		// reveals text in sync with the 3D attack animation, not ahead of it.
 		lastTurn = turn;
+
+		// HP-bar lag: the simulator already dropped defender.CurrentHP by the
+		// time we got here. Seed displayedHP with the OLD pre-damage value so
+		// the bar holds at its existing width until the visual swing fires.
+		// Reconstructed as CurrentHP + Damage. We only do this for damaging,
+		// non-miss turns; non-damage turns (status, swap, item) don't drop the
+		// bar so there's no display lag to apply.
+		if (turn != null && turn.Damage > 0 && !turn.IsMiss && turn.DefenderId != Guid.Empty)
+		{
+			var defender = FindMonsterById(turn.DefenderId);
+			if (defender != null && defender.MaxHP > 0)
+			{
+				var oldHP = defender.CurrentHP + turn.Damage;
+				if (oldHP < 0) oldHP = 0;
+				if (oldHP > defender.MaxHP) oldHP = defender.MaxHP;
+				displayedHP[turn.DefenderId] = oldHP;
+				displayedHPVersion++;
+
+				// 2D mode has no OnTurnVisualsStarted — schedule a release
+				// timer so the bar drops ~200ms after the move-name slam-in,
+				// roughly matching when the player perceives the "hit" beat.
+				if (!Use3DBattle)
+				{
+					displayedHPReleaseTimers[turn.DefenderId] = DISPLAYED_HP_RELEASE_2D;
+				}
+			}
+		}
+
+		// Pass 3: shake the defender's HP bar in 2D mode (3D mode shakes via
+		// OnTurnVisualsStarted, where the visuals begin in sync with the swing).
+		if (turn != null && !Use3DBattle && turn.Damage > 0 && !turn.IsMiss)
+		{
+			var defender = FindMonsterById(turn.DefenderId);
+			if (defender != null) TriggerShake(defender);
+		}
+
+		// Cinematic CRITICAL — sub-second flash + slanted CRITICAL stamp.
+		// Pure visual layer, decoupled from BattleSceneController slow-mo
+		// or any scene-side timing. Doesn't fire on missed hits or zero-damage
+		// turns even if IsCritical happens to be set, since "critical" with
+		// no damage isn't a meaningful payoff moment.
+		if (turn != null && turn.IsCritical && !turn.IsMiss && turn.Damage > 0)
+		{
+			critCinematicTimer = CRIT_CINEMATIC_DURATION;
+			critCinematicKey++;
+		}
+
+		// Status stamp — scan turn.EffectMessages for the canonical status-
+		// application strings emitted by BattleSimulator. Latest-wins: if
+		// multiple statuses land in one turn, only the last one stamps.
+		// Per-wave first-time only — BattleSimulator only emits the message
+		// when AddStatus succeeds, so persisting statuses don't re-fire.
+		if (turn != null && turn.EffectMessages != null && turn.EffectMessages.Count > 0)
+		{
+			TryFireStatusStampFromMessages(turn);
+		}
+	}
+
+	/// <summary>
+	/// Scan a turn's EffectMessages for status-application strings and fire
+	/// the cinematic status stamp. The defender is the affected monster in
+	/// the typical case (move applies status to opponent); for self-targeted
+	/// status moves the messages still read about the same monster but the
+	/// affected entity is the attacker — we resolve that by name match.
+	/// </summary>
+	private void TryFireStatusStampFromMessages(BattleTurn turn)
+	{
+		if (turn?.EffectMessages == null) return;
+
+		// Only the LAST status-message in the turn wins (latest-wins per spec).
+		string label = null;
+		string color = null;
+		string affectedName = null;
+
+		foreach (var msg in turn.EffectMessages)
+		{
+			if (string.IsNullOrEmpty(msg)) continue;
+
+			if (msg.Contains(" was poisoned!"))      { label = "POISONED!";  color = "poison";   affectedName = msg.Replace(" was poisoned!", ""); }
+			else if (msg.Contains(" was burned!"))   { label = "BURNED!";    color = "burn";     affectedName = msg.Replace(" was burned!", ""); }
+			else if (msg.Contains(" is paralyzed!")) { label = "PARALYZED!"; color = "paralyze"; affectedName = msg.Replace(" is paralyzed!", ""); }
+			else if (msg.Contains(" fell asleep!"))  { label = "SLEEPING!";  color = "sleep";    affectedName = msg.Replace(" fell asleep!", ""); }
+			else if (msg.Contains(" was frozen solid!")) { label = "FROZEN!"; color = "freeze";  affectedName = msg.Replace(" was frozen solid!", ""); }
+			else if (msg.Contains(" became confused!")) { label = "CONFUSED!"; color = "confuse"; affectedName = msg.Replace(" became confused!", ""); }
+		}
+
+		if (label == null) return;
+
+		// Resolve which side of the arena the affected monster is on so we can
+		// position the stamp over their half. Match by nickname: the message
+		// uses Nickname directly, so a player-team match wins; otherwise enemy.
+		bool isPlayerSide = false;
+		if (!string.IsNullOrEmpty(affectedName))
+		{
+			foreach (var m in GetPlayerTeam())
+			{
+				if (m != null && m.Nickname == affectedName) { isPlayerSide = true; break; }
+			}
+		}
+		// If we couldn't resolve, default to the defender's side — which is
+		// the most common case (status move's target is the opponent).
+		else
+		{
+			var defender = FindMonsterById(turn.DefenderId);
+			isPlayerSide = defender != null && IsPlayerMonster(defender);
+		}
+
+		statusStampLabel = label;
+		statusStampColor = color;
+		statusStampIsPlayerSide = isPlayerSide;
+		statusStampTimer = STATUS_STAMP_DURATION;
+		statusStampKey++;
+	}
+
+	/// <summary>
+	/// Wave-clear cinematic trigger. Fires per non-final wave (final wave
+	/// clear goes straight to expedition-complete which has its own setpiece).
+	/// </summary>
+	private void HandleWaveCompleted(int waveJustCleared, int totalWaves)
+	{
+		// Build the wave label — pad to 2 digits to match the design's "WAVE 03" feel.
+		waveClearWaveLabel = $"WAVE {waveJustCleared:D2}";
+
+		// Reward chip is optional — pull XP/gold from the most-recent BattleResult
+		// if available. We don't want to invent values; if the data isn't easy to
+		// read, just show no chip.
+		string rewardLine = "";
+		var lastResult = BattleManager.Instance?.CurrentResult;
+		if (lastResult != null && lastResult.PlayerWon)
+		{
+			var xp = lastResult.TotalXP;
+			var gold = lastResult.TotalGold;
+			if (xp > 0 && gold > 0)       rewardLine = $"+ {xp} XP   ·   {gold} GOLD";
+			else if (xp > 0)              rewardLine = $"+ {xp} XP";
+			else if (gold > 0)            rewardLine = $"+ {gold} GOLD";
+		}
+		waveClearRewardLine = rewardLine;
+
+		waveClearTimer = WAVE_CLEAR_DURATION;
+		waveClearKey++;
+	}
+
+	private Monster FindMonsterById(Guid id)
+	{
+		if (id == Guid.Empty) return null;
+		foreach (var m in GetPlayerTeam()) if (m != null && m.Id == id) return m;
+		foreach (var m in GetEnemyTeam()) if (m != null && m.Id == id) return m;
+		return null;
 	}
 
 	/// <summary>
@@ -1586,6 +2717,30 @@
 	private void OnTurnVisualsStarted(BattleTurn turn)
 	{
 		if (turn == null) return;
+
+		// HP-bar lag release (3D mode): the swing animation is starting now,
+		// so sync displayedHP back to actual CurrentHP. The CSS transition on
+		// .panel3d-hp-fill (width 0.6s ease) animates the bar drop in sync
+		// with the visible impact instead of pre-emptively at simulation time.
+		if (Use3DBattle && turn.Damage > 0 && !turn.IsMiss && turn.DefenderId != Guid.Empty)
+		{
+			var defender = FindMonsterById(turn.DefenderId);
+			if (defender != null)
+			{
+				displayedHP[turn.DefenderId] = defender.CurrentHP;
+				displayedHPVersion++;
+				// Don't need a 2D release timer if a 3D release just happened.
+				displayedHPReleaseTimers.Remove(turn.DefenderId);
+			}
+		}
+
+		// Pass 3: shake the defender's HP bar in 3D mode at the moment the
+		// scene starts the swing — feels in-sync with the impact VFX.
+		if (Use3DBattle && turn.Damage > 0 && !turn.IsMiss)
+		{
+			var defender = FindMonsterById(turn.DefenderId);
+			if (defender != null) TriggerShake(defender);
+		}
 
 		// Log swap actions
 		if (turn.IsSwap && !string.IsNullOrEmpty(turn.SwapToName))
@@ -1686,6 +2841,10 @@
 	{
 		Reset3DBattleUI();
 		Log.Info($"[BattleView] HandleBattleEnd: PlayerWon={result?.PlayerWon}, IsBackground={ExpeditionManager.Instance?.IsRunningInBackground}");
+
+		// HP-bar lag: clear so the next battle starts with clean fallback state.
+		displayedHP.Clear();
+		displayedHPReleaseTimers.Clear();
 
 		lastBattleWon = result?.PlayerWon ?? false;
 
@@ -1869,6 +3028,30 @@
 
 	private float GetHPPercent(Monster m) => m == null || m.MaxHP <= 0 ? 0 : (float)m.CurrentHP / m.MaxHP * 100f;
 
+	// Bar-width source. Reads from the deferred displayedHP dictionary so the
+	// bar lags one beat behind the simulation (the actual HP drops on
+	// OnTurnExecuted; the bar drops on OnTurnVisualsStarted / 2D timer release).
+	// Falls back to live CurrentHP if no entry — covers initial renders,
+	// swap-ins, wave spawns, anything not in the OnTurnExecuted hot path.
+	private float GetDisplayedHPPercent(Monster m)
+	{
+		if (m == null || m.MaxHP <= 0) return 0;
+		var hp = displayedHP.TryGetValue(m.Id, out var v) ? v : m.CurrentHP;
+		// Clamp negatives just in case (shouldn't happen but defends against bad turn data).
+		if (hp < 0) hp = 0;
+		return (float)hp / m.MaxHP * 100f;
+	}
+
+	// Same lag-then-catchup gate for the HP NUMBER readout, so the "209 / 209"
+	// text doesn't tick to the new value before the bar's visible drop lands.
+	private int GetDisplayedHP(Monster m)
+	{
+		if (m == null) return 0;
+		var hp = displayedHP.TryGetValue(m.Id, out var v) ? v : m.CurrentHP;
+		if (hp < 0) hp = 0;
+		return hp;
+	}
+
 	private float GetXPPercent(Monster m) => m == null || m.XPForNextLevel <= 0 ? 0 : (float)m.CurrentXP / m.XPForNextLevel * 100f;
 
 	private string GetHPColor(float pct)
@@ -1884,6 +3067,26 @@
 	private int GetLastDamage(Monster m) => (lastTurn?.DefenderId == m.Id) ? lastTurn.Damage : 0;
 
 	private bool IsPlaying() => BattleManager.Instance?.IsPlaying ?? false;
+
+	// Pass 3: HP-bar shake helpers — `IsShaking` adds the `.taking-hit` class
+	// for SHAKE_DURATION after a damaging turn lands, and the integer key bumps
+	// each hit so the shake @keyframes animation replays (re-mount required in s&box).
+	private bool IsShaking(Monster m)
+	{
+		if (m == null) return false;
+		return shakeTimers.TryGetValue(m.Id, out var t) && t > 0f;
+	}
+	private int GetShakeKey(Monster m)
+	{
+		if (m == null) return 0;
+		return shakeKeys.TryGetValue(m.Id, out var k) ? k : 0;
+	}
+	private void TriggerShake(Monster m)
+	{
+		if (m == null) return;
+		shakeTimers[m.Id] = SHAKE_DURATION;
+		shakeKeys[m.Id] = (shakeKeys.TryGetValue(m.Id, out var prev) ? prev : 0) + 1;
+	}
 	// Settings helpers
 	private bool ShouldShowDamageNumbers() => SettingsManager.Instance?.Settings?.ShowDamageNumbers ?? true;
 	private bool ShouldShowTypeEffectiveness() => SettingsManager.Instance?.Settings?.ShowTypeEffectiveness ?? true;
@@ -2005,6 +3208,74 @@
 		InventoryPanel.Toggle();
 	}
 
+	// ============================================================
+	// PASS 2 — In-battle Chat & Radio docks
+	// ============================================================
+
+	/// <summary>
+	/// Latest player/guild/trade message that's reasonable to surface in the
+	/// battle dock. We skip system spam (joins, leaves, achievements) so the
+	/// dock stays useful — it should show conversation, not noise.
+	/// </summary>
+	private ChatMessage GetLatestBattleChat()
+	{
+		var msgs = ChatManager.Instance?.Messages;
+		if (msgs == null || msgs.Count == 0) return null;
+		for (int i = msgs.Count - 1; i >= 0; i--)
+		{
+			var m = msgs[i];
+			if (m == null) continue;
+			if (m.Type == ChatMessageType.Player ||
+				m.Type == ChatMessageType.GuildChat ||
+				m.Type == ChatMessageType.Trade)
+			{
+				return m;
+			}
+		}
+		return null;
+	}
+
+	private string TruncateChat(string text)
+	{
+		if (string.IsNullOrEmpty(text)) return "";
+		const int max = 60;
+		if (text.Length <= max) return text;
+		return text.Substring(0, max - 1) + "…";
+	}
+
+	private void OnDockChatClick()
+	{
+		ChatPanel.Instance?.ToggleChat();
+		SoundManager.PlayClick();
+	}
+
+	private void OnDockRadioBodyClick()
+	{
+		RadioWidget.Toggle();
+		SoundManager.PlayClick();
+	}
+
+	private void OnDockRadioPrev(PanelEvent e)
+	{
+		e?.StopPropagation();
+		RadioManager.PreviousTrack();
+		SoundManager.PlayBack();
+	}
+
+	private void OnDockRadioToggle(PanelEvent e)
+	{
+		e?.StopPropagation();
+		RadioManager.TogglePlay();
+		SoundManager.PlayClick();
+	}
+
+	private void OnDockRadioNext(PanelEvent e)
+	{
+		e?.StopPropagation();
+		RadioManager.NextTrack();
+		SoundManager.PlayForward();
+	}
+
 	// ── Contract Flow ──
 	private bool isContractTargeting = false;
 	private Monster contractTarget = null;
@@ -2090,17 +3361,17 @@
 		return statuses;
 	}
 
-	private string GetStatusIcon(string status)
+	private (string Icon, string Color) GetStatusBadgeInfo(string status)
 	{
 		return status.ToLower() switch
 		{
-			"burn" => "🔥",
-			"freeze" => "❄️",
-			"paralyze" => "⚡",
-			"poison" => "☠️",
-			"sleep" => "💤",
-			"confuse" => "💫",
-			_ => "?"
+			"burn"     => ("lucide:flame",      "#f97316"),
+			"freeze"   => ("lucide:snowflake",  "#22d3ee"),
+			"paralyze" => ("lucide:zap",        "#facc15"),
+			"poison"   => ("lucide:biohazard",  "#a855f7"),
+			"sleep"    => ("lucide:moon",       "#3b82f6"),
+			"confuse"  => ("lucide:help-circle","#ec4899"),
+			_          => ("lucide:circle-dot", "#94a3b8"),
 		};
 	}
 
@@ -2154,6 +3425,20 @@
 
 	private string GetMoveElementClass(ElementType el) => $"element-{el.ToString().ToLower()}";
 
+	// Wave badge text — kept OUT of markup because nested ternaries with multiple
+	// interpolated strings (the dollar-quote form with curly placeholders)
+	// confuse the s&box Razor parser. It counts the open-curly INSIDE
+	// interpolated strings as a block brace and silently drops a closing brace
+	// from BuildRenderTree, which surfaces as CS1513 at the top of the code section.
+	private string GetWaveBadgeText()
+	{
+		if ( IsBossWave() ) return "BOSS";
+		var totalWaves = ExpeditionManager.Instance?.CurrentExpedition?.Waves ?? 0;
+		var current = GetCurrentWave();
+		if ( totalWaves > 0 ) return $"WAVE {current}/{totalWaves}";
+		return $"WAVE {current}";
+	}
+
 	// Move Selection
 	private bool ShouldShowMoveSelection()
 	{
@@ -2196,7 +3481,7 @@
 			bool hasInvalidMove = monster.Moves.Any(m => m != null && MoveDatabase.GetMove(m.MoveId) == null);
 			if (hasInvalidMove)
 			{
-				MonsterManager.Instance?.MigrateMonsterToV2(monster);
+				MonsterManager.Instance?.ValidateAndRepairMonster(monster);
 			}
 		}
 
@@ -2299,7 +3584,7 @@
 		if (swapTargets == null || swapTargets.Count == 0) return;
 		swapCarouselIndex = (swapCarouselIndex - 1 + swapTargets.Count) % swapTargets.Count;
 		BattleSceneController.Instance?.RotateSwapCarousel( swapCarouselIndex );
-		SoundManager.PlayClick();
+		SoundManager.PlaySwoosh();
 		StateHasChanged();
 	}
 
@@ -2308,7 +3593,7 @@
 		if (swapTargets == null || swapTargets.Count == 0) return;
 		swapCarouselIndex = (swapCarouselIndex + 1) % swapTargets.Count;
 		BattleSceneController.Instance?.RotateSwapCarousel( swapCarouselIndex );
-		SoundManager.PlayClick();
+		SoundManager.PlaySwoosh();
 		StateHasChanged();
 	}
 
@@ -2343,7 +3628,7 @@
 
 		swapTargets = null;
 		swapCarouselIndex = 0;
-		SoundManager.PlayClick();
+		SoundManager.PlaySuccess();
 		StateHasChanged();
 	}
 
@@ -2422,6 +3707,19 @@
 		// even when no sprites are animating.
 		hash.Add(GetTickerEntry() != null);
 		hash.Add(SpriteAnimator.GlobalFrame);
+		// Pass 3: announcement key (slam-in replay) + shake state (per-monster bumps).
+		hash.Add(announcementKey);
+		hash.Add(shakeTimers.Count);
+		foreach (var k in shakeKeys.Values) hash.Add(k);
+		// HP-bar lag: version bump per displayedHP write triggers a re-render
+		// when the bar should change width. Single int — avoids iterating the
+		// dictionary in BuildHash (per the perf constraint).
+		hash.Add(displayedHPVersion);
+		// Pass 2: chat/radio dock live state — message count + current track + play state.
+		hash.Add(ChatManager.Instance?.Messages?.Count ?? 0);
+		hash.Add(RadioManager.CurrentStationIndex);
+		hash.Add(RadioManager.CurrentTrackIndex);
+		hash.Add(RadioManager.IsPlaying);
 		hash.Add(selectedTargetId);
 		hash.Add(hoveredMoveId);
 		hash.Add(BattleTransition.IsActive);
@@ -2429,6 +3727,37 @@
 		hash.Add(IsBossWave());
 		hash.Add(IsRareBossEncounter());
 		hash.Add(GetCurrentBossPhase());
+
+		// Cinematic CRITICAL — render-key (changes per fire so the .bb-crit-flash-@N
+		// class swap re-mounts the keyframes) + active flag (so the panel re-renders
+		// when the timer flips off and the elements should drop from the DOM).
+		hash.Add(critCinematicKey);
+		hash.Add(critCinematicTimer > 0f);
+
+		// Cinematic BOSS splash — same pattern. Title/name included so a back-to-back
+		// boss wave with different copy diffs cleanly.
+		hash.Add(bossSplashKey);
+		hash.Add(bossSplashTimer > 0f);
+		hash.Add(bossSplashTitle);
+		hash.Add(bossSplashName);
+
+		// Wave-clear banner — render-key + active flag + label/reward so back-to-back
+		// non-final wave clears each get their own animation.
+		hash.Add(waveClearKey);
+		hash.Add(waveClearTimer > 0f);
+		hash.Add(waveClearWaveLabel);
+		hash.Add(waveClearRewardLine);
+
+		// Status stamp — render-key + active flag + label/color/side so back-to-back
+		// status applications each get their own animation, even if same status.
+		hash.Add(statusStampKey);
+		hash.Add(statusStampTimer > 0f);
+		hash.Add(statusStampLabel);
+		hash.Add(statusStampColor);
+		hash.Add(statusStampIsPlayerSide);
+
+		// Radio play state already hashed below for dock; but the EQ bar visibility
+		// is gated on RadioManager.IsPlaying so the existing hash entry covers it.
 
 		// Track HP and stat stages/statuses for all monsters
 		var battleState = BattleManager.Instance?.CurrentBattleState;

@@ -12,7 +12,7 @@ public enum SideQuestObjectiveType
 	/// <summary>Defeat N monsters of a specific species (TargetId = speciesId).</summary>
 	DefeatSpecies,
 
-	/// <summary>Collect N of a specific material item (TargetId = itemId, e.g. "mat_twigsnap").</summary>
+	/// <summary>Collect N of a specific material item (TargetId = itemId, e.g. "mat_sheepot").</summary>
 	CollectMaterial,
 
 	/// <summary>Clear a specific expedition N times (TargetId = expeditionId).</summary>

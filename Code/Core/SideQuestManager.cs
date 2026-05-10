@@ -32,45 +32,53 @@ public sealed class SideQuestManager : Component
 	/// </summary>
 	private static readonly List<SideQuest> Defs = new()
 	{
-		// ── Saltmoor Cove (Lv 1) ─────────────────────────────────────
+		// ── Weaverton (Lv 1) ─────────────────────────────────────
+		// Spring shearing — the village trades fresh wool for catch lures.
+		// Sheepot drops Soft Spring Wool when defeated.
 		new()
 		{
-			Id = "cove_twigs",
-			Title = "A Handful of Twigs",
-			Description = "Bring back 5 Snapped Twigs from Twigsnaps in the Cove.",
-			NpcName = "Saltkeeper Bram",
+			Id = "cove_wool_collection",
+			Title = "Spring Shearing",
+			Description = "The village's spinners need 5 bundles of Soft Spring Wool from Sheepots in the Weaverton Pasture.",
+			NpcName = "Loomkeeper Bram",
 			ZoneId = "saltmoor_cove",
 			Objective = SideQuestObjectiveType.CollectMaterial,
-			TargetId = "mat_twigsnap",
+			TargetId = "mat_sheepot",
 			Target = 5,
 			GoldReward = 200,
 			XPReward = 80,
 			ItemRewards = new() { ("catch_lure", 2) }
 		},
 
-		// ── Saltmoor Forest (Lv 15) ──────────────────────────────────
+		// ── Weaverwood (Lv 10) ──────────────────────────────────
+		// Jackacabra cull — the herders' standing bounty. Each pelt
+		// brought back means one fewer Sheepot lost to the Weaverwood
+		// shadow at dusk.
 		new()
 		{
-			Id = "forest_sproutkin_cull",
-			Title = "Thinning the Thicket",
-			Description = "Defeat 8 Sproutkins in Saltmoor Forest.",
-			NpcName = "Elder Mira",
+			Id = "forest_jackacabra_cull",
+			Title = "Thinning the Shadow",
+			Description = "Cull 8 Jackacabras in the Weaverwood — the herders are losing too many sheep.",
+			NpcName = "Loomkeeper Bram",
 			ZoneId = "saltmoor_forest",
 			Objective = SideQuestObjectiveType.DefeatSpecies,
-			TargetId = "sproutkin",
+			TargetId = "jackacabra",
 			Target = 8,
 			GoldReward = 600,
 			XPReward = 240,
 			SkillPointReward = 1
 		},
 
-		// ── Old Saltmoor (Lv 30) ─────────────────────────────────────
+		// ── Weavermere (Lv 20) ─────────────────────────────────────
+		// Up to the Mere — the dye-master sends apprentices to walk the
+		// pond at dawn twice in a row, on the theory that the second
+		// visit is when the lake decides whether to show you anything.
 		new()
 		{
 			Id = "oldsalt_clear",
-			Title = "Reclaiming the Ruins",
-			Description = "Clear an Old Saltmoor expedition twice.",
-			NpcName = "Drifter Wen",
+			Title = "Up to the Mere",
+			Description = "Walk the Weavermere expedition twice — Wren says the pond never shows the same face two mornings running.",
+			NpcName = "Dye-Master Wren",
 			ZoneId = "old_saltmoor",
 			Objective = SideQuestObjectiveType.ExpeditionCleared,
 			TargetId = "old_saltmoor",

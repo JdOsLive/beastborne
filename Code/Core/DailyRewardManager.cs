@@ -46,9 +46,6 @@ public sealed class DailyRewardManager : Component
 	/// <summary>True if the shield was consumed this session (for UI messaging)</summary>
 	public bool ShieldSavedStreak { get; private set; }
 
-	/// <summary>True if a Day 7 beast reward is pending (box was full)</summary>
-	public bool Day7BeastPending { get; private set; }
-
 	// Events
 	public Action OnStreakUpdated;
 	public Action<int, int, int, int> OnRewardClaimed; // gold, gems, ink, xp
@@ -101,7 +98,6 @@ public sealed class DailyRewardManager : Component
 		TotalLoginDays = 0;
 		StreakShieldUsed = false;
 		TodayRewardClaimed = false;
-		Day7BeastPending = false;
 		LastLoginDate = DateTime.MinValue;
 		MilestonesClaimed = new();
 		Hydrate();
@@ -319,10 +315,10 @@ public sealed class DailyRewardManager : Component
 				tamer.Inventory[itemId] = 1;
 		}
 
-		// Day 7: grant legendary beast
+		// Day 7: grant a Master Ink (guarantees next contract)
 		if ( day == 7 )
 		{
-			GrantDay7Beast();
+			GrantDay7MasterInk();
 		}
 
 		TodayRewardClaimed = true;
@@ -346,110 +342,31 @@ public sealed class DailyRewardManager : Component
 	}
 
 	/// <summary>
-	/// Grant a random Legendary beast for Day 7 completion.
+	/// Grant a Master Ink for Day 7 completion (guarantees the next contract).
 	/// </summary>
-	private void GrantDay7Beast()
+	private void GrantDay7MasterInk()
 	{
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
 
-		// Check box space
-		int currentCount = MonsterManager.Instance?.OwnedMonsters?.Count ?? 0;
-		int maxCount = MonsterManager.Instance?.MaxMonsters ?? 0;
-
-		if ( currentCount >= maxCount )
-		{
-			Day7BeastPending = true;
-			NotificationManager.Instance?.AddNotification(
-				NotificationType.Warning,
-				"Box Full!",
-				"Free your box space to claim your Day 7 beast!"
-			);
-			SaveToCookies();
-			return;
-		}
-
-		SpawnLegendaryBeast();
-	}
-
-	/// <summary>
-	/// Try to claim the pending Day 7 beast (called when player frees box space).
-	/// </summary>
-	public bool ClaimPendingBeast()
-	{
-		if ( !Day7BeastPending ) return false;
-
-		int currentCount = MonsterManager.Instance?.OwnedMonsters?.Count ?? 0;
-		int maxCount = MonsterManager.Instance?.MaxMonsters ?? 0;
-
-		if ( currentCount >= maxCount ) return false;
-
-		SpawnLegendaryBeast();
-		Day7BeastPending = false;
-		SaveToCookies();
-		return true;
-	}
-
-	/// <summary>
-	/// Create and add a random Legendary beast to the player's box.
-	/// </summary>
-	private void SpawnLegendaryBeast()
-	{
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		if ( tamer == null ) return;
-
-		// Pick a random Legendary species
-		var legendaryIds = new[] { "mythweaver", "worldserpent", "voiddragon", "primordius" };
-		var random = new Random();
-		var speciesId = legendaryIds[random.Next( legendaryIds.Length )];
-
-		var species = MonsterManager.Instance?.GetSpecies( speciesId );
-		if ( species == null )
-		{
-			Log.Warning( $"[DailyReward] Could not find legendary species '{speciesId}'" );
-			return;
-		}
-
-		// Generate decent-quality genetics (re-roll until total gene value >= 90, i.e., 50%+ quality)
-		Genetics genetics;
-		do
-		{
-			genetics = Genetics.GenerateRandom();
-		}
-		while ( genetics.TotalValue < 90 );
-
-		var monster = new Monster
-		{
-			SpeciesId = speciesId,
-			Nickname = species.Name,
-			Level = 25,
-			Genetics = genetics,
-			OriginalTrainerName = tamer.Name ?? "Unknown",
-			OriginalTrainerId = Connection.Local?.SteamId ?? 0
-		};
-
-		MonsterManager.Instance?.RecalculateStats( monster );
-		MonsterManager.Instance?.AddMonster( monster );
-
-		// Add journal entry
-		monster.AddJournalEntry(
-			"Arrived as a Daily Streak reward — a gift for loyalty.",
-			JournalEntryType.General
-		);
+		const string itemId = "boss_master_ink";
+		if ( tamer.Inventory.ContainsKey( itemId ) )
+			tamer.Inventory[itemId]++;
+		else
+			tamer.Inventory[itemId] = 1;
 
 		NotificationManager.Instance?.AddNotification(
 			NotificationType.Success,
-			"Legendary Beast Received!",
-			$"A wild {species.Name} has joined your team!"
+			"Master Ink Received!",
+			"Your next contract attempt is guaranteed to succeed."
 		);
 
-		// Announce in chat
 		var playerName = tamer.Name ?? "Player";
 		ChatManager.Instance?.AnnounceMilestone( playerName,
-			$"received a Legendary {species.Name} from their Day 7 streak reward!"
+			"received a Master Ink from their Day 7 streak reward!"
 		);
 
-		Log.Info( $"[DailyReward] Granted Day 7 Legendary: {species.Name} (Lv25)" );
+		Log.Info( "[DailyReward] Granted Day 7 Master Ink" );
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -601,7 +518,6 @@ public sealed class DailyRewardManager : Component
 		{
 			if ( IsMilestoneClaimable( m ) ) count++;
 		}
-		if ( Day7BeastPending ) count++;
 		return count;
 	}
 
@@ -621,7 +537,6 @@ public sealed class DailyRewardManager : Component
 			TotalLoginDays = 0;
 			StreakShieldUsed = false;
 			TodayRewardClaimed = false;
-			Day7BeastPending = false;
 			LastLoginDate = DateTime.MinValue;
 			StreakShieldResetDate = GetNextMondayMidnight( DateTime.UtcNow );
 			MilestonesClaimed = new();
@@ -633,7 +548,6 @@ public sealed class DailyRewardManager : Component
 		TotalLoginDays = section.TotalLoginDays;
 		StreakShieldUsed = section.StreakShieldUsed;
 		TodayRewardClaimed = section.TodayRewardClaimed;
-		Day7BeastPending = section.Day7BeastPending;
 		LastLoginDate = section.LastLoginTicks > 0 ? new DateTime( section.LastLoginTicks, DateTimeKind.Utc ) : DateTime.MinValue;
 		StreakShieldResetDate = section.StreakShieldResetTicks > 0
 			? new DateTime( section.StreakShieldResetTicks, DateTimeKind.Utc )
@@ -659,7 +573,6 @@ public sealed class DailyRewardManager : Component
 		blob.DailyReward.TotalLoginDays = TotalLoginDays;
 		blob.DailyReward.StreakShieldUsed = StreakShieldUsed;
 		blob.DailyReward.TodayRewardClaimed = TodayRewardClaimed;
-		blob.DailyReward.Day7BeastPending = Day7BeastPending;
 		blob.DailyReward.LastLoginTicks = LastLoginDate.Ticks;
 		blob.DailyReward.StreakShieldResetTicks = StreakShieldResetDate.Ticks;
 		blob.DailyReward.MilestonesClaimed = MilestonesClaimed ?? new();

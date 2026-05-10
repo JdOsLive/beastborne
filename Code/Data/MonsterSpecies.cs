@@ -158,11 +158,24 @@ public class MonsterSpecies
 	public float CardOffsetX { get; set; } = 0f;
 	public float CardOffsetY { get; set; } = 0f;
 
-	// Per-species X offset (pixels) for the roster mini-card sprite's
-	// background-position. Positive = right. Used when a beast's body
-	// weight sits off-center in its 128×128 source canvas (e.g. wings
-	// bias one side), making the card read lopsided. Default 0 = centered.
+	// Per-species offsets + scale for the roster mini-card sprite. The
+	// mini card frames the beast inside a 150×146 sprite area; native
+	// art varies in pixel footprint and body weight, so these knobs let
+	// us nudge each species into a balanced framing without re-cropping
+	// source art. Positive X = right, positive Y = down. MiniScale defaults
+	// to 1.0 (no scaling). Edited via the dev editor on MonsterRosterPanel.
 	public float MiniOffsetX { get; set; } = 0f;
+	public float MiniOffsetY { get; set; } = 0f;
+	public float MiniScale { get; set; } = 1.0f;
+
+	// Per-species offsets + scale for the small "Now Active" detail-panel
+	// icon (the square sprite shown next to the selected beast's stats).
+	// Same mechanic as MiniScale/Offset but tuned independently — the
+	// detail icon's frame is much smaller and naturally needs different
+	// values. Defaults: 1.0 scale, centered.
+	public float DetailIconScale { get; set; } = 1.0f;
+	public float DetailIconOffsetX { get; set; } = 0f;
+	public float DetailIconOffsetY { get; set; } = 0f;
 
 	// Beastbook UI metadata (art pipeline). None of these affect gameplay.
 	// IsAIGenerated = true → the UI shows an amber "AI placeholder" banner so

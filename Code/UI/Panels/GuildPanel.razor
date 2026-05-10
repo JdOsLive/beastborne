@@ -1335,28 +1335,55 @@ else if ( guildView == "myguild" )
 		{
 			<div class="confirm-overlay" onclick=@(() => showRequestsModal = false)>
 				<div class="requests-modal" onclick:stopPropagation>
-					<div class="settings-modal-header">
-						<iconify icon="lucide:mailbox" Size=@(16) Color="#fbbf24" />
-						<span class="settings-modal-title">Pending Requests</span>
-						<button class="settings-modal-close" onclick=@(() => showRequestsModal = false)>
-							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
-						</button>
-					</div>
 					<div class="requests-modal-body">
+						<div class="requests-title-row">
+							<iconify icon="lucide:mailbox" Size=@(16) Color="#fbbf24" />
+							<span class="requests-modal-title">JOIN REQUESTS</span>
+							<div class="requests-count-chip">
+								<span class="requests-count-num">@pendingRequests.Count</span>
+							</div>
+							<div class="requests-title-spacer"></div>
+							<div class="requests-invite-btn" onclick=@(() => { showRequestsModal = false; pickerTitle = "Invite Player"; pickerMode = "invite"; showPicker = true; SoundManager.PlayForward(); })>
+								<iconify icon="lucide:user-plus" Size=@(12) Color="#a78bfa" />
+								<span>Invite</span>
+							</div>
+							<button class="settings-modal-close requests-close-btn" onclick=@(() => showRequestsModal = false)>
+								<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
+							</button>
+						</div>
 						@if ( pendingRequests.Count == 0 )
 						{
 							<span class="requests-empty">No pending requests</span>
 						}
+						@{
+							var reqIndex = 0;
+						}
 						@foreach ( var req in pendingRequests )
 						{
-							<div class="request-row">
+							var r = req;
+							var animClass = $"req-anim-{Math.Min(reqIndex, 4)}";
+							reqIndex++;
+							var age = DateTime.UtcNow - r.RequestedAt;
+							var ageStr = age.TotalMinutes < 2 ? "just now"
+								: age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes}m ago"
+								: age.TotalHours < 24 ? $"{(int)age.TotalHours}h ago"
+								: $"{(int)age.TotalDays}d ago";
+							<div class="request-row @animClass">
 								<div class="request-info">
-									<span class="request-name">@req.PlayerName</span>
-									<span class="request-stats">@($"Lv {req.Level} · {req.ArenaRank} · {req.ArenaPoints} RP")</span>
+									<span class="request-name">@r.PlayerName</span>
+									<span class="request-stats">
+										<span class="req-lv-chip">Lv @r.Level</span>
+										<span class="req-age">@ageStr</span>
+									</span>
 								</div>
 								<div class="request-actions">
-									<div class="guild-btn accept-btn" onclick=@(() => { gm.ApproveJoinRequest( req ); SoundManager.PlaySelect(); })><span>@L("ui.guild.accept")</span></div>
-									<div class="guild-btn deny-btn" onclick=@(() => { gm.DenyJoinRequest( req ); SoundManager.PlayDeny(); })><span>@L("ui.guild.deny")</span></div>
+									<div class="request-accept-btn" onclick=@(() => { gm.ApproveJoinRequest( r ); SoundManager.PlaySelect(); })>
+										<iconify icon="lucide:check" Size=@(13) Color="#4ade80" />
+										<span>ACCEPT</span>
+									</div>
+									<div class="request-deny-btn" onclick=@(() => { gm.DenyJoinRequest( r ); SoundManager.PlayDeny(); })>
+										<span>DENY</span>
+									</div>
 								</div>
 							</div>
 						}
@@ -1406,29 +1433,52 @@ else if ( guildView == "myguild" )
 		@if ( showPicker )
 		{
 			<div class="confirm-overlay" onclick=@(() => { showPicker = false; })>
-				<div class="picker-dialog">
-					<span class="picker-title">@pickerTitle</span>
+				<div class="picker-dialog" onclick:stopPropagation>
+					<div class="picker-header-row">
+						@{ var pickerIcon = pickerMode == "invite" ? "lucide:user-plus" : "lucide:shield-check"; }
+						<iconify icon="@pickerIcon" Size=@(15) Color="#fbbf24" />
+						<span class="picker-title">@pickerTitle</span>
+						<button class="settings-modal-close picker-close-btn" onclick=@(() => showPicker = false)>
+							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
+						</button>
+					</div>
 					<div class="picker-list">
 						@if ( pickerMode == "invite" )
 						{
-							@foreach ( var conn in Connection.All.Where( c => c != Connection.Local ) )
+							@{
+								var candidates = GuildManager.Instance?.GetInvitableCandidates() ?? Enumerable.Empty<InviteCandidate>();
+							}
+							@if ( !candidates.Any() )
 							{
-								var connId = conn.Id.ToString();
-								var name = conn.DisplayName ?? "Unknown";
-								var targetSteamId = conn.SteamId;
-								var isMember = GuildManager.Instance?.Members?.Any( m => m.SteamId == conn.SteamId ) ?? false;
-								@if ( !isMember )
-								{
-									<div class="picker-item" onclick=@(() => { GuildManager.Instance?.InvitePlayer( connId, name, targetSteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
-										<img class="picker-avatar" src="avatar:@conn.SteamId" />
-										<span class="picker-name">@name</span>
-									</div>
-								}
+								<span class="picker-empty">No players available to invite</span>
+							}
+							@foreach ( var c in candidates )
+							{
+								var cRef = c;
+								<div class="picker-item" onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+									<img class="picker-avatar" src="avatar:@cRef.SteamId" />
+									<span class="picker-name">@cRef.Name</span>
+									@if ( cRef.IsOnline )
+									{
+										<span class="picker-online-dot">●</span>
+									}
+									else if ( cRef.Level > 0 )
+									{
+										<span class="picker-level">Lv @cRef.Level</span>
+									}
+								</div>
 							}
 						}
 						else if ( pickerMode == "transfer" )
 						{
-							@foreach ( var member in GuildManager.Instance?.Members?.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) && m.Role >= GuildRole.Tamer ) ?? Enumerable.Empty<GuildMemberInfo>() )
+							@{
+								var eligibleMembers = GuildManager.Instance?.Members?.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) && m.Role >= GuildRole.Tamer ).ToList() ?? new();
+							}
+							@if ( eligibleMembers.Count == 0 )
+							{
+								<span class="picker-empty">No eligible members</span>
+							}
+							@foreach ( var member in eligibleMembers )
 							{
 								<div class="picker-item" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
 									<span class="picker-name">@member.Name</span>
@@ -1843,6 +1893,14 @@ else if ( guildView == "myguild" )
 
 	private void OnInviteClicked()
 	{
+		var gm = GuildManager.Instance;
+		var requests = gm?.IsOfficer == true ? (gm.JoinRequests ?? new List<GuildJoinRequest>()) : new List<GuildJoinRequest>();
+		if ( requests.Count > 0 )
+		{
+			showRequestsModal = true;
+			SoundManager.PlayForward();
+			return;
+		}
 		pickerTitle = "Invite Player";
 		pickerMode = "invite";
 		showPicker = true;

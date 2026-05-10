@@ -211,6 +211,53 @@
 				}
 			}
 
+			<!-- ═══ MINI-EXPEDITION MARKERS (secondary side content) ═══ -->
+			@foreach ( var mini in GetMiniExpeditions() )
+			{
+				var mx = mini;
+				var mUnlocked = ExpeditionManager.Instance?.CanStartExpedition( mx.Id ) ?? false;
+				var mClass = mUnlocked ? "unlocked" : "locked";
+				var mKey = "mini-" + mx.Id;
+				var mHovered = _hoveredMiniId == mx.Id;
+				var mPos = GetMiniPos( mx.Id );
+				var mEdge = mPos.X > 70f ? "right-edge" : "";
+				<div class="mini-marker @mClass @(mHovered ? "hovered" : "") @mEdge @(_editMode ? "editable" : "")"
+					 style="left: @(mPos.X)%; top: @(mPos.Y)%;"
+					 onclick=@(() => SelectMini(mx.Id))
+					 onmouseover=@(() => OnMiniHover(mx.Id, mKey))
+					 onmouseout=@(() => { if (_hoveredMiniId == mx.Id) _hoveredMiniId = null; })
+					 onmousedown=@(() => StartDragMini(mx.Id))>
+
+					<div class="mini-pin">
+						@if ( !mUnlocked )
+						{
+							<iconify icon="lucide:lock" Size=@(13) Color="#94a3b8" />
+						}
+						else
+						{
+							<iconify icon="lucide:trees" Size=@(14) Color="#fef3c7" />
+						}
+					</div>
+
+					<div class="mini-label">
+						<span class="mini-name">@mx.Name</span>
+						<span class="mini-meta">LV @mx.BaseEnemyLevel</span>
+					</div>
+
+					@if ( mHovered )
+					{
+						<div class="mini-tooltip">
+							<span class="mini-tip-title">@mx.Name</span>
+							<span class="mini-tip-desc">@mx.Description</span>
+							@if ( !mUnlocked )
+							{
+								<span class="mini-tip-locked">Clear Weavermere to unlock</span>
+							}
+						</div>
+					}
+				</div>
+			}
+
 			<!-- ═══ TRADE NODES (request-tile style) ═══ -->
 			@foreach ( var node in GetVisibleTradeNodes() )
 			{
@@ -435,7 +482,11 @@
 					@* Lore — short, breathable *@
 					<div class="zd-lore-line">@sz.Lore</div>
 
-					@* Wild beasts — circular portraits in a row, names below *@
+					@* Wild beasts — square thumbnails in a row, names below.
+					   Each thumbnail uses the species' DetailIconScale/Offset
+					   so framing matches the My Beasts detail panel. Sprite
+					   inner is sized in absolute pixels (no transform) so
+					   `image-rendering: pixelated` stays crisp. *@
 					@if ( exp != null && exp.PossibleSpecies.Count > 0 )
 					{
 						<div class="zd-row-label">WILD BEASTS</div>
@@ -445,9 +496,26 @@
 								var sp = MonsterManager.Instance?.GetSpecies( speciesId );
 								if ( sp == null ) { continue; }
 								var rClass = sp.BaseRarity.ToString().ToLower();
-								<div class="zd-beast-portrait rarity-@rClass">
-									<img class="zd-portrait-icon" src="@sp.IconPath" />
-									<span class="zd-portrait-name">@sp.Name</span>
+								var unseen = !( BeastiaryManager.Instance?.IsSeen( speciesId ) ?? false );
+								<div class="zd-beast-portrait rarity-@rClass @(unseen ? "unseen" : "")">
+									<div class="zd-portrait-icon">
+										<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(sp)"></div>
+										@if ( unseen )
+										{
+											<span class="zd-portrait-mystery">?</span>
+										}
+									</div>
+									<div class="zd-portrait-label">
+										<span class="zd-portrait-name">@(unseen ? "???" : sp.Name)</span>
+										@if ( !unseen )
+										{
+											<img class="zd-portrait-element" src="ui/icons/elements/background/@(sp.Element.ToString().ToLower()).svg" />
+											@if ( sp.SecondaryElement.HasValue )
+											{
+												<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(sp.SecondaryElement.Value.ToString().ToLower()).svg" />
+											}
+										}
+									</div>
 								</div>
 							}
 							@if ( exp.HasBoss && !string.IsNullOrEmpty( exp.BossSpeciesId ) )
@@ -455,9 +523,26 @@
 								var boss = MonsterManager.Instance?.GetSpecies( exp.BossSpeciesId );
 								if ( boss != null )
 								{
-									<div class="zd-beast-portrait boss">
-										<img class="zd-portrait-icon" src="@boss.IconPath" />
-										<span class="zd-portrait-name">@boss.Name</span>
+									var bossUnseen = !( BeastiaryManager.Instance?.IsSeen( exp.BossSpeciesId ) ?? false );
+									<div class="zd-beast-portrait boss @(bossUnseen ? "unseen" : "")">
+										<div class="zd-portrait-icon">
+											<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(boss)"></div>
+											@if ( bossUnseen )
+											{
+												<span class="zd-portrait-mystery">?</span>
+											}
+										</div>
+										<div class="zd-portrait-label">
+											<span class="zd-portrait-name">@(bossUnseen ? "???" : boss.Name)</span>
+											@if ( !bossUnseen )
+											{
+												<img class="zd-portrait-element" src="ui/icons/elements/background/@(boss.Element.ToString().ToLower()).svg" />
+												@if ( boss.SecondaryElement.HasValue )
+												{
+													<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(boss.SecondaryElement.Value.ToString().ToLower()).svg" />
+												}
+											}
+										</div>
 										<iconify class="zd-portrait-skull" icon="lucide:skull" Size=@(11) Color="#fca5a5" />
 									</div>
 								}
@@ -501,6 +586,156 @@
 											<div class="zd-drop-meta">
 												<span class="zd-drop-name">@rightDrop.Name</span>
 												<span class="zd-drop-source">@GetDropSource(rightDrop, sz, exp)</span>
+											</div>
+										</div>
+									}
+									else
+									{
+										<div class="zd-drop-card-empty"></div>
+									}
+								</div>
+							}
+						</div>
+					}
+				</div>
+			}
+		}
+
+		<!-- ═══ MINI-EXPEDITION DETAIL PANE ═══ -->
+		@if ( _selectedMiniId != null )
+		{
+			var mexp = GetExpedition( _selectedMiniId );
+			if ( mexp != null )
+			{
+				var mDrops = ItemManager.Instance?.GetDropsForExpedition( _selectedMiniId ) ?? new System.Collections.Generic.List<ItemDefinition>();
+				var mHeroImg = !string.IsNullOrEmpty( mexp.BackgroundImage ) ? mexp.BackgroundImage : "ui/locations/placeholder_zone.png";
+				var mElClass = mexp.Element.ToString().ToLower();
+				// Pull boss species from the pool rather than a BossSpeciesId field —
+				// mini-expedition boss is defined in BossPoolDatabase, not inline on Expedition.
+				var mBossPool = BossPoolDatabase.GetPool( _selectedMiniId );
+				var mBossSpeciesId = mBossPool?.Bosses?.Count > 0 ? mBossPool.Bosses[0].SpeciesId : null;
+				var mBoss = mBossSpeciesId != null ? MonsterManager.Instance?.GetSpecies( mBossSpeciesId ) : null;
+				<div class="zone-detail-overlay" onclick=@CloseMiniDetail></div>
+				<div class="zone-detail mini-card hw-card">
+					<button class="close-btn zd-close" onclick=@CloseMiniDetail onmouseover=@(() => OnHover("mini-close"))>
+						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+					</button>
+
+					<div class="zd-hero element-@mElClass">
+						<img class="zd-hero-img" src="@mHeroImg" />
+						<div class="zd-hero-veil"></div>
+						<div class="zd-hero-info">
+							<span class="zd-hero-kicker">SIDE EXPEDITION</span>
+							<span class="zd-hero-title">@mexp.Name</span>
+							<div class="zd-hero-stats">
+								<span class="zd-hero-stat">Lv @mexp.BaseEnemyLevel</span>
+								<span class="zd-hero-dot">·</span>
+								<span class="zd-hero-stat">@mexp.Waves Waves</span>
+								@if ( mexp.HasBoss )
+								{
+									<span class="zd-hero-dot">·</span>
+									<span class="zd-hero-stat boss">
+										<iconify icon="lucide:skull" Size=@(12) Color="#fca5a5" />
+										BOSS
+									</span>
+								}
+							</div>
+						</div>
+					</div>
+
+					<div class="zd-lore-line">@mexp.Description</div>
+
+					@if ( mexp.PossibleSpecies.Count > 0 || mBoss != null )
+					{
+						<div class="zd-row-label">WILD BEASTS</div>
+						<div class="zd-beast-row">
+							@foreach ( var speciesId in mexp.PossibleSpecies )
+							{
+								var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+								if ( sp == null ) { continue; }
+								var rClass = sp.BaseRarity.ToString().ToLower();
+								var unseen = !( BeastiaryManager.Instance?.IsSeen( speciesId ) ?? false );
+								<div class="zd-beast-portrait rarity-@rClass @(unseen ? "unseen" : "")">
+									<div class="zd-portrait-icon">
+										<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(sp)"></div>
+										@if ( unseen )
+										{
+											<span class="zd-portrait-mystery">?</span>
+										}
+									</div>
+									<div class="zd-portrait-label">
+										<span class="zd-portrait-name">@(unseen ? "???" : sp.Name)</span>
+										@if ( !unseen )
+										{
+											<img class="zd-portrait-element" src="ui/icons/elements/background/@(sp.Element.ToString().ToLower()).svg" />
+											@if ( sp.SecondaryElement.HasValue )
+											{
+												<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(sp.SecondaryElement.Value.ToString().ToLower()).svg" />
+											}
+										}
+									</div>
+								</div>
+							}
+							@if ( mBoss != null )
+							{
+								var mBossUnseen = !( BeastiaryManager.Instance?.IsSeen( mBoss.Id ) ?? false );
+								<div class="zd-beast-portrait boss-tag @(mBossUnseen ? "unseen" : "")">
+									<div class="zd-portrait-icon">
+										<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(mBoss)"></div>
+										@if ( mBossUnseen )
+										{
+											<span class="zd-portrait-mystery">?</span>
+										}
+									</div>
+									<div class="zd-portrait-label">
+										<span class="zd-portrait-name">@(mBossUnseen ? "???" : mBoss.Name)</span>
+										@if ( !mBossUnseen )
+										{
+											<img class="zd-portrait-element" src="ui/icons/elements/background/@(mBoss.Element.ToString().ToLower()).svg" />
+											@if ( mBoss.SecondaryElement.HasValue )
+											{
+												<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(mBoss.SecondaryElement.Value.ToString().ToLower()).svg" />
+											}
+										}
+									</div>
+									<iconify class="zd-portrait-skull" icon="lucide:skull" Size=@(11) Color="#fca5a5" />
+									<span class="zd-no-contract">CANNOT CONTRACT</span>
+								</div>
+							}
+						</div>
+					}
+
+					<button class="embark-btn hw-embark" onclick=@(() => EmbarkMini(_selectedMiniId)) onmouseover=@(() => OnHover("embark-mini-" + _selectedMiniId))>
+						<iconify icon="lucide:compass" Size=@(20) Color="#ffffff" />
+						<span>START EXPEDITION</span>
+					</button>
+
+					@if ( mDrops.Count > 0 )
+					{
+						<div class="zd-row-label">
+							<span>POSSIBLE DROPS</span>
+							<span class="zd-row-sub">@mDrops.Count items</span>
+						</div>
+						<div class="zd-drop-scroll">
+							@for ( int i = 0; i < mDrops.Count; i += 2 )
+							{
+								var leftDrop = mDrops[i];
+								var rightDrop = i + 1 < mDrops.Count ? mDrops[i + 1] : null;
+								<div class="zd-drop-pair">
+									<div class="zd-drop-card rarity-@(leftDrop.Rarity.ToString().ToLower())">
+										<img class="zd-drop-icon" src="@leftDrop.IconPath" />
+										<div class="zd-drop-meta">
+											<span class="zd-drop-name">@leftDrop.Name</span>
+											<span class="zd-drop-source">@GetMiniDropSource(leftDrop)</span>
+										</div>
+									</div>
+									@if ( rightDrop != null )
+									{
+										<div class="zd-drop-card rarity-@(rightDrop.Rarity.ToString().ToLower())">
+											<img class="zd-drop-icon" src="@rightDrop.IconPath" />
+											<div class="zd-drop-meta">
+												<span class="zd-drop-name">@rightDrop.Name</span>
+												<span class="zd-drop-source">@GetMiniDropSource(rightDrop)</span>
 											</div>
 										</div>
 									}
@@ -562,6 +797,10 @@
 	// Lore-only village landmarks (houses, statue, mine, bridge, fences).
 	// Shows a stamp tooltip on hover; not connected to any expedition.
 	private string _hoveredLandmarkId;
+	// Mini-expedition (side content) hover — shows a tooltip above the smaller pin.
+	private string _hoveredMiniId;
+	// Mini-expedition detail pane — mirrors _selectedZoneId for main zones.
+	private string _selectedMiniId;
 
 	// ───────────────────── DEV: DRAG-TO-PLACE EDITOR ─────────────────────
 	// Toggle EDIT MODE to grab any landmark or zone marker and reposition it
@@ -582,6 +821,7 @@
 	private Dictionary<string, (float X, float Y, float Width)> _landmarkOverrides = new();
 	private Dictionary<string, (float X, float Y)> _zoneOverrides = new();
 	private Dictionary<string, (float X, float Y)> _tradeOverrides = new();
+	private Dictionary<string, (float X, float Y)> _miniOverrides = new();
 
 	// Hover-sound guard — onmouseover bubbles from children in s&box, so gate
 	// sound playback behind a key change.
@@ -783,19 +1023,19 @@
 		new MapZone(
 			Id: "saltmoor_cove",
 			ExpeditionId: "saltmoor_cove",
-			Name: "Training Grounds",
-			Lore: "The fenced loop the village set aside for young tamers to practice on. The beasts that wander in are gentle and curious — perfect for trying out your first contracts without anyone getting hurt.",
+			Name: "Weaverton Pasture",
+			Lore: "The fenced loop the wool-village of Weaverton set aside for young tamers to practice on. Sheepots graze just over the hedge, and the beasts that wander in past the pasture gate are gentle and curious — perfect for trying out your first contracts without anyone getting sheared.",
 			Level: 1,
 			X: 27.8f,
 			Y: 49.2f,
-			NpcPlaceholders: new[] { "Elder Mira", "Saltkeeper Bram", "Lost-Cat Kera" } ),
+			NpcPlaceholders: new[] { "Elder Mira", "Loomkeeper Bram", "Lost-Cat Kera" } ),
 
 		new MapZone(
 			Id: "saltmoor_forest",
 			ExpeditionId: "saltmoor_forest",
-			Name: "The Witherwood",
-			Lore: "The local pinewood east of Hollow Creek. A handful of folk keep cabins back among the trees — woodcutters, herbalists, the occasional retired tamer. The beasts here are wilder than the village pens but the paths are still well-walked.",
-			Level: 15,
+			Name: "Weaverwood",
+			Lore: "The pinewood east of Weaverton. The herders take Sheepots up these paths each summer for the long pasture, and the village's dye-leaves come from the old groves further in. The beasts here are wilder than the pasture pens — and lately the herders are coming back short a sheep more often than they'd like.",
+			Level: 10,
 			X: 68.6f,
 			Y: 53.3f,
 			NpcPlaceholders: new[] { "Ranger Tasha", "The Herbalist", "A Nervous Trader" } ),
@@ -803,12 +1043,12 @@
 		new MapZone(
 			Id: "old_saltmoor",
 			ExpeditionId: "old_saltmoor",
-			Name: "Mirrorpond",
-			Lore: "A spring-fed pond hidden above the witherwood line. The water never moves, even when it should. Older beasts come here to listen to whatever the pond is saying back.",
-			Level: 30,
+			Name: "Weavermere",
+			Lore: "The mirror-still pond above Weaverton, ringed in lily pads and dragonfly-flicker. The village's painters, dyers, and pattern-weavers walk up here at dawn to find the colors no loom can match — and a few have come back with stranger stories than they went up with.",
+			Level: 20,
 			X: 69.1f,
 			Y: 27.4f,
-			NpcPlaceholders: new[] { "Archaeologist Ven", "A Wary Scout", "The Collector" } ),
+			NpcPlaceholders: new[] { "Painter Selene", "Dye-Master Wren", "The Wandering Poet" } ),
 	};
 
 	protected override void OnAfterTreeRender( bool firstTime )
@@ -831,6 +1071,7 @@
 		{
 			if ( _tradePopupNodeId != null ) CloseTradePopup();
 			else if ( _selectedZoneId != null ) CloseZoneDetail();
+			else if ( _selectedMiniId != null ) CloseMiniDetail();
 		}
 	}
 
@@ -969,6 +1210,18 @@
 		StateHasChanged();
 	}
 
+	private void StartDragMini( string id )
+	{
+		if ( !_editMode ) return;
+		var pos = GetMiniPos( id );
+		_draggingId = id;
+		_draggingType = "mini";
+		_dragStartItemX = pos.X;
+		_dragStartItemY = pos.Y;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
 	private void OnEditDragMove( PanelEvent e )
 	{
 		if ( string.IsNullOrEmpty( _draggingId ) ) return;
@@ -1009,6 +1262,10 @@
 		{
 			_tradeOverrides[_draggingId] = (newX, newY);
 		}
+		else if ( _draggingType == "mini" )
+		{
+			_miniOverrides[_draggingId] = (newX, newY);
+		}
 		StateHasChanged();
 	}
 
@@ -1027,7 +1284,8 @@
 	private class SavedLandmark { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } public float Width { get; set; } }
 	private class SavedZone { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
 	private class SavedTrade { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
-	private class MapPositionsData { public List<SavedLandmark> Landmarks { get; set; } = new(); public List<SavedZone> Zones { get; set; } = new(); public List<SavedTrade> TradeNodes { get; set; } = new(); }
+	private class SavedMini { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
+	private class MapPositionsData { public List<SavedLandmark> Landmarks { get; set; } = new(); public List<SavedZone> Zones { get; set; } = new(); public List<SavedTrade> TradeNodes { get; set; } = new(); public List<SavedMini> MiniExpeditions { get; set; } = new(); }
 
 	/// <summary>
 	/// Persist current landmark + zone positions to FileSystem.Data, AND dump
@@ -1051,6 +1309,11 @@
 		{
 			var pos = GetTradeNodePos( n );
 			data.TradeNodes.Add( new SavedTrade { Id = n.Id, X = pos.X, Y = pos.Y } );
+		}
+		foreach ( var mx in GetMiniExpeditions() )
+		{
+			var pos = GetMiniPos( mx.Id );
+			data.MiniExpeditions.Add( new SavedMini { Id = mx.Id, X = pos.X, Y = pos.Y } );
 		}
 
 		try
@@ -1088,6 +1351,13 @@
 			var pos = GetTradeNodePos( n );
 			sb.AppendLine( $"  {n.Id,-30}  MapPosX: {pos.X,5:0.0}f, MapPosY: {pos.Y,5:0.0}f" );
 		}
+		sb.AppendLine();
+		sb.AppendLine( "Mini-Expeditions (paste into MiniPositions dict):" );
+		foreach ( var mx in GetMiniExpeditions() )
+		{
+			var pos = GetMiniPos( mx.Id );
+			sb.AppendLine( $"  {{ \"{mx.Id}\", ({pos.X:0.0}f, {pos.Y:0.0}f) }}," );
+		}
 		sb.AppendLine( "===========================================================" );
 		Log.Info( sb.ToString() );
 		SoundManager.PlaySuccess();
@@ -1124,7 +1394,15 @@
 					_tradeOverrides[t.Id] = (t.X, t.Y);
 				}
 			}
-			Log.Info( $"[MapEdit] Loaded {data.Landmarks.Count} landmark(s) + {data.Zones.Count} zone(s) + {data.TradeNodes?.Count ?? 0} request(s) from {SavedPositionsFile}" );
+			if ( data.MiniExpeditions != null )
+			{
+				foreach ( var m in data.MiniExpeditions )
+				{
+					if ( string.IsNullOrEmpty( m.Id ) ) continue;
+					_miniOverrides[m.Id] = (m.X, m.Y);
+				}
+			}
+			Log.Info( $"[MapEdit] Loaded {data.Landmarks.Count} landmark(s) + {data.Zones.Count} zone(s) + {data.TradeNodes?.Count ?? 0} request(s) + {data.MiniExpeditions?.Count ?? 0} mini(s) from {SavedPositionsFile}" );
 		}
 		catch ( System.Exception ex )
 		{
@@ -1186,6 +1464,112 @@
 		}
 	}
 
+	// ───────────────────── MINI-EXPEDITIONS ─────────────────────
+
+	private static readonly Dictionary<string, (float X, float Y)> MiniPositions = new()
+	{
+		// Forest road between Weaverton Pasture (27.8%, 49.2%) and Weaverwood (68.6%, 53.3%).
+		// Nudged north of the road midpoint so it reads as a cave detour, not dead-center on the path.
+		{ "mini_loomweaver_burrow", (52f, 43f) },
+	};
+
+	private IEnumerable<Expedition> GetMiniExpeditions()
+	{
+		return ExpeditionManager.Instance?.Expeditions
+			.Where( e => e.IsMiniExpedition ) ?? Enumerable.Empty<Expedition>();
+	}
+
+	private (float X, float Y) GetMiniPos( string id )
+	{
+		if ( _miniOverrides.TryGetValue( id, out var ov ) ) return ov;
+		if ( MiniPositions.TryGetValue( id, out var pos ) ) return pos;
+		return (75f, 20f);
+	}
+
+	// Build the inline style for `.zd-portrait-icon-bg` — applies the
+	// species' DetailIconScale/X/Y exactly the way the My Beasts detail
+	// portrait does, so this thumbnail's framing matches the big version.
+	// Math mirrors `MonsterCard.razor`'s mini-icon: explicit width/height
+	// + left/top instead of CSS transform, so `image-rendering: pixelated`
+	// stays crisp (transform-scale smooths bitmaps in s&box).
+	//
+	// The DetailIcon* values were tuned against a 120-px visible window
+	// containing a 180-px sprite element. The thumbnail is a 72-px window,
+	// so the sprite scales to 72 × 1.5 = 108 px base (preserving the same
+	// "sprite area is 1.5× window" ratio), and pixel offsets scale by
+	// 72/120 = 0.6.
+	private string BuildZdIconStyle( Beastborne.Data.MonsterSpecies sp )
+	{
+		if ( sp == null ) return "";
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		const float container = 72f;
+		const float baseFit = 108f;       // container * 1.5 — matches portrait sprite-area ratio
+		const float offsetMul = 0.6f;     // container / 120 — scale offsets to the smaller window
+		float scale = sp.DetailIconScale;
+		float spritePx = baseFit * scale;
+		float left = ( container - spritePx ) * 0.5f + sp.DetailIconOffsetX * offsetMul;
+		float top = ( container - spritePx ) * 0.5f + sp.DetailIconOffsetY * offsetMul;
+		return $"background-image: url({sp.IconPath}); width: {spritePx.ToString( "F1", ci )}px; height: {spritePx.ToString( "F1", ci )}px; left: {left.ToString( "F1", ci )}px; top: {top.ToString( "F1", ci )}px;";
+	}
+
+	private void OnMiniHover( string miniId, string hoverKey )
+	{
+		OnHover( hoverKey );
+		_hoveredMiniId = miniId;
+	}
+
+	private void SelectMini( string expeditionId )
+	{
+		if ( _editMode ) return;
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) return;
+		if ( !em.CanStartExpedition( expeditionId ) )
+		{
+			NotificationManager.Instance?.AddNotification(
+				NotificationType.Warning,
+				"Area locked",
+				"Clear Weavermere to access this area." );
+			SoundManager.PlayDeny();
+			return;
+		}
+		_selectedZoneId = null;
+		_selectedMiniId = expeditionId;
+		_hoveredKey = null;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseMiniDetail()
+	{
+		_selectedMiniId = null;
+		_hoveredKey = null;
+		SoundManager.PlayPopdown();
+	}
+
+	private void EmbarkMini( string expeditionId )
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null || !em.CanStartExpedition( expeditionId ) )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+		_selectedMiniId = null;
+		TeamPickerPopup.Show( expeditionId );
+	}
+
+	private string GetMiniDropSource( ItemDefinition drop )
+	{
+		if ( drop == null ) return "";
+		if ( drop.Id.StartsWith( "mat_" ) )
+		{
+			var speciesId = drop.Id.Substring( 4 );
+			var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+			return $"Drops from {sp?.Name ?? "this beast"}.";
+		}
+		var effect = drop.GetEffectDescription();
+		return !string.IsNullOrEmpty( effect ) ? effect : drop.Description;
+	}
+
 	private bool IsZoneUnlocked( MapZone zone )
 	{
 		// Zone N is unlocked once the previous expedition has been cleared at
@@ -1237,6 +1621,8 @@
 		h.Add( _hoveredZoneId );
 		h.Add( _hoveredLandmarkId );
 		h.Add( _hoveredTradeNodeId );
+		h.Add( _hoveredMiniId );
+		h.Add( _selectedMiniId );
 		h.Add( _editMode );
 		h.Add( _draggingId );
 		// Override dictionaries change on every drag tick — hash their counts +
@@ -1244,12 +1630,15 @@
 		h.Add( _landmarkOverrides.Count );
 		h.Add( _zoneOverrides.Count );
 		h.Add( _tradeOverrides.Count );
+		h.Add( _miniOverrides.Count );
 		foreach ( var kv in _landmarkOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
 		foreach ( var kv in _zoneOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
 		foreach ( var kv in _tradeOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
+		foreach ( var kv in _miniOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
 		h.Add( TamerManager.Instance?.CurrentTamer?.Level ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.HighestExpeditionCleared ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Gold ?? 0 );
+		h.Add( ExpeditionManager.Instance?.CanStartExpedition( "mini_loomweaver_burrow" ) ?? false );
 		// Rebuild the "ready" badge when the player's material counts change.
 		var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
 		if ( inv != null )

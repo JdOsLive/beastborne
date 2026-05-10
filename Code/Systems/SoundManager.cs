@@ -24,6 +24,10 @@ public static class SoundManager
 	private const string UI_MINIMIZE = "sounds/ui/minimize.sound";
 	private const string UI_SWOOSH = "sounds/ui/littleswoosh1b.sound";
 
+	// Battle action-bar whooshes (FIGHT entry / BACK exit)
+	private const string UI_FIGHT_WHOOSH = "sounds/ui/fight-whoosh.sound";
+	private const string UI_FIGHT_BACK_WHOOSH = "sounds/ui/fight-back-whoosh.sound";
+
 	// Guild Sounds (reuse existing)
 	private const string GUILD_JOIN = "sounds/ui/success.sound";
 	private const string GUILD_INVITE = "sounds/ui/notification.sound";
@@ -215,6 +219,23 @@ public static class SoundManager
 	}
 
 	/// <summary>
+	/// Play when entering the FIGHT move picker — punchy fire whoosh.
+	/// </summary>
+	public static void PlayFightWhoosh()
+	{
+		PlaySound( UI_FIGHT_WHOOSH, _uiVolume );
+	}
+
+	/// <summary>
+	/// Play when exiting the FIGHT move picker (back) — pitched-down version
+	/// of the fire whoosh, reads as "powering down".
+	/// </summary>
+	public static void PlayFightBackWhoosh()
+	{
+		PlaySound( UI_FIGHT_BACK_WHOOSH, _uiVolume );
+	}
+
+	/// <summary>
 	/// Play when an action succeeds.
 	/// </summary>
 	public static void PlaySuccess()
@@ -367,10 +388,13 @@ public static class SoundManager
 	}
 
 	/// <summary>
-	/// Play when a monster evolves.
+	/// Play when a monster evolves. Layers success + maximize for a two-stage swell that reads
+	/// as "transformation" rather than a single UI ding. Replace UI_SUCCESS with a dedicated
+	/// evolution chime asset (sounds/ui/evolution.sound) when one is sourced.
 	/// </summary>
 	public static void PlayEvolution()
 	{
-		PlaySound( UI_SUCCESS, _sfxVolume * 1.2f );
+		PlaySound( UI_SUCCESS, _sfxVolume * 1.3f );
+		PlaySound( UI_MAXIMIZE, _sfxVolume * 0.8f );
 	}
 }

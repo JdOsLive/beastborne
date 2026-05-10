@@ -10,6 +10,36 @@ using Beastborne.Data;
 namespace Beastborne.Core;
 
 /// <summary>
+/// Outcome of a cloud save read. Critical to distinguish "server confirmed
+/// no save" (legitimate fresh player) from "transport failed / response
+/// unparseable" (we have NO IDEA whether the player has a save). Conflating
+/// the two lets the client overwrite a real cloud save with an empty blob
+/// after a network blip on a machine without a local cache. See
+/// <see cref="SaveService.LoadAsync"/> for how each status is handled.
+///
+/// Lives at namespace scope (not nested in <see cref="SaveApiClient"/>) so
+/// <c>SaveService</c> can reference the unqualified name. Static-class
+/// nesting hides the type from outside the class without a qualifier.
+/// </summary>
+public enum SaveLoadStatus
+{
+	/// <summary>Server returned a populated blob. <c>Blob</c> is non-null.</summary>
+	Loaded,
+	/// <summary>Server explicitly confirmed this player has no save row. Safe to start fresh.</summary>
+	NoSave,
+	/// <summary>Transport failed, response was empty/unparseable, or no Steam id. Presence of a save is UNKNOWN — do not overwrite cloud.</summary>
+	Failed
+}
+
+/// <summary>Discriminated result for <see cref="SaveApiClient.GetSaveAsync"/>.</summary>
+public readonly struct SaveLoadResult
+{
+	public SaveLoadStatus Status { get; }
+	public SaveBlob Blob { get; }
+	public SaveLoadResult( SaveLoadStatus status, SaveBlob blob ) { Status = status; Blob = blob; }
+}
+
+/// <summary>
 /// HTTP client for the Beastborne Save API server. Mirrors <see cref="GuildApiClient"/>:
 /// same base URL, same auth scheme (X-API-Key + X-Steam-Id), same snake_case JSON,
 /// same try/catch/log/return-null error pattern.
@@ -59,32 +89,68 @@ public static class SaveApiClient
 	}
 
 	/// <summary>
-	/// Fetch the authenticated player's save blob. Returns null on miss, missing
-	/// Steam id, or any transport/parse failure.
+	/// Fetch the authenticated player's save blob.
+	///
+	/// Returns one of three outcomes (see <see cref="SaveLoadStatus"/>):
+	/// <list type="bullet">
+	///   <item><c>Loaded</c> — server returned a populated blob; <c>Blob</c> is non-null.</item>
+	///   <item><c>NoSave</c> — server explicitly answered "this player has no save".</item>
+	///   <item><c>Failed</c> — transport error, missing Steam id, or unparseable response.</item>
+	/// </list>
+	///
+	/// The <c>Failed</c> vs <c>NoSave</c> distinction is load-bearing: a caller
+	/// that treats <c>Failed</c> as <c>NoSave</c> may auto-write an empty blob
+	/// over the player's real cloud save (the bug that wiped jeremykip's save).
 	/// </summary>
-	public static async Task<SaveBlob> GetSaveAsync()
+	public static async Task<SaveLoadResult> GetSaveAsync()
 	{
 		if ( !HasSteamId() )
 		{
 			Log.Warning( "SaveAPI: no steam id" );
-			return null;
+			return new SaveLoadResult( SaveLoadStatus.Failed, null );
 		}
 
+		string response;
 		try
 		{
 			var url = $"{BASE_URL}/players/save";
-			var response = await Http.RequestStringAsync( url, "GET", null, GetHeaders() );
-
-			if ( string.IsNullOrEmpty( response ) )
-				return null;
-
-			var wrapper = JsonSerializer.Deserialize<SaveApiResponse>( response, JsonOptions );
-			return wrapper?.Blob;
+			response = await Http.RequestStringAsync( url, "GET", null, GetHeaders() );
 		}
 		catch ( Exception e )
 		{
 			Log.Warning( $"SaveAPI GET /players/save failed: {e.Message}" );
-			return null;
+			return new SaveLoadResult( SaveLoadStatus.Failed, null );
+		}
+
+		// Empty response = transport-level failure (s&box's HTTP client returns
+		// "" on most non-2xx and connection errors without throwing). Treat as
+		// Failed, NOT NoSave — we cannot know whether this player has a save.
+		if ( string.IsNullOrEmpty( response ) )
+		{
+			Log.Warning( "SaveAPI GET /players/save returned empty response — treating as transport failure" );
+			return new SaveLoadResult( SaveLoadStatus.Failed, null );
+		}
+
+		try
+		{
+			var wrapper = JsonSerializer.Deserialize<SaveApiResponse>( response, JsonOptions );
+			if ( wrapper == null )
+			{
+				// Unparseable response that wasn't empty — also a transport/server problem.
+				Log.Warning( "SaveAPI GET /players/save: response did not deserialize" );
+				return new SaveLoadResult( SaveLoadStatus.Failed, null );
+			}
+
+			// Server explicitly answered with `{ blob: null }` — fresh player, confirmed.
+			if ( wrapper.Blob == null )
+				return new SaveLoadResult( SaveLoadStatus.NoSave, null );
+
+			return new SaveLoadResult( SaveLoadStatus.Loaded, wrapper.Blob );
+		}
+		catch ( Exception e )
+		{
+			Log.Warning( $"SaveAPI GET /players/save deserialize failed: {e.Message}" );
+			return new SaveLoadResult( SaveLoadStatus.Failed, null );
 		}
 	}
 

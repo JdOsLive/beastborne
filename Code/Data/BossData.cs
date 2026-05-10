@@ -8,10 +8,10 @@ namespace Beastborne.Data;
 /// </summary>
 public enum BossTier
 {
-	Normal,     // 1.8x HP, 1.2x ATK
-	Elite,      // 2.5x HP, 1.5x ATK, 1.3x DEF
-	Legendary,  // 3.0x HP, 1.8x ATK, 1.5x DEF
-	Mythic      // 4.0x HP, 2.0x ATK, 1.8x DEF
+	Normal,     // 1.9x HP, 1.15x ATK, 1.05x DEF
+	Elite,      // 2.4x HP, 1.25x ATK, 1.15x DEF
+	Legendary,  // 2.9x HP, 1.40x ATK, 1.20x DEF
+	Mythic      // 3.5x HP, 1.55x ATK, 1.30x DEF
 }
 
 /// <summary>
@@ -99,10 +99,10 @@ public class BossData
 	{
 		return Tier switch
 		{
-			BossTier.Normal => (1.8f, 1.2f, 1.0f),
-			BossTier.Elite => (2.5f, 1.5f, 1.3f),
-			BossTier.Legendary => (3.0f, 1.8f, 1.5f),
-			BossTier.Mythic => (4.0f, 2.0f, 1.8f),
+			BossTier.Normal => (1.9f, 1.15f, 1.05f),
+			BossTier.Elite => (2.4f, 1.25f, 1.15f),
+			BossTier.Legendary => (2.9f, 1.40f, 1.20f),
+			BossTier.Mythic => (3.5f, 1.55f, 1.30f),
 			_ => (1.0f, 1.0f, 1.0f)
 		};
 	}

@@ -46,16 +46,17 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 	// Raid boss species — drawn ONLY from the launch roster (Beastbook).
 	// Cycles every 14 days. 10 bosses = 140 days before repeat.
-	// Mix of starter final-evos, mid-evos, and boss-feeling wilds across all 3 zones.
+	// All handmade after the AI-gen cull; coralheim/bloomguard/curublast
+	// were retired alongside the rest of the AI-gen forest+lake pools.
 	private static readonly string[] RaidBossSpecies = new[]
 	{
 		"manehelm",     // Fire/Metal — Embrik final evo
 		"lochmaw",      // Water/Shadow — Pagefin final evo
 		"aurael",       // Wind — Cherune final evo
-		"coralheim",    // Water — Zone 3 boss-feel
-		"bloomguard",   // Nature — Zone 2 boss-feel
-		"curublast",    // Nature — Zone 2
-		"twincoil",     // Nature/Neutral — Zone 1
+		"liliprince",   // Water/Spirit — frog-prince evo (Weavermere boss)
+		"jackacabra",   // Shadow — Weaverwood predator
+		"gnollium",     // Nature — Weaverwood elder gnome
+		"twincoil",     // Nature/Neutral — Weaverton pasture
 		"pyrgard",      // Fire — Embrik mid-evo
 		"gothsire",     // Water — Pagefin mid-evo
 		"seraphiel"     // Wind — Cherune mid-evo
@@ -2381,4 +2382,99 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			_ => "#64748b"
 		};
 	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// INVITE PICKER CANDIDATES
+	// ═══════════════════════════════════════════════════════════════
+
+	/// <summary>
+	/// Build the unified Invite Player picker source list. Combines:
+	///   • Online lobby connections (live players in the same s&box instance)
+	///   • CollectedCards from the local Tamer (offline-friendly — anyone
+	///     the player has previously played with, traded with, or fought in
+	///     arena, persisted to the SaveBlob)
+	///
+	/// Filters out:
+	///   • Self
+	///   • Anyone already a member of the player's current guild
+	///   • Steam id 0 entries (local/dev builds without Steam auth)
+	///   • Duplicates between the two pools (online entries win — they have
+	///     IsOnline=true and the live ConnectionId for real-time RPC)
+	///
+	/// Online entries surface first, then offline cards by most-recently
+	/// updated, so the picker reads "people right now" before "people you
+	/// know". Empty result is valid — just means no invitable targets exist
+	/// (player alone in lobby with empty CollectedCards).
+	///
+	/// Safe to call when not in a guild (the guild-member filter just
+	/// short-circuits). UI calls this on each picker open; cheap enough
+	/// to skip caching at this point (typical sizes: lobby &lt;= 32, cards
+	/// bounded by TamerManager's collection cap).
+	/// </summary>
+	public IEnumerable<InviteCandidate> GetInvitableCandidates()
+	{
+		var localSteamId = Connection.Local?.SteamId ?? 0;
+		var memberSteamIds = new HashSet<long>( Members?.Select( m => m.SteamId ) ?? Enumerable.Empty<long>() );
+		var seen = new HashSet<long>();
+
+		// Online lobby first — they're invitable RIGHT NOW with live RPC delivery.
+		foreach ( var conn in Connection.All )
+		{
+			if ( conn == null ) continue;
+			if ( conn == Connection.Local ) continue;
+			if ( conn.SteamId == 0 ) continue;
+			if ( conn.SteamId == localSteamId ) continue;
+			if ( memberSteamIds.Contains( conn.SteamId ) ) continue;
+			if ( !seen.Add( conn.SteamId ) ) continue;
+
+			yield return new InviteCandidate
+			{
+				SteamId = conn.SteamId,
+				Name = conn.DisplayName ?? "Tamer",
+				Level = 0, // Live connection doesn't carry tamer level; UI hides if 0
+				IsOnline = true,
+				ConnectionId = conn.Id.ToString()
+			};
+		}
+
+		// Offline cards — anyone the player has interacted with before. Order
+		// by most-recently updated so freshest contacts surface first.
+		var cards = TamerManager.Instance?.CurrentTamer?.CollectedCards;
+		if ( cards == null ) yield break;
+
+		foreach ( var card in cards.OrderByDescending( c => c.LastUpdated ) )
+		{
+			if ( card == null ) continue;
+			if ( card.SteamId == 0 ) continue;
+			if ( card.SteamId == localSteamId ) continue;
+			if ( memberSteamIds.Contains( card.SteamId ) ) continue;
+			if ( !seen.Add( card.SteamId ) ) continue;
+
+			yield return new InviteCandidate
+			{
+				SteamId = card.SteamId,
+				Name = card.Name ?? "Tamer",
+				Level = card.Level,
+				IsOnline = false,
+				ConnectionId = null // Offline target — no live RPC delivery; API persistence covers it
+			};
+		}
+	}
+}
+
+/// <summary>
+/// Picker entry for the Guild Invite UI. Carries enough to render a row
+/// (name + level + online indicator + avatar via Steam id) and route the
+/// invite RPC. <see cref="ConnectionId"/> is null for offline targets —
+/// <see cref="GuildManager.InvitePlayer"/> handles that case (the API
+/// persistence step works on Steam id alone; the real-time RPC just
+/// becomes a no-op when the target's not in the lobby).
+/// </summary>
+public class InviteCandidate
+{
+	public long SteamId { get; set; }
+	public string Name { get; set; }
+	public int Level { get; set; }
+	public bool IsOnline { get; set; }
+	public string ConnectionId { get; set; }
 }

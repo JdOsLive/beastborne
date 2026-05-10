@@ -8,6 +8,81 @@
 @inherits Panel
 
 <div class="roster-panel @(isFusionMode ? "fusion-view" : "")" onclick=@OnPanelClicked>
+	@* ═══ DEV: MY-BEASTS ART POSITION EDITOR ═══════════════════════
+	   Hidden behind ShowMyBeastsArtEditor. Two modes:
+	     CARD   — drag/scroll any grid mini-card sprite to tune
+	              MonsterSpecies.MiniScale / MiniOffsetX / MiniOffsetY
+	     DETAIL — drag/scroll the small detail-panel sprite (the
+	              little square icon next to the selected beast's
+	              stats) to tune DetailIconScale/OffsetX/OffsetY.
+	   Both surfaces persist independently to FileSystem.Data and
+	   load on first mount regardless of editor state, so any tuning
+	   sticks even with the editor toggled off. SAVE → CONSOLE prints
+	   paste-ready C# blocks for MonsterManager.cs. *@
+	@if ( ShowMyBeastsArtEditor )
+	{
+		@{
+			var allTestable = GetAllTestableSpecies();
+			var currentTestIdx = string.IsNullOrEmpty( _myBeastsTestSpeciesId )
+				? -1
+				: allTestable.FindIndex( s => s.Id == _myBeastsTestSpeciesId );
+			var currentTestSp = currentTestIdx >= 0 ? allTestable[currentTestIdx] : null;
+		}
+		<div class="myb-art-toolbar">
+			<div class="myb-label">BEAST ART</div>
+			<button class="myb-btn mode @(_myBeastsEditMode == "card" ? "active" : "")" onclick=@(() => SetMyBeastsArtMode("card"))>
+				<iconify icon="lucide:grid-2x2" Size=@(13) Color="#fbbf24" />
+				<span>CARD</span>
+			</button>
+			<button class="myb-btn mode @(_myBeastsEditMode == "detail" ? "active" : "")" onclick=@(() => SetMyBeastsArtMode("detail"))>
+				<iconify icon="lucide:square-user" Size=@(13) Color="#fbbf24" />
+				<span>ICON</span>
+			</button>
+
+			@* Test-species selector — pick any species (whether owned or not)
+			   and the grid cards (CARD mode) or detail portrait (ICON mode)
+			   render that species so framing can be tuned without owning it. *@
+			<button class="myb-btn nav" onclick=@MyBeastsTestPrev>
+				<iconify icon="lucide:chevron-left" Size=@(14) Color="#cbd5e1" />
+			</button>
+			<div class="myb-current-species">
+				<span>@(currentTestSp?.Name ?? "OFF")</span>
+			</div>
+			<button class="myb-btn nav" onclick=@MyBeastsTestNext>
+				<iconify icon="lucide:chevron-right" Size=@(14) Color="#cbd5e1" />
+			</button>
+			<button class="myb-btn nav" onclick=@MyBeastsTestClear>
+				<iconify icon="lucide:x" Size=@(13) Color="#f87171" />
+			</button>
+
+			<button class="myb-btn save" onclick=@PrintMyBeastsArt>
+				<iconify icon="lucide:save" Size=@(13) Color="#4ade80" />
+				<span>SAVE</span>
+			</button>
+			<button class="myb-btn reset" onclick=@ResetMyBeastsArt>
+				<iconify icon="lucide:refresh-ccw" Size=@(13) Color="#f87171" />
+				<span>RESET</span>
+			</button>
+			<div class="myb-hint">
+				<span>drag · scroll</span>
+				@{
+					var mybCount = _myBeastsEditMode == "detail" ? _detailIconOverrides.Count : _myBeastsCardOverrides.Count;
+				}
+				@if ( mybCount > 0 )
+				{
+					<span class="myb-count">@mybCount edited</span>
+				}
+			</div>
+		</div>
+
+		@* Drag shield — fullscreen overlay during art-edit drag. *@
+		@if ( !string.IsNullOrEmpty( _myBeastsDraggingId ) )
+		{
+			<div class="myb-art-drag-shield"
+				 onmousemove=@OnMyBeastsArtDragMove
+				 onmouseup=@OnMyBeastsArtDragEnd></div>
+		}
+	}
 	<div class="roster-header">
 		<div class="header-left">
 			<img class="panel-title-icon" src="ui/icons/beast.svg" />
@@ -100,10 +175,15 @@
 					var isFusionParent2 = isFusionMode && Parent2?.Id == monster.Id;
 					var isFusionParent = isFusionParent1 || isFusionParent2;
 					var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && monster.SpeciesId != Parent1.SpeciesId;
-					<div class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "")"
+					// Beast-art editor is only active in "card" mode, when the
+					// editor toolbar is enabled, and when no other interaction
+					// mode (fusion / multi-select) is competing for clicks.
+					var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
+					<div class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
 						 onclick=@(() => OnMonsterCardClicked(monster, idx))
-						 onmousedown=@(() => OnCardMouseDown(monster, idx))
-						 onmouseover=@(() => OnCardMouseEnter(monster, idx))
+						 onmousedown=@(() => { OnCardMouseDown(monster, idx); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+						 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+						 onmouseout=@(() => { if (_mybCardEditing) OnMyBeastsArtLeave(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
 						 onmouseup=@OnDragSelectEnd>
 						@if (justSelectedMonsterId.HasValue && justSelectedMonsterId.Value == monster.Id)
 						{
@@ -142,6 +222,8 @@
 									 ShowGenes=@isFusionMode
 									 AnimateOnHover=@true
 									 AnimationFrame=@SpriteAnimator.GlobalFrame
+									 OverrideArtSpeciesId=@(_mybCardEditing ? _myBeastsTestSpeciesId : null)
+									 ArtVersion=@_myBeastsArtVersion
 									 ClickAction=@(() => {})
 									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
 									 LeaveAction=@OnMouseLeaveCard />
@@ -571,7 +653,30 @@
 						<!-- Monster Portrait (always visible) -->
 						<div class="portrait-section">
 							<div class="portrait-wrapper">
-								<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass()">
+								@{
+									// Inline transform pulls per-species DetailIconScale/OffsetX/OffsetY
+									// from MonsterSpecies. Tuned via the MyBeasts art editor (DETAIL mode).
+									// When a test species is selected in the editor, the portrait
+									// previews THAT species' icon + transforms instead of the live
+									// SelectedMonster, so framing can be tuned without owning the beast.
+									var _diEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "detail" && SelectedMonster != null;
+									var _diArtId = ( _diEditing && !string.IsNullOrEmpty( _myBeastsTestSpeciesId ) )
+										? _myBeastsTestSpeciesId
+										: SelectedMonster?.SpeciesId;
+									var _diSp = !string.IsNullOrEmpty( _diArtId ) ? MonsterManager.Instance?.GetSpecies( _diArtId ) : null;
+									var _diIconPath = ( _diEditing && !string.IsNullOrEmpty( _myBeastsTestSpeciesId ) && _diSp != null )
+										? ( _diSp.AnimationFrames != null && _diSp.AnimationFrames.Count > 0 ? _diSp.AnimationFrames[0] : _diSp.IconPath )
+										: GetSelectedIconPath();
+									var _diCi = System.Globalization.CultureInfo.InvariantCulture;
+									var _diScale = (_diSp?.DetailIconScale ?? 1f).ToString("F3", _diCi);
+									var _diOffX = (_diSp?.DetailIconOffsetX ?? 0f).ToString("F2", _diCi);
+									var _diOffY = (_diSp?.DetailIconOffsetY ?? 0f).ToString("F2", _diCi);
+									var _diTransform = $"transform: translate({_diOffX}px, {_diOffY}px) scale({_diScale}); transform-origin: center center;";
+								}
+								<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass() @(_diEditing ? "myb-art-edit" : "")"
+									 onmousedown=@(() => { if (_diEditing) StartMyBeastsArtDrag(_diArtId); })
+									 onmouseover=@(() => { if (_diEditing) OnMyBeastsArtHover(_diArtId); })
+									 onmouseout=@(() => { if (_diEditing) OnMyBeastsArtLeave(_diArtId); })>
 									<div class="evolution-glow"></div>
 									<div class="evolution-particles">
 										<div class="particle p1"></div>
@@ -583,10 +688,10 @@
 										<div class="particle p7"></div>
 										<div class="particle p8"></div>
 									</div>
-									<div class="monster-portrait @(evolutionPhase == "transform" || evolutionPhase == "burst" ? "hidden" : "")" style="background-image: url(@GetSelectedIconPath())"></div>
+									<div class="monster-portrait @(evolutionPhase == "transform" || evolutionPhase == "burst" ? "hidden" : "")" style="background-image: url(@_diIconPath); @_diTransform"></div>
 									@if (!string.IsNullOrEmpty(evolvedIconPath) && (evolutionPhase == "transform" || evolutionPhase == "burst"))
 									{
-										<div class="monster-portrait evolved-portrait" style="background-image: url(@evolvedIconPath)"></div>
+										<div class="monster-portrait evolved-portrait" style="background-image: url(@evolvedIconPath); @_diTransform"></div>
 									}
 								</div>
 								<div class="element-tags-row">
@@ -906,10 +1011,6 @@
 									<div class="info-row">
 										<span class="info-label">@L("ui.roster.gen")</span>
 										<span class="info-value">@(SelectedMonster.Generation == 0 ? L("ui.roster.wild") : $"{SelectedMonster.Generation}")</span>
-									</div>
-									<div class="info-row">
-										<span class="info-label">@L("ui.roster.loyalty")</span>
-										<span class="info-value @(SelectedMonster.IsLoyal ? "loyal" : "contracted")">@(SelectedMonster.IsLoyal ? L("ui.roster.loyal") : L("ui.roster.contract"))</span>
 									</div>
 									@if (!string.IsNullOrEmpty(SelectedMonster.OriginalTrainerName))
 									{
@@ -2562,7 +2663,7 @@
 
 		// Start evolution animation sequence
 		isEvolving = true;
-		SoundManager.PlayClick();
+		SoundManager.PlayEvolution();
 		StateHasChanged();
 
 		// Phase 1: Shake (1000ms) - building energy
@@ -2592,7 +2693,7 @@
 
 		// Perform the actual evolution
 		MonsterManager.Instance?.EvolveMonster(SelectedMonster.Id);
-		SoundManager.PlaySelect(); // TODO: Add a special evolution sound
+		SoundManager.PlayEvolution();
 		StateHasChanged();
 	}
 
@@ -3410,6 +3511,354 @@
 	private int rosterRevealStage = 0;
 	private int _ticksSinceMount = 0;
 
+	// ─────────── DEV: BEAST ART POSITION EDITOR ─────────────
+	// Two-mode editor for tuning where each beast's sprite sits inside
+	// the My Beasts panel surfaces:
+	//   CARD mode  → grid mini-card sprite (also inherited by the
+	//                ExpeditionPanel embark cards, since both use the
+	//                same MonsterCard component reading MiniScale/X/Y)
+	//   DETAIL mode → small portrait sprite next to the selected
+	//                 beast's stats (DetailIconScale/X/Y).
+	// Drag the sprite to adjust offsets; mouse wheel scales it. SAVE
+	// dumps paste-ready C# blocks to the console; values also persist
+	// to FileSystem.Data so tuning survives session restarts. Loaded
+	// on first mount regardless of editor state — flipping the toolbar
+	// off doesn't revert your work.
+	private const bool ShowMyBeastsArtEditor = false;
+	private string _myBeastsEditMode = "card";
+	private string _myBeastsDraggingId;
+	private string _myBeastsHoveredId;
+	private float _myBeastsDragStartMouseX, _myBeastsDragStartMouseY;
+	private float _myBeastsDragStartOffX, _myBeastsDragStartOffY;
+	private bool _myBeastsDragNeedsAnchor;
+
+	// Override dictionaries — track which species have been tuned so SAVE
+	// can print only the edited entries and PERSIST/RESET know what to
+	// write or revert. Mutations are applied to the live MonsterSpecies
+	// fields so MonsterCard/portrait renders pick them up immediately.
+	private System.Collections.Generic.Dictionary<string, (float Scale, float OffX, float OffY)> _myBeastsCardOverrides = new();
+	private System.Collections.Generic.Dictionary<string, (float Scale, float OffX, float OffY)> _detailIconOverrides = new();
+
+	// Bumped on every edit (drag-move, wheel-scale, mode/test-species swap)
+	// so BuildHash sees a change even when the override count is unchanged
+	// — without this, scrolling keeps mutating species values but the panel
+	// never re-renders because the hash is stable.
+	private int _myBeastsArtVersion = 0;
+	private string _myBeastsTestSpeciesId;
+
+	// Originals snapshot — captured before any persisted overrides apply,
+	// so RESET can restore the species to their MonsterManager.cs values
+	// without requiring a game restart.
+	private System.Collections.Generic.Dictionary<string, (float Scale, float OffX, float OffY)> _myBeastsCardOriginals = new();
+	private System.Collections.Generic.Dictionary<string, (float Scale, float OffX, float OffY)> _detailIconOriginals = new();
+
+	private const string MyBeastsCardArtFile = "mybeasts_card_art.json";
+	private const string DetailIconArtFile = "detail_icon_art.json";
+	private class SavedBeastArt { public string Id { get; set; } public float Scale { get; set; } public float OffX { get; set; } public float OffY { get; set; } }
+	private class BeastArtData { public List<SavedBeastArt> Cards { get; set; } = new(); }
+	private bool _myBeastsArtLoaded = false;
+
+	private void SetMyBeastsArtMode( string mode )
+	{
+		_myBeastsEditMode = mode;
+		_myBeastsHoveredId = null;
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void SnapshotMyBeastsOriginals()
+	{
+		var all = MonsterManager.Instance?.GetAllSpecies() ?? new();
+		_myBeastsCardOriginals.Clear();
+		_detailIconOriginals.Clear();
+		foreach ( var sp in all )
+		{
+			_myBeastsCardOriginals[sp.Id] = ( sp.MiniScale, sp.MiniOffsetX, sp.MiniOffsetY );
+			_detailIconOriginals[sp.Id] = ( sp.DetailIconScale, sp.DetailIconOffsetX, sp.DetailIconOffsetY );
+		}
+	}
+
+	private void LoadSavedMyBeastsArt()
+	{
+		LoadSavedArtFile( MyBeastsCardArtFile, _myBeastsCardOverrides, isDetail: false );
+		LoadSavedArtFile( DetailIconArtFile, _detailIconOverrides, isDetail: true );
+	}
+
+	private void LoadSavedArtFile( string file, System.Collections.Generic.Dictionary<string, (float, float, float)> dict, bool isDetail )
+	{
+		try
+		{
+			if ( !FileSystem.Data.FileExists( file ) ) return;
+			var json = FileSystem.Data.ReadAllText( file );
+			var data = System.Text.Json.JsonSerializer.Deserialize<BeastArtData>( json );
+			if ( data?.Cards == null ) return;
+			foreach ( var c in data.Cards )
+			{
+				if ( string.IsNullOrEmpty( c.Id ) ) continue;
+				dict[c.Id] = ( c.Scale, c.OffX, c.OffY );
+				var sp = MonsterManager.Instance?.GetSpecies( c.Id );
+				if ( sp == null ) continue;
+				if ( isDetail )
+				{
+					sp.DetailIconScale = c.Scale;
+					sp.DetailIconOffsetX = c.OffX;
+					sp.DetailIconOffsetY = c.OffY;
+				}
+				else
+				{
+					sp.MiniScale = c.Scale;
+					sp.MiniOffsetX = c.OffX;
+					sp.MiniOffsetY = c.OffY;
+				}
+			}
+			Log.Info( $"[MyBeastsArt] Loaded {data.Cards.Count} override(s) from {file}" );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[MyBeastsArt] Failed to load {file}: {ex.Message}" );
+		}
+	}
+
+	private void PersistActiveModeToDisk()
+	{
+		try
+		{
+			var data = new BeastArtData();
+			var dict = _myBeastsEditMode == "detail" ? _detailIconOverrides : _myBeastsCardOverrides;
+			foreach ( var kvp in dict )
+			{
+				data.Cards.Add( new SavedBeastArt { Id = kvp.Key, Scale = kvp.Value.Scale, OffX = kvp.Value.OffX, OffY = kvp.Value.OffY } );
+			}
+			var json = System.Text.Json.JsonSerializer.Serialize( data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true } );
+			FileSystem.Data.WriteAllText( _myBeastsEditMode == "detail" ? DetailIconArtFile : MyBeastsCardArtFile, json );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[MyBeastsArt] Failed to write overrides: {ex.Message}" );
+		}
+	}
+
+	private void ApplyMyBeastsArtOverride( string speciesId, float scale, float offX, float offY )
+	{
+		var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+		if ( sp == null ) return;
+		if ( _myBeastsEditMode == "detail" )
+		{
+			_detailIconOverrides[speciesId] = ( scale, offX, offY );
+			sp.DetailIconScale = scale;
+			sp.DetailIconOffsetX = offX;
+			sp.DetailIconOffsetY = offY;
+		}
+		else
+		{
+			_myBeastsCardOverrides[speciesId] = ( scale, offX, offY );
+			sp.MiniScale = scale;
+			sp.MiniOffsetX = offX;
+			sp.MiniOffsetY = offY;
+		}
+		_myBeastsArtVersion++;
+	}
+
+	private List<MonsterSpecies> GetAllTestableSpecies()
+	{
+		var all = MonsterManager.Instance?.GetAllSpecies() ?? new();
+		return all.OrderBy( s => s.BeastiaryNumber ).ToList();
+	}
+
+	private void MyBeastsTestPrev()
+	{
+		var all = GetAllTestableSpecies();
+		if ( all.Count == 0 ) return;
+		var idx = string.IsNullOrEmpty( _myBeastsTestSpeciesId )
+			? all.Count - 1
+			: all.FindIndex( s => s.Id == _myBeastsTestSpeciesId ) - 1;
+		if ( idx < 0 ) idx = all.Count - 1;
+		_myBeastsTestSpeciesId = all[idx].Id;
+		_myBeastsHoveredId = _myBeastsTestSpeciesId;
+		_myBeastsArtVersion++;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void MyBeastsTestNext()
+	{
+		var all = GetAllTestableSpecies();
+		if ( all.Count == 0 ) return;
+		var idx = string.IsNullOrEmpty( _myBeastsTestSpeciesId )
+			? 0
+			: all.FindIndex( s => s.Id == _myBeastsTestSpeciesId ) + 1;
+		if ( idx >= all.Count ) idx = 0;
+		_myBeastsTestSpeciesId = all[idx].Id;
+		_myBeastsHoveredId = _myBeastsTestSpeciesId;
+		_myBeastsArtVersion++;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void MyBeastsTestClear()
+	{
+		_myBeastsTestSpeciesId = null;
+		_myBeastsArtVersion++;
+		StateHasChanged();
+	}
+
+	private (float Scale, float OffX, float OffY) GetActiveModeArt( string speciesId )
+	{
+		var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+		if ( sp == null ) return ( 1f, 0f, 0f );
+		return _myBeastsEditMode == "detail"
+			? ( sp.DetailIconScale, sp.DetailIconOffsetX, sp.DetailIconOffsetY )
+			: ( sp.MiniScale, sp.MiniOffsetX, sp.MiniOffsetY );
+	}
+
+	private void StartMyBeastsArtDrag( string speciesId )
+	{
+		if ( !ShowMyBeastsArtEditor || string.IsNullOrEmpty( speciesId ) ) return;
+		var art = GetActiveModeArt( speciesId );
+		_myBeastsDraggingId = speciesId;
+		_myBeastsDragStartOffX = art.OffX;
+		_myBeastsDragStartOffY = art.OffY;
+		_myBeastsDragNeedsAnchor = true;
+		StateHasChanged();
+	}
+
+	private void OnMyBeastsArtDragMove( PanelEvent e )
+	{
+		if ( string.IsNullOrEmpty( _myBeastsDraggingId ) ) return;
+		if ( _myBeastsDragNeedsAnchor )
+		{
+			_myBeastsDragStartMouseX = MousePosition.x;
+			_myBeastsDragStartMouseY = MousePosition.y;
+			_myBeastsDragNeedsAnchor = false;
+			return;
+		}
+		float dx = MousePosition.x - _myBeastsDragStartMouseX;
+		float dy = MousePosition.y - _myBeastsDragStartMouseY;
+		var art = GetActiveModeArt( _myBeastsDraggingId );
+		ApplyMyBeastsArtOverride( _myBeastsDraggingId, art.Scale, _myBeastsDragStartOffX + dx, _myBeastsDragStartOffY + dy );
+		PersistActiveModeToDisk();
+		StateHasChanged();
+	}
+
+	private void OnMyBeastsArtDragEnd( PanelEvent e )
+	{
+		_myBeastsDraggingId = null;
+		StateHasChanged();
+	}
+
+	private void OnMyBeastsArtHover( string speciesId )
+	{
+		if ( !ShowMyBeastsArtEditor ) return;
+		_myBeastsHoveredId = speciesId;
+	}
+
+	private void OnMyBeastsArtLeave( string speciesId )
+	{
+		if ( _myBeastsHoveredId == speciesId ) _myBeastsHoveredId = null;
+	}
+
+	public override void OnMouseWheel( Vector2 delta )
+	{
+		if ( ShowMyBeastsArtEditor )
+		{
+			// Test species takes priority over the hovered card — once a
+			// species is picked in the toolbar selector, the wheel always
+			// targets it so you don't have to keep the cursor pinned over
+			// a particular card to scale it.
+			var targetId = !string.IsNullOrEmpty( _myBeastsTestSpeciesId )
+				? _myBeastsTestSpeciesId
+				: _myBeastsHoveredId;
+			if ( !string.IsNullOrEmpty( targetId ) )
+			{
+				var art = GetActiveModeArt( targetId );
+				float newScale = Math.Clamp( art.Scale + delta.y * 0.05f, 0.3f, 3.0f );
+				ApplyMyBeastsArtOverride( targetId, newScale, art.OffX, art.OffY );
+				PersistActiveModeToDisk();
+				StateHasChanged();
+				return;
+			}
+		}
+		base.OnMouseWheel( delta );
+	}
+
+	private void PrintMyBeastsArt()
+	{
+		var dict = _myBeastsEditMode == "detail" ? _detailIconOverrides : _myBeastsCardOverrides;
+		if ( dict.Count == 0 )
+		{
+			Log.Info( "[MyBeastsArt] No overrides — drag or scroll a beast first." );
+			return;
+		}
+		PersistActiveModeToDisk();
+		var file = _myBeastsEditMode == "detail" ? DetailIconArtFile : MyBeastsCardArtFile;
+		Log.Info( $"[MyBeastsArt] Saved {dict.Count} override(s) → FileSystem.Data/{file}" );
+
+		// Per-line logging — Log.Info silently truncates multi-line strings
+		// (s&box quirk; see CLAUDE.md). Each property gets its own line so
+		// the output is paste-friendly into MonsterManager.cs.
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		var fieldScale = _myBeastsEditMode == "detail" ? "DetailIconScale" : "MiniScale";
+		var fieldX = _myBeastsEditMode == "detail" ? "DetailIconOffsetX" : "MiniOffsetX";
+		var fieldY = _myBeastsEditMode == "detail" ? "DetailIconOffsetY" : "MiniOffsetY";
+		Log.Info( $"─── {_myBeastsEditMode.ToUpper()} art overrides — paste into MonsterManager.cs ───" );
+		foreach ( var kvp in dict )
+		{
+			var sp = MonsterManager.Instance?.GetSpecies( kvp.Key );
+			var name = sp?.Name ?? kvp.Key;
+			Log.Info( $"// {name} ({kvp.Key})" );
+			Log.Info( $"{fieldScale} = {kvp.Value.Scale.ToString( "0.###", ci )}f," );
+			Log.Info( $"{fieldX} = {kvp.Value.OffX.ToString( "0.#", ci )}f," );
+			Log.Info( $"{fieldY} = {kvp.Value.OffY.ToString( "0.#", ci )}f," );
+		}
+		Log.Info( "─────────────────────────────────────────────────────────────" );
+		SoundManager.PlayClick();
+	}
+
+	private void ResetMyBeastsArt()
+	{
+		var dict = _myBeastsEditMode == "detail" ? _detailIconOverrides : _myBeastsCardOverrides;
+		var originals = _myBeastsEditMode == "detail" ? _detailIconOriginals : _myBeastsCardOriginals;
+		foreach ( var id in dict.Keys.ToList() )
+		{
+			var sp = MonsterManager.Instance?.GetSpecies( id );
+			if ( sp == null ) continue;
+			if ( originals.TryGetValue( id, out var orig ) )
+			{
+				if ( _myBeastsEditMode == "detail" )
+				{
+					sp.DetailIconScale = orig.Item1;
+					sp.DetailIconOffsetX = orig.Item2;
+					sp.DetailIconOffsetY = orig.Item3;
+				}
+				else
+				{
+					sp.MiniScale = orig.Item1;
+					sp.MiniOffsetX = orig.Item2;
+					sp.MiniOffsetY = orig.Item3;
+				}
+			}
+		}
+		dict.Clear();
+		PersistActiveModeToDisk();
+		Log.Info( $"[MyBeastsArt] Reset {_myBeastsEditMode.ToUpper()} overrides to MonsterManager defaults." );
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		base.OnAfterTreeRender( firstTime );
+		if ( firstTime && !_myBeastsArtLoaded )
+		{
+			// Snapshot first so RESET can revert; THEN apply persisted overrides.
+			// Loading is unconditional — even if ShowMyBeastsArtEditor is false,
+			// previously tuned values still need to apply at runtime.
+			SnapshotMyBeastsOriginals();
+			LoadSavedMyBeastsArt();
+			_myBeastsArtLoaded = true;
+		}
+	}
+
 	public override void Tick()
 	{
 		base.Tick();
@@ -3683,6 +4132,15 @@
 		// won't remount. (Shop uses the same pair.)
 		hash.Add(justSelectedMonsterId);
 		hash.Add(selectPulseVersion);
+		// Beast-art editor — re-render when the dev switches modes,
+		// drags a sprite, or the override count changes (so the toolbar's
+		// edit-counter and active-mode chip both stay live).
+		hash.Add(_myBeastsEditMode);
+		hash.Add(_myBeastsDraggingId);
+		hash.Add(_myBeastsTestSpeciesId);
+		hash.Add(_myBeastsCardOverrides.Count);
+		hash.Add(_detailIconOverrides.Count);
+		hash.Add(_myBeastsArtVersion);
 		return hash.ToHashCode();
 	}
 

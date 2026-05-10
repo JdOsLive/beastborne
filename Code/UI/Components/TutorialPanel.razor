@@ -153,7 +153,7 @@
     {
         ConfirmDialog.Show(
             title: "Skip the tutorial?",
-            body: "You can replay it any time from Options. Some pacing scaffolding (the Saltmoor Approach zone, the rigged first contract) is tutorial-only and won't return.",
+            body: "You can replay it any time from Options. Some pacing scaffolding (the Weaverton Approach zone, the rigged first contract) is tutorial-only and won't return.",
             destructiveLabel: "SKIP",
             cancelLabel: "KEEP GOING",
             tone: "gold",
@@ -196,6 +196,18 @@
     private int _arrowY;
     // "above" | "below" | "left" | "right" — which side of the target the arrow sits on
     private string _arrowSide = "above";
+
+    // Rect stability tracking. Bottom-bar elements (.cb-tab-*) live in a
+    // `position: absolute; bottom: 16px` container whose parent height
+    // briefly compresses during panel transitions — Box.Rect reads the
+    // mid-flight position, so the highlight lands in the middle of the
+    // screen instead of on the actual button. We require the rect to be
+    // STABLE across two consecutive ticks before committing to it; a
+    // single-frame layout glitch never gets shown.
+    private string _stabilitySelector;
+    private int _lastSeenTop;
+    private int _lastSeenLeft;
+    private int _stableFrameCount;
 
     public override void Tick()
     {
@@ -242,13 +254,50 @@
         if (found == null || found.Box.Rect.Width < 1f)
         {
             _hasTarget = false;
+            // Reset stability tracker so a stale rect can't bleed across selector changes.
+            _stabilitySelector = null;
+            _stableFrameCount = 0;
             return;
         }
 
         var rect = found.Box.Rect;
-        _targetTop = (int)rect.Top;
+        int top = (int)rect.Top;
+        int left = (int)rect.Left;
+
+        // Stability gate: the rect must match the previous frame's reading
+        // (within 4px of slop) before we commit to highlighting it. Reset
+        // whenever the selector changes so we don't carry over a stale frame
+        // count across tutorial steps.
+        if (_stabilitySelector != sel)
+        {
+            _stabilitySelector = sel;
+            _stableFrameCount = 0;
+        }
+
+        if (Math.Abs(top - _lastSeenTop) <= 4 && Math.Abs(left - _lastSeenLeft) <= 4)
+        {
+            _stableFrameCount++;
+        }
+        else
+        {
+            _stableFrameCount = 1;
+        }
+
+        _lastSeenTop = top;
+        _lastSeenLeft = left;
+
+        // Need at least 2 consecutive matching reads before we trust the rect.
+        // Until then, keep the previous _hasTarget state — if we already had a
+        // good highlight, it persists; if not, the spotlight stays hidden one
+        // more frame.
+        if (_stableFrameCount < 2)
+        {
+            return;
+        }
+
+        _targetTop = top;
         _targetBottom = (int)rect.Bottom;
-        _targetLeft = (int)rect.Left;
+        _targetLeft = left;
         _targetRight = (int)rect.Right;
         _targetMidHeight = Math.Max(0, _targetBottom - _targetTop);
 

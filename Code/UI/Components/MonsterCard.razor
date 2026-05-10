@@ -70,17 +70,37 @@ else if (IsMini)
 	<!-- Mini Card: Sprite + overlays -->
 	<div class="monster-card mini @(IsSelected ? "selected" : "") @(ShowGenes ? "show-genes" : "")"
 		 onclick=@OnCardClicked onmouseover=@OnMouseEnter onmouseout=@OnMouseLeave>
-		<!-- Sprite (absolutely positioned, fills card).
-		     Per-species `MiniOffsetX` shifts the background-position for
-		     beasts whose body weight sits off-center in their 128×128
-		     source canvas. Baseline 2px = letterbox half on the current
-		     150×146 sprite area when `contain` fits a 128×128 image. -->
-		@if (HasSprite())
+		<!-- Sprite. Aspect ratio preserved via `background-size: contain`
+		     on an explicitly-sized inner div. NOT transform — transform
+		     scaling smooths pixel art in s&box even with image-rendering:
+		     pixelated. NOT bg-size: <Npx> <Npx> — that forces a square
+		     box and squashes wide/tall source canvases (Aurael, Seraphiel,
+		     etc.). The inner's width/height = 150 × MiniScale square, and
+		     contain fits the source preserving aspect. The outer clips
+		     overflow at the card-sprite area. Per-species MiniOffsetX/Y
+		     shift the inner; OverrideArtSpeciesId substitutes a different
+		     species so framing can be tuned for any beast (dev tool). -->
+		@if (HasSprite() || HasOverrideSprite())
 		{
-			var _miniSpecies = MonsterManager.Instance?.GetSpecies(Monster?.SpeciesId);
-			var _miniOffsetX = _miniSpecies?.MiniOffsetX ?? 0f;
-			var _miniBgX = (2f + _miniOffsetX).ToString("F0", System.Globalization.CultureInfo.InvariantCulture);
-			<div class="mini-icon monster-icon" style="background-image: url(@GetCurrentFrame()); background-position: @(_miniBgX)px center"></div>
+			var _miniArtId = !string.IsNullOrEmpty(OverrideArtSpeciesId) ? OverrideArtSpeciesId : Monster?.SpeciesId;
+			var _miniSpecies = MonsterManager.Instance?.GetSpecies(_miniArtId);
+			var _miniCi = System.Globalization.CultureInfo.InvariantCulture;
+			var _miniScale = _miniSpecies?.MiniScale ?? 1f;
+			var _miniBoxPx = 150f * _miniScale;
+			var _miniLeft = (150f - _miniBoxPx) * 0.5f + (_miniSpecies?.MiniOffsetX ?? 0f);
+			var _miniTop = (150f - _miniBoxPx) * 0.5f + (_miniSpecies?.MiniOffsetY ?? 0f);
+			var _miniBoxStr = _miniBoxPx.ToString("F1", _miniCi);
+			var _miniLeftStr = _miniLeft.ToString("F1", _miniCi);
+			var _miniTopStr = _miniTop.ToString("F1", _miniCi);
+			var _miniStyle = $"background-image: url({GetCurrentFrame()}); width: {_miniBoxStr}px; height: {_miniBoxStr}px; left: {_miniLeftStr}px; top: {_miniTopStr}px;";
+			<div class="mini-icon">
+				<div class="mini-icon-bg monster-icon" style="@_miniStyle"></div>
+			</div>
+			<!-- Bottom fade — beasts' legs/feet fade into the rarity bar
+			     instead of butting against it, making the card read like
+			     a portrait nameplate (legs cropped behind the name) rather
+			     than a sticker on a square. -->
+			<div class="mini-icon-fade"></div>
 		}
 		<!-- Top-left badge stack: LV pill + (optional) genes pill flow
 		     side-by-side via flex so the genes pill auto-positions next
@@ -247,6 +267,21 @@ else
 	public bool ShouldAnimate { get; set; } = false;
 	public int AnimationFrame { get; set; } = 0;
 
+	// Dev-tool override (used by MonsterRosterPanel's beast-art editor):
+	// when set, the mini variant renders this species' sprite + Mini
+	// transforms instead of the actual Monster's species. Lets the dev
+	// tune framing for species the player doesn't own. Everything else
+	// (level, name, badges) keeps reading from the real Monster.
+	public string OverrideArtSpeciesId { get; set; }
+
+	// Dev-tool re-render trigger. Bumped by MonsterRosterPanel whenever
+	// the editor mutates a species' MiniScale/Offset values so this
+	// component re-renders and picks up the live species values. Without
+	// this, Razor's prop-diff sees no change (we're mutating shared
+	// MonsterSpecies fields, not props) and the inline transform stays
+	// at whatever the last render captured.
+	public int ArtVersion { get; set; } = 0;
+
 	private Panel iconElement;
 	private int lastRenderedFrame = -1;
 	private bool wasShouldAnimate = false;
@@ -286,8 +321,11 @@ else
 
 			if ( !ShouldAnimate && iconElement != null )
 			{
-				// Reset to static frame when animation stops
-				var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+				// Reset to static frame when animation stops. Honor the
+				// editor override so the test species' static frame stays
+				// rendered instead of reverting to the real Monster's art.
+				var artId = !string.IsNullOrEmpty( OverrideArtSpeciesId ) ? OverrideArtSpeciesId : Monster?.SpeciesId;
+				var species = MonsterManager.Instance?.GetSpecies( artId );
 				if ( species?.AnimationFrames != null && species.AnimationFrames.Count > 0 )
 				{
 					iconElement.Style.SetBackgroundImage( species.AnimationFrames[0] );
@@ -313,11 +351,15 @@ else
 		// Read directly from SpriteAnimator instead of relying on passed parameter
 		int currentFrame = SpriteAnimator.GlobalFrame;
 
-		// Update the icon's background image directly when frame changes
+		// Update the icon's background image directly when frame changes.
+		// Editor override → animate the test species' frames instead of
+		// the real Monster's, so hovering an editing card doesn't snap
+		// the sprite back to whatever beast actually owns the slot.
 		if ( currentFrame != lastRenderedFrame )
 		{
 			lastRenderedFrame = currentFrame;
-			var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+			var artId = !string.IsNullOrEmpty( OverrideArtSpeciesId ) ? OverrideArtSpeciesId : Monster?.SpeciesId;
+			var species = MonsterManager.Instance?.GetSpecies( artId );
 			if ( species?.AnimationFrames != null && species.AnimationFrames.Count > 0 )
 			{
 				int frameIndex = currentFrame % species.AnimationFrames.Count;
@@ -368,9 +410,23 @@ else
 		return false;
 	}
 
+	private bool HasOverrideSprite()
+	{
+		if ( string.IsNullOrEmpty( OverrideArtSpeciesId ) ) return false;
+		var sp = MonsterManager.Instance?.GetSpecies( OverrideArtSpeciesId );
+		if ( sp == null ) return false;
+		if ( sp.AnimationFrames != null && sp.AnimationFrames.Count > 0 ) return true;
+		if ( !string.IsNullOrEmpty( sp.IconPath ) ) return true;
+		return false;
+	}
+
 	private string GetCurrentFrame()
 	{
-		var species = MonsterManager.Instance?.GetSpecies( Monster?.SpeciesId );
+		// Dev override (beast-art editor): when set, render the override
+		// species' sprite instead of Monster's. Lets the editor preview
+		// framing for species the player doesn't own.
+		var artSpeciesId = !string.IsNullOrEmpty( OverrideArtSpeciesId ) ? OverrideArtSpeciesId : Monster?.SpeciesId;
+		var species = MonsterManager.Instance?.GetSpecies( artSpeciesId );
 		if ( species == null )
 			return "";
 

@@ -52,13 +52,13 @@
 						<span class="pill-label">@L("ui.online.guild")</span>
 					</div>
 				}
-				@* Ranked battles disabled for launch — re-enable by un-commenting and removing the guard in SwitchTab.
+				@* Battle tab — hidden for v1.2.0, reshipping in v1.3+. Flip RankedEnabled to true to restore.
 				<div class="hub-pill pill-arena @(currentSection == "ranked" ? "active" : "")"
 					 onmouseover=@(() => { if (hoveredTab != "ranked") { hoveredTab = "ranked"; SoundManager.PlayHover(); } })
 					 onmouseout=@(() => hoveredTab = null)
 					 onclick=@(() => { SoundManager.PlayClick(); SwitchTab("ranked"); })>
 					<img class="pill-icon" src="ui/icons/tabs/arena.svg" />
-					<span class="pill-label">@L("ui.online.arena")</span>
+					<span class="pill-label">Battle</span>
 				</div>
 				*@
 			</div>
@@ -74,23 +74,16 @@
 	{
 		@{
 			var otherPlayers = IsConnected() ? GetOnlinePlayers().Where( p => !p.IsLocal ).ToList() : new();
-			var collectedCards = GetCollectedCards();
-			var visibleCollected = collectedCards.Take( 6 ).ToList();
 			var vcm = VoiceChatManager.Instance;
 			var inLobbyVoice = vcm?.IsInLobby ?? false;
 			var lobbyMembers = vcm?.Rooms?.FirstOrDefault( r => r.IsLobby )?.Members?.Count ?? 0;
 			var favBeastSpecies = GetFavoriteSpeciesForDisplay();
 			var beastElementClass = favBeastSpecies?.Element.ToString().ToLower() ?? "";
-			// If our selection went stale (online player disconnected, card removed), fall back to self.
+			// If our selection went stale (online player disconnected), fall back to self.
 			if ( selectedKind == "online" && (selectedOnlinePlayer == null || !otherPlayers.Any( p => p.ConnectionId == selectedOnlinePlayer.ConnectionId )) )
 			{
 				selectedKind = "self";
 				selectedOnlinePlayer = null;
-			}
-			if ( selectedKind == "collected" && (selectedCollectedCard == null || !collectedCards.Any( c => c.SteamId == selectedCollectedCard.SteamId )) )
-			{
-				selectedKind = "self";
-				selectedCollectedCard = null;
 			}
 		}
 
@@ -233,6 +226,10 @@
 										</div>
 										<span class="tile-role" style="color: @player.TitleColor">@player.Title</span>
 									</div>
+									@if ( player.Level > 0 )
+									{
+										<div class="tile-level-pill"><span class="tile-level-pill-num">@($"LV {player.Level}")</span></div>
+									}
 								</div>
 							}
 						</div>
@@ -246,69 +243,6 @@
 						}
 					</div>
 
-					<!-- COLLECTED section -->
-					@if ( collectedCards.Count > 0 )
-					{
-						<div class="tamers-section">
-							<div class="tamers-section-header">
-								<span class="tamers-section-label">COLLECTED</span>
-								<span class="tamers-section-count">@collectedCards.Count</span>
-								@if ( collectedCards.Count > 6 )
-								{
-									<div class="tamers-section-action"
-										 onmouseover=@(() => SoundManager.PlayHover())
-										 onclick=@ViewCardCollection>
-										<span>View All</span>
-										<iconify icon="lucide:chevron-right" Size=@(13) Color="rgba(167, 139, 250, 0.85)" />
-									</div>
-								}
-							</div>
-							<div class="tamers-grid">
-								@foreach ( var card in visibleCollected )
-								{
-									@{
-										var cardGenderClass = (card.Gender?.ToLower() ?? "male") == "female" ? "female" : "male";
-										var cardAvatarPath = cardGenderClass == "female"
-											? "ui/characters/female/female_tamer.png"
-											: "ui/characters/male/male_tamer.png";
-										var cardTitle = !string.IsNullOrEmpty( card.Title ) ? card.Title : "Tamer";
-										var cardTitleColor = !string.IsNullOrEmpty( card.TitleColor ) ? card.TitleColor : "#a78bfa";
-										var cSelected = selectedKind == "collected" && selectedCollectedCard?.SteamId == card.SteamId;
-									}
-									<div class="tamer-tile collected-tile @(cSelected ? "selected" : "")"
-										 onmouseover=@(() => SoundManager.PlayHover())
-										 onclick=@(() => SelectCollected( card ))>
-										<!-- P5 stamp layers -->
-										<div class="tile-bg-block"></div>
-										<div class="tile-halftone"></div>
-										<div class="tile-corner-cut"></div>
-										<div class="tile-rail-bar"></div>
-										@if ( cSelected )
-										{
-											<div class="tile-selected-stamp"><span>SEL</span></div>
-										}
-										<div class="tile-avatar @(card.SteamId > 0 ? "steam" : "cartoon") @cardGenderClass" style="border-color: @cardTitleColor">
-											@if ( card.SteamId > 0 )
-											{
-												<img src="avatar:@card.SteamId" />
-											}
-											else
-											{
-												<img src="@cardAvatarPath" />
-											}
-										</div>
-										<div class="tile-info">
-											<div class="tile-name-row">
-												<span class="tile-name">@card.Name</span>
-											</div>
-											<span class="tile-role" style="color: @cardTitleColor">@cardTitle</span>
-										</div>
-										<div class="tile-level-pill"><span class="tile-level-pill-num">@($"LV {card.Level}")</span></div>
-									</div>
-								}
-							</div>
-						</div>
-					}
 				</div>
 
 				<!-- Detail sidebar -->
@@ -446,6 +380,17 @@
 								var p = selectedOnlinePlayer;
 								var isMutedFlag = vcm?.IsPlayerMuted( p.ConnectionId ) ?? false;
 								var pTitleColor = !string.IsNullOrEmpty( p.TitleColor ) ? p.TitleColor : "#a78bfa";
+								var pFavSpecies = !string.IsNullOrEmpty( p.FavoriteMonsterSpeciesId )
+									? MonsterManager.Instance?.GetSpecies( p.FavoriteMonsterSpeciesId )
+									: null;
+								var pElementClass = pFavSpecies?.Element.ToString().ToLower() ?? "";
+								var pPlayTime = p.TotalPlayTimeMinutes <= 0
+									? "-"
+									: ( p.TotalPlayTimeMinutes < 60
+										? $"{p.TotalPlayTimeMinutes}m"
+										: ( p.TotalPlayTimeMinutes < 60 * 24
+											? $"{p.TotalPlayTimeMinutes / 60}h"
+											: $"{p.TotalPlayTimeMinutes / (60 * 24)}d" ) );
 							}
 
 							<!-- Hero / Portrait section -->
@@ -461,6 +406,10 @@
 											<img class="tamer-portrait-img cartoon-img" src="@p.AvatarPath" />
 										}
 									</div>
+									@if ( p.Level > 0 )
+									{
+										<div class="tamer-portrait-level"><span class="tamer-portrait-level-num">@($"LV {p.Level}")</span></div>
+									}
 									@if ( p.IsDev )
 									{
 										<div class="tamer-portrait-dev"><span>DEV</span></div>
@@ -512,6 +461,48 @@
 								</div>
 							</div>
 
+							@if ( p.HasProfile )
+							{
+								<!-- STATS -->
+								<div class="tamer-detail-section-header">
+									<span class="tamer-detail-section-text">STATS</span>
+								</div>
+								<div class="tamer-stats">
+									<div class="tamer-stat">
+										<span class="tamer-stat-val">@p.MonstersCaught.ToString("N0")</span>
+										<span class="tamer-stat-label">CAUGHT</span>
+									</div>
+									<div class="tamer-stat">
+										<span class="tamer-stat-val">@p.AchievementCount.ToString("N0")</span>
+										<span class="tamer-stat-label">ACHV</span>
+									</div>
+									<div class="tamer-stat">
+										<span class="tamer-stat-val">@pPlayTime</span>
+										<span class="tamer-stat-label">TIME</span>
+									</div>
+									<div class="tamer-stat">
+										<span class="tamer-stat-val">@p.BattlesWon.ToString("N0")</span>
+										<span class="tamer-stat-label">WINS</span>
+									</div>
+								</div>
+
+								@if ( pFavSpecies != null )
+								{
+									<!-- FAVORITE BEAST (read-only) -->
+									<div class="tamer-detail-section-header">
+										<span class="tamer-detail-section-text">FAVORITE BEAST</span>
+									</div>
+									<div class="tamer-fav-box @pElementClass">
+										<div class="tamer-fav-display readonly">
+											<div class="tamer-fav-portrait">
+												<img class="tamer-fav-portrait-img" src="@pFavSpecies.IconPath" style="margin-left: @(pFavSpecies.IconOffsetX - 18)px; margin-top: @(pFavSpecies.IconOffsetY)px" />
+											</div>
+											<span class="tamer-fav-name">@pFavSpecies.Name</span>
+										</div>
+									</div>
+								}
+							}
+
 							<!-- INFO -->
 							<div class="tamer-detail-section-header">
 								<span class="tamer-detail-section-text">INFO</span>
@@ -528,139 +519,24 @@
 										<span class="tamer-info-value">@p.GuildName</span>
 									</div>
 								}
+								@if ( p.HasProfile && p.HighestExpedition > 0 )
+								{
+									<div class="tamer-info-row">
+										<span class="tamer-info-label">Stage</span>
+										<span class="tamer-info-value">@p.HighestExpedition.ToString("N0")</span>
+									</div>
+								}
+								@if ( p.HasProfile && !string.IsNullOrEmpty( p.ArenaRank ) && p.ArenaRank != "Unranked" )
+								{
+									<div class="tamer-info-row">
+										<span class="tamer-info-label">Rank</span>
+										<span class="tamer-info-value">@p.ArenaRank</span>
+									</div>
+								}
 								<div class="tamer-info-row">
 									<span class="tamer-info-label">Voice</span>
 									<span class="tamer-info-value">@(isMutedFlag ? "Muted by you" : (inLobbyVoice ? "In lobby voice" : "Available"))</span>
 								</div>
-							</div>
-						}
-						else if ( selectedKind == "collected" && selectedCollectedCard != null )
-						{
-							@{
-								var dc = selectedCollectedCard;
-								var dcGender = (dc.Gender?.ToLower() ?? "male") == "female" ? "female" : "male";
-								var dcAvatar = dcGender == "female" ? "ui/characters/female/female_tamer.png" : "ui/characters/male/male_tamer.png";
-								var dcFavSpecies = !string.IsNullOrEmpty( dc.FavoriteMonsterSpeciesId )
-									? MonsterManager.Instance?.GetSpecies( dc.FavoriteMonsterSpeciesId ) : null;
-								var dcElementClass = dcFavSpecies?.Element.ToString().ToLower() ?? "";
-								var dcTitle = !string.IsNullOrEmpty( dc.Title ) ? dc.Title : "Tamer";
-								var dcTitleColor = !string.IsNullOrEmpty( dc.TitleColor ) ? dc.TitleColor : "#a78bfa";
-							}
-
-							<!-- Hero / Portrait section -->
-							<div class="tamer-portrait-section">
-								<div class="tamer-portrait-wrapper">
-									<div class="tamer-portrait-frame @(dc.SteamId > 0 ? "steam" : "cartoon") @dcGender" style="border-color: @dcTitleColor">
-										@if ( dc.SteamId > 0 )
-										{
-											<img class="tamer-portrait-img" src="avatar:@dc.SteamId" />
-										}
-										else
-										{
-											<img class="tamer-portrait-img cartoon-img" src="@dcAvatar" />
-										}
-									</div>
-									<div class="tamer-portrait-level"><span class="tamer-portrait-level-num">@($"LV {dc.Level}")</span></div>
-								</div>
-								<div class="tamer-portrait-info">
-									<div class="tamer-name-row">
-										<span class="tamer-name">@dc.Name</span>
-									</div>
-									<div class="tamer-title-row">
-										<span class="tamer-title-text" style="color: @dcTitleColor">@dcTitle</span>
-									</div>
-									<div class="tamer-snapshot-pill">
-										<iconify icon="lucide:bookmark" Size=@(10) Color="rgba(167,139,250,0.85)" />
-										<span class="tamer-snapshot-text">SNAPSHOT</span>
-									</div>
-								</div>
-							</div>
-
-							<!-- ACTIONS -->
-							<div class="tamer-detail-section-header">
-								<span class="tamer-detail-section-text">ACTIONS</span>
-							</div>
-							<div class="tamer-actions">
-								<div class="tamer-action danger"
-									 onmouseover=@(() => SoundManager.PlayHover())
-									 onclick=@(() => RemoveCollectedCard( dc ))>
-									<iconify icon="lucide:trash-2" Size=@(14) Color="#f87171" />
-									<span class="tamer-action-label">Remove</span>
-								</div>
-							</div>
-
-							<!-- STATS (6) — two rows of three -->
-							<div class="tamer-detail-section-header">
-								<span class="tamer-detail-section-text">STATS</span>
-							</div>
-							<div class="tamer-stats">
-								<div class="tamer-stat">
-									<span class="tamer-stat-val">@dc.MonstersCaught.ToString("N0")</span>
-									<span class="tamer-stat-label">CAUGHT</span>
-								</div>
-								<div class="tamer-stat">
-									<span class="tamer-stat-val">@dc.MonstersBred.ToString("N0")</span>
-									<span class="tamer-stat-label">BRED</span>
-								</div>
-								<div class="tamer-stat">
-									<span class="tamer-stat-val">@dc.MonstersEvolved.ToString("N0")</span>
-									<span class="tamer-stat-label">EVOLVED</span>
-								</div>
-							</div>
-							<div class="tamer-stats">
-								<div class="tamer-stat">
-									<span class="tamer-stat-val">@dc.BattlesWon.ToString("N0")</span>
-									<span class="tamer-stat-label">BATTLES</span>
-								</div>
-								<div class="tamer-stat">
-									<span class="tamer-stat-val">@dc.AchievementCount.ToString("N0")</span>
-									<span class="tamer-stat-label">ACHV</span>
-								</div>
-								<div class="tamer-stat">
-									<span class="tamer-stat-val">@dc.HighestExpedition.ToString("N0")</span>
-									<span class="tamer-stat-label">STAGE</span>
-								</div>
-							</div>
-
-							@if ( dcFavSpecies != null )
-							{
-								<!-- FAVORITE BEAST (read-only) -->
-								<div class="tamer-detail-section-header">
-									<span class="tamer-detail-section-text">FAVORITE BEAST</span>
-								</div>
-								<div class="tamer-fav-box @dcElementClass">
-									<div class="tamer-fav-display readonly">
-										<div class="tamer-fav-portrait">
-											<img class="tamer-fav-portrait-img" src="@dcFavSpecies.IconPath" style="margin-left: @(dcFavSpecies.IconOffsetX - 18)px; margin-top: @(dcFavSpecies.IconOffsetY)px" />
-										</div>
-										<span class="tamer-fav-name">@dcFavSpecies.Name</span>
-									</div>
-								</div>
-							}
-
-							<!-- INFO -->
-							<div class="tamer-detail-section-header">
-								<span class="tamer-detail-section-text">INFO</span>
-							</div>
-							<div class="tamer-info-block">
-								<div class="tamer-info-row">
-									<span class="tamer-info-label">Collected</span>
-									<span class="tamer-info-value">@FormatDetailDate( dc.CollectedAt )</span>
-								</div>
-								@if ( dc.LastUpdated > dc.CollectedAt )
-								{
-									<div class="tamer-info-row">
-										<span class="tamer-info-label">Updated</span>
-										<span class="tamer-info-value">@FormatDetailDate( dc.LastUpdated )</span>
-									</div>
-								}
-								@if ( !string.IsNullOrEmpty( dc.ArenaRank ) )
-								{
-									<div class="tamer-info-row">
-										<span class="tamer-info-label">Rank</span>
-										<span class="tamer-info-value">@dc.ArenaRank</span>
-									</div>
-								}
 							</div>
 						}
 					</div>
@@ -701,11 +577,10 @@
 	private ArenaPanel arenaPanel;
 	private bool showFavSelector = false;
 
-	// Tamers tab selection-driven detail. selectedKind ∈ { "self", "online", "collected" }.
+	// Tamers tab selection-driven detail. selectedKind ∈ { "self", "online" }.
 	// Default is "self" so opening the tab lands on your own card.
 	private string selectedKind = "self";
 	private OnlinePlayerInfo selectedOnlinePlayer = null;
-	private CollectedTamerCard selectedCollectedCard = null;
 
 	private void OnPanelClicked()
 	{
@@ -720,7 +595,7 @@
 		}
 	}
 
-	// Ranked battles disabled for launch. Any code path that lands on "ranked" gets bounced to players.
+	// Battle tab hidden for v1.2.0 — reshipping with polish in v1.3+. Flip to true to restore.
 	private const bool RankedEnabled = false;
 
 	private void SwitchTab( string section )
@@ -749,7 +624,6 @@
 		showFavSelector = false;
 		selectedKind = "self";
 		selectedOnlinePlayer = null;
-		selectedCollectedCard = null;
 	}
 
 	private bool IsConnected() => GameNetworkSystem.IsActive;
@@ -852,10 +726,19 @@
 								: "ui/characters/male/male_tamer.png")
 							: "ui/characters/male/male_tamer.png",
 						FavoriteExpeditionId = profile?.FavoriteExpeditionId,
+						FavoriteMonsterSpeciesId = profile?.FavoriteMonsterSpeciesId,
 						Title = profile?.Title ?? "Tamer",
 						TitleColor = profile?.TitleColor ?? "#a78bfa",
 						GuildTag = profile?.GuildTag,
-						GuildName = profile?.GuildName
+						GuildName = profile?.GuildName,
+						Level = profile?.Level ?? 0,
+						MonstersCaught = profile?.MonstersCaught ?? 0,
+						BattlesWon = profile?.BattlesWon ?? 0,
+						AchievementCount = profile?.AchievementCount ?? 0,
+						HighestExpedition = profile?.HighestExpedition ?? 0,
+						TotalPlayTimeMinutes = profile?.TotalPlayTimeMinutes ?? 0,
+						ArenaRank = profile?.ArenaRank ?? "Unranked",
+						ArenaPoints = profile?.ArenaPoints ?? 0
 					};
 				} )
 				.OrderBy( p => p.IsLocal ? 1 : 0 )
@@ -916,6 +799,13 @@
 		}
 	}
 
+	// Battles — navigates to Battle tab (team-select); online challenge flow lives in ArenaPanel
+	private void RequestBattle( OnlinePlayerInfo player )
+	{
+		SoundManager.PlayClick();
+		SwitchTab( "ranked" );
+	}
+
 	// Card section
 	private string GetFavoriteName()
 	{
@@ -961,19 +851,6 @@
 		ChatManager.Instance?.SendTamerCardShowcase();
 	}
 
-	private List<CollectedTamerCard> GetCollectedCards()
-	{
-		return TamerManager.Instance?.CurrentTamer?.CollectedCards?
-			.OrderByDescending( c => c.LastUpdated )
-			.ToList() ?? new();
-	}
-
-	private void ViewCardCollection()
-	{
-		SoundManager.PlayForward();
-		CardCollectionPanel.Show();
-	}
-
 	private void OpenFavSelector()
 	{
 		SoundManager.PlayClick();
@@ -988,7 +865,6 @@
 		SoundManager.PlaySelect();
 		selectedKind = "self";
 		selectedOnlinePlayer = null;
-		selectedCollectedCard = null;
 		showFavSelector = false;
 	}
 
@@ -999,32 +875,7 @@
 		SoundManager.PlaySelect();
 		selectedKind = "online";
 		selectedOnlinePlayer = player;
-		selectedCollectedCard = null;
 		showFavSelector = false;
-	}
-
-	private void SelectCollected( CollectedTamerCard card )
-	{
-		if ( card == null ) return;
-		if ( selectedKind == "collected" && selectedCollectedCard?.SteamId == card.SteamId ) return;
-		SoundManager.PlaySelect();
-		selectedKind = "collected";
-		selectedCollectedCard = card;
-		selectedOnlinePlayer = null;
-		showFavSelector = false;
-	}
-
-	private void RemoveCollectedCard( CollectedTamerCard card )
-	{
-		if ( card == null ) return;
-		SoundManager.PlayClick();
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		if ( tamer?.CollectedCards == null ) return;
-		tamer.CollectedCards.RemoveAll( c => c.SteamId == card.SteamId );
-		TamerManager.Instance?.SaveToCloud();
-		// Snap selection back to self after removal.
-		selectedKind = "self";
-		selectedCollectedCard = null;
 	}
 
 	// ── Voice helpers (lobby-only for launch) ───────────────────────────────
@@ -1083,17 +934,15 @@
 		return TamerManager.Instance?.CurrentTamer?.TotalMonstersCaught ?? 0;
 	}
 
-	private string FormatDetailDate( DateTime date )
-	{
-		return date.ToLocalTime().ToString( "MMM d, yyyy" );
-	}
-
 	// Honors GuildManager.UiEnabled so the beta build never shows guild UI even
 	// if the local player is still a member of a guild from prior testing.
 	private bool IsInGuild() => GuildManager.UiEnabled && (GuildManager.Instance?.IsInGuild ?? false);
 
 	// BuildHash drives re-render reactivity. Without this, panel state changes (selection,
 	// voice room membership, online roster, etc) won't propagate per s&box's Panel framework.
+	// PlayerProfiles count is included so remote players' tamer-card data (Level, stats,
+	// favorite beast) surfaces as soon as their profile broadcast lands, not just when the
+	// connection roster changes.
 	protected override int BuildHash()
 	{
 		var vcm = VoiceChatManager.Instance;
@@ -1102,15 +951,14 @@
 				currentSection,
 				selectedKind,
 				selectedOnlinePlayer?.ConnectionId,
-				selectedCollectedCard?.SteamId,
 				showFavSelector,
-				IsConnected() ? Connection.All.Count : 0
+				IsConnected() ? Connection.All.Count : 0,
+				ChatManager.Instance?.PlayerProfiles?.Count ?? 0
 			),
 			HashCode.Combine(
 				vcm?.IsInLobby ?? false,
 				vcm?.IsMicActive ?? false,
 				vcm?.CurrentRoom?.Members?.Count ?? 0,
-				TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0,
 				TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId
 			)
 		);
@@ -1127,9 +975,20 @@
 		public string GenderClass { get; set; } = "male";
 		public string AvatarPath { get; set; } = "ui/characters/male/male_tamer.png";
 		public string FavoriteExpeditionId { get; set; }
+		public string FavoriteMonsterSpeciesId { get; set; }
 		public string Title { get; set; } = "Tamer";
 		public string TitleColor { get; set; } = "#a78bfa";
 		public string GuildTag { get; set; }
 		public string GuildName { get; set; }
+		// Surfaced from BroadcastPlayerProfile so the tile + detail sidebar
+		// can show the same tamer-card info we already sync over the wire.
+		public int Level { get; set; }
+		public int MonstersCaught { get; set; }
+		public int BattlesWon { get; set; }
+		public int AchievementCount { get; set; }
+		public int HighestExpedition { get; set; }
+		public int TotalPlayTimeMinutes { get; set; }
+		public string ArenaRank { get; set; } = "Unranked";
+		public int ArenaPoints { get; set; }
 	}
 }

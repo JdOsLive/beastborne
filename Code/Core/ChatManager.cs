@@ -759,10 +759,20 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	// INetworkListener implementation
 	void INetworkListener.OnActive( Connection connection )
 	{
-		// Player joined
+		// Player joined — build the Join message directly so PlayerName carries the
+		// joining player's display name. AddSystemMessage stamps PlayerName="System",
+		// and the chat panel renders Join messages as `@message.PlayerName joined the
+		// server`, which would surface "System joined the server" instead of the name.
 		if ( connection != Connection.Local )
 		{
-			AddSystemMessage( $"{connection.DisplayName} joined the game.", ChatMessageType.Join );
+			var joinMsg = new ChatMessage
+			{
+				SteamId = connection.SteamId,
+				PlayerName = connection.DisplayName ?? "Player",
+				Content = $"{connection.DisplayName} joined the game.",
+				Type = ChatMessageType.Join
+			};
+			AddMessage( joinMsg );
 		}
 
 		// Re-broadcast our profile so the new player gets it

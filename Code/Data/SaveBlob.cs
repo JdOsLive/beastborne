@@ -71,9 +71,6 @@ public class TamerSaveData
 {
 	/// <summary>The full Tamer object. Serialized as-is.</summary>
 	public Tamer Tamer { get; set; }
-
-	/// <summary>One-shot flag: has the v2 SP/level migration run yet? (formerly a separate cookie).</summary>
-	public bool SkillPointsMigratedV2 { get; set; }
 }
 
 /// <summary>
@@ -144,7 +141,6 @@ public class DailyRewardSaveData
 	public int TotalLoginDays { get; set; }
 	public bool StreakShieldUsed { get; set; }
 	public bool TodayRewardClaimed { get; set; }
-	public bool Day7BeastPending { get; set; }
 
 	/// <summary>UTC ticks of the last claimed login (0 if never claimed).</summary>
 	public long LastLoginTicks { get; set; }

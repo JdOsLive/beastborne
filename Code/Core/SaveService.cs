@@ -95,6 +95,20 @@ public sealed class SaveService : Component
 	// this boot, so we don't spam the toast every tick while still dirty.
 	private bool _sizeLimitNotifiedThisBoot;
 
+	/// <summary>
+	/// Set when LoadAsync could not confirm whether the player has a cloud save
+	/// (transport failed AND no local cache). In that state the in-memory blob
+	/// is a fresh empty one, but pushing it to cloud would OVERWRITE a real
+	/// save that we simply couldn't read. Cache writes still flow normally
+	/// (they're harmless — no cache existed to begin with). This flag is reset
+	/// only by a successful LoadAsync on a future boot, never mid-session.
+	/// Root cause of the jeremykip save-wipe incident.
+	/// </summary>
+	private bool _cloudWritesQuarantined;
+
+	/// <summary>True if cloud writes are blocked this session due to an ambiguous load.</summary>
+	public bool IsCloudQuarantined => _cloudWritesQuarantined;
+
 	private static readonly JsonSerializerOptions JsonOpts = new()
 	{
 		WriteIndented = false,
@@ -194,13 +208,16 @@ public sealed class SaveService : Component
 				Log.Warning( $"[SaveService] OnDestroy cache flush failed: {ex.Message}" );
 			}
 
-			try
+			if ( !_cloudWritesQuarantined )
 			{
-				_ = SaveApiClient.PutSaveAsync( CurrentBlob );
-			}
-			catch ( System.Exception ex )
-			{
-				Log.Warning( $"[SaveService] OnDestroy cloud flush failed: {ex.Message}" );
+				try
+				{
+					_ = SaveApiClient.PutSaveAsync( CurrentBlob );
+				}
+				catch ( System.Exception ex )
+				{
+					Log.Warning( $"[SaveService] OnDestroy cloud flush failed: {ex.Message}" );
+				}
 			}
 		}
 
@@ -231,14 +248,17 @@ public sealed class SaveService : Component
 		_isHydrating = true;
 		try
 		{
-			// 1. Try cloud (primary) with a timeout.
-			var cloudBlob = await TryReadCloudWithTimeout( CloudLoadTimeoutMs );
-			if ( cloudBlob != null )
+			// 1. Try cloud (primary). The result is a 3-state discriminator: a populated
+			// blob, a confirmed-no-save, or an unknown failure. The third case is
+			// load-bearing — see _cloudWritesQuarantined.
+			var cloudResult = await TryReadCloudWithTimeout( CloudLoadTimeoutMs );
+
+			if ( cloudResult.Status == SaveLoadStatus.Loaded && cloudResult.Blob != null )
 			{
-				CurrentBlob = cloudBlob;
+				CurrentBlob = cloudResult.Blob;
 				HasSave = true;
 				IsOnline = true;
-				Log.Info( $"[SaveService] loaded from cloud (schema v{cloudBlob.SchemaVersion}, {cloudBlob.Monsters?.Count ?? 0} monsters)" );
+				Log.Info( $"[SaveService] loaded from cloud (schema v{cloudResult.Blob.SchemaVersion}, {cloudResult.Blob.Monsters?.Count ?? 0} monsters)" );
 
 				// Conflict check: if a local cache also exists AND is newer than the
 				// cloud blob, the player played offline since the last cloud push.
@@ -246,31 +266,54 @@ public sealed class SaveService : Component
 				// but we MUST loudly warn the player that their offline progress is
 				// being discarded rather than silently dropping it.
 				var cacheCheck = TryReadCache();
-				if ( cacheCheck != null && cacheCheck.LastSaveTicks > cloudBlob.LastSaveTicks )
+				if ( cacheCheck != null && cacheCheck.LastSaveTicks > cloudResult.Blob.LastSaveTicks )
 				{
-					var offlineAge = System.TimeSpan.FromTicks( cacheCheck.LastSaveTicks - cloudBlob.LastSaveTicks );
-					Log.Warning( $"[SaveService] CONFLICT: local cache is {offlineAge.TotalMinutes:F1}m newer than cloud — offline progress will be discarded. cloud={cloudBlob.LastSaveTicks}, cache={cacheCheck.LastSaveTicks}" );
+					var offlineAge = System.TimeSpan.FromTicks( cacheCheck.LastSaveTicks - cloudResult.Blob.LastSaveTicks );
+					Log.Warning( $"[SaveService] CONFLICT: local cache is {offlineAge.TotalMinutes:F1}m newer than cloud — offline progress will be discarded. cloud={cloudResult.Blob.LastSaveTicks}, cache={cacheCheck.LastSaveTicks}" );
 					NotifyCloudCacheConflict();
 				}
 				return;
 			}
 
-			// 2. Fall back to local cache.
+			// 2. Fall back to local cache. Always trust the cache when cloud was
+			// ambiguous OR explicitly empty — the cache is local proof of past
+			// progress that should never be silently discarded.
 			var cacheBlob = TryReadCache();
 			if ( cacheBlob != null )
 			{
 				CurrentBlob = cacheBlob;
 				HasSave = true;
-				IsOnline = false;
-				Log.Info( $"[SaveService] loaded from local cache (cloud unreachable, schema v{cacheBlob.SchemaVersion})" );
+				// IsOnline reflects whether cloud was reachable: only flip to true
+				// when we got a clean NoSave answer (server is up, just empty for us).
+				IsOnline = cloudResult.Status == SaveLoadStatus.NoSave;
+				if ( cloudResult.Status == SaveLoadStatus.Failed )
+					Log.Info( $"[SaveService] loaded from local cache (cloud unreachable, schema v{cacheBlob.SchemaVersion})" );
+				else
+					Log.Warning( $"[SaveService] cloud says no save but local cache exists (schema v{cacheBlob.SchemaVersion}) — using cache, will sync up" );
 				return;
 			}
 
-			// 3. Fresh player — empty blob.
+			// 3. No cache. Two very different cases:
+			//   a) Cloud confirmed NoSave   → genuine fresh player, normal flow.
+			//   b) Cloud Failed             → presence of cloud save is UNKNOWN.
+			//      Initializing an empty blob is fine, but we MUST NOT push it to
+			//      cloud — that would overwrite the player's real save if one
+			//      exists. Quarantine cloud writes for the rest of the session.
 			CurrentBlob = new SaveBlob { SchemaVersion = 1 };
 			HasSave = false;
-			IsOnline = true; // no evidence cloud is down; treat as healthy for writes
-			Log.Info( "[SaveService] no existing save — starting fresh" );
+
+			if ( cloudResult.Status == SaveLoadStatus.NoSave )
+			{
+				IsOnline = true;
+				Log.Info( "[SaveService] no existing save — starting fresh" );
+			}
+			else
+			{
+				IsOnline = false;
+				_cloudWritesQuarantined = true;
+				Log.Error( "[SaveService] CLOUD UNREACHABLE on first boot with no local cache — cloud writes QUARANTINED to protect any existing save. Player should restart when online." );
+				NotifyCloudQuarantined();
+			}
 		}
 		finally
 		{
@@ -407,6 +450,10 @@ public sealed class SaveService : Component
 		_nextCloudRetryTime = 0f;
 		_conflictNotifiedThisBoot = false;
 		_sizeLimitNotifiedThisBoot = false;
+		// Player explicitly chose to wipe — they accept the consequences for THIS
+		// blob, so re-enable cloud writes (the quarantine was only protecting an
+		// unknown prior save).
+		_cloudWritesQuarantined = false;
 
 		// Broadcast to managers so they can reset their own state (tamer, monsters,
 		// beastiary, tutorial, missions, guild, daily rewards). Each manager is
@@ -486,7 +533,20 @@ public sealed class SaveService : Component
 		}
 
 		// 2) Cloud push (background). Skip if we're still in the backoff window
-		// and nothing forced us here.
+		// and nothing forced us here. Also skip unconditionally if cloud writes
+		// are quarantined (LoadAsync couldn't confirm whether a real save exists
+		// on the server — pushing now would clobber it). Cache writes above are
+		// fine; they're local-only.
+		if ( _cloudWritesQuarantined )
+		{
+			if ( cacheOk )
+			{
+				_isDirty = false;
+				_lastDirtySection = null;
+			}
+			return;
+		}
+
 		bool shouldPush = canTryCloud &&
 			(Time.Now - _lastSuccessfulCloudPushTime > MaxCloudPushStalenessSeconds
 			 || (_lastDirtySection != null));
@@ -561,10 +621,11 @@ public sealed class SaveService : Component
 	}
 
 	/// <summary>
-	/// Attempts to read the cloud blob with a timeout. Returns null on timeout,
-	/// missing blob, or any failure. <see cref="IsOnline"/> is updated.
+	/// Attempts to read the cloud blob with a timeout. Returns a 3-state result
+	/// (Loaded / NoSave / Failed). Callers MUST distinguish Failed from NoSave —
+	/// see <see cref="SaveApiClient.SaveLoadStatus"/>.
 	/// </summary>
-	private async Task<SaveBlob> TryReadCloudWithTimeout( int timeoutMs )
+	private async Task<SaveLoadResult> TryReadCloudWithTimeout( int timeoutMs )
 	{
 		// Timeout-race removed: Task.WhenAny isn't reliably whitelisted in s&box's
 		// async surface. The service is already robust to a slow cloud read because
@@ -574,22 +635,13 @@ public sealed class SaveService : Component
 
 		try
 		{
-			var blob = await SaveApiClient.GetSaveAsync();
-			if ( blob == null )
-			{
-				// Could be a legitimate miss (fresh player) OR a transport failure —
-				// SaveApiClient already logged a warning on failure. Either way, we
-				// treat IsOnline as healthy unless the request itself threw here.
-				return null;
-			}
-
-			return blob;
+			return await SaveApiClient.GetSaveAsync();
 		}
 		catch ( System.Exception ex )
 		{
-			Log.Warning( $"[SaveService] cloud read failed: {ex.Message}" );
+			Log.Warning( $"[SaveService] cloud read threw: {ex.Message}" );
 			IsOnline = false;
-			return null;
+			return new SaveLoadResult( SaveLoadStatus.Failed, null );
 		}
 	}
 
@@ -635,6 +687,22 @@ public sealed class SaveService : Component
 		catch ( System.Exception ex )
 		{
 			Log.Warning( $"[SaveService] conflict notification failed: {ex.Message}" );
+		}
+	}
+
+	private void NotifyCloudQuarantined()
+	{
+		try
+		{
+			NotificationManager.Instance?.AddNotification(
+				NotificationType.Warning,
+				"Save server unreachable",
+				"Cloud sync paused this session to protect any existing save. Restart Beastborne when online.",
+				duration: 15f );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[SaveService] quarantine notification failed: {ex.Message}" );
 		}
 	}
 

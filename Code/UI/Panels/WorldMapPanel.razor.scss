@@ -58,7 +58,13 @@ WorldMapPanel {
 	display: flex;
 	flex-direction: column;
 	position: relative;
-	overflow: hidden;
+	// `overflow: hidden` was constraining the TeamPickerPopup which is
+	// rendered as a child of this element — s&box clips abs-positioned
+	// descendants of overflow:hidden parents in some cases, which was
+	// silently constraining the picker's roster grid wrap budget. The
+	// map artwork's clipping was already handled by .map-art-frame
+	// (overflow: hidden at line ~99), so removing it here is safe.
+	// overflow: hidden;  ← removed 2026-05-06 to unbreak TeamPickerPopup
 }
 
 // ─── BACKDROP — Serpinglin illustrated map ────────────────────
@@ -630,6 +636,15 @@ WorldMapPanel {
 	animation: zoneDetailEnter 0.22s ease-out;
 }
 
+// Mini-expedition detail — same card structure but left-anchored so it doesn't
+// crowd the right side where the main zone-detail sits. Purple shadow swapped
+// to teal to match the mini-marker color family.
+.zone-detail.mini-card {
+	right: auto;
+	left: 24px;
+	box-shadow: 6px 6px 0 rgba(20, 140, 140, 0.65), 0 18px 48px rgba(0, 0, 0, 0.7);
+}
+
 // ── HERO IMAGE ─────────────────────────────────────────────────
 // Big landscape image at top with element-tinted gradient overlay
 // and the title/stats sitting on top in the lower-left corner.
@@ -792,16 +807,30 @@ WorldMapPanel {
 	gap: 4px;
 }
 
+// Outer frame — fixed 72×72 square with the rarity border + bg fill.
+// Clips the inner sprite via `overflow: hidden` so DetailIconScale > 1
+// renders cleanly without bleeding into neighbouring tiles.
 .zd-portrait-icon {
+	position: relative;
 	width: 72px;
 	height: 72px;
 	background-color: rgba(20, 14, 32, 0.65);
 	border: 2px solid rgba(148, 163, 184, 0.45);
 	border-radius: 4px;
 	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.45);
-	image-rendering: pixelated;
-	object-fit: contain;
+	overflow: hidden;
+}
+
+// Inner sprite — explicit width/height/left/top come from BuildZdIconStyle
+// in the .razor (per-species DetailIconScale/Offset). NO transform —
+// `image-rendering: pixelated` only stays crisp without CSS transform
+// smoothing. `background-size: contain` preserves the source aspect.
+.zd-portrait-icon-bg {
+	position: absolute;
+	background-size: contain;
 	background-repeat: no-repeat;
+	background-position: center center;
+	image-rendering: pixelated;
 }
 
 .zd-beast-portrait.rarity-uncommon  .zd-portrait-icon { border-color: rgba(74, 222, 128, 0.65);  box-shadow: 2px 2px 0 rgba(22, 163, 74, 0.55); }
@@ -811,15 +840,77 @@ WorldMapPanel {
 .zd-beast-portrait.rarity-mythic    .zd-portrait-icon { border-color: rgba(236, 72, 153, 0.75);  box-shadow: 2px 2px 0 rgba(190, 24, 93, 0.55); }
 .zd-beast-portrait.boss             .zd-portrait-icon { border-color: rgba(252, 165, 165, 0.85); box-shadow: 2px 2px 0 rgba(220, 38, 38, 0.65); }
 
-.zd-portrait-name {
+// Mystery treatment — beasts the player hasn't encountered yet render
+// as a black silhouette behind a soft "?" stamp. `brightness(0)` flips
+// every visible pixel to black while preserving the alpha channel, so
+// the species' shape stays readable but colors/details are hidden.
+// Element icons are also suppressed (markup-side) so the player still
+// has to discover what type it is.
+.zd-beast-portrait.unseen {
+	.zd-portrait-icon-bg {
+		filter: brightness(0);
+		opacity: 0.85;
+	}
+	.zd-portrait-name {
+		color: rgba(148, 163, 184, 0.75);
+		letter-spacing: 0.18em;
+	}
+}
+
+// Big translucent "?" centered over the silhouette. Sits ABOVE the
+// sprite (z-index) inside the outer 72×72 frame.
+.zd-portrait-mystery {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 38px;
+	font-weight: 900;
+	line-height: 24;
+	color: rgba(255, 255, 255, 0.55);
+	text-shadow: 0 2px 4px rgba(0, 0, 0, 0.7);
+	pointer-events: none;
+	z-index: 2;
+}
+
+// Name + element-icon row. Sits below the icon thumbnail. Element
+// icons (primary + optional secondary) flank the name on the right
+// side so type matchup is readable at a glance — hidden in the markup
+// when the species is unseen, so the silhouette stays a true mystery.
+.zd-portrait-label {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
 	width: 100%;
+}
+
+.zd-portrait-name {
 	font-size: 10px;
 	font-weight: 800;
 	color: rgba(255, 255, 255, 0.85);
 	letter-spacing: 0.04em;
 	line-height: 12px;
-	text-align: center;
 	white-space: nowrap;
+}
+
+.zd-portrait-element {
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
+	image-rendering: pixelated;
+	background-repeat: no-repeat;
+
+	&.secondary {
+		width: 12px;
+		height: 12px;
+		opacity: 0.9;
+	}
 }
 
 .zd-portrait-skull {
@@ -1418,6 +1509,22 @@ WorldMapPanel {
 	&.rarity-legendary { color: #fbbf24; border-color: rgba(251, 191, 36, 0.55); }
 	&.rarity-mythic    { color: #ec4899; border-color: rgba(236, 72, 153, 0.55); }
 	&.boss-tag         { color: #fca5a5; background-color: rgba(239, 68, 68, 0.18); border-color: rgba(252, 165, 165, 0.45); }
+}
+
+// "Cannot be contracted" badge — appears beneath the boss portrait name in
+// mini-expedition detail. Prevents players from assuming Loomweaver is catchable.
+.zd-no-contract {
+	font-size: 9px;
+	font-weight: 900;
+	color: rgba(148, 163, 184, 0.8);
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	line-height: 11px;
+	margin-top: 2px;
+	border: 1px solid rgba(100, 116, 139, 0.45);
+	border-radius: 2px;
+	padding: 1px 4px;
+	background-color: rgba(15, 20, 30, 0.65);
 }
 
 // ─── DROP TILES — small icon-on-top tiles, 3 per row. Mirror the
@@ -2238,4 +2345,194 @@ WorldMapPanel {
 		letter-spacing: 0.8px;
 		line-height: 12;
 	}
+}
+
+// ─── MINI-EXPEDITION MARKERS ──────────────────────────────────
+// Smaller secondary pins for side content (The Potfield, etc.).
+// Same Persona-stamp vocabulary as zone markers but visually
+// subordinate — smaller diamond, teal accent vs red, no bob animation
+// unless unlocked, no zone-preview card on hover.
+
+@keyframes miniMarkerPulse {
+	0%, 100% { transform: rotate(45deg) scale(1); opacity: 0.5; }
+	50%       { transform: rotate(45deg) scale(1.5); opacity: 0; }
+}
+
+.mini-marker {
+	position: absolute;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	width: 100px;
+	padding-top: 8px;
+	transform: translate(-50%, -100%);
+	cursor: pointer;
+	pointer-events: all;
+
+	&.unlocked {
+		animation: mapMarkerBob 3.2s ease-in-out infinite;
+	}
+
+	&.locked {
+		cursor: default;
+		filter: grayscale(1);
+		opacity: 0.75;
+	}
+}
+
+.mini-marker > * {
+	pointer-events: none;
+}
+
+.mini-pin {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 30px;
+	height: 30px;
+	background-color: rgba(15, 100, 100, 0.92);
+	border: 2px solid rgba(0, 0, 0, 0.85);
+	border-radius: 3px;
+	transform: rotate(45deg);
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55);
+	position: relative;
+	z-index: 2;
+	transition: background-color 0.15s ease-out,
+				transform 0.12s ease-out;
+
+	iconify {
+		transform: rotate(-45deg);
+	}
+}
+
+.mini-marker.unlocked:hover .mini-pin {
+	background-color: rgba(20, 140, 140, 1);
+	transform: rotate(45deg) scale(1.12);
+}
+
+.mini-marker.locked .mini-pin {
+	background-color: rgba(40, 50, 60, 0.92);
+	border-color: rgba(100, 116, 139, 0.85);
+}
+
+.mini-pulse {
+	position: absolute;
+	top: 8px;
+	left: 50%;
+	width: 30px;
+	height: 30px;
+	margin-left: -15px;
+	background-color: rgba(45, 212, 191, 0.35);
+	border-radius: 3px;
+	transform: rotate(45deg);
+	pointer-events: none;
+	animation: miniMarkerPulse 2.6s ease-out infinite;
+	z-index: 1;
+}
+
+.mini-marker.locked .mini-pulse {
+	animation-play-state: paused;
+	background-color: rgba(0, 0, 0, 0);
+}
+
+.mini-label {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	margin-top: 10px;
+	padding: 4px 8px;
+	background-color: rgba(15, 15, 25, 0.96);
+	border: 1.5px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 2px 2px 0 rgba(20, 120, 120, 0.5);
+	white-space: nowrap;
+}
+
+.mini-marker.locked .mini-label {
+	border-color: rgba(100, 116, 139, 0.45);
+	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.mini-name {
+	font-size: 10px;
+	font-weight: 900;
+	color: rgba(153, 246, 228, 0.95);
+	line-height: 12px;
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.mini-meta {
+	font-size: 10px;
+	font-weight: 800;
+	color: #fbbf24;
+	line-height: 12px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	margin-top: 2px;
+}
+
+.mini-marker.locked .mini-name,
+.mini-marker.locked .mini-meta {
+	color: rgba(203, 213, 225, 0.6);
+}
+
+// Hover tooltip — smaller than zone preview, right-anchored off the marker pin.
+// Docked to the right so it never clips against the left map edge. At (52%, 43%)
+// there's plenty of right room; a .right-edge class (applied when x > 70%) flips
+// it left for future minis placed near the right boundary.
+.mini-tooltip {
+	position: absolute;
+	left: calc(100% + 8px);
+	top: 0;
+	width: 240px;
+	padding: 10px 12px;
+	background-color: rgba(15, 15, 25, 0.98);
+	border: 2px solid rgba(0, 0, 0, 0.65);
+	border-radius: 4px;
+	box-shadow: 3px 3px 0 rgba(20, 120, 120, 0.55);
+	display: flex;
+	flex-direction: column;
+	gap: 5px;
+	pointer-events: none;
+	z-index: 20;
+	animation: landmarkTooltipIn 0.15s ease-out;
+}
+
+// Flip tooltip to left side for markers placed near the right map edge (x > 70%).
+// Apply .right-edge on the .mini-marker when its MiniPositions.x exceeds threshold.
+.mini-marker.right-edge .mini-tooltip {
+	left: auto;
+	right: calc(100% + 8px);
+}
+
+.mini-tip-title {
+	font-size: 13px;
+	font-weight: 900;
+	color: rgba(153, 246, 228, 0.95);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	line-height: 16px;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.mini-tip-desc {
+	font-size: 11px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.8);
+	line-height: 16px;
+	white-space: normal;
+}
+
+.mini-tip-locked {
+	font-size: 10px;
+	font-weight: 800;
+	color: rgba(148, 163, 184, 0.85);
+	letter-spacing: 0.10em;
+	text-transform: uppercase;
+	line-height: 12px;
+	margin-top: 3px;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	padding-top: 6px;
 }

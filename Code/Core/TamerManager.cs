@@ -188,14 +188,8 @@ public sealed class TamerManager : Component
 				CurrentTamer.TotalDamageDealt = int.MaxValue;
 			}
 
-			// One-shot SP/level migration (lifted verbatim from old LoadFromCloud).
-			if ( !section.SkillPointsMigratedV2 )
-			{
-				RunSkillPointMigrationV2();
-				section.SkillPointsMigratedV2 = true;
-				// Don't MarkDirty here — SaveService is still in _isHydrating scope,
-				// and it'll no-op anyway. The next mutation will push the flag.
-			}
+			// (V2 SP migration moved below the V1 leaderboard reset and re-keyed
+			// onto Tamer.MigrationVersion — see the second migration block.)
 
 			// MigrationVersion 1 — beta-launch leaderboard reset. Pre-launch
 			// playtest data (raid runs counted as battle wins, dev bot-testing,
@@ -246,6 +240,20 @@ public sealed class TamerManager : Component
 
 				CurrentTamer.MigrationVersion = 1;
 				Log.Info( $"[TamerManager] Beta-launch migration v1: cleared inflated stats (was BattlesWon={prevBattles}, Damage={prevDamage}, KOs={prevKOs}, Caught={prevCaught}, Bred={prevBred}, Evolved={prevEvolved}, Expeditions={prevExpeditions}) and pushed 0 to public leaderboards" );
+			}
+
+			// MigrationVersion 2 — SP/level normalization. Keyed off
+			// Tamer.MigrationVersion (saved on the Tamer object itself,
+			// ridden reliably through every WriteSnapshot).
+			//
+			// The migration body is non-destructive: it prunes stale
+			// SkillRanks entries (talents that were cut from the tree) and
+			// TOPS UP SkillPoints if the player has fewer than they should,
+			// but never DECREASES the loose pool. Safe to re-run.
+			if ( CurrentTamer.MigrationVersion < 2 )
+			{
+				RunSkillPointMigrationV2();
+				CurrentTamer.MigrationVersion = 2;
 			}
 
 			// Clamp on LOAD as well as on save. Without this, a corrupted save
@@ -367,9 +375,15 @@ public sealed class TamerManager : Component
 	}
 
 	/// <summary>
-	/// SP/level migration v2. Clamp to <see cref="Tamer.MaxLevel"/> (50), re-derive
-	/// total earned SP, preserve surviving ranks (clamped to node MaxRank), prune
-	/// unknown IDs, deposit the remainder in the loose SP pool.
+	/// SP/level migration v2. Clamps Level to <see cref="Tamer.MaxLevel"/>,
+	/// prunes stale SkillRanks entries (talents that no longer exist in the
+	/// tree), and TOPS UP SkillPoints if the player has fewer SP than the
+	/// level/rank formula expects.
+	///
+	/// Non-destructive by design: never reduces SkillPoints. Players can
+	/// legitimately have more SP than the formula predicts (refunds, dev
+	/// grants, mid-spend transient state) — taking SP away on every load was
+	/// the v1.0.2 SP-drain bug. Idempotent: safe to re-run.
 	/// </summary>
 	private void RunSkillPointMigrationV2()
 	{
@@ -403,8 +417,19 @@ public sealed class TamerManager : Component
 			CurrentTamer.SkillRanks = newRanks;
 		}
 
-		CurrentTamer.SkillPoints = Math.Max( 0, totalEarnedSp - spSpentOnPreserved );
-		Log.Info( $"[Migration v2] Lv {capLevel} → earned {totalEarnedSp} SP. Preserved {preservedRanks} ranks ({spSpentOnPreserved} SP), pruned {prunedIds} cut talents, loose pool: {CurrentTamer.SkillPoints} SP" );
+		// Top-up only. If the player has fewer SP than (earned - spent),
+		// they've been short-changed somewhere — fix it. If they have more,
+		// leave it: legitimate sources include refunds and pre-launch grants,
+		// and the previous destructive version of this migration was the
+		// bug we're fixing.
+		int expectedSp = Math.Max( 0, totalEarnedSp - spSpentOnPreserved );
+		int spBefore = CurrentTamer.SkillPoints;
+		if ( spBefore < expectedSp )
+		{
+			CurrentTamer.SkillPoints = expectedSp;
+		}
+
+		Log.Info( $"[Migration v2] Lv {capLevel} → earned {totalEarnedSp} SP, spent {spSpentOnPreserved} on {preservedRanks} preserved ranks, pruned {prunedIds} cut talents. SP: {spBefore} → {CurrentTamer.SkillPoints}" );
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -440,8 +465,6 @@ public sealed class TamerManager : Component
 
 		// Embed the entire Tamer object — it's already JSON-friendly.
 		blob.Tamer.Tamer = CurrentTamer;
-		// Preserve the migration flag (only flips once, sticky).
-		// section.SkillPointsMigratedV2 is set in Hydrate.
 
 		// Leaderboard fire-and-forget (keep existing behaviour).
 		Stats.SetValue( "total-playtime-launch", (int)CurrentTamer.TotalPlayTime.TotalMinutes );

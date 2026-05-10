@@ -128,7 +128,7 @@ public sealed class ShopManager : Component
 			{
 				Id = "ink_mega",
 				Name = "Contract Ink (100)",
-				Description = "A massive stockpile of contract ink. For those who catch them all!",
+				Description = "A massive stockpile of contract ink. For tamers who leave no beast un-contracted.",
 				IconPath = "ui/icons/ink_large.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,

@@ -141,9 +141,9 @@ public sealed class TutorialManager : Component
 			new TutorialStep
 			{
 				Id = "pick-zone",
-				Title = "Saltmoor Approach",
-				Message = "Click your first zone — a friendly stretch of coast just north of Saltmoor Cove. Perfect for a first run.",
-				ActionHint = "Pick Saltmoor Approach.",
+				Title = "Weaverton Approach",
+				Message = "Click your first zone — Weaverton Approach, a friendly stretch of pasture lane just outside the village gate. Perfect for a first run.",
+				ActionHint = "Pick Weaverton Approach.",
 				TargetSelector = ".zone-card.tutorial-zone",
 				AdvanceEvent = "worldmap.zone-selected",
 			},

@@ -26,6 +26,58 @@
 		var recommendedLevel = expedition.BaseEnemyLevel;
 
 		<div class="picker-modal">
+			@* ═══ DEV: SLOT POSITION EDITOR ════════════════════════
+			   Hidden behind ShowSlotEditor. Pick any species (whether
+			   you own it or not) and it renders in all 3 team slots
+			   for visual positioning checks. Drag the sprite on a
+			   slot to adjust CardOffsetX/Y; mouse wheel scales the
+			   sprite. Same data the Beastbook editor edits — saving
+			   updates both surfaces. SAVE → CONSOLE dumps overrides
+			   as paste-ready C# for MonsterManager.cs. *@
+			@if ( ShowSlotEditor )
+			{
+				@{
+					var allTestable = GetAllTestableSpecies();
+					var currentIdx = string.IsNullOrEmpty( _slotEditTestSpeciesId )
+						? -1
+						: allTestable.FindIndex( s => s.Id == _slotEditTestSpeciesId );
+					var currentSp = currentIdx >= 0 ? allTestable[currentIdx] : null;
+				}
+				<div class="slot-editor-toolbar">
+					<div class="set-label">SLOT</div>
+					<button class="set-btn nav" onclick=@SlotEditPrevSpecies>
+						<iconify icon="lucide:chevron-left" Size=@(14) Color="#cbd5e1" />
+					</button>
+					<div class="set-current-species">
+						<span>@(currentSp?.Name ?? "OFF")</span>
+					</div>
+					<button class="set-btn nav" onclick=@SlotEditNextSpecies>
+						<iconify icon="lucide:chevron-right" Size=@(14) Color="#cbd5e1" />
+					</button>
+					<button class="set-btn nav" onclick=@SlotEditClearTest>
+						<iconify icon="lucide:x" Size=@(13) Color="#f87171" />
+					</button>
+					@if ( !string.IsNullOrEmpty( _slotEditTestSpeciesId ) )
+					{
+						<button class="set-btn save" onclick=@PrintSlotArt>
+							<iconify icon="lucide:save" Size=@(13) Color="#4ade80" />
+							<span>SAVE</span>
+						</button>
+						<button class="set-btn reset" onclick=@ResetSlotArt>
+							<iconify icon="lucide:refresh-ccw" Size=@(13) Color="#f87171" />
+							<span>RESET</span>
+						</button>
+						<div class="set-hint">
+							<span>drag · scroll</span>
+							@if ( _slotArtOverrides.Count > 0 )
+							{
+								<span class="set-count">@_slotArtOverrides.Count edited</span>
+							}
+						</div>
+					}
+				</div>
+			}
+
 			<!-- ═══ HEADER ═══ -->
 			<div class="picker-header">
 				<div class="ph-left">
@@ -119,18 +171,49 @@
 							 onmousedown=@(() => OnSlotMouseDown(slotIdx))
 							 onmouseup=@(() => OnSlotMouseUp(slotIdx))
 							 onmouseover=@(() => OnSlotMouseOver(slotIdx))>
-							@if ( beast != null )
+							@{
+								// Slot-edit override: when the dev picks a test species,
+								// every slot renders that species (without needing to
+								// own it). Falls back to the real beast in the slot.
+								var editTestSpecies = !string.IsNullOrEmpty( _slotEditTestSpeciesId )
+									? MonsterManager.Instance?.GetSpecies( _slotEditTestSpeciesId )
+									: null;
+								var displaySpecies = editTestSpecies != null
+									? editTestSpecies
+									: ( beast != null ? MonsterManager.Instance?.GetSpecies( beast.SpeciesId ) : null );
+							}
+							@if ( beast != null || displaySpecies != null )
 							{
-								var species = MonsterManager.Instance?.GetSpecies( beast.SpeciesId );
-								var hpPct = beast.HPPercent * 100f;
+								var species = displaySpecies;
+								var hpPct = beast != null ? beast.HPPercent * 100f : 100f;
 								var hpClass = hpPct > 60f ? "healthy" : hpPct > 25f ? "wounded" : "critical";
-								var heldItem = string.IsNullOrEmpty( beast.HeldItemId ) ? null : ItemManager.Instance?.GetItem( beast.HeldItemId );
-								var lowLevel = beast.Level < recommendedLevel - 5;
-								var ppLow = HasLowPP( beast );
+								var heldItem = ( beast != null && !string.IsNullOrEmpty( beast.HeldItemId ) )
+									? ItemManager.Instance?.GetItem( beast.HeldItemId )
+									: null;
+								var lowLevel = beast != null && beast.Level < recommendedLevel - 5;
+								var ppLow = beast != null && HasLowPP( beast );
 
-								<div class="slot-art-wrap">
-									<img class="slot-art" src="@(species?.IconPath ?? "ui/monsters/placeholder.png")" />
-									@if ( beast.IsFavorite )
+								@{
+									// Reuse the BeastiaryPanel grid-card per-species positioning
+									// so the sprite sits perfectly in the slot art frame. Multiplier
+									// 0.65 matches the evo-stage pattern (smaller frame than 172px
+									// grid card → proportionally smaller offsets). Overrides from
+									// the slot editor (if active) shadow the species data.
+									var slotCi = System.Globalization.CultureInfo.InvariantCulture;
+									var slotArt = GetSlotArt( species );
+									var slotScale = slotArt.Scale;
+									var slotOffX = slotArt.OffX * 0.65f;
+									var slotOffY = slotArt.OffY * 0.65f;
+									var slotSpriteStyle = $"transform: translate({slotOffX.ToString("F2", slotCi)}px, {slotOffY.ToString("F2", slotCi)}px) scale({slotScale.ToString("F2", slotCi)}); transform-origin: center bottom;";
+								}
+								<div class="slot-art-wrap @(ShowSlotEditor && !string.IsNullOrEmpty(_slotEditTestSpeciesId) ? "slot-edit" : "")"
+									 onmousedown=@(() => StartDragSlotArt(species))
+									 onmouseover=@(() => OnSlotEditCardEnter(species?.Id))
+									 onmouseout=@(() => OnSlotEditCardLeave(species?.Id))>
+									<div class="slot-art-portrait" style="@slotSpriteStyle">
+										<img class="slot-art" src="@(species?.IconPath ?? "ui/monsters/placeholder.png")" />
+									</div>
+									@if ( beast != null && beast.IsFavorite )
 									{
 										<div class="slot-fav">
 											<iconify icon="lucide:star" Size=@(11) Color="#fbbf24" />
@@ -152,7 +235,7 @@
 
 								<div class="slot-info">
 									<div class="slot-name-row">
-										<span class="slot-name">@(beast.Nickname ?? species?.Name ?? beast.SpeciesId)</span>
+										<span class="slot-name">@(beast?.Nickname ?? species?.Name ?? beast?.SpeciesId ?? "?")</span>
 										@if ( lowLevel )
 										{
 											<div class="slot-underlevel-chip">
@@ -161,7 +244,7 @@
 										}
 									</div>
 									<div class="slot-meta-row">
-										<span class="slot-lv">Lv @beast.Level</span>
+										<span class="slot-lv">Lv @(beast?.Level.ToString() ?? "?")</span>
 										@if ( species != null )
 										{
 											<img class="slot-el" src="ui/icons/elements/background/@(species.Element.ToString().ToLower()).svg" />
@@ -172,7 +255,7 @@
 										}
 									</div>
 									<div class="slot-hp-row">
-										<span class="slot-hp-text @hpClass">@beast.CurrentHP / @beast.MaxHP</span>
+										<span class="slot-hp-text @hpClass">@(beast?.CurrentHP.ToString() ?? "—") / @(beast?.MaxHP.ToString() ?? "—")</span>
 										<div class="slot-hp-bar">
 											<div class="slot-hp-fill @hpClass" style="width: @(hpPct)%"></div>
 										</div>
@@ -267,24 +350,46 @@
 						   AvailableNames=@GetMonsterNames() />
 			</div>
 
-			<!-- ═══ ROSTER GRID ═══ -->
-			<div class="picker-roster-section">
-				<div class="ps-head-row">
-					<span class="ps-label">ROSTER</span>
-					<span class="ps-count">@roster.Count / @(MonsterManager.Instance?.OwnedMonsters?.Count ?? 0)</span>
-				</div>
-				<div class="picker-roster-scroll">
-					<div class="picker-roster-grid">
-						@if ( roster.Count == 0 )
+			<!-- ═══ ROSTER HEADER (sibling of grid, NOT wrapping it — matches
+				 BeastiaryPanel structure where the working grid is a direct
+				 child of its column-flex parent with no intermediate wrapper) -->
+			<div class="ps-head-row roster-head-row">
+				<span class="ps-label">ROSTER</span>
+				<span class="ps-count">@roster.Count / @(MonsterManager.Instance?.OwnedMonsters?.Count ?? 0)</span>
+			</div>
+
+			<!-- ═══ ROSTER GRID — NO flex-wrap.
+				 s&box's flex-wrap engine consistently allocates only ~640px
+				 of wrap budget regardless of parent width (confirmed via
+				 hardcoded 1000px on picker-right + every CSS workaround
+				 imaginable). Bypassing flex-wrap by manually slicing the
+				 roster into rows of 5 in code-behind — each row is its own
+				 single-line flex container which lays out reliably. -->
+			<div class="picker-roster-scroll">
+				@if ( roster.Count == 0 )
+				{
+					<div class="roster-empty">
+						<iconify icon="lucide:search-x" Size=@(28) Color="#64748b" />
+						<span>No beasts match</span>
+					</div>
+				}
+				else
+				{
+					@{
+						const int CARDS_PER_ROW = 5;
+						var rosterChunks = new List<List<Monster>>();
+						for ( int i = 0; i < roster.Count; i += CARDS_PER_ROW )
 						{
-							<div class="roster-empty">
-								<iconify icon="lucide:search-x" Size=@(28) Color="#64748b" />
-								<span>No beasts match</span>
-							</div>
+							var chunk = new List<Monster>();
+							for ( int j = i; j < Math.Min( i + CARDS_PER_ROW, roster.Count ); j++ )
+								chunk.Add( roster[j] );
+							rosterChunks.Add( chunk );
 						}
-						else
-						{
-							@foreach ( var m in roster )
+					}
+					@foreach ( var rowChunk in rosterChunks )
+					{
+						<div class="picker-roster-row">
+							@foreach ( var m in rowChunk )
 							{
 								var beast = m;
 								var isPicked = _team.Any( t => t?.Id == beast.Id );
@@ -318,14 +423,22 @@
 									}
 								</div>
 							}
-						}
-					</div>
-				</div>
+						</div>
+					}
+				}
 			</div>
 
 				</div> <!-- /.picker-right -->
 			</div> <!-- /.picker-body -->
 		</div>
+
+		@* Drag shield — fullscreen overlay during slot-art drag. *@
+		@if ( !string.IsNullOrEmpty( _slotEditDraggingId ) )
+		{
+			<div class="slot-edit-drag-shield"
+				 onmousemove=@OnSlotEditDragMove
+				 onmouseup=@OnSlotEditDragEnd></div>
+		}
 	}
 </root>
 
@@ -335,6 +448,211 @@
 	public static string PendingExpeditionId { get; private set; }
 
 	private string _rootVisibleClass => IsVisible ? "visible" : "";
+
+	// ─────────── DEV: SLOT POSITIONING EDITOR ───────────────────
+	// Pick any species (owned or not) and it renders in the team
+	// slots so the dev can tune how the sprite frames in the slab.
+	// Drag the sprite to adjust CardOffsetX/Y; mouse wheel scales.
+	// Same data the Beastbook editor uses — saving propagates to
+	// both surfaces.
+	private const bool ShowSlotEditor = false;
+	private string _slotEditTestSpeciesId;
+	private string _slotEditDraggingId;
+	private string _slotEditHoveredId;
+	private float _slotDragStartMouseX, _slotDragStartMouseY;
+	private float _slotDragStartOffX, _slotDragStartOffY;
+	private bool _slotDragNeedsAnchor;
+	private System.Collections.Generic.Dictionary<string, (float Scale, float OffX, float OffY)> _slotArtOverrides = new();
+
+	// Persistence — overrides survive between sessions so devs don't
+	// lose work to a restart. Stored as JSON in FileSystem.Data.
+	private const string SavedSlotArtFile = "slot_card_art.json";
+	private class SavedSlotArt { public string Id { get; set; } public float Scale { get; set; } public float OffX { get; set; } public float OffY { get; set; } }
+	private class SlotArtData { public List<SavedSlotArt> Cards { get; set; } = new(); }
+	private bool _slotArtLoaded = false;
+
+	private void LoadSavedSlotArt()
+	{
+		try
+		{
+			if ( !FileSystem.Data.FileExists( SavedSlotArtFile ) ) return;
+			var json = FileSystem.Data.ReadAllText( SavedSlotArtFile );
+			var data = System.Text.Json.JsonSerializer.Deserialize<SlotArtData>( json );
+			if ( data?.Cards == null ) return;
+			foreach ( var c in data.Cards )
+			{
+				if ( string.IsNullOrEmpty( c.Id ) ) continue;
+				_slotArtOverrides[c.Id] = (c.Scale, c.OffX, c.OffY);
+			}
+			Log.Info( $"[SlotEdit] Loaded {data.Cards.Count} override(s) from {SavedSlotArtFile}" );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[SlotEdit] Failed to load saved overrides: {ex.Message}" );
+		}
+	}
+
+	private void PersistSlotArtToDisk()
+	{
+		try
+		{
+			var data = new SlotArtData();
+			foreach ( var kvp in _slotArtOverrides )
+			{
+				data.Cards.Add( new SavedSlotArt { Id = kvp.Key, Scale = kvp.Value.Scale, OffX = kvp.Value.OffX, OffY = kvp.Value.OffY } );
+			}
+			var json = System.Text.Json.JsonSerializer.Serialize( data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true } );
+			FileSystem.Data.WriteAllText( SavedSlotArtFile, json );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[SlotEdit] Failed to write overrides: {ex.Message}" );
+		}
+	}
+
+	private (float Scale, float OffX, float OffY) GetSlotArt( MonsterSpecies species )
+	{
+		if ( species == null ) return (1f, 0f, 0f);
+		if ( _slotArtOverrides.TryGetValue( species.Id, out var ov ) ) return ov;
+		return (species.CardScale, species.CardOffsetX, species.CardOffsetY);
+	}
+
+	private List<MonsterSpecies> GetAllTestableSpecies()
+	{
+		var all = MonsterManager.Instance?.GetAllSpecies() ?? new();
+		return all.OrderBy( s => s.BeastiaryNumber ).ToList();
+	}
+
+	private void SlotEditPrevSpecies()
+	{
+		Log.Info( "[SlotEdit] PREV clicked" );
+		var all = GetAllTestableSpecies();
+		if ( all.Count == 0 ) return;
+		var idx = string.IsNullOrEmpty( _slotEditTestSpeciesId )
+			? all.Count - 1
+			: all.FindIndex( s => s.Id == _slotEditTestSpeciesId ) - 1;
+		if ( idx < 0 ) idx = all.Count - 1;
+		_slotEditTestSpeciesId = all[idx].Id;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void SlotEditNextSpecies()
+	{
+		Log.Info( "[SlotEdit] NEXT clicked" );
+		var all = GetAllTestableSpecies();
+		if ( all.Count == 0 ) return;
+		var idx = string.IsNullOrEmpty( _slotEditTestSpeciesId )
+			? 0
+			: all.FindIndex( s => s.Id == _slotEditTestSpeciesId ) + 1;
+		if ( idx >= all.Count ) idx = 0;
+		_slotEditTestSpeciesId = all[idx].Id;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void SlotEditClearTest()
+	{
+		_slotEditTestSpeciesId = null;
+		StateHasChanged();
+	}
+
+	private void StartDragSlotArt( MonsterSpecies species )
+	{
+		Log.Info( $"[SlotEdit] StartDragSlotArt called. species={species?.Id}, testSpecies={_slotEditTestSpeciesId}, show={ShowSlotEditor}" );
+		if ( !ShowSlotEditor || species == null || string.IsNullOrEmpty( _slotEditTestSpeciesId ) ) return;
+		var art = GetSlotArt( species );
+		_slotEditDraggingId = species.Id;
+		_slotDragStartOffX = art.OffX;
+		_slotDragStartOffY = art.OffY;
+		_slotDragNeedsAnchor = true;
+		StateHasChanged();
+	}
+
+	private void OnSlotEditDragMove( PanelEvent e )
+	{
+		if ( string.IsNullOrEmpty( _slotEditDraggingId ) ) return;
+		if ( _slotDragNeedsAnchor )
+		{
+			_slotDragStartMouseX = MousePosition.x;
+			_slotDragStartMouseY = MousePosition.y;
+			_slotDragNeedsAnchor = false;
+			return;
+		}
+		// Multiplier 1/0.65 ≈ 1.54 — drag pixel input maps to species
+		// CardOffsetX/Y space (which the slot multiplies by 0.65 when
+		// rendering), so visual drag distance matches sprite movement.
+		float dx = ( MousePosition.x - _slotDragStartMouseX ) / 0.65f;
+		float dy = ( MousePosition.y - _slotDragStartMouseY ) / 0.65f;
+		var prev = _slotArtOverrides.TryGetValue( _slotEditDraggingId, out var ov )
+			? ov
+			: GetSlotArtFallback( _slotEditDraggingId );
+		_slotArtOverrides[_slotEditDraggingId] = (prev.Scale, _slotDragStartOffX + dx, _slotDragStartOffY + dy);
+		PersistSlotArtToDisk();
+		StateHasChanged();
+	}
+
+	private void OnSlotEditDragEnd( PanelEvent e )
+	{
+		_slotEditDraggingId = null;
+		StateHasChanged();
+	}
+
+	private (float Scale, float OffX, float OffY) GetSlotArtFallback( string speciesId )
+	{
+		var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+		return sp == null ? (1f, 0f, 0f) : (sp.CardScale, sp.CardOffsetX, sp.CardOffsetY);
+	}
+
+	private void OnSlotEditCardEnter( string speciesId )
+	{
+		if ( !ShowSlotEditor ) return;
+		_slotEditHoveredId = speciesId;
+	}
+
+	private void OnSlotEditCardLeave( string speciesId )
+	{
+		if ( _slotEditHoveredId == speciesId ) _slotEditHoveredId = null;
+	}
+
+	private void PrintSlotArt()
+	{
+		Log.Info( $"[SlotEdit] SAVE clicked. Overrides count = {_slotArtOverrides.Count}, current test species = '{_slotEditTestSpeciesId}'" );
+		if ( _slotArtOverrides.Count == 0 )
+		{
+			Log.Info( "[SlotEdit] No overrides yet — drag a slot or scroll over it first." );
+			return;
+		}
+
+		// 1) Persist to disk so the next session loads them automatically.
+		PersistSlotArtToDisk();
+		Log.Info( $"[SlotEdit] Saved {_slotArtOverrides.Count} override(s) → FileSystem.Data/{SavedSlotArtFile}" );
+
+		// 2) Log each line separately for paste-back into MonsterManager.cs
+		//    (s&box's Log.Info silently truncates multi-line strings).
+		Log.Info( "─── Slot card-art overrides — paste into MonsterManager.cs ───" );
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		foreach ( var kvp in _slotArtOverrides )
+		{
+			var sp = MonsterManager.Instance?.GetSpecies( kvp.Key );
+			var name = sp?.Name ?? kvp.Key;
+			Log.Info( $"// {name} ({kvp.Key})" );
+			Log.Info( $"CardScale = {kvp.Value.Scale.ToString( "0.###", ci )}f," );
+			Log.Info( $"CardOffsetX = {kvp.Value.OffX.ToString( "0.#", ci )}f," );
+			Log.Info( $"CardOffsetY = {kvp.Value.OffY.ToString( "0.#", ci )}f," );
+		}
+		Log.Info( "─────────────────────────────────────────────────────────────" );
+		SoundManager.PlayClick();
+	}
+
+	private void ResetSlotArt()
+	{
+		_slotArtOverrides.Clear();
+		PersistSlotArtToDisk();
+		Log.Info( "[SlotEdit] Cleared all overrides." );
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
 
 	// Team state — fixed-size 3 to keep slot logic simple. nulls = empty slots.
 	private List<Monster> _team = new() { null, null, null };
@@ -375,11 +693,39 @@
 		_hoveredCardId = id;
 	}
 
+	// Mouse wheel — scales the hovered slot's sprite when in slot-edit mode.
+	public override void OnMouseWheel( Vector2 delta )
+	{
+		if ( ShowSlotEditor && !string.IsNullOrEmpty( _slotEditTestSpeciesId ) && !string.IsNullOrEmpty( _slotEditHoveredId ) )
+		{
+			var prev = _slotArtOverrides.TryGetValue( _slotEditHoveredId, out var ov )
+				? ov
+				: GetSlotArtFallback( _slotEditHoveredId );
+			float newScale = Math.Clamp( prev.Scale + delta.y * 0.05f, 0.3f, 3.0f );
+			_slotArtOverrides[_slotEditHoveredId] = (newScale, prev.OffX, prev.OffY);
+			PersistSlotArtToDisk();
+			StateHasChanged();
+			return;
+		}
+		base.OnMouseWheel( delta );
+	}
+
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
 		if ( firstTime )
 		{
 			Instance = this;
+			// Load persisted slot-edit overrides regardless of editor
+			// state — without this, turning the editor OFF means the
+			// slot reverts to the species' base CardScale/CardOffsetX/Y
+			// values from MonsterManager.cs and any tuning you did in
+			// the editor disappears. Loading always means edits stick
+			// even before you commit them to MonsterManager.cs.
+			if ( !_slotArtLoaded )
+			{
+				LoadSavedSlotArt();
+				_slotArtLoaded = true;
+			}
 			// If Show(id) was called before this panel mounted (e.g. ExpeditionPanel
 			// triggered "Embark Again" → WorldMap swapped in → picker constructed
 			// AFTER the Show call), the static flags are already set. Finish the

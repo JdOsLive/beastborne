@@ -32,7 +32,7 @@ public sealed class TradeNodeManager : Component
 	// ═══════════════════════════════════════════════════════════════
 	// LAUNCH NODES
 	// Positions (MapPosX / MapPosY) are % of the world-map backdrop.
-	// Launch zones sit at:  Cove (22, 62) / Forest (52, 38) / Old Saltmoor (78, 68)
+	// Launch zones sit at:  Cove (22, 62) / Forest (52, 38) / Weavermere (78, 68)
 	// Node icons are placed in orbit around each zone marker.
 	// ═══════════════════════════════════════════════════════════════
 	private static readonly List<TradeNode> Defs = new()
@@ -76,80 +76,84 @@ public sealed class TradeNodeManager : Component
 			ItemRewards = new() { ("catch_lure", 2) }
 		},
 
-		// ── Saltmoor Forest cluster ──────────────────────────────────
+		// ── Weaverwood cluster — retuned around the handmade pool
+		// after the AI-gen forest beasts retired pre-launch.
 		new()
 		{
-			Id = "forest_moss_tribute",
-			Name = "Elder Moss Tribute",
-			Description = "The Forest Elder grants a single skill point in exchange for elder moss only found deep in the canopy.",
+			Id = "forest_gnoll_tribute",
+			Name = "Gnollcap Tribute",
+			Description = "The Forest Elder grants a single skill point in exchange for ten Gnollcap Petals — the Gnolls only let go of one when they're sure you mean the grove no harm.",
 			NpcName = "Elder Mira",
 			ZoneId = "saltmoor_forest",
 			MapPosX = 71.7f, MapPosY = 66.3f,
-			Requirements = new() { ("mat_mosscreep", 10) },
+			Requirements = new() { ("mat_gnoll", 10) },
 			GoldCost = 500,
 			SkillPointReward = 1
 		},
 		new()
 		{
-			Id = "forest_pollen_trade",
-			Name = "Pollenpuff Remedy",
-			Description = "The Herbalist will brew a strong elixir for anyone who brings enough Pollen Burst sacs.",
+			Id = "forest_jackacabra_bounty",
+			Name = "Herders' Bounty",
+			Description = "The Herbalist will brew a strong elixir for anyone who brings five Hexbite Fangs back from the wood — every fang is one fewer raid on the pasture.",
 			NpcName = "The Herbalist",
 			ZoneId = "saltmoor_forest",
 			MapPosX = 76.9f, MapPosY = 46.1f,
-			Requirements = new() { ("mat_pollenpuff", 5) },
+			Requirements = new() { ("mat_jackacabra", 5) },
 			GoldCost = 300,
 			ItemRewards = new() { ("xp_feast", 1), ("boost_atk", 2) }
 		},
 		new()
 		{
-			Id = "forest_whisker_bundle",
-			Name = "Whisker Weave",
-			Description = "A wandering weaver offers rare thread in trade for Whiskerwind whiskers.",
+			Id = "forest_twincoil_weave",
+			Name = "Twincoil Weave",
+			Description = "A wandering weaver offers rare thread in trade for eight Twincoil scales — the village says the doubled pattern weaves a cloth that warms both sides.",
 			NpcName = "A Nervous Trader",
 			ZoneId = "saltmoor_forest",
 			MapPosX = 61.0f, MapPosY = 59.5f,
-			Requirements = new() { ("mat_whiskerwind", 8) },
+			Requirements = new() { ("mat_twincoil", 8) },
 			GoldReward = 800,
 			XPReward = 150,
 			ItemRewards = new() { ("catch_prime", 1) }
 		},
 
-		// ── Old Saltmoor cluster ─────────────────────────────────────
+		// ── Weavermere cluster — artists' pond above Weaverton, where
+		// the village's painters and dye-masters chase the colors no
+		// loom can match. Trades retuned around handmade materials
+		// after the AI-gen lake pool retired pre-launch.
 		new()
 		{
-			Id = "oldsalt_mirror_exchange",
-			Name = "Collector's Reflection",
-			Description = "The Collector will part with a prized relic — if enough Mirrorpond shards can be gathered.",
-			NpcName = "The Collector",
+			Id = "oldsalt_painter_request",
+			Name = "Painter's Request",
+			Description = "The village painter is mixing a new green and swears Padlip pondlight gives it the glow she's been chasing for six years. Six motes ought to do it.",
+			NpcName = "Painter Selene",
 			ZoneId = "old_saltmoor",
 			MapPosX = 66.1f, MapPosY = 33.6f,
-			Requirements = new() { ("mat_mirrorpond", 6) },
+			Requirements = new() { ("mat_padlip", 6) },
 			GoldCost = 2000,
 			ItemRewards = new() { ("relic_guardian_emblem", 1) }
 		},
 		new()
 		{
-			Id = "oldsalt_coral_pact",
-			Name = "Coral Pact",
-			Description = "The archaeologist traces old coastal maps in exchange for Coralheim fragments.",
-			NpcName = "Archaeologist Ven",
+			Id = "oldsalt_dye_pact",
+			Name = "Dye-Master's Pact",
+			Description = "The dye-master will share a recipe Weaverton has been guessing at for generations — for four Padlip pondlight motes, brought up while the dawn is still pink.",
+			NpcName = "Dye-Master Wren",
 			ZoneId = "old_saltmoor",
 			MapPosX = 73.9f, MapPosY = 27.0f,
-			Requirements = new() { ("mat_coralheim", 4) },
+			Requirements = new() { ("mat_padlip", 4) },
 			GoldReward = 1500,
 			XPReward = 300,
 			SkillPointReward = 1
 		},
 		new()
 		{
-			Id = "oldsalt_streamling_cache",
-			Name = "Storm-cache",
-			Description = "A scout buried a cache before the great storm. The scout will dig it up again for enough Streamling essence.",
-			NpcName = "A Wary Scout",
+			Id = "oldsalt_poets_offering",
+			Name = "Poet's Offering",
+			Description = "The wandering poet writes a verse for anyone who brings him five Padlip pondlight motes — he says he can hear the lake humming through them and the words come on their own.",
+			NpcName = "The Wandering Poet",
 			ZoneId = "old_saltmoor",
 			MapPosX = 62.3f, MapPosY = 23.3f,
-			Requirements = new() { ("mat_streamling", 5) },
+			Requirements = new() { ("mat_padlip", 5) },
 			GoldCost = 800,
 			ItemRewards = new() { ("catch_prime", 1), ("gold_bell", 2) }
 		}

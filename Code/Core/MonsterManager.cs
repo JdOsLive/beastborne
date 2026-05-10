@@ -77,33 +77,43 @@ public sealed class MonsterManager : Component
 	// ═════════════════════════════════════════════════════════════════════
 	public static readonly HashSet<string> LaunchRoster = new()
 	{
-		// Handmade (4) — starters + mascot
-		"embrik", "pagefin", "cherune", "pollenpuff",
+		// HANDMADE-ONLY launch roster. The original AI-gen wilds across
+		// every zone (twigsnap/dewdrop/dustling/mosscreep/whiskerwind/
+		// glimshroom + their evos branchling/flickermoth/galefox in the
+		// pasture; pollenpuff in the forest; sproutkin/thornveil/
+		// mosswhisper/bloomguard/vinewhip/fungrowth/willowwisp/curublast
+		// in the deeper forest; puddlejaw/mirrorpond/weepfin/streamling/
+		// rivercrest/bubblite/coralheim in the lake) were retired
+		// pre-launch and are HIDDEN from the Beastbook by being absent
+		// from this set. They still exist in the species DB so prior-
+		// caught instances in player rosters don't crash.
 
-		// Zone 1 — Saltmoor Cove wild pool (9)
-		"twigsnap", "dewdrop", "dustling", "mosscreep", "whiskerwind", "glimshroom",
-		"wishlift", "twincoil", "heartwell",
+		// Starters (handmade)
+		"embrik", "pagefin", "cherune",
 
-		// Zone 2 — Saltmoor Forest wild pool (9)
-		"sproutkin", "thornveil", "mosswhisper", "bloomguard",
-		"vinewhip", "fungrowth", "willowwisp", "curublast",
-		// (pollenpuff already in handmade block above, also appears in this pool)
+		// Zone 1 — Weaverton pasture, all handmade
+		"wishlift", "twincoil", "heartwell",     // Spookior
+		"wishstar",                                // Spookior — wishlift evo
+		"sheepot", "cerametz",                    // Jet — pot-sheep line
 
-		// Zone 3 — Old Saltmoor wild pool (7)
-		"puddlejaw", "mirrorpond", "weepfin", "streamling",
-		"rivercrest", "bubblite", "coralheim",
+		// Zone 2 — Weaverwood, all handmade
+		"gnoll", "gnollium",                      // Jet — forest gnome line (gnollium evo-only)
+		"jackacabra",                             // Jet — chupacabra-lepus shadow predator
 
-		// Evolutions of launch species — players can evolve into these,
-		// so they must exist in the visible roster. They don't spawn wild.
-		"branchling",   // twigsnap evo
-		"flickermoth",  // dustling evo
-		"galefox",      // whiskerwind evo
+		// Zone 3 — Weavermere, all handmade
+		"padlip", "liliprince",                   // Jet — frog-prince line (liliprince boss-only)
+
+		// Starter evolutions (handmade — SirPlnguin)
 		"pyrgard",      // embrik mid-evo
 		"manehelm",     // embrik final evo (fire/metal)
 		"gothsire",     // pagefin mid-evo
 		"lochmaw",      // pagefin final evo (water/shadow)
-		"seraphiel",   // cherune mid-evo
-		"aurael",      // cherune final evo (wind)
+		"seraphiel",    // cherune mid-evo
+		"aurael",       // cherune final evo (wind)
+
+		// Weavermere mini-expedition (handmade — Jet)
+		"threadlet",    // Anansi line stage 1 (earth)
+		"loomweaver",   // Anansi line stage 2, evo-only + mini-boss (earth, epic)
 	};
 
 	public static bool IsLaunchAvailable( string speciesId ) => LaunchRoster.Contains( speciesId );
@@ -273,6 +283,8 @@ public sealed class MonsterManager : Component
 			BeastiaryNumber = 1,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f,
+			MiniScale = 1.3f, MiniOffsetX = 9f, MiniOffsetY = 12f,
+			DetailIconScale = 1.5f, DetailIconOffsetX = 32f, DetailIconOffsetY = 34f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -283,13 +295,14 @@ public sealed class MonsterManager : Component
 			Description = "The flame grew with the foal, forging a burning helm where its head should be. Pyrgard protects those who are weak — like it once was.",
 			IconPath = "ui/monsters/pyrgard/idle/pyrgard_idle_01.png",
 			BaseHP = 67, BaseATK = 82, BaseDEF = 53, BaseSpA = 48, BaseSpD = 51, BaseSPD = 69,
-			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 4, SpAGrowth = 4, SpDGrowth = 4, SPDGrowth = 5,
+			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 5, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 6,
 			Element = ElementType.Fire,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "embrik",
 			EvolvesTo = "manehelm",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.4f,
+			BaseExpYield = 125,
 			SignatureDropName = "Vigil Ember",
 			SignatureDropDescription = "A coal-bright ember pried from the rim of Pyrgard's burning helm. Still warm, still watching.",
 			Personality = BeastPersonality.Loyal,
@@ -326,6 +339,8 @@ public sealed class MonsterManager : Component
 			IconOffsetX = 12f,
 			IconOffsetY = 32f,
 			CardOffsetX = 10f,
+			MiniScale = 1.4f, MiniOffsetX = 28f, MiniOffsetY = 18f,
+			DetailIconScale = 1.45f, DetailIconOffsetX = 34f, DetailIconOffsetY = 42f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -342,6 +357,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "pyrgard",
 			BaseCatchRate = 0.2f,
+			BaseExpYield = 240,
 			SignatureDropName = "Sentinel Bristle",
 			SignatureDropDescription = "A single forged hair from Manehelm's flame-mane. Holds its heat days after it falls, as if still on duty.",
 			Personality = BeastPersonality.Loyal,
@@ -390,6 +406,8 @@ public sealed class MonsterManager : Component
 			// top border and the feet stay planted on the name strip.
 			CardScale = 1.3f,
 			CardOffsetY = 32f,
+			MiniScale = 1.6f, MiniOffsetX = -12f, MiniOffsetY = 14f,
+			DetailIconScale = 1.85f, DetailIconOffsetX = -48f, DetailIconOffsetY = 44f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -443,6 +461,8 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 4,
+			MiniScale = 1.45f, MiniOffsetX = 20f, MiniOffsetY = -21f,
+			DetailIconScale = 1.5f, DetailIconOffsetX = 20f, DetailIconOffsetY = -55f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -457,13 +477,14 @@ public sealed class MonsterManager : Component
 				"ui/monsters/gothsire/idle/gothsire_idle_01.png"
 			},
 			BaseHP = 75, BaseATK = 70, BaseDEF = 55, BaseSpA = 85, BaseSpD = 65, BaseSPD = 80,
-			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 4, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 6,
+			HPGrowth = 5, ATKGrowth = 6, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 6,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "pagefin",
 			EvolvesTo = "lochmaw",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.35f,
+			BaseExpYield = 140,
 			SignatureDropName = "Mourning Scale",
 			SignatureDropDescription = "A pearlescent black scale shed when Gothsire turns its brooding gaze toward the open water.",
 			Personality = BeastPersonality.Loyal,
@@ -483,19 +504,21 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 20 },
 				new LearnableMove { MoveId = "sharp_focus", LearnLevel = 22 },
 				new LearnableMove { MoveId = "torrent_claw", LearnLevel = 24 },
-				new LearnableMove { MoveId = "whirlpool_surge", LearnLevel = 26 },
+				new LearnableMove { MoveId = "current_boost", LearnLevel = 26 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 28 },
 				new LearnableMove { MoveId = "hydro_fang", LearnLevel = 30 },
 				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 32 },
 				new LearnableMove { MoveId = "crashing_wave", LearnLevel = 34 },
 				new LearnableMove { MoveId = "aqua_shield", LearnLevel = 36 },
 				new LearnableMove { MoveId = "deluge", LearnLevel = 38 },
-				new LearnableMove { MoveId = "current_boost", LearnLevel = 40 },
+				new LearnableMove { MoveId = "whirlpool_surge", LearnLevel = 40 },
 			},
 			AnimationFrameRate = 8f,
 			BeastiaryNumber = 5,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f,
+			MiniScale = 1.8f, MiniOffsetX = 35f, MiniOffsetY = 1f,
+			DetailIconScale = 1.65f, DetailIconOffsetX = 38f, DetailIconOffsetY = -17f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -512,6 +535,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "gothsire",
 			BaseCatchRate = 0.15f,
+			BaseExpYield = 245,
 			SignatureDropName = "Abyss Tooth",
 			SignatureDropDescription = "A serrated fang from Lochmaw's outer ring of teeth. Still hums with the pressure of the deep that grew it.",
 			Personality = BeastPersonality.Bold,
@@ -560,6 +584,8 @@ public sealed class MonsterManager : Component
 			CardScale = 1.25f,
 			CardOffsetX = 22f,
 			CardOffsetY = 38f,
+			MiniScale = 1.6f, MiniOffsetX = 29f, MiniOffsetY = 30f,
+			DetailIconScale = 1.8f, DetailIconOffsetX = 25f, DetailIconOffsetY = 62f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -613,6 +639,8 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 25 },
 			},
 			BeastiaryNumber = 7,
+			MiniScale = 1.5f, MiniOffsetX = 6f, MiniOffsetY = 0f,
+			DetailIconScale = 1.45f, DetailIconOffsetX = 7f, DetailIconOffsetY = -10f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -628,13 +656,14 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrameRate = 6f,
 			BaseHP = 58, BaseATK = 77, BaseDEF = 48, BaseSpA = 72, BaseSpD = 53, BaseSPD = 97,
-			HPGrowth = 4, ATKGrowth = 6, DEFGrowth = 4, SpAGrowth = 5, SpDGrowth = 4, SPDGrowth = 8,
+			HPGrowth = 5, ATKGrowth = 6, DEFGrowth = 4, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 8,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Uncommon,
 			EvolvesFrom = "cherune",
 			EvolvesTo = "aurael",
 			EvolutionLevel = 36,
 			BaseCatchRate = 0.3f,
+			BaseExpYield = 130,
 			SignatureDropName = "Warden Plume",
 			SignatureDropDescription = "A long primary feather whose edge glints with the silver of Seraphiel's blade-light.",
 			Personality = BeastPersonality.Wild,
@@ -666,14 +695,20 @@ public sealed class MonsterManager : Component
 			BeastiaryNumber = 8,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f,
-			// Canvas has content all the way to both horizontal edges
-			// (halo/wing tips on one side, blade-tail on the other) — at
-			// default 180×180 display inside a 172px card with overflow:
-			// hidden, the extremities clip. Scale down so the full sprite
-			// sits inside the card.
-			CardScale = 0.88f,
-			CardOffsetX = -14f,
-			MiniOffsetX = 10f,
+			// Canvas is 176x96 (wide, short). With .bb-card-sprite using
+			// object-fit: contain, the contained image displays as 180x98
+			// vertically centered in the 180x180 slot — leaves 41px dead
+			// space above and below. CardOffsetY pushes the wrapper down
+			// to seat the figure on the name strip; CardOffsetX shifts
+			// LEFT to keep the down-right blade tail off the right edge
+			// (user feedback: "Seraphiel cut off on the right + want it
+			// MUCH bigger"). Scale 1.35 sacrifices left wing-tip detail
+			// to fill the card vertically — figure dominates the card.
+			CardScale = 1.35f,
+			CardOffsetX = -36f,
+			CardOffsetY = 52f,
+			MiniScale = 2.15f, MiniOffsetX = 20f, MiniOffsetY = 17f,
+			DetailIconScale = 2.2f, DetailIconOffsetX = 22f, DetailIconOffsetY = 16f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -694,6 +729,7 @@ public sealed class MonsterManager : Component
 			BaseRarity = Rarity.Rare,
 			EvolvesFrom = "seraphiel",
 			BaseCatchRate = 0.18f,
+			BaseExpYield = 240,
 			SignatureDropName = "Halo Shard",
 			SignatureDropDescription = "A broken arc of Aurael's crown, glowing softly with the warmth of every soul it once shielded.",
 			Personality = BeastPersonality.Wild,
@@ -725,10 +761,22 @@ public sealed class MonsterManager : Component
 			BeastiaryNumber = 9,
 			IconOffsetX = 14f,
 			IconOffsetY = 32f,
-			// Same Cherune-line canvas framing as Seraphiel — wings/blade
-			// extend to canvas edges and clip at default 1.0 scale.
-			CardScale = 0.88f,
-			CardOffsetX = 0f,
+			// Canvas is 256x187 (huge wide canvas). With .bb-card-sprite
+			// using object-fit: contain, the contained image displays as
+			// 180x131 vertically centered in the 180x180 slot. CardOffsetY
+			// pushes the wrapper down to seat the figure on the name strip;
+			// CardOffsetX shifts LEFT so the down-right blade tail and
+			// right wing don't clip the card edge (user feedback: "Aurael
+			// cut off on the right, should be bigger to show detail").
+			// Bumped scale + corrected aspect = wings/halo/body all
+			// readable at proper proportion instead of being squashed
+			// horizontally. Scale 1.35 fills the card; left wing-tip
+			// clipping accepted in trade for figure prominence.
+			CardScale = 1.35f,
+			CardOffsetX = -36f,
+			CardOffsetY = 30f,
+			MiniScale = 2.2f, MiniOffsetX = -9f, MiniOffsetY = 17f,
+			DetailIconScale = 2.5f, DetailIconOffsetX = -19f, DetailIconOffsetY = 6f,
 			ArtistCredit = "SirPlnguin"
 		} );
 
@@ -791,14 +839,17 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "spore_cloud", LearnLevel = 32 },
 				new LearnableMove { MoveId = "vitality_burst", LearnLevel = 35 },
 			},
+			MiniScale = 1.4f, MiniOffsetX = -4f, MiniOffsetY = 1f,
+			DetailIconScale = 1f, DetailIconOffsetX = -1f, DetailIconOffsetY = -4f,
 			BeastiaryNumber = 13
+
 		} );
 
 		AddSpecies( new MonsterSpecies
 		{
 			Id = "branchling",
 			Name = "Branchling",
-			Description = "A walking thicket that plants itself in divine_grace. It protects the youngest trees in the fodeep_slumber from being trampled.",
+			Description = "A walking thicket that plants itself in clearings. It protects the youngest trees in the forest from being trampled.",
 			IconPath = "ui/monsters/branchling/idle/branchling_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -842,7 +893,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "verdant_edge", LearnLevel = 40 },
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 14
+			BeastiaryNumber = 21
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -890,7 +941,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 24 },
 				new LearnableMove { MoveId = "sea_chant", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 15
+			BeastiaryNumber = 22
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -941,7 +992,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/dustling/idle/dustling_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 16
+			BeastiaryNumber = 23
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -990,7 +1041,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/flickermoth/idle/flickermoth_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 17
+			BeastiaryNumber = 24
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1041,7 +1092,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/mosscreep/idle/mosscreep_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 18
+			BeastiaryNumber = 25
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1092,7 +1143,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 25 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 19
+			BeastiaryNumber = 26
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1141,7 +1192,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 20
+			BeastiaryNumber = 27
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1192,7 +1243,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "floral_guard", LearnLevel = 34 },
 				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 36 },
 			},
-			BeastiaryNumber = 21
+			BeastiaryNumber = 28
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -1243,7 +1294,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/cinderscale/idle/cinderscale_idle_03.png",
 				"ui/monsters/cinderscale/idle/cinderscale_idle_04.png"
 			},
-			BeastiaryNumber = 22,
+			BeastiaryNumber = 29,
 			IconOffsetX = 8f
 		} );
 
@@ -1292,7 +1343,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/blazefang/idle/blazefang_idle_03.png",
 				"ui/monsters/blazefang/idle/blazefang_idle_04.png"
 			},
-			BeastiaryNumber = 23,
+			BeastiaryNumber = 30,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f
 		} );
@@ -1341,7 +1392,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/magmite/idle/magmite_idle_03.png",
 				"ui/monsters/magmite/idle/magmite_idle_04.png"
 			},
-			BeastiaryNumber = 24
+			BeastiaryNumber = 31
 		} );
 
 		// Smolderpup 3-stage line
@@ -1389,7 +1440,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/smolderpup/idle/smolderpup_idle_03.png",
 				"ui/monsters/smolderpup/idle/smolderpup_idle_04.png"
 			},
-			BeastiaryNumber = 27
+			BeastiaryNumber = 34
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1439,7 +1490,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/emberhound/idle/emberhound_idle_03.png",
 				"ui/monsters/emberhound/idle/emberhound_idle_04.png"
 			},
-			BeastiaryNumber = 28,
+			BeastiaryNumber = 35,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f
 		} );
@@ -1489,7 +1540,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/infernowarg/idle/infernowarg_idle_03.png",
 				"ui/monsters/infernowarg/idle/infernowarg_idle_04.png"
 			},
-			BeastiaryNumber = 29,
+			BeastiaryNumber = 36,
 			IconOffsetX = 10f,
 			IconOffsetY = 24f
 		} );
@@ -1542,7 +1593,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/puddlejaw/idle/puddlejaw_idle_03.png",
 				"ui/monsters/puddlejaw/idle/puddlejaw_idle_04.png"
 			},
-			BeastiaryNumber = 30
+			BeastiaryNumber = 37
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1590,7 +1641,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/mirrorpond/idle/mirrorpond_idle_03.png",
 				"ui/monsters/mirrorpond/idle/mirrorpond_idle_04.png"
 			},
-			BeastiaryNumber = 31
+			BeastiaryNumber = 38
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1635,7 +1686,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/weepfin/idle/weepfin_idle_03.png",
 				"ui/monsters/weepfin/idle/weepfin_idle_04.png"
 			},
-			BeastiaryNumber = 32
+			BeastiaryNumber = 39
 		} );
 
 		// Streamling 3-stage line
@@ -1683,7 +1734,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "torrent_claw", LearnLevel = 24 },
 				new LearnableMove { MoveId = "whirlpool_surge", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 33
+			BeastiaryNumber = 40
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1733,7 +1784,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ocean_torrent", LearnLevel = 40 },
 				new LearnableMove { MoveId = "hydro_fang", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 34
+			BeastiaryNumber = 41
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1781,7 +1832,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "abyssal_wave", LearnLevel = 50 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 52 },
 			},
-			BeastiaryNumber = 35
+			BeastiaryNumber = 42
 		} );
 
 		// Bubblite 2-stage line
@@ -1829,7 +1880,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 24 },
 				new LearnableMove { MoveId = "aqua_shield", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 36
+			BeastiaryNumber = 43
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1877,7 +1928,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_sphere", LearnLevel = 42 },
 				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 37
+			BeastiaryNumber = 44
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -1924,7 +1975,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ocean_torrent", LearnLevel = 40 },
 				new LearnableMove { MoveId = "monsoon_call", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 38
+			BeastiaryNumber = 45
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -1975,7 +2026,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "slipstream", LearnLevel = 24 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 39
+			BeastiaryNumber = 46
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2023,7 +2074,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "hurricane_slam", LearnLevel = 40 },
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 40
+			BeastiaryNumber = 47
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2070,7 +2121,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tornado_dive", LearnLevel = 38 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 41
+			BeastiaryNumber = 48
 		} );
 
 		// Zephyrmite 3-stage line
@@ -2118,7 +2169,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vortex_blast", LearnLevel = 24 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 43
+			BeastiaryNumber = 50
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2168,7 +2219,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "squall_burst", LearnLevel = 39 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 44
+			BeastiaryNumber = 51
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2216,7 +2267,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tempest_unleash", LearnLevel = 55 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 58 },
 			},
-			BeastiaryNumber = 45
+			BeastiaryNumber = 52
 		} );
 
 		// Featherwisp 2-stage line
@@ -2264,7 +2315,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vortex_blast", LearnLevel = 24 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 46
+			BeastiaryNumber = 53
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2312,7 +2363,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 46 },
 			},
-			BeastiaryNumber = 47
+			BeastiaryNumber = 54
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2359,7 +2410,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tornado_dive", LearnLevel = 38 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 48
+			BeastiaryNumber = 55
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -2412,7 +2463,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "lightning_fang", LearnLevel = 28 },
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 49
+			BeastiaryNumber = 56
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2462,7 +2513,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 42 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 44 }
 			},
-			BeastiaryNumber = 50
+			BeastiaryNumber = 57
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2510,7 +2561,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 },
 				new LearnableMove { MoveId = "discharge_pulse", LearnLevel = 58 }
 			},
-			BeastiaryNumber = 51
+			BeastiaryNumber = 58
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2557,7 +2608,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "overcharge", LearnLevel = 30 },
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 32 }
 			},
-			BeastiaryNumber = 52
+			BeastiaryNumber = 59
 		} );
 
 		// Joltpaw 2-stage line
@@ -2607,7 +2658,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "arc_bolt", LearnLevel = 26 },
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 28 }
 			},
-			BeastiaryNumber = 53
+			BeastiaryNumber = 60
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2655,7 +2706,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 44 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 46 }
 			},
-			BeastiaryNumber = 54
+			BeastiaryNumber = 61
 		} );
 
 		// Single-stage Electric creatures
@@ -2703,7 +2754,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "overload_crash", LearnLevel = 36 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 55
+			BeastiaryNumber = 62
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2750,7 +2801,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "discharge_pulse", LearnLevel = 38 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 42 }
 			},
-			BeastiaryNumber = 56
+			BeastiaryNumber = 63
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2797,7 +2848,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "voltage_ray", LearnLevel = 28 },
 				new LearnableMove { MoveId = "galvanic_shield", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 57
+			BeastiaryNumber = 64
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -2850,7 +2901,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "geode_burst", LearnLevel = 28 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 58,
+			BeastiaryNumber = 65,
 			IconOffsetX = 4f,
 			IconOffsetY = 30f
 		} );
@@ -2902,7 +2953,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "fissure_wave", LearnLevel = 38 },
 				new LearnableMove { MoveId = "landslide", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 59
+			BeastiaryNumber = 66
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2950,7 +3001,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 },
 				new LearnableMove { MoveId = "fossil_power", LearnLevel = 58 }
 			},
-			BeastiaryNumber = 60
+			BeastiaryNumber = 67
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -2991,7 +3042,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "stalagmite_jab", LearnLevel = 31 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 32 }
 			},
-			BeastiaryNumber = 61
+			BeastiaryNumber = 68
 		} );
 
 		// Pebblit 2-stage line
@@ -3035,7 +3086,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "geode_burst", LearnLevel = 26 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 28 }
 			},
-			BeastiaryNumber = 62
+			BeastiaryNumber = 69
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3077,7 +3128,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "continental_crush", LearnLevel = 42 },
 				new LearnableMove { MoveId = "quake_stomp", LearnLevel = 44 }
 			},
-			BeastiaryNumber = 63
+			BeastiaryNumber = 70
 		} );
 
 		// Single-stage Earth creatures
@@ -3119,7 +3170,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tectonic_slam", LearnLevel = 36 },
 				new LearnableMove { MoveId = "fossil_power", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 65
+			BeastiaryNumber = 72
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3160,7 +3211,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "petrify", LearnLevel = 33 },
 				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 35 }
 			},
-			BeastiaryNumber = 66
+			BeastiaryNumber = 73
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3201,7 +3252,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "landslide", LearnLevel = 38 },
 				new LearnableMove { MoveId = "continental_crush", LearnLevel = 42 }
 			},
-			BeastiaryNumber = 67
+			BeastiaryNumber = 74
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -3248,7 +3299,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "cryo_beam", LearnLevel = 26 },
 				new LearnableMove { MoveId = "glacier_slam", LearnLevel = 28 }
 			},
-			BeastiaryNumber = 68
+			BeastiaryNumber = 75
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3292,7 +3343,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "blizzard_wrath", LearnLevel = 38 },
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 69
+			BeastiaryNumber = 76
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3334,7 +3385,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 56 },
 				new LearnableMove { MoveId = "crystallize", LearnLevel = 58 }
 			},
-			BeastiaryNumber = 70
+			BeastiaryNumber = 77
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3375,7 +3426,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ice_armor", LearnLevel = 38 },
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 40 }
 			},
-			BeastiaryNumber = 71
+			BeastiaryNumber = 78
 		} );
 
 		// Snowmite 2-stage line
@@ -3419,7 +3470,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "glacier_slam", LearnLevel = 28 },
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 72
+			BeastiaryNumber = 79
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3461,7 +3512,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 44 },
 				new LearnableMove { MoveId = "tempest", LearnLevel = 48 }
 			},
-			BeastiaryNumber = 73
+			BeastiaryNumber = 80
 		} );
 
 		// Single-stage Ice creatures
@@ -3503,7 +3554,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "frost_crush", LearnLevel = 34 },
 				new LearnableMove { MoveId = "glacier_slam", LearnLevel = 36 }
 			},
-			BeastiaryNumber = 74
+			BeastiaryNumber = 81
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3544,7 +3595,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "deep_freeze", LearnLevel = 34 },
 				new LearnableMove { MoveId = "ice_armor", LearnLevel = 36 }
 			},
-			BeastiaryNumber = 75
+			BeastiaryNumber = 82
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3585,7 +3636,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 34 },
 				new LearnableMove { MoveId = "frost_crush", LearnLevel = 38 }
 			},
-			BeastiaryNumber = 76
+			BeastiaryNumber = 83
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3626,7 +3677,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "avalanche_wrath", LearnLevel = 40 },
 				new LearnableMove { MoveId = "absolute_zero", LearnLevel = 48 }
 			},
-			BeastiaryNumber = 77
+			BeastiaryNumber = 84
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -3673,7 +3724,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 30 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 78
+			BeastiaryNumber = 85
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3717,7 +3768,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "overgrowth_slam", LearnLevel = 42 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 79
+			BeastiaryNumber = 86
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3759,7 +3810,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 52 },
 				new LearnableMove { MoveId = "evergreen_pulse", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 80
+			BeastiaryNumber = 87
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3806,7 +3857,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/mosswhisper/idle/mosswhisper_idle_03.png",
 				"ui/monsters/mosswhisper/idle/mosswhisper_idle_04.png"
 			},
-			BeastiaryNumber = 81
+			BeastiaryNumber = 88
 		} );
 
 		// Pollenpuff 2-stage line
@@ -3859,7 +3910,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/pollenpuff/idle/pollenpuff_idle_03.png",
 				"ui/monsters/pollenpuff/idle/pollenpuff_idle_04.png"
 			},
-			BeastiaryNumber = 82
+			BeastiaryNumber = 89
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -3907,7 +3958,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bloomguard/idle/bloomguard_idle_03.png",
 				"ui/monsters/bloomguard/idle/bloomguard_idle_04.png"
 			},
-			BeastiaryNumber = 83
+			BeastiaryNumber = 90
 		} );
 
 		// Single-stage Nature creatures
@@ -3955,7 +4006,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/vinewhip/idle/vinewhip_idle_03.png",
 				"ui/monsters/vinewhip/idle/vinewhip_idle_04.png"
 			},
-			BeastiaryNumber = 84
+			BeastiaryNumber = 91
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4002,7 +4053,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/curublast/idle/curublast_idle_03.png",
 				"ui/monsters/curublast/idle/curublast_idle_04.png"
 			},
-			BeastiaryNumber = 85
+			BeastiaryNumber = 92
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4049,7 +4100,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/willowwisp/idle/willowwisp_idle_03.png",
 				"ui/monsters/willowwisp/idle/willowwisp_idle_04.png"
 			},
-			BeastiaryNumber = 86
+			BeastiaryNumber = 93
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4096,7 +4147,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/verdantis/idle/verdantis_idle_03.png",
 				"ui/monsters/verdantis/idle/verdantis_idle_04.png"
 			},
-			BeastiaryNumber = 88
+			BeastiaryNumber = 95
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -4149,7 +4200,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/coglet/idle/coglet_idle_03.png",
 				"ui/monsters/coglet/idle/coglet_idle_04.png"
 			},
-			BeastiaryNumber = 89
+			BeastiaryNumber = 96
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4199,7 +4250,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/ironclad/idle/ironclad_idle_03.png",
 				"ui/monsters/ironclad/idle/ironclad_idle_04.png"
 			},
-			BeastiaryNumber = 90
+			BeastiaryNumber = 97
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4247,7 +4298,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/forgeborn/idle/forgeborn_idle_03.png",
 				"ui/monsters/forgeborn/idle/forgeborn_idle_04.png"
 			},
-			BeastiaryNumber = 91
+			BeastiaryNumber = 98
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4296,7 +4347,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/corrode/idle/corrode_idle_03.png",
 				"ui/monsters/corrode/idle/corrode_idle_04.png"
 			},
-			BeastiaryNumber = 92
+			BeastiaryNumber = 99
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4344,7 +4395,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/oxidrake/idle/oxidrake_idle_03.png",
 				"ui/monsters/oxidrake/idle/oxidrake_idle_04.png"
 			},
-			BeastiaryNumber = 93
+			BeastiaryNumber = 100
 		} );
 
 		// Scrapper 2-stage line
@@ -4394,7 +4445,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/scrapper/idle/scrapper_idle_03.png",
 				"ui/monsters/scrapper/idle/scrapper_idle_04.png"
 			},
-			BeastiaryNumber = 94
+			BeastiaryNumber = 101
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4442,7 +4493,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/junktitan/idle/junktitan_idle_03.png",
 				"ui/monsters/junktitan/idle/junktitan_idle_04.png"
 			},
-			BeastiaryNumber = 95
+			BeastiaryNumber = 102
 		} );
 
 		// Single-stage Metal creatures
@@ -4490,7 +4541,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bladefly/idle/bladefly_idle_03.png",
 				"ui/monsters/bladefly/idle/bladefly_idle_04.png"
 			},
-			BeastiaryNumber = 96
+			BeastiaryNumber = 103
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4537,7 +4588,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bellguard/idle/bellguard_idle_03.png",
 				"ui/monsters/bellguard/idle/bellguard_idle_04.png"
 			},
-			BeastiaryNumber = 97
+			BeastiaryNumber = 104
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4584,7 +4635,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/chainlink/idle/chainlink_idle_03.png",
 				"ui/monsters/chainlink/idle/chainlink_idle_04.png"
 			},
-			BeastiaryNumber = 98
+			BeastiaryNumber = 105
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4631,7 +4682,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/chromedragon/idle/chromedragon_idle_03.png",
 				"ui/monsters/chromedragon/idle/chromedragon_idle_04.png"
 			},
-			BeastiaryNumber = 99
+			BeastiaryNumber = 106
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -4685,7 +4736,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ethereal_rush", LearnLevel = 30 },
 				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 100
+			BeastiaryNumber = 107
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4736,7 +4787,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 46 },
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 48 },
 			},
-			BeastiaryNumber = 101
+			BeastiaryNumber = 108
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4785,7 +4836,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "divine_light", LearnLevel = 56 },
 				new LearnableMove { MoveId = "genesis_thought", LearnLevel = 60 },
 			},
-			BeastiaryNumber = 102
+			BeastiaryNumber = 109
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4833,7 +4884,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 43 },
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 103
+			BeastiaryNumber = 110
 		} );
 
 		// Wishling 2-stage line
@@ -4884,7 +4935,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 30 },
 				new LearnableMove { MoveId = "concentration", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 104
+			BeastiaryNumber = 111
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -4933,7 +4984,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 44 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 46 },
 			},
-			BeastiaryNumber = 105
+			BeastiaryNumber = 112
 		} );
 
 		// Single-stage Spirit creatures
@@ -4982,7 +5033,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 43 },
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 106
+			BeastiaryNumber = 113
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5030,7 +5081,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 32 },
 				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 34 },
 			},
-			BeastiaryNumber = 107
+			BeastiaryNumber = 114
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5078,7 +5129,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "celestial_flare", LearnLevel = 46 },
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 48 },
 			},
-			BeastiaryNumber = 108
+			BeastiaryNumber = 115
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5126,7 +5177,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 48 },
 				new LearnableMove { MoveId = "judgment_blow", LearnLevel = 50 },
 			},
-			BeastiaryNumber = 109
+			BeastiaryNumber = 116
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -5180,7 +5231,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 31 },
 				new LearnableMove { MoveId = "nightfall_rush", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 110
+			BeastiaryNumber = 117
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5231,7 +5282,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 41 },
 				new LearnableMove { MoveId = "oblivion_claw", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 111
+			BeastiaryNumber = 118
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5280,7 +5331,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_wings", LearnLevel = 56 },
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 60 },
 			},
-			BeastiaryNumber = 112
+			BeastiaryNumber = 119
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5328,7 +5379,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 31 },
 				new LearnableMove { MoveId = "nightfall_rush", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 113
+			BeastiaryNumber = 120
 		} );
 
 		// Nightcrawl 2-stage line
@@ -5379,7 +5430,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 30 },
 				new LearnableMove { MoveId = "phantom_rend", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 114
+			BeastiaryNumber = 121
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5428,7 +5479,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 44 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 46 },
 			},
-			BeastiaryNumber = 115
+			BeastiaryNumber = 122
 		} );
 
 		// Single-stage Shadow creatures
@@ -5477,7 +5528,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 31 },
 				new LearnableMove { MoveId = "feint_jab", LearnLevel = 32 },
 			},
-			BeastiaryNumber = 116
+			BeastiaryNumber = 123
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5525,7 +5576,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 40 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 42 },
 			},
-			BeastiaryNumber = 117
+			BeastiaryNumber = 124
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5573,7 +5624,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "concentration", LearnLevel = 42 },
 				new LearnableMove { MoveId = "phantom_rend", LearnLevel = 44 },
 			},
-			BeastiaryNumber = 118
+			BeastiaryNumber = 125
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5621,7 +5672,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 46 },
 				new LearnableMove { MoveId = "spirit_rend", LearnLevel = 48 },
 			},
-			BeastiaryNumber = 119
+			BeastiaryNumber = 126
 		} );
 
 		AddSpecies( new MonsterSpecies
@@ -5669,7 +5720,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_tear", LearnLevel = 48 },
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 52 },
 			},
-			BeastiaryNumber = 120
+			BeastiaryNumber = 127
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -5722,7 +5773,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "primal_roar", LearnLevel = 58 },
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 60 },
 			},
-			BeastiaryNumber = 121
+			BeastiaryNumber = 128
 		} );
 
 		// Epic Fire - rare spawn in deep volcanic areas
@@ -5771,7 +5822,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "wildfire_burst", LearnLevel = 58 },
 				new LearnableMove { MoveId = "pyroclasm", LearnLevel = 62 },
 			},
-			BeastiaryNumber = 122
+			BeastiaryNumber = 129
 		} );
 
 		// Epic Ice - rare spawn in deepest frozen areas
@@ -5820,7 +5871,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "frozen_ground", LearnLevel = 65 },
 				new LearnableMove { MoveId = "cataclysm", LearnLevel = 70 }
 			},
-			BeastiaryNumber = 123
+			BeastiaryNumber = 130
 		} );
 
 		// Epic Electric - rare spawn during perfect storms
@@ -5869,7 +5920,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "dimensional_rift", LearnLevel = 64 },
 				new LearnableMove { MoveId = "annihilate", LearnLevel = 68 }
 			},
-			BeastiaryNumber = 124
+			BeastiaryNumber = 131
 		} );
 
 		// Legendary - The Mythweaver
@@ -5918,7 +5969,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "genesis_wave", LearnLevel = 70 },
 				new LearnableMove { MoveId = "concentration", LearnLevel = 72 },
 			},
-			BeastiaryNumber = 125
+			BeastiaryNumber = 132
 		} );
 
 		// Legendary - The World Serpent
@@ -5967,7 +6018,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "fossil_power", LearnLevel = 70 },
 				new LearnableMove { MoveId = "primordial_surge", LearnLevel = 72 }
 			},
-			BeastiaryNumber = 126
+			BeastiaryNumber = 133
 		} );
 
 		// Legendary - The Void Dragon
@@ -6016,7 +6067,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 60 },
 				new LearnableMove { MoveId = "cosmic_erasure", LearnLevel = 65 },
 			},
-			BeastiaryNumber = 127
+			BeastiaryNumber = 134
 		} );
 
 		// Mythic - radeep_slumber creature
@@ -6066,7 +6117,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "creation_burst", LearnLevel = 80 },
 				new LearnableMove { MoveId = "concentration", LearnLevel = 82 },
 			},
-			BeastiaryNumber = 142
+			BeastiaryNumber = 149
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6121,7 +6172,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/genisoul/idle/genisoul_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 128
+			BeastiaryNumber = 135
 		} );
 
 		// Epic Fire - Inspired by Hinokagutsuchi, the fire god whose birth destroyed its creator
@@ -6170,7 +6221,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/primeflare/idle/primeflare_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 129
+			BeastiaryNumber = 136
 		} );
 
 		// Epic Shadow - Inspired by Yomotsu Hirasaka (boundary between life and death) and Hel (half-living, half-dead)
@@ -6219,7 +6270,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/voidlboom/idle/voidbloom_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 130
+			BeastiaryNumber = 137
 		} );
 
 		// Rare Nature - The first seed
@@ -6267,7 +6318,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "photon_bloom", LearnLevel = 46 },
 				new LearnableMove { MoveId = "jungle_wrath", LearnLevel = 50 },
 			},
-			BeastiaryNumber = 131
+			BeastiaryNumber = 138
 		} );
 
 		// Rare Water - The first droplet
@@ -6315,7 +6366,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tsunami_crush", LearnLevel = 50 },
 				new LearnableMove { MoveId = "abyssal_wave", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 132
+			BeastiaryNumber = 139
 		} );
 
 		// Uncommon Electric - Inspired by Raijū (Japanese thunder beast) + Weasel/Stoat — Stage 1
@@ -6365,7 +6416,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "circuit_burst", LearnLevel = 28 },
 				new LearnableMove { MoveId = "energy_pulse", LearnLevel = 30 }
 			},
-			BeastiaryNumber = 133
+			BeastiaryNumber = 140
 		} );
 
 		// Uncommon Earth - A primordial bear cub
@@ -6413,7 +6464,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tectonic_slam", LearnLevel = 34 },
 				new LearnableMove { MoveId = "brace", LearnLevel = 38 }
 			},
-			BeastiaryNumber = 64
+			BeastiaryNumber = 71
 		} );
 
 		// Uncommon Wind - The first breath
@@ -6461,7 +6512,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "calm_air", LearnLevel = 38 },
 				new LearnableMove { MoveId = "windshear", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 42
+			BeastiaryNumber = 49
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6516,7 +6567,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 65 },
 				new LearnableMove { MoveId = "cataclysm", LearnLevel = 70 }
 			},
-			BeastiaryNumber = 135
+			BeastiaryNumber = 142
 		} );
 
 		// Rare Electric - Inspired by Raijū + Weasel/Stoat — Stage 2
@@ -6567,7 +6618,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "surge_field", LearnLevel = 44 },
 				new LearnableMove { MoveId = "storm_strike", LearnLevel = 48 }
 			},
-			BeastiaryNumber = 134
+			BeastiaryNumber = 141
 		} );
 
 		// Rare Shadow - Inspired by Ammit (Egyptian devourer of unworthy souls) + Crocodile
@@ -6615,7 +6666,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "void_pulse", LearnLevel = 50 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 52 },
 			},
-			BeastiaryNumber = 136
+			BeastiaryNumber = 143
 		} );
 
 		// Uncommon Wind - Inspired by Púca (Celtic shapeshifter) + Hare
@@ -6663,7 +6714,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "squall_burst", LearnLevel = 38 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 137
+			BeastiaryNumber = 144
 		} );
 
 		// Uncommon Fire - Inspired by Cherufe (Mapuche volcanic spirit) + Crab
@@ -6711,7 +6762,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "lava_plume", LearnLevel = 38 },
 				new LearnableMove { MoveId = "ash_cloud", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 138
+			BeastiaryNumber = 145
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6765,7 +6816,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "cataclysm", LearnLevel = 68 },
 				new LearnableMove { MoveId = "oblivion_ray", LearnLevel = 70 },
 			},
-			BeastiaryNumber = 139
+			BeastiaryNumber = 146
 		} );
 
 		// Epic Shadow - Inspired by Erebus, the primordial darkness before light
@@ -6813,7 +6864,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "absolute_void", LearnLevel = 50 },
 				new LearnableMove { MoveId = "cosmic_erasure", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 140
+			BeastiaryNumber = 147
 		} );
 
 		// Mythic Spirit - Inspired by Aboriginal Dreamtime ancestors who sang reality into existence (CATCHABLE ultra-rare)
@@ -6862,7 +6913,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/songborne/idle/songborne_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 141
+			BeastiaryNumber = 148
 		} );
 
 		// Fungrowth - Nature mushroom creature (Overgrown Heart)
@@ -6910,7 +6961,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 38 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 87
+			BeastiaryNumber = 94
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -6964,7 +7015,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/hinobi/idle/hinobi_idle_03.png",
 				"ui/monsters/hinobi/idle/hinobi_idle_04.png"
 			},
-			BeastiaryNumber = 25
+			BeastiaryNumber = 32
 		} );
 
 		// Uncommon Fire - Blazing ninja warrior
@@ -7014,7 +7065,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/enkong/idle/enkong_idle_03.png",
 				"ui/monsters/enkong/idle/enkong_idle_04.png"
 			},
-			BeastiaryNumber = 26
+			BeastiaryNumber = 33
 		} );
 
 		// Mythic Water - Inspired by Namazu (鯰), the giant earthquake catfish of Japanese mythology
@@ -7064,7 +7115,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/namashira/idle/namashira_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 143
+			BeastiaryNumber = 150
 		} );
 
 		// Mythic Metal - Inspired by Talos (Τάλως), the giant bronze automaton of Greek mythology who guarded Crete
@@ -7114,7 +7165,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/chalkodon/idle/chalkodon_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 144
+			BeastiaryNumber = 151
 		} );
 
 		// Mythic Wind - Inspired by Fujin (風神), the Japanese god of wind who carries storms in a great sack
@@ -7164,7 +7215,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/fujinara/idle/fujinara_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 145
+			BeastiaryNumber = 152
 		} );
 
 		// Mythic Ice - Inspired by Yuki-onna (雪女) storms of Japanese legend, reimagined as a bumbling ice spirit
@@ -7214,7 +7265,7 @@ public sealed class MonsterManager : Component
 				"ui/monsters/bluffrost/idle/bluffrost_idle_04.png"
 			},
 			AnimationFrameRate = 8f,
-			BeastiaryNumber = 146
+			BeastiaryNumber = 153
 		} );
 
 		// ═══════════════════════════════════════════════════════════════
@@ -7237,11 +7288,13 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrameRate = 8f,
 			BaseHP = 38, BaseATK = 32, BaseDEF = 33, BaseSpA = 55, BaseSpD = 42, BaseSPD = 60,
-			HPGrowth = 3, ATKGrowth = 2, DEFGrowth = 2, SpAGrowth = 5, SpDGrowth = 3, SPDGrowth = 5,
+			HPGrowth = 5, ATKGrowth = 3, DEFGrowth = 3, SpAGrowth = 6, SpDGrowth = 4, SPDGrowth = 7,
 			Element = ElementType.Wind,
 			BaseRarity = Rarity.Common,
+			EvolvesTo = "wishstar",
+			EvolutionLevel = 32,
 			BaseCatchRate = 0.65f,
-			BaseExpYield = 60,
+			BaseExpYield = 70,
 			SignatureDropName = "Wishbubble",
 			SignatureDropDescription = "A perfect translucent sphere holding someone's spent hope. Weightless, and softly warm.",
 			Personality = BeastPersonality.Timid,
@@ -7259,12 +7312,71 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 14 },
 				new LearnableMove { MoveId = "wind_blade", LearnLevel = 16 },
 				new LearnableMove { MoveId = "feint_jab", LearnLevel = 18 },
+				new LearnableMove { MoveId = "dream_drift", LearnLevel = 19 },
 				new LearnableMove { MoveId = "slipstream", LearnLevel = 20 },
 				new LearnableMove { MoveId = "howling_gust", LearnLevel = 22 },
 				new LearnableMove { MoveId = "sky_shear", LearnLevel = 24 },
 				new LearnableMove { MoveId = "cyclone_tackle", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 10,
+			BeastiaryNumber = 12,
+			MiniScale = 1.2f, MiniOffsetX = 16f, MiniOffsetY = -9f,
+			DetailIconScale = 1.45f, DetailIconOffsetX = 52f, DetailIconOffsetY = -48f,
+			ArtistCredit = "Spookior"
+		} );
+
+		// Wishstar — the Wishlift evolution. When a Wishlift gathers
+		// enough spent dreams to become a star, the star takes a form
+		// and the king of the fae has a body again. Drawn from
+		// Shakespeare's Oberon (King of the Fae). Wind/Spirit dual-
+		// type — preserves the line's Wind primary while adding the
+		// Spirit element for the celestial-king-of-dreams ascendance.
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "wishstar",
+			Name = "Wishstar",
+			Description = "When a Wishlift carries enough wishes home, the wishes outweigh her — and what falls out the other side is a king with a planet for a body and a sun for a crown. Each continent etched across him is a dream that found its way back. He sleeps standing up, and the small fae who used to ride his bubbles still drifts above his shoulder, refusing to let him out of her sight.",
+			IconPath = "ui/monsters/wishstar/idle/wishstar_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/wishstar/idle/wishstar_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 78, BaseATK = 60, BaseDEF = 65, BaseSpA = 108, BaseSpD = 85, BaseSPD = 102,
+			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 5, SpAGrowth = 7, SpDGrowth = 6, SPDGrowth = 7,
+			Element = ElementType.Wind,
+			SecondaryElement = ElementType.Spirit,
+			BaseRarity = Rarity.Rare,
+			EvolvesFrom = "wishlift",
+			BaseCatchRate = 0.18f,
+			BaseExpYield = 220,
+			SignatureDropName = "Continent Shard",
+			SignatureDropDescription = "A flake from one of Wishstar's continents — a single dream pressed flat into stone. Hold it to the light and the dream replays in the haze on the back of your hand.",
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "He bows once, gravely, the way a king does to a guest in his own court — and only then does he let you study his face.",
+			PossibleTraits = new() { "gale_spirit", "ethereal_blessing", "vital_recovery" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "tempest", LearnLevel = 1, EvolvesFrom = "cyclone_tackle" },
+				new LearnableMove { MoveId = "wind_blade", LearnLevel = 1 },
+				new LearnableMove { MoveId = "dream_drift", LearnLevel = 1 },
+				new LearnableMove { MoveId = "agility_boost", LearnLevel = 1 },
+				new LearnableMove { MoveId = "spirit_breeze", LearnLevel = 5 },
+				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 10 },
+				new LearnableMove { MoveId = "luminous_wall", LearnLevel = 14 },
+				new LearnableMove { MoveId = "sky_shear", LearnLevel = 18 },
+				new LearnableMove { MoveId = "spirit_link", LearnLevel = 22 },
+				new LearnableMove { MoveId = "warding_hymn", LearnLevel = 26 },
+				new LearnableMove { MoveId = "storm_talon", LearnLevel = 30 },
+				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 34 },
+				new LearnableMove { MoveId = "phantom_double", LearnLevel = 38 },
+				new LearnableMove { MoveId = "divine_grace", LearnLevel = 42 },
+				new LearnableMove { MoveId = "tornado_dive", LearnLevel = 46 },
+				new LearnableMove { MoveId = "ethereal_rush", LearnLevel = 50 },
+				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 55 },
+			},
+			BeastiaryNumber = 13,
+			MiniScale = 1.3f, MiniOffsetX = 0f, MiniOffsetY = -17f,
+			DetailIconScale = 1.35f, DetailIconOffsetX = 0f, DetailIconOffsetY = -36f,
 			ArtistCredit = "Spookior"
 		} );
 
@@ -7285,12 +7397,12 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrameRate = 8f,
 			BaseHP = 44, BaseATK = 50, BaseDEF = 42, BaseSpA = 38, BaseSpD = 42, BaseSPD = 47,
-			HPGrowth = 4, ATKGrowth = 4, DEFGrowth = 3, SpAGrowth = 3, SpDGrowth = 3, SPDGrowth = 4,
+			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 4, SpAGrowth = 4, SpDGrowth = 4, SPDGrowth = 6,
 			Element = ElementType.Nature,
 			SecondaryElement = ElementType.Neutral,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.6f,
-			BaseExpYield = 65,
+			BaseExpYield = 75,
 			SignatureDropName = "Twinscale",
 			SignatureDropDescription = "A small green-and-gold snake scale split clean down the middle. Both halves stay warm long after they fall.",
 			Personality = BeastPersonality.Greedy,
@@ -7308,12 +7420,15 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 14 },
 				new LearnableMove { MoveId = "wild_thorn", LearnLevel = 16 },
 				new LearnableMove { MoveId = "root_bind", LearnLevel = 18 },
+				new LearnableMove { MoveId = "two_faced_strike", LearnLevel = 19 },
 				new LearnableMove { MoveId = "vine_crush", LearnLevel = 20 },
 				new LearnableMove { MoveId = "tangling_roots", LearnLevel = 22 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 24 },
 				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 11,
+			BeastiaryNumber = 14,
+			MiniScale = 1.25f, MiniOffsetX = 15f, MiniOffsetY = 3f,
+			DetailIconScale = 1.4f, DetailIconOffsetX = 21f, DetailIconOffsetY = 5f,
 			ArtistCredit = "Spookior"
 		} );
 
@@ -7330,11 +7445,11 @@ public sealed class MonsterManager : Component
 			},
 			AnimationFrameRate = 8f,
 			BaseHP = 55, BaseATK = 30, BaseDEF = 47, BaseSpA = 45, BaseSpD = 60, BaseSPD = 30,
-			HPGrowth = 5, ATKGrowth = 2, DEFGrowth = 4, SpAGrowth = 3, SpDGrowth = 5, SPDGrowth = 2,
+			HPGrowth = 6, ATKGrowth = 3, DEFGrowth = 5, SpAGrowth = 4, SpDGrowth = 6, SPDGrowth = 4,
 			Element = ElementType.Water,
 			BaseRarity = Rarity.Common,
 			BaseCatchRate = 0.65f,
-			BaseExpYield = 65,
+			BaseExpYield = 75,
 			SignatureDropName = "Stillwater Bead",
 			SignatureDropDescription = "A drop of water that holds its shape on a flat stone for hours before sinking in. Tastes faintly of incense.",
 			Personality = BeastPersonality.Loyal,
@@ -7353,12 +7468,515 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "ripple_burst", LearnLevel = 16 },
 				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 18 },
 				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 20 },
+				new LearnableMove { MoveId = "inner_stillness", LearnLevel = 21 },
 				new LearnableMove { MoveId = "endure_stance", LearnLevel = 22 },
 				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 24 },
 				new LearnableMove { MoveId = "sea_chant", LearnLevel = 25 },
 			},
-			BeastiaryNumber = 12,
+			BeastiaryNumber = 15,
+			MiniScale = 1.4f, MiniOffsetX = 0f, MiniOffsetY = 10f,
+			DetailIconScale = 1.35f, DetailIconOffsetX = 0f, DetailIconOffsetY = 3f,
 			ArtistCredit = "Spookior"
+		} );
+
+		// ═══════════════════════════════════════════════════════════════
+		// SHEPHERD'S-SHEEP LINE — sheepot → cerametz (Lv 25)
+		// Pastoral root-bodied sheep folklore. Underneath the fleece is a
+		// tangle of fragile roots, so the sheep wears a clay pot like
+		// armor. Valley farmers leave fresh pots out at dusk in exchange
+		// for an annual shearing — the softest, truest-dyeing wool in
+		// the region. Slotted at #10/#11 in the beastiary; everything
+		// previously at #10+ was bumped by +2 to make room. Spawns wild
+		// in Weaverton. First handmade beasts from new artist Jet.
+		// ═══════════════════════════════════════════════════════════════
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "sheepot",
+			Name = "Sheepot",
+			Description = "Underneath its fleece is a tangle of pale roots — fragile, easily torn — so the sheep learned to wear a clay pot like armor. Farmers leave fresh pots at the pasture's edge each dusk; in return, they shear the sheepot's mane every spring for the softest wool in the valley.",
+			IconPath = "ui/monsters/sheepot/idle/sheepot_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/sheepot/idle/sheepot_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 52, BaseATK = 35, BaseDEF = 50, BaseSpA = 30, BaseSpD = 45, BaseSPD = 26,
+			HPGrowth = 5, ATKGrowth = 4, DEFGrowth = 5, SpAGrowth = 4, SpDGrowth = 6, SPDGrowth = 4,
+			Element = ElementType.Neutral,
+			SecondaryElement = ElementType.Nature,
+			BaseRarity = Rarity.Common,
+			EvolvesTo = "cerametz",
+			EvolutionLevel = 25,
+			BaseCatchRate = 0.7f,
+			BaseExpYield = 55,
+			SignatureDropName = "Soft Spring Wool",
+			SignatureDropDescription = "A lock of impossibly soft wool sheared from a sheepot's mane. Holds a faint warmth even on the coldest nights — valley spinners pay handsomely for a single skein.",
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It tucks its roots deeper into the pot when you approach, peeking at you over the rim. Set something soft on the ground and it will inch closer — the wool is more curious than the sheep beneath it.",
+			PossibleTraits = new() { "verdant_power", "wild_harden", "barbed_hide" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 4 },
+				new LearnableMove { MoveId = "brace", LearnLevel = 6 },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 8 },
+				new LearnableMove { MoveId = "intimidate", LearnLevel = 10 },
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 12 },
+				new LearnableMove { MoveId = "nature_shield", LearnLevel = 14 },
+				new LearnableMove { MoveId = "floral_guard", LearnLevel = 16 },
+				new LearnableMove { MoveId = "spore_cloud", LearnLevel = 18 },
+				new LearnableMove { MoveId = "regenerate", LearnLevel = 20 },
+				new LearnableMove { MoveId = "pot_guard", LearnLevel = 21 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 22 },
+				new LearnableMove { MoveId = "endure_stance", LearnLevel = 24 },
+				new LearnableMove { MoveId = "pollen_burst", LearnLevel = 25 },
+			},
+			BeastiaryNumber = 10,
+			MiniScale = 1.45f, MiniOffsetX = 3f, MiniOffsetY = 1f,
+			DetailIconScale = 1.7f, DetailIconOffsetX = 8f, DetailIconOffsetY = 21f,
+			ArtistCredit = "Jet"
+		} );
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "cerametz",
+			Name = "Cerametz",
+			Description = "When a sheepot outgrows its starter pot, the village's master potter crafts it a glazed urn — wide-rimmed, vine-banded, sized to last a beast's full life. The cerametz settles in for good. Its fleece, now thick enough for a household's winter cloaks, is sheared each solstice in a ceremony as old as the village itself.",
+			IconPath = "ui/monsters/cerametz/idle/cerametz_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/cerametz/idle/cerametz_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 82, BaseATK = 55, BaseDEF = 80, BaseSpA = 45, BaseSpD = 70, BaseSPD = 38,
+			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 4, SpDGrowth = 6, SPDGrowth = 4,
+			Element = ElementType.Neutral,
+			SecondaryElement = ElementType.Nature,
+			BaseRarity = Rarity.Uncommon,
+			EvolvesFrom = "sheepot",
+			BaseCatchRate = 0.32f,
+			BaseExpYield = 150,
+			SignatureDropName = "Solstice Fleece",
+			SignatureDropDescription = "A bundle of cerametz wool sheared at the winter solstice. Spinners across the valley swear no thread holds dye truer — a single bolt is worth more than the loom that wove it.",
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It carries its urn with the patience of a creature that knows every stone in the road. Walk slowly and it will fall into step beside you — and wait at the door of any home where the kettle is on.",
+			PossibleTraits = new() { "verdant_power", "wild_harden", "wild_growth" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "bloom_burst", LearnLevel = 1, EvolvesFrom = "pollen_burst" },
+				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 1 },
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 1 },
+				new LearnableMove { MoveId = "brace", LearnLevel = 5 },
+				new LearnableMove { MoveId = "nature_shield", LearnLevel = 10 },
+				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 14 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 18 },
+				new LearnableMove { MoveId = "floral_guard", LearnLevel = 22 },
+				new LearnableMove { MoveId = "tangling_roots", LearnLevel = 26 },
+				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 30 },
+				new LearnableMove { MoveId = "regenerate", LearnLevel = 33 },
+				new LearnableMove { MoveId = "overgrowth_slam", LearnLevel = 37 },
+				new LearnableMove { MoveId = "solstice_veil", LearnLevel = 38 },
+				new LearnableMove { MoveId = "endure_stance", LearnLevel = 40 },
+				new LearnableMove { MoveId = "jungle_wrath", LearnLevel = 44 },
+				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 48 },
+			},
+			BeastiaryNumber = 11,
+			MiniScale = 1.45f, MiniOffsetX = 0f, MiniOffsetY = 28f,
+			DetailIconScale = 1.6f, DetailIconOffsetX = 4f, DetailIconOffsetY = 47f,
+			ArtistCredit = "Jet"
+		} );
+
+		// ═══════════════════════════════════════════════════════════════
+		// FOREST GNOME LINE (#15-16): Gnoll → Gnollium
+		// Forest spirits drawn from European hidden-folk myth (gnomes,
+		// kobolds, brownies — small earth-tenders who keep gardens
+		// running while no one's watching). Live wild in Weaverwood
+		// (Weaverwood, Lv 15+). New artist contribution by Jet.
+		// ═══════════════════════════════════════════════════════════════
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "gnoll",
+			Name = "Gnoll",
+			Description = "A gnome no taller than a thumb, hidden beneath the brim of its red mushroom cap. It tends a square foot of moss and considers it a kingdom — every fallen leaf swept, every mushroom dusted, every snail walked back to the brook by morning.",
+			IconPath = "ui/monsters/gnoll/idle/gnoll_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/gnoll/idle/gnoll_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 46, BaseATK = 34, BaseDEF = 42, BaseSpA = 52, BaseSpD = 48, BaseSPD = 40,
+			HPGrowth = 5, ATKGrowth = 3, DEFGrowth = 4, SpAGrowth = 5, SpDGrowth = 5, SPDGrowth = 4,
+			Element = ElementType.Nature,
+			BaseRarity = Rarity.Common,
+			EvolvesTo = "gnollium",
+			EvolutionLevel = 28,
+			BaseCatchRate = 0.6f,
+			BaseExpYield = 65,
+			SignatureDropName = "Gnollcap Petal",
+			SignatureDropDescription = "A single red scale shed from a Gnoll's mushroom hat. Smells faintly of the forest floor after rain — apothecaries pay well for a handful.",
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It freezes still as a stump when it notices you, hat tipped just enough to peek. Leave a small offering — a button, a bead, a sweet — and it may decide you are worth knowing.",
+			PossibleTraits = new() { "verdant_power", "wild_growth", "forest_blessing" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "spore_cloud", LearnLevel = 4 },
+				new LearnableMove { MoveId = "thorn_lash", LearnLevel = 6 },
+				new LearnableMove { MoveId = "brace", LearnLevel = 8 },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 10 },
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 12 },
+				new LearnableMove { MoveId = "nature_shield", LearnLevel = 14 },
+				new LearnableMove { MoveId = "pollen_burst", LearnLevel = 16 },
+				new LearnableMove { MoveId = "regenerate", LearnLevel = 18 },
+				new LearnableMove { MoveId = "floral_guard", LearnLevel = 20 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 22 },
+				new LearnableMove { MoveId = "endure_stance", LearnLevel = 24 },
+				new LearnableMove { MoveId = "bloom_burst", LearnLevel = 26 },
+				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 28 },
+			},
+			BeastiaryNumber = 16,
+			MiniScale = 1.55f, MiniOffsetX = 4f, MiniOffsetY = -3f,
+			DetailIconScale = 1.8f, DetailIconOffsetX = 14f, DetailIconOffsetY = -30f,
+			ArtistCredit = "Jet"
+		} );
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "gnollium",
+			Name = "Gnollium",
+			Description = "When a Gnoll finds a clearing untouched by axes or hooves, its cap unfurls into red petals and its body grows into a fairy-keeper sized to tend a whole grove. Walk softly through a forest where nothing seems out of place, and you have likely passed one without ever knowing.",
+			IconPath = "ui/monsters/gnollium/idle/gnollium_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/gnollium/idle/gnollium_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 72, BaseATK = 55, BaseDEF = 62, BaseSpA = 82, BaseSpD = 68, BaseSPD = 58,
+			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 5, SpAGrowth = 7, SpDGrowth = 6, SPDGrowth = 5,
+			Element = ElementType.Nature,
+			BaseRarity = Rarity.Uncommon,
+			EvolvesFrom = "gnoll",
+			BaseCatchRate = 0.3f,
+			BaseExpYield = 150,
+			SignatureDropName = "Hexpetal Crown",
+			SignatureDropDescription = "A circlet of fallen Gnollium petals, still vivid red days after they shed. Said to ward a garden against blight if buried at the bed's center.",
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It has decided to look after the patch of forest you happen to be standing in, and will quietly make sure nothing harms you while you're its guest.",
+			PossibleTraits = new() { "verdant_power", "wild_growth", "forest_blessing" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 1, EvolvesFrom = "thorn_barrage" },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 1 },
+				new LearnableMove { MoveId = "root_bind", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "nature_shield", LearnLevel = 5 },
+				new LearnableMove { MoveId = "spore_cloud", LearnLevel = 10 },
+				new LearnableMove { MoveId = "floral_guard", LearnLevel = 14 },
+				new LearnableMove { MoveId = "regenerate", LearnLevel = 18 },
+				new LearnableMove { MoveId = "tangling_roots", LearnLevel = 22 },
+				new LearnableMove { MoveId = "vine_crush", LearnLevel = 26 },
+				new LearnableMove { MoveId = "bloom_burst", LearnLevel = 30 },
+				new LearnableMove { MoveId = "overgrowth_slam", LearnLevel = 34 },
+				new LearnableMove { MoveId = "endure_stance", LearnLevel = 38 },
+				new LearnableMove { MoveId = "jungle_wrath", LearnLevel = 42 },
+				new LearnableMove { MoveId = "solstice_beam", LearnLevel = 46 },
+			},
+			BeastiaryNumber = 17,
+			MiniScale = 1.4f, MiniOffsetX = 6f, MiniOffsetY = -20f,
+			DetailIconScale = 1.65f, DetailIconOffsetX = 13f, DetailIconOffsetY = -48f,
+			ArtistCredit = "Jet"
+		} );
+
+		// ═══════════════════════════════════════════════════════════════
+		// FOREST PREDATOR (#17): Jackacabra
+		// Chupacabra-lepus hybrid drawn from Latin American chupacabra
+		// folklore (the goat-sucker) crossed with the European myth of
+		// the demonic Beast-of-Gévaudan. Slips out of the Weaverwood at
+		// dusk to raid Weaverton's outer pastures — Sheepots in their
+		// pots are its favorite quarry, and the herders have been losing
+		// flock to its long shadow for years. Weaverwood (Lv 10+).
+		// ═══════════════════════════════════════════════════════════════
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "jackacabra",
+			Name = "Jackacabra",
+			Description = "A long-eared shadow that slips out of the Weaverwood at dusk and prowls the wool-pastures on Weaverton's outer edge. Sheepots in their pots are its favorite quarry — the village herders have been losing flock to it for years. The shepherds carry iron bells now, and bury extra clay pots along the fence-line to fool it. They argue, still, whether it walks on two legs or four — at dusk, in the trees, no one stays long enough to count.",
+			IconPath = "ui/monsters/jackacabra/idle/jackacabra_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/jackacabra/idle/jackacabra_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 56, BaseATK = 72, BaseDEF = 42, BaseSpA = 52, BaseSpD = 44, BaseSPD = 80,
+			HPGrowth = 5, ATKGrowth = 7, DEFGrowth = 4, SpAGrowth = 4, SpDGrowth = 4, SPDGrowth = 7,
+			Element = ElementType.Shadow,
+			BaseRarity = Rarity.Uncommon,
+			BaseCatchRate = 0.35f,
+			BaseExpYield = 140,
+			SignatureDropName = "Hexbite Fang",
+			SignatureDropDescription = "A long curved fang plucked from a Jackacabra's jaw. Cold to the touch even in summer; the herders of Weaverton string them on cords above their barn doors as wards against the next raid.",
+			Personality = BeastPersonality.Wild,
+			PersonalityHint = "It does not flee when it sees you. It tilts its head, ears tracking your pulse, and decides whether you are worth the chase.",
+			PossibleTraits = new() { "dark_presence", "phantom_step", "bloodlust" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "rend", LearnLevel = 1 },
+				new LearnableMove { MoveId = "intimidate", LearnLevel = 1 },
+				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 4 },
+				new LearnableMove { MoveId = "shade_step", LearnLevel = 8 },
+				new LearnableMove { MoveId = "gloom_strike", LearnLevel = 12 },
+				new LearnableMove { MoveId = "dusk_bolt", LearnLevel = 16 },
+				new LearnableMove { MoveId = "sly_strike", LearnLevel = 20 },
+				new LearnableMove { MoveId = "shadow_lunge", LearnLevel = 24 },
+				new LearnableMove { MoveId = "feint_jab", LearnLevel = 28 },
+				new LearnableMove { MoveId = "dread_gaze", LearnLevel = 30 },
+				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 34 },
+				// Signature move — chupacabra-folklore drain. Strikes hard,
+				// heals back half the damage dealt. The herders' nightmare.
+				new LearnableMove { MoveId = "goatsuckers_drain", LearnLevel = 38 },
+				new LearnableMove { MoveId = "phantom_double", LearnLevel = 42 },
+				new LearnableMove { MoveId = "nightfall_rush", LearnLevel = 46 },
+				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 50 },
+			},
+			BeastiaryNumber = 18,
+			MiniScale = 1.65f, MiniOffsetX = -3f, MiniOffsetY = 12f,
+			DetailIconScale = 2f, DetailIconOffsetX = -2f, DetailIconOffsetY = 41f,
+			ArtistCredit = "Jet"
+		} );
+
+		// ═══════════════════════════════════════════════════════════════
+		// FROG-PRINCE LINE (#18-19): Padlip → Liliprince
+		// Drawn from the Brothers Grimm "Frog Prince" — an ordinary frog
+		// carrying a dormant princely curse, broken only by the right
+		// kind of fool's love. Lives in the Weavermere lily-pads, the
+		// pond above Weaverton where the village's painters and dye-
+		// masters come at dawn for the colors no loom can match. Stage
+		// 1 is pure Water (the curse hasn't woken — Padlip is just the
+		// pondlight no painter can quite catch); Stage 2 is Water/
+		// Spirit (the enchantment is fully manifest — and the pond's
+		// muse, finally, has a name). Weavermere (Lv 20+).
+		// ═══════════════════════════════════════════════════════════════
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "padlip",
+			Name = "Padlip",
+			Description = "A small green frog who has never seemed to notice the pinprick of crown-shaped light always drifting just above its head. It keeps trying to swallow it — and is always, somehow, surprised when it cannot.",
+			IconPath = "ui/monsters/padlip/idle/padlip_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/padlip/idle/padlip_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 52, BaseATK = 34, BaseDEF = 46, BaseSpA = 58, BaseSpD = 52, BaseSPD = 40,
+			HPGrowth = 5, ATKGrowth = 3, DEFGrowth = 5, SpAGrowth = 6, SpDGrowth = 5, SPDGrowth = 4,
+			Element = ElementType.Water,
+			BaseRarity = Rarity.Common,
+			EvolvesTo = "liliprince",
+			EvolutionLevel = 32,
+			BaseCatchRate = 0.55f,
+			BaseExpYield = 80,
+			SignatureDropName = "Pondlight Speck",
+			SignatureDropDescription = "A motelike fragment of the gold light that hovers above a Padlip. Pinch it gently and it stays warm for hours — fortune-tellers swear it points toward something a Padlip is waiting for.",
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It puffs its cheeks at you, then peers up at the floating speck of light it cannot reach, then back at you, as if you might know how it got there.",
+			PossibleTraits = new() { "torrent_soul", "vital_recovery", "ethereal_blessing" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "brine_spray", LearnLevel = 4 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 6 },
+				new LearnableMove { MoveId = "water_bolt", LearnLevel = 8 },
+				new LearnableMove { MoveId = "drizzle_mist", LearnLevel = 10 },
+				new LearnableMove { MoveId = "froth_barrage", LearnLevel = 12 },
+				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 14 },
+				new LearnableMove { MoveId = "foam_coat", LearnLevel = 16 },
+				new LearnableMove { MoveId = "ripple_burst", LearnLevel = 18 },
+				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 20 },
+				new LearnableMove { MoveId = "mist_veil", LearnLevel = 22 },
+				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 24 },
+				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 26 },
+				new LearnableMove { MoveId = "waterlog", LearnLevel = 28 },
+				new LearnableMove { MoveId = "endure_stance", LearnLevel = 32 },
+			},
+			BeastiaryNumber = 19,
+			MiniScale = 1.85f, MiniOffsetX = -1f, MiniOffsetY = -3f,
+			DetailIconScale = 1.85f, DetailIconOffsetX = 3f, DetailIconOffsetY = -10f,
+			ArtistCredit = "Jet"
+		} );
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "liliprince",
+			Name = "Liliprince",
+			Description = "Once a Padlip is loved by something foolish enough not to mind the warts, the wandering crown finally settles where it always belonged. It stands taller than it has any right to, carrying the gentle dignity of the prince that lived inside it all along — and the slightly sheepish grin of a creature who knows perfectly well it still tastes like pondwater.",
+			IconPath = "ui/monsters/liliprince/idle/liliprince_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/liliprince/idle/liliprince_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 90, BaseATK = 66, BaseDEF = 80, BaseSpA = 105, BaseSpD = 94, BaseSPD = 73,
+			HPGrowth = 6, ATKGrowth = 5, DEFGrowth = 5, SpAGrowth = 8, SpDGrowth = 7, SPDGrowth = 6,
+			Element = ElementType.Water,
+			SecondaryElement = ElementType.Spirit,
+			BaseRarity = Rarity.Rare,
+			EvolvesFrom = "padlip",
+			BaseCatchRate = 0.18f,
+			BaseExpYield = 260,
+			SignatureDropName = "Kissed Crown",
+			SignatureDropDescription = "The small gold crown a Liliprince finally gets to keep on its head. Worth a small fortune — but every village seer warns that it loses its glow the moment it leaves the frog who earned it.",
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It greets you with a gracious half-bow and a perfectly straight face, then hops away to chase a fly with the same unbothered dignity.",
+			PossibleTraits = new() { "torrent_soul", "ethereal_blessing", "vital_recovery" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "abyssal_wave", LearnLevel = 1, EvolvesFrom = "tidal_slam" },
+				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
+				new LearnableMove { MoveId = "spirit_breeze", LearnLevel = 1 },
+				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 5 },
+				new LearnableMove { MoveId = "luminous_wall", LearnLevel = 10 },
+				new LearnableMove { MoveId = "sacred_strike", LearnLevel = 14 },
+				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 18 },
+				new LearnableMove { MoveId = "spirit_link", LearnLevel = 22 },
+				new LearnableMove { MoveId = "warding_hymn", LearnLevel = 26 },
+				new LearnableMove { MoveId = "ripple_burst", LearnLevel = 30 },
+				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 34 },
+				new LearnableMove { MoveId = "divine_grace", LearnLevel = 38 },
+				new LearnableMove { MoveId = "tsunami_crush", LearnLevel = 42 },
+				new LearnableMove { MoveId = "ethereal_rush", LearnLevel = 46 },
+				new LearnableMove { MoveId = "radiant_burst", LearnLevel = 50 },
+				// Signature move — the prince's full coronation. A radiant
+				// pulse of pondlight that strikes hard and mends the caster.
+				new LearnableMove { MoveId = "sovereigns_boon", LearnLevel = 55 },
+			},
+			BeastiaryNumber = 20,
+			MiniScale = 1.7f, MiniOffsetX = 9f, MiniOffsetY = 16f,
+			DetailIconScale = 1.9f, DetailIconOffsetX = 14f, DetailIconOffsetY = 25f,
+			ArtistCredit = "Jet"
+		} );
+
+		// ═══════════════════════════════════════════════════════════════
+		// WEAVERMERE MINI-EXPEDITION — ANANSI LINE (#21-22)
+		// Inspired by the West African Anansi "Pot of Wisdom" tale.
+		// Mythology is subtext: the pot, the weaving, the listening.
+		// ═══════════════════════════════════════════════════════════════
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "threadlet",
+			Name = "Threadlet",
+			Description = "A small dark spider that moves into old clay pots and fills them with silk overnight. It peeks out from the rim with one bright eye, deciding whether to keep what it just heard.",
+			IconPath = "ui/monsters/threadlet/idle/threadlet_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/threadlet/idle/threadlet_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 75, BaseATK = 50, BaseDEF = 78, BaseSpA = 70, BaseSpD = 62, BaseSPD = 40,
+			HPGrowth = 5, ATKGrowth = 5, DEFGrowth = 6, SpAGrowth = 6, SpDGrowth = 6, SPDGrowth = 4,
+			Element = ElementType.Earth,
+			BaseRarity = Rarity.Uncommon,
+			EvolvesTo = "loomweaver",
+			EvolutionLevel = 40,
+			BaseCatchRate = 0.32f,
+			BaseExpYield = 150,
+			SignatureDropName = "Cracked Shard",
+			SignatureDropDescription = "A fragment of the clay pot a Threadlet outgrew. The silk still clinging to the inside edge holds its shape for days.",
+			Personality = BeastPersonality.Timid,
+			PersonalityHint = "It goes very still when you approach — then one eye appears at the rim, deciding whether you are worth remembering.",
+			PossibleTraits = new() { "terra_force", "barbed_hide", "hardened_resolve" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "mud_hurl", LearnLevel = 1 },
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 4 },
+				new LearnableMove { MoveId = "gravel_toss", LearnLevel = 6 },
+				new LearnableMove { MoveId = "dust_storm", LearnLevel = 8 },
+				new LearnableMove { MoveId = "stone_wall", LearnLevel = 10 },
+				new LearnableMove { MoveId = "earthen_armor", LearnLevel = 12 },
+				new LearnableMove { MoveId = "sand_blast", LearnLevel = 14 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 16 },
+				new LearnableMove { MoveId = "quicksand", LearnLevel = 18 },
+				new LearnableMove { MoveId = "silken_trap", LearnLevel = 20 },
+				new LearnableMove { MoveId = "sandstone_strike", LearnLevel = 22 },
+				new LearnableMove { MoveId = "tremor_pulse", LearnLevel = 24 },
+				new LearnableMove { MoveId = "bedrock_stance", LearnLevel = 26 },
+				new LearnableMove { MoveId = "earthrend", LearnLevel = 28 },
+				new LearnableMove { MoveId = "mineral_lance", LearnLevel = 30 },
+				new LearnableMove { MoveId = "petrify", LearnLevel = 32 },
+				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 35 },
+				new LearnableMove { MoveId = "geode_burst", LearnLevel = 38 },
+				new LearnableMove { MoveId = "ground_pulse", LearnLevel = 40 },
+			},
+			BeastiaryNumber = 21,
+			MiniScale = 1.35f, MiniOffsetX = 24f, MiniOffsetY = 9f,
+			DetailIconScale = 1.3f, DetailIconOffsetX = 40f, DetailIconOffsetY = 2f,
+			ArtistCredit = "Jet"
+		} );
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "loomweaver",
+			Name = "Loomweaver",
+			Description = "A great beast crowned in green leaves that sits very still and listens to everything around it. It weaves whatever it hears into the threads it carries — and it never forgets a word.",
+			IconPath = "ui/monsters/loomweaver/idle/loomweaver_idle_01.png",
+			AnimationFrames = new()
+			{
+				"ui/monsters/loomweaver/idle/loomweaver_idle_01.png"
+			},
+			AnimationFrameRate = 8f,
+			BaseHP = 120, BaseATK = 75, BaseDEF = 110, BaseSpA = 120, BaseSpD = 95, BaseSPD = 55,
+			HPGrowth = 7, ATKGrowth = 6, DEFGrowth = 8, SpAGrowth = 8, SpDGrowth = 7, SPDGrowth = 6,
+			Element = ElementType.Earth,
+			BaseRarity = Rarity.Epic,
+			EvolvesFrom = "threadlet",
+			IsCatchable = false,
+			BaseCatchRate = 0.15f,
+			BaseExpYield = 320,
+			SignatureDropName = "Kiln Silk",
+			SignatureDropDescription = "Thread spun by a Loomweaver through fired clay. Hard as wire, smooth as river stone — weavers across Weaverton have never seen its like.",
+			Personality = BeastPersonality.Bold,
+			PersonalityHint = "It does not move when you enter the clearing. It simply turns its crown of leaves toward you, and waits.",
+			PossibleTraits = new() { "terra_force", "barbed_hide", "hardened_resolve" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "silken_trap", LearnLevel = 1, EvolvesFrom = "dust_storm" },
+				new LearnableMove { MoveId = "mineral_lance", LearnLevel = 1 },
+				new LearnableMove { MoveId = "earthen_armor", LearnLevel = 1 },
+				new LearnableMove { MoveId = "stone_wall", LearnLevel = 1 },
+				new LearnableMove { MoveId = "tremor_pulse", LearnLevel = 5 },
+				new LearnableMove { MoveId = "bedrock_stance", LearnLevel = 8 },
+				new LearnableMove { MoveId = "petrify", LearnLevel = 12 },
+				new LearnableMove { MoveId = "terra_pulse", LearnLevel = 15 },
+				new LearnableMove { MoveId = "fault_breaker", LearnLevel = 18 },
+				new LearnableMove { MoveId = "quicksand", LearnLevel = 20 },
+				new LearnableMove { MoveId = "ground_pulse", LearnLevel = 22 },
+				new LearnableMove { MoveId = "earthrend", LearnLevel = 25 },
+				new LearnableMove { MoveId = "landslide", LearnLevel = 28 },
+				new LearnableMove { MoveId = "fossil_power", LearnLevel = 30 },
+				new LearnableMove { MoveId = "geode_burst", LearnLevel = 33 },
+				new LearnableMove { MoveId = "seismic_crash", LearnLevel = 36 },
+				new LearnableMove { MoveId = "tectonic_slam", LearnLevel = 40 },
+				new LearnableMove { MoveId = "fissure_wave", LearnLevel = 44 },
+				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 46 },
+				new LearnableMove { MoveId = "continental_crush", LearnLevel = 50 },
+				// Signature move — unique to Loomweaver
+				new LearnableMove { MoveId = "weavers_verdict", LearnLevel = 55 },
+			},
+			BeastiaryNumber = 22,
+			MiniScale = 1.35f, MiniOffsetX = -4f, MiniOffsetY = -12f,
+			DetailIconScale = 1.15f, DetailIconOffsetX = 0f, DetailIconOffsetY = -12f,
+			ArtistCredit = "Jet"
 		} );
 
 	}
@@ -7414,7 +8032,7 @@ public sealed class MonsterManager : Component
 				needsSave = true;
 			}
 
-			if ( MigrateMonsterToV2( monster ) )
+			if ( ValidateAndRepairMonster( monster ) )
 				needsSave = true;
 
 			// Cap monster level at MaxLevel — clamps any beta saves above 50.
@@ -7442,10 +8060,17 @@ public sealed class MonsterManager : Component
 	}
 
 	/// <summary>
-	/// Migrate a monster to v2 format (SpA/SpD stats and moves)
-	/// Returns true if migration was performed. Can be called to fix invalid moves at runtime.
+	/// Ongoing runtime data-repair pass — handles V2 migration for pre-v1.0.3
+	/// saves AND ongoing post-launch drift (renamed moves, pruned traits,
+	/// missing move regeneration). Idempotent and safe to call multiple times.
+	///
+	/// Despite the historical "V2" framing, this is NOT a one-shot migration:
+	/// every patch that renames a move id or removes a trait id depends on this
+	/// pass running on load to repair existing rosters. The V2-shaped checks
+	/// (genetics, SpA/SpD genes, stat recalc) are no-ops on already-migrated
+	/// saves; the move/trait validation runs every time.
 	/// </summary>
-	public bool MigrateMonsterToV2( Monster monster )
+	public bool ValidateAndRepairMonster( Monster monster )
 	{
 		var species = GetSpecies( monster.SpeciesId );
 		if ( species == null ) return false;
@@ -8162,18 +8787,21 @@ public sealed class MonsterManager : Component
 			monster.Genetics = Genetics.GenerateRandom();
 		}
 
-		// Stat formula with diminishing returns at higher levels:
-		// Base + sqrt(Level) * Growth * 4 + Gene
-		// This keeps early-game progression while capping high-level stats
-		// Example at Lv100: 85 + 10*6*4 + 50 = 375 HP (vs old formula: 785)
-		float levelFactor = (float)Math.Sqrt( monster.Level );
+		// Linear stat formula (Pokemon-style):
+		// Base + Level * Growth * 0.6 + Gene
+		// Replaces the previous sqrt() curve which throttled mid/late-game
+		// stat growth so hard the game flattened out around Lv 30. Linear
+		// scaling with a 0.6 coefficient gives ~+30 stat per 50 levels per
+		// growth point — recognizable Pokemon pacing without runaway numbers.
+		// Example at Lv100, Growth 6, Base 85: 85 + 100*6*0.6 + 25 = 470.
+		float levelFactor = monster.Level;
 
-		monster.MaxHP = (int)(species.BaseHP + (levelFactor * species.HPGrowth * 4) + monster.Genetics.HPGene);
-		monster.ATK = (int)(species.BaseATK + (levelFactor * species.ATKGrowth * 4) + monster.Genetics.ATKGene);
-		monster.DEF = (int)(species.BaseDEF + (levelFactor * species.DEFGrowth * 4) + monster.Genetics.DEFGene);
-		monster.SpA = (int)(species.BaseSpA + (levelFactor * species.SpAGrowth * 4) + monster.Genetics.SpAGene);
-		monster.SpD = (int)(species.BaseSpD + (levelFactor * species.SpDGrowth * 4) + monster.Genetics.SpDGene);
-		monster.SPD = (int)(species.BaseSPD + (levelFactor * species.SPDGrowth * 4) + monster.Genetics.SPDGene);
+		monster.MaxHP = (int)(species.BaseHP + (levelFactor * species.HPGrowth * 0.6f) + monster.Genetics.HPGene);
+		monster.ATK = (int)(species.BaseATK + (levelFactor * species.ATKGrowth * 0.6f) + monster.Genetics.ATKGene);
+		monster.DEF = (int)(species.BaseDEF + (levelFactor * species.DEFGrowth * 0.6f) + monster.Genetics.DEFGene);
+		monster.SpA = (int)(species.BaseSpA + (levelFactor * species.SpAGrowth * 0.6f) + monster.Genetics.SpAGene);
+		monster.SpD = (int)(species.BaseSpD + (levelFactor * species.SpDGrowth * 0.6f) + monster.Genetics.SpDGene);
+		monster.SPD = (int)(species.BaseSPD + (levelFactor * species.SPDGrowth * 0.6f) + monster.Genetics.SPDGene);
 
 		// Apply nature modifiers
 		ApplyNatureModifiers( monster );
@@ -8186,6 +8814,13 @@ public sealed class MonsterManager : Component
 
 		// Apply species mastery bonus (Beastbook-tracked, tamer-wide per species)
 		ApplySpeciesMasteryBonus( monster );
+
+		// Clamp CurrentHP to new MaxHP so a recalc that lowers MaxHP
+		// (e.g. after removing a stat-buff item) doesn't leave the beast
+		// "over-healed" with CurrentHP > MaxHP. CurrentHP can be 0 (KOed)
+		// — only clamp the upper bound.
+		if ( monster.CurrentHP > monster.MaxHP )
+			monster.CurrentHP = monster.MaxHP;
 	}
 
 	/// <summary>

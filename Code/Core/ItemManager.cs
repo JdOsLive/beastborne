@@ -1771,7 +1771,7 @@ public sealed class ItemManager : Component
 		// the element-keyed tables in CalculateDrop. Lets us tune launch rewards
 		// without affecting later expeditions that share an element.
 
-		// Saltmoor Cove (zone_saltmoor_cove, Lv 1) — starter zone, minimal loot.
+		// Weaverton (zone_saltmoor_cove, Lv 1) — starter zone, minimal loot.
 		// Primary reward loop here is consumables (rolled from "base" table) and
 		// the guaranteed per-KO signature material. One common held item only; no
 		// relics until the player unlocks Forest.
@@ -1785,7 +1785,7 @@ public sealed class ItemManager : Component
 			}
 		};
 
-		// Saltmoor Forest (zone_saltmoor_forest, Lv 15) — first common relics unlock.
+		// Weaverwood (zone_saltmoor_forest, Lv 10) — first common relics unlock.
 		// Mix of held items and first-tier relics. Level gates still respected.
 		_dropTables["zone_saltmoor_forest"] = new DropTable
 		{
@@ -1801,7 +1801,7 @@ public sealed class ItemManager : Component
 			}
 		};
 
-		// Old Saltmoor (zone_old_saltmoor, Lv 30) — uncommon relics + richer held pool.
+		// Weavermere (zone_old_saltmoor, Lv 20) — uncommon relics + richer held pool.
 		// Final launch zone; rewards should feel meaningfully better than Forest.
 		_dropTables["zone_old_saltmoor"] = new DropTable
 		{
@@ -1815,6 +1815,25 @@ public sealed class ItemManager : Component
 				new() { ItemId = "relic_guardian_emblem", Weight = 20, MinExpeditionLevel = 15 },
 				new() { ItemId = "relic_iron_fortress", Weight = 15, MinExpeditionLevel = 30 },
 				new() { ItemId = "relic_vital_pendant", Weight = 12, MinExpeditionLevel = 15 },
+			}
+		};
+
+		// Loomweaver's Burrow mini-expedition (zone_mini_loomweaver_burrow, Lv 25) — Threadlet (Earth) stage 1.
+		// mat_threadlet auto-registered via RegisterBeastMaterials once monsters-art commits
+		// SignatureDropName/Description on the threadlet species entry.
+		// 0.05f matches zone_old_saltmoor — correct for first optional tier above main story.
+		// titans_heart trimmed to weight 15 (balance sign-off) to keep it a milestone find at Lv 30+.
+		_dropTables["zone_mini_loomweaver_burrow"] = new DropTable
+		{
+			Id = "zone_mini_loomweaver_burrow",
+			BaseDropChance = 0.05f,
+			Entries = new()
+			{
+				new() { ItemId = "held_training_weight", Weight = 100 },
+				new() { ItemId = "held_stone_shell", Weight = 80 },
+				new() { ItemId = "held_titans_heart", Weight = 15, MinExpeditionLevel = 30 },
+				new() { ItemId = "relic_vital_pendant", Weight = 20, MinExpeditionLevel = 20 },
+				new() { ItemId = "relic_treasure_map", Weight = 12, MinExpeditionLevel = 25 },
 			}
 		};
 
@@ -1910,6 +1929,8 @@ public sealed class ItemManager : Component
 				new() { ItemId = "relic_abyssal_crown", Weight = 5 },
 				new() { ItemId = "relic_eternity_glass", Weight = 5 },
 				new() { ItemId = "relic_soul_mirror", Weight = 5 },
+				// Named boss signature materials
+				new() { ItemId = "mat_loomweaver", Weight = 35, MinExpeditionLevel = 25 },
 				// Quest maps from rare bosses
 				new() { ItemId = "map_nightmare", Weight = 5, MinExpeditionLevel = 40 },
 				new() { ItemId = "map_element", Weight = 5, MinExpeditionLevel = 50 },
@@ -2011,6 +2032,38 @@ public sealed class ItemManager : Component
 			{
 				if ( !drops.Any( d => d.Id == bossMat.Id ) )
 					drops.Add( bossMat );
+			}
+		}
+
+		// Zone-specific table override — if a `zone_{expeditionId}` table exists, include
+		// its entries (main expeditions won't have one, so this is a no-op for them).
+		var zoneKey = $"zone_{expeditionId}";
+		if ( _dropTables.TryGetValue( zoneKey, out var zoneTable ) )
+		{
+			foreach ( var entry in zoneTable.Entries )
+			{
+				if ( _itemDatabase.TryGetValue( entry.ItemId, out var item ) )
+				{
+					if ( !drops.Any( d => d.Id == item.Id ) )
+						drops.Add( item );
+				}
+			}
+		}
+
+		// Boss-rare materials — include any boss_rare entries whose MinExpeditionLevel
+		// is <= this expedition's BaseEnemyLevel, but only for expeditions that have a boss.
+		// This surfaces named-boss signature materials (e.g. mat_loomweaver) in the drop panel.
+		if ( expedition.HasBoss && _dropTables.TryGetValue( "boss_rare", out var bossRareTable ) )
+		{
+			foreach ( var entry in bossRareTable.Entries )
+			{
+				if ( entry.MinExpeditionLevel > expedition.BaseEnemyLevel ) continue;
+				if ( !entry.ItemId.StartsWith( "mat_" ) ) continue;
+				if ( _itemDatabase.TryGetValue( entry.ItemId, out var item ) )
+				{
+					if ( !drops.Any( d => d.Id == item.Id ) )
+						drops.Add( item );
+				}
 			}
 		}
 

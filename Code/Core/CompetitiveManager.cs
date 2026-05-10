@@ -2,6 +2,7 @@ using Sandbox;
 using Sandbox.Services;
 using Sandbox.Network;
 using Beastborne.Data;
+using Beastborne.Systems;
 using System.Text.Json;
 
 namespace Beastborne.Core;
@@ -18,7 +19,11 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	// ═══════════════════════════════════════════════════════════════
 
 	private const string LEADERBOARD_NAME = "arena-score-launch";
+	// Default normalization level for ranked queue. Custom matches can override
+	// via the host's chosen levelCap (range 5-100); legacy ranked stays at 50.
 	private const int RANKED_LEVEL = 50;
+	public const int LEVEL_CAP_MIN = 5;
+	public const int LEVEL_CAP_MAX = 100;
 	private const int BETWEEN_GAMES_SECONDS = 10;
 	private const float MATCH_TIMEOUT_SECONDS = 90f;
 	private const int RANK_RANGE_INITIAL = 100;
@@ -59,7 +64,18 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	public ArenaOpponent CurrentOpponent { get; private set; }
 	public bool IsOnlineMatch { get; private set; } = false;
 
-	// Normalized (Level 50) team copies used during ranked battles
+	// Effective normalization level for the current set. Defaults to RANKED_LEVEL
+	// for legacy ranked + AI matches; custom matches overwrite from
+	// CurrentMatchConfig.LevelOverride when a host's match-config arrives.
+	public int CurrentLevelOverride { get; private set; } = RANKED_LEVEL;
+
+	// Active ruleset for the current match. Always non-null — defaults to a
+	// vanilla MatchConfig (1v1, Lv50, no bans, results tracked) for legacy
+	// ranked + AI matches. Custom-match RPCs replace this on receipt before
+	// the team-validation pass runs.
+	public MatchConfig CurrentMatchConfig { get; private set; } = MatchConfig.Default();
+
+	// Normalized team copies used during ranked battles
 	private List<Monster> _normalizedPlayerTeam = new();
 	private List<Monster> _normalizedEnemyTeam = new();
 
@@ -203,35 +219,110 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	}
 
 	/// <summary>
-	/// Normalize a team to Level 50 for ranked battles.
-	/// Uses only base stats + growth curves + genetics + nature. No external bonuses.
+	/// Replace the active <see cref="CurrentMatchConfig"/>. Called by the host
+	/// UI when the match-config form (format / level / banned rarities)
+	/// changes. Any out-of-range LevelOverride is clamped at use-time, so
+	/// the UI can store the raw user input here without policing values.
+	/// Passing null resets to the default vanilla config.
 	/// </summary>
-	private List<Monster> NormalizeTeamToLevel50( List<Monster> team )
+	public void SetMatchConfig( MatchConfig config )
 	{
-		return team.Select( NormalizeMonsterToLevel50 ).ToList();
+		CurrentMatchConfig = config ?? MatchConfig.Default();
+		CurrentLevelOverride = Math.Clamp( CurrentMatchConfig.LevelOverride, LEVEL_CAP_MIN, LEVEL_CAP_MAX );
 	}
 
-	private Monster NormalizeMonsterToLevel50( Monster original )
+	/// <summary>
+	/// Centralised team-vs-config validation. Called at three sites:
+	///   • Host's pre-broadcast (refuse to send a match the host can't field).
+	///   • Match-proposal receiver (refuse to show host's team if it cheats).
+	///   • Match-accepted receiver (refuse to start if invitee's team cheats).
+	/// Both peers run this — defence in depth, no single client is trusted.
+	/// </summary>
+	public static bool ValidateTeam( List<Monster> team, MatchConfig config, out string reason )
+	{
+		if ( config == null ) { reason = "no match config"; return false; }
+		if ( team == null ) { reason = "team is null"; return false; }
+		if ( team.Count == 0 ) { reason = "team is empty"; return false; }
+		if ( team.Count != config.RequiredTeamSize )
+		{
+			reason = $"team size {team.Count} does not match format {config.Format} (expected {config.RequiredTeamSize})";
+			return false;
+		}
+
+		var bannedRaritySet = new HashSet<string>( config.BannedRarities ?? new(), StringComparer.OrdinalIgnoreCase );
+		var bannedSpeciesSet = new HashSet<string>( config.BannedSpecies ?? new(), StringComparer.OrdinalIgnoreCase );
+
+		foreach ( var monster in team )
+		{
+			if ( monster == null ) { reason = "team contains a null entry"; return false; }
+			if ( string.IsNullOrEmpty( monster.SpeciesId ) ) { reason = "team contains a monster with no species id"; return false; }
+
+			if ( bannedSpeciesSet.Contains( monster.SpeciesId ) )
+			{
+				reason = $"{monster.Nickname ?? monster.SpeciesId} is on the banned species list";
+				return false;
+			}
+
+			var species = MonsterManager.Instance?.GetSpecies( monster.SpeciesId );
+			if ( species == null )
+			{
+				reason = $"unknown species id {monster.SpeciesId}";
+				return false;
+			}
+
+			if ( bannedRaritySet.Contains( species.BaseRarity.ToString() ) )
+			{
+				reason = $"{monster.Nickname ?? species.Name} is {species.BaseRarity}, which is banned in this match";
+				return false;
+			}
+		}
+
+		reason = null;
+		return true;
+	}
+
+	/// <summary>
+	/// Normalize a team to a target level for ranked / custom battles.
+	/// Uses only base stats + growth curves + genetics + nature. No tamer
+	/// skill / relic / species-mastery bonuses — ranked must be a pure
+	/// stat budget so two equally-skilled players land on equal numbers.
+	/// </summary>
+	private List<Monster> NormalizeTeamToLevel( List<Monster> team, int levelCap = RANKED_LEVEL )
+	{
+		int cap = Math.Clamp( levelCap, LEVEL_CAP_MIN, LEVEL_CAP_MAX );
+		return team.Select( m => NormalizeMonsterToLevel( m, cap ) ).ToList();
+	}
+
+	private Monster NormalizeMonsterToLevel( Monster original, int levelCap )
 	{
 		var clone = original.Clone();
-		clone.Level = RANKED_LEVEL;
+		clone.Level = levelCap;
 
 		var species = MonsterManager.Instance?.GetSpecies( clone.SpeciesId );
 		if ( species == null ) return clone;
 
-		float levelFactor = MathF.Sqrt( RANKED_LEVEL );
-
-		clone.MaxHP = species.BaseHP + (int)(levelFactor * species.HPGrowth * 4) + clone.Genetics.HPGene;
-		clone.ATK = species.BaseATK + (int)(levelFactor * species.ATKGrowth * 4) + clone.Genetics.ATKGene;
-		clone.DEF = species.BaseDEF + (int)(levelFactor * species.DEFGrowth * 4) + clone.Genetics.DEFGene;
-		clone.SpA = species.BaseSpA + (int)(levelFactor * species.SpAGrowth * 4) + clone.Genetics.SpAGene;
-		clone.SpD = species.BaseSpD + (int)(levelFactor * species.SpDGrowth * 4) + clone.Genetics.SpDGene;
-		clone.SPD = species.BaseSPD + (int)(levelFactor * species.SPDGrowth * 4) + clone.Genetics.SPDGene;
-
-		ApplyNatureModifiers( clone );
-
+		ComputeRankedStats( clone, species, levelCap );
 		clone.CurrentHP = clone.MaxHP;
 		return clone;
+	}
+
+	/// <summary>
+	/// Linear stat formula matching MonsterManager.RecalculateStats — Base + Level*Growth*0.6 + Gene
+	/// — followed by nature only. Skips tamer / relic / mastery bonuses by design;
+	/// ranked must be a clean stat budget.
+	/// </summary>
+	private void ComputeRankedStats( Monster monster, MonsterSpecies species, int level )
+	{
+		float lvl = level;
+
+		monster.MaxHP = (int)(species.BaseHP + (lvl * species.HPGrowth * 0.6f) + monster.Genetics.HPGene);
+		monster.ATK = (int)(species.BaseATK + (lvl * species.ATKGrowth * 0.6f) + monster.Genetics.ATKGene);
+		monster.DEF = (int)(species.BaseDEF + (lvl * species.DEFGrowth * 0.6f) + monster.Genetics.DEFGene);
+		monster.SpA = (int)(species.BaseSpA + (lvl * species.SpAGrowth * 0.6f) + monster.Genetics.SpAGene);
+		monster.SpD = (int)(species.BaseSpD + (lvl * species.SpDGrowth * 0.6f) + monster.Genetics.SpDGene);
+		monster.SPD = (int)(species.BaseSPD + (lvl * species.SPDGrowth * 0.6f) + monster.Genetics.SPDGene);
+
+		ApplyNatureModifiers( monster );
 	}
 
 	private void ApplyNatureModifiers( Monster monster )
@@ -346,14 +437,14 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	/// <summary>
 	/// Generate an AI opponent with type-diverse team scaled to player rank
 	/// </summary>
-	public ArenaOpponent GenerateOpponent( int playerPoints )
+	public ArenaOpponent GenerateOpponent( int playerPoints, int levelCap = RANKED_LEVEL )
 	{
 		var random = new Random();
 
 		int opponentPoints = playerPoints + random.Next( -200, 201 );
 		opponentPoints = Math.Max( 0, opponentPoints );
 
-		var team = GenerateAITeam( opponentPoints, random );
+		var team = GenerateAITeam( opponentPoints, random, levelCap );
 
 		var names = new[] { "Shadowkeeper", "Beastlord", "Mythwalker", "Spiritbinder",
 						   "Ashtrainer", "Voidcaller", "Dawnseeker", "Stormtamer",
@@ -373,8 +464,10 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	/// <summary>
 	/// Generate a type-diverse AI team with genetics scaled to rank
 	/// </summary>
-	private List<Monster> GenerateAITeam( int points, Random random )
+	private List<Monster> GenerateAITeam( int points, Random random, int levelCap )
 	{
+		int cap = Math.Clamp( levelCap, LEVEL_CAP_MIN, LEVEL_CAP_MAX );
+
 		var allSpecies = MonsterManager.Instance?.GetAllSpecies();
 		if ( allSpecies == null || allSpecies.Count == 0 ) return new();
 
@@ -409,24 +502,15 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			{
 				SpeciesId = species.Id,
 				Nickname = species.Name,
-				Level = RANKED_LEVEL,
+				Level = cap,
 				Genetics = GenerateScaledGenetics( minGene, random )
 			};
 
-			// Calculate level 50 stats
-			float levelFactor = MathF.Sqrt( RANKED_LEVEL );
-			monster.MaxHP = species.BaseHP + (int)(levelFactor * species.HPGrowth * 4) + monster.Genetics.HPGene;
-			monster.ATK = species.BaseATK + (int)(levelFactor * species.ATKGrowth * 4) + monster.Genetics.ATKGene;
-			monster.DEF = species.BaseDEF + (int)(levelFactor * species.DEFGrowth * 4) + monster.Genetics.DEFGene;
-			monster.SpA = species.BaseSpA + (int)(levelFactor * species.SpAGrowth * 4) + monster.Genetics.SpAGene;
-			monster.SpD = species.BaseSpD + (int)(levelFactor * species.SpDGrowth * 4) + monster.Genetics.SpDGene;
-			monster.SPD = species.BaseSPD + (int)(levelFactor * species.SPDGrowth * 4) + monster.Genetics.SPDGene;
-
-			ApplyNatureModifiers( monster );
+			ComputeRankedStats( monster, species, cap );
 			monster.CurrentHP = monster.MaxHP;
 
-			// Assign moves (top 4 learnable at level 50)
-			AssignAIMoves( monster, species );
+			// Assign moves (top 4 learnable at the cap level)
+			AssignAIMoves( monster, species, cap );
 
 			// Assign a random trait
 			if ( species.PossibleTraits?.Count > 0 )
@@ -476,9 +560,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	}
 
 	/// <summary>
-	/// Assign the best available moves for an AI monster at level 50
+	/// Assign the best available moves for an AI monster at the given cap level
 	/// </summary>
-	private void AssignAIMoves( Monster monster, MonsterSpecies species )
+	private void AssignAIMoves( Monster monster, MonsterSpecies species, int levelCap )
 	{
 		if ( species.LearnableMoves == null || species.LearnableMoves.Count == 0 )
 		{
@@ -486,9 +570,9 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			return;
 		}
 
-		// Get all moves learnable at or below level 50, pick top 4 by level (strongest)
+		// Get all moves learnable at or below the cap, pick top 4 by level (strongest)
 		var bestMoves = species.LearnableMoves
-			.Where( lm => lm.LearnLevel <= RANKED_LEVEL )
+			.Where( lm => lm.LearnLevel <= levelCap )
 			.OrderByDescending( lm => lm.LearnLevel )
 			.Take( 4 )
 			.Select( lm => new MonsterMove { MoveId = lm.MoveId, CurrentPP = 15 } )
@@ -534,11 +618,11 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		GameResults.Clear();
 		IsInArena = true;
 
-		// Normalize teams to Level 50
-		_normalizedPlayerTeam = NormalizeTeamToLevel50( ArenaTeam );
+		// Normalize teams to the active cap level
+		_normalizedPlayerTeam = NormalizeTeamToLevel( ArenaTeam, CurrentLevelOverride );
 		_normalizedEnemyTeam = CurrentOpponent.IsRealPlayer
 			? CurrentOpponent.Team // Online: already normalized by sender
-			: NormalizeTeamToLevel50( CurrentOpponent.Team );
+			: NormalizeTeamToLevel( CurrentOpponent.Team, CurrentLevelOverride );
 
 		// Save initial move PPs
 		SaveMovePPs( _normalizedPlayerTeam, _savedPlayerMovePPs );
@@ -561,8 +645,10 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			return;
 		}
 
-		// Deserialize opponent team (already normalized to Level 50 by sender)
-		var opponentTeam = DeserializeTeam( _matchedOpponent.TeamData );
+		// Deserialize opponent team — already stat-normalized by sender; we
+		// stamp Level with our local cap so both sides' BattleSimulator
+		// damage formulas agree.
+		var opponentTeam = DeserializeTeam( _matchedOpponent.TeamData, CurrentLevelOverride );
 		if ( opponentTeam == null || opponentTeam.Count == 0 )
 		{
 			Log.Warning( "[Arena] Failed to deserialize opponent team!" );
@@ -593,7 +679,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		IsInArena = true;
 
 		// Normalize player team, opponent team is already normalized
-		_normalizedPlayerTeam = NormalizeTeamToLevel50( ArenaTeam );
+		_normalizedPlayerTeam = NormalizeTeamToLevel( ArenaTeam, CurrentLevelOverride );
 		_normalizedEnemyTeam = opponentTeam;
 
 		SaveMovePPs( _normalizedPlayerTeam, _savedPlayerMovePPs );
@@ -706,78 +792,87 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		DidRankUp = newTier > previousTier;
 		DidRankDown = newTier < previousTier;
 
-		// Win/loss tracking applies to both modes
-		tamer.ArenaSetsCompleted++;
-
-		if ( playerWon )
+		// Win/loss tracking and leaderboard push skipped for casual (TrackResult = false)
+		if ( CurrentMatchConfig.TrackResult )
 		{
-			tamer.ArenaWins++;
-			tamer.ArenaWinStreak++;
-			tamer.TotalBattlesWon++;
-		}
-		else
-		{
-			tamer.ArenaLosses++;
-			tamer.ArenaWinStreak = 0;
-			tamer.TotalBattlesLost++;
-		}
+			tamer.ArenaSetsCompleted++;
 
-		// Check for Reverse Sweep achievement (lose game 1, win games 2 and 3)
-		if ( playerWon && GameResults.Count >= 3 && !GameResults[0] && GameResults[1] && GameResults[2] )
-		{
-			AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaReverseSweep, 1 );
-		}
+			if ( playerWon )
+			{
+				tamer.ArenaWins++;
+				tamer.ArenaWinStreak++;
+				tamer.TotalBattlesWon++;
+			}
+			else
+			{
+				tamer.ArenaLosses++;
+				tamer.ArenaWinStreak = 0;
+				tamer.TotalBattlesLost++;
+			}
 
-		// Check arena achievements (Ranked only for rank-based ones)
-		AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaWins, tamer.ArenaWins );
-		AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaSetsCompleted, tamer.ArenaSetsCompleted );
-		AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaWinStreak, tamer.ArenaWinStreak );
-		Stats.SetValue( "arena-sets", tamer.ArenaSetsCompleted );
-		Stats.SetValue( "arena-streak", tamer.ArenaWinStreak );
-		if ( CurrentMode == ArenaMode.Ranked )
-		{
-			AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaRankReached, GetRankTier( tamer.ArenaPoints ) );
-		}
+			// Check for Reverse Sweep achievement (lose game 1, win games 2 and 3)
+			if ( playerWon && GameResults.Count >= 3 && !GameResults[0] && GameResults[1] && GameResults[2] )
+			{
+				AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaReverseSweep, 1 );
+			}
 
-		// Add match history
-		AddMatchHistory( playerWon, pointsChange );
+			// Check arena achievements (Ranked only for rank-based ones)
+			AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaWins, tamer.ArenaWins );
+			AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaSetsCompleted, tamer.ArenaSetsCompleted );
+			AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaWinStreak, tamer.ArenaWinStreak );
+			// Removed v1.2.0 — arena-sets / arena-streak Stats slugs never had matching
+			// LeaderboardPanel categories; always-dead writes. Re-add when ranked PvP
+			// ships in v1.3+ if those leaderboards return.
+			// Stats.SetValue( "arena-sets", tamer.ArenaSetsCompleted );
+			// Stats.SetValue( "arena-streak", tamer.ArenaWinStreak );
+			if ( CurrentMode == ArenaMode.Ranked )
+			{
+				AchievementManager.Instance?.CheckProgress( AchievementRequirement.ArenaRankReached, GetRankTier( tamer.ArenaPoints ) );
+			}
 
-		// Collect opponent's tamer card (online matches only)
-		if ( CurrentOpponent?.IsRealPlayer == true && CurrentOpponent.SteamId != 0 )
-		{
-			var profile = ChatManager.Instance?.GetProfileByConnectionId( CurrentOpponent.ConnectionId );
-			TamerManager.Instance?.CollectTamerCard(
-				CurrentOpponent.SteamId,
-				CurrentOpponent.Name,
-				profile?.Level ?? 0,
-				CurrentOpponent.Rank,
-				CurrentOpponent.ArenaPoints,
-				profile?.FavoriteMonsterSpeciesId,
-				profile?.AchievementCount ?? 0,
-				0f,
-				gender: profile?.Gender,
-				favoriteExpeditionId: profile?.FavoriteExpeditionId,
-				title: profile?.Title,
-				titleColor: profile?.TitleColor,
-				arenaWins: profile?.ArenaWins ?? 0,
-				arenaLosses: profile?.ArenaLosses ?? 0,
-				highestExpedition: profile?.HighestExpedition ?? 0,
-				monstersCaught: profile?.MonstersCaught ?? 0,
-				totalPlayTimeMinutes: profile?.TotalPlayTimeMinutes ?? 0,
-				battlesWon: profile?.BattlesWon ?? 0,
-				monstersBred: profile?.MonstersBred ?? 0,
-				monstersEvolved: profile?.MonstersEvolved ?? 0,
-				totalExpeditionsCompleted: profile?.TotalExpeditionsCompleted ?? 0,
-				totalTradesCompleted: profile?.TotalTradesCompleted ?? 0
-			);
-		}
+			// Add match history
+			AddMatchHistory( playerWon, pointsChange );
 
-		// Submit to leaderboard (Ranked only)
-		if ( CurrentMode == ArenaMode.Ranked )
-		{
-			SubmitScore( tamer.ArenaPoints );
+			// Collect opponent's tamer card (online matches only)
+			if ( CurrentOpponent?.IsRealPlayer == true && CurrentOpponent.SteamId != 0 )
+			{
+				var profile = ChatManager.Instance?.GetProfileByConnectionId( CurrentOpponent.ConnectionId );
+				TamerManager.Instance?.CollectTamerCard(
+					CurrentOpponent.SteamId,
+					CurrentOpponent.Name,
+					profile?.Level ?? 0,
+					CurrentOpponent.Rank,
+					CurrentOpponent.ArenaPoints,
+					profile?.FavoriteMonsterSpeciesId,
+					profile?.AchievementCount ?? 0,
+					0f,
+					gender: profile?.Gender,
+					favoriteExpeditionId: profile?.FavoriteExpeditionId,
+					title: profile?.Title,
+					titleColor: profile?.TitleColor,
+					arenaWins: profile?.ArenaWins ?? 0,
+					arenaLosses: profile?.ArenaLosses ?? 0,
+					highestExpedition: profile?.HighestExpedition ?? 0,
+					monstersCaught: profile?.MonstersCaught ?? 0,
+					totalPlayTimeMinutes: profile?.TotalPlayTimeMinutes ?? 0,
+					battlesWon: profile?.BattlesWon ?? 0,
+					monstersBred: profile?.MonstersBred ?? 0,
+					monstersEvolved: profile?.MonstersEvolved ?? 0,
+					totalExpeditionsCompleted: profile?.TotalExpeditionsCompleted ?? 0,
+					totalTradesCompleted: profile?.TotalTradesCompleted ?? 0
+				);
+			}
+
+			// Removed v1.2.0 — arena-ranking + arena-wins leaderboards retired with the
+			// async-AI-mirror PvP path. Tamer.ArenaPoints / ArenaWins / ArenaLosses are
+			// still updated locally + ride the SaveBlob; only the public leaderboard
+			// writes are gone. Re-add when ranked PvP ships in v1.3+.
+			// if ( CurrentMode == ArenaMode.Ranked )
+			// {
+			//     SubmitScore( tamer.ArenaPoints );
+			// }
+			// Stats.SetValue( "arena-wins-launch", tamer.ArenaWins );
 		}
-		Stats.SetValue( "arena-wins-launch", tamer.ArenaWins );
 
 		// Save
 		TamerManager.Instance?.SaveToCloud();
@@ -932,6 +1027,18 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	}
 
 	/// <summary>
+	/// Set the strict level override used to normalize teams before the next set.
+	/// Online lane sets this from the host's match-config payload before
+	/// queueing; legacy ranked + AI flows keep the default 50. Naming aligns
+	/// with `MatchConfig.LevelOverride` so the wire field, the cached active
+	/// value, and the setter all read the same word.
+	/// </summary>
+	public void SetLevelOverride( int levelOverride )
+	{
+		CurrentLevelOverride = Math.Clamp( levelOverride, LEVEL_CAP_MIN, LEVEL_CAP_MAX );
+	}
+
+	/// <summary>
 	/// Find a random AI opponent for arena battle
 	/// </summary>
 	public void FindOpponent()
@@ -974,12 +1081,30 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
 
+		// Sync level cap from the active match config before normalizing —
+		// this lets a host's UI set the config (e.g. Lv25 / 2v2) and have
+		// every downstream path pick it up without extra plumbing.
+		CurrentLevelOverride = Math.Clamp( CurrentMatchConfig.LevelOverride, LEVEL_CAP_MIN, LEVEL_CAP_MAX );
+
+		// Normalize team to the active cap level and serialize
+		var normalizedTeam = NormalizeTeamToLevel( ArenaTeam, CurrentLevelOverride );
+
+		// Validate against the host's own ruleset BEFORE going on the wire —
+		// fast-fail UX: surface "your team is too small for 3v3" or "Mythic
+		// is banned" immediately, rather than letting the queue spin and the
+		// invitee reject after a handshake round-trip.
+		if ( !ValidateTeam( normalizedTeam, CurrentMatchConfig, out var hostReason ) )
+		{
+			Log.Warning( $"[Arena] JoinOnlineQueue refused — local team fails own ruleset: {hostReason}" );
+			OnMatchmakingError?.Invoke( $"Your team is invalid for the current ruleset: {hostReason}" );
+			return;
+		}
+
 		IsOnlineMatch = true;
 		CurrentState = ArenaState.Searching;
 		_queueStartTime = DateTime.UtcNow;
 
-		// Normalize team to level 50 and serialize
-		var normalizedTeam = NormalizeTeamToLevel50( ArenaTeam );
+		var teamJson = SerializeTeam( normalizedTeam );
 
 		_localQueueEntry = new QueuedPlayer
 		{
@@ -987,7 +1112,8 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			SteamId = LocalSteamId,
 			PlayerName = LocalPlayerName,
 			ArenaPoints = tamer.ArenaPoints,
-			TeamData = SerializeTeam( normalizedTeam ),
+			TeamData = teamJson,
+			TeamChecksum = BattleChecksum.Compute( teamJson ),
 			QueueTime = DateTime.UtcNow
 		};
 
@@ -996,7 +1122,8 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			_localQueueEntry.SteamId,
 			_localQueueEntry.PlayerName,
 			_localQueueEntry.ArenaPoints,
-			_localQueueEntry.TeamData
+			_localQueueEntry.TeamData,
+			_localQueueEntry.TeamChecksum
 		);
 
 		Log.Info( $"[Arena] Joined online queue with {ArenaTeam.Count} monsters, {tamer.ArenaPoints} points" );
@@ -1111,17 +1238,26 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 				BattleSeed = new Random().Next();
 				_matchedOpponent = match;
 
+				// Match config travels with the proposal so the invitee can
+				// preview rules and both peers validate teams against the
+				// same constraints. CurrentMatchConfig is the host's intent
+				// for this match — defaults to a vanilla 1v1 Lv50 ruleset
+				// when the UI hasn't customised it yet.
+				var matchConfigJson = JsonSerializer.Serialize( CurrentMatchConfig );
+
 				SendMatchProposal(
 					match.ConnectionId,
 					_localQueueEntry.ConnectionId,
 					_localQueueEntry.PlayerName,
 					_localQueueEntry.ArenaPoints,
 					_localQueueEntry.TeamData,
-					BattleSeed
+					BattleSeed,
+					_localQueueEntry.TeamChecksum,
+					matchConfigJson
 				);
 
 				CurrentState = ArenaState.MatchFound;
-				Log.Info( $"[Arena] Initiated match with {match.PlayerName}" );
+				Log.Info( $"[Arena] Initiated match with {match.PlayerName} (format={CurrentMatchConfig.Format}, level={CurrentMatchConfig.LevelOverride})" );
 			}
 		}
 	}
@@ -1131,15 +1267,23 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	// ═══════════════════════════════════════════════════════════════
 
 	[Rpc.Broadcast]
-	public void BroadcastJoinQueue( string connectionId, long steamId, string playerName, int arenaPoints, string teamData )
+	public void BroadcastJoinQueue( string connectionId, long steamId, string playerName, int arenaPoints, string teamData, string teamChecksum )
 	{
 		if ( connectionId == LocalConnectionId.ToString() ) return;
+
+		if ( !BattleChecksum.Verify( teamData, teamChecksum, $"queue join from {playerName}" ) )
+		{
+			// Refuse to add a tampered queue entry — opponent will see it as
+			// "no longer in queue" and naturally try again on a fresh join.
+			return;
+		}
 
 		var existing = _playersInQueue.FirstOrDefault( p => p.ConnectionId == connectionId );
 		if ( existing != null )
 		{
 			existing.ArenaPoints = arenaPoints;
 			existing.TeamData = teamData;
+			existing.TeamChecksum = teamChecksum;
 			existing.QueueTime = DateTime.UtcNow;
 		}
 		else
@@ -1151,6 +1295,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 				PlayerName = playerName,
 				ArenaPoints = arenaPoints,
 				TeamData = teamData,
+				TeamChecksum = teamChecksum,
 				QueueTime = DateTime.UtcNow
 			} );
 
@@ -1170,24 +1315,60 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	}
 
 	[Rpc.Broadcast]
-	public void SendMatchProposal( string targetConnectionId, string senderConnectionId, string senderName, int senderPoints, string senderTeamData, int battleSeed )
+	public void SendMatchProposal( string targetConnectionId, string senderConnectionId, string senderName, int senderPoints, string senderTeamData, int battleSeed, string senderTeamChecksum, string matchConfigJson )
 	{
 		if ( targetConnectionId != LocalConnectionId.ToString() ) return;
 
 		Log.Info( $"[Arena] Received match proposal from {senderName}" );
+
+		if ( !BattleChecksum.Verify( senderTeamData, senderTeamChecksum, $"match proposal from {senderName}" ) )
+		{
+			OnMatchmakingError?.Invoke( "Match cancelled: opponent's team data failed integrity check." );
+			return;
+		}
+
+		// Adopt the host's ruleset locally before validating their team — the
+		// stamped CurrentMatchConfig is then the source of truth for our
+		// own team-prep + acceptance path. Defensive default keeps the match
+		// playable if the host sent an empty/garbled config.
+		var hostConfig = TryParseMatchConfig( matchConfigJson ) ?? MatchConfig.Default();
+		CurrentMatchConfig = hostConfig;
+		CurrentLevelOverride = Math.Clamp( hostConfig.LevelOverride, LEVEL_CAP_MIN, LEVEL_CAP_MAX );
+
+		// Validate the host's team against THEIR OWN config — refuses matches
+		// where a malicious / out-of-date client tries to field a team that
+		// violates the rules they advertised.
+		var hostTeamPreview = DeserializeTeam( senderTeamData, CurrentLevelOverride );
+		if ( !ValidateTeam( hostTeamPreview, hostConfig, out var hostReason ) )
+		{
+			Log.Warning( $"[Arena] Refusing proposal from {senderName} — host team failed validation: {hostReason}" );
+			OnMatchmakingError?.Invoke( $"Match cancelled: opponent's team is invalid for this ruleset ({hostReason})." );
+			return;
+		}
+
+		// Validate OUR team against the host's config too — if our roster
+		// can't field a legal team for this match, surface the error early
+		// instead of after acceptance handshake.
+		var myNormalized = NormalizeTeamToLevel( ArenaTeam, CurrentLevelOverride );
+		if ( !ValidateTeam( myNormalized, hostConfig, out var myReason ) )
+		{
+			Log.Warning( $"[Arena] Refusing proposal — local team fails ruleset: {myReason}" );
+			OnMatchmakingError?.Invoke( $"Cannot accept this match — your team is invalid for the host's ruleset ({myReason})." );
+			return;
+		}
 
 		_matchedOpponent = new QueuedPlayer
 		{
 			ConnectionId = senderConnectionId,
 			PlayerName = senderName,
 			ArenaPoints = senderPoints,
-			TeamData = senderTeamData
+			TeamData = senderTeamData,
+			TeamChecksum = senderTeamChecksum
 		};
 		BattleSeed = battleSeed;
 
 		_playersInQueue.RemoveAll( p => p.ConnectionId == senderConnectionId || p.ConnectionId == LocalConnectionId.ToString() );
 
-		var opponentTeam = DeserializeTeam( senderTeamData );
 		PlayerProfileData opProfile1 = null;
 		ChatManager.Instance?.PlayerProfiles?.TryGetValue( senderConnectionId, out opProfile1 );
 
@@ -1196,7 +1377,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			Name = senderName,
 			ArenaPoints = senderPoints,
 			Rank = GetRankFromPoints( senderPoints ),
-			Team = opponentTeam,
+			Team = hostTeamPreview,
 			IsRealPlayer = true,
 			ConnectionId = senderConnectionId,
 			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0,
@@ -1207,20 +1388,40 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		CurrentState = ArenaState.MatchFound;
 		OnOpponentFound?.Invoke( CurrentOpponent );
 
-		// Send acceptance with our normalized team
-		var normalizedTeam = NormalizeTeamToLevel50( ArenaTeam );
+		// Send acceptance with our (already-validated) normalized team
+		var teamJson = SerializeTeam( myNormalized );
 		SendMatchAccepted( senderConnectionId, LocalConnectionId.ToString(), LocalPlayerName,
-			TamerManager.Instance?.CurrentTamer?.ArenaPoints ?? 0, SerializeTeam( normalizedTeam ) );
+			TamerManager.Instance?.CurrentTamer?.ArenaPoints ?? 0, teamJson, BattleChecksum.Compute( teamJson ) );
 	}
 
 	[Rpc.Broadcast]
-	public void SendMatchAccepted( string targetConnectionId, string senderConnectionId, string senderName, int senderPoints, string senderTeamData )
+	public void SendMatchAccepted( string targetConnectionId, string senderConnectionId, string senderName, int senderPoints, string senderTeamData, string senderTeamChecksum )
 	{
 		if ( targetConnectionId != LocalConnectionId.ToString() ) return;
 
 		Log.Info( $"[Arena] Match accepted by {senderName}" );
 
-		var opponentTeam = DeserializeTeam( senderTeamData );
+		if ( !BattleChecksum.Verify( senderTeamData, senderTeamChecksum, $"match acceptance from {senderName}" ) )
+		{
+			OnMatchmakingError?.Invoke( "Match cancelled: opponent's team data failed integrity check." );
+			ResetToIdle();
+			return;
+		}
+
+		var opponentTeam = DeserializeTeam( senderTeamData, CurrentLevelOverride );
+
+		// Re-validate the invitee's team against OUR match config. We sent
+		// the config in the proposal; if the invitee fielded an illegal team
+		// anyway (modded client, race condition with config UI), refuse here
+		// rather than at battle-start.
+		if ( !ValidateTeam( opponentTeam, CurrentMatchConfig, out var inviteeReason ) )
+		{
+			Log.Warning( $"[Arena] Match acceptance refused — {senderName}'s team fails ruleset: {inviteeReason}" );
+			OnMatchmakingError?.Invoke( $"Match cancelled: opponent's team is invalid for this ruleset ({inviteeReason})." );
+			ResetToIdle();
+			return;
+		}
+
 		PlayerProfileData opProfile2 = null;
 		ChatManager.Instance?.PlayerProfiles?.TryGetValue( senderConnectionId, out opProfile2 );
 
@@ -1240,6 +1441,25 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		_playersInQueue.RemoveAll( p => p.ConnectionId == senderConnectionId || p.ConnectionId == LocalConnectionId.ToString() );
 
 		OnOpponentFound?.Invoke( CurrentOpponent );
+	}
+
+	/// <summary>
+	/// Parse a wire-side match-config blob, swallowing JSON errors. Returns
+	/// null on empty / malformed input — callers fall back to a vanilla
+	/// MatchConfig so a single malformed payload can't softlock matchmaking.
+	/// </summary>
+	private static MatchConfig TryParseMatchConfig( string json )
+	{
+		if ( string.IsNullOrEmpty( json ) ) return null;
+		try
+		{
+			return JsonSerializer.Deserialize<MatchConfig>( json );
+		}
+		catch ( Exception e )
+		{
+			Log.Warning( $"[Arena] Failed to parse match config: {e.Message}" );
+			return null;
+		}
 	}
 
 	[Rpc.Broadcast]
@@ -1322,9 +1542,11 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	}
 
 	/// <summary>
-	/// Deserialize a team from JSON network data
+	/// Deserialize a team from JSON network data. Receiving side stamps the
+	/// active match's cap onto each monster's Level field so BattleSimulator's
+	/// damage formula reads the same value both teams agreed on.
 	/// </summary>
-	private List<Monster> DeserializeTeam( string teamData )
+	private List<Monster> DeserializeTeam( string teamData, int levelCap = RANKED_LEVEL )
 	{
 		if ( string.IsNullOrEmpty( teamData ) ) return new();
 
@@ -1339,7 +1561,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 				{
 					SpeciesId = d.S,
 					Nickname = d.N ?? MonsterManager.Instance?.GetSpecies( d.S )?.Name ?? "Monster",
-					Level = RANKED_LEVEL,
+					Level = levelCap,
 					MaxHP = d.HP,
 					ATK = d.Atk,
 					DEF = d.Def,
@@ -1368,15 +1590,19 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 
 	private async void SubmitScore( int score )
 	{
-		try
-		{
-			Stats.SetValue( LEADERBOARD_NAME, score );
-			Log.Info( $"Submitted arena score: {score}" );
-		}
-		catch ( Exception e )
-		{
-			Log.Warning( $"Failed to submit leaderboard score: {e.Message}" );
-		}
+		// Removed v1.2.0 — arena-score-launch leaderboard retired with the
+		// async-AI-mirror PvP path. Method left in place as a v1.3+ anchor
+		// when ranked PvP returns; restore the body then.
+		_ = score;
+		// try
+		// {
+		//     Stats.SetValue( LEADERBOARD_NAME, score );
+		//     Log.Info( $"Submitted arena score: {score}" );
+		// }
+		// catch ( Exception e )
+		// {
+		//     Log.Warning( $"Failed to submit leaderboard score: {e.Message}" );
+		// }
 	}
 
 	public async Task<List<LeaderboardEntry>> GetLeaderboard( int count = 100 )
@@ -1591,6 +1817,7 @@ public class QueuedPlayer
 	public string PlayerName { get; set; }
 	public int ArenaPoints { get; set; }
 	public string TeamData { get; set; }
+	public string TeamChecksum { get; set; } // SHA256 of TeamData; mismatch on receive => team was tampered with mid-flight
 	public DateTime QueueTime { get; set; }
 }
 
@@ -1611,4 +1838,51 @@ public class RankedMonsterData
 	public List<string> M { get; set; }  // MoveIds
 	public string T { get; set; }        // Trait
 	public string I { get; set; }        // HeldItemId
+}
+
+/// <summary>
+/// Host-set ruleset for a custom PvP match. Travels with the match-proposal
+/// RPC so the invitee can preview rules before accepting and so both peers
+/// validate teams against the same constraints. JSON-serialized over the
+/// wire as one extra string arg on the existing match RPCs.
+///
+/// All fields have sane defaults so an empty/missing config behaves like
+/// classic ranked (1v1, Lv50, no rarity/species bans, results tracked).
+/// </summary>
+public class MatchConfig
+{
+	/// <summary>"1v1" | "2v2" | "3v3". Drives team-size validation.</summary>
+	public string Format { get; set; } = "1v1";
+
+	/// <summary>
+	/// Strict normalization level — every monster on both teams is forced to
+	/// this level before stats are computed. Range 5..100 (clamped at use
+	/// sites; values outside the range are coerced rather than rejected so a
+	/// malformed config can't softlock the match).
+	/// </summary>
+	public int LevelOverride { get; set; } = 50;
+
+	/// <summary>Rarity values stringified (Common/Uncommon/Rare/Epic/Legendary/Mythic). Beasts in any banned tier fail validation.</summary>
+	public List<string> BannedRarities { get; set; } = new();
+
+	/// <summary>SpeciesId list. Reserved for v1.3+ — empty for v1.2.0 launch.</summary>
+	public List<string> BannedSpecies { get; set; } = new();
+
+	/// <summary>
+	/// When false, the match counts as casual: results write to MatchHistory
+	/// (with IsRanked=false) but skip the W/L counter increments, leaderboard
+	/// push, and rating change. Defaults true at launch; progression flips it
+	/// for casual-only flows.
+	/// </summary>
+	public bool TrackResult { get; set; } = true;
+
+	public int RequiredTeamSize => Format switch
+	{
+		"1v1" => 1,
+		"2v2" => 2,
+		"3v3" => 3,
+		_ => 1
+	};
+
+	public static MatchConfig Default() => new();
 }

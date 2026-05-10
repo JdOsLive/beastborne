@@ -11,7 +11,9 @@ namespace Beastborne.Systems;
 /// </summary>
 public static class BattleAI
 {
-	private static Random _random = new Random();
+	// All RNG flows through BattleSimulator.CurrentRandom so SetSeed propagates
+	// through AI decisions too — required for any future deterministic
+	// replay / authoritative-resolver work (Scope B PvP, replay tooling).
 
 	/// <summary>
 	/// Select the best action for a monster to take
@@ -52,7 +54,7 @@ public static class BattleAI
 		// Add some randomness - don't always pick the best move
 		// 70% chance to pick best, 20% second best, 10% random
 		MoveDefinition selectedMove;
-		float roll = (float)_random.NextDouble();
+		float roll = (float)BattleSimulator.CurrentRandom.NextDouble();
 		if ( roll < 0.70f || scoredMoves.Count == 1 )
 		{
 			selectedMove = scoredMoves[0].move;
@@ -63,7 +65,7 @@ public static class BattleAI
 		}
 		else
 		{
-			selectedMove = scoredMoves[_random.Next( scoredMoves.Count )].move;
+			selectedMove = scoredMoves[BattleSimulator.CurrentRandom.Next( scoredMoves.Count )].move;
 		}
 
 		return new MoveChoice
@@ -333,9 +335,9 @@ public static class BattleAI
 		bool shouldSwap = false;
 
 		if ( hpPercent < 0.2f && atDisadvantage )
-			shouldSwap = _random.NextDouble() < 0.6f;
+			shouldSwap = BattleSimulator.CurrentRandom.NextDouble() < 0.6f;
 		else if ( hpPercent < 0.3f && atDisadvantage )
-			shouldSwap = _random.NextDouble() < 0.3f;
+			shouldSwap = BattleSimulator.CurrentRandom.NextDouble() < 0.3f;
 
 		if ( !shouldSwap )
 			return null;

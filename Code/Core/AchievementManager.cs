@@ -63,23 +63,23 @@ public sealed class AchievementManager : Component
 
 		// ── COLLECTION ──────────────────────────────────────────────
 
-		AddAchievement( "catch_1", "First Catch", "Catch your first monster", AchievementCategory.Collection,
+		AddAchievement( "catch_1", "First Catch", "Contract your first monster", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 500 ) } );
 
-		AddAchievement( "catch_10", "Budding Tamer", "Catch 10 monsters", AchievementCategory.Collection,
+		AddAchievement( "catch_10", "Budding Tamer", "Contract 10 monsters", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 10, order++,
 			new() { Reward( AchievementRewardType.Gold, 2000 ) } );
 
-		AddAchievement( "catch_50", "Seasoned Hunter", "Catch 50 monsters", AchievementCategory.Collection,
+		AddAchievement( "catch_50", "Seasoned Hunter", "Contract 50 monsters", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 50, order++,
 			new() { Reward( AchievementRewardType.Gold, 10000 ), Reward( AchievementRewardType.ContractInk, 10 ) } );
 
-		AddAchievement( "catch_100", "Master Tamer", "Catch 100 monsters", AchievementCategory.Collection,
+		AddAchievement( "catch_100", "Master Tamer", "Contract 100 monsters", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 100, order++,
 			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.Title, 0, "Master Tamer" ) } );
 
-		AddAchievement( "catch_500", "Living Legend", "Catch 500 monsters", AchievementCategory.Collection,
+		AddAchievement( "catch_500", "Living Legend", "Contract 500 monsters", AchievementCategory.Collection,
 			AchievementRequirement.TotalMonstersCaught, 500, order++,
 			new() { Reward( AchievementRewardType.Gems, 25 ) } );
 

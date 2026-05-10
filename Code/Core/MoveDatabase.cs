@@ -4472,6 +4472,190 @@ public static class MoveDatabase
 				new MoveEffect { Type = MoveEffectType.LowerSpD, Value = 1 }
 			}
 		} );
+
+		// =============================================================
+		// SIGNATURE MOVES - unique to handmade launch wilds (Jet)
+		// =============================================================
+
+		// Jackacabra (#17) — chupacabra-folklore drain. Sinks fangs in,
+		// recovers half the damage dealt as HP.
+		AddMove( new MoveDefinition
+		{
+			Id = "goatsuckers_drain",
+			Name = "Goatsucker's Drain",
+			Description = "Sinks long fangs into the target and drinks deep. Heals the user for 50% of damage dealt.",
+			Element = ElementType.Shadow,
+			Category = MoveCategory.Physical,
+			BasePower = 75,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = true,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Drain, Value = 0.5f }
+			}
+		} );
+
+		// Liliprince (#19) — the prince's coronation moment. A radiant pulse
+		// of pondlight that strikes hard and mends the caster a quarter.
+		AddMove( new MoveDefinition
+		{
+			Id = "sovereigns_boon",
+			Name = "Sovereign's Boon",
+			Description = "A regal pulse of pondlight that strikes the foe and mends the user. Heals 25% of max HP.",
+			Element = ElementType.Spirit,
+			Category = MoveCategory.Special,
+			BasePower = 90,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Heal, Value = 25, TargetsSelf = true }
+			}
+		} );
+
+		// Sheepot (#10) — the sheep tucks its fragile roots deeper into the
+		// pot, sealing the rim with packed earth. A quiet defensive raise
+		// from a quiet defensive Common.
+		AddMove( new MoveDefinition
+		{
+			Id = "pot_guard",
+			Name = "Pot Guard",
+			Description = "Tucks into the clay pot. Raises user DEF and SpD by 1 stage each.",
+			Element = ElementType.Nature,
+			Category = MoveCategory.Status,
+			BasePower = 0,
+			Accuracy = 100,
+			MaxPP = 20,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.RaiseDEF, Value = 1, TargetsSelf = true },
+				new MoveEffect { Type = MoveEffectType.RaiseSpD, Value = 1, TargetsSelf = true }
+			}
+		} );
+
+		// Cerametz (#11) — the solstice ceremony, fleece sheared and woven.
+		// A radiant winter-warmth move: heals over time as the wool draws
+		// the chill out of the user.
+		AddMove( new MoveDefinition
+		{
+			Id = "solstice_veil",
+			Name = "Solstice Veil",
+			Description = "Wraps the user in solstice-warm fleece. Heals 33% of max HP.",
+			Element = ElementType.Nature,
+			Category = MoveCategory.Status,
+			BasePower = 0,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Heal, Value = 33, TargetsSelf = true }
+			}
+		} );
+
+		// Wishlift (#12) — the fae's spent-wish bubbles drift over the
+		// foe's eyes and lull them under. A sleep-status hax move befitting
+		// the buoyant, dreamy archetype.
+		AddMove( new MoveDefinition
+		{
+			Id = "dream_drift",
+			Name = "Dream Drift",
+			Description = "Drifts a spent-wish bubble across the target's eyes. 75% to inflict sleep.",
+			Element = ElementType.Wind,
+			Category = MoveCategory.Status,
+			BasePower = 0,
+			Accuracy = 75,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Sleep, Chance = 1.0f, Duration = 2 }
+			}
+		} );
+
+		// Twincoil (#13) — the outer face strikes; the inner mouth opens
+		// and the second pair of eyes flashes a hex. Two-stage hit: damage
+		// + ATK debuff to mirror the duality.
+		AddMove( new MoveDefinition
+		{
+			Id = "two_faced_strike",
+			Name = "Two-Faced Strike",
+			Description = "The outer head bites; the inner head hexes. 100% chance to lower target ATK by 1.",
+			Element = ElementType.Nature,
+			Category = MoveCategory.Physical,
+			BasePower = 60,
+			Accuracy = 100,
+			MaxPP = 15,
+			MakesContact = true,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.LowerATK, Value = 1, Chance = 1.0f }
+			}
+		} );
+
+		// Heartwell (#14) — the sokushinbutsu monk's stillness. Burns no
+		// turn, recovers a third HP, and washes off any status ailment —
+		// the patient ascetic who outlasts the world.
+		AddMove( new MoveDefinition
+		{
+			Id = "inner_stillness",
+			Name = "Inner Stillness",
+			Description = "Settles into deep meditation. Heals 33% HP and removes status conditions.",
+			Element = ElementType.Water,
+			Category = MoveCategory.Status,
+			BasePower = 0,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Heal, Value = 33, TargetsSelf = true },
+				new MoveEffect { Type = MoveEffectType.Cleanse, TargetsSelf = true }
+			}
+		} );
+
+		// Threadlet (#21) — the spider that listens. Fills a pot with silk and
+		// waits. Signature: a trap-web that binds the target in thread, lowering
+		// their SPD by 2 and raising user SpD by 1 — the listener who controls
+		// the space around it without moving.
+		AddMove( new MoveDefinition
+		{
+			Id = "silken_trap",
+			Name = "Silken Trap",
+			Description = "Casts an invisible web — by the time the target notices, they're already slow. SPD -2 to target, SpD +1 to user.",
+			Element = ElementType.Earth,
+			Category = MoveCategory.Status,
+			BasePower = 0,
+			Accuracy = 95,
+			MaxPP = 15,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.LowerSPD, Value = 2 },
+				new MoveEffect { Type = MoveEffectType.RaiseSpD, Value = 1, TargetsSelf = true }
+			}
+		} );
+
+		// Loomweaver (#22) — the crowned weaver of stories. Signature: draws on
+		// every thread it has ever gathered and releases them as a crushing wave
+		// of compressed earth and silk — high-power Earth special that also
+		// lowers the target's SpD by 1 (the story carries weight).
+		AddMove( new MoveDefinition
+		{
+			Id = "weavers_verdict",
+			Name = "Weaver's Verdict",
+			Description = "Every thread the Loomweaver has ever gathered crashes down at once. Lowers target SpD by 1.",
+			Element = ElementType.Earth,
+			Category = MoveCategory.Special,
+			BasePower = 100,
+			Accuracy = 90,
+			MaxPP = 5,
+			MakesContact = false,
+			Effects = new() { new MoveEffect { Type = MoveEffectType.LowerSpD, Value = 1 } }
+		} );
 	}
 
 	private static void AddMove( MoveDefinition move )

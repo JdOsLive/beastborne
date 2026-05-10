@@ -369,24 +369,29 @@ public sealed class ExpeditionManager : Component
 		// TOWN post-launch — do not re-inflate this list with element
 		// themeparks.
 		//
-		// Player-facing names are "Saltmoor Cove / Saltmoor Forest / Old
-		// Saltmoor" — IDs match. Legacy art paths kept (file rename is a
+		// Player-facing names are "Weaverton / Weaverwood / Weavermere"
+		// — internal IDs (saltmoor_cove / saltmoor_forest / old_saltmoor)
+		// stay as-is so save data, drop tables, and side-quest keys
+		// don't break. Legacy art paths kept (file rename is a
 		// post-launch cleanup).
 		// ═════════════════════════════════════════════════════════════════
 
-		// ─── Saltmoor Approach (tutorial-only, 3 waves, no boss) ───────────
+		// ─── Weaverton Approach (tutorial-only, 3 waves, no boss) ───────────
 		// One-shot tutorial expedition. Hand-tuned to be a clean ~5-minute
 		// first-run experience with a guaranteed contractable Beast at wave 2.
 		// Filtered from the World Map after tutorial completes/skips.
 		_expeditions.Add( new Expedition
 		{
 			Id = "saltmoor_approach",
-			Name = "Saltmoor Approach",
-			Description = "A friendly stretch of coast just north of Saltmoor Cove. Perfect for a first run.",
+			Name = "Weaverton Approach",
+			Description = "A friendly stretch of pasture lane just outside Weaverton's gate. Perfect for a first run.",
 			RequiredLevel = 1,
 			Waves = 3,
 			BaseEnemyLevel = 1,
-			PossibleSpecies = new() { "twigsnap", "dewdrop", "mosscreep" },
+			// Tutorial pool drawn from Weaverton handmade wilds. The first
+			// fight is hand-rigged (see TutorialManager); the rest pull
+			// from this list.
+			PossibleSpecies = new() { "wishlift", "heartwell", "sheepot" },
 			Element = ElementType.Neutral,
 			GoldReward = 30,
 			XPReward = 20,
@@ -395,22 +400,25 @@ public sealed class ExpeditionManager : Component
 			TutorialOnly = true,
 		} );
 
-		// ─── Saltmoor Cove (Lv 1) — starter, 5 waves, no boss ──────────────
-		// Solarpunk coastal village; homes grown into the hillside, rooftop
-		// gardens, tide-pool paths. Beasts are kind; this is where players
-		// learn the catch/battle/team loop.
+		// ─── Weaverton (Lv 1) — starter, 5 waves, no boss ──────────────
+		// A wool-and-loom village built around the Sheepot trade. Pots
+		// stacked along every fence, dye-vats in every yard, smoke from
+		// the dye-houses curling up over the rooftops. The training pen
+		// sits just outside the wool-pasture so new tamers can practice
+		// without spooking the herd.
 		_expeditions.Add( new Expedition
 		{
 			Id = "saltmoor_cove",
-			Name = "Training Grounds",
-			Description = "The fenced loop the village set aside for young tamers to practice on. The beasts that wander in are gentle and curious — perfect for trying out your first contracts without anyone getting hurt.",
+			Name = "Weaverton Pasture",
+			Description = "The fenced loop the wool-village of Weaverton set aside for young tamers to practice on. Sheepots graze just over the hedge, and the beasts that wander in past the pasture gate are gentle and curious — perfect for trying out your first contracts without anyone getting sheared.",
 			RequiredLevel = 1,
 			Waves = 5,
 			BaseEnemyLevel = 1,
-			// Pasture Round (level 1) — only the three Spookior wilds spawn
-			// here. The rest of the original starter pool (twigsnap/dewdrop/
-			// etc.) was pulled to keep the very first zone tight and themed.
-			PossibleSpecies = new() { "wishlift", "heartwell", "twincoil" },
+			// Pasture Round (level 1) — three Spookior wilds plus the
+			// Vegetable-Lamb-of-Tartary line opener (sheepot, by Jet).
+			// The rest of the original starter pool (twigsnap/dewdrop/etc.)
+			// was pulled to keep the very first zone tight and themed.
+			PossibleSpecies = new() { "wishlift", "heartwell", "twincoil", "sheepot" },
 			Element = ElementType.Neutral,
 			GoldReward = 60,
 			XPReward = 45,
@@ -418,18 +426,28 @@ public sealed class ExpeditionManager : Component
 			BackgroundImage = "ui/locations/whispering_woods_background.png"
 		} );
 
-		// ─── Saltmoor Forest (Lv 15) — mid, 7 waves, has boss ──────────────
-		// The forest the village spent a generation healing. Paths wind
-		// between mangrove roots and old ceibas. Real teeth appear here.
+		// ─── Weaverwood (Lv 10) — mid, 7 waves, has boss ──────────────
+		// The forest east of Weaverton — old growth, dye-leaves, mossy
+		// paths the herders use to take Sheepots out to summer pasture.
+		// Jackacabra hunt the herders' flocks at the wood's edge; the gnome
+		// line keeps to the deeper groves. Recommended Lv softened from
+		// 15 → 10 so the jump from the village pasture isn't as steep.
 		_expeditions.Add( new Expedition
 		{
 			Id = "saltmoor_forest",
-			Name = "The Witherwood",
-			Description = "The local pinewood east of Hollow Creek. A handful of folk keep cabins back among the trees — woodcutters, herbalists, the occasional retired tamer. The beasts here are wilder than the village pens but the paths are still well-walked.",
-			RequiredLevel = 15,
+			Name = "Weaverwood",
+			Description = "The pinewood east of Weaverton. The herders take Sheepots up these paths each summer for the long pasture, and the village's dye-leaves come from the old groves further in. The beasts here are wilder than the pasture pens — and lately the herders are coming back short a sheep more often than they'd like.",
+			RequiredLevel = 10,
 			Waves = 7,
-			BaseEnemyLevel = 15,
-			PossibleSpecies = new() { "sproutkin", "thornveil", "mosswhisper", "pollenpuff", "bloomguard", "vinewhip", "fungrowth", "willowwisp", "curublast" },
+			BaseEnemyLevel = 10,
+			// Forest pool — handmade beasts only. Gnoll (base) and
+			// Jackacabra (predator) live in the deeper grove; Twincoil
+			// + Wishlift roam in from the Weaverton pasture. Gnollium
+			// is evo-only (level up Gnoll to 28); the herders say it
+			// never shows itself to anyone who doesn't earn it. The old
+			// AI-gen forest pool (sproutkin/thornveil/etc.) has been
+			// retired pre-launch in favor of fewer, handmade beasts.
+			PossibleSpecies = new() { "gnoll", "jackacabra", "wishlift", "twincoil" },
 			Element = ElementType.Nature,
 			GoldReward = 220,
 			XPReward = 320,
@@ -437,23 +455,61 @@ public sealed class ExpeditionManager : Component
 			BackgroundImage = "ui/locations/ember_cavern_background.png"
 		} );
 
-		// ─── Old Saltmoor (Lv 30) — final launch zone, 10 waves, has boss ──
-		// The storm-lost first settlement — broken pier, hollow lighthouse,
-		// walls the sea keeps trying to take back. Oldest, strangest beasts.
+		// ─── Weavermere (Lv 20) — final launch zone, 10 waves, has boss ──
+		// The mirror-still pond above Weaverton. The village's painters,
+		// dyers, and pattern-weavers walk up here at dawn to find the
+		// colors no loom can match. Padlip live in the lily-pads; older
+		// beasts drift up from the village pasture and settle in.
+		// Recommended Lv softened from 30 → 20 so the jump from
+		// Weaverwood (Lv 10) isn't as steep.
 		_expeditions.Add( new Expedition
 		{
 			Id = "old_saltmoor",
-			Name = "Old Saltmoor",
-			Description = "The original settlement, lost to the storms two generations ago. Older, stranger beasts claim what the sea keeps taking back.",
-			RequiredLevel = 30,
+			Name = "Weavermere",
+			Description = "The mirror-still pond above Weaverton, ringed in lily pads and dragonfly-flicker. The village's painters, dyers, and pattern-weavers walk up here at dawn to find the colors no loom can match — and a few have come back with stranger stories than they went up with.",
+			RequiredLevel = 20,
 			Waves = 10,
-			BaseEnemyLevel = 30,
-			PossibleSpecies = new() { "puddlejaw", "mirrorpond", "weepfin", "streamling", "rivercrest", "bubblite", "coralheim" },
+			BaseEnemyLevel = 20,
+			// Lake/pond pool — handmade-only after the AI-gen water beasts
+			// (puddlejaw/mirrorpond/weepfin/streamling/rivercrest/bubblite/
+			// coralheim) were retired pre-launch. Padlip spawns in the
+			// regular waves; Twincoil + Heartwell roam in from the
+			// Weaverton side as overgrown adults that drifted up the
+			// drowned streets. Liliprince only appears as a boss-wave
+			// encounter (see BossPoolDatabase). The player normally meets
+			// Liliprince by evolving a Padlip at 32.
+			PossibleSpecies = new() { "padlip", "twincoil", "heartwell" },
 			Element = ElementType.Water,
 			GoldReward = 480,
 			XPReward = 720,
 			HasBoss = true,
 			BackgroundImage = "ui/locations/lake_of_tears_background.png"
+		} );
+
+		// ─── Whispering Hollow (Mini, Lv 25) — cave on the forest road ──────
+		// An old cave halfway between Saltmoor Cove and Old Saltmoor, where
+		// travelers used to camp on the forest road to the mere. They stopped.
+		// Geographically in the forest, but gated on clearing Old Saltmoor —
+		// lore framing: the player has made the journey now and knows what they
+		// skipped on the path. Threadlet is the marquee encounter; cerametz/
+		// twincoil/wishlift fill out the cave's dark-hollow atmosphere.
+		// Loomweaver (stage 2) is the named Elite boss on wave 4 — not in the contract pool.
+		_expeditions.Add( new Expedition
+		{
+			Id = "mini_loomweaver_burrow",
+			Name = "Whispering Hollow",
+			Description = "An old cave on the forest road, where travelers used to camp on their way to the mere. They don't anymore. Something in the dark was always listening, and it grew tired of being polite.",
+			RequiredLevel = 25,
+			Waves = 4,
+			BaseEnemyLevel = 25,
+			PossibleSpecies = new() { "threadlet", "cerametz", "twincoil", "wishlift" },
+			SpeciesWeights = new() { ["threadlet"] = 1.0f, ["cerametz"] = 2.5f, ["twincoil"] = 2.5f, ["wishlift"] = 2.5f },
+			Element = ElementType.Earth,
+			GoldReward = 380,
+			XPReward = 560,
+			HasBoss = true,
+			BackgroundImage = "ui/locations/lake_of_tears_background.png",
+			IsMiniExpedition = true,
 		} );
 
 		Log.Info( $"Generated {_expeditions.Count} expeditions (launch)" );
@@ -484,10 +540,17 @@ public sealed class ExpeditionManager : Component
 			return TutorialManager.Instance?.IsTutorialActive == true;
 		}
 
-		// First non-tutorial expedition in the ordered list is always open.
-		// Skip tutorial-only expeditions when computing prev/idx so the chain
-		// isn't broken for players who skipped the tutorial.
-		var realChain = _expeditions.Where( e => !e.TutorialOnly ).ToList();
+		// Mini-expeditions: skip the sequential chain. Gate on clearing old_saltmoor
+		// (the final main-path zone) at least once.
+		if ( expedition.IsMiniExpedition )
+		{
+			return HasClearedExpedition( "old_saltmoor" );
+		}
+
+		// First non-tutorial, non-mini expedition in the ordered list is always open.
+		// Skip tutorial-only and mini expeditions when computing prev/idx so the chain
+		// isn't broken for players who skipped the tutorial or haven't found mini-content.
+		var realChain = _expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
 		int idx = realChain.FindIndex( e => e.Id == expeditionId );
 		if ( idx <= 0 ) return true;
 
@@ -506,7 +569,7 @@ public sealed class ExpeditionManager : Component
 	///
 	/// Index MUST be computed against the non-tutorial chain — UpdateExpeditionStats
 	/// writes HighestExpeditionCleared against that same chain. Indexing against
-	/// the full _expeditions list (which includes Saltmoor Approach at 0) puts
+	/// the full _expeditions list (which includes Weaverton Approach at 0) puts
 	/// every real zone one slot too high, so a freshly-cleared first zone reads
 	/// as "not cleared" and the next zone stays locked.
 	/// </summary>
@@ -514,7 +577,8 @@ public sealed class ExpeditionManager : Component
 	{
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return false;
-		var realChain = _expeditions.Where( e => !e.TutorialOnly ).ToList();
+		// Mini-expeditions are not in the real chain — they never affect HighestExpeditionCleared.
+		var realChain = _expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
 		int idx = realChain.FindIndex( e => e.Id == expeditionId );
 		if ( idx < 0 ) return false;
 		return idx < tamer.HighestExpeditionCleared;
@@ -632,12 +696,12 @@ public sealed class ExpeditionManager : Component
 		if ( tamer == null || CurrentExpedition == null ) return;
 
 		// Don't bump HighestExpeditionCleared / TotalExpeditionsCompleted on
-		// tutorial-only runs — they don't count as canonical progression.
-		if ( CurrentExpedition.TutorialOnly ) return;
+		// tutorial-only or mini-expedition runs — they don't count as canonical progression.
+		if ( CurrentExpedition.TutorialOnly || CurrentExpedition.IsMiniExpedition ) return;
 
-		// Compute index against the non-tutorial chain so the highest-cleared
-		// counter matches the chain the player actually sees.
-		var realChain = _expeditions.Where( e => !e.TutorialOnly ).ToList();
+		// Compute index against the non-tutorial, non-mini chain so the highest-cleared
+		// counter matches the main-path chain the player actually sees.
+		var realChain = _expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
 		int expeditionIndex = realChain.IndexOf( CurrentExpedition );
 		if ( expeditionIndex >= 0 && expeditionIndex >= tamer.HighestExpeditionCleared )
 		{
@@ -1159,11 +1223,32 @@ public sealed class ExpeditionManager : Component
 
 			for ( int i = 0; i < enemyCount; i++ )
 			{
-				// Pick random species from filtered pool
-				var speciesId = availableSpecies[random.Next( availableSpecies.Count )];
+				// Pick species — weighted if SpeciesWeights populated, uniform otherwise
+				string speciesId;
+				var weights = CurrentExpedition.SpeciesWeights;
+				if ( weights != null && weights.Count > 0 )
+				{
+					float total = availableSpecies.Sum( s => weights.TryGetValue( s, out var w ) ? w : 1f );
+					float roll = (float)(random.NextDouble() * total);
+					float cumulative = 0f;
+					speciesId = availableSpecies[^1]; // fallback to last if rounding eats the roll
+					foreach ( var s in availableSpecies )
+					{
+						cumulative += weights.TryGetValue( s, out var w ) ? w : 1f;
+						if ( roll < cumulative ) { speciesId = s; break; }
+					}
+				}
+				else
+				{
+					speciesId = availableSpecies[random.Next( availableSpecies.Count )];
+				}
 
-				// Level scales with wave (hard mode adds bonus levels)
-				int level = GetEffectiveEnemyLevel( CurrentExpedition.BaseEnemyLevel ) + (CurrentWave - 1) * 2 + random.Next( -1, 2 );
+				// Level scales with wave (hard mode adds bonus levels).
+				// Slope is +1 per wave (was +2) — under linear stat scaling
+				// the +2 slope made later waves jump ~14 stat per wave, which
+				// felt like running into a wall. +1 keeps the in-expedition
+				// difficulty curve readable.
+				int level = GetEffectiveEnemyLevel( CurrentExpedition.BaseEnemyLevel ) + (CurrentWave - 1) + random.Next( -1, 2 );
 				level = Math.Max( 1, level );
 
 				var enemy = CreateEnemyMonster( speciesId, level );
@@ -1742,4 +1827,18 @@ public class Expedition
 	/// Filtered out of the World Map list once the player completes/skips the tutorial.
 	/// </summary>
 	public bool TutorialOnly { get; set; }
+
+	/// <summary>
+	/// True for optional side-content expeditions that branch off the main path.
+	/// Mini-expeditions skip the sequential-chain gate (using their own unlock predicate
+	/// instead) and do NOT count toward HighestExpeditionCleared.
+	/// </summary>
+	public bool IsMiniExpedition { get; set; }
+
+	/// <summary>
+	/// Optional per-species spawn weights for weighted-random selection in GenerateWaveEnemies.
+	/// Keys must match entries in PossibleSpecies. Species not listed default to 1.0.
+	/// When null or empty, falls back to uniform random selection.
+	/// </summary>
+	public Dictionary<string, float> SpeciesWeights { get; set; }
 }

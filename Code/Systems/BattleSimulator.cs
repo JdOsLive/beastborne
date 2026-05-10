@@ -16,9 +16,13 @@ public static class BattleSimulator
 	private static bool _useSeededRandom = false;
 
 	/// <summary>
-	/// Get the current random instance (seeded or default)
+	/// Get the current random instance (seeded or default). Internal so
+	/// BattleAI can route its rolls through the same RNG — Scope B v1.3+
+	/// lockstep / authoritative-client PvP requires every combat-side roll
+	/// to be reproducible from `SetSeed`. Cosmetic for the asynchronous-mirror
+	/// PvP path; load-bearing for any future deterministic-replay work.
 	/// </summary>
-	private static Random CurrentRandom => _useSeededRandom && _seededRandom != null ? _seededRandom : _defaultRandom;
+	internal static Random CurrentRandom => _useSeededRandom && _seededRandom != null ? _seededRandom : _defaultRandom;
 
 	/// <summary>
 	/// Set a seed for deterministic battle simulation (for online play)
@@ -46,11 +50,20 @@ public static class BattleSimulator
 	{
 		var result = new DamageResult();
 
-		// Damage formula using ratio (ATK/DEF) instead of subtraction
-		// Base power of 50 for basic attacks, base +7 for low-level viability
-		float levelFactor = (2f * attacker.Level / 5f) + 7f;
+		// Damage formula (Beastborne L50-tuned variant of Pokemon spec):
+		// (((4*Level/5 + 2) * Power * ATK/DEF) / 50) + 2
+		// Power 50 = baseline for "basic attack" (no move data attached).
+		// Pokemon's canonical (2L/5 + 2) is balanced for L100 endgame
+		// (levelFactor maxes at 42). Our cap is L50, so under (2L/5+2)
+		// the levelFactor only reaches 22 — half Pokemon's intensity —
+		// while DEF scales linearly to full L50 value. Result: defense
+		// dominates, fights drag past 6+ turns at high levels.
+		// Doubling the slope (4L/5 + 2) rebases L50 levelFactor at 42
+		// to match Pokemon endgame, restoring a 3-5 turn TTK at all
+		// level bands without changing the formula's shape.
+		float levelFactor = (4f * attacker.Level / 5f) + 2f;
 		float atkDefRatio = (float)attacker.ATK / Math.Max( 1, defender.DEF );
-		float baseDamage = (levelFactor * 50f * atkDefRatio) / 20f + 2f;
+		float baseDamage = (levelFactor * 50f * atkDefRatio) / 50f + 2f;
 		baseDamage = Math.Max( 1, baseDamage ); // Minimum 1 damage
 
 		// Element effectiveness
@@ -945,12 +958,16 @@ public static class BattleSimulator
 			}
 		}
 
-		// Damage formula: ((2*Level/5+7) * Power * ATK/DEF) / 20 + 2
-		// Uses ratio (ATK/DEF) so high DEF reduces but doesn't nullify damage
-		// Base of +7 ensures low-level monsters deal meaningful damage
-		float levelFactor = (2f * attacker.Level / 5f) + 7f;
+		// Damage formula (Beastborne L50-tuned): (((4*Level/5 + 2) * Power * ATK/DEF) / 50) + 2
+		// Uses ratio (ATK/DEF) so high DEF reduces but doesn't nullify damage.
+		// Slope is 2x Pokemon's canonical (2L/5+2) because our cap is L50
+		// not L100 — Pokemon's coefficient bottoms out levelFactor at 22
+		// at our cap, leaving DEF dominant. Doubling rebases L50 = 42,
+		// matching Pokemon endgame TTK. See basic-attack path comment for
+		// the full reasoning.
+		float levelFactor = (4f * attacker.Level / 5f) + 2f;
 		float atkDefRatio = (float)atkStat / Math.Max( 1, defStat );
-		float baseDamage = (levelFactor * move.BasePower * atkDefRatio) / 20f + 2f;
+		float baseDamage = (levelFactor * move.BasePower * atkDefRatio) / 50f + 2f;
 		baseDamage = Math.Max( 1, baseDamage );
 
 		// STAB (Same Type Attack Bonus) — 50% boost if move type matches
@@ -1519,13 +1536,13 @@ public static class BattleSimulator
 			switch ( status.Condition )
 			{
 				case StatusCondition.Burn:
-					int burnDamage = Math.Max( 1, monster.MaxHP / 16 );
+					int burnDamage = Math.Max( 1, monster.MaxHP / 15 );
 					monster.CurrentHP = Math.Max( 0, monster.CurrentHP - burnDamage );
 					messages.Add( $"{monster.Nickname} is hurt by its burn! (-{burnDamage} HP)" );
 					break;
 
 				case StatusCondition.Poison:
-					int poisonDamage = Math.Max( 1, monster.MaxHP / 8 );
+					int poisonDamage = Math.Max( 1, monster.MaxHP / 10 );
 					monster.CurrentHP = Math.Max( 0, monster.CurrentHP - poisonDamage );
 					messages.Add( $"{monster.Nickname} is hurt by poison! (-{poisonDamage} HP)" );
 					break;

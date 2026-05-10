@@ -57,7 +57,11 @@
 	<div class="view-container">
 		<div class="collection-layout with-detail">
 			<div class="collection-main">
-				<div class="beastbook-grid">
+				@* `bb-edit-no-scroll` toggles overflow-y to hidden while editing
+				   so the wheel event reaches BeastiaryPanel.OnMouseWheel
+				   instead of being consumed by the scroll container's
+				   built-in handler. Toggle EDIT off to scroll normally. *@
+				<div class="beastbook-grid @(_editMode ? "bb-edit-no-scroll" : "")">
 					@{
 						var filteredSpecies = GetFilteredSpecies();
 					}
@@ -86,9 +90,11 @@
 							// is bounded to the small square badge(s) in the bottom strip —
 							// no per-card tint floods anymore. Rarity = border color + thickness.
 							// Number = LV-style dark pill in the top-left corner.
-							<div class="bb-card @stateClass @elementClass @rarityClassCard @(isSelected ? "selected" : "")"
-								 onclick=@(() => SelectSpecies(species, isDiscovered))
-								 onmouseover=@(() => OnCardHover(species.Id))>
+							<div class="bb-card @stateClass @elementClass @rarityClassCard @(isSelected ? "selected" : "") @(_editMode ? "bb-edit" : "") @(_editMode && _hoveredEditCardId == species.Id ? "bb-edit-hover" : "")"
+								 onclick=@(() => { if (!_editMode) SelectSpecies(species, isDiscovered); })
+								 onmousedown=@(() => StartDragCard(species))
+								 onmouseover=@(() => { OnCardHover(species.Id); OnEditCardEnter(species.Id); })
+								 onmouseout=@(() => OnEditCardLeave(species.Id))>
 
 								@if (justSelectedSpeciesId == species.Id)
 								{
@@ -132,9 +138,10 @@
 								     The img's own hover translate still composes inside. -->
 								@{
 									var ci = System.Globalization.CultureInfo.InvariantCulture;
-									var cardOx = species.CardOffsetX.ToString("F2", ci);
-									var cardOy = species.CardOffsetY.ToString("F2", ci);
-									var cardSc = species.CardScale.ToString("F2", ci);
+									var artVals = GetCardArt(species);
+									var cardOx = artVals.OffX.ToString("F2", ci);
+									var cardOy = artVals.OffY.ToString("F2", ci);
+									var cardSc = artVals.Scale.ToString("F2", ci);
 									var cardTransform = $"transform: translate({cardOx}px, {cardOy}px) scale({cardSc}); transform-origin: center bottom;";
 								}
 								<div class="bb-card-portrait" style="@cardTransform">
@@ -829,6 +836,50 @@
 			</div>
 		</div>
 	}
+
+	@* ═══ DEV: GRID-CARD ART EDITOR TOOLBAR ═══════════════════════
+	   Hidden behind ShowGridArtEditor. Click EDIT to enter edit
+	   mode — then drag any grid card's sprite to translate it,
+	   scroll wheel over a card to scale it, and SAVE → CONSOLE
+	   to dump paste-ready C# lines for MonsterManager.cs.
+	   Pattern mirrors WorldMapPanel's drag-to-place editor. *@
+	@if ( ShowGridArtEditor )
+	{
+		<div class="bb-art-editor-toolbar">
+			<button class="bb-art-editor-btn @(_editMode ? "active" : "")" onclick=@ToggleEditMode>
+				<iconify icon="lucide:move" Size=@(13) Color="#fbbf24" />
+				<span>EDIT @(_editMode ? "ON" : "OFF")</span>
+			</button>
+			@if ( _editMode )
+			{
+				<button class="bb-art-editor-btn save" onclick=@PrintCardArt>
+					<iconify icon="lucide:save" Size=@(13) Color="#4ade80" />
+					<span>SAVE → CONSOLE</span>
+				</button>
+				<button class="bb-art-editor-btn reset" onclick=@ResetCardArt>
+					<iconify icon="lucide:refresh-ccw" Size=@(13) Color="#f87171" />
+					<span>RESET</span>
+				</button>
+				<div class="bb-art-editor-hint">
+					<span>Drag cards · scroll to scale</span>
+					@if ( _cardOverrides.Count > 0 )
+					{
+						<span class="bb-art-editor-count">@_cardOverrides.Count edited</span>
+					}
+				</div>
+			}
+		</div>
+	}
+
+	@* Drag shield — fullscreen overlay that catches mousemove/up
+	   while a card is being dragged. Mounts only during drag so
+	   normal hover/click events work the rest of the time. *@
+	@if ( !string.IsNullOrEmpty( _draggingSpeciesId ) )
+	{
+		<div class="bb-art-drag-shield"
+			 onmousemove=@OnEditDragMove
+			 onmouseup=@OnEditDragEnd></div>
+	}
 </root>
 
 @code {
@@ -864,6 +915,26 @@
 	// re-fire every click (s&box quirk). Ported from ShopPanelContent.
 	private string justSelectedSpeciesId = null;
 	private int selectPulseVersion = 0;
+
+	// ───────────────────── DEV: GRID-CARD ART EDITOR ──────────────────────
+	// Toggle EDIT MODE to drag any grid card's sprite to retune CardOffsetX/Y
+	// and use the mouse wheel over a card to retune CardScale. Hit
+	// SAVE → CONSOLE to dump the current values for every edited species as
+	// paste-ready C# lines that drop straight into MonsterManager.cs.
+	// Hidden behind ShowGridArtEditor — flip to `true` for tuning passes.
+	// Pattern mirrors WorldMapPanel's drag-to-place editor.
+	private const bool ShowGridArtEditor = false;
+	private bool _editMode = false;
+	private string _draggingSpeciesId;
+	// Renamed from _dragStartMouseX/Y to avoid colliding with the beast-popup
+	// pan-drag fields lower in this file (those track a different gesture).
+	private float _artDragStartMouseX, _artDragStartMouseY;
+	private float _dragStartOffX, _dragStartOffY;
+	private bool _needsDragAnchor;
+	private string _hoveredEditCardId;   // tracks card under cursor so wheel scales the right one
+	// Per-species overrides authored at runtime. Key = species id; values
+	// shadow MonsterSpecies.CardScale/CardOffsetX/CardOffsetY when present.
+	private System.Collections.Generic.Dictionary<string, (float Scale, float OffX, float OffY)> _cardOverrides = new();
 
 	// Separate guards for the detail-pane diamond row and the evolution
 	// chain stages. Each family tracks its own "last id" so crossing from
@@ -919,12 +990,193 @@
 		}
 	}
 
+	// ───────────────────── EDIT-MODE HANDLERS ─────────────────────────────
+	private (float Scale, float OffX, float OffY) GetCardArt( MonsterSpecies species )
+	{
+		if ( _cardOverrides.TryGetValue( species.Id, out var ov ) ) return ov;
+		return (species.CardScale, species.CardOffsetX, species.CardOffsetY);
+	}
+
+	private void ToggleEditMode()
+	{
+		_editMode = !_editMode;
+		if ( !_editMode ) { _draggingSpeciesId = null; _hoveredEditCardId = null; }
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
+	private void StartDragCard( MonsterSpecies species )
+	{
+		if ( !_editMode || species == null ) return;
+		var art = GetCardArt( species );
+		_draggingSpeciesId = species.Id;
+		_dragStartOffX = art.OffX;
+		_dragStartOffY = art.OffY;
+		_needsDragAnchor = true;
+		// Don't open detail / fire select pulse mid-drag.
+		StateHasChanged();
+	}
+
+	private void OnEditDragMove( PanelEvent e )
+	{
+		if ( string.IsNullOrEmpty( _draggingSpeciesId ) ) return;
+		// First move after start anchors mouse coords on the shield (which
+		// is fullscreen + static, so its coords are immune to the card
+		// re-rendering as we drag it).
+		if ( _needsDragAnchor )
+		{
+			_artDragStartMouseX = MousePosition.x;
+			_artDragStartMouseY = MousePosition.y;
+			_needsDragAnchor = false;
+			return;
+		}
+		float dx = MousePosition.x - _artDragStartMouseX;
+		float dy = MousePosition.y - _artDragStartMouseY;
+		var prev = _cardOverrides.TryGetValue( _draggingSpeciesId, out var ov )
+			? ov
+			: GetSpeciesArtFallback( _draggingSpeciesId );
+		_cardOverrides[_draggingSpeciesId] = (prev.Scale, _dragStartOffX + dx, _dragStartOffY + dy);
+		StateHasChanged();
+	}
+
+	private void OnEditDragEnd( PanelEvent e )
+	{
+		_draggingSpeciesId = null;
+		StateHasChanged();
+	}
+
+	private (float Scale, float OffX, float OffY) GetSpeciesArtFallback( string speciesId )
+	{
+		var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+		return sp == null ? (1f, 0f, 0f) : (sp.CardScale, sp.CardOffsetX, sp.CardOffsetY);
+	}
+
+	private void OnEditCardEnter( string speciesId )
+	{
+		if ( !_editMode ) return;
+		_hoveredEditCardId = speciesId;
+	}
+
+	private void OnEditCardLeave( string speciesId )
+	{
+		if ( _hoveredEditCardId == speciesId ) _hoveredEditCardId = null;
+	}
+
+	/// <summary>
+	/// Dump current overrides to the engine log as paste-ready C# lines.
+	/// Each block matches the field assignment block in MonsterManager.cs
+	/// so the user can find/replace the species' CardScale/CardOffsetX/Y
+	/// fields with the new values.
+	/// </summary>
+	// ───── Saved card-art persistence ─────────────────────────────
+	// JSON file in FileSystem.Data so dragged offsets + scale actually persist
+	// across editor sessions (was previously console-only — print and manually
+	// paste). Pattern mirrors WorldMapPanel.SavedPositionsFile.
+	private const string SavedCardArtFile = "beastbook_card_art.json";
+
+	private class SavedCardArt { public string Id { get; set; } public float Scale { get; set; } public float OffX { get; set; } public float OffY { get; set; } }
+	private class CardArtData { public List<SavedCardArt> Cards { get; set; } = new(); }
+
+	/// <summary>
+	/// Persist current per-species overrides to FileSystem.Data so they
+	/// survive between editor sessions, AND dump paste-ready C# lines so
+	/// the dev can find/replace the species' fields in MonsterManager.cs
+	/// when ready to commit.
+	/// </summary>
+	private void PrintCardArt()
+	{
+		if ( _cardOverrides.Count == 0 )
+		{
+			Log.Info( "[BeastbookEdit] No overrides yet — drag a card or scroll over it first." );
+			return;
+		}
+
+		// 1) Persist to disk so the next session loads them automatically.
+		var data = new CardArtData();
+		foreach ( var kvp in _cardOverrides )
+		{
+			data.Cards.Add( new SavedCardArt { Id = kvp.Key, Scale = kvp.Value.Scale, OffX = kvp.Value.OffX, OffY = kvp.Value.OffY } );
+		}
+		try
+		{
+			var json = System.Text.Json.JsonSerializer.Serialize( data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true } );
+			FileSystem.Data.WriteAllText( SavedCardArtFile, json );
+			Log.Info( $"[BeastbookEdit] Saved {data.Cards.Count} card override(s) → FileSystem.Data/{SavedCardArtFile}" );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[BeastbookEdit] Failed to write overrides: {ex.Message}" );
+		}
+
+		// 2) Print to log for paste-back into MonsterManager.cs when committing.
+		// Each line logged separately — s&box's Log.Info silently truncates
+		// multi-line strings after the first newline.
+		Log.Info( "─── Beastbook card-art overrides — paste into MonsterManager.cs ───" );
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		foreach ( var kvp in _cardOverrides )
+		{
+			var sp = MonsterManager.Instance?.GetSpecies( kvp.Key );
+			var name = sp?.Name ?? kvp.Key;
+			Log.Info( $"// {name} ({kvp.Key})" );
+			Log.Info( $"CardScale = {kvp.Value.Scale.ToString( "0.###", ci )}f," );
+			Log.Info( $"CardOffsetX = {kvp.Value.OffX.ToString( "0.#", ci )}f," );
+			Log.Info( $"CardOffsetY = {kvp.Value.OffY.ToString( "0.#", ci )}f," );
+		}
+		Log.Info( "─────────────────────────────────────────────────────────────────" );
+		SoundManager.PlayClick();
+	}
+
+	/// <summary>
+	/// Load saved per-species card-art overrides from FileSystem.Data into
+	/// _cardOverrides. Called once on first tree render so the dev's last
+	/// editor-session edits are visible immediately on panel open.
+	/// </summary>
+	private void LoadSavedCardArt()
+	{
+		try
+		{
+			if ( !FileSystem.Data.FileExists( SavedCardArtFile ) ) return;
+			var json = FileSystem.Data.ReadAllText( SavedCardArtFile );
+			var data = System.Text.Json.JsonSerializer.Deserialize<CardArtData>( json );
+			if ( data == null || data.Cards == null ) return;
+
+			foreach ( var c in data.Cards )
+			{
+				if ( string.IsNullOrEmpty( c.Id ) ) continue;
+				_cardOverrides[c.Id] = (c.Scale, c.OffX, c.OffY);
+			}
+			Log.Info( $"[BeastbookEdit] Loaded {data.Cards.Count} card override(s) from {SavedCardArtFile}" );
+		}
+		catch ( System.Exception ex )
+		{
+			Log.Warning( $"[BeastbookEdit] Failed to load saved overrides: {ex.Message}" );
+		}
+	}
+
+	private void ResetCardArt()
+	{
+		_cardOverrides.Clear();
+		SoundManager.PlayClick();
+		StateHasChanged();
+	}
+
 	// ============================================================
 	// Input plumbing
 	// ============================================================
 	private void OnPanelClicked()
 	{
 		GameHUD.EnterPanel();
+	}
+
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		if ( firstTime )
+		{
+			// Hydrate per-session card-art overrides from disk so the dev's
+			// previous edits show up the moment the Beastbook opens. See
+			// SavedCardArtFile / PrintCardArt above for the persistence path.
+			LoadSavedCardArt();
+		}
 	}
 
 	public override void Tick()
@@ -948,6 +1200,21 @@
 				BEAST_POPUP_ZOOM_MAX
 			);
 			return; // consume — don't let wheel fall through to the grid
+		}
+		// Edit mode: wheel-over-card scales the card art (CardScale tuning).
+		// Scope to ShowGridArtEditor + _editMode + actually-hovered card so
+		// it doesn't compete with grid scroll outside edit mode.
+		if ( ShowGridArtEditor && _editMode && !string.IsNullOrEmpty( _hoveredEditCardId ) )
+		{
+			var prev = _cardOverrides.TryGetValue( _hoveredEditCardId, out var ov )
+				? ov
+				: GetSpeciesArtFallback( _hoveredEditCardId );
+			// delta.y is positive when scrolling toward the user (scroll up).
+			// Map to scale UP for that direction so it feels like zoom-in.
+			float newScale = Math.Clamp( prev.Scale + delta.y * 0.05f, 0.3f, 3.0f );
+			_cardOverrides[_hoveredEditCardId] = (newScale, prev.OffX, prev.OffY);
+			StateHasChanged();
+			return; // consume so the grid doesn't scroll under the cursor
 		}
 		base.OnMouseWheel( delta );
 	}
@@ -1427,6 +1694,22 @@
 		// re-render on re-click and the one-shot flash won't remount.
 		hash.Add( justSelectedSpeciesId );
 		hash.Add( selectPulseVersion );
+		// Edit-mode state — toolbar visibility, drag/hover targets, and the
+		// override-count badge all need to react to these.
+		hash.Add( _editMode );
+		hash.Add( _draggingSpeciesId );
+		hash.Add( _hoveredEditCardId );
+		hash.Add( _cardOverrides.Count );
+		// Cheap content fingerprint so dragging/scaling re-renders the
+		// affected card transform every frame the value changes (rather
+		// than only when count flips).
+		foreach ( var kvp in _cardOverrides )
+		{
+			hash.Add( kvp.Key );
+			hash.Add( kvp.Value.Scale );
+			hash.Add( kvp.Value.OffX );
+			hash.Add( kvp.Value.OffY );
+		}
 		return hash.ToHashCode();
 	}
 }

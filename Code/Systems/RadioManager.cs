@@ -131,7 +131,7 @@ public static class RadioManager
 		Stations.Add( new Station
 		{
 			Name = "Battle FM",
-			Icon = "⚔",
+			Icon = "⚔️",
 			Context = RadioContext.Battle,
 			Tracks = new List<Track>
 			{
@@ -143,21 +143,8 @@ public static class RadioManager
 			}
 		} );
 
-		// Adventure Station - exploration vibes for expeditions
-		Stations.Add( new Station
-		{
-			Name = "Adventure Wave",
-			Icon = "🌍",
-			Context = RadioContext.Expedition,
-			Tracks = new List<Track>
-			{
-				// Add your adventure/expedition tracks here
-				// new Track { Name = "Open Road", FilePath = "sounds/music/adventure/open_road.sound" },
-			}
-		} );
-
-		// Remove empty stations for now
-		Stations.RemoveAll( s => s.Tracks.Count == 0 );
+		// Adventure Wave (Expedition context) — add tracks here when expedition music is ready.
+		// Stations.Add( new Station { Name = "Adventure Wave", Icon = "🌍", Context = RadioContext.Expedition, Tracks = new List<Track> { ... } } );
 	}
 
 	/// <summary>
