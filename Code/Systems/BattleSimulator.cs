@@ -1342,23 +1342,27 @@ public static class BattleSimulator
 			switch ( effect.Type )
 			{
 				// Status conditions
+				// MoveEffect.Duration defaults to 0 — pass -1 ("until cured") when unset,
+				// matching the Sleep/Confuse pattern below. Without this fallback the
+				// status is removed by ProcessEndOfTurn the same turn it lands, so the
+				// damage tick only fires once instead of every turn until cured/swap.
 				case MoveEffectType.Burn:
-					if ( state.AddStatus( target.Id, StatusCondition.Burn, effect.Duration ) )
+					if ( state.AddStatus( target.Id, StatusCondition.Burn, effect.Duration > 0 ? effect.Duration : -1 ) )
 						messages.Add( $"{target.Nickname} was burned!" );
 					break;
 
 				case MoveEffectType.Freeze:
-					if ( state.AddStatus( target.Id, StatusCondition.Freeze, effect.Duration ) )
+					if ( state.AddStatus( target.Id, StatusCondition.Freeze, effect.Duration > 0 ? effect.Duration : -1 ) )
 						messages.Add( $"{target.Nickname} was frozen solid!" );
 					break;
 
 				case MoveEffectType.Paralyze:
-					if ( state.AddStatus( target.Id, StatusCondition.Paralyze, effect.Duration ) )
+					if ( state.AddStatus( target.Id, StatusCondition.Paralyze, effect.Duration > 0 ? effect.Duration : -1 ) )
 						messages.Add( $"{target.Nickname} is paralyzed!" );
 					break;
 
 				case MoveEffectType.Poison:
-					if ( state.AddStatus( target.Id, StatusCondition.Poison, effect.Duration ) )
+					if ( state.AddStatus( target.Id, StatusCondition.Poison, effect.Duration > 0 ? effect.Duration : -1 ) )
 						messages.Add( $"{target.Nickname} was poisoned!" );
 					break;
 

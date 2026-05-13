@@ -61,7 +61,7 @@
 				   so the wheel event reaches BeastiaryPanel.OnMouseWheel
 				   instead of being consumed by the scroll container's
 				   built-in handler. Toggle EDIT off to scroll normally. *@
-				<div class="beastbook-grid @(_editMode ? "bb-edit-no-scroll" : "")">
+				<div class="beastbook-grid @(_editMode ? "bb-edit-no-scroll" : "")" @ref="bbGridPanel">
 					@{
 						var filteredSpecies = GetFilteredSpecies();
 					}
@@ -212,6 +212,7 @@
 				else
 				{
 					var isFullyDiscovered = IsDiscovered(selectedSpecies.Id);
+					var isSeenOnly = !isFullyDiscovered && IsSeen(selectedSpecies.Id);
 					var primaryClass = selectedSpecies.Element.ToString().ToLower();
 					var secondaryClass = selectedSpecies.SecondaryElement.HasValue
 						? selectedSpecies.SecondaryElement.Value.ToString().ToLower()
@@ -229,13 +230,13 @@
 
 							<!-- Portrait — clean dark frame, no rarity/element color bleed. -->
 							<div class="bb-portrait-wrapper">
-								<div class="bb-portrait-container @(isFullyDiscovered ? "" : "silhouette")"
+								<div class="bb-portrait-container @(isFullyDiscovered ? "" : (isSeenOnly ? "seen-only" : "silhouette"))"
 									 onclick=@OnPortraitClick
 									 onmouseover=@(() => OnDiamondHover("portrait"))
 									 title="@L("ui.beastbook.click_to_hear")">
 									@if (HasSprite(selectedSpecies))
 									{
-										<img class="bb-portrait-sprite @(isFullyDiscovered ? "" : "silhouette")" src="@GetAnimatedIcon(selectedSpecies)" />
+										<img class="bb-portrait-sprite @(isFullyDiscovered ? "" : (isSeenOnly ? "seen-only" : "silhouette"))" src="@GetAnimatedIcon(selectedSpecies)" />
 									}
 									else
 									{
@@ -295,6 +296,10 @@
 											<span class="bb-bst-label">BST</span>
 											<span class="bb-bst-value">@GetBaseStatTotal(selectedSpecies)</span>
 										</div>
+										@if (!selectedSpecies.IsCatchable)
+										{
+											<span class="zd-no-contract">CANNOT CONTRACT</span>
+										}
 									</div>
 									<!-- Personality pill — standalone, no label. Sits below
 									     rarity/BST so the identity block reads: type → tier →
@@ -465,15 +470,18 @@
 														var trait = TraitDatabase.GetTrait(traitId);
 														var traitName = trait?.Name ?? traitId;
 														var traitDesc = trait?.Description ?? "";
+														var traitIcon = string.IsNullOrEmpty(trait?.Icon) ? "lucide:zap" : trait.Icon;
 														var isHovered = hoveredTraitId == traitId;
 														var capturedId = traitId;
 														<div class="bb-pill trait has-tooltip @(isHovered ? "is-hovered" : "")"
 															 onmouseover=@(() => OnTraitHover(capturedId))
 															 onmouseout=@(() => OnTraitOut(capturedId))>
+															<iconify icon="@traitIcon" Size=@(11) Color="#ffffff" />
 															<span>@traitName</span>
-															@if (isHovered && !string.IsNullOrEmpty(traitDesc))
+															@if (!string.IsNullOrEmpty(traitDesc))
 															{
-																<div class="bb-trait-tooltip">
+																<div class="bb-trait-tooltip"
+																	 onmouseover=@(() => OnTraitHover(capturedId))>
 																	<div class="bb-trait-tt-name">@traitName</div>
 																	<div class="bb-trait-tt-desc">@traitDesc</div>
 																</div>
@@ -926,6 +934,11 @@
 	private const bool ShowGridArtEditor = false;
 	private bool _editMode = false;
 	private string _draggingSpeciesId;
+	// When editing a card lower in the grid, we pin it to position 0 of the
+	// filtered list and snap the grid scroll to the top so it sits next to
+	// the editor toolbar. Cleared when edit mode toggles off.
+	private string _editPinnedSpeciesId;
+	private Panel bbGridPanel;
 	// Renamed from _dragStartMouseX/Y to avoid colliding with the beast-popup
 	// pan-drag fields lower in this file (those track a different gesture).
 	private float _artDragStartMouseX, _artDragStartMouseY;
@@ -1000,7 +1013,7 @@
 	private void ToggleEditMode()
 	{
 		_editMode = !_editMode;
-		if ( !_editMode ) { _draggingSpeciesId = null; _hoveredEditCardId = null; }
+		if ( !_editMode ) { _draggingSpeciesId = null; _hoveredEditCardId = null; _editPinnedSpeciesId = null; }
 		SoundManager.PlayClick();
 		StateHasChanged();
 	}
@@ -1013,6 +1026,12 @@
 		_dragStartOffX = art.OffX;
 		_dragStartOffY = art.OffY;
 		_needsDragAnchor = true;
+		// Pin this card to the top of the grid + scroll to top so it sits
+		// next to the editor toolbar. Otherwise editing a card that was
+		// previously scrolled into the lower half of the grid meant working
+		// blind, far from the SAVE/RESET controls.
+		_editPinnedSpeciesId = species.Id;
+		if ( bbGridPanel != null ) bbGridPanel.ScrollOffset = Vector2.Zero;
 		// Don't open detail / fire select pulse mid-drag.
 		StateHasChanged();
 	}
@@ -1430,6 +1449,20 @@
 			species.Reverse();
 		}
 
+		// Edit-mode pin: move the species currently being edited to index 0
+		// so it shows at the top of the grid next to the toolbar. The actual
+		// sort order is preserved for everything else.
+		if ( _editMode && !string.IsNullOrEmpty( _editPinnedSpeciesId ) )
+		{
+			var pinIdx = species.FindIndex( s => s.Id == _editPinnedSpeciesId );
+			if ( pinIdx > 0 )
+			{
+				var pinned = species[pinIdx];
+				species.RemoveAt( pinIdx );
+				species.Insert( 0, pinned );
+			}
+		}
+
 		return species;
 	}
 
@@ -1699,6 +1732,7 @@
 		hash.Add( _editMode );
 		hash.Add( _draggingSpeciesId );
 		hash.Add( _hoveredEditCardId );
+		hash.Add( _editPinnedSpeciesId );
 		hash.Add( _cardOverrides.Count );
 		// Cheap content fingerprint so dragging/scaling re-renders the
 		// affected card transform every frame the value changes (rather

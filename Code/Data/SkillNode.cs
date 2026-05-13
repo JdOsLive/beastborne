@@ -151,7 +151,7 @@ public class SkillEffect
 			SkillEffectType.ContractDemandReduction => $"{valueStr}% reduced demand requirements",
 			SkillEffectType.StartingSatisfactionBonus => $"{valueStr} starting satisfaction",
 			SkillEffectType.ContractRewardBonus => $"{valueStr}% bonus satisfaction from demands",
-			SkillEffectType.InstantLoyaltyChance => $"{valueStr}% chance for instant loyalty",
+			SkillEffectType.InstantLoyaltyChance => $"{valueStr}% chance for instant contract",
 			SkillEffectType.FewerDemandsChance => $"{valueStr}% chance for fewer demands",
 			_ => $"{valueStr} unknown effect"
 		};

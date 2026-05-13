@@ -50,6 +50,7 @@ public static class TraitDatabase
 			Name = "Ember Heart",
 			Description = "Fire-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:cigarette",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Fire }
@@ -62,6 +63,7 @@ public static class TraitDatabase
 			Name = "Torrent Soul",
 			Description = "Water-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:waves",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Water }
@@ -74,6 +76,7 @@ public static class TraitDatabase
 			Name = "Terra Force",
 			Description = "Earth-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:gem-stone",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Earth }
@@ -86,6 +89,7 @@ public static class TraitDatabase
 			Name = "Gale Spirit",
 			Description = "Wind-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:tornado",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Wind }
@@ -98,6 +102,7 @@ public static class TraitDatabase
 			Name = "Static Charge",
 			Description = "Electric-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:bolt",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Electric }
@@ -110,6 +115,7 @@ public static class TraitDatabase
 			Name = "Frost Core",
 			Description = "Ice-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:icicle",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Ice }
@@ -122,6 +128,7 @@ public static class TraitDatabase
 			Name = "Verdant Power",
 			Description = "Nature-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:sprout",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Nature }
@@ -134,6 +141,7 @@ public static class TraitDatabase
 			Name = "Iron Will",
 			Description = "Metal-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:cog",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Metal }
@@ -146,6 +154,7 @@ public static class TraitDatabase
 			Name = "Dark Presence",
 			Description = "Shadow-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:ghost",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Shadow }
@@ -158,6 +167,7 @@ public static class TraitDatabase
 			Name = "Ethereal Blessing",
 			Description = "Spirit-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:church",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Spirit }
@@ -174,6 +184,7 @@ public static class TraitDatabase
 			Name = "Infernal Rage",
 			Description = "Fire-type moves deal +50% damage when HP is below 33%.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:flame-kindling",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 50, AffectedElement = ElementType.Fire, Condition = "below_33_hp" }
@@ -186,6 +197,7 @@ public static class TraitDatabase
 			Name = "Kindle Heart",
 			Description = "Fire-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:campfire",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Fire }
@@ -198,6 +210,7 @@ public static class TraitDatabase
 			Name = "Tidal Wrath",
 			Description = "Water-type moves deal +50% damage when HP is below 33%.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:tsunami",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 50, AffectedElement = ElementType.Water, Condition = "below_33_hp" }
@@ -210,6 +223,7 @@ public static class TraitDatabase
 			Name = "Wild Growth",
 			Description = "Nature-type moves deal +50% damage when HP is below 33%.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:flower-2",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 50, AffectedElement = ElementType.Nature, Condition = "below_33_hp" }
@@ -222,6 +236,7 @@ public static class TraitDatabase
 			Name = "Wild Harden",
 			Description = "DEF and SpD are increased by +20%.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:shield-plus",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.DEFBonus, Value = 20 },
@@ -235,6 +250,7 @@ public static class TraitDatabase
 			Name = "Last Stand",
 			Description = "ATK and SpA are increased by +30% when HP is below 33%.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:axe",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.LowHPATKBonus, Value = 30, Condition = "below_33_hp" },
@@ -252,6 +268,7 @@ public static class TraitDatabase
 			Name = "Titanic Might",
 			Description = "ATK is permanently doubled (+100%).",
 			Rarity = TraitRarity.Legendary,
+			Icon = "lucide:dumbbell",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ATKBonus, Value = 100 }
@@ -264,6 +281,7 @@ public static class TraitDatabase
 			Name = "Thermal Hide",
 			Description = "Takes 50% less damage from Fire and Ice moves.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:thermometer",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementResistance, Value = 50, AffectedElement = ElementType.Fire },
@@ -290,6 +308,7 @@ public static class TraitDatabase
 			Name = "Momentum",
 			Description = "SPD increases by +10% at the end of each turn. Stacks up to 5 times.",
 			Rarity = TraitRarity.Epic,
+			Icon = "lucide:gauge",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.SPDBonus, Value = 10, Condition = "per_turn" }
@@ -302,6 +321,7 @@ public static class TraitDatabase
 			Name = "Menacing Aura",
 			Description = "Enemy ATK is reduced by 20% while this beast is active.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:angry",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ATKBonus, Value = -20, Condition = "on_enemy" }
@@ -314,6 +334,7 @@ public static class TraitDatabase
 			Name = "Bloodlust",
 			Description = "ATK increases by +30% after knocking out an enemy. Resets on switch.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:droplets",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ATKBonus, Value = 30, Condition = "on_ko" }
@@ -330,6 +351,7 @@ public static class TraitDatabase
 			Name = "Fortunate Strike",
 			Description = "Critical hit chance increased by +15% (base 6.25% → 21.25%).",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:horseshoe",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.CritBonus, Value = 15 }
@@ -342,6 +364,7 @@ public static class TraitDatabase
 			Name = "Precision Hunter",
 			Description = "Critical hits deal +50% more damage (1.5x → 2.25x).",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:crosshair",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.CritDamageBonus, Value = 50 }
@@ -354,6 +377,7 @@ public static class TraitDatabase
 			Name = "Phantom Step",
 			Description = "+10% chance to evade incoming attacks.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:footprints",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.EvasionBonus, Value = 10 }
@@ -366,6 +390,7 @@ public static class TraitDatabase
 			Name = "Hunter's Focus",
 			Description = "Move accuracy is increased by +10%.",
 			Rarity = TraitRarity.Common,
+			Icon = "lucide:scan-eye",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.AccuracyBonus, Value = 10 }
@@ -378,6 +403,7 @@ public static class TraitDatabase
 			Name = "Trickster",
 			Description = "Status moves gain +1 priority (act before normal priority moves).",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:venetian-mask",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.PriorityBonus, Value = 1, Condition = "status_moves" }
@@ -390,6 +416,7 @@ public static class TraitDatabase
 			Name = "Adrenaline Rush",
 			Description = "SPD is increased by +50% while afflicted with a status condition.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:syringe",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.SPDBonus, Value = 50, Condition = "has_status" }
@@ -406,6 +433,7 @@ public static class TraitDatabase
 			Name = "Barbed Hide",
 			Description = "Attackers take 12% of their max HP as damage when using contact moves.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:cactus",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ContactDamage, Value = 12 }
@@ -418,6 +446,7 @@ public static class TraitDatabase
 			Name = "Cleansing Retreat",
 			Description = "All status conditions are cured when switching out.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:shower-head",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.StatusResistance, Value = 100, Condition = "on_switch" }
@@ -430,6 +459,7 @@ public static class TraitDatabase
 			Name = "Hardened Resolve",
 			Description = "DEF is increased by +50% while afflicted with a status condition.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:brick-wall",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.DEFBonus, Value = 50, Condition = "has_status" }
@@ -442,6 +472,7 @@ public static class TraitDatabase
 			Name = "Reckless Charge",
 			Description = "Recoil damage from moves is reduced to 0.",
 			Rarity = TraitRarity.Uncommon,
+			Icon = "lucide:shield-x",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.RecoilReduction, Value = 100 }
@@ -458,6 +489,7 @@ public static class TraitDatabase
 			Name = "Skyborne",
 			Description = "Immune to Earth-type moves (takes 0 damage).",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:bird",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementImmunity, AffectedElement = ElementType.Earth }
@@ -470,6 +502,7 @@ public static class TraitDatabase
 			Name = "Flame Eater",
 			Description = "Fire-type moves heal this beast for 25% of max HP instead of dealing damage.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:utensils",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementAbsorption, AffectedElement = ElementType.Fire }
@@ -482,6 +515,7 @@ public static class TraitDatabase
 			Name = "Aqua Siphon",
 			Description = "Water-type moves heal this beast for 25% of max HP instead of dealing damage.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:cup-soda",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementAbsorption, AffectedElement = ElementType.Water }
@@ -494,6 +528,7 @@ public static class TraitDatabase
 			Name = "Lightning Rod",
 			Description = "Electric-type moves heal this beast for 25% of max HP instead of dealing damage.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:antenna",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementAbsorption, AffectedElement = ElementType.Electric }
@@ -506,6 +541,7 @@ public static class TraitDatabase
 			Name = "Elemental Mastery",
 			Description = "STAB (Same-Type Attack Bonus) is increased from 1.5x to 2x damage.",
 			Rarity = TraitRarity.Epic,
+			Icon = "lucide:wand-sparkles",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.DamageBonus, Value = 33, Condition = "same_type" }
@@ -518,6 +554,7 @@ public static class TraitDatabase
 			Name = "Subtle Arts",
 			Description = "Moves with base power 60 or less deal +50% damage.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:origami",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.DamageBonus, Value = 50, Condition = "base_power_60_or_less" }
@@ -530,6 +567,7 @@ public static class TraitDatabase
 			Name = "Brutal Force",
 			Description = "Moves with secondary effects (burn chance, stat drops, etc.) deal +30% damage.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:biceps-flexed",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.DamageBonus, Value = 30, Condition = "has_secondary_effect" }
@@ -542,6 +580,7 @@ public static class TraitDatabase
 			Name = "Vital Recovery",
 			Description = "Heals 33% of max HP when switching out.",
 			Rarity = TraitRarity.Rare,
+			Icon = "lucide:cross",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.HealingBonus, Value = 33, Condition = "on_switch" }

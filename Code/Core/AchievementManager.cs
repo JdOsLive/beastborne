@@ -143,28 +143,28 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.HighestExpeditionCleared, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 1000 ) } );
 
-		AddAchievement( "expedition_5", "Into the Wild", "Clear Expedition 5", AchievementCategory.Expedition,
-			AchievementRequirement.HighestExpeditionCleared, 5, order++,
+		AddAchievement( "expedition_5", "Into the Wild", "Clear the Weaverwood", AchievementCategory.Expedition,
+			AchievementRequirement.HighestExpeditionCleared, 2, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ), Reward( AchievementRewardType.ContractInk, 10 ) } );
 
-		AddAchievement( "expedition_12", "Uncharted Territory", "Clear Expedition 12", AchievementCategory.Expedition,
-			AchievementRequirement.HighestExpeditionCleared, 12, order++,
+		AddAchievement( "expedition_12", "Uncharted Territory", "Clear the Weavermere", AchievementCategory.Expedition,
+			AchievementRequirement.HighestExpeditionCleared, 3, order++,
 			new() { Reward( AchievementRewardType.Gems, 5 ), Reward( AchievementRewardType.ContractInk, 20 ) } );
 
-		AddAchievement( "expedition_16", "Conqueror", "Clear all 16 Expeditions", AchievementCategory.Expedition,
-			AchievementRequirement.HighestExpeditionCleared, 16, order++,
+		AddAchievement( "expedition_16", "Conqueror", "Clear all 3 launch expeditions", AchievementCategory.Expedition,
+			AchievementRequirement.HighestExpeditionCleared, 3, order++,
 			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Conqueror" ) } );
 
 		AddAchievement( "hard_mode_1", "Hard Knocks", "Clear Hard Mode Expedition 1", AchievementCategory.Expedition,
 			AchievementRequirement.HighestHardModeCleared, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "hard_mode_10", "Unbreakable Explorer", "Clear Hard Mode Expedition 10", AchievementCategory.Expedition,
-			AchievementRequirement.HighestHardModeCleared, 10, order++,
+		AddAchievement( "hard_mode_10", "Unbreakable Explorer", "Clear the Weaverwood on Hard Mode", AchievementCategory.Expedition,
+			AchievementRequirement.HighestHardModeCleared, 2, order++,
 			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "hard_mode_16", "Absolute Legend", "Clear all 16 Hard Mode Expeditions", AchievementCategory.Expedition,
-			AchievementRequirement.HighestHardModeCleared, 16, order++,
+		AddAchievement( "hard_mode_16", "Absolute Legend", "Clear all 3 launch expeditions on Hard Mode", AchievementCategory.Expedition,
+			AchievementRequirement.HighestHardModeCleared, 3, order++,
 			new() { Reward( AchievementRewardType.Gems, 15 ) } );
 
 		AddAchievement( "expeditions_50", "Seasoned Adventurer", "Complete 50 expeditions", AchievementCategory.Expedition,

@@ -497,10 +497,14 @@ BeastiaryPanel {
 		background: linear-gradient(180deg, rgba(50, 38, 18, 1) 0%, rgba(32, 22, 8, 1) 100%);
 	}
 
-	// ----- Seen state: full color sprite with grayscale + dim. s&box
-	// can't chain filters, so opacity lives on a separate property. -----
+	// ----- Seen state: dim full-color sprite (NOT grayscale). s&box's
+	// renderer bypasses `image-rendering: pixelated` whenever a CSS
+	// `filter` is applied to an <img>, so `filter: grayscale(1)` blurs
+	// the pixel art. Using opacity alone keeps it crisp. The lower
+	// opacity + dimmed name still reads as "seen but not contracted"
+	// vs the full-color discovered state. -----
 	&.seen {
-		.bb-card-sprite { filter: grayscale(1); opacity: 0.75; }
+		.bb-card-sprite { opacity: 0.10; }
 		.bb-card-name { opacity: 0.7; }
 	}
 
@@ -713,10 +717,10 @@ BeastiaryPanel {
 	&.element-fire     { background-color: #b91c1c; border: 1px solid #dc2626; }
 	&.element-water    { background-color: #1d4ed8; border: 1px solid #2563eb; }
 	&.element-earth    { background-color: #78350f; border: 1px solid #92400e; }
-	&.element-wind     { background-color: #15803d; border: 1px solid #16a34a; }
+	&.element-wind     { background-color: #475569; border: 1px solid #64748b; }
 	&.element-electric { background-color: #a16207; border: 1px solid #ca8a04; }
 	&.element-ice      { background-color: #0284c7; border: 1px solid #0ea5e9; }
-	&.element-nature   { background-color: #166534; border: 1px solid #15803d; }
+	&.element-nature   { background-color: #16a34a; border: 1px solid #22c55e; }
 	&.element-metal    { background-color: #475569; border: 1px solid #64748b; }
 	&.element-shadow   { background-color: #4c1d95; border: 1px solid #5b21b6; }
 	&.element-spirit   { background-color: #9d174d; border: 1px solid #be185d; }
@@ -976,6 +980,14 @@ BeastiaryPanel {
 		&.silhouette {
 			filter: brightness(0);
 		}
+
+		// Seen-but-not-contracted — dim full-color sprite (matches the
+		// grid card's `seen` treatment). NO filter — `filter` bypasses
+		// `image-rendering: pixelated` and blurs the sprite. Opacity-only
+		// keeps it crisp.
+		&.seen-only {
+			opacity: 0.10;
+		}
 	}
 
 	.bb-portrait-unknown {
@@ -1059,10 +1071,10 @@ BeastiaryPanel {
 	&.element-fire     { background-color: #b91c1c; border-color: #dc2626; span { color: #ffffff; } }
 	&.element-water    { background-color: #1d4ed8; border-color: #2563eb; span { color: #ffffff; } }
 	&.element-earth    { background-color: #78350f; border-color: #92400e; span { color: #ffffff; } }
-	&.element-wind     { background-color: #15803d; border-color: #16a34a; span { color: #ffffff; } }
+	&.element-wind     { background-color: #475569; border-color: #64748b; span { color: #ffffff; } }
 	&.element-electric { background-color: #a16207; border-color: #ca8a04; span { color: #ffffff; } }
 	&.element-ice      { background-color: #0284c7; border-color: #0ea5e9; span { color: #ffffff; } }
-	&.element-nature   { background-color: #166534; border-color: #15803d; span { color: #ffffff; } }
+	&.element-nature   { background-color: #16a34a; border-color: #22c55e; span { color: #ffffff; } }
 	&.element-metal    { background-color: #475569; border-color: #64748b; span { color: #ffffff; } }
 	&.element-shadow   { background-color: #4c1d95; border-color: #5b21b6; span { color: #ffffff; } }
 	&.element-spirit   { background-color: #9d174d; border-color: #be185d; span { color: #ffffff; } }
@@ -1115,12 +1127,36 @@ BeastiaryPanel {
 		// transition since the trait has its own hover bg shift.
 		transition: background-color 0.15s ease, border-color 0.15s ease, filter 0.15s ease-out;
 		position: relative;
+		// CANONICAL S&BOX FIX (see SkillTreePanel `.hex-icon`): direct
+		// children must NOT catch hover events, or moving the cursor from
+		// the pill's chrome onto its own text/icon fires `onmouseout` on
+		// the pill and the tooltip vanishes. Force all immediate children
+		// to pass through to the parent. The tooltip overrides this below
+		// because the tooltip ITSELF needs to catch onmouseover to keep
+		// the hover state alive while the cursor reads the description.
+		> * { pointer-events: none; }
 		span { color: #ffffff; }
 
 		&:hover,
 		&.is-hovered {
 			background-color: rgba(167, 139, 250, 0.95);
 			border-color: rgba(255, 255, 255, 0.15);
+		}
+
+		// When the pill is hovered, reveal the always-mounted tooltip and
+		// let it catch its own mouse events so cursor can travel pill→tooltip
+		// without unmounting (the in-event onmouseover on the tooltip
+		// re-asserts hoveredTraitId before any render happens).
+		&.is-hovered .bb-trait-tooltip {
+			opacity: 1;
+			pointer-events: auto;
+
+			// Tooltip's inner text divs must also fall through to the
+			// tooltip container — otherwise the cursor crossing from the
+			// container chrome to the inner name/desc divs would fire
+			// `onmouseout` on the tooltip itself, vaporizing the hover
+			// state mid-read. Mirrors the .hex-icon pattern.
+			> * { pointer-events: none; }
 		}
 	}
 }
@@ -2042,10 +2078,10 @@ BeastiaryPanel {
 .bb-evo-stage.current.fire     .bb-evo-current-badge { border-color: rgba(239, 68, 68, 0.9);   color: #fca5a5; }
 .bb-evo-stage.current.water    .bb-evo-current-badge { border-color: rgba(59, 130, 246, 0.9);  color: #93c5fd; }
 .bb-evo-stage.current.earth    .bb-evo-current-badge { border-color: rgba(161, 98, 7, 0.9);    color: #d4a574; }
-.bb-evo-stage.current.wind     .bb-evo-current-badge { border-color: rgba(34, 197, 94, 0.9);   color: #86efac; }
+.bb-evo-stage.current.wind     .bb-evo-current-badge { border-color: rgba(100, 116, 139, 0.9); color: #cbd5e1; }
 .bb-evo-stage.current.electric .bb-evo-current-badge { border-color: rgba(250, 204, 21, 0.9);  color: #fde68a; }
 .bb-evo-stage.current.ice      .bb-evo-current-badge { border-color: rgba(125, 211, 252, 0.9); color: #bae6fd; }
-.bb-evo-stage.current.nature   .bb-evo-current-badge { border-color: rgba(74, 222, 128, 0.9);  color: #86efac; }
+.bb-evo-stage.current.nature   .bb-evo-current-badge { border-color: rgba(74, 222, 128, 0.9);  color: #4ade80; }
 .bb-evo-stage.current.metal    .bb-evo-current-badge { border-color: rgba(148, 163, 184, 0.9); color: #cbd5e1; }
 .bb-evo-stage.current.shadow   .bb-evo-current-badge { border-color: rgba(124, 58, 237, 0.9);  color: #c4b5fd; }
 .bb-evo-stage.current.spirit   .bb-evo-current-badge { border-color: rgba(236, 72, 153, 0.9);  color: #fbcfe8; }
@@ -2185,8 +2221,19 @@ BeastiaryPanel {
 	// Rendered conditionally (razor `@if (isHovered)`) — mounts/unmounts
 	// rather than fading via CSS :hover cascade. s&box quirk: the
 	// `.pill:hover .descendant-tooltip` cascade was unreliable here.
+	//
+	// bottom: 100% (was 36px) — tooltip sits FLUSH above the pill with no
+	// gap. The previous 36px offset created an ~8px void between pill top
+	// and tooltip bottom; cursor moving up to read the tooltip text would
+	// cross that void, fire onmouseout on the pill, and unmount the
+	// tooltip — causing a hover-flicker loop. Flush-anchoring fixes it.
+	//
+	// pointer-events: auto (was none) + onmouseover on the tooltip element
+	// in razor — when cursor enters the tooltip body, the pill's mouseout
+	// fires, but the tooltip's own onmouseover re-asserts hoveredTraitId
+	// in the same event batch, so the tooltip stays mounted.
 	position: absolute;
-	bottom: 36px;
+	bottom: 100%;
 	left: 50%;
 	width: 210px;
 	margin-left: -105px;
@@ -2195,7 +2242,14 @@ BeastiaryPanel {
 	border: 1px solid rgba(139, 92, 246, 0.5);
 	border-radius: 8px;
 	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+	// Always mounted (razor @if only checks for desc text, not hover state) —
+	// invisible + non-hit-testing by default; class toggle below makes it
+	// visible and hit-testing when the pill is hovered. Always-mounted means
+	// the tooltip's own onmouseover handler can re-assert hoveredTraitId
+	// even if pill.onmouseout fires when the cursor crosses into it.
 	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.12s ease;
 	z-index: 100;
 	display: flex;
 	flex-direction: column;

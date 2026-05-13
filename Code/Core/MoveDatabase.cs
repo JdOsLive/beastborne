@@ -1318,12 +1318,13 @@ public static class MoveDatabase
 		{
 			Id = "pollen_burst",
 			Name = "Pollen Burst",
-			Description = "Releases a cloud of toxic pollen.",
+			Description = "Releases a cloud of toxic pollen. 10% chance to poison.",
 			Element = ElementType.Nature,
 			Category = MoveCategory.Special,
 			BasePower = 55,
 			Accuracy = 100,
-			MaxPP = 25
+			MaxPP = 25,
+			Effects = new() { new MoveEffect { Type = MoveEffectType.Poison, Chance = 0.1f } }
 		} );
 
 		AddMove( new MoveDefinition
@@ -4655,6 +4656,94 @@ public static class MoveDatabase
 			MaxPP = 5,
 			MakesContact = false,
 			Effects = new() { new MoveEffect { Type = MoveEffectType.LowerSpD, Value = 1 } }
+		} );
+
+		// Stomplet (#18) — the young shepherd plants his foot and the forest
+		// answers. Signature: a brawler's stomp that also hardens the user's
+		// stance. Mid-tier physical with a self-DEF raise to reinforce the
+		// "shepherd defender" archetype on its way up the evolution chain.
+		AddMove( new MoveDefinition
+		{
+			Id = "sapling_stomp",
+			Name = "Sapling Stomp",
+			Description = "Slams a young trunk into the ground; the shock-wave ripples through roots beneath the foe. Raises user DEF by 1.",
+			Element = ElementType.Nature,
+			Category = MoveCategory.Physical,
+			BasePower = 60,
+			Accuracy = 100,
+			MaxPP = 15,
+			MakesContact = true,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.RaiseDEF, Value = 1, TargetsSelf = true }
+			}
+		} );
+
+		// Skunkape (#19) — the elder shepherd's full vigil. A high-power
+		// Nature special that pulls life back into the user — the elder
+		// stands between the flock and the danger, and the forest answers.
+		// Drain shape mirrors Jackacabra's goatsuckers_drain (same effect
+		// type, different element + power tier) for consistency.
+		AddMove( new MoveDefinition
+		{
+			Id = "shepherds_vigil",
+			Name = "Shepherd's Vigil",
+			Description = "The shepherd's gaze settles on the foe; thorns rise from the earth and pull life back into the user. Heals the user for 25% of damage dealt.",
+			Element = ElementType.Nature,
+			Category = MoveCategory.Special,
+			BasePower = 90,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Drain, Value = 0.25f }
+			}
+		} );
+
+		// Dewdrop (#23) — the leaf-cap tilts forward and a curl of pondsteam
+		// drifts across the foe. A Nature special with damage + sleep chance,
+		// matching the "sleeps through the heat of the day" framing. Mirrors
+		// the Wishlift dream_drift sleep shape in Nature with a damage tail.
+		AddMove( new MoveDefinition
+		{
+			Id = "leafcap_drift",
+			Name = "Leafcap Drift",
+			Description = "The leaf-cap tilts forward and a curl of pondsteam drifts across the foe. Their eyelids start to feel very heavy. 30% chance to inflict sleep.",
+			Element = ElementType.Nature,
+			Category = MoveCategory.Special,
+			BasePower = 50,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Sleep, Chance = 0.3f, Duration = 2 }
+			}
+		} );
+
+		// Staiju (#26) — Raijū-flavored predator pounce. The cat leaps from
+		// the high branches at the height of the storm, lightning bleeding
+		// off its claws. Priority +1 reinforces the ambush-predator identity
+		// and differentiates Staiju from heavier Electrics (Thundermane et al.)
+		// who play the wall-breaker role. 20% paralysis chance keeps it in
+		// the Electric-physical effect-band consistent with bolt_rush / etc.
+		AddMove( new MoveDefinition
+		{
+			Id = "skyfall_pounce",
+			Name = "Skyfall Pounce",
+			Description = "The cat leaps from the high branches at the height of the storm, lightning bleeding off its claws as it falls. Strikes first; 20% chance to paralyze.",
+			Element = ElementType.Electric,
+			Category = MoveCategory.Physical,
+			BasePower = 85,
+			Accuracy = 90,
+			MaxPP = 10,
+			MakesContact = true,
+			Priority = 1,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Paralyze, Chance = 0.2f }
+			}
 		} );
 	}
 

@@ -389,7 +389,7 @@ public sealed class DailyRewardManager : Component
 			14  => (50000, 10, null, "gene_booster"),
 			30  => (100000, 25, "Devoted", "master_ink"),
 			60  => (250000, 50, "Faithful", "trait_reroll"),
-			100 => (500000, 100, "Eternal", "loyalty_charm"),
+			100 => (500000, 100, "Eternal", "boss_master_ink"),
 			365 => (1000000, 250, "Beastborne Veteran", null),
 			_ => (0, 0, null, null)
 		};

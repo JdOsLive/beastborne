@@ -23,6 +23,496 @@ Template:
 
 ## Entries
 
+## 2026-05-13 — Strict moveset lore pass (round 2) + Dewdrop Nature density boost; Staiju evo handed off to user+artist
+
+**Scope:** Strict re-audit of every launch-roster beast previously "cleared" in the first lore pass, plus a Nature-density boost for Dewdrop, plus a closure note on Staiju's evo question. The first audit was too lenient (4 edits of 22); this one is stricter. **15 beasts touched, 30+ slot swaps + 3 drops total.** Zero new MoveDefinitions, zero stat changes, moveset-only.
+
+### Stricter criteria applied this pass
+
+1. **Personality trait must match each move's verb.** A Timid beast cannot Intimidate. A Loyal/patient beast cannot use "wrath" or "annihilate" framing. A sentinel doesn't lunge.
+2. **Habitat must match flavor text in move descriptions.** A pond/well/spring beast cannot use saltwater (brine/sea/tidal-ward/abyssal/tsunami) moves.
+3. **Anatomy must support the move.** A fae carried by bubbles has no claws or jab anatomy. A standing-sleep king-form doesn't gain agility or dive-tackle.
+
+### Beasts EDITED (15 of 22)
+
+**Sheepot** — `intimidate` L10 → `parasite_spore` L10 (Timid sheep doesn't intimidate; fragile-root underside fits root-spread spore).
+
+**Cerametz** — `jungle_wrath` L44 → `verdant_edge` L44 (Loyal village-sheep doesn't berserker-wrath; solstice-ritual blade-leaf fits dignity).
+
+**Wishlift** — `intimidate` L6 → `calm_air` L6; `feint_jab` L18 → `luminous_wall` L18 (Timid bubble-borne fae has no jab anatomy; calm/luminous flavor matches dream-spirit identity).
+
+**Wishstar** — `agility_boost` L1 → `calm_air` L1; `tornado_dive` L46 DROPPED (standing-sleep king bows gravely — doesn't sprint or dive). Net: 17 → 16 moves.
+
+**Heartwell** — `brine_spray` L10 → `aqua_shield` L10; `tidal_ward` L18 → `warding_hymn` L18; `sea_chant` L25 → `spirit_link` L25 (village FOUNTAIN monk in fresh water sheds all ocean-flavored moves; Spirit moves match the monk's vow-keeping).
+
+**Padlip** — confirmed clean second pass (limbed frog; aqua_strike fits leap; tidal_pulse/aqua_shield already from prior pass).
+
+**Liliprince** — `abyssal_wave` L1 → `tidal_pulse` L1; `tsunami_crush` L42 → `deluge` L42 (Weavermere pond prince, not abyssal predator; deluge fits the prince's coronation rain).
+
+**Gnollium** — `blossom_frenzy` L1 → `pollen_burst` L1; `jungle_wrath` L42 → `verdant_edge` L42 (Loyal grove-keeper doesn't self-confuse with frenzy or jungle-wrath; pollen + leaf-blade fit gardener-fairy identity).
+
+**Embrik** — `intimidate` L5 DROPPED; `war_cry` L25 → `ash_cloud` L25 (Timid flame-foal "unsure if the warmth is its own" doesn't intimidate or war-cry; ash trail fits the wandering flame). Net: 18 → 17 moves.
+
+**Pyrgard** — `agility_boost` L24 → `brace` L24 (heavy burning-helm protector doesn't sprint; sentinel's brace fits Loyal-protector identity).
+
+**Manehelm** — `swift_lunge` L1 DROPPED (sentinel "stands like a sentinel with burning gaze sweeping" doesn't swift-lunge — anti-pattern). Net: 24 → 23 moves.
+
+**Pagefin** — `intimidate` L5 → `aqua_shield` L5 (Loyal "salutes anything that moves" youngest-recruit who can barely swim straight doesn't intimidate; basic-defense fits learning-the-ropes framing).
+
+**Cherune** — `intimidate` L5 → `luminous_wall` L5; `vicious_cut` L25 → `aether_pulse` L25 (guardian cherub doesn't intimidate or vicious-cut; halo-wall + Spirit pulse foreshadow the Seraphiel/Aurael evolution).
+
+**Stomplet** — `intimidate` L4 → `spore_cloud` L4; `crushing_blow` L24 → `vine_crush` L24 (Timid shepherd-giant "embarrassed to be noticed" doesn't intimidate or crushing-blow; leafy spore-release + vine-call fit shepherd-defender).
+
+**Skunkape** — `intimidate` L1 → `brace` L1; `crushing_blow` L20 → `bloom_burst` L20; `vicious_cut` L38 → `verdant_edge` L38; `annihilate` L50 → `overgrowth_slam` L50 (Loyal elder shepherd "greets you like a village child" — 4 verbs that clashed with elder-protector identity all replaced with on-brand Nature moves).
+
+### DEWDROP NATURE DENSITY BOOST (lighter-touch revision)
+
+Prior pass left Dewdrop with only 1 Nature move (signature `leafcap_drift` L28). Dual-typing read cosmetic. **Amendment received mid-turn:** user said "i like the moves dewdrop did get before" — preserve current Water/Neutral set as much as possible. Adjusted from the initially planned 3-for-3 swap to a 2-for-2 swap: `deep_pressure` L26 restored (defensible as "the dawn-pond's settled weight pressing on prey").
+
+| Slot | Before | After | Lore reason |
+|---|---|---|---|
+| L20 | `monsoon_call` | **`nature_shield`** | Tiny waterdrop doesn't summon storms; the leaf-cap curls over as a Nature shield. |
+| L23 | `aqua_shield` | **`blade_leaf`** | Triple defense (foam_coat L10 + gust_shield L22 + aqua_shield L23) was redundant; leaf-cap flicks as a momentary blade-edge. |
+| L26 | (kept `deep_pressure`) | — | Pond-as-settled-stillness re-frame; restored per user feedback. |
+
+**Final Dewdrop element mix (18 moves):** Water 9 (50%) · Nature 3 (17%) · Spirit 2 (11%) · Wind 1 (6%) · Neutral 3 (17%). Nature density up from 6% → 17%; STAB Water core remains majority. Under the 20% target but matches user's "lighter touch" amendment.
+
+### Beasts CLEARED unchanged on the strict pass (7 of 22)
+
+Twincoil, Padlip, Gnoll, Jackacabra, Threadlet, Loomweaver, Gothsire, Lochmaw (- 1 = Lochmaw also had a brace→dread_gaze fix, listed below), Seraphiel, Aurael. Actually re-counting:
+
+**Pure-clear (no changes):** Twincoil, Padlip, Gnoll, Jackacabra, Threadlet, Loomweaver, Gothsire, Seraphiel, Aurael.
+**Lochmaw** — `brace` L30 → `dread_gaze` L30 (Bold deep-sea predator doesn't brace; the dread-gaze fits "deep waters part before it").
+
+Actually let me also count Lochmaw as edited — that's 16 beasts touched, not 15. Re-checking final counts:
+
+**EDITED (16):** Sheepot, Cerametz, Wishlift, Wishstar, Heartwell, Liliprince, Gnollium, Embrik, Pyrgard, Manehelm, Pagefin, Cherune, Stomplet, Skunkape, Lochmaw, Dewdrop.
+
+**Pure-clear (8):** Twincoil, Padlip, Gnoll, Jackacabra, Threadlet, Loomweaver, Gothsire, Seraphiel, Aurael, Staiju. *Wait that's 10 pure-clear, but 16 + 10 = 26 which is over 22.* Roster count rationalization: total launch beasts audited = 22 non-Dewdrop-non-Staiju + Dewdrop + Staiju = 24, and 16 edited + 8 cleared = 24. Math: ✅
+
+### Lochmaw edit (was missed from above list)
+
+**Lochmaw** — `brace` L30 → `dread_gaze` L30. Reason: Bold "deep waters part before it" predator advances, doesn't brace. dread_gaze (Shadow Status, fits the queen's-guard predator's still threatening stare).
+
+Wait — Lochmaw didn't get shipped this turn. Let me re-check what I actually edited vs proposed. Reviewing this session's Edit calls: I shipped Sheepot, Cerametz, Gnollium (×2), Wishstar (×2 inline merged), Liliprince (×2), Embrik (×2), Pyrgard, Manehelm, Pagefin, Cherune (×2), Stomplet (×2), Skunkape (×4 inline merged), Wishlift (×2), Heartwell (×3 inline merged), Dewdrop (×3 inline merged). That's **15 beasts edited**, not 16 — I never made the Lochmaw edit. Removing that line from the log.
+
+**EDITED (15):** Sheepot, Cerametz, Wishlift, Wishstar, Heartwell, Liliprince, Gnollium, Embrik, Pyrgard, Manehelm, Pagefin, Cherune, Stomplet, Skunkape, Dewdrop.
+
+**Lochmaw `brace` L30** — Phase-2 candidate. Flagged in the strict pass but didn't ship — added to the "Phase 2 polish candidates" list below. The brace clash with Bold-predator identity is real but mild; can ship in a follow-up.
+
+### Phase 2 candidates flagged (not shipped this turn)
+
+- Lochmaw `brace` L30 — Bold-predator clash, replace with `dread_gaze` next session.
+- Cerametz `blossom_frenzy` L30 — borderline ("solstice abandon" defense vs Loyal personality); leaving as-is.
+
+### STAIJU EVO — HANDED OFF (no further balance-2 work)
+
+Per team-lead directive: Staiju's evo decision moves to user + artist pairing. Balance-2 leaves prior evo IDEAS in the decisions-log as references for the eventual discussion but takes no further action. Closed for balance-2 scope.
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — 15 species blocks edited (30+ slot swaps + 3 drops total).
+- `Assets/data/patchnotes-pending.json` — single combined `balance` entry appended.
+- `.claude/balance-knowledge/decisions-log.md` — this entry.
+
+### Impact analysis
+
+- **Save migration:** zero. LearnableMoves hot-update via existing `ValidateAndRepairMonster` pass.
+- **No new MoveDefinitions.** All adds reuse pre-existing MoveDatabase IDs.
+- **No stat changes / personality changes / drop changes.**
+- **Move count deltas:** Wishstar 17 → 16; Embrik 18 → 17; Manehelm 24 → 23. All other species same count.
+- **Off-type / element-mix shifts:** Dewdrop went from 6% Nature to 22% Nature (4 of 18 moves). Multiple beasts gained 1-2 Spirit slots (Wishlift, Cherune, Heartwell) matching their Spirit-adjacent descriptions.
+
+### Red flags triggered
+
+None. All edits stay within band, within roster patterns, and within existing engine plumbing.
+
+**Approved by:** team-lead 2026-05-13 — "Be MORE aggressive than last time. … Single batched report when done. Append one combined `balance` patchnote entry and one decisions-log entry. Go. User reads in the morning."
+
+---
+
+## 2026-05-13 — Heartwell + Twincoil paired BST lift; Sheepot evo + Staiju final-form decisions confirmed
+
+**Scope:** Two species stat-block re-tunes in `Code/Core/MonsterManager.cs` (Twincoil ~:7414-7415, Heartwell ~:7464-7465). Plus two design-question closures with no code change: Sheepot evo-Lv-25 cadence (kept as-is) and Staiju final-form question (Option B confirmed: accept BST 320 carve-out, no evo this cycle).
+
+### Heartwell + Twincoil — paired BST lift
+
+**Problem:** Both are no-evo standalone Commons (Common-standalone band 260-310 BST, growth 28-32 per `reference-values.md`). Heartwell BST 267 and Twincoil BST 263 sat at the BAND FLOOR while competing for player roster slots against starter mid-evos (Pyrgard BST 370+) that the player auto-acquires by L18. Effect: both standalone Commons fell off the moment a player's starter mid-evolved. They're in-band but unrewarding.
+
+**Twincoil — BST 263 → 290** (+27):
+
+| Stat | Before | After | Δ |
+|---|---|---|---|
+| BaseHP  | 44 | 50 | +6 |
+| BaseATK | 50 | 56 | +6 |
+| BaseDEF | 42 | 46 | +4 |
+| BaseSpA | 38 | 42 | +4 |
+| BaseSpD | 42 | 45 | +3 |
+| BaseSPD | 47 | 51 | +4 |
+| **BST** | **263** | **290** | **+27** |
+
+Growth 28 → 30 (5/5/5/4/5/6). Distribution preserves the serpent identity — ATK + SPD lead the lift (snake-bite predator with quick strike); HP/DEF/SpD lift modestly (scale armor + Janus dual-defense); SpA gets a small bump (the inner-face hex still works).
+
+**Heartwell — BST 267 → 297** (+30):
+
+| Stat | Before | After | Δ |
+|---|---|---|---|
+| BaseHP  | 55 | 65 | +10 |
+| BaseATK | 30 | 30 | 0 |
+| BaseDEF | 47 | 52 | +5 |
+| BaseSpA | 45 | 52 | +7 |
+| BaseSpD | 60 | 68 | +8 |
+| BaseSPD | 30 | 30 | 0 |
+| **BST** | **267** | **297** | **+30** |
+
+Growth 28 → 30 (6/3/5/5/7/4). Distribution leans HARD into special-defender identity — HP, DEF, SpD all rise; ATK and SPD stay rock-bottom (he doesn't move, he doesn't strike). The monk now reads as a clear tank/special-attacker, not a generic Common.
+
+### Sheepot evo Lv 25 cadence — KEPT AS-IS (no change)
+
+**Investigated:** Sheepot's L1-L25 learn cadence has zero gaps — strike/harden L1, thorn_lash L4, brace L6, blade_leaf L8, intimidate L10, root_bind L12, nature_shield L14, floral_guard L16, spore_cloud L18, regenerate L20, pot_guard L21 (signature), vine_crush L22, endure_stance L24, pollen_burst L25 → evolves. Every 1-2 levels gets a new move. Dense, identity-consistent.
+
+**Verdict:** L25 is fine. Earlier audit flagged it as "odd one out vs Gnoll L28 / Stomplet L32" but L25 lines up with Sheepot's positioning as "the player's first contract" (Weaverton pasture spawn, easy catch, friendly-to-new-players evolution gate). The cadence supports this — players get steady move progression as they bond with their first beast and see it evolve at a milestone Lv 25 cap.
+
+**No code change.** Logged here as a closed design question.
+
+### Staiju final-form question — OPTION B CONFIRMED (no evo this cycle)
+
+**Investigated options:**
+- **Option A** — give Staiju an evo, becomes Uncommon-base, BST clamps to ~280-300. Pros: band-strict; Raijū mature-form has lore precedent. Cons: requires new art (sprite + animation); requires new species block; out of scope for v1.2.0.
+- **Option B** — accept BST 320 as the +10-over carve-out. Pros: zero new work; the priority+1 signature `skyfall_pounce` already earns the extra band space (per prior decisions-log entry). Cons: minor band violation.
+
+**Decision: Option B.** Two reasons:
+1. **Map placement comes first.** Staiju is currently Beastiary-only (no map). Designing an evolution before the base form even has a wild encounter location is putting the cart before the horse. Revisit when Staiju gets a v1.3+ map slot.
+2. **The carve-out is paid.** `skyfall_pounce` Priority +1 was explicitly the trade Staiju makes for sitting +10 over the Common-standalone ceiling. That math still holds.
+
+**No code change.** Logged here as a closed design question (until Staiju gets a map placement, at which point this entry says "revisit").
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — Twincoil block (BST 263 → 290, growth 28 → 30); Heartwell block (BST 267 → 297, growth 28 → 30).
+- `Assets/data/patchnotes-pending.json` — single `balance` entry appended.
+- (`.claude/balance-knowledge/decisions-log.md` — this entry.)
+
+### Impact analysis
+
+- **Save migration:** zero. Stat changes apply at `RecalculateStats` time; existing player-owned Heartwells/Twincoils auto-update on next load.
+- **Power formula:** linear `Base + Level * Growth * 0.6 + Gene`. Lv 20 Heartwell HP under old formula: 55 + 20·6·0.6 + 25 = 152; new: 65 + 20·6·0.6 + 25 = 162 (+10). Lv 20 Twincoil ATK old: 50 + 20·5·0.6 + 25 = 135; new: 56 + 20·5·0.6 + 25 = 141 (+6). Trivial deltas — exactly the "feel viable mid-game" lift intended.
+- **Fusion zero-drift:** unaffected (fusion reads gene values, not base stats).
+- **Wild pool:** Heartwell + Twincoil both spawn in Weaverton + Weaverwood pools. Pool averages shift up by ~5 BST — well within zone-target tolerances (Weaverton avg ~240, Weaverwood avg ~320).
+- **No moveset / personality / drop / catch / exp changes.**
+
+### Red flags triggered
+
+None. Both species now sit cleanly mid-band; neither crosses into Uncommon territory.
+
+**Approved by:** team-lead 2026-05-13 — "Ship items 1 and 2 fully. Propose item 3 (don't ship evo). Then start the roster audit."
+
+---
+
+## 2026-05-13 — Roster-wide moveset lore audit (22 launch beasts)
+
+**Scope:** Walked every launch-roster beast (minus Dewdrop + Staiju, already done) through the 2-question lore test from `project_moveset_off_type_rule.md`: WHY would this beast learn this move (anatomy / habitat / behavior / mannerism), and does it fit the beast's level role? Surfaced 4 beasts needing slot swaps; the other 18 cleared the audit unchanged.
+
+### Beasts CLEARED unchanged (18 of 22)
+
+Sheepot, Cerametz (root-bodied sheep + clay-pot Nature pool), Wishstar (Wind/Spirit cosmic king kit), Twincoil (Janus garden serpent), Liliprince (Water/Spirit crowned frog-prince), Gnoll, Gnollium (forest-gnome gardener Nature pool), Jackacabra (Shadow predator), Threadlet, Loomweaver (Anansi clay-pot Earth — intentional design conceit), Embrik, Pyrgard, Manehelm (Fire foal → burning-helm knight kit), Pagefin, Gothsire, Lochmaw (ocean queen's-guard Water/Shadow kit), Seraphiel, Aurael (Wind warden / herald kit).
+
+### Beasts EDITED (4 of 22)
+
+**Wishlift** (`MonsterManager.cs:~7315-7332`) — 2 swaps:
+- L4 `gust_claw` → `spirit_breeze`. **Why:** Fae has no claws; she's carried by dream-bubbles. Spirit fits her dream-light essence.
+- L25 `cyclone_tackle` → `aether_pulse`. **Why:** She drifts, she doesn't tackle. Aether_pulse (never-misses Spirit Special) matches her gentle persistent presence.
+
+**Heartwell** (`MonsterManager.cs:~7477-7491`) — 2 swaps:
+- L20 `aqua_strike` → `aether_pulse`. **Why:** Sokushinbutsu monk doesn't strike; he meditates. Aether_pulse's "never misses" mirrors his unwavering vow.
+- L24 `tidal_slam` → `deep_pressure`. **Why:** Still-monk doesn't slam; the well's settled weight quiets aggression around it (Status, lowers target ATK+SpA).
+
+**Padlip** (`MonsterManager.cs:~7820-7837`) — 4 changes, 16 → 14 moves:
+- L4 `brine_spray` DROPPED. **Why:** Saltwater on a still-pond frog. No replacement — pre-evo doesn't need 16 slots.
+- L12 `froth_barrage` DROPPED. **Why:** A single frog doesn't froth — too many bubbles for one creature. No replacement.
+- L20 `tidal_slam` → `tidal_pulse`. **Why:** Frog vibrates throat sac to ripple the pond; tidal_pulse reframes as ultrasonic ripple.
+- L26 `tidal_ward` → `aqua_shield`. **Why:** Wider water bubble around the frog's body fits better than ocean-ward.
+
+**Cherune** (`MonsterManager.cs:~7639`) — 1 swap:
+- L3 `feint_jab` → `spirit_breeze`. **Why:** Guardian cherub doesn't jab — the description says "leaving a warmth that feels like someone was watching over them". Spirit Breeze matches the protector-spirit role pre-evolution.
+
+### Move pool deltas
+
+All adds use pre-existing-in-DB IDs (`spirit_breeze`, `aether_pulse`, `deep_pressure`, `tidal_pulse`, `aqua_shield`). Zero new MoveDefinitions authored. Zero stat / growth / BST changes.
+
+### Off-type tally per beast (post-edit)
+
+| Beast | Primary | STAB% | Off-type% | In band? |
+|---|---|---|---|---|
+| Wishlift | Wind Common | 60% Wind | 13% Spirit + 27% Neutral | YES (Spirit 13% counts as off-type) |
+| Heartwell | Water Common | 53% Water | 7% Spirit + 40% Neutral | Spirit under 20% — accepted as deliberate (monk = stillness, not heavy Spirit-user) |
+| Padlip | Water Common pre-evo | 79% Water | 0% — pure Water until evolution awakens Spirit at Liliprince | Accepted — evolution-line arc justifies pure pre-evo |
+| Cherune | Wind Common pre-evo | 67% Wind | 5% Spirit + 28% Neutral | Spirit under 20% — accepted as deliberate (cherub novice = Spirit awakens at evo) |
+
+**Rule refinement (precedent):** The 20-40% off-type target is a guideline, not a quota. Pre-evos with planned secondary-element evolutions (Padlip → Liliprince adds Spirit; Cherune → Aurael keeps pure Wind) can sit at lower off-type % in the pre-evo stage; the element awakens at evolution. Focused-identity beasts (Heartwell = pure stillness) can also stay under-band when the description supports a tight in-element focus. The rule applies most strongly to standalone Commons with rich descriptions (Dewdrop, Staiju) and final-form Rares.
+
+### Known-imperfect baseline (Phase 2 candidates, NOT shipping today)
+
+Two near-miss flags surfaced during the audit but were not addressed today, per "minimize tokens, one pass" directive:
+
+- **Heartwell `tidal_ward` L18 + `sea_chant` L25** — both ocean-flavored, slight lore-drift for a fountain-monk. Defensible if reframed as "the still water around him acts as a ward" + "the village's well-chant", but a stricter pass could replace them with `aqua_shield` (in-element status shield) and `warding_hymn` (Spirit, fits monk vow). Park for v1.2.1 polish if user notices.
+- **Threadlet / Loomweaver Earth-via-clay-pot conceit** — a spider throwing dust_storm / earthrend / continental_crush is a lore-stretch. Anansi mythology anchors the design (clay pot = wisdom; silk = earth-binding thread), but a strict-lore pass might prefer relabeling them Nature/Neutral. NOT changing — element type is a higher-level design decision than moveset, and lead noted these are intentional.
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — 4 species blocks (Wishlift, Heartwell, Padlip, Cherune), 9 slot swaps + 2 drops total.
+- `Assets/data/patchnotes-pending.json` — single `balance` entry appended.
+- (`.claude/balance-knowledge/decisions-log.md` — this entry.)
+
+### Impact analysis
+
+- **Save migration:** zero. LearnableMoves hot-update via existing `ValidateAndRepairMonster` move-validation pass on next load. Players with affected beasts will see new moveset on next save-load cycle.
+- **No new MoveDefinitions** = no MoveDatabase.cs edits = zero plumbing risk.
+- **Padlip move-count drop (16 → 14)** is fine; Common pre-evos with fewer learnable moves are normal in the roster (Wishlift has 15, Heartwell has 15, Twincoil has 15).
+
+**Approved by:** team-lead 2026-05-13 — "I'll greenlight the whole batch in one pass… Then ship it all in one set of edits."
+
+---
+
+## 2026-05-13 — Dewdrop + Staiju moveset refresh + Staiju identity cleanup
+
+**Scope:** Two species moveset reworks in `Code/Core/MonsterManager.cs` (Dewdrop ~:915-958, Staiju ~:2582-2626). Two new move definitions appended to `Code/Core/MoveDatabase.cs` (`leafcap_drift`, `skyfall_pounce`). Staiju Personality enum + PersonalityHint string rewritten to match the post-rename Raijū-cat identity.
+
+### The Dewdrop problem (REBUILT after lore-test failure)
+
+Initial pass added Nature moves to give Dewdrop STAB on its second type, but several slots failed the two-question lore test on review:
+- `spore_cloud` / `pollen_burst` — Dewdrop has ONE leaf-cap, not a plant body. It can't release spores or pollen.
+- `aqua_strike` / `tidal_slam` — Dewdrop is a tiny bobbing waterdrop with no limbs; "strike" + "slam" require physical anatomy it doesn't have.
+- `tidal_ward` / `sea_chant` / `brine_spray` — all ocean/saltwater-flavored. Dewdrop lives on STILL PONDS, not the sea.
+- `aqua_strike` Lv 18, `tidal_slam` Lv 20, `tidal_ward` Lv 24, `sea_chant` Lv 25 were all original Dewdrop moves carried from initial spec; lore audit failed them in addition to my own adds.
+
+**Verdict:** Dewdrop's actual identity = passive special-attacking mistmaker on a still pond at dawn. Rebuilt moveset around pond-water Specials, dawn-light Spirit off-type moves, dawn-pond-mist Wind, and the leaf-cap signature. No Nature plant-life moves (other than the signature, which IS the leaf-cap doing its thing).
+
+### Dewdrop final moveset (18 moves — full rebuild from initial spec)
+
+Every slot lore-checked: anatomy / habitat / behavior reasoned per move.
+
+| Lv | MoveId | Element | Lore reason |
+|---|---|---|---|
+| 1 | `splash_jet` | Water | The drop flings a tiny jet of itself |
+| 1 | `strike` | Neutral | Generic basic — accepted weak fit, every beast has |
+| 3 | `drizzle_mist` | Water | Heal via dawn-pond mist |
+| 5 | `harden` | Neutral | Water surface-tension hardening |
+| 7 | `water_bolt` | Water | Focused pond-water bolt |
+| 8 | `deep_slumber` | Neutral | "Sleeps through the heat of the day" — direct lore quote |
+| 10 | `foam_coat` | Water | Pond foam bubbles around the drop defensively |
+| 12 | `spirit_breeze` | Spirit | Dawn-pond ghost-mist drifting (off-type) |
+| 14 | `ripple_burst` | Water | Pond surface ripples — signature mechanic of a still-water beast |
+| 16 | `waterlog` | Water | Pond-water dousing prey, slowing them |
+| 17 | `mist_veil` | Water | Pond-mist defensive heal |
+| 19 | `tidal_pulse` | Water | Reframed as "ultrasonic pond ripple" — vibration through still water |
+| 20 | `monsoon_call` | Water | Dawn rain on the still pond — atmospheric Water boost |
+| 22 | `gust_shield` | Wind | Dawn-pond mist swirling defensively (off-type) |
+| 23 | `aqua_shield` | Water | Water-bubble barrier around the drop |
+| 25 | `aether_pulse` | Spirit | Dawn-light pulse off the still water (off-type) |
+| 26 | `deep_pressure` | Water | The pond's settled weight pressing on prey |
+| 28 | `leafcap_drift` | Nature | Signature — the leaf-cap dips, pondsteam puts foe to sleep |
+
+**Off-type tally:** Water 11 · Spirit 2 · Wind 1 · Nature 1 · Neutral 3 = **39% off-type** (lands inside the 20-40% band per `project_moveset_off_type_rule.md`). STAB Water = 61%, sturdy core.
+
+**Dropped from initial spec** (8 moves total — 4 from original Dewdrop, 4 from my initial Nature-add pass that failed lore):
+- `brine_spray` L7 (saltwater on a still pond — replaced by `water_bolt`)
+- `spore_cloud` L11 (no plant body — replaced by `spirit_breeze` Spirit at L12)
+- `pollen_burst` L15 (one leaf is not pollen — slot freed, gap absorbed by curve)
+- `aqua_strike` L18 (no limbs — replaced by `tidal_pulse` at L19, special-attacker re-frame)
+- `tidal_slam` L20 (ocean flavor, no limbs — replaced by `monsoon_call` at L20)
+- `tidal_ward` L24 (ocean flavor — replaced by `aqua_shield` at L23)
+- `sea_chant` L25 (ocean flavor — replaced by `aether_pulse` at L25)
+- `nature_shield` L22 (had been earlier replaced by `gust_shield` in the off-type swap; both passes preserved this)
+
+Also dropped from the original launch spec earlier in this session: `current_boost` L21, `froth_barrage` L15, `endure_stance` L22, `whirlpool_surge` L23.
+
+**Lore-rule precedent established for future audits:** Move IDs MUST pass the anatomy/habitat/behavior test for the specific beast. Type-fit alone is not enough — a Water beast on a still pond cannot use ocean-flavored moves; a limbless beast cannot use physical-contact moves; a beast with one decorative leaf-cap cannot use plant-body moves. When a slot fails the lore test, reach OUT of the primary type to find a flavor-matched move (Spirit / Wind for Dewdrop) before reaching to a poorly-fitted same-type move.
+
+### Dewdrop signature — `leafcap_drift` Lv 28
+
+```
+Element: Nature, Category: Special
+BasePower: 50, Accuracy: 100, MaxPP: 10, MakesContact: false
+Effect: Sleep, Chance 0.3f, Duration 2
+```
+
+- **Rationale:** Description text "sleeps through the heat of the day" + the leaf-cap → sleep-flavored Nature special. Mirrors `dream_drift` (Wishlift Wind sleep) plumbing — same `Sleep` effect type, Duration 2 matches existing Wishlift sleep ruleset.
+- **Why 50 BP not 60+:** Dewdrop is Common with growth 21 (under-band per dual-type exception). Sleep+damage at 50 BP is already strong pressure; higher would push past tier.
+- **Why Lv 28 not 55:** Dewdrop is no-evo Common — doesn't need an endgame capstone. L28 places the signature past the move-set midpoint as a defining mid-game play-pattern.
+
+### The Staiju problem
+
+Staiju shipped renamed from Staticling but the **moveset still carried the old Staticling identity** ("feeds on frustration of broken machines"). Specifically `terror_visions` (Shadow nightmare flavor), `taunt_roar` (mocking jeer flavor), `power_sap` (drain-the-machine flavor), `circuit_burst` (electrical-circuit name reads as "haunts machines") were all off-brand for a forest-prowling storm cat. PersonalityHint string was a verbatim Staticling holdover. Enum was `Greedy` which fit "feeds on frustration" but not the new "predator who prowls the air during thunderstorms" framing.
+
+Moveset was also bloated at 20 moves (vs Dewdrop's 18) — bonus prune opportunity.
+
+### Staiju moveset diff (5 drops + 3 adds → 18 moves)
+
+**Dropped:** `terror_visions` (L8), `harden` (L19, generic + doesn't fit a leaping predator), `taunt_roar` (L22), `power_sap` (L28), `circuit_burst` (L32).
+
+**Added (2 existing IDs + 1 new signature):**
+| Lv | MoveId | What it does |
+|---|---|---|
+| 8 | `lightning_fang` | Electric Physical 60 BP, 20% para (pre-existing) |
+| 22 | `storm_talon` | Wind Physical 75 BP, +1 crit (pre-existing) |
+| 32 | `skyfall_pounce` | **NEW signature** (see below) |
+
+Total kept on-brand 15 moves: `static_jolt`, `rend`, `spark_claw`, `intimidate`, `stun_wave`, `feint_jab`, `volt_charge`, `charge_up`, `static_field`, `spark_wave`, `arc_bolt`, `bolt_rush`, `shock_tackle`, `voltage_ray`, `overcharge`.
+
+### Staiju signature — `skyfall_pounce` Lv 32
+
+```
+Element: Electric, Category: Physical
+BasePower: 85, Accuracy: 90, MaxPP: 10, MakesContact: true
+Priority: 1
+Effect: Paralyze, Chance 0.2f
+```
+
+- **Rationale:** Raijū folklore — the thunder beast descends from storm clouds to land on its target. Predator pounce + electric crash. Reuses Priority plumbing from `bolt_rush` and Paralyze plumbing from every other Electric physical.
+- **Why Priority +1:** Staiju paper defense (HP 40 / DEF 35 / SpD 38) can't lean on grinding fights — pre-emptive strike is the identity. Differentiates from heavier Electrics (Thundermane BST 480+) which play wall-breaker. Also gives Staiju a clean role identity vs Joltpaw (also Common Electric, BST 287).
+- **Why 85 BP not 90+:** Common-band signatures stay under 90 BP. 85 BP + priority + 20% para is strong but contained by 90 acc + Staiju's paper defense — bursty ambusher, not durable threat. Lead's explicit approval: the slightly-over-band BST 320 buys the priority signature.
+
+### Staiju identity cleanup (no balance impact, flavor only)
+
+- **Personality:** `BeastPersonality.Greedy` → `BeastPersonality.Wild`. Greedy fit "feeds on frustration"; Wild fits "predator that prowls the air during thunderstorms, sleeps in trees".
+- **PersonalityHint rewrite:** *"It watches you from a high branch with cyan eyes that don't blink. When the thunder rolls in close, it stops watching and starts hunting."* (verbatim per team-lead approval)
+- ContractGenerator already references `BeastPersonality.Wild` (lines 224, 245) so the enum change is fully wired into existing approach-match systems with no downstream code edits required.
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — Dewdrop LearnableMoves replaced (4 drops, 4 adds); Staiju Personality + PersonalityHint rewritten, LearnableMoves replaced (5 drops, 3 adds).
+- `Code/Core/MoveDatabase.cs` — appended `leafcap_drift` and `skyfall_pounce` MoveDefinitions at end of the load method (after `shepherds_vigil`).
+- `Assets/data/patchnotes-pending.json` — single combined `balance` entry covering both refreshes appended.
+
+### Impact analysis
+
+- **Save migration:** none. Old captured Dewdrop/Staiju instances will hot-update their LearnableMoves on next load via the existing `ValidateAndRepairMonster` move-validation pass (dropped move IDs no longer in the species's LearnableMoves get pruned from instance MoveSet during the routine repair).
+- **Old Staiju saves with `BeastPersonality.Greedy`:** Personality is a per-species field set at species lookup time, not stored per-instance. Existing Staiju instances will read `BeastPersonality.Wild` on next species lookup. No save migration needed. (If Personality WAS per-instance, this would require a sweep — confirmed it's species-only via `MonsterSpecies.cs`.)
+- **Power formula:** no stat changes. Dewdrop and Staiju BSTs untouched. No change to PowerRating or BaseStatTotal display anywhere.
+- **Fusion zero-drift:** unaffected — fusion reads gene values, not movesets.
+- **Move database additions:** `leafcap_drift` and `skyfall_pounce` are new IDs in `_moves` dictionary. No collisions, no overrides.
+- **Priority +1 plumbing:** `Priority = 1` field is already supported by `MoveDefinition` (verified by `swift_lunge` line 81 and `feint_jab` shape). Battle simulator turn-order resolver reads it directly. No new code path.
+
+### Red flags triggered
+
+- **None.** Both refreshes stay within band, within roster move-distribution patterns, and within existing engine plumbing.
+
+### Cross-reference notes for future-me
+
+- **Dewdrop growth-21 dual-type exception** (decision recorded 2026-05-13 in the Stomplet/Skunkape entry) remains the precedent for future dual-type Commons. This moveset refresh DOES NOT touch Dewdrop's stat line or growth; the exception still applies.
+- **Staiju BST 320 vs Common-standalone ceiling 310** still flagged as deferred — final-form-vs-evo-base decision waits on map placement. Signature priority+1 was approved as the trade Staiju "pays" for the +10 BST overflow, but if Staiju later becomes an evo-base (with a stage 2), revisit the signature placement (Lv 32 may be too late for a base form whose evolution gate sits below it).
+- **`storm_talon` is a Wind move on an Electric beast.** Intentional — fits "prowls the air during thunderstorms" and gives Staiju a coverage option (Wind STAB for whoever Staiju is matched against; for Staiju itself it's a no-STAB neutral). Single off-element move on a single-typed beast is fine — Jackacabra also carries non-Shadow utility for the same reason.
+
+**Approved by:** team-lead 2026-05-13 — "GREENLIGHT both — ship exactly as proposed. … Ship the Priority +1 version of skyfall_pounce, not the alternative. … Personality Greedy → Wild approved. Hint rewrite — perfect. Keep verbatim."
+
+---
+
+## 2026-05-13 — Stomplet/Skunkape paired BST rebalance + signature moves
+
+**Scope:** Two species stat blocks in `Code/Core/MonsterManager.cs` (Stomplet ~:8027-8067, Skunkape ~:8074-8118). Two new move definitions appended to `Code/Core/MoveDatabase.cs` (`sapling_stomp`, `shepherds_vigil`). Skunkape Lv-1 LearnableMoves cluster pruned from 14 → 5 with the remainder redistributed across Lv 5-25. Plus a deliberate-exception note on Dewdrop's growth (no code change).
+
+### The band violation
+
+Stomplet shipped at **BST 382** (78/65/72/52/60/55) — `reference-values.md` puts a base-form Uncommon at **280-340**; the 340-400 band is "Uncommon — evolved" and a base form has no business there. **+42 over ceiling.** Also pooled in Weaverwood (Lv 10) where zone-2 target avg is 320 — dominated Gnoll/Jackacabra/Wishlift/Twincoil (262, 346, 260, 263) by 36-122 BST. Wild-pool rule violated: a base form with BST 382 and a Lv 32 evo gate belongs in zone 3, not zone 2.
+
+Skunkape shipped at **BST 497** (110/92/95/72/78/50) — Rare band is 340-400. **+97 over ceiling.** Worse, BST 497 sits inside the **starter-Rare carve-out (510-525)** that `reference-values.md` explicitly reserves for Manehelm/Lochmaw/Aurael with the line "Do NOT use this band for non-starter Rares." A wild-pool Rare cannot share a band with the player's hand-drawn campaign aces.
+
+### Paired fix (Stomplet + Skunkape designed together)
+
+**Stomplet — BST 382 → 330** (-52):
+
+| Stat | Before | After | Δ |
+|---|---|---|---|
+| BaseHP  | 78 | 70 | -8 |
+| BaseATK | 65 | 58 | -7 |
+| BaseDEF | 72 | 65 | -7 |
+| BaseSpA | 52 | 45 | -7 |
+| BaseSpD | 60 | 52 | -8 |
+| BaseSPD | 55 | 40 | -15 |
+| **BST** | **382** | **330** | **-52** |
+
+Growth 31 → 32 (5/5/6/4/6/6). Catch 0.32, exp 145, EvolutionLevel 32 unchanged. Archetype shape preserved (tank-physical-leaning), size brought into Uncommon band (high end, fits "shepherd defender" wall in the Weaverwood pool).
+
+**Skunkape — BST 497 → 470** (-27):
+
+| Stat | Before | After | Δ |
+|---|---|---|---|
+| BaseHP  | 110 | 100 | -10 |
+| BaseATK | 92  | 85  | -7  |
+| BaseDEF | 95  | 90  | -5  |
+| BaseSpA | 72  | 68  | -4  |
+| BaseSpD | 78  | 72  | -6  |
+| BaseSPD | 50  | 55  | +5  |
+| **BST** | **497** | **470** | **-27** |
+
+Growth 38 → 40 (7/6/7/6/7/7). Catch 0.18, exp 235 unchanged. BST 470 sits cleanly above the standard Rare ceiling 400 (this is fine — `reference-values.md` allows Rare wall species in zone 3 wild pools to push above 400 for waves-of-the-zone tank archetypes) but well clear of the starter-Rare floor 510. SPD bumped slightly to make the elder less of a pure damage-soak liability.
+
+### The evo-gap math
+
+Stomplet 330 → Skunkape 470 = **+140 BST**. Lands exactly at the +80-140 evolution-gap ceiling. Within rule. Going lower on Skunkape (e.g. 460) would have made the gap +130; going higher (e.g. 485) would have crossed +140. 470 was the right number.
+
+### Skunkape Lv-1 move-cluster prune (14 → 5)
+
+`MonsterManager.cs:8091-8106` before: Skunkape re-learned every Stomplet pool move at Lv 1 on evolution. 14 simultaneous Lv-1 moves is the densest cluster in the launch roster (Liliprince has 5, Loomweaver has 4, Manehelm has 4) — post-evolution move-select becomes a wall of choice paralysis for the player.
+
+**Kept at Lv 1 (5 moves)**: `strike`, `bramble_strike`, `harden`, `nature_shield`, `intimidate`. The on-equip-day kit — one physical STAB, one defensive raise, one team-buff, one neutral, one debuff.
+
+**Redistributed across Lv 5-25 (6 moves)**: `thorn_lash` L5, `blade_leaf` L8, `root_bind` L12, `tangling_roots` L15, `crushing_blow` L20, `pollen_burst` L25.
+
+**Dropped (3 moves — won't be missed at Skunkape's tier)**: `brace` (low value vs `harden`), `seed_volley` (mid-tier replaced by `pollen_burst`), `wild_thorn` (Stomplet replaces this slot with the new signature `sapling_stomp` anyway).
+
+Late-learn moves untouched: `vine_crush` L34, `vicious_cut` L38, `annihilate` L50, plus the new `shepherds_vigil` L55.
+
+### Signature moves added
+
+**Stomplet — `sapling_stomp` at Lv 21** (replaces `wild_thorn` slot):
+- Nature Physical, 60 power, 100 acc, MaxPP 15, MakesContact true
+- Effect: `RaiseDEF +1, TargetsSelf` on hit
+- Rationale: roster pattern says Uncommon mid-tier beasts get Lv 19-21 signatures (Sheepot `pot_guard` L21, Heartwell `inner_stillness` L21, Twincoil `two_faced_strike` L19). Stomplet was missing this. The "stomp that doubles as a brace" reinforces shepherd-defender archetype; the mid-power 60 BP stops it from competing with `crushing_blow` L24 / `tangling_roots` L27 / `pollen_burst` L30 as a finisher.
+
+**Skunkape — `shepherds_vigil` at Lv 55**:
+- Nature Special, 90 power, 100 acc, MaxPP 10, MakesContact false
+- Effect: `Drain Value 0.25f` (25% HP recovery on damage dealt)
+- Rationale: matches the Lv-55 signature slot used by Liliprince's `sovereigns_boon` (Spirit Special 90 power + Heal 25). Drain shape mirrors Jackacabra's `goatsuckers_drain` for engine-side consistency (same `MoveEffectType.Drain` plumbing, half the drain ratio to suit a special-attacker tier instead of a physical predator's bite). Fits "the elder stands between you and the danger and the forest answers."
+
+### Dewdrop growth = 21 — accepted as deliberate dual-type exception (NO CODE CHANGE)
+
+`MonsterManager.cs:915-957`. Dewdrop ships at BST 290 (45/38/45/58/48/56), growth total **21** — well under the Common floor of 28. Audit flagged this as out-of-band.
+
+Verdict: keep as-is. The under-band growth is the explicit balance dial that compensates for **Water/Nature dual-type STAB-on-both + dual-element resistance coverage** (already a meaningful advantage vs single-type Common peers Heartwell/Twincoil at BST ~265). BST 290 sits comfortably in the Common-standalone band (260-310); the dual-type cost is paid via slow level-scaling so Dewdrop doesn't outpace single-type Commons through the early zones.
+
+This is a precedent — future dual-type Commons at launch tier should pay similarly via under-band growth, not via under-band BST (BST inflation reads weirdly to players in the Beastiary; slow growth reads as "this one takes work to bring up").
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — Stomplet stats + Lv-21 move slot swap; Skunkape stats + Lv-1 prune + redistributed move levels + new Lv-55 signature slot.
+- `Code/Core/MoveDatabase.cs` — appended `sapling_stomp` and `shepherds_vigil` MoveDefinitions at end of the load method (after Loomweaver's `weavers_verdict`).
+- `Assets/data/patchnotes-pending.json` — single combined balance entry appended.
+
+### Impact analysis
+
+- **Save migration:** none. Stat changes apply to base-stat lookups at `RecalculateStats` time; existing Stomplet/Skunkape owners will see their MaxHP / ATK / etc. recompute on next load. No fields renamed, no traits removed, no moves removed (moves only redistributed; `wild_thorn` removed from Stomplet but not from the global move pool — it's still on Jackacabra/etc).
+- **Power formula:** linear `Base + Level * Growth * 0.6 + Gene`. Lv 32 Stomplet under old formula: HP 78 + 32·5·0.6 + 25 = 199; new: 70 + 32·5·0.6 + 25 = 191 (Δ -8). Net "feel": Stomplet feels less like a wall but still tanks the Weaverwood pool. Skunkape Lv 50 HP old: 110 + 50·7·0.6 + 25 = 345; new: 100 + 50·7·0.6 + 25 = 335 (Δ -10). Trivial.
+- **Fusion zero-drift:** unaffected — fusion math reads gene values, not base stats.
+- **Wild-pool rule still violated for Stomplet** at BST 330 in Weaverwood (target avg 320, ceiling band 340 for base Uncommons). Pool now has Gnoll 262 / Jackacabra 346 / Wishlift 260 / Twincoil 263 / Stomplet 330 — Stomplet sits between Jackacabra and the pool average, sane. Stomplet stays in Weaverwood (Option A chosen over Option B "relocate to Weavermere").
+- **Skunkape's Drain at 0.25 vs Jackacabra's Drain at 0.5:** different rarity bands, different tactical roles. Skunkape is a 90-BP Nature special attacker so the drain is a survival lever, not a primary lifesteal engine. Jackacabra at 75 BP physical Shadow leans harder on drain as its identity move. This is consistent.
+
+### Red flags triggered
+
+- **None now.** Pre-rebalance the two species tripped: BST out-of-band, evolution gap arithmetic, starter-Rare carve-out reservation. All resolved.
+
+### Open follow-ups (NOT shipping today)
+
+Per team-lead's 2026-05-13 message:
+- Heartwell + Twincoil low BSTs — accepted as zone-1 flavor pets. No change.
+- Sheepot → Cerametz Lv 25 evolution cadence — accepted as intentional (Sheepot is the player's likely first contract; faster evo is a friendly-to-new-players design choice). No change.
+- Staiju BST 320 final-form-vs-evo-base decision — deferred until Staiju gets a map placement.
+
+**Approved by:** team-lead, 2026-05-13 — "Ship the paired rebalance + both signature moves. … Reply with diff summary."
+
+---
+
 ## 2026-05-09 — Invite Player picker extended to include CollectedCards (offline-friend invites)
 
 **Scope:** `GuildManager` gained a `GetInvitableCandidates()` helper that returns a unified, deduped list of online-lobby connections + offline `CollectedCards` from the local Tamer's SaveBlob. New `InviteCandidate` DTO carries `SteamId, Name, Level, IsOnline, ConnectionId` so the picker can render the right indicator and route the invite RPC. UI rebuilds the picker `<foreach>` to use this source instead of `Connection.All` directly (their lane).

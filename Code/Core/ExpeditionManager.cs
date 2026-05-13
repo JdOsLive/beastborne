@@ -447,7 +447,7 @@ public sealed class ExpeditionManager : Component
 			// never shows itself to anyone who doesn't earn it. The old
 			// AI-gen forest pool (sproutkin/thornveil/etc.) has been
 			// retired pre-launch in favor of fewer, handmade beasts.
-			PossibleSpecies = new() { "gnoll", "jackacabra", "wishlift", "twincoil" },
+			PossibleSpecies = new() { "gnoll", "jackacabra", "wishlift", "twincoil", "stomplet" },
 			Element = ElementType.Nature,
 			GoldReward = 220,
 			XPReward = 320,
@@ -478,7 +478,7 @@ public sealed class ExpeditionManager : Component
 			// drowned streets. Liliprince only appears as a boss-wave
 			// encounter (see BossPoolDatabase). The player normally meets
 			// Liliprince by evolving a Padlip at 32.
-			PossibleSpecies = new() { "padlip", "twincoil", "heartwell" },
+			PossibleSpecies = new() { "padlip", "twincoil", "heartwell", "dewdrop" },
 			Element = ElementType.Water,
 			GoldReward = 480,
 			XPReward = 720,

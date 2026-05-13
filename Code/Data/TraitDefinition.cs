@@ -122,6 +122,13 @@ public class TraitDefinition
 	/// Rarity of this trait (affects breeding inheritance chances)
 	/// </summary>
 	public TraitRarity Rarity { get; set; } = TraitRarity.Common;
+
+	/// <summary>
+	/// Iconify short-form icon for this trait (e.g. "lucide:flame-kindling").
+	/// Rendered next to the trait name in pills/cards. Falls back to
+	/// "lucide:zap" in UI if left empty.
+	/// </summary>
+	public string Icon { get; set; } = "lucide:zap";
 }
 
 /// <summary>
