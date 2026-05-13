@@ -132,8 +132,11 @@ public static class BattleAI
 				score -= 100f; // Immune
 		}
 
-		// STAB bonus (Same Type Attack Bonus)
-		if ( attackerSpecies != null && move.Element == attackerSpecies.Element )
+		// STAB bonus (Same Type Attack Bonus) — matches EstimateDamage dual-type check
+		if ( attackerSpecies != null && (
+			move.Element == attackerSpecies.Element ||
+			(attackerSpecies.SecondaryElement.HasValue && move.Element == attackerSpecies.SecondaryElement.Value)
+		) )
 		{
 			score += 5f;
 		}
