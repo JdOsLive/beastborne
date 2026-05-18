@@ -574,9 +574,9 @@ public sealed class ExpeditionManager : Component
 		} );
 
 		// ─── Whispering Hollow (Mini, Lv 25) — cave on the forest road ──────
-		// An old cave halfway between Saltmoor Cove and Old Saltmoor, where
+		// An old cave halfway between Weaverton and Weavermere, where
 		// travelers used to camp on the forest road to the mere. They stopped.
-		// Geographically in the forest, but gated on clearing Old Saltmoor —
+		// Geographically in the forest, but gated on clearing Weavermere —
 		// lore framing: the player has made the journey now and knows what they
 		// skipped on the path. Threadlet is the marquee encounter; cerametz/
 		// twincoil/wishlift fill out the cave's dark-hollow atmosphere.
