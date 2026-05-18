@@ -557,13 +557,14 @@
 			<div class="selection-left">
 
 				<!-- Monster grid -->
-				<div class="available-monsters">
-						@foreach (var monster in GetAvailableMonsters())
+				<div class="available-monsters" @ref="availMonstersGrid">
+						@{ var availMonsters = GetAvailableMonsters(); }
+						@for (int mi = 0; mi < availMonsters.Count; mi++)
 						{
-							var m = monster;
+							var m = availMonsters[mi];
 							var isSelected = selectedTeam.Contains(m);
 							var isHovered = hoveredMonsterId.HasValue && hoveredMonsterId.Value == m.Id;
-							<div class="monster-option @(isSelected ? "in-team" : "")">
+							<div class="monster-option @(isSelected ? "in-team" : "") @(mi == selectedMonsterIndex ? "kb-selected" : "")">
 								<MonsterCard Monster=@m IsCompact=@true AnimateOnHover=@true AnimationFrame=@SpriteAnimator.GlobalFrame
 											 ShouldAnimate=@isHovered
 											 ClickAction=@(() => ToggleMonster(m))
@@ -571,7 +572,7 @@
 											 LeaveAction=@OnMonsterLeave />
 							</div>
 						}
-						@if (GetAvailableMonsters().Count == 0)
+						@if (availMonsters.Count == 0)
 						{
 							<div class="no-monsters">
 								<div class="empty-icon">?</div>
@@ -820,6 +821,7 @@
 	// Keyboard navigation
 	private int selectedExpeditionIndex = 0;
 	private int selectedMonsterIndex = 0;
+	private Panel availMonstersGrid;
 	private int selectedTeamSlotIndex = 0;
 
 	private void OnPanelClicked()
@@ -900,6 +902,31 @@
 	public void TickInput()
 	{
 		HandleKeyboardInput();
+		// Keep the keyboard-selected beast on screen in the team picker.
+		if ( currentView == "team"
+			&& ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) ) )
+			UiGridScroll.ScrollIndexIntoView( availMonstersGrid, selectedMonsterIndex, "monster-option" );
+	}
+
+	// Live column count for the team-picker grid (responsive flex-wrap with a
+	// gap). Counts cards sharing the first row's Y — gap-agnostic, unlike a
+	// width/card-width division. Falls back to 4 before the first layout pass.
+	private int GetTeamGridColumns()
+	{
+		if ( availMonstersGrid == null ) return 4;
+		int count = 0;
+		float rowTop = 0f;
+		bool started = false;
+		foreach ( var c in availMonstersGrid.Children )
+		{
+			if ( !c.HasClass( "monster-option" ) ) continue;
+			var rect = c.Box.Rect;
+			if ( rect.Width <= 0f ) return 4;
+			if ( !started ) { rowTop = rect.Top; started = true; count = 1; }
+			else if ( Math.Abs( rect.Top - rowTop ) <= 1f ) count++;
+			else break;
+		}
+		return count > 0 ? count : 4;
 	}
 
 	private void HandleKeyboardInput()
@@ -987,7 +1014,7 @@
 			if (monsters.Count > 0)
 			{
 				selectedMonsterIndex = Math.Clamp(selectedMonsterIndex, 0, monsters.Count - 1);
-				int columns = 4;
+				int columns = GetTeamGridColumns();
 
 				if (Input.Pressed("Left"))
 				{
@@ -1022,6 +1049,11 @@
 					// Add monster to team
 					ToggleMonster(monsters[selectedMonsterIndex]);
 				}
+			}
+			else if (Input.Pressed("Up"))
+			{
+				// Empty team grid — Up still backs out to the world map.
+				GoToList();
 			}
 
 			// Enter to start expedition

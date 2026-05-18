@@ -274,7 +274,7 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "kindle", LearnLevel = 1 },
 				new LearnableMove { MoveId = "rend", LearnLevel = 1 },
-				new LearnableMove { MoveId = "feint_jab", LearnLevel = 3 },
+				new LearnableMove { MoveId = "shade_step", LearnLevel = 3 },
 				new LearnableMove { MoveId = "smolder", LearnLevel = 7 },
 				new LearnableMove { MoveId = "ember_claw", LearnLevel = 8 },
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 10 },
@@ -285,7 +285,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 18 },
 				new LearnableMove { MoveId = "searing_rush", LearnLevel = 20 },
 				new LearnableMove { MoveId = "flame_shroud", LearnLevel = 21 },
-				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 23 },
+				new LearnableMove { MoveId = "cinders_curse", LearnLevel = 23 },
 				new LearnableMove { MoveId = "heat_haze", LearnLevel = 24 },
 				new LearnableMove { MoveId = "scorch_wave", LearnLevel = 25 },
 				new LearnableMove { MoveId = "ash_cloud", LearnLevel = 25 },
@@ -335,12 +335,12 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "harden", LearnLevel = 8 },
 				new LearnableMove { MoveId = "flame_tackle", LearnLevel = 12 },
 				new LearnableMove { MoveId = "magma_fang", LearnLevel = 16 },
-				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 20 },
+				new LearnableMove { MoveId = "iron_rush", LearnLevel = 20 },
 				new LearnableMove { MoveId = "flame_shroud", LearnLevel = 22 },
 				new LearnableMove { MoveId = "brace", LearnLevel = 24 },
 				new LearnableMove { MoveId = "scorch_wave", LearnLevel = 26 },
 				new LearnableMove { MoveId = "cinders_curse", LearnLevel = 28 },
-				new LearnableMove { MoveId = "war_cry", LearnLevel = 30 },
+				new LearnableMove { MoveId = "forge_temper", LearnLevel = 30 },
 				new LearnableMove { MoveId = "eruption_slam", LearnLevel = 32 },
 				new LearnableMove { MoveId = "ash_cloud", LearnLevel = 34 },
 				new LearnableMove { MoveId = "blazing_wrath", LearnLevel = 36 },
@@ -388,7 +388,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "pyre_fangs", LearnLevel = 1 },
 				new LearnableMove { MoveId = "magma_fang", LearnLevel = 5 },
 				new LearnableMove { MoveId = "flame_shroud", LearnLevel = 10 },
-				new LearnableMove { MoveId = "war_cry", LearnLevel = 15 },
+				new LearnableMove { MoveId = "forge_temper", LearnLevel = 15 },
 				new LearnableMove { MoveId = "eruption_slam", LearnLevel = 20 },
 				new LearnableMove { MoveId = "ash_cloud", LearnLevel = 25 },
 				new LearnableMove { MoveId = "lava_plume", LearnLevel = 28 },
@@ -396,7 +396,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "flame_vortex", LearnLevel = 33 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 36 },
 				new LearnableMove { MoveId = "volcanic_fury", LearnLevel = 39 },
-				new LearnableMove { MoveId = "primal_roar", LearnLevel = 42 },
+				new LearnableMove { MoveId = "ember_wall", LearnLevel = 42 },
 				new LearnableMove { MoveId = "conflagration", LearnLevel = 45 },
 				// Metal-type moves — Manehelm's secondary typing. A fire knight
 				// who also wields the strength of forged steel.
@@ -521,7 +521,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 18 },
 				new LearnableMove { MoveId = "tidal_slam", LearnLevel = 20 },
 				new LearnableMove { MoveId = "sharp_focus", LearnLevel = 22 },
-				new LearnableMove { MoveId = "torrent_claw", LearnLevel = 24 },
+				new LearnableMove { MoveId = "umbral_claw", LearnLevel = 24 },
 				new LearnableMove { MoveId = "current_boost", LearnLevel = 26 },
 				new LearnableMove { MoveId = "temper", LearnLevel = 28 },
 				new LearnableMove { MoveId = "hydro_fang", LearnLevel = 30 },
@@ -573,7 +573,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "aqua_shield", LearnLevel = 18 },
 				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 22 },
 				new LearnableMove { MoveId = "crashing_wave", LearnLevel = 26 },
-				new LearnableMove { MoveId = "brace", LearnLevel = 30 },
+				new LearnableMove { MoveId = "dread_gaze", LearnLevel = 30 },
 				new LearnableMove { MoveId = "maelstrom_slam", LearnLevel = 33 },
 				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 36 },
 				new LearnableMove { MoveId = "ocean_torrent", LearnLevel = 38 },
@@ -697,14 +697,14 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "swift_lunge", LearnLevel = 1 },
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
-				new LearnableMove { MoveId = "gust_claw", LearnLevel = 5 },
+				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 5 },
 				new LearnableMove { MoveId = "slipstream", LearnLevel = 8 },
 				new LearnableMove { MoveId = "wind_blade", LearnLevel = 12 },
 				new LearnableMove { MoveId = "tailwind_boost", LearnLevel = 14 },
 				new LearnableMove { MoveId = "zephyr_bolt", LearnLevel = 16 },
 				new LearnableMove { MoveId = "phantom_double", LearnLevel = 18 },
 				new LearnableMove { MoveId = "howling_gust", LearnLevel = 20 },
-				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 22 },
+				new LearnableMove { MoveId = "sacred_strike", LearnLevel = 22 },
 				new LearnableMove { MoveId = "wind_wall", LearnLevel = 24 },
 				new LearnableMove { MoveId = "cyclone_tackle", LearnLevel = 26 },
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 28 },
@@ -762,7 +762,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "dive_strike", LearnLevel = 1 },
 				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 1 },
 				new LearnableMove { MoveId = "updraft", LearnLevel = 1 },
-				new LearnableMove { MoveId = "gust_claw", LearnLevel = 5 },
+				new LearnableMove { MoveId = "breeze_cut", LearnLevel = 5 },
 				new LearnableMove { MoveId = "feint_jab", LearnLevel = 8 },
 				new LearnableMove { MoveId = "wind_blade", LearnLevel = 12 },
 				new LearnableMove { MoveId = "agility_boost", LearnLevel = 15 },
@@ -772,7 +772,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "howling_gust", LearnLevel = 28 },
 				new LearnableMove { MoveId = "gale_slam", LearnLevel = 32 },
 				new LearnableMove { MoveId = "slipstream", LearnLevel = 35 },
-				new LearnableMove { MoveId = "crushing_blow", LearnLevel = 38 },
+				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 38 },
 				new LearnableMove { MoveId = "hurricane_slam", LearnLevel = 42 },
 				new LearnableMove { MoveId = "war_cry", LearnLevel = 45 },
 				new LearnableMove { MoveId = "tornado_dive", LearnLevel = 48 },
@@ -7386,7 +7386,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "sky_shear", LearnLevel = 18 },
 				new LearnableMove { MoveId = "spirit_link", LearnLevel = 22 },
 				new LearnableMove { MoveId = "warding_hymn", LearnLevel = 26 },
-				new LearnableMove { MoveId = "storm_talon", LearnLevel = 30 },
+				new LearnableMove { MoveId = "gale_slam", LearnLevel = 30 },
 				new LearnableMove { MoveId = "lunar_radiance", LearnLevel = 34 },
 				new LearnableMove { MoveId = "phantom_double", LearnLevel = 38 },
 				new LearnableMove { MoveId = "divine_grace", LearnLevel = 42 },
@@ -7443,7 +7443,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "two_faced_strike", LearnLevel = 19 },
 				new LearnableMove { MoveId = "vine_crush", LearnLevel = 20 },
 				new LearnableMove { MoveId = "tangling_roots", LearnLevel = 22 },
-				new LearnableMove { MoveId = "vicious_cut", LearnLevel = 24 },
+				new LearnableMove { MoveId = "dread_gaze", LearnLevel = 24 },
 				new LearnableMove { MoveId = "thorn_barrage", LearnLevel = 25 },
 			},
 			BeastiaryNumber = 14,
@@ -7601,7 +7601,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "vine_crush", LearnLevel = 18 },
 				new LearnableMove { MoveId = "floral_guard", LearnLevel = 22 },
 				new LearnableMove { MoveId = "tangling_roots", LearnLevel = 26 },
-				new LearnableMove { MoveId = "blossom_frenzy", LearnLevel = 30 },
+				new LearnableMove { MoveId = "wild_thorn", LearnLevel = 30 },
 				new LearnableMove { MoveId = "regenerate", LearnLevel = 33 },
 				new LearnableMove { MoveId = "overgrowth_slam", LearnLevel = 37 },
 				new LearnableMove { MoveId = "solstice_veil", LearnLevel = 38 },
@@ -7874,7 +7874,7 @@ public sealed class MonsterManager : Component
 			{
 				new LearnableMove { MoveId = "tidal_pulse", LearnLevel = 1, EvolvesFrom = "tidal_slam" },
 				new LearnableMove { MoveId = "aqua_strike", LearnLevel = 1 },
-				new LearnableMove { MoveId = "tidal_ward", LearnLevel = 1 },
+				new LearnableMove { MoveId = "aqua_shield", LearnLevel = 1 },
 				new LearnableMove { MoveId = "harden", LearnLevel = 1 },
 				new LearnableMove { MoveId = "spirit_breeze", LearnLevel = 1 },
 				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 5 },
@@ -8917,9 +8917,12 @@ public sealed class MonsterManager : Component
 				(offspring.Genetics?.SpDGene ?? 0) + (offspring.Genetics?.SPDGene ?? 0);
 			if ( totalGenes >= 25 )
 				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BredHighGenes, 1 );
-			if ( (offspring.Genetics?.HPGene ?? 0) == 31 || (offspring.Genetics?.ATKGene ?? 0) == 31 ||
-				(offspring.Genetics?.DEFGene ?? 0) == 31 || (offspring.Genetics?.SpAGene ?? 0) == 31 ||
-				(offspring.Genetics?.SpDGene ?? 0) == 31 || (offspring.Genetics?.SPDGene ?? 0) == 31 )
+			// A perfect gene is the max gene value (Genetics.MaxGeneValue == 30). Genes are
+			// clamped 0-30, so the old `== 31` check could never be true — dead achievement.
+			const int perfectGene = Genetics.MaxGeneValue;
+			if ( (offspring.Genetics?.HPGene ?? 0) >= perfectGene || (offspring.Genetics?.ATKGene ?? 0) >= perfectGene ||
+				(offspring.Genetics?.DEFGene ?? 0) >= perfectGene || (offspring.Genetics?.SpAGene ?? 0) >= perfectGene ||
+				(offspring.Genetics?.SpDGene ?? 0) >= perfectGene || (offspring.Genetics?.SPDGene ?? 0) >= perfectGene )
 				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BredPerfectGene, 1 );
 
 			// Track mission progress for fusion

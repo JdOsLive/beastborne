@@ -163,15 +163,18 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.HighestExpeditionCleared, 3, order++,
 			new() { Reward( AchievementRewardType.Gems, 10 ), Reward( AchievementRewardType.Title, 0, "Conqueror" ) } );
 
-		AddAchievement( "hard_mode_1", "Hard Knocks", "Clear Hard Mode Expedition 1", AchievementCategory.Expedition,
+		// Hard Mode step achievements check HighestHardModeCleared — an
+		// order-independent COUNT of distinct expeditions Hard-cleared, not a
+		// specific zone. Titles/descriptions must stay count-based to match.
+		AddAchievement( "hard_mode_1", "Hard Mode Initiate", "Clear 1 expedition on Hard Mode", AchievementCategory.Expedition,
 			AchievementRequirement.HighestHardModeCleared, 1, order++,
 			new() { Reward( AchievementRewardType.Gold, 5000 ) } );
 
-		AddAchievement( "hard_mode_10", "Unbreakable Explorer", "Clear the Weaverwood on Hard Mode", AchievementCategory.Expedition,
+		AddAchievement( "hard_mode_10", "Hard Mode Veteran", "Clear 2 expeditions on Hard Mode", AchievementCategory.Expedition,
 			AchievementRequirement.HighestHardModeCleared, 2, order++,
 			new() { Reward( AchievementRewardType.Gems, 10 ) } );
 
-		AddAchievement( "hard_mode_16", "Absolute Legend", "Clear all 3 launch expeditions on Hard Mode", AchievementCategory.Expedition,
+		AddAchievement( "hard_mode_16", "Hard Mode Master", "Clear 3 expeditions on Hard Mode", AchievementCategory.Expedition,
 			AchievementRequirement.HighestHardModeCleared, 3, order++,
 			new() { Reward( AchievementRewardType.Gems, 15 ) } );
 
@@ -674,7 +677,26 @@ public sealed class AchievementManager : Component
 
 		tamer.Achievements ??= new();
 
-		// Migrate existing unlocked achievements to claimed (they got auto-rewards from old system)
+		// The achievement-claimed migration must run EXACTLY ONCE per save, not
+		// every load. The old achievement system auto-granted rewards on unlock;
+		// the new system requires a manual claim. For saves created under the old
+		// system we mark already-unlocked achievements as claimed (the rewards
+		// were already granted). But under the NEW system an unlocked-but-unclaimed
+		// achievement is a legitimate pending-reward state — re-running this
+		// migration every session would silently mark those claimed WITHOUT
+		// granting the reward, permanently eating the player's rewards.
+		// Gate on Tamer.MigrationVersion (persisted across sessions). TamerManager
+		// hydration bumps it to 2; this migration is version 3.
+		const int ACHIEVEMENT_CLAIM_MIGRATION_VERSION = 3;
+		if ( tamer.MigrationVersion >= ACHIEVEMENT_CLAIM_MIGRATION_VERSION )
+		{
+			// Migration already done on a previous session — nothing to do.
+			// (Subsequent unlocks correctly stay unclaimed until the player claims.)
+			return;
+		}
+
+		// Migrate existing unlocked achievements to claimed (they got auto-rewards
+		// from the old system). Runs only on the first load after this update.
 		if ( tamer.Achievements.Count > 0 )
 		{
 			bool migrated = false;
@@ -686,11 +708,10 @@ public sealed class AchievementManager : Component
 					migrated = true;
 				}
 			}
+			tamer.MigrationVersion = ACHIEVEMENT_CLAIM_MIGRATION_VERSION;
+			TamerManager.Instance?.SaveToCloud();
 			if ( migrated )
-			{
-				TamerManager.Instance?.SaveToCloud();
 				Log.Info( "[Achievement] Migrated existing unlocked achievements to claimed state" );
-			}
 			return;
 		}
 
@@ -730,6 +751,12 @@ public sealed class AchievementManager : Component
 			}
 		}
 
+		// Mark the achievement-claim migration done so it never runs again — even
+		// if no achievements unlocked here. Otherwise the next session (when this
+		// player DOES have achievement entries) would re-enter the migration block
+		// above and force-claim any legitimately-pending unlocks without rewards.
+		tamer.MigrationVersion = ACHIEVEMENT_CLAIM_MIGRATION_VERSION;
+
 		if ( unlocked > 0 )
 		{
 			NotificationManager.Instance?.AddNotification(
@@ -739,10 +766,11 @@ public sealed class AchievementManager : Component
 			);
 
 			Stats.SetValue( "achievements-count", tamer.Achievements.Values.Count( p => p.IsUnlocked ) );
-			TamerManager.Instance?.SaveToCloud();
 
 			Log.Info( $"[Achievement] Retroactively unlocked {unlocked} achievements" );
 		}
+
+		TamerManager.Instance?.SaveToCloud();
 	}
 
 	/// <summary>
@@ -763,6 +791,7 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalGoldEarned => tamer.TotalGoldEarned,
 			AchievementRequirement.TotalItemsBought => tamer.TotalItemsBought,
 			AchievementRequirement.ExpeditionsCompleted => tamer.TotalExpeditionsCompleted,
+			AchievementRequirement.BossesCleared => tamer.ClearedBosses?.Count ?? 0,
 			AchievementRequirement.TotalTradesCompleted => tamer.TotalTradesCompleted,
 			AchievementRequirement.ChatMessagesSent => tamer.ChatMessagesSent,
 			AchievementRequirement.BossTokensSpent => tamer.BossTokensSpent,
@@ -771,7 +800,12 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.ArenaWinStreak => tamer.ArenaWinStreak,
 			AchievementRequirement.ArenaSetsCompleted => tamer.ArenaSetsCompleted,
 			AchievementRequirement.SkillsUnlocked => tamer.SkillRanks?.Count ?? 0,
-			AchievementRequirement.SkillPointsInvested => tamer.SkillRanks?.Values.Sum() ?? 0,
+			// Must match the live hook (TamerManager.GetTotalSkillPointsSpent) — that
+			// is cost-weighted (rank × node.CostPerRank). The old `Values.Sum()` here
+			// summed raw ranks, undercounting whenever any node costs >1 SP/rank, so
+			// the achievement could fail to unlock retroactively for a player who
+			// genuinely invested 100+ SP.
+			AchievementRequirement.SkillPointsInvested => TamerManager.Instance?.GetTotalSkillPointsSpent() ?? 0,
 			AchievementRequirement.TamerCardsCollected => tamer.CollectedCards?.Count ?? 0,
 			AchievementRequirement.ArenaRankReached => GetRankNumericValue( tamer.ArenaRank ),
 			AchievementRequirement.BeastiaryCompleted => BeastiaryManager.Instance != null && BeastiaryManager.Instance.GetDiscoveryCount() >= BeastiaryManager.Instance.GetTotalSpeciesCount() && BeastiaryManager.Instance.GetTotalSpeciesCount() > 0 ? 1 : 0,

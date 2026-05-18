@@ -186,9 +186,14 @@ public sealed class BeastiaryManager : Component
 			}
 		}
 
-		// Check bestiary completion achievement
+		// Check bestiary completion achievement.
+		// Counts against the launch roster only — the retired AI-gen holdover
+		// species still live in the DB (so prior contracts don't break) but
+		// cannot be encountered, so requiring them would make the achievement
+		// permanently unreachable. GetTotalSpeciesCount / GetDiscoveryCount are
+		// both launch-roster scoped.
 		int total = GetTotalSpeciesCount();
-		if ( total > 0 && DiscoveredSpecies.Count >= total )
+		if ( total > 0 && GetDiscoveryCount() >= total )
 		{
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BeastiaryCompleted, 1 );
 		}
@@ -204,31 +209,40 @@ public sealed class BeastiaryManager : Component
 		return SeenSpecies.Contains( speciesId );
 	}
 
+	// Discovery / completion counts are scoped to the launch roster. The species
+	// DB still contains ~113 retired AI-gen holdovers (kept so prior player
+	// contracts don't break) that are hidden from the Beastbook and can't be
+	// encountered — counting them would make the completion display read wrong
+	// (e.g. "30/149") and make the "discover every species" achievement
+	// permanently unreachable. LaunchRoster is the single source of truth for
+	// what the Beastbook actually shows.
 	public int GetDiscoveryCount()
 	{
-		return DiscoveredSpecies.Count;
+		return DiscoveredSpecies.Count( id => MonsterManager.LaunchRoster.Contains( id ) );
 	}
 
 	public int GetSeenCount()
 	{
-		return SeenSpecies.Count;
+		return SeenSpecies.Count( id => MonsterManager.LaunchRoster.Contains( id ) );
 	}
 
 	public int GetTotalSpeciesCount()
 	{
-		return MonsterManager.Instance?.SpeciesDatabase.Count ?? 0;
+		return MonsterManager.LaunchRoster.Count;
 	}
 
 	public float GetCompletionPercent()
 	{
 		int total = GetTotalSpeciesCount();
 		if ( total == 0 ) return 0;
-		return (float)DiscoveredSpecies.Count / total;
+		// Clamp — a player who caught now-retired AI-gen species before they
+		// were hidden could otherwise read above 100%.
+		return Math.Clamp( (float)GetDiscoveryCount() / total, 0f, 1f );
 	}
 
 	public string GetCompletionText()
 	{
-		return $"{DiscoveredSpecies.Count}/{GetTotalSpeciesCount()}";
+		return $"{Math.Min( GetDiscoveryCount(), GetTotalSpeciesCount() )}/{GetTotalSpeciesCount()}";
 	}
 
 	// ============================================

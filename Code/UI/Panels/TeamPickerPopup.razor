@@ -282,10 +282,12 @@
 					 Row 2: PRESETS label + A/B/C slots (saved loadouts). -->
 				<div class="ps-controls-row">
 					<button class="ctrl-btn" onclick=@AutoFill onmouseover=@(() => OnHover("autofill"))>
+						<div class="cb-key picker-cap"><span>F</span></div>
 						<iconify icon="lucide:wand-2" Size=@(13) Color="#a78bfa" />
 						<span>Auto-fill</span>
 					</button>
 					<button class="ctrl-btn" onclick=@ClearTeam onmouseover=@(() => OnHover("clearteam"))>
+						<div class="cb-key picker-cap"><span>C</span></div>
 						<iconify icon="lucide:eraser" Size=@(13) Color="#94a3b8" />
 						<span>Clear</span>
 					</button>
@@ -305,6 +307,7 @@
 							<button class="preset-btn @(hasData ? "saved" : "")"
 									onclick=@(() => LoadPreset(pIdx))
 									onmouseover=@(() => OnHover("preset-load-" + pIdx))>
+								<div class="cb-key picker-cap"><span>@(pIdx + 1)</span></div>
 								<iconify icon="@(hasData ? "lucide:bookmark-check" : "lucide:bookmark")" Size=@(12) Color="@(hasData ? "#a78bfa" : "#64748b")" />
 								<span>@label</span>
 							</button>
@@ -324,6 +327,7 @@
 					<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled")"
 							onclick=@OnEmbarkClicked
 							onmouseover=@(() => OnHover("embark-cta"))>
+						<div class="cb-key picker-cap picker-cap-embark"><span>R</span></div>
 						<iconify icon="lucide:compass" Size=@(22) Color="#ffffff" />
 						<span class="embark-label">@(CanEmbark() ? "EMBARK" : (filled == 0 ? "PICK A BEAST" : "FILL YOUR TEAM"))</span>
 					</button>
@@ -333,6 +337,11 @@
 				<div class="picker-right">
 
 				<!-- ═══ FILTERS ═══ -->
+				<!-- The cycle-element hint sits on its OWN row directly under
+					 the FilterBar, hard-aligned to the LEFT edge so it reads as
+					 an annotation attached to the element dropdown (the
+					 left-most filter) — not as floating text by the sort
+					 controls on the far right. -->
 				<div class="picker-filters">
 				<FilterBar @ref="filterBar"
 						   CurrentElement=@_currentFilter
@@ -348,6 +357,12 @@
 						   OnNameFilterChanged=@OnNameFilterChanged
 						   OnSortDirectionChanged=@OnSortDirectionChanged
 						   AvailableNames=@GetMonsterNames() />
+					<div class="picker-cycle-hint">
+						<iconify class="pch-arrow" icon="lucide:corner-left-up" Size=@(14) Color="rgba(196, 181, 253, 0.9)" />
+						<div class="cb-key picker-cap"><span>[</span></div>
+						<div class="cb-key picker-cap"><span>]</span></div>
+						<span class="pch-label">cycle element</span>
+					</div>
 			</div>
 
 			<!-- ═══ ROSTER HEADER (sibling of grid, NOT wrapping it — matches
@@ -365,7 +380,7 @@
 				 imaginable). Bypassing flex-wrap by manually slicing the
 				 roster into rows of 5 in code-behind — each row is its own
 				 single-line flex container which lays out reliably. -->
-			<div class="picker-roster-scroll">
+			<div class="picker-roster-scroll" @ref="pickerRosterScroll">
 				@if ( roster.Count == 0 )
 				{
 					<div class="roster-empty">
@@ -376,7 +391,6 @@
 				else
 				{
 					@{
-						const int CARDS_PER_ROW = 5;
 						var rosterChunks = new List<List<Monster>>();
 						for ( int i = 0; i < roster.Count; i += CARDS_PER_ROW )
 						{
@@ -395,7 +409,7 @@
 								var isPicked = _team.Any( t => t?.Id == beast.Id );
 								var isFainted = beast.CurrentHP <= 0;
 								var isUnpickable = isFainted;
-								<div class="picker-card-wrapper @(isPicked ? "picked" : "") @(isFainted ? "fainted" : "") @(isUnpickable ? "unpickable" : "")"
+								<div class="picker-card-wrapper @(isPicked ? "picked" : "") @(isFainted ? "fainted" : "") @(isUnpickable ? "unpickable" : "") @(_kbIndex >= 0 && _kbIndex < roster.Count && roster[_kbIndex].Id == beast.Id ? "kb-selected" : "")"
 									 onclick=@(() => OnRosterCardClicked(beast))
 									 onmousedown=@(() => OnRosterCardMouseDown(beast))
 									 onmouseover=@(() => OnCardHover(beast.Id))>
@@ -666,6 +680,11 @@
 
 	private Guid? _hoveredCardId;
 	private string _hoveredKey;
+
+	// Keyboard navigation. The roster grid is a fixed 5-wide layout.
+	private const int CARDS_PER_ROW = 5;
+	private int _kbIndex = 0;
+	private Panel pickerRosterScroll;
 	private FilterBar filterBar;
 
 	// ─── DRAG-DROP STATE ───
@@ -749,6 +768,7 @@
 		{
 			Instance._hoveredKey = null;
 			Instance._hoveredCardId = null;
+			Instance._kbIndex = 0;
 			Instance.PreFillTeam( expeditionId );
 			Instance.NotifyTutorialIfTeamPopulated();
 		}
@@ -765,8 +785,73 @@
 	public override void Tick()
 	{
 		base.Tick();
-		if ( IsVisible && Input.Pressed( "Escape" ) )
+		if ( !IsVisible ) return;
+		if ( !UIModalState.IsTopModal( "TeamPickerPopup" ) ) return;
+
+		// Back / close.
+		if ( Input.Pressed( "Escape" ) || Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+		{
 			Close();
+			return;
+		}
+
+		// R embarks (OnEmbarkClicked self-guards on CanEmbark).
+		if ( Input.Pressed( "reload" ) )
+		{
+			OnEmbarkClicked();
+			return;
+		}
+
+		// F = Auto-fill, C = Clear. Flashlight/View are the engine actions
+		// bound to the F and C keys — reused here; GameHUD ignores them while
+		// a modal is open, so there's no collision.
+		if ( Input.Pressed( "Flashlight" ) ) { AutoFill(); StateHasChanged(); return; }
+		if ( Input.Pressed( "View" ) ) { ClearTeam(); StateHasChanged(); return; }
+
+		// 1 / 2 / 3 — preset slots: load if the slot holds a team, else save
+		// the current team into it (deny if there's nothing to save).
+		for ( int p = 0; p < 3; p++ )
+		{
+			if ( !Input.Pressed( "Slot" + ( p + 1 ) ) ) continue;
+			var preset = GetPreset( p );
+			bool slotHasData = preset != null && preset.MonsterIds.Count > 0;
+			if ( slotHasData ) LoadPreset( p );
+			else if ( _team.Any( t => t != null ) ) SavePreset( p );
+			else SoundManager.PlayDeny();
+			StateHasChanged();
+			return;
+		}
+
+		// [ / ] cycle the element filter.
+		if ( Input.Pressed( "RadioPrev" ) ) { CycleElementFilter( -1 ); return; }
+		if ( Input.Pressed( "RadioNext" ) ) { CycleElementFilter( 1 ); return; }
+
+		var roster = GetFilteredMonsters();
+		if ( roster.Count == 0 ) return;
+		_kbIndex = Math.Clamp( _kbIndex, 0, roster.Count - 1 );
+
+		// Space / Enter adds or removes the highlighted beast.
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			OnRosterCardClicked( roster[_kbIndex] );
+			StateHasChanged();
+			return;
+		}
+
+		int prev = _kbIndex;
+		if ( Input.Pressed( "Left" ) ) _kbIndex = Math.Max( 0, _kbIndex - 1 );
+		else if ( Input.Pressed( "Right" ) ) _kbIndex = Math.Min( roster.Count - 1, _kbIndex + 1 );
+		else if ( Input.Pressed( "Up" ) ) { if ( _kbIndex >= CARDS_PER_ROW ) _kbIndex -= CARDS_PER_ROW; }
+		else if ( Input.Pressed( "Down" ) ) _kbIndex = Math.Min( roster.Count - 1, _kbIndex + CARDS_PER_ROW );
+
+		if ( _kbIndex != prev )
+		{
+			SoundManager.PlayHover();
+			// Scroll the row holding the selection into view (the grid renders
+			// fixed 5-wide rows, so row index = card index / CARDS_PER_ROW).
+			UiGridScroll.ScrollIndexIntoView( pickerRosterScroll, _kbIndex / CARDS_PER_ROW, "picker-roster-row" );
+			StateHasChanged();
+		}
 	}
 
 	/// <summary>
@@ -1055,6 +1140,18 @@
 	// ═══════════════════════════════════════════════════════════════
 
 	private void OnElementChanged( string e ) { _currentFilter = e; SoundManager.PlayClick(); }
+
+	// Element-filter cycle order for the [ / ] hotkeys.
+	private static readonly string[] _elementFilterCycle =
+		{ "all", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit", "neutral" };
+
+	private void CycleElementFilter( int dir )
+	{
+		int i = System.Array.IndexOf( _elementFilterCycle, _currentFilter );
+		if ( i < 0 ) i = 0;
+		i = ( i + dir + _elementFilterCycle.Length ) % _elementFilterCycle.Length;
+		OnElementChanged( _elementFilterCycle[i] );
+	}
 	private void OnSortChanged( string s ) { _currentSort = s; SoundManager.PlayClick(); }
 	private void OnRarityChanged( string r ) { _currentRarity = r; SoundManager.PlayClick(); }
 	private void OnNameFilterChanged( string n ) { _currentNameFilter = n ?? ""; }
@@ -1325,6 +1422,7 @@
 		h.Add( _sortAscending );
 		foreach ( var t in _team ) h.Add( t?.Id ?? Guid.Empty );
 		h.Add( _hoveredCardId ?? Guid.Empty );
+		h.Add( _kbIndex );
 		h.Add( _dragSource?.Id ?? Guid.Empty );
 		h.Add( _dragHoverSlot ?? -1 );
 		var mm = MonsterManager.Instance;

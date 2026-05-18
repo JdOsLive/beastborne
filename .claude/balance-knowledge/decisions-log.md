@@ -23,6 +23,208 @@ Template:
 
 ## Entries
 
+## 2026-05-18 — Off-element moveset enrichment pass (full handmade roster)
+
+**Scope:** Follow-up to the same-day lore-audit pass. That pass was almost entirely same-element clash-fixing; this pass proactively ADDS lore-supported OFF-ELEMENT moves, applying the Dewdrop precedent (a Water/Nature beast that gained dawn-light Spirit + dawn-mist Wind moves because its description supports them). Beasts are NOT STAB-locked — description-driven flavor beats element purity (per `project_moveset_off_type_rule.md` / CLAUDE.md). **6 beasts touched, 6 slot swaps.** Zero new MoveDefinitions, zero stat/growth/BST changes, all 1-for-1, all reuse existing MoveDatabase IDs.
+
+### Method
+Re-read every beast's `Description` + `PersonalityHint`. Only acted where the WRITTEN TEXT clearly cues an element other than the beast's typing. A forgettable/generic on-element move (usually a Neutral `vicious_cut`/`crushing_blow`/`swift_lunge`, or a low-value Water `torrent_claw`) was swapped 1-for-1 for the lore-fitting off-element move at the same learn level.
+
+### Beasts EDITED (6)
+
+| Beast | Typing | Lv | Swap | Description cue |
+|---|---|---|---|---|
+| **Embrik** | Fire | 3 | `feint_jab` → `shade_step` (Shadow) | "A small headless foal **born still and silent**" — a dead foal animated by a borrowed flame, "unsure if the warmth it carries is truly its own." A revenant identity → Shadow. `shade_step` is also +1 priority physical like `feint_jab` — clean functional match. Embrik-only (the ghost angle resolves when the flame fills the helm at the Pyrgard/Manehelm stages). |
+| **Pyrgard** | Fire | 20 | `vicious_cut` → `iron_rush` (Metal) | "The flame grew with the foal, **forging a burning helm**." Explicit forge/metal image; Pyrgard evolves into Manehelm (Fire/**Metal**). Pre-evo foreshadows the evo's secondary element — same precedent as Padlip→Liliprince. `iron_rush` ("a steel-hard headbutt") = the forged helm as a weapon. |
+| **Gothsire** | Water | 24 | `torrent_claw` → `umbral_claw` (Shadow) | "A **brooding knight of the deep** who traded her standard-issue armor for **dark attire**." Gothsire evolves into Lochmaw (Water/**Shadow**); the dark-knight identity foreshadows it. `umbral_claw` ("shadow-infused claws, +1 crit") replaces a forgettable 45-BP Water physical. |
+| **Seraphiel** | Wind | 22 | `vicious_cut` → `sacred_strike` (Spirit) | "A **warden seraph** whose twin serpent arms cradle a **silvered blade**. It carries the weight of every life a Cherune chose to shelter." A celestial seraph wielding a blessed blade → Spirit. Cherune (pre-evo) already has Spirit moves; Seraphiel skipping Spirit was a line inconsistency. `sacred_strike` ("a blessed physical strike") = the silvered blade. |
+| **Aurael** | Wind | 38 | `crushing_blow` → `lunar_radiance` (Spirit) | "The crowned herald of the protector host. Every soul a Cherune once sheltered returns as a **phantom hand** at its side... Aurael's verdict is always **mercy**." Phantom hands of sheltered souls + crowned/haloed herald → Spirit. `lunar_radiance` (Spirit Special, moonlit) gives the final form a Spirit special — distinct from Seraphiel's Spirit physical, so the line reads as a Spirit thread that deepens each stage. |
+| **Twincoil** | Nature/Neutral | 24 | `vicious_cut` → `dread_gaze` (Shadow) | "A garden serpent born under a **Janus moon**... open its jaws and a **second pair of eyes** peers out from inside its mouth. **Neither pair blinks.**" Its signature `two_faced_strike` is literally "the inner head **hexes**." The unblinking inner-face stare → Shadow. `dread_gaze` ("a terrifying visage, lowers SPD") = the inner face's hexing gaze; slotted right after the `two_faced_strike` signature (L19). |
+
+### Beasts deliberately LEFT mono-element (and why)
+
+- **Pagefin** — eager Water-knight ("salutes anything that moves"), no off-element cue. Pure Water.
+- **Wishlift / Cherune / Heartwell** — already received Spirit off-element moves in earlier passes; not redone.
+- **Wishstar / Liliprince / Lochmaw / Manehelm / Dewdrop / Staiju** — already dual-typed and/or already carry off-element moves (Wishstar Wind/Spirit, Liliprince Water/Spirit, Lochmaw Water/Shadow + this pass touched Gothsire foreshadow, Manehelm Fire/Metal, Dewdrop Water/Nature + Spirit/Wind, Staiju gained `storm_talon` Wind in its rebuild).
+- **Gnoll / Gnollium** — pure gardener-fairy Nature identity ("tends a square foot of moss, every fallen leaf swept"). No off-element cue. Mono-Nature.
+- **Sheepot / Cerametz** — the clay pot is *fired earthen clay*, a faint Earth cue, BUT the pot is armor worn over the creature, not the creature's nature. The beast itself is cleanly root-body Nature + sheep Neutral. Judgment call — left mono to keep the root-body identity clean. (The "clay pot = Earth" conceit is already carried by the Anansi line.)
+- **Stomplet / Skunkape** — "his footprints sink deep" is a faint Earth cue, but it's flavor about a heavy giant's *weight*, not an earth-power. Cleanly Nature forest-giants; the prior pass already rebuilt Skunkape's set into clean Nature. Judgment call — left mono-Nature.
+- **Threadlet / Loomweaver** — Anansi clay-pot/silk/thread identity; the Earth typing is an intentional higher-level design decision (per the 2026-05-13 pass + team-lead note) and the silk-weaver identity doesn't cue a *specific* off-element move. Left mono-Earth.
+- **Jackacabra** — consistently shadow-predator by description, no off-element cue. Mono-Shadow.
+- **Padlip** — deliberately mono-Water per the logged design decision: the princely curse (and the Spirit element) "awakens at evolution" into Liliprince. The drifting crown-light is the dormant cue, intentionally NOT yet expressed mechanically. Left mono-Water per that decision.
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — 6 species blocks (Embrik, Pyrgard, Gothsire, Seraphiel, Aurael, Twincoil), 6 slot swaps.
+- `Assets/data/patchnotes-pending.json` — `balance` entry appended.
+- `.claude/balance-knowledge/decisions-log.md` — this entry.
+
+### Impact analysis
+
+- **Save migration:** zero. LearnableMoves hot-update via the existing `ValidateAndRepairMonster` pass on next load.
+- **No new MoveDefinitions** — every add is a pre-existing MoveDatabase ID. Zero `MoveDatabase.cs` edits.
+- **No stat / growth / BST / personality / catch / exp changes.** Move counts unchanged (all 1-for-1).
+- **Element-mix shift:** 6 previously mono-element (or mono-plus-Neutral) beasts now carry one description-justified off-element move. Pyrgard/Gothsire off-element adds are also evo-foreshadowing (their evolutions Manehelm/Lochmaw carry that exact secondary element).
+- **Power formula / fusion zero-drift:** unaffected.
+
+### Red flags triggered
+
+None.
+
+**Approved by:** coordinator directive 2026-05-18 — "Do a second pass for OFF-ELEMENT enrichment … where the lore genuinely supports it, swap a generic on-element move for the lore-fitting off-element one. Be judicious. Execute clear cases, flag judgment calls. Don't commit."
+
+---
+
+## 2026-05-18 — Full-roster moveset lore-audit pass (Dewdrop-depth re-verification)
+
+**Scope:** Third full sweep of the 26-species handmade launch roster — re-verifying the two prior moveset-lore passes (2026-05-13 "Roster-wide moveset lore audit" and "Strict moveset lore pass round 2") and catching residual clashes those passes missed or deferred. **9 beasts touched, 9 slot swaps total.** Zero new MoveDefinitions, zero stat/growth/BST changes, moveset-only. All swaps reuse pre-existing MoveDatabase IDs.
+
+### Method
+Applied the Dewdrop standard to every beast: each learnable move must defend itself against the specific beast's described body, element, and personality. Re-read all 26 species `Description` + `PersonalityHint` + full `LearnableMoves`, cross-referenced every move's element/category/flavor in `MoveDatabase.cs`.
+
+### Beasts EDITED (9)
+
+| Beast | Lv | Before → After | Lore reason |
+|---|---|---|---|
+| **Embrik** | 23 | `vicious_cut` → `cinders_curse` | "Brutal slash" on a Timid headless foal with no claws clashed twice (verb + anatomy). `cinders_curse` (Fire Status, ghostly guaranteed-burn) IS the hollow ghost-flame — zero anatomy claim. |
+| **Pyrgard** | 30 | `war_cry` → `forge_temper` | Loyal protector "remembering a debt it can never repay" doesn't rally with a battle cry. `forge_temper` keeps the +2 ATK effect but reframes as steeling resolve in the burning helm. |
+| **Manehelm** | 15 | `war_cry` → `forge_temper` | Same: Loyal sentinel-knight. Battle-cry verb clashes with the noble-protector identity (same clash the round-2 pass fixed on Skunkape/Cerametz). |
+| **Manehelm** | 42 | `primal_roar` → `ember_wall` | "Ancient roar" on a forged fire-knight reads off. `ember_wall` (Fire defensive status) fits "stands between danger and those it shields" — the sentinel raising its guard. |
+| **Seraphiel** | 5 | `gust_claw` → `breeze_cut` | `gust_claw` = "wind-wrapped talons"; Seraphiel has twin serpent-arms cradling a blade, NOT talons. `breeze_cut` (Wind Special, "sharp gust") = a blade-warden's basic ranged wind-cut. |
+| **Aurael** | 5 | `gust_claw` → `breeze_cut` | Same talon problem — Aurael has phantom hands + a blade. `breeze_cut` = the herald's wind-cut. |
+| **Wishstar** | 30 | `storm_talon` → `gale_slam` | `storm_talon` = "electrified wind claws"; Wishstar is a planet-bodied king with a sun-crown — no talons. `gale_slam` (Wind Physical, "slams with hurricane force") = the colossal king-form's cosmic wind slam, no anatomy claim. |
+| **Liliprince** | 1 | `tidal_ward` → `aqua_shield` | `tidal_ward` = "a ward of ocean energy"; Liliprince is a Weavermere POND prince. Round-2 pass swapped its `abyssal_wave`/`tsunami_crush` for the same reason but missed `tidal_ward`. `aqua_shield` = pond-water barrier, no ocean claim. |
+| **Lochmaw** | 30 | `brace` → `dread_gaze` | Ships the round-2 "Phase 2 candidate" — Bold deep-sea apex predator "the deep waters part before it" advances, doesn't `brace`. `dread_gaze` (Shadow Status, lowers SPD) is STAB on Lochmaw's Water/Shadow typing and fits the predator's terrifying presence. |
+| **Cerametz** | 30 | `blossom_frenzy` → `wild_thorn` | Ships the round-2 "Phase 2 candidate" — `blossom_frenzy` self-confuses the user ("a wild flurry"); a Loyal, patient urn-sheep doesn't go into a self-confusing frenzy (same reason round-2 dropped it from Gnollium). `wild_thorn` (Nature Physical, vine-band lashing) fits the Loyal guardian; also a better mechanical fit since Cerametz is a DEF/SpD tank with poor SpA. |
+
+### Beasts RE-VERIFIED clean (17 — no change needed)
+
+Dewdrop, Staiju (both rebuilt in the 2026-05-13 dedicated pass — still solid), Sheepot, Gnoll, Gnollium, Stomplet, Skunkape, Twincoil, Jackacabra, Wishlift, Heartwell, Padlip, Pagefin, Gothsire, Threadlet, Loomweaver, plus Cerametz/Manehelm/etc. on all non-swapped slots.
+
+### Judgment calls (flagged, NOT changed)
+
+- **Cherune `gust_claw` L7** — a novice cherub has small grasping hands; "wind-wrapped talons" is a stretch but a cherub is humanoid enough to be borderline-defensible. No clean in-tier Wind-physical replacement exists that isn't already on Cherune's list. Left as-is.
+- **Seraphiel `storm_talon` L36** — same "talons" wording as the `gust_claw` fixes, but it's a mid-game slot and prior passes broadly accepted talon-named Wind moves on wind beasts. No clean ~75-BP Wind-physical replacement free on Seraphiel's list. Left as-is; flag for a future pass if a new move is added.
+- **Manehelm `annihilate` L58 / Aurael `war_cry` L45 + `annihilate` L50** — "devastating force" reads against a protector/mercy-herald, BUT Aurael's PersonalityHint explicitly invokes "a fury that existed long before it had a body," and L50/L58 are the endgame-nuke slots common to all three starter caps. A protector delivering a final judgement-blow to a real threat is defensible. Kept.
+- **Pagefin/Gothsire/Lochmaw ocean moves** — brine/tidal/abyssal flavor is CORRECT for this line (ocean queen's royal guard), unlike the pond/well beasts. `torrent_claw`/`aqua_strike` "limb/claw" wording on a fish-knight is borderline but accepted (knightly fish-guard anatomy). No change.
+- **Threadlet/Loomweaver Earth-via-clay-pot** — intentional design conceit per the 2026-05-13 pass and team-lead note. Not revisited.
+
+### Files touched
+
+- `Code/Core/MonsterManager.cs` — 9 species blocks, 9 slot swaps (Embrik, Pyrgard, Manehelm ×2, Seraphiel, Aurael, Wishstar, Liliprince, Lochmaw, Cerametz).
+- `Assets/data/patchnotes-pending.json` — `balance` entry appended.
+- `.claude/balance-knowledge/decisions-log.md` — this entry.
+
+### Impact analysis
+
+- **Save migration:** zero. LearnableMoves hot-update via the existing `ValidateAndRepairMonster` move-validation pass on next load — dropped move IDs get pruned from instance MoveSets, new ones become available at the listed learn levels.
+- **No new MoveDefinitions** — every add is a pre-existing MoveDatabase ID. Zero `MoveDatabase.cs` edits, zero plumbing risk.
+- **No stat / growth / BST / personality / catch / exp changes.** Pure flavor-driven moveset reassignment.
+- **Move count deltas:** none — every change is a 1-for-1 slot swap, all 26 beasts keep their existing move counts.
+- **Power formula / fusion zero-drift:** unaffected (no stat or gene math touched).
+
+### Red flags triggered
+
+None. All swaps stay within tier, within roster move-distribution patterns, within existing engine plumbing.
+
+**Approved by:** coordinator directive 2026-05-18 — "Do a full moveset lore-audit pass over every currently-available beast … the same depth as Dewdrop. Execute the clear lore-driven swaps — this is a do-it pass. Flag judgment calls. Don't commit."
+
+---
+
+## 2026-05-13 — Hard Mode v1.2.0 ship (per-expedition, new multipliers + Hard Tokens)
+
+**Scope:** Hard Mode taken LIVE in v1.2.0 after user reversed the 2026-04-27 "Hard Mode dormant" directive (Steam reviewer asked for difficulty option). Most of the per-expedition system was already wired in code from a prior in-flight pass — this entry covers the math bump from old (+10 levels / 1.5× rewards) to the new locked-in shape, the deletion of the global `HardModeEnabled` flag, the new per-stat enemy multipliers, the drop-rate multiplier, and the per-zone Hard Token currency on Tamer.
+
+### Authority chain
+
+User confirmed Option A (ship live) via team-lead 2026-05-13. Locked design landed in `project_hard_mode_live.md` memory with explicit multiplier table and "DELETE HardModeEnabled" instruction. Earlier 2026-04-27 directive ("Hard Mode dormant, don't mention in copy") superseded.
+
+### Math (locked by user)
+
+**Enemy multipliers** (applied at spawn, AFTER `RecalculateStats` so v1.0.3 linear stat formula stays intact):
+- Level: `Math.Floor(baseLevel * 1.25)` — replaces old flat `+10`
+- ATK / SpA: `× 1.15`
+- HP / DEF / SpD: `× 1.10`
+- SPD: unchanged
+
+**Rewards** (split from prior single 1.5× into three independent multipliers):
+- XP: `× 2.0`
+- Gold: `× 2.0`
+- Drop rate: `× 1.5`
+
+**Hard Tokens** (new currency, 4 per-zone buckets on Tamer, 3-5 awarded per Hard clear via `_sharedRandom.Next(MIN, MAX+1)`):
+- Tide Tokens — Weaverton (`weaverton_pasture`, `weaverton_approach`)
+- Loom Tokens — Weaverwood (`saltmoor_forest`)
+- Dawn Tokens — Weavermere (`old_saltmoor`)
+- Threaded Tokens — Whispering Hollow (`mini_loomweaver_burrow`)
+
+Redemption flow (what tokens BUY) deferred to items-economy lane.
+
+### Sanity-check passes
+
+**Level bump shape changes behavior on previously-cleared Hard runs.** Old: flat `+10` (so L20 Weavermere Hard = L30). New: `floor(L*1.25)` (so L20 → L25). Low-tier expeditions get EASIER on level under the new formula; high-tier stay similar. Sanity calls were:
+- L1 Weaverton Hard: old L11 → new L1. Tutorial gets back to its design level. ✅
+- L10 Weaverwood Hard: old L20 → new L12. Easier, still meaningful. ✅
+- L20 Weavermere Hard: old L30 → new L25. Easier on level, but new ATK/HP per-stat multipliers compound, so net difficulty is similar. ✅
+- L25 Whispering Hollow Hard: old L35 → new L31. Same shape.
+- Players who already cleared old-Hard see slightly easier runs but +2× rewards — net win for them.
+
+**Damage formula intact.** Per `feedback_combat_formula_design.md`: multiplier rides on the stat OUTPUT (HP/ATK/DEF/SpA/SpD), never on the formula INPUT (level scaling, damage roll). v1.0.3 linear formula `Base + Level·Growth·0.6 + Gene` runs unchanged; Hard Mode multiplies the result.
+
+### Deletes (per memory directive)
+
+- `ExpeditionManager.HardModeEnabled` (global UI cache field) — DELETED. UI now passes `hardModeEnabled` (local) directly into `StartExpedition(id, hardMode)` at embark time.
+- `HARD_MODE_LEVEL_BONUS = 10` constant — DELETED, replaced by `HARD_MODE_LEVEL_MULT = 1.25f`.
+- `HARD_MODE_REWARD_MULTIPLIER = 1.5f` constant — DELETED, replaced by `HARD_MODE_XP_MULT = 2.0f` + `HARD_MODE_GOLD_MULT = 2.0f` + `HARD_MODE_DROP_RATE_MULT = 1.5f`.
+- `GetRewardMultiplier()` method — DELETED, split into `GetXPMultiplier()`, `GetGoldMultiplier()`, `GetDropRateMultiplier()`.
+
+### Adds
+
+- `HARD_MODE_LEVEL_MULT`, `HARD_MODE_ATK_MULT`, `HARD_MODE_HPDEFSPD_MULT`, `HARD_MODE_XP_MULT`, `HARD_MODE_GOLD_MULT`, `HARD_MODE_DROP_RATE_MULT` constants (ExpeditionManager).
+- `HARD_MODE_TOKEN_AWARD_MIN = 3`, `HARD_MODE_TOKEN_AWARD_MAX = 5` constants.
+- `ApplyHardModeStatMultipliers(Monster)` helper — applied in both `CreateBossMonster` and `CreateEnemyMonster` after `RecalculateStats`.
+- `ZoneTokenBucket` static dict mapping expedition-id → token-bucket-name.
+- `AwardHardModeTokens()` helper — called at the end of both reward-award paths (`RetryExpedition` and `CompleteExpedition`).
+- `TideTokens`, `LoomTokens`, `DawnTokens`, `ThreadedTokens` int fields on `Tamer.cs` (default 0 — no save migration needed).
+- `GetDropRateMultiplier()` consumed in `ItemManager.RollDrops` to scale `BaseDropChance` (both element-table and base-table paths).
+
+### Files touched
+
+- `Code/Core/ExpeditionManager.cs` — constants block + helper methods rewrite; both reward sites (`:774-781` RetryExpedition, `:1449-1458` CompleteExpedition) call new split multipliers + `AwardHardModeTokens()`; `CreateBossMonster` + `CreateEnemyMonster` call `ApplyHardModeStatMultipliers`.
+- `Code/Core/ItemManager.cs` — drop-chance calc at `:2747` and `:2761` and `:2783` multiplies by `GetDropRateMultiplier()`.
+- `Code/Data/Tamer.cs` — 4 Hard Token integer fields added.
+- `Code/UI/Panels/ExpeditionPanel.razor` — `HARD_MODE_LEVEL_BONUS` → `Math.Floor(... * HARD_MODE_LEVEL_MULT)`; `HARD_MODE_REWARD_MULTIPLIER` → `HARD_MODE_GOLD_MULT` / `HARD_MODE_XP_MULT`; removed `HardModeEnabled` assignments at `:1299` and `:1881`.
+- `Code/UI/Panels/HelpPanel.razor` — Hard Mode callout text updated (was "Cartographer skill unlocks Hard Mode, 1.5×", now "Clear Normal to unlock, +25% level / +15% ATK / +10% HP, 2× rewards, Hard Token currency").
+- `Assets/data/patchnotes-pending.json` — feature entry rewritten with the full multiplier breakdown + token names.
+
+### Files NOT touched (deferred to other lanes per scope-control)
+
+- `Code/Data/SkillNode.cs` `CartographerUnlock` effect type — orphaned but not deleted. Memory says "Cartographer skill node: may still exist as a no-op in the skill tree. Cleanup deferred to progression lane."
+- `Code/Core/ItemManager.cs` four `UnlockCartographerMode` items (lines 771-816) — same; orphaned but content-lane scope.
+- `Code/UI/Panels/HelpPanel.razor:4209, 4281` Cartographer skill descriptions — same deferral.
+
+### Impact analysis
+
+- **Save migration:** none. The 4 new Tamer token fields default to 0; deserializer fills them on load. Existing `HardModeUnlocked` / `HardModeCleared` dicts unchanged.
+- **Power formula:** unchanged. Hard Mode rides on output, not input.
+- **Wave-clear reward applications:** the existing per-wave reward awards (`AccumulatedGold`, `AccumulatedXP`) go through `BattleSimulator` not the manager paths I touched — progression-2's plumbing should already be applying the Hard flag to those. Coordinated via SendMessage.
+- **Drop-rate impact:** Hard Mode players see drop rate at 1.5× base × (skill bonuses) × (Lucky Charm) × (1.5 Hard mult). Stacks multiplicatively. Sanity: a 6% base drop in Hard Mode with no skill investment → 9% effective. With Lucky Charm 2× → 18%. Within design intent.
+
+### Red flags
+
+- **Level-drop for previously-cleared low-tier Hard runs.** Documented above. Net win for players because +rewards compensate.
+- **`Math.Floor` import.** ExpeditionManager already uses `Math` elsewhere — no new using needed (verified).
+
+### Open follow-ups
+
+1. **Token redemption flow** — items-economy lane will build the shop / trade NPC sink for Tide/Loom/Dawn/Threaded tokens. Tokens accumulate but currently have no use until that ships.
+2. **Cartographer skill node cleanup** — progression lane / hygiene-2 to flag-as-deprecated or remove. Currently orphaned but harmless.
+3. **HelpPanel L4209 / L4281** Cartographer skill descriptions — update or remove when the skill node decision lands.
+
+**Approved by:** user via team-lead 2026-05-13 — "someone asked for hard mode so maybe we add that in if you beat an expedition you can turn on hard mode for it" + greenlight Option A on the conflict flag.
+
+---
+
 ## 2026-05-13 — Strict moveset lore pass (round 2) + Dewdrop Nature density boost; Staiju evo handed off to user+artist
 
 **Scope:** Strict re-audit of every launch-roster beast previously "cleared" in the first lore pass, plus a Nature-density boost for Dewdrop, plus a closure note on Staiju's evo question. The first audit was too lenient (4 edits of 22); this one is stricter. **15 beasts touched, 30+ slot swaps + 3 drops total.** Zero new MoveDefinitions, zero stat changes, moveset-only.
