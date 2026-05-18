@@ -937,8 +937,8 @@ else if ( guildView == "myguild" )
 				     problem and gives officers a place to edit the long-form
 				     description without diving into Settings. -->
 				@{
-					// Plaza "info" zone kb indices — match TickPlazaInfo's live
-					// list (motd pencil first when shown, then desc pencil).
+					// Plaza "info" zone kb indices — match GetPlazaInfoPencils'
+					// live list (motd pencil first when shown, then desc pencil).
 					var infoMotdKbIdx = 0;
 					var infoDescKbIdx = ( gm.IsOfficer && !editingMotd ) ? 1 : 0;
 				}
@@ -2060,131 +2060,219 @@ else if ( guildView == "myguild" )
 		TickPlazaInput();
 	}
 
-	// Plaza zones, cycled with Tab in visual top-to-bottom order: action tiles
-	// → info cards (announcement/description edit pencils) → roster → perks →
-	// danger bar. The "info" zone is officer-only at runtime (the pencils only
-	// render for officers) — TickPlazaInfo no-ops when no pencils are present.
+	// Plaza zones in visual top-to-bottom order: action tiles → info cards
+	// (announcement/description edit pencils) → roster grid → perks list →
+	// danger bar. W/S flow VERTICALLY through the whole plaza as one continuous
+	// cursor, crossing zone boundaries automatically; A/D move horizontally
+	// WITHIN the current zone. There is NO Tab zone-switch — playtest found it
+	// undiscoverable. The "info" zone is officer-only at runtime; when it has
+	// no pencils a vertical crossing passes straight through tiles↔roster.
 	private static readonly string[] _plazaZones = { "tiles", "info", "roster", "perks", "danger" };
 
 	private void TickPlazaInput()
 	{
 		var gm = GuildManager.Instance;
-		var guild = gm?.Guild;
 		var members = gm?.Members ?? new List<GuildMemberInfo>();
 
 		// Q — leave the plaza. The plaza is the Guild section root, so Q here
 		// should exit the section; let it fall through to GameHUD (do NOT
-		// claim the key).
-		// (No PanelHandledBackKey — GameHUD handles section exit.)
-
-		// Tab — cycle plaza zones. The "info" zone is skipped for non-officers
-		// (its only controls are the officer-gated edit pencils) so Tab never
-		// parks on an empty zone.
-		if ( Input.Pressed( "Score" ) )
-		{
-			int zi = Array.IndexOf( _plazaZones, _kbZone );
-			if ( zi < 0 ) zi = -1;
-			for ( int step = 0; step < _plazaZones.Length; step++ )
-			{
-				zi = ( zi + 1 ) % _plazaZones.Length;
-				if ( _plazaZones[zi] == "info" && !(gm?.IsOfficer ?? false) ) continue;
-				break;
-			}
-			_kbZone = _plazaZones[zi];
-			_kbIndex = 0;
-			_kbActive = true;
-			SoundManager.PlayHover();
-			StateHasChanged();
-			return;
-		}
+		// claim the key — GameHUD handles section exit).
 
 		bool zoneIsPlaza = Array.IndexOf( _plazaZones, _kbZone ) >= 0;
 		if ( !_kbActive || !zoneIsPlaza )
 		{
+			// First nav keypress just lights the cursor on tiles[0].
 			if ( NavPressed() ) { _kbActive = true; _kbZone = "tiles"; _kbIndex = 0; SoundManager.PlayHover(); StateHasChanged(); }
 			return;
 		}
 
-		switch ( _kbZone )
+		// ── Vertical flow (W/S) — crosses zone boundaries. Roster is the only
+		//    multi-row zone: W/S step a grid row inside it and only cross out
+		//    at the grid's true top / bottom edge. Every other zone is a
+		//    single row, so any W/S there immediately crosses zones. ──
+		if ( Input.Pressed( "Up" ) )    { PlazaVertical( gm, members, -1 ); return; }
+		if ( Input.Pressed( "Down" ) )  { PlazaVertical( gm, members,  1 ); return; }
+
+		// ── Horizontal flow (A/D) — within the current zone only. ──
+		if ( Input.Pressed( "Left" ) )  { PlazaHorizontal( gm, members, -1 ); return; }
+		if ( Input.Pressed( "Right" ) ) { PlazaHorizontal( gm, members,  1 ); return; }
+
+		// ── Space/Enter — activate the focused control. ──
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			PlazaActivate( gm, members );
+	}
+
+	// Count of focusable items in a plaza zone. 0 = empty zone (skip on cross).
+	private int PlazaZoneCount( string zone, GuildManager gm, List<GuildMemberInfo> members )
+	{
+		switch ( zone )
 		{
-			case "tiles":  TickPlazaTiles( gm ); break;
-			case "info":   TickPlazaInfo( gm ); break;
-			case "roster": TickPlazaRoster( members ); break;
-			case "perks":  TickPlazaPerks(); break;
-			case "danger": TickPlazaDanger( gm, members ); break;
+			case "tiles":  return 1 + (gm.IsOfficer ? 2 : 0);          // browse + invite + settings
+			case "info":   return GetPlazaInfoPencils( gm ).Count;     // 0..2 edit pencils
+			case "roster": return GetPlazaRosterMembers( members ).Count;
+			case "perks":  return GetPerkList().Count;
+			case "danger": return GetPlazaDangerActions( gm, members ).Count;
+		}
+		return 0;
+	}
+
+	// Vertical move. `dir` = -1 up / +1 down. Inside the roster grid this steps
+	// one grid row; everywhere else (single-row zones) it crosses to the next
+	// non-empty zone, landing on that zone's first (down) or last (up) item.
+	private void PlazaVertical( GuildManager gm, List<GuildMemberInfo> members, int dir )
+	{
+		int count = PlazaZoneCount( _kbZone, gm, members );
+
+		// Roster grid — W/S move by a row; only cross out at the grid edge.
+		if ( _kbZone == "roster" && count > 0 )
+		{
+			int cols = GetRosterColumns();
+			int next = _kbIndex + dir * cols;
+			if ( next >= 0 && next < count )
+			{
+				_kbIndex = next;
+				SoundManager.PlayHover();
+				StateHasChanged();
+				return;
+			}
+			// Off the top/bottom edge — fall through to the zone cross.
+		}
+
+		PlazaCrossZone( gm, members, dir );
+	}
+
+	// Cross to the next/previous non-empty plaza zone. Going DOWN lands on the
+	// new zone's FIRST item; going UP lands on its LAST item.
+	private void PlazaCrossZone( GuildManager gm, List<GuildMemberInfo> members, int dir )
+	{
+		int zi = Array.IndexOf( _plazaZones, _kbZone );
+		if ( zi < 0 ) zi = 0;
+		for ( int step = 0; step < _plazaZones.Length; step++ )
+		{
+			int ni = zi + dir * ( step + 1 );
+			if ( ni < 0 || ni >= _plazaZones.Length ) return; // top/bottom of plaza — no-op
+			var zone = _plazaZones[ni];
+			int c = PlazaZoneCount( zone, gm, members );
+			if ( c <= 0 ) continue;                            // empty zone — skip through
+			_kbZone = zone;
+			_kbIndex = dir > 0 ? 0 : c - 1;                    // down→first item, up→last
+			SoundManager.PlayHover();
+			// Perks live in an overflow:scroll list — keep the focused row on
+			// screen. (Roster grid is overflow:hidden — no scroll-follow.)
+			if ( zone == "perks" ) UiGridScroll.ScrollIndexIntoView( perksScrollRef, _kbIndex, "perk-row" );
+			StateHasChanged();
+			return;
 		}
 	}
 
-	// Announcement / Description edit pencils — the only focusable controls in
-	// the monuments row. Both are officer-only AND hidden while their editor is
-	// open, so the live list is rebuilt each frame with the same conditions as
-	// the markup. Space opens the editor (same as clicking the pencil) —
-	// TickEditorInput then owns the keyboard until the editor closes.
-	private void TickPlazaInfo( GuildManager gm )
+	// Horizontal move within the current zone. A/D wrap inside the zone — they
+	// never cross zones. For the roster grid, A/D step one card.
+	private void PlazaHorizontal( GuildManager gm, List<GuildMemberInfo> members, int dir )
+	{
+		int count = PlazaZoneCount( _kbZone, gm, members );
+		if ( count <= 0 ) return;
+		_kbIndex = Math.Clamp( _kbIndex + dir, 0, count - 1 );
+		SoundManager.PlayHover();
+		if ( _kbZone == "perks" )
+			UiGridScroll.ScrollIndexIntoView( perksScrollRef, _kbIndex, "perk-row" );
+		StateHasChanged();
+	}
+
+	// Activate (Space/Enter) the focused control in the current zone.
+	private void PlazaActivate( GuildManager gm, List<GuildMemberInfo> members )
+	{
+		switch ( _kbZone )
+		{
+			case "tiles":
+			{
+				int count = PlazaZoneCount( "tiles", gm, members );
+				int i = Math.Clamp( _kbIndex, 0, count - 1 );
+				if ( i == 0 )
+				{
+					SoundManager.PlayForward();
+					guildView = "browse"; viewingGuild = null; LoadGuildsFromApi();
+					ResetKb();
+				}
+				else if ( i == 1 ) OnInviteClicked();
+				else { showSettingsModal = true; SoundManager.PlayClick(); }
+				StateHasChanged();
+				break;
+			}
+			case "info":
+			{
+				var pencils = GetPlazaInfoPencils( gm );
+				if ( pencils.Count == 0 ) return;
+				int i = Math.Clamp( _kbIndex, 0, pencils.Count - 1 );
+				if ( pencils[i] == "motd" ) StartEditMotd();
+				else StartEditDescription();
+				SoundManager.PlayClick();
+				StateHasChanged();
+				break;
+			}
+			case "roster":
+			{
+				var ordered = GetPlazaRosterMembers( members );
+				if ( ordered.Count == 0 ) return;
+				int i = Math.Clamp( _kbIndex, 0, ordered.Count - 1 );
+				selectedMember = ordered[i];
+				showMemberMenu = true;
+				SoundManager.PlayClick();
+				StateHasChanged();
+				break;
+			}
+			case "perks":
+				// Perks are display-only — Space is intentionally a no-op.
+				break;
+			case "danger":
+			{
+				var actions = GetPlazaDangerActions( gm, members );
+				if ( actions.Count == 0 ) return;
+				int i = Math.Clamp( _kbIndex, 0, actions.Count - 1 );
+				switch ( actions[i] )
+				{
+					case "claim":    OnClaimLeadership(); SoundManager.PlayPopup(); break;
+					case "transfer": OnTransferOwnership(); break;
+					case "leave":    OnLeaveGuild(); SoundManager.PlayPopup(); break;
+					case "disband":  OnDisbandGuild(); SoundManager.PlayPopup(); break;
+				}
+				StateHasChanged();
+				break;
+			}
+		}
+	}
+
+	// ── Live focusable-item lists per zone — rebuilt each call so conditional
+	//    controls match the markup exactly. ──
+
+	// Announcement / Description edit pencils — both officer-only AND hidden
+	// while their editor is open.
+	private List<string> GetPlazaInfoPencils( GuildManager gm )
 	{
 		var pencils = new List<string>();
 		if ( gm.IsOfficer && !editingMotd ) pencils.Add( "motd" );
 		if ( gm.IsOfficer && !editingDescription ) pencils.Add( "desc" );
-		if ( pencils.Count == 0 ) return; // nothing to focus — Tab passes through
-
-		if ( Input.Pressed( "Up" ) || Input.Pressed( "Left" ) ) MoveKb( pencils.Count, -1 );
-		else if ( Input.Pressed( "Down" ) || Input.Pressed( "Right" ) ) MoveKb( pencils.Count, 1 );
-		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, pencils.Count - 1 );
-			if ( pencils[_kbIndex] == "motd" ) StartEditMotd();
-			else StartEditDescription();
-			SoundManager.PlayClick();
-			StateHasChanged();
-		}
+		return pencils;
 	}
 
-	// Action tiles (top-right): Browse, [Invite, Settings] when officer.
-	private void TickPlazaTiles( GuildManager gm )
+	// Roster portraits in render order (online → role → arena points).
+	private List<GuildMemberInfo> GetPlazaRosterMembers( List<GuildMemberInfo> members )
 	{
-		int count = 1 + (gm.IsOfficer ? 2 : 0); // browse + invite + settings
-		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
-		if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
-		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
-			if ( _kbIndex == 0 )
-			{
-				SoundManager.PlayForward();
-				guildView = "browse"; viewingGuild = null; LoadGuildsFromApi();
-				ResetKb();
-			}
-			else if ( _kbIndex == 1 ) OnInviteClicked();
-			else { showSettingsModal = true; SoundManager.PlayClick(); }
-			StateHasChanged();
-		}
-	}
-
-	private void TickPlazaRoster( List<GuildMemberInfo> members )
-	{
-		var ordered = members
+		return members
 			.OrderByDescending( m => m.IsOnline )
 			.ThenByDescending( m => m.Role )
 			.ThenByDescending( m => m.ArenaPoints )
 			.ToList();
-		if ( ordered.Count == 0 ) return;
+	}
 
-		// Live column count from the rendered portrait grid. The portrait grid
-		// is `overflow: hidden` (not a scroll container) so there's no scroll
-		// follow — the roster box sizes to fit its members.
-		int cols = GetRosterColumns();
-		if ( Input.Pressed( "Left" ) ) MoveKb( ordered.Count, -1 );
-		else if ( Input.Pressed( "Right" ) ) MoveKb( ordered.Count, 1 );
-		else if ( Input.Pressed( "Up" ) ) MoveKb( ordered.Count, -cols );
-		else if ( Input.Pressed( "Down" ) ) MoveKb( ordered.Count, cols );
-		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, ordered.Count - 1 );
-			selectedMember = ordered[_kbIndex];
-			showMemberMenu = true;
-			SoundManager.PlayClick();
-			StateHasChanged();
-		}
+	// Danger-bar buttons in render order.
+	private List<string> GetPlazaDangerActions( GuildManager gm, List<GuildMemberInfo> members )
+	{
+		var actions = new List<string>();
+		if ( gm.CanClaimLeadership() ) actions.Add( "claim" );
+		if ( gm.IsLeader && members.Count > 1 ) actions.Add( "transfer" );
+		actions.Add( "leave" );
+		if ( gm.IsLeader ) actions.Add( "disband" );
+		return actions;
 	}
 
 	private int GetRosterColumns()
@@ -2195,44 +2283,6 @@ else if ( guildView == "myguild" )
 		float cw = card?.Box.Rect.Width ?? 0f;
 		if ( gw <= 0f || cw <= 0f ) return 6;
 		return Math.Max( 1, (int)(gw / (cw + 12f)) ); // +12 = grid gap
-	}
-
-	private void TickPlazaPerks()
-	{
-		var perks = GetPerkList();
-		if ( perks.Count == 0 ) return;
-		if ( Input.Pressed( "Up" ) ) MoveKb( perks.Count, -1 );
-		else if ( Input.Pressed( "Down" ) ) MoveKb( perks.Count, 1 );
-		// Perks aren't actionable — Space is a no-op here (display-only list).
-
-		if ( NavPressed() )
-			UiGridScroll.ScrollIndexIntoView( perksScrollRef, _kbIndex, "perk-row" );
-	}
-
-	private void TickPlazaDanger( GuildManager gm, List<GuildMemberInfo> members )
-	{
-		// Build the live danger-button list in render order.
-		var actions = new List<string>();
-		if ( gm.CanClaimLeadership() ) actions.Add( "claim" );
-		if ( gm.IsLeader && members.Count > 1 ) actions.Add( "transfer" );
-		actions.Add( "leave" );
-		if ( gm.IsLeader ) actions.Add( "disband" );
-		if ( actions.Count == 0 ) return;
-
-		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) ) MoveKb( actions.Count, -1 );
-		else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) ) MoveKb( actions.Count, 1 );
-		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, actions.Count - 1 );
-			switch ( actions[_kbIndex] )
-			{
-				case "claim":    OnClaimLeadership(); SoundManager.PlayPopup(); break;
-				case "transfer": OnTransferOwnership(); break;
-				case "leave":    OnLeaveGuild(); SoundManager.PlayPopup(); break;
-				case "disband":  OnDisbandGuild(); SoundManager.PlayPopup(); break;
-			}
-			StateHasChanged();
-		}
 	}
 
 	// ── RAID ENCOUNTER VIEW ──────────────────────────────────────────────────
@@ -3264,7 +3314,13 @@ else if ( guildView == "myguild" )
 	{
 		var guild = GuildManager.Instance?.Guild;
 		if ( guild == null ) return 0;
-		return guild.GuildXP - GuildManager.GetXPForGuildLevel( guild.Level );
+		long inLevel = guild.GuildXP - GuildManager.GetXPForGuildLevel( guild.Level );
+		// Clamp to the level span. If GuildXP has run past the next-level
+		// threshold (server-side Level lagging behind its XP, or legacy guild
+		// data), the bar FILL already clamps to 100% — keep the displayed
+		// numerator in sync instead of reading nonsense like "30,180 / 6,510".
+		long needed = GetGuildXPNeededForNext();
+		return needed > 0 ? Math.Clamp( inLevel, 0L, needed ) : Math.Max( 0L, inLevel );
 	}
 
 	private long GetGuildXPNeededForNext()
