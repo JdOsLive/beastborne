@@ -120,8 +120,9 @@ public sealed class MonsterManager : Component
 		"stomplet",     // shepherd of the sheepots, wild in forest (nature)
 		"skunkape",     // stomplet evo, the elder bigfoot shepherd (nature, rare)
 
-		// Beastiary-only (no map placement yet, handmade — Jet)
-		"staiju",       // electric cat, Raijū-form (electric); was Staticling
+		// (Staiju temporarily hidden from the launch roster — its species def
+		//  stays in the DB so it can be slotted back in. Re-add "staiju" here
+		//  and restore its BeastiaryNumber to bring it back.)
 	};
 
 	public static bool IsLaunchAvailable( string speciesId ) => LaunchRoster.Contains( speciesId );
@@ -2625,7 +2626,9 @@ public sealed class MonsterManager : Component
 			CardScale = 1.05f, CardOffsetX = 2f, CardOffsetY = 9f,
 			MiniScale = 1.35f, MiniOffsetX = 1f, MiniOffsetY = -14f,
 			DetailIconScale = 1.25f, DetailIconOffsetX = 6f, DetailIconOffsetY = -9f,
-			BeastiaryNumber = 26
+			// 0 = hidden from the Beastbook. Staiju is temporarily pulled from
+			// the launch roster; restore to 26 to bring it back.
+			BeastiaryNumber = 0
 
 		} );
 
