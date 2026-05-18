@@ -29,7 +29,7 @@
 		</div>
 	}
 
-	<div class="leaderboard-scroll">
+	<div class="leaderboard-scroll" @ref="lbScroll">
 		@if ( isLoading )
 		{
 			<div class="loading-state">
@@ -87,8 +87,9 @@
 			</div>
 
 			<div class="lb-group-cards @spinClass">
-			@foreach ( var cat in currentCats )
+			@for ( int ci = 0; ci < currentCats.Length; ci++ )
 			{
+				var cat = currentCats[ci];
 				var catEntries = GetEntries( cat.Key );
 				var rank = GetPlayerRank( cat.Key );
 				var playerValue = GetPlayerValue( cat.Key );
@@ -98,7 +99,7 @@
 				var playerInList = displayEntries.Any( e => e.Name == playerName );
 				var playerEntry = catEntries.FirstOrDefault( e => e.Name == playerName );
 
-				<div class="lb-section cat-@cat.Key">
+				<div class="lb-section cat-@cat.Key @(_kbActive && ci == _kbCardIndex ? "lb-kb-selected" : "")">
 					@* P5 stamp layers — same vocabulary as .tamer-tile (purple bg block + halftone slashes + gold corner cut + gold rail bar). *@
 					<div class="lb-bg-block"></div>
 					<div class="lb-halftone"></div>
@@ -299,6 +300,8 @@
 
 		spinClass = $"spin-out-{exitTo}";
 		currentGroupIndex = targetIdx;
+		// New group → reset the card cursor to the top of the new card list.
+		_kbCardIndex = 0;
 		await System.Threading.Tasks.Task.Delay( 180 );
 
 		spinClass = $"warp-from-{enterFrom}";
@@ -322,7 +325,8 @@
 			activeFilter,
 			allEntries.Count,
 			expanded.Count,
-			FilterMode
+			FilterMode,
+			System.HashCode.Combine( _kbCardIndex, _kbActive )
 		);
 	}
 
@@ -437,6 +441,85 @@
 	{
 		SoundManager.PlayClick();
 		await LoadAllLeaderboards();
+	}
+
+	// =========================================================================
+	// Keyboard navigation — called by OnlineHubPanel while the Leaderboards
+	// section is active. A/D rotate the category-group carousel, W/S move a
+	// cursor over the current group's category cards (scroll-follows), Space
+	// toggles the focused card's top-10/top-20 expand, F refreshes. ( , / . are
+	// the hub's section-cycle keys and never reach here.)
+	// =========================================================================
+	private int _kbCardIndex = 0;
+	// The card cursor only renders once a nav key has been pressed, so it never
+	// fights a mouse hover on a fresh open.
+	private bool _kbActive = false;
+	private Panel lbScroll;
+
+	public void TickInput()
+	{
+		if ( isLoading ) return;
+
+		if ( Input.Pressed( "Flashlight" ) ) { RefreshAll(); return; }
+
+		// A / D — rotate the category-group carousel.
+		if ( Input.Pressed( "Left" ) ) { _kbActive = true; PrevGroup(); return; }
+		if ( Input.Pressed( "Right" ) ) { _kbActive = true; NextGroup(); return; }
+
+		var cats = GetCurrentGroupCats();
+		if ( cats.Length == 0 ) return;
+		_kbCardIndex = Math.Clamp( _kbCardIndex, 0, cats.Length - 1 );
+
+		// W / S — move the card cursor, scroll-following.
+		if ( Input.Pressed( "Up" ) )
+		{
+			_kbActive = true;
+			if ( _kbCardIndex > 0 ) { _kbCardIndex--; SoundManager.PlayHover(); ScrollCardIntoView(); }
+			return;
+		}
+		if ( Input.Pressed( "Down" ) )
+		{
+			_kbActive = true;
+			if ( _kbCardIndex < cats.Length - 1 ) { _kbCardIndex++; SoundManager.PlayHover(); ScrollCardIntoView(); }
+			return;
+		}
+
+		// Space / Enter — toggle the focused card's expand (only cards with
+		// more than 10 entries carry an expand control).
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			var cat = cats[_kbCardIndex];
+			if ( GetEntries( cat.Key ).Count > 10 )
+				ToggleExpand( cat.Key );
+			else
+				SoundManager.PlayDeny();
+		}
+	}
+
+	// The category cards visible for the active carousel group — MUST match the
+	// render's `currentCats` exactly so _kbCardIndex lines up with the cards.
+	private CategoryInfo[] GetCurrentGroupCats()
+	{
+		var current = GroupMeta[currentGroupIndex];
+		return GetVisibleCategories().Where( c => c.Group == current.Name ).ToArray();
+	}
+
+	private void ScrollCardIntoView()
+	{
+		if ( lbScroll == null ) return;
+		var sections = new List<Panel>();
+		CollectByClass( lbScroll, "lb-section", sections );
+		if ( _kbCardIndex >= 0 && _kbCardIndex < sections.Count )
+			UiGridScroll.IntoView( lbScroll, sections[_kbCardIndex] );
+	}
+
+	private void CollectByClass( Panel root, string cls, List<Panel> outList )
+	{
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( cls ) ) outList.Add( c );
+			else CollectByClass( c, cls, outList );
+		}
 	}
 
 	private void OnBackClicked()

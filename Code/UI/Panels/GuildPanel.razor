@@ -52,19 +52,23 @@
 					<span class="landing-invites-title">@L("ui.guild.pending_invites")</span>
 					<span class="landing-invites-count">@inviteCount</span>
 				</div>
+				@{ var inviteKbIdx = 0; }
 				@foreach ( var invite in gmL.PendingInvites )
 				{
+					var acceptIdx = inviteKbIdx;
+					var denyIdx = inviteKbIdx + 1;
+					inviteKbIdx += 2;
 					<div class="invite-row">
 						<div class="invite-info">
 							<span class="invite-guild">[@invite.GuildTag] @invite.GuildName</span>
 							<span class="invite-from">@L("ui.guild.from") @invite.InviterName</span>
 						</div>
 						<div class="invite-actions">
-							<div class="guild-btn accept-btn" onclick=@(() => { AcceptInvite( invite ); SoundManager.PlaySelect(); })>
+							<div class="guild-btn accept-btn @(IsLandingKb( acceptIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { AcceptInvite( invite ); SoundManager.PlaySelect(); })>
 								<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
 								<span>@L("ui.guild.accept")</span>
 							</div>
-							<div class="guild-btn deny-btn" onclick=@(() => { DeclineInvite( invite ); SoundManager.PlayDeny(); })>
+							<div class="guild-btn deny-btn @(IsLandingKb( denyIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { DeclineInvite( invite ); SoundManager.PlayDeny(); })>
 								<iconify icon="lucide:x" Size=@(13) Color="#ffffff" />
 								<span>@L("ui.guild.deny")</span>
 							</div>
@@ -74,10 +78,11 @@
 			</div>
 		}
 
+		@{ var heroKbIdx = inviteCount * 2; var browseKbIdx = heroKbIdx + 1; }
 		<!-- HERO CARD — adapts to in-guild vs no-guild state -->
 		@if ( inGuildL )
 		{
-			<div class="landing-hero-card has-guild"
+			<div class="landing-hero-card has-guild @(IsLandingKb( heroKbIdx ) ? "guild-kb-selected" : "")"
 				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
 				 onmouseout=@(() => hoveredLandingCard = null)
 				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
@@ -130,7 +135,7 @@
 		else
 		{
 			<!-- No guild — Create CTA hero -->
-			<div class="landing-hero-card no-guild"
+			<div class="landing-hero-card no-guild @(IsLandingKb( heroKbIdx ) ? "guild-kb-selected" : "")"
 				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
 				 onmouseout=@(() => hoveredLandingCard = null)
 				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
@@ -175,7 +180,7 @@
 
 		<!-- ACTION ROW — Browse + (Invites if not already in banner above) -->
 		<div class="landing-actions-row">
-			<div class="landing-action-card browse-action @(hoveredLandingCard == "browse" ? "selected" : "")"
+			<div class="landing-action-card browse-action @(hoveredLandingCard == "browse" ? "selected" : "") @(IsLandingKb( browseKbIdx ) ? "guild-kb-selected" : "")"
 				 onmouseover=@(() => { if (hoveredLandingCard != "browse") { hoveredLandingCard = "browse"; SoundManager.PlayHover(); } })
 				 onmouseout=@(() => hoveredLandingCard = null)
 				 onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; errorMessage = ""; viewingGuild = null; LoadGuildsFromApi(); })>
@@ -230,7 +235,7 @@ else if ( guildView == "browse" )
 
 		<!-- Search input — filters visible guilds by name/tag as you type.
 		     Polled in Tick() since TextEntry doesn't expose onchange. -->
-		<div class="browse-search-wrap">
+		<div class="browse-search-wrap @(_kbSearchFocused ? "guild-kb-search-focused" : "")">
 			<iconify class="browse-search-icon" icon="lucide:search" Size=@(14) Color="rgba(167, 139, 250, 0.85)" />
 			<TextEntry class="browse-search-input" @ref="browseSearchInput" Text="@browseSearchQuery" Placeholder="Search guild name or tag…" />
 			@if ( !string.IsNullOrEmpty( browseSearchQuery ) )
@@ -250,7 +255,7 @@ else if ( guildView == "browse" )
 			<iconify icon="lucide:arrow-left" Size=@(16) Color="rgba(255,255,255,0.85)" />
 		</button>
 	</div>
-	<div class="guild-content-card">
+	<div class="guild-content-card" @ref="browseScrollRef">
 	<div class="guild-browse-view">
 
 		@if ( viewingGuild != null )
@@ -327,21 +332,26 @@ else if ( guildView == "browse" )
 					}
 				</div>
 
+				@{
+					var detailLocked = viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly;
+					var detailCanJoin = !(GuildManager.Instance?.IsInGuild ?? false) && !detailLocked;
+					var detailBackIdx = detailCanJoin ? 1 : 0;
+				}
 				<div class="detail-actions">
 					@if ( !(GuildManager.Instance?.IsInGuild ?? false) )
 					{
-						@if ( viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly )
+						@if ( detailLocked )
 						{
 							<span class="detail-locked">@L("ui.guild.invite_only")</span>
 						}
 						else
 						{
-							<div class="guild-btn join-btn detail-join-btn" onclick=@(() => { RequestJoin( viewingGuild ); SoundManager.PlaySelect(); viewingGuild = null; })>
+							<div class="guild-btn join-btn detail-join-btn @(IsBrowseDetailKb( 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { RequestJoin( viewingGuild ); SoundManager.PlaySelect(); viewingGuild = null; })>
 								<span>@(viewingGuild.JoinMode == GuildJoinMode.Open ? L("ui.guild.join_guild") : L("ui.guild.request_join"))</span>
 							</div>
 						}
 					}
-					<div class="guild-btn secondary-btn detail-back-btn" onclick=@(() => { SoundManager.PlayBack(); viewingGuild = null; })>
+					<div class="guild-btn secondary-btn detail-back-btn @(IsBrowseDetailKb( detailBackIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { SoundManager.PlayBack(); viewingGuild = null; })>
 						<span>@L("ui.guild.back_to_list")</span>
 					</div>
 				</div>
@@ -377,7 +387,7 @@ else if ( guildView == "browse" )
 						{
 							var guild = guilds[idx];
 							var isLocked = guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly;
-							<div class="browse-card-v2" onclick=@(() => ViewGuildDetail( guild ))>
+							<div class="browse-card-v2 @(IsBrowseGridKb( idx ) ? "guild-kb-selected" : "")" onclick=@(() => ViewGuildDetail( guild ))>
 								<div class="browse-card-edge" style="background-color: @guild.EmblemColor"></div>
 
 								<div class="browse-card-emblem shape-@(guild.EmblemShape ?? "square")" style="background-color: @guild.EmblemColor">
@@ -497,7 +507,7 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<span class="create-stamp-pick-caption">COLOR</span>
-							<div class="create-stamp-pick-row">
+							<div class="create-stamp-pick-row @(IsCreateKb( 0 ) ? "guild-kb-selected" : "")">
 								@foreach ( var color in EmblemColors )
 								{
 									<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
@@ -505,7 +515,7 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<span class="create-stamp-pick-caption">ICON</span>
-							<div class="create-stamp-pick-row">
+							<div class="create-stamp-pick-row @(IsCreateKb( 1 ) ? "guild-kb-selected" : "")">
 								@foreach ( var icon in EmblemIcons )
 								{
 									<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
@@ -515,7 +525,7 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<span class="create-stamp-pick-caption">SHAPE</span>
-							<div class="create-stamp-pick-row">
+							<div class="create-stamp-pick-row @(IsCreateKb( 2 ) ? "guild-kb-selected" : "")">
 								@foreach ( var shape in EmblemShapes )
 								{
 									<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
@@ -545,7 +555,7 @@ else if ( guildView == "myguild" )
 							<span class="cost-label">gold to found</span>
 						</div>
 
-						<button class="create-stamp-cta" onclick=@OnCreateGuild>
+						<button class="create-stamp-cta @(IsCreateKb( 3 ) ? "guild-kb-selected" : "")" onclick=@OnCreateGuild>
 							<iconify icon="lucide:hammer" Size=@(15) Color="#ffffff" />
 							<span>FOUND GUILD</span>
 						</button>
@@ -659,7 +669,7 @@ else if ( guildView == "myguild" )
 					</div>
 					@if ( gm.CanAttemptRaid() )
 					{
-						<div class="raid-attack-slab" onclick=@OnAttackRaidBoss>
+						<div class="raid-attack-slab @(raidViewOpen ? "guild-kb-selected" : "")" onclick=@OnAttackRaidBoss>
 							<iconify icon="lucide:swords" Size=@(15) Color="#ffffff" />
 							<span>@L("ui.guild.attack_boss")</span>
 						</div>
@@ -785,11 +795,13 @@ else if ( guildView == "myguild" )
 
 				<div class="raid-select-body">
 					<div class="raid-select-grid">
+						@{ var raidSelKbIdx = 0; }
 						@foreach ( var monster in GetRaidAvailableMonsters() )
 						{
 							var m = monster;
 							var inTeam = raidTeamSelection.Contains( m );
-							<div class="raid-select-option @(inTeam ? "in-team" : "")">
+							var thisRaidSelIdx = raidSelKbIdx; raidSelKbIdx++;
+							<div class="raid-select-option @(inTeam ? "in-team" : "") @(IsRaidSelectKb( thisRaidSelIdx ) ? "guild-kb-selected" : "")">
 								<MonsterCard Monster=@m IsCompact=@true AnimateOnHover=@true AnimationFrame=@SpriteAnimator.GlobalFrame
 											 ClickAction=@(() => ToggleRaidTeamMember( m )) />
 							</div>
@@ -859,13 +871,13 @@ else if ( guildView == "myguild" )
 				     Sits OUTSIDE the header row so flex math doesn't fight with
 				     the banner's full-width layout. No back button on hub. -->
 				<div class="plaza-action-grid">
-					<button class="plaza-action-tile" onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; viewingGuild = null; LoadGuildsFromApi(); })>
+					<button class="plaza-action-tile @(IsPlazaTileKb( 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; viewingGuild = null; LoadGuildsFromApi(); })>
 						<iconify icon="lucide:search" Size=@(22) Color="#a78bfa" />
 						<span>Browse</span>
 					</button>
 					@if ( gm.IsOfficer )
 					{
-						<button class="plaza-action-tile officer" onclick=@(() => { OnInviteClicked(); })>
+						<button class="plaza-action-tile officer @(IsPlazaTileKb( 1 ) ? "guild-kb-selected" : "")" onclick=@(() => { OnInviteClicked(); })>
 							<iconify icon="lucide:user-plus" Size=@(22) Color="#4ade80" />
 							<span>Invite</span>
 							@if ( pendingRequests.Count > 0 )
@@ -873,7 +885,7 @@ else if ( guildView == "myguild" )
 								<div class="plaza-action-badge">@pendingRequests.Count</div>
 							}
 						</button>
-						<button class="plaza-action-tile officer" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
+						<button class="plaza-action-tile officer @(IsPlazaTileKb( 2 ) ? "guild-kb-selected" : "")" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
 							<iconify icon="lucide:settings" Size=@(22) Color="#fbbf24" />
 							<span>Settings</span>
 						</button>
@@ -1026,10 +1038,13 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<div class="plaza-portraits-grid">
+								@{ var rosterKbIdx = 0; }
 								@foreach ( var member in members.OrderByDescending( m => m.IsOnline ).ThenByDescending( m => m.Role ).ThenByDescending( m => m.ArenaPoints ) )
 								{
 									var m = member;
-									<div class="member-portrait @(m.IsOnline ? "online" : "offline") @(IsInactive( m ) ? "inactive" : "")"
+									var memberKbIdx = rosterKbIdx;
+									rosterKbIdx++;
+									<div class="member-portrait @(m.IsOnline ? "online" : "offline") @(IsInactive( m ) ? "inactive" : "") @(IsPlazaRosterKb( memberKbIdx ) ? "guild-kb-selected" : "")"
 										 onmouseover=@(() => { if (hoveredMember != m.SteamId.ToString()) { hoveredMember = m.SteamId.ToString(); SoundManager.PlayHover(); } })
 										 onmouseout=@(() => hoveredMember = null)
 										 onclick=@(() => { selectedMember = m; showMemberMenu = true; SoundManager.PlayClick(); })>
@@ -1062,12 +1077,15 @@ else if ( guildView == "myguild" )
 								<span class="plaza-box-section-title">PERKS</span>
 							</div>
 
-							<div class="plaza-perks-rows">
+							<div class="plaza-perks-rows" @ref="perksScrollRef">
+								@{ var perkKbIdx = 0; }
 								@foreach ( var perk in GetPerkList() )
 								{
 									var p = perk;
 									var unlocked = guild.Level >= p.Level;
-									<div class="perk-row @(unlocked ? "unlocked" : "locked")">
+									var thisPerkKbIdx = perkKbIdx;
+									perkKbIdx++;
+									<div class="perk-row @(unlocked ? "unlocked" : "locked") @(IsPlazaPerkKb( thisPerkKbIdx ) ? "guild-kb-selected" : "")">
 										<!-- Yellow LEFT-edge accent strip on unlocked rows (per-side
 										     borders with style word are rejected, so use a child div) -->
 										@if ( unlocked )
@@ -1100,27 +1118,32 @@ else if ( guildView == "myguild" )
 				<div class="plaza-danger-bar">
 					<div class="plaza-danger-label"><span>DANGER ZONE</span></div>
 					<div class="plaza-danger-buttons">
+						@{ var dangerKbIdx = 0; }
 						@if ( gm.CanClaimLeadership() )
 						{
-							<button class="plaza-slab-btn claim" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })>
+							var claimIdx = dangerKbIdx; dangerKbIdx++;
+							<button class="plaza-slab-btn claim @(IsPlazaDangerKb( claimIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })>
 								<iconify icon="lucide:crown" Size=@(13) Color="#1a1100" />
 								<span>@L("ui.guild.claim_leadership")</span>
 							</button>
 						}
 						@if ( gm.IsLeader && members.Count > 1 )
 						{
-							<button class="plaza-slab-btn neutral" onclick=@OnTransferOwnership>
+							var transferIdx = dangerKbIdx; dangerKbIdx++;
+							<button class="plaza-slab-btn neutral @(IsPlazaDangerKb( transferIdx ) ? "guild-kb-selected" : "")" onclick=@OnTransferOwnership>
 								<iconify icon="lucide:repeat" Size=@(13) Color="rgba(255,255,255,0.85)" />
 								<span>@L("ui.guild.transfer_ownership")</span>
 							</button>
 						}
-						<button class="plaza-slab-btn leave" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })>
+						@{ var leaveIdx = dangerKbIdx; dangerKbIdx++; }
+						<button class="plaza-slab-btn leave @(IsPlazaDangerKb( leaveIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })>
 							<iconify icon="lucide:log-out" Size=@(13) Color="#ffffff" />
 							<span>@L("ui.guild.leave")</span>
 						</button>
 						@if ( gm.IsLeader )
 						{
-							<button class="plaza-slab-btn disband" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })>
+							var disbandIdx = dangerKbIdx; dangerKbIdx++;
+							<button class="plaza-slab-btn disband @(IsPlazaDangerKb( disbandIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })>
 								<iconify icon="lucide:trash-2" Size=@(13) Color="#ffffff" />
 								<span>@L("ui.guild.disband")</span>
 							</button>
@@ -1300,28 +1323,33 @@ else if ( guildView == "myguild" )
 						</div>
 					</div>
 					<div class="member-menu-actions">
+						@{ var menuKbIdx = 0; }
 						@if ( canManage && gm.IsLeader && sm.Role < GuildRole.Warden )
 						{
-							<button class="member-menu-action" onclick=@(() => { gm.PromoteMember( sm.SteamId ); SoundManager.PlaySelect(); showMemberMenu = false; selectedMember = null; })>
+							var promoteIdx = menuKbIdx; menuKbIdx++;
+							<button class="member-menu-action @(IsMemberMenuKb( promoteIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { gm.PromoteMember( sm.SteamId ); SoundManager.PlaySelect(); showMemberMenu = false; selectedMember = null; })>
 								<iconify icon="lucide:chevron-up" Size=@(14) Color="#4ade80" />
 								<span>Promote</span>
 							</button>
 						}
 						@if ( canManage && gm.IsLeader && sm.Role > GuildRole.Wanderer && sm.Role < GuildRole.Beastlord )
 						{
-							<button class="member-menu-action" onclick=@(() => { gm.DemoteMember( sm.SteamId ); SoundManager.PlayClick(); showMemberMenu = false; selectedMember = null; })>
+							var demoteIdx = menuKbIdx; menuKbIdx++;
+							<button class="member-menu-action @(IsMemberMenuKb( demoteIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { gm.DemoteMember( sm.SteamId ); SoundManager.PlayClick(); showMemberMenu = false; selectedMember = null; })>
 								<iconify icon="lucide:chevron-down" Size=@(14) Color="#fbbf24" />
 								<span>Demote</span>
 							</button>
 						}
 						@if ( canManage )
 						{
-							<button class="member-menu-action danger" onclick=@(() => { ConfirmKick( sm ); SoundManager.PlayPopup(); showMemberMenu = false; selectedMember = null; })>
+							var kickIdx = menuKbIdx; menuKbIdx++;
+							<button class="member-menu-action danger @(IsMemberMenuKb( kickIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { ConfirmKick( sm ); SoundManager.PlayPopup(); showMemberMenu = false; selectedMember = null; })>
 								<iconify icon="lucide:user-x" Size=@(14) Color="#f87171" />
 								<span>Kick</span>
 							</button>
 						}
-						<button class="member-menu-action" onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
+						@{ var closeIdx = menuKbIdx; menuKbIdx++; }
+						<button class="member-menu-action @(IsMemberMenuKb( closeIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
 							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.6)" />
 							<span>Close</span>
 						</button>
@@ -1335,7 +1363,7 @@ else if ( guildView == "myguild" )
 		{
 			<div class="confirm-overlay" onclick=@(() => showRequestsModal = false)>
 				<div class="requests-modal" onclick:stopPropagation>
-					<div class="requests-modal-body">
+					<div class="requests-modal-body" @ref="requestsScrollRef">
 						<div class="requests-title-row">
 							<iconify icon="lucide:mailbox" Size=@(16) Color="#fbbf24" />
 							<span class="requests-modal-title">JOIN REQUESTS</span>
@@ -1368,6 +1396,7 @@ else if ( guildView == "myguild" )
 								: age.TotalMinutes < 60 ? $"{(int)age.TotalMinutes}m ago"
 								: age.TotalHours < 24 ? $"{(int)age.TotalHours}h ago"
 								: $"{(int)age.TotalDays}d ago";
+							@{ var reqAcceptIdx = (reqIndex - 1) * 2; var reqDenyIdx = reqAcceptIdx + 1; }
 							<div class="request-row @animClass">
 								<div class="request-info">
 									<span class="request-name">@r.PlayerName</span>
@@ -1377,11 +1406,11 @@ else if ( guildView == "myguild" )
 									</span>
 								</div>
 								<div class="request-actions">
-									<div class="request-accept-btn" onclick=@(() => { gm.ApproveJoinRequest( r ); SoundManager.PlaySelect(); })>
+									<div class="request-accept-btn @(IsRequestsKb( reqAcceptIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { gm.ApproveJoinRequest( r ); SoundManager.PlaySelect(); })>
 										<iconify icon="lucide:check" Size=@(13) Color="#4ade80" />
 										<span>ACCEPT</span>
 									</div>
-									<div class="request-deny-btn" onclick=@(() => { gm.DenyJoinRequest( r ); SoundManager.PlayDeny(); })>
+									<div class="request-deny-btn @(IsRequestsKb( reqDenyIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { gm.DenyJoinRequest( r ); SoundManager.PlayDeny(); })>
 										<span>DENY</span>
 									</div>
 								</div>
@@ -1452,10 +1481,12 @@ else if ( guildView == "myguild" )
 							{
 								<span class="picker-empty">No players available to invite</span>
 							}
+							@{ var pickerKbIdx = 0; }
 							@foreach ( var c in candidates )
 							{
 								var cRef = c;
-								<div class="picker-item" onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+								var thisPickerIdx = pickerKbIdx; pickerKbIdx++;
+								<div class="picker-item @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
 									<img class="picker-avatar" src="avatar:@cRef.SteamId" />
 									<span class="picker-name">@cRef.Name</span>
 									@if ( cRef.IsOnline )
@@ -1478,9 +1509,11 @@ else if ( guildView == "myguild" )
 							{
 								<span class="picker-empty">No eligible members</span>
 							}
+							@{ var transferKbIdx = 0; }
 							@foreach ( var member in eligibleMembers )
 							{
-								<div class="picker-item" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+								var thisTransferIdx = transferKbIdx; transferKbIdx++;
+								<div class="picker-item @(IsPickerKb( thisTransferIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
 									<span class="picker-name">@member.Name</span>
 									<span class="picker-role">@member.Role</span>
 								</div>
@@ -1559,6 +1592,22 @@ else if ( guildView == "myguild" )
 	private bool settingsAutoKick = false;
 	private int settingsInactiveDays = 3;
 	private string settingsDescription = "";
+
+	// ── Keyboard navigation ─────────────────────────────────────────────────
+	// One linear cursor per view. _kbZone names the focusable region inside a
+	// view (a view can have several — e.g. the plaza has tiles/roster/perks/
+	// danger). _kbIndex walks the items inside the active zone. _kbActive gates
+	// the kb-selected cursor visual so a mouse-only session stays clean until
+	// the player actually presses a nav key. _kbSearchFocused tracks whether the
+	// browse search TextEntry currently owns typing (Tab moves focus out).
+	private bool _kbActive = false;
+	private string _kbZone = "";
+	private int _kbIndex = 0;
+	private bool _kbSearchFocused = false;
+	// Scroll containers for keyboard scroll-follow (UiGridScroll).
+	private Panel browseScrollRef;   // .guild-content-card — browse guild list
+	private Panel perksScrollRef;    // .plaza-perks-rows — plaza perk list
+	private Panel requestsScrollRef; // .requests-modal-body — join requests
 
 	// Confirm dialog state moved to shared ConfirmDialog component (mounted globally in GameHUD)
 
@@ -1707,7 +1756,765 @@ else if ( guildView == "myguild" )
 		hash.Add( browseSearchQuery );
 		hash.Add( editingMotd );
 		hash.Add( editingDescription );
+		// ── Keyboard nav state — every field that drives a kb-selected cursor
+		//    must be in the hash or the panel won't re-render on key presses.
+		hash.Add( _kbActive );
+		hash.Add( _kbZone );
+		hash.Add( _kbIndex );
+		hash.Add( _kbSearchFocused );
 		return hash.ToHashCode();
+	}
+
+	// ════════════════════════════════════════════════════════════════════════
+	// KEYBOARD NAVIGATION
+	// Dispatched from OnlineHubPanel.TickInput() while the Guild section is up.
+	// Per-view scheme:
+	//   landing — Up/Down walk the invite rows + hero + browse action, Space
+	//             activates. Q falls through to GameHUD (exit Guild section).
+	//   browse  — Tab toggles search-field ⇄ guild grid; arrows nav the 3-col
+	//             grid; in guild-detail Up/Down walks join/back; Q backs out.
+	//   myguild (plaza) — Tab cycles zones (tiles → roster → perks → danger);
+	//             arrows nav within a zone; Space activates; Q backs to landing
+	//             or exits the section if already at the plaza root.
+	//   myguild (raid) — Up/Down through the raid scene actions; Q closes raid.
+	//   create  — Up/Down through emblem pickers + Found button.
+	// Blocking sub-states (member menu, settings drawer, requests / picker /
+	// raid-team-select / raid-results modals, MOTD / description editors) OWN
+	// the keyboard: their handler runs first and returns.
+	// ════════════════════════════════════════════════════════════════════════
+	public void TickInput()
+	{
+		// ---- Blocking sub-states first — they own the keyboard entirely. ----
+		if ( showRaidBattle ) return;            // BattleView handles its own input
+
+		if ( showRaidResults )
+		{
+			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Menu" ) )
+			{
+				showRaidResults = false;
+				if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+				StateHasChanged();
+			}
+			return;
+		}
+
+		if ( showPicker ) { TickPickerInput(); return; }
+		if ( showMemberMenu && selectedMember != null ) { TickMemberMenuInput(); return; }
+		if ( showRequestsModal ) { TickRequestsInput(); return; }
+		if ( showSettingsModal ) { TickSettingsDrawerInput(); return; }
+		if ( editingMotd || editingDescription ) { TickEditorInput(); return; }
+
+		// ---- View dispatch ----
+		switch ( guildView )
+		{
+			case "landing": TickLandingInput(); break;
+			case "browse":  TickBrowseInput(); break;
+			case "myguild": TickMyGuildInput(); break;
+		}
+	}
+
+	// Light the cursor on the first nav keypress without moving — mirrors the
+	// SkillTree / Roster pattern. Returns true if it just engaged this frame.
+	private bool EngageKb( string zone )
+	{
+		if ( _kbActive && _kbZone == zone ) return false;
+		_kbActive = true;
+		_kbZone = zone;
+		_kbIndex = 0;
+		SoundManager.PlayHover();
+		StateHasChanged();
+		return true;
+	}
+
+	private bool NavPressed() =>
+		Input.Pressed( "Up" ) || Input.Pressed( "Down" ) ||
+		Input.Pressed( "Left" ) || Input.Pressed( "Right" );
+
+	private void MoveKb( int count, int delta )
+	{
+		if ( count <= 0 ) return;
+		_kbIndex = Math.Clamp( _kbIndex + delta, 0, count - 1 );
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// ── LANDING ──────────────────────────────────────────────────────────────
+	// Flat vertical list: [invite rows ×2 each (accept/deny pairs)] then hero,
+	// then browse action. We keep it simple — focus walks a flat index over a
+	// dynamically built action list.
+	private void TickLandingInput()
+	{
+		var gm = GuildManager.Instance;
+		var levelGated = GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN;
+		if ( levelGated ) return; // nothing actionable — Q exits via GameHUD
+
+		var invites = gm?.PendingInvites ?? new List<GuildInvite>();
+		// Action count: 2 per invite (accept, deny) + hero card + browse action.
+		int count = invites.Count * 2 + 2;
+
+		if ( !_kbActive || _kbZone != "landing" )
+		{
+			if ( NavPressed() ) EngageKb( "landing" );
+			return;
+		}
+
+		if ( Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
+
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
+			int inviteSlots = invites.Count * 2;
+			if ( _kbIndex < inviteSlots )
+			{
+				var invite = invites[_kbIndex / 2];
+				if ( _kbIndex % 2 == 0 ) { AcceptInvite( invite ); SoundManager.PlaySelect(); }
+				else { DeclineInvite( invite ); SoundManager.PlayDeny(); }
+			}
+			else if ( _kbIndex == inviteSlots ) // hero card
+			{
+				SoundManager.PlayForward();
+				guildView = "myguild";
+				errorMessage = "";
+				ResetKb();
+			}
+			else // browse action
+			{
+				SoundManager.PlayForward();
+				guildView = "browse";
+				errorMessage = "";
+				viewingGuild = null;
+				LoadGuildsFromApi();
+				ResetKb();
+			}
+			StateHasChanged();
+		}
+	}
+
+	// ── BROWSE ───────────────────────────────────────────────────────────────
+	private void TickBrowseInput()
+	{
+		// Guild-detail sub-view owns the keyboard while a guild is selected.
+		if ( viewingGuild != null )
+		{
+			if ( Input.Pressed( "Menu" ) )
+			{
+				SoundManager.PlayBack();
+				viewingGuild = null;
+				ResetKb();
+				GameHUD.PanelHandledBackKey = true;
+				StateHasChanged();
+				return;
+			}
+			TickBrowseDetailInput();
+			return;
+		}
+
+		// Q — back to plaza/landing (internal back, claim the key).
+		if ( Input.Pressed( "Menu" ) )
+		{
+			SoundManager.PlayBack();
+			guildView = (GuildManager.Instance?.IsInGuild ?? false) ? "myguild" : "landing";
+			viewingGuild = null;
+			errorMessage = "";
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		// Tab — toggle focus between the search field and the guild grid.
+		if ( Input.Pressed( "Score" ) )
+		{
+			_kbSearchFocused = !_kbSearchFocused;
+			if ( _kbSearchFocused )
+			{
+				browseSearchInput?.Focus();
+				_kbActive = false;
+			}
+			else
+			{
+				browseSearchInput?.Blur();
+				EngageKb( "browse-grid" );
+			}
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+
+		// While the search field owns typing, swallow nav so the player can
+		// type freely — only Tab (above) / Q move focus out.
+		if ( _kbSearchFocused ) return;
+
+		var guilds = GetVisibleGuilds();
+		if ( guilds.Count == 0 ) return;
+
+		if ( !_kbActive || _kbZone != "browse-grid" )
+		{
+			if ( NavPressed() ) EngageKb( "browse-grid" );
+			return;
+		}
+
+		const int cols = 3; // browse grid is a fixed 3-col row layout
+		if ( Input.Pressed( "Left" ) ) MoveKb( guilds.Count, -1 );
+		else if ( Input.Pressed( "Right" ) ) MoveKb( guilds.Count, 1 );
+		else if ( Input.Pressed( "Up" ) ) MoveKb( guilds.Count, -cols );
+		else if ( Input.Pressed( "Down" ) ) MoveKb( guilds.Count, cols );
+		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, guilds.Count - 1 );
+			ViewGuildDetail( guilds[_kbIndex] );
+			ResetKb();
+			return;
+		}
+
+		// Keep the focused card on screen — browse cards live in .browse-row-3
+		// rows inside the .guild-content-card scroll container. Scroll to the
+		// row that holds the focused card.
+		if ( NavPressed() )
+			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex / cols, "browse-row-3" );
+	}
+
+	private void TickBrowseDetailInput()
+	{
+		var inGuild = GuildManager.Instance?.IsInGuild ?? false;
+		bool locked = viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly;
+		bool canJoin = !inGuild && !locked;
+		int count = canJoin ? 2 : 1; // [join], back  — or just back
+
+		if ( !_kbActive || _kbZone != "browse-detail" )
+		{
+			if ( NavPressed() ) EngageKb( "browse-detail" );
+			return;
+		}
+
+		if ( Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
+
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
+			if ( canJoin && _kbIndex == 0 )
+			{
+				RequestJoin( viewingGuild );
+				SoundManager.PlaySelect();
+				viewingGuild = null;
+				ResetKb();
+			}
+			else // back to list
+			{
+				SoundManager.PlayBack();
+				viewingGuild = null;
+				ResetKb();
+			}
+			StateHasChanged();
+		}
+	}
+
+	// ── MYGUILD ──────────────────────────────────────────────────────────────
+	private void TickMyGuildInput()
+	{
+		// No guild → the create form is shown under guildView == "myguild".
+		if ( !(GuildManager.Instance?.IsInGuild ?? false) ) { TickCreateInput(); return; }
+
+		var gm = GuildManager.Instance;
+		var raid = gm?.CurrentRaidBoss;
+
+		// Raid team-select sub-state owns the keyboard.
+		if ( showRaidTeamSelect && raid != null ) { TickRaidTeamSelectInput(); return; }
+
+		// Raid encounter view (monument clicked).
+		if ( raidViewOpen && raid != null ) { TickRaidViewInput(); return; }
+
+		TickPlazaInput();
+	}
+
+	// Plaza zones, cycled with Tab: action tiles → roster → perks → danger bar.
+	private static readonly string[] _plazaZones = { "tiles", "roster", "perks", "danger" };
+
+	private void TickPlazaInput()
+	{
+		var gm = GuildManager.Instance;
+		var guild = gm?.Guild;
+		var members = gm?.Members ?? new List<GuildMemberInfo>();
+
+		// Q — leave the plaza. The plaza is the Guild section root, so Q here
+		// should exit the section; let it fall through to GameHUD (do NOT
+		// claim the key).
+		// (No PanelHandledBackKey — GameHUD handles section exit.)
+
+		// Tab — cycle plaza zones.
+		if ( Input.Pressed( "Score" ) )
+		{
+			int zi = Array.IndexOf( _plazaZones, _kbZone );
+			if ( zi < 0 ) zi = -1;
+			zi = ( zi + 1 ) % _plazaZones.Length;
+			_kbZone = _plazaZones[zi];
+			_kbIndex = 0;
+			_kbActive = true;
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+
+		bool zoneIsPlaza = Array.IndexOf( _plazaZones, _kbZone ) >= 0;
+		if ( !_kbActive || !zoneIsPlaza )
+		{
+			if ( NavPressed() ) { _kbActive = true; _kbZone = "tiles"; _kbIndex = 0; SoundManager.PlayHover(); StateHasChanged(); }
+			return;
+		}
+
+		switch ( _kbZone )
+		{
+			case "tiles":  TickPlazaTiles( gm ); break;
+			case "roster": TickPlazaRoster( members ); break;
+			case "perks":  TickPlazaPerks(); break;
+			case "danger": TickPlazaDanger( gm, members ); break;
+		}
+	}
+
+	// Action tiles (top-right): Browse, [Invite, Settings] when officer.
+	private void TickPlazaTiles( GuildManager gm )
+	{
+		int count = 1 + (gm.IsOfficer ? 2 : 0); // browse + invite + settings
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
+		if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
+			if ( _kbIndex == 0 )
+			{
+				SoundManager.PlayForward();
+				guildView = "browse"; viewingGuild = null; LoadGuildsFromApi();
+				ResetKb();
+			}
+			else if ( _kbIndex == 1 ) OnInviteClicked();
+			else { showSettingsModal = true; SoundManager.PlayClick(); }
+			StateHasChanged();
+		}
+	}
+
+	private void TickPlazaRoster( List<GuildMemberInfo> members )
+	{
+		var ordered = members
+			.OrderByDescending( m => m.IsOnline )
+			.ThenByDescending( m => m.Role )
+			.ThenByDescending( m => m.ArenaPoints )
+			.ToList();
+		if ( ordered.Count == 0 ) return;
+
+		// Live column count from the rendered portrait grid. The portrait grid
+		// is `overflow: hidden` (not a scroll container) so there's no scroll
+		// follow — the roster box sizes to fit its members.
+		int cols = GetRosterColumns();
+		if ( Input.Pressed( "Left" ) ) MoveKb( ordered.Count, -1 );
+		else if ( Input.Pressed( "Right" ) ) MoveKb( ordered.Count, 1 );
+		else if ( Input.Pressed( "Up" ) ) MoveKb( ordered.Count, -cols );
+		else if ( Input.Pressed( "Down" ) ) MoveKb( ordered.Count, cols );
+		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, ordered.Count - 1 );
+			selectedMember = ordered[_kbIndex];
+			showMemberMenu = true;
+			SoundManager.PlayClick();
+			StateHasChanged();
+		}
+	}
+
+	private int GetRosterColumns()
+	{
+		var grid = FindKbPanel( "plaza-portraits-grid" );
+		var card = FindKbPanel( "member-portrait" );
+		float gw = grid?.Box.Rect.Width ?? 0f;
+		float cw = card?.Box.Rect.Width ?? 0f;
+		if ( gw <= 0f || cw <= 0f ) return 6;
+		return Math.Max( 1, (int)(gw / (cw + 12f)) ); // +12 = grid gap
+	}
+
+	private void TickPlazaPerks()
+	{
+		var perks = GetPerkList();
+		if ( perks.Count == 0 ) return;
+		if ( Input.Pressed( "Up" ) ) MoveKb( perks.Count, -1 );
+		else if ( Input.Pressed( "Down" ) ) MoveKb( perks.Count, 1 );
+		// Perks aren't actionable — Space is a no-op here (display-only list).
+
+		if ( NavPressed() )
+			UiGridScroll.ScrollIndexIntoView( perksScrollRef, _kbIndex, "perk-row" );
+	}
+
+	private void TickPlazaDanger( GuildManager gm, List<GuildMemberInfo> members )
+	{
+		// Build the live danger-button list in render order.
+		var actions = new List<string>();
+		if ( gm.CanClaimLeadership() ) actions.Add( "claim" );
+		if ( gm.IsLeader && members.Count > 1 ) actions.Add( "transfer" );
+		actions.Add( "leave" );
+		if ( gm.IsLeader ) actions.Add( "disband" );
+		if ( actions.Count == 0 ) return;
+
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) ) MoveKb( actions.Count, -1 );
+		else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) ) MoveKb( actions.Count, 1 );
+		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, actions.Count - 1 );
+			switch ( actions[_kbIndex] )
+			{
+				case "claim":    OnClaimLeadership(); SoundManager.PlayPopup(); break;
+				case "transfer": OnTransferOwnership(); break;
+				case "leave":    OnLeaveGuild(); SoundManager.PlayPopup(); break;
+				case "disband":  OnDisbandGuild(); SoundManager.PlayPopup(); break;
+			}
+			StateHasChanged();
+		}
+	}
+
+	// ── RAID ENCOUNTER VIEW ──────────────────────────────────────────────────
+	private void TickRaidViewInput()
+	{
+		// Q — close the raid view, back to plaza.
+		if ( Input.Pressed( "Menu" ) )
+		{
+			SoundManager.PlayBack();
+			raidViewOpen = false;
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		// Space/Enter — attack the boss when attempts remain. Only one focusable
+		// action in this view, so no list nav is needed.
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			if ( GuildManager.Instance?.CanAttemptRaid() ?? false )
+				OnAttackRaidBoss();
+		}
+	}
+
+	// ── RAID TEAM SELECT ─────────────────────────────────────────────────────
+	private void TickRaidTeamSelectInput()
+	{
+		// Q — cancel team select.
+		if ( Input.Pressed( "Menu" ) )
+		{
+			showRaidTeamSelect = false;
+			raidTeamSelection.Clear();
+			SoundManager.PlayBack();
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		var monsters = GetRaidAvailableMonsters();
+		if ( monsters.Count == 0 )
+		{
+			// No monsters — Space confirms only if a team is somehow set.
+			if ( ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) ) && raidTeamSelection.Count == 3 )
+				StartRaidBattle();
+			return;
+		}
+
+		if ( !_kbActive || _kbZone != "raid-select" )
+		{
+			if ( NavPressed() ) EngageKb( "raid-select" );
+			return;
+		}
+
+		// Grid nav over the available-monster grid (4 cols matches the layout).
+		const int cols = 4;
+		if ( Input.Pressed( "Left" ) ) MoveKb( monsters.Count, -1 );
+		else if ( Input.Pressed( "Right" ) ) MoveKb( monsters.Count, 1 );
+		else if ( Input.Pressed( "Up" ) ) MoveKb( monsters.Count, -cols );
+		else if ( Input.Pressed( "Down" ) ) MoveKb( monsters.Count, cols );
+		else if ( Input.Pressed( "Jump" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, monsters.Count - 1 );
+			ToggleRaidTeamMember( monsters[_kbIndex] );
+			StateHasChanged();
+		}
+		else if ( Input.Pressed( "Enter" ) )
+		{
+			// Enter — confirm the attack when 3 are picked.
+			if ( raidTeamSelection.Count == 3 ) StartRaidBattle();
+		}
+	}
+
+	// ── CREATE FORM ──────────────────────────────────────────────────────────
+	private void TickCreateInput()
+	{
+		// Q — leave the create form, back to landing.
+		if ( Input.Pressed( "Menu" ) )
+		{
+			SoundManager.PlayBack();
+			guildView = "landing";
+			errorMessage = "";
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN ) return; // level-gated
+
+		// Focusable rows: color swatches, icon options, shape options, Found CTA.
+		// We treat each picker group as one row stepped with Up/Down, and
+		// Left/Right cycles the option inside the focused group.
+		const int rowCount = 4; // color, icon, shape, found
+
+		if ( !_kbActive || _kbZone != "create" )
+		{
+			if ( NavPressed() ) EngageKb( "create" );
+			return;
+		}
+
+		if ( Input.Pressed( "Up" ) ) { MoveKb( rowCount, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( rowCount, 1 ); return; }
+
+		_kbIndex = Math.Clamp( _kbIndex, 0, rowCount - 1 );
+
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) )
+		{
+			int dir = Input.Pressed( "Right" ) ? 1 : -1;
+			if ( _kbIndex == 0 ) // color
+			{
+				int ci = Array.IndexOf( EmblemColors, emblemColor );
+				ci = ( ci + dir + EmblemColors.Length ) % EmblemColors.Length;
+				emblemColor = EmblemColors[ci];
+				SoundManager.PlayClick();
+			}
+			else if ( _kbIndex == 1 ) // icon
+			{
+				var keys = EmblemIcons.Keys.ToList();
+				int ki = keys.IndexOf( emblemIcon );
+				if ( ki < 0 ) ki = 0;
+				ki = ( ki + dir + keys.Count ) % keys.Count;
+				emblemIcon = keys[ki];
+				SoundManager.PlayClick();
+			}
+			else if ( _kbIndex == 2 ) // shape
+			{
+				var keys = EmblemShapes.Keys.ToList();
+				int si = keys.IndexOf( emblemShape );
+				if ( si < 0 ) si = 0;
+				si = ( si + dir + keys.Count ) % keys.Count;
+				emblemShape = keys[si];
+				SoundManager.PlayClick();
+			}
+			StateHasChanged();
+			return;
+		}
+
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			if ( _kbIndex == 3 ) OnCreateGuild();
+		}
+	}
+
+	// ── SETTINGS DRAWER ──────────────────────────────────────────────────────
+	private void TickSettingsDrawerInput()
+	{
+		// Q / Enter on cancel — close the drawer.
+		if ( Input.Pressed( "Menu" ) )
+		{
+			showSettingsModal = false;
+			SoundManager.PlayBack();
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+		}
+		// Drawer settings are dense radio rows; the player edits with the mouse.
+		// Keyboard's job here is just to close it cleanly (Q). Save/Cancel stay
+		// click-driven — the drawer is officer-only chrome, not a hot path.
+	}
+
+	// ── MEMBER CONTEXT MENU ──────────────────────────────────────────────────
+	private void TickMemberMenuInput()
+	{
+		var gm = GuildManager.Instance;
+		var sm = selectedMember;
+		var canManage = gm.IsOfficer && sm.SteamId != (Connection.Local?.SteamId ?? 0) && sm.Role < gm.Membership.Role;
+
+		// Build the live action list in render order.
+		var actions = new List<string>();
+		if ( canManage && gm.IsLeader && sm.Role < GuildRole.Warden ) actions.Add( "promote" );
+		if ( canManage && gm.IsLeader && sm.Role > GuildRole.Wanderer && sm.Role < GuildRole.Beastlord ) actions.Add( "demote" );
+		if ( canManage ) actions.Add( "kick" );
+		actions.Add( "close" );
+
+		if ( Input.Pressed( "Menu" ) )
+		{
+			showMemberMenu = false;
+			selectedMember = null;
+			SoundManager.PlayBack();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		if ( Input.Pressed( "Up" ) ) { MoveKb( actions.Count, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( actions.Count, 1 ); return; }
+
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, actions.Count - 1 );
+			switch ( actions[_kbIndex] )
+			{
+				case "promote": gm.PromoteMember( sm.SteamId ); SoundManager.PlaySelect(); break;
+				case "demote":  gm.DemoteMember( sm.SteamId ); SoundManager.PlayClick(); break;
+				case "kick":    ConfirmKick( sm ); SoundManager.PlayPopup(); break;
+				case "close":   SoundManager.PlayBack(); break;
+			}
+			showMemberMenu = false;
+			selectedMember = null;
+			StateHasChanged();
+		}
+	}
+
+	// ── REQUESTS MODAL ───────────────────────────────────────────────────────
+	private void TickRequestsInput()
+	{
+		var gm = GuildManager.Instance;
+		var requests = gm?.IsOfficer == true ? (gm.JoinRequests ?? new List<GuildJoinRequest>()) : new List<GuildJoinRequest>();
+
+		if ( Input.Pressed( "Menu" ) )
+		{
+			showRequestsModal = false;
+			SoundManager.PlayBack();
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		if ( requests.Count == 0 ) return;
+		// 2 actions per request row: accept, deny.
+		int count = requests.Count * 2;
+
+		if ( Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
+		if ( Input.Pressed( "Left" ) ) { MoveKb( count, -1 ); return; }
+		if ( Input.Pressed( "Right" ) ) { MoveKb( count, 1 ); return; }
+
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
+			var req = requests[_kbIndex / 2];
+			if ( _kbIndex % 2 == 0 ) { gm.ApproveJoinRequest( req ); SoundManager.PlaySelect(); }
+			else { gm.DenyJoinRequest( req ); SoundManager.PlayDeny(); }
+			StateHasChanged();
+		}
+
+		if ( NavPressed() )
+			UiGridScroll.ScrollIndexIntoView( requestsScrollRef, _kbIndex / 2, "request-row" );
+	}
+
+	// ── PICKER MODAL (invite / transfer) ─────────────────────────────────────
+	private void TickPickerInput()
+	{
+		if ( Input.Pressed( "Menu" ) )
+		{
+			showPicker = false;
+			SoundManager.PlayBack();
+			ResetKb();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+			return;
+		}
+
+		var gm = GuildManager.Instance;
+		List<(string connId, string name, long steam)> items = new();
+		if ( pickerMode == "invite" )
+		{
+			foreach ( var c in gm?.GetInvitableCandidates() ?? Enumerable.Empty<InviteCandidate>() )
+				items.Add( (c.ConnectionId, c.Name, c.SteamId) );
+		}
+		else if ( pickerMode == "transfer" )
+		{
+			var eligible = gm?.Members?.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) && m.Role >= GuildRole.Tamer ).ToList() ?? new();
+			foreach ( var m in eligible )
+				items.Add( (null, m.Name, m.SteamId) );
+		}
+		if ( items.Count == 0 ) return;
+
+		if ( Input.Pressed( "Up" ) ) { MoveKb( items.Count, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( items.Count, 1 ); return; }
+
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, items.Count - 1 );
+			var it = items[_kbIndex];
+			if ( pickerMode == "invite" )
+				gm?.InvitePlayer( it.connId, it.name, it.steam );
+			else if ( pickerMode == "transfer" )
+				gm?.TransferOwnership( it.steam );
+			showPicker = false;
+			SoundManager.PlaySuccess();
+			ResetKb();
+			StateHasChanged();
+		}
+	}
+
+	// ── INLINE EDITORS (MOTD / Description) ──────────────────────────────────
+	private void TickEditorInput()
+	{
+		// The TextEntry has typing focus; Q cancels, Enter saves. Arrows pass
+		// through to the text field (caret movement) — don't consume them.
+		if ( Input.Pressed( "Menu" ) )
+		{
+			if ( editingMotd ) CancelMotd();
+			if ( editingDescription ) CancelDescription();
+			SoundManager.PlayBack();
+			GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+		}
+	}
+
+	// ── kb-selected predicates — one per focusable region. Each returns true
+	//    only when the cursor is active, parked in the matching zone, and on
+	//    the given index. The markup applies `guild-kb-selected` accordingly.
+	private bool IsLandingKb( int idx ) => _kbActive && _kbZone == "landing" && _kbIndex == idx;
+	private bool IsBrowseGridKb( int idx ) => _kbActive && _kbZone == "browse-grid" && _kbIndex == idx;
+	private bool IsBrowseDetailKb( int idx ) => _kbActive && _kbZone == "browse-detail" && _kbIndex == idx;
+	private bool IsPlazaTileKb( int idx ) => _kbActive && _kbZone == "tiles" && _kbIndex == idx;
+	private bool IsPlazaRosterKb( int idx ) => _kbActive && _kbZone == "roster" && _kbIndex == idx;
+	private bool IsPlazaPerkKb( int idx ) => _kbActive && _kbZone == "perks" && _kbIndex == idx;
+	private bool IsPlazaDangerKb( int idx ) => _kbActive && _kbZone == "danger" && _kbIndex == idx;
+	private bool IsCreateKb( int idx ) => _kbActive && _kbZone == "create" && _kbIndex == idx;
+	private bool IsRaidSelectKb( int idx ) => _kbActive && _kbZone == "raid-select" && _kbIndex == idx;
+	// Modals own the keyboard whenever open, so their cursor shows immediately.
+	private bool IsMemberMenuKb( int idx ) => showMemberMenu && _kbIndex == idx;
+	private bool IsRequestsKb( int idx ) => showRequestsModal && _kbIndex == idx;
+	private bool IsPickerKb( int idx ) => showPicker && _kbIndex == idx;
+
+	// Reset the keyboard cursor — call on every view/sub-state transition so a
+	// stale index from the previous view doesn't carry a ghost cursor over.
+	private void ResetKb()
+	{
+		_kbActive = false;
+		_kbZone = "";
+		_kbIndex = 0;
+		_kbSearchFocused = false;
+	}
+
+	// Tree-walk helper — find the first descendant carrying `cls`. Used for live
+	// column measurement (the roster grid is flex-wrap).
+	private Panel FindKbPanel( string cls )
+	{
+		return FindKbPanel( this, cls );
+	}
+
+	private Panel FindKbPanel( Panel root, string cls )
+	{
+		if ( root == null ) return null;
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( cls ) ) return c;
+			var found = FindKbPanel( c, cls );
+			if ( found != null ) return found;
+		}
+		return null;
 	}
 
 	public override void OnDeleted()
