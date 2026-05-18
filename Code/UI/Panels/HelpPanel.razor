@@ -312,21 +312,31 @@
 	// only for "subtab" rows.
 	private record NavRow(string Kind, string CategoryId, string SubtabId);
 
-	// Build the flat nav-row list ALL-EXPANDED: every category header
-	// followed by ALL of that category's subtabs, for every category. The
-	// list is therefore CONSTANT — it does not change as the cursor moves
-	// or as the open category changes — so the integer cursor index stays
-	// stable and W/S traverse it correctly in both directions.
+	// Build the flat nav-row list — ONE ROW PER ACTUAL CONTENT PAGE, no
+	// redundant grouping-header stops:
+	//   - A category WITH subtabs contributes only its subtab rows. Its
+	//     header is a section label, not a page, so the cursor skips it.
+	//   - A category with NO subtabs IS a single page, so it contributes
+	//     one "category" row (there's no subtab to land on).
+	// The list is ALL-EXPANDED and therefore CONSTANT — it does not change
+	// as the cursor moves or as the open category changes — so the integer
+	// cursor index stays stable and W/S traverse it correctly both ways.
+	// Crossing a category boundary just moves to the next category's first
+	// subtab; ApplyNavRow updates currentCategory implicitly.
 	private List<NavRow> BuildNavRows()
 	{
 		var rows = new List<NavRow>();
 		foreach (var cat in Categories)
 		{
-			rows.Add(new NavRow("category", cat.Id, null));
-			if (cat.Subtabs != null)
+			if (cat.Subtabs != null && cat.Subtabs.Length > 0)
 			{
 				foreach (var sub in cat.Subtabs)
 					rows.Add(new NavRow("subtab", cat.Id, sub.Id));
+			}
+			else
+			{
+				// Subtab-less category: the category row itself is the page.
+				rows.Add(new NavRow("category", cat.Id, null));
 			}
 		}
 		return rows;
@@ -370,10 +380,11 @@
 		return 0;
 	}
 
-	// True when the keyboard cursor is sitting on this category header.
-	// (The cursor lands on a header only when no subtab of that category
-	// is the open page — categories with subtabs auto-open their first
-	// subtab, so in practice the highlight tracks the subtab rows.)
+	// True when the keyboard cursor is sitting on this category row. The
+	// cursor only ever lands on a category that has NO subtabs (those ARE
+	// nav rows); a category WITH subtabs has no cursor row of its own, so
+	// its header never gets the kb-focused highlight — it only renders as
+	// the active section via the .active class.
 	private bool IsCategoryKbFocused(string categoryId)
 	{
 		var rows = BuildNavRows();
