@@ -255,23 +255,52 @@ public sealed class SaveService : Component
 
 			if ( cloudResult.Status == SaveLoadStatus.Loaded && cloudResult.Blob != null )
 			{
+				// The cloud loaded — but the local cache may hold MORE RECENT progress.
+				// Cache writes are synchronous (every mutation); cloud pushes are async +
+				// throttled, and the shutdown cloud push is fire-and-forget. So after a
+				// perfectly normal online session the cache routinely ends up a little
+				// newer than the cloud blob. When that's the case the cache is THIS
+				// machine's own latest progress (a genuine cross-device conflict goes the
+				// other way — the cloud blob would be the newer one). Prefer the newer
+				// save: load the cache and mark dirty so it syncs back up to the cloud.
+				//
+				// Ownership guard: the cloud blob is always the current player's (the API
+				// is Steam-id scoped), but the cache file is machine-local and shared
+				// across Steam accounts on the same PC. Only prefer the cache when its
+				// stamped OwnerSteamId matches the current player. A legacy unstamped
+				// cache (OwnerSteamId == 0) can't be verified, so we don't prefer it — it
+				// gets stamped on the next flush and works normally from the next boot.
+				var cacheCheck = TryReadCache();
+				var localSteamId = (long)(Connection.Local?.SteamId ?? 0);
+				bool cacheIsNewer = cacheCheck != null && cacheCheck.LastSaveTicks > cloudResult.Blob.LastSaveTicks;
+				bool cacheIsOurs = cacheCheck != null && localSteamId != 0 && cacheCheck.OwnerSteamId == localSteamId;
+
+				if ( cacheIsNewer && cacheIsOurs )
+				{
+					var ahead = System.TimeSpan.FromTicks( cacheCheck.LastSaveTicks - cloudResult.Blob.LastSaveTicks );
+					Log.Info( $"[SaveService] local cache is {ahead.TotalMinutes:F1}m newer than cloud — keeping local progress, will sync up. cloud={cloudResult.Blob.LastSaveTicks}, cache={cacheCheck.LastSaveTicks}" );
+					CurrentBlob = cacheCheck;
+					HasSave = true;
+					IsOnline = true;
+					// Force the newer local state back up to the cloud on the next flush.
+					_isDirty = true;
+					_lastDirtySection = "cloud-resync";
+					return;
+				}
+
+				if ( cacheIsNewer && !cacheIsOurs )
+				{
+					// A newer cache exists but isn't verified as this player's — most
+					// likely a different Steam account on a shared machine, or a legacy
+					// unstamped cache. Load the cloud (correct for this player); the
+					// cache is overwritten with this player's data on the next flush.
+					Log.Warning( "[SaveService] local cache is newer than cloud but not verified as this player's (OwnerSteamId mismatch) — loading cloud, cache will be replaced." );
+				}
+
 				CurrentBlob = cloudResult.Blob;
 				HasSave = true;
 				IsOnline = true;
 				Log.Info( $"[SaveService] loaded from cloud (schema v{cloudResult.Blob.SchemaVersion}, {cloudResult.Blob.Monsters?.Count ?? 0} monsters)" );
-
-				// Conflict check: if a local cache also exists AND is newer than the
-				// cloud blob, the player played offline since the last cloud push.
-				// Cloud is authoritative (per architecture decision) — we load it —
-				// but we MUST loudly warn the player that their offline progress is
-				// being discarded rather than silently dropping it.
-				var cacheCheck = TryReadCache();
-				if ( cacheCheck != null && cacheCheck.LastSaveTicks > cloudResult.Blob.LastSaveTicks )
-				{
-					var offlineAge = System.TimeSpan.FromTicks( cacheCheck.LastSaveTicks - cloudResult.Blob.LastSaveTicks );
-					Log.Warning( $"[SaveService] CONFLICT: local cache is {offlineAge.TotalMinutes:F1}m newer than cloud — offline progress will be discarded. cloud={cloudResult.Blob.LastSaveTicks}, cache={cacheCheck.LastSaveTicks}" );
-					NotifyCloudCacheConflict();
-				}
 				return;
 			}
 
@@ -495,6 +524,7 @@ public sealed class SaveService : Component
 
 		// Stamp + serialize.
 		CurrentBlob.LastSaveTicks = System.DateTime.UtcNow.Ticks;
+		CurrentBlob.OwnerSteamId = (long)(Connection.Local?.SteamId ?? 0);
 
 		string json;
 		try
@@ -665,6 +695,7 @@ public sealed class SaveService : Component
 	private void WriteCache( SaveBlob blob )
 	{
 		blob.LastSaveTicks = System.DateTime.UtcNow.Ticks;
+		blob.OwnerSteamId = (long)(Connection.Local?.SteamId ?? 0);
 		var json = JsonSerializer.Serialize( blob, JsonOpts );
 		FileSystem.Data.WriteAllText( CacheFileName, json );
 	}

@@ -20,6 +20,15 @@ public class SaveBlob
 	/// <summary><see cref="System.DateTime.UtcNow"/>.Ticks at the moment the blob was last written. Used for cloud-vs-cache conflict detection.</summary>
 	public long LastSaveTicks { get; set; }
 
+	/// <summary>
+	/// Steam id of the player this blob belongs to. Stamped on every write.
+	/// The cloud store is already Steam-id scoped server-side, but the local
+	/// cache file (<c>save-cache.json</c>) is machine-local and NOT per-account,
+	/// so this lets the loader confirm a "newer" local cache actually belongs
+	/// to the current player before preferring it. <c>0</c> = legacy unstamped blob.
+	/// </summary>
+	public long OwnerSteamId { get; set; }
+
 	// --- Section DTOs -----------------------------------------------------------
 
 	/// <summary>Player-level stats, currency, cosmetics, skills.</summary>
