@@ -119,7 +119,7 @@
 			<!-- Split layout: grid + detail sidebar -->
 			<div class="collection-layout with-detail">
 
-				<div class="collection-main">
+				<div class="collection-main" @ref="tamersScroll">
 
 					<!-- ONLINE NOW section -->
 					<div class="tamers-section">
@@ -132,7 +132,7 @@
 							@{
 								var youSelected = selectedKind == "self";
 							}
-							<div class="tamer-tile you-tile @(youSelected ? "selected" : "")"
+							<div class="tamer-tile you-tile @(youSelected ? "selected" : "") @(_kbActive && _kbIndex == 0 ? "online-kb-selected" : "")"
 								 onmouseover=@(() => SoundManager.PlayHover())
 								 onclick=@SelectSelf>
 								<!-- P5 stamp layers: color block, halftone, diagonal rail, corner cut -->
@@ -177,10 +177,12 @@
 							</div>
 
 							<!-- Other online players -->
-							@foreach ( var player in otherPlayers )
+							@for ( int oi = 0; oi < otherPlayers.Count; oi++ )
 							{
+								var player = otherPlayers[oi];
+								var kbIdx = oi + 1;
 								var pSelected = selectedKind == "online" && selectedOnlinePlayer?.ConnectionId == player.ConnectionId;
-								<div class="tamer-tile @(player.HasProfile ? "" : "no-profile") @(pSelected ? "selected" : "")"
+								<div class="tamer-tile @(player.HasProfile ? "" : "no-profile") @(pSelected ? "selected" : "") @(_kbActive && _kbIndex == kbIdx ? "online-kb-selected" : "")"
 									 onmouseover=@(() => SoundManager.PlayHover())
 									 onclick=@(() => SelectOnline( player ))>
 									<!-- P5 stamp layers -->
@@ -582,6 +584,19 @@
 	private string selectedKind = "self";
 	private OnlinePlayerInfo selectedOnlinePlayer = null;
 
+	// ── Keyboard navigation ─────────────────────────────────────────────────
+	// _kbIndex walks the Tamers tile grid: index 0 is the YOU tile, 1..N are the
+	// online players in render order. _kbActive gates the cursor visual so the
+	// purple kb-selected ring only shows once the player actually uses the
+	// keyboard (a fresh mouse-only session stays clean). The tile grid is a
+	// flex-wrap layout, so column count is measured live from rendered widths.
+	private int _kbIndex = 0;
+	private bool _kbActive = false;
+	private Panel tamersScroll;
+	// Section cycle order for the [ / ] hotkeys. Guild is conditionally present
+	// (GuildManager.UiEnabled); CycleSection rebuilds the live list each press.
+	private static readonly string[] _sectionCycleBase = { "players", "leaderboards", "guild" };
+
 	private void OnPanelClicked()
 	{
 		GameHUD.EnterPanel();
@@ -589,10 +604,154 @@
 
 	public void TickInput()
 	{
+		// Ranked battle owns the keyboard entirely while active — keep the
+		// existing delegation untouched and bail before any hub nav runs.
 		if ( RankedEnabled && (currentSection == "ranked" || IsArenaActive()) )
 		{
 			arenaPanel?.TickInput();
+			return;
 		}
+
+		// [ / ] cycle the section pills (Tamers · Leaderboards · Guild). Works
+		// from any section so the player can always jump between them.
+		if ( Input.Pressed( "RadioPrev" ) ) { CycleSection( -1 ); return; }
+		if ( Input.Pressed( "RadioNext" ) ) { CycleSection( 1 ); return; }
+
+		// Per-section nav. Leaderboards / Guild are self-contained child panels
+		// (LeaderboardPanel / GuildPanel) with their own scroll content — the
+		// hub only owns the Tamers tile grid, so grid nav scopes to it. For the
+		// other sections [ / ] section-switching and GameHUD's tab handling
+		// (Q to exit) are the available keyboard affordances.
+		if ( currentSection == "players" )
+		{
+			// The favorite-beast selector is a small inline dropdown in the
+			// detail sidebar. While it's open, Q closes it (an internal back)
+			// instead of falling through to GameHUD's exit-to-tabs — claim the
+			// back key that frame so the HUD yields.
+			if ( showFavSelector && Input.Pressed( "Menu" ) )
+			{
+				showFavSelector = false;
+				SoundManager.PlayBack();
+				GameHUD.PanelHandledBackKey = true;
+				StateHasChanged();
+				return;
+			}
+			TickTamersNav();
+		}
+	}
+
+	// Cycle to the previous/next section pill, skipping Guild when its UI is
+	// gated off for the beta build.
+	private void CycleSection( int dir )
+	{
+		var live = _sectionCycleBase
+			.Where( s => s != "guild" || GuildManager.UiEnabled )
+			.ToList();
+		int i = live.IndexOf( currentSection );
+		if ( i < 0 ) i = 0;
+		i = ( i + dir + live.Count ) % live.Count;
+		SwitchTab( live[i] );
+		_kbActive = false;
+		StateHasChanged();
+	}
+
+	// Arrow/WASD navigation of the Tamers tile grid. Index 0 = the YOU tile,
+	// 1..N = online players in render order. Space/Enter commits the selection
+	// to the detail sidebar; the grid is flex-wrap so columns are measured live.
+	private void TickTamersNav()
+	{
+		// Tile count = YOU tile + every non-local online player. Mirrors the
+		// `otherPlayers` slice the markup builds so indices line up exactly.
+		int otherCount = IsConnected()
+			? GetOnlinePlayers().Count( p => !p.IsLocal )
+			: 0;
+		int tileCount = otherCount + 1;
+		_kbIndex = Math.Clamp( _kbIndex, 0, tileCount - 1 );
+
+		// Space / Enter — commit the highlighted tile to the detail sidebar.
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			ActivateTamerTile( _kbIndex, otherCount );
+			return;
+		}
+
+		int columns = GetTamerGridColumns();
+		int prev = _kbIndex;
+
+		if ( Input.Pressed( "Left" ) ) _kbIndex = Math.Max( 0, _kbIndex - 1 );
+		else if ( Input.Pressed( "Right" ) ) _kbIndex = Math.Min( tileCount - 1, _kbIndex + 1 );
+		else if ( Input.Pressed( "Up" ) ) { if ( _kbIndex >= columns ) _kbIndex -= columns; }
+		else if ( Input.Pressed( "Down" ) ) _kbIndex = Math.Min( tileCount - 1, _kbIndex + columns );
+
+		if ( _kbIndex != prev )
+		{
+			_kbActive = true;
+			SoundManager.PlayHover();
+			// Keep the cursor tile on screen. tamersScroll is the scrolling
+			// .collection-main; the tiles are descendants (nested under
+			// .tamers-grid), so resolve the index-th .tamer-tile descendant
+			// and hand it to UiGridScroll.IntoView directly.
+			ScrollTamerTileIntoView( _kbIndex );
+			StateHasChanged();
+		}
+		else if ( !_kbActive && (Input.Pressed( "Up" ) || Input.Pressed( "Down" )
+			|| Input.Pressed( "Left" ) || Input.Pressed( "Right" )) )
+		{
+			// First directional press with the cursor already at a valid tile
+			// (e.g. only the YOU tile exists) — still light up the kb cursor.
+			_kbActive = true;
+			StateHasChanged();
+		}
+	}
+
+	// Live column count for the flex-wrap tile grid. Measured from the rendered
+	// grid width vs. a single tile's width (tiles are a fixed 320px + 10px gap,
+	// but reading Box.Rect keeps it correct if the layout ever changes). Falls
+	// back to 2 before the first layout pass populates Box.Rect.
+	private int GetTamerGridColumns()
+	{
+		var grid = tamersScroll?.Children?
+			.SelectMany( c => c.Children )
+			.FirstOrDefault( c => c.HasClass( "tamers-grid" ) );
+		float gridW = grid?.Box.Rect.Width ?? 0f;
+		var firstTile = grid?.Children?.FirstOrDefault( c => c.HasClass( "tamer-tile" ) );
+		float tileW = firstTile?.Box.Rect.Width ?? 0f;
+		if ( gridW <= 0f || tileW <= 0f ) return 2;
+		return Math.Max( 1, (int)(gridW / tileW) );
+	}
+
+	// Scroll .collection-main so the index-th .tamer-tile descendant is fully
+	// visible. UiGridScroll.ScrollIndexIntoView only walks direct children, so
+	// resolve the descendant ourselves and use the screen-space IntoView path.
+	private void ScrollTamerTileIntoView( int index )
+	{
+		if ( tamersScroll == null || index < 0 ) return;
+		var grid = tamersScroll.Children?
+			.SelectMany( c => c.Children )
+			.FirstOrDefault( c => c.HasClass( "tamers-grid" ) );
+		if ( grid == null ) return;
+		int n = 0;
+		foreach ( var tile in grid.Children )
+		{
+			if ( !tile.HasClass( "tamer-tile" ) ) continue;
+			if ( n == index ) { UiGridScroll.IntoView( tamersScroll, tile ); return; }
+			n++;
+		}
+	}
+
+	// Commit the index-th tile to the detail sidebar. Index 0 is always the
+	// local player (SelectSelf); 1..N map into the online-player list.
+	private void ActivateTamerTile( int index, int otherCount )
+	{
+		if ( index <= 0 )
+		{
+			SelectSelf();
+			return;
+		}
+		var others = GetOnlinePlayers().Where( p => !p.IsLocal ).ToList();
+		int pi = index - 1;
+		if ( pi >= 0 && pi < others.Count )
+			SelectOnline( others[pi] );
 	}
 
 	// Battle tab hidden for v1.2.0 — reshipping with polish in v1.3+. Flip to true to restore.
@@ -624,6 +783,8 @@
 		showFavSelector = false;
 		selectedKind = "self";
 		selectedOnlinePlayer = null;
+		_kbIndex = 0;
+		_kbActive = false;
 	}
 
 	private bool IsConnected() => GameNetworkSystem.IsActive;
@@ -953,7 +1114,9 @@
 				selectedOnlinePlayer?.ConnectionId,
 				showFavSelector,
 				IsConnected() ? Connection.All.Count : 0,
-				ChatManager.Instance?.PlayerProfiles?.Count ?? 0
+				ChatManager.Instance?.PlayerProfiles?.Count ?? 0,
+				_kbIndex,
+				_kbActive
 			),
 			HashCode.Combine(
 				vcm?.IsInLobby ?? false,

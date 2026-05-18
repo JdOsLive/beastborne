@@ -313,7 +313,7 @@
 				</div>
 
 				<!-- Scrollable body — entries grouped by category with iconify icons -->
-				<div class="patchnotes-body">
+				<div class="patchnotes-body" @ref="patchNotesBody">
 					<div class="patchnotes-section tone-features">
 						<div class="patchnotes-section-head">
 							<iconify icon="lucide:sparkles" Size=@(14) Color="#ffffff" />
@@ -475,7 +475,7 @@
 					<span class="beta-disclaimer-hint">Bug reports go a long way — they're what shape the game.</span>
 				</div>
 				<div class="beta-disclaimer-actions">
-					<button class="beta-disclaimer-btn" onclick=@DismissBetaDisclaimer>
+					<button class="beta-disclaimer-btn mainmenu-kb-selected" onclick=@DismissBetaDisclaimer>
 						<span>GOT IT</span>
 					</button>
 				</div>
@@ -523,10 +523,10 @@
 					<span class="hiring-popup-hint">Apply in the Beastborne Discord — drop a message in #applications with samples of your work.</span>
 				</div>
 				<div class="hiring-popup-actions">
-					<button class="hiring-cancel-btn" onclick=@CloseHiringPopup>
+					<button class="hiring-cancel-btn @(_dialogIndex == 0 ? "mainmenu-kb-selected" : "")" onclick=@CloseHiringPopup>
 						<span>NOT NOW</span>
 					</button>
-					<button class="hiring-apply-btn" onclick=@OnHiringApplyClicked>
+					<button class="hiring-apply-btn @(_dialogIndex == 1 ? "mainmenu-kb-selected" : "")" onclick=@OnHiringApplyClicked>
 						<iconify icon="lucide:external-link" Size=@(13) Color="#ffffff" />
 						<span>OPEN DISCORD</span>
 					</button>
@@ -549,10 +549,10 @@
 					<span class="reset-confirm-hint">(Triggered by Ctrl+Shift+R on the title screen)</span>
 				</div>
 				<div class="reset-confirm-actions">
-					<button class="reset-cancel-btn" onclick=@OnCancelReset disabled=@isResetting>
+					<button class="reset-cancel-btn @(_dialogIndex == 0 ? "mainmenu-kb-selected" : "")" onclick=@OnCancelReset disabled=@isResetting>
 						<span>CANCEL</span>
 					</button>
-					<button class="reset-confirm-btn" onclick=@OnConfirmReset disabled=@isResetting>
+					<button class="reset-confirm-btn @(_dialogIndex == 1 ? "mainmenu-kb-selected" : "")" onclick=@OnConfirmReset disabled=@isResetting>
 						<span>@(isResetting ? "RESETTING..." : "YES, DELETE EVERYTHING")</span>
 					</button>
 				</div>
@@ -732,11 +732,11 @@
 					<span class="save-fail-hint">Reconnecting and retrying is the safest option.</span>
 				</div>
 				<div class="save-fail-actions">
-					<button class="save-fail-retry-btn" onclick=@OnSaveFailRetry disabled=@isSaveRetrying>
+					<button class="save-fail-retry-btn @(_dialogIndex == 0 ? "mainmenu-kb-selected" : "")" onclick=@OnSaveFailRetry disabled=@isSaveRetrying>
 						<iconify icon="lucide:refresh-cw" Size=@(14) Color="#ffffff" />
 						<span>@(isSaveRetrying ? "RETRYING..." : "RETRY")</span>
 					</button>
-					<button class="save-fail-offline-btn" onclick=@OnPlayOffline>
+					<button class="save-fail-offline-btn @(_dialogIndex == 1 ? "mainmenu-kb-selected" : "")" onclick=@OnPlayOffline>
 						<iconify icon="lucide:wifi-off" Size=@(14) Color="#94a3b8" />
 						<span>PLAY OFFLINE</span>
 					</button>
@@ -755,6 +755,18 @@
 	private bool contentVisible = false;
 	private int entranceStage = 0;
 	private int selectedIndex = 0;
+
+	// Shared keyboard cursor for two-button modal dialogs (save-fail,
+	// hiring, reset confirm). 0 = left button focused, 1 = right. Reset
+	// to 0 (the safe choice) whenever such a dialog opens.
+	private int _dialogIndex = 0;
+
+	// @ref to the scrollable patch-notes entry list — arrow keys + mouse
+	// wheel drive its ScrollOffset. Bound only while the panel is mounted.
+	private Sandbox.UI.Panel patchNotesBody;
+	private const float PatchNotesKeyScrollStep = 90f;  // arrow Up/Down nudge
+	private const float PatchNotesWheelStep = 60f;       // per wheel notch
+
 	private bool showStarterSelection = false;
 	private bool showRoadmap = false;
 	private int selectedStarter = -1; // -1 = none selected yet
@@ -837,6 +849,7 @@
 	{
 		SoundManager.PlayPopup();
 		showHiringPopup = true;
+		_dialogIndex = 0; // focus NOT NOW by default
 		StateHasChanged();
 	}
 
@@ -1479,48 +1492,105 @@
 		if ( OptionsPanel.Instance != null && OptionsPanel.Instance.IsVisible )
 			return;
 
+		// ─── OVERLAY PRECEDENCE ─────────────────────────────────────
+		// Modal overlays each fully OWN keyboard input while open — every
+		// handler `return`s so menu navigation never leaks behind a popup.
+		// Order matches z-stacking: the beta disclaimer sits on top at boot,
+		// then save-fail, then hiring, then reset-confirm. Process the
+		// top-most open overlay first.
+
+		// Open-beta disclaimer — first thing a player sees at launch.
+		// Single GOT IT button; Enter/Space/Q all dismiss it.
+		if (!_betaDisclaimerSeen)
+		{
+			if (Input.Pressed("Jump") || Input.Pressed("Enter")
+				|| Input.Pressed("Menu") || Input.Pressed("run"))
+			{
+				DismissBetaDisclaimer();
+			}
+			return;
+		}
+
+		// Cloud-quarantine prompt — two buttons (RETRY / PLAY OFFLINE).
+		// Left/Right pick, Enter/Space activate, Q acts as "Play Offline"
+		// (the non-destructive escape — it lets the player in).
+		if (showSaveLoadFailPrompt)
+		{
+			if (isSaveRetrying) return; // locked while a retry is in flight
+			HandleTwoButtonDialog(
+				onLeft: OnSaveFailRetry,
+				onRight: OnPlayOffline,
+				onBack: OnPlayOffline );
+			return;
+		}
+
+		// Now Hiring popup — two buttons (NOT NOW / OPEN DISCORD).
+		if (showHiringPopup)
+		{
+			HandleTwoButtonDialog(
+				onLeft: CloseHiringPopup,
+				onRight: OnHiringApplyClicked,
+				onBack: CloseHiringPopup );
+			return;
+		}
+
 		// Danger-zone shortcut: Ctrl+Shift+R wipes ALL game data after a two-stage
 		// confirm. Only armed on the clean title screen (no takeover active) so
 		// the player can't fat-finger it mid-flow. The actual reset runs via the
 		// inline confirm overlay below — OptionsPanel's Danger Zone is the main
 		// in-game path; this shortcut stays as a no-save-data rescue hatch.
 		// In s&box: "duck" = Ctrl, "run" = Shift, "reload" = R.
-		if (!showStarterSelection && !showRoadmap && !showResetConfirm)
+		if (!showStarterSelection && !showRoadmap && !showResetConfirm && !showPatchNotes)
 		{
 			if (Input.Down("duck") && Input.Down("run") && Input.Pressed("reload"))
 			{
 				SoundManager.PlayPopup();
 				showResetConfirm = true;
+				_dialogIndex = 0; // default focus to the safe CANCEL button
 				StateHasChanged();
 				return;
 			}
 		}
 
-		// Reset-confirm overlay handles its own escape/back keys.
+		// Reset-confirm overlay — two buttons (CANCEL / YES, DELETE). Q backs
+		// out via CANCEL (the safe choice — destructive action is never the
+		// keyboard default).
 		if (showResetConfirm)
 		{
-			if (Input.Pressed("Menu") || Input.Pressed("run"))
-			{
-				OnCancelReset();
-			}
+			if (isResetting) return; // locked while the wipe runs
+			HandleTwoButtonDialog(
+				onLeft: OnCancelReset,
+				onRight: OnConfirmReset,
+				onBack: OnCancelReset );
 			return;
 		}
 
 		if (showRoadmap)
 		{
-			// Close roadmap with escape or back
+			// Close roadmap with escape or back.
 			if (Input.Pressed("Menu") || Input.Pressed("run"))
 			{
 				CloseRoadmap();
 			}
+			return;
 		}
 		else if (showPatchNotes)
 		{
-			// Close patch notes with escape or back
+			// Close patch notes with escape or back; arrow Up/Down scroll the
+			// long entry list (mouse wheel handled in OnMouseWheel).
 			if (Input.Pressed("Menu") || Input.Pressed("run"))
 			{
 				ClosePatchNotes();
+				return;
 			}
+			if (patchNotesBody != null)
+			{
+				if (Input.Pressed("Down"))
+					ScrollPatchNotes(PatchNotesKeyScrollStep);
+				else if (Input.Pressed("Up"))
+					ScrollPatchNotes(-PatchNotesKeyScrollStep);
+			}
+			return;
 		}
 		else if (showStarterSelection)
 		{
@@ -1544,7 +1614,7 @@
 		}
 		else
 		{
-			// Navigate menu (5 buttons: PLAY, ROADMAP, OPTIONS, LANG, QUIT)
+			// Navigate menu (6 entries: PLAY, ROADMAP, OPTIONS, PATCH NOTES, LANG, QUIT)
 			if (Input.Pressed("Up"))
 			{
 				selectedIndex = Math.Max(0, selectedIndex - 1);
@@ -1558,6 +1628,63 @@
 			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 				ExecuteSelectedAction();
 		}
+	}
+
+	// ─── TWO-BUTTON DIALOG KEYBOARD HELPER ──────────────────────────
+	// Shared scheme for every two-choice modal (save-fail, hiring, reset
+	// confirm). `_dialogIndex` is the focused button (0 = left, 1 = right);
+	// Left/Right move focus, Enter/Space activate the focused button, Q
+	// runs `onBack` (always wired to the SAFE / non-destructive choice).
+	private void HandleTwoButtonDialog( Action onLeft, Action onRight, Action onBack )
+	{
+		if (Input.Pressed("Menu") || Input.Pressed("run"))
+		{
+			onBack?.Invoke();
+			return;
+		}
+		if (Input.Pressed("Left") && _dialogIndex != 0)
+		{
+			_dialogIndex = 0;
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+		if (Input.Pressed("Right") && _dialogIndex != 1)
+		{
+			_dialogIndex = 1;
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+		if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+		{
+			if (_dialogIndex == 0) onLeft?.Invoke();
+			else onRight?.Invoke();
+		}
+	}
+
+	// Nudge the patch-notes scroll body by `delta` px, clamped at the top.
+	// s&box clamps the bottom on its own. Used by arrow keys + mouse wheel.
+	private void ScrollPatchNotes( float delta )
+	{
+		if (patchNotesBody == null) return;
+		float y = Math.Max( 0f, patchNotesBody.ScrollOffset.y + delta );
+		patchNotesBody.ScrollOffset = new Vector2( patchNotesBody.ScrollOffset.x, y );
+	}
+
+	// Mouse wheel over the patch-notes panel scrolls its body. UI wheel
+	// events arrive here, NOT via Input.MouseWheel (that's the game channel).
+	// Declared `protected` (not `protected internal`): the base member is
+	// `protected internal` but it lives in another assembly, so only the
+	// `protected` half is visible here — the override must match that.
+	protected override void OnMouseWheel( Vector2 delta )
+	{
+		if (showPatchNotes && patchNotesBody != null)
+		{
+			ScrollPatchNotes( delta.y * PatchNotesWheelStep );
+			return; // consume — don't fall through to anything below
+		}
+		base.OnMouseWheel( delta );
 	}
 
 	private void ExecuteSelectedAction()
@@ -1602,6 +1729,7 @@
 		if ( svc != null && svc.IsCloudQuarantined && !svc.HasSave && !_saveFailAcknowledged )
 		{
 			showSaveLoadFailPrompt = true;
+			_dialogIndex = 0; // focus RETRY (the recommended choice) by default
 			StateHasChanged();
 			return;
 		}
@@ -1956,6 +2084,7 @@
 		hash.Add(_patchNotesSeen);
 		hash.Add(showSaveLoadFailPrompt);
 		hash.Add(isSaveRetrying);
+		hash.Add(_dialogIndex);
 		hash.Add(transitionPhase);
 		// Add animation frame to hash so UI updates with animation
 		hash.Add(SpriteAnimator.GlobalFrame);
