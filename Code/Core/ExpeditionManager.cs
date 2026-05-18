@@ -855,7 +855,9 @@ public sealed class ExpeditionManager : Component
 			float hardGoldMult = GetGoldMultiplier();
 			float hardXPMult = GetXPMultiplier();
 			float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardGoldMult);
+			// Server-pushed live-event gold boost (/api/events, boost_type "gold").
+			float liveEventGoldBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "gold" ) ?? 1.0);
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardGoldMult * liveEventGoldBoost);
 			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardXPMult);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
@@ -1544,7 +1546,9 @@ public sealed class ExpeditionManager : Component
 			float hardGoldMult = GetGoldMultiplier();
 			float hardXPMult = GetXPMultiplier();
 			float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardGoldMult);
+			// Server-pushed live-event gold boost (/api/events, boost_type "gold").
+			float liveEventGoldBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "gold" ) ?? 1.0);
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardGoldMult * liveEventGoldBoost);
 			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardXPMult);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );

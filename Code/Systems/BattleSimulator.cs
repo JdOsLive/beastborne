@@ -508,10 +508,13 @@ public static class BattleSimulator
 		// Apply gold boost from shop
 		float goldBoost = ShopManager.Instance?.GetBoostMultiplier( ShopItemType.GoldBoost ) ?? 1.0f;
 
+		// Apply server-pushed live-event gold boost (/api/events, boost_type "gold").
+		float liveEventGoldBoost = (float)(LiveEventManager.Instance?.GetBoostMultiplier( "gold" ) ?? 1.0);
+
 		// Apply relic bonus
 		float relicGoldBonus = ItemManager.Instance?.GetRelicBonus( ItemEffectType.PassiveGoldFind ) ?? 0;
 
-		int gold = (int)(baseGold * rarityMultiplier * variance * (1 + goldBonus / 100f) * goldBoost * (1 + relicGoldBonus / 100f));
+		int gold = (int)(baseGold * rarityMultiplier * variance * (1 + goldBonus / 100f) * goldBoost * liveEventGoldBoost * (1 + relicGoldBonus / 100f));
 
 		// Check for double drop chance (Jackpot skill)
 		float doubleChance = TamerManager.Instance?.GetSkillBonus( SkillEffectType.DoubleDropChance ) ?? 0;
