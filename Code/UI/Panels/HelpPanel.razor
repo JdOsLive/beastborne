@@ -39,13 +39,13 @@
 		@* Body: Sidebar + Content. Both are normal flex children of help-body. *@
 		<div class="help-body">
 
-			@* Sidebar — vertical category list with nested subtabs under the active category. *@
-			<div class="help-sidebar @(kbFocusZone == "list" ? "kb-zone-active" : "")">
-				@for (int ci = 0; ci < Categories.Length; ci++)
+			@* Sidebar — vertical category list with nested subtabs under the active category.
+			   The keyboard cursor walks categories + subtabs as one flat list. *@
+			<div class="help-sidebar @(kbMode == "nav" ? "kb-zone-active" : "")">
+				@foreach (var category in Categories)
 				{
-					var category = Categories[ci];
 					var isActive = currentCategory == category.Id;
-					var isKbFocused = kbFocusZone == "list" && kbCategoryCursor == ci;
+					var isKbFocused = kbMode == "nav" && IsCategoryKbFocused(category.Id);
 					var iconColor = (isActive || isKbFocused) ? "#ffffff" : "#a78bfa";
 					<div class="sidebar-btn @(isActive ? "active" : "") @(isKbFocused ? "kb-focused" : "")"
 						 onclick=@(() => SelectCategory(category.Id))>
@@ -62,7 +62,7 @@
 						<div class="sidebar-subtabs">
 							@foreach (var sub in category.Subtabs)
 							{
-								var isSubKbFocused = kbFocusZone == "content" && currentSubtab == sub.Id;
+								var isSubKbFocused = kbMode == "nav" && IsSubtabKbFocused(category.Id, sub.Id);
 								<div class="sidebar-subtab @(currentSubtab == sub.Id ? "active" : "") @(isSubKbFocused ? "kb-focused" : "")"
 									 onclick=@(() => SelectSubtab(sub.Id))>
 									<span class="sidebar-subtab-tick"></span>
@@ -74,28 +74,9 @@
 				}
 			</div>
 
-			@* Content area — scrollable page + a keyboard-focus affordance pill. *@
-			<div class="content-area @(kbFocusZone == "content" ? "kb-zone-active" : "")">
-
-				@* Keyboard affordance pill — clickable to toggle zones, and a
-				   live hint of what the arrows do in the current zone. *@
-				<div class="kb-hint-bar">
-					<div class="kb-focus-switch @(kbFocusZone == "content" ? "active" : "")"
-						 onclick=@(() => { if (kbFocusZone == "content") { kbFocusZone = "list"; SoundManager.PlayBack(); } else EnterContentZone(); })>
-						<iconify icon="@(kbFocusZone == "content" ? "lucide:arrow-left" : "lucide:arrow-left-right")" Size=@(13) Color="@(kbFocusZone == "content" ? "#c4b5fd" : "rgba(255,255,255,0.55)")" />
-						<span class="kb-focus-switch-key">@(kbFocusZone == "content" ? "Q" : "TAB")</span>
-						<span class="kb-focus-switch-label">@(kbFocusZone == "content" ? "Back to menu" : "Read this page")</span>
-					</div>
-					@if (kbFocusZone == "content")
-					{
-						<span class="kb-hint-text">
-							<span class="kb-hint-key">A</span><span class="kb-hint-key">D</span> switch page
-							&middot;
-							<span class="kb-hint-key">W</span><span class="kb-hint-key">S</span> scroll
-						</span>
-					}
-				</div>
-
+			@* Content area — the scrollable help page. A purple inner edge
+			   marks when the keyboard is in page-scroll mode. *@
+			<div class="content-area @(kbMode == "scroll" ? "kb-zone-active" : "")">
 				<div class="content-inner" @ref="ContentInner">
 					@switch (currentCategory + "/" + currentSubtab)
 					{
@@ -286,22 +267,90 @@
 	private Panel ContentInner;
 
 	// ---- Keyboard navigation -------------------------------------------
-	// Two focus zones:
-	//   "list"    — Up/Down (W/S) move a cursor through the category list;
-	//               Enter/Right commits the cursored category and crosses
-	//               into the content zone; Q closes the panel.
-	//   "content" — Left/Right (A/D) cycle the current category's subtabs;
-	//               Up/Down (W/S) scroll the content page; Q returns to the
-	//               list zone. Slot1..9 jump straight to a subtab.
-	// Tab (Score) toggles between the two zones.
-	// kbCategoryCursor indexes Categories — it's the *cursored* category in
-	// the list zone, which only becomes currentCategory on commit.
-	private string kbFocusZone = "list";
-	private int kbCategoryCursor = 0;
-	// How many content-inner pixels one Up/Down press scrolls in the
-	// content zone. ~2/3 of a typical page viewport keeps long pages
-	// reachable in a few presses without overshooting headings.
+	// Single flat cursor model. The sidebar — categories AND the open
+	// category's subtabs — is treated as ONE top-to-bottom list of "nav
+	// rows". W/S (Up/Down) walk the cursor through that flat list; landing
+	// on any row immediately switches the page underneath (no Enter step).
+	//
+	// Two modes:
+	//   "nav"    — W/S move the cursor; Q closes the panel.
+	//   "scroll" — W/S scroll the content page; Q returns to "nav".
+	//   Space toggles "nav" -> "scroll".
+	private string kbMode = "nav";
+	private int kbCursor = 0;
+	// How many content-inner pixels one W/S press scrolls in scroll mode.
+	// ~2/3 of a typical page viewport keeps long pages reachable in a few
+	// presses without overshooting headings.
 	private const float ContentScrollStep = 220f;
+
+	// A single keyboard-navigable row in the flattened sidebar. Kind is
+	// "category" or "subtab"; CategoryId is always set; SubtabId is set
+	// only for "subtab" rows.
+	private record NavRow(string Kind, string CategoryId, string SubtabId);
+
+	// Build the flat nav-row list: every category header, and — directly
+	// under the CURRENTLY OPEN category — that category's subtabs. This
+	// mirrors exactly what the sidebar markup renders, so the cursor index
+	// lines up 1:1 with the visible rows.
+	private List<NavRow> BuildNavRows()
+	{
+		var rows = new List<NavRow>();
+		foreach (var cat in Categories)
+		{
+			rows.Add(new NavRow("category", cat.Id, null));
+			if (cat.Id == currentCategory && cat.Subtabs != null)
+			{
+				foreach (var sub in cat.Subtabs)
+					rows.Add(new NavRow("subtab", cat.Id, sub.Id));
+			}
+		}
+		return rows;
+	}
+
+	// Apply a nav row: switch the page underneath the cursor immediately.
+	private void ApplyNavRow(NavRow row)
+	{
+		if (row.Kind == "category")
+			SelectCategory(row.CategoryId);
+		else
+			SelectSubtab(row.SubtabId);
+	}
+
+	// Index of the nav row that matches the page currently on screen — the
+	// active subtab if one is open, else the active category header.
+	private int CurrentNavIndex(List<NavRow> rows)
+	{
+		for (int i = 0; i < rows.Count; i++)
+		{
+			var r = rows[i];
+			if (r.Kind == "subtab" && r.CategoryId == currentCategory && r.SubtabId == currentSubtab)
+				return i;
+		}
+		for (int i = 0; i < rows.Count; i++)
+		{
+			if (rows[i].Kind == "category" && rows[i].CategoryId == currentCategory)
+				return i;
+		}
+		return 0;
+	}
+
+	// True when the keyboard cursor is sitting on this category header.
+	private bool IsCategoryKbFocused(string categoryId)
+	{
+		var rows = BuildNavRows();
+		if (kbCursor < 0 || kbCursor >= rows.Count) return false;
+		var r = rows[kbCursor];
+		return r.Kind == "category" && r.CategoryId == categoryId;
+	}
+
+	// True when the keyboard cursor is sitting on this subtab row.
+	private bool IsSubtabKbFocused(string categoryId, string subtabId)
+	{
+		var rows = BuildNavRows();
+		if (kbCursor < 0 || kbCursor >= rows.Count) return false;
+		var r = rows[kbCursor];
+		return r.Kind == "subtab" && r.CategoryId == categoryId && r.SubtabId == subtabId;
+	}
 
 	private record HelpSubtab(string Id, string Label);
 	private record HelpCategory(string Id, string Icon, string Name, string Sub, HelpSubtab[] Subtabs = null);
@@ -426,9 +475,9 @@
 			Instance.IsVisible = true;
 			Instance.currentCategory = "getting-started";
 			Instance.currentSubtab = GetCategory("getting-started")?.Subtabs?.FirstOrDefault()?.Id ?? "";
-			// Keyboard starts in the category list, cursor on the open category.
-			Instance.kbFocusZone = "list";
-			Instance.kbCategoryCursor = Instance.IndexOfCategory("getting-started");
+			// Keyboard starts in nav mode with the cursor on the open page.
+			Instance.kbMode = "nav";
+			Instance.kbCursor = Instance.CurrentNavIndex(Instance.BuildNavRows());
 			SoundManager.PlayPopup();
 		}
 	}
@@ -441,20 +490,11 @@
 			Instance.currentCategory = categoryId;
 			Instance.currentSubtab = GetCategory(categoryId)?.Subtabs?.FirstOrDefault()?.Id ?? "";
 			Instance.ContentInner?.ScrollOffset = new Vector2(0, 0);
-			// Opened straight to a category — keyboard lands in the content zone
-			// with the list cursor parked on that same category.
-			Instance.kbFocusZone = "content";
-			Instance.kbCategoryCursor = Instance.IndexOfCategory(categoryId);
+			// Opened straight to a category — cursor lands on that page.
+			Instance.kbMode = "nav";
+			Instance.kbCursor = Instance.CurrentNavIndex(Instance.BuildNavRows());
 			SoundManager.PlayForward();
 		}
-	}
-
-	// Index of a category id within Categories (0 if not found).
-	private int IndexOfCategory(string id)
-	{
-		for (int i = 0; i < Categories.Length; i++)
-			if (Categories[i].Id == id) return i;
-		return 0;
 	}
 
 	public void Hide()
@@ -477,57 +517,23 @@
 
 	private void HandleKeyboardInput()
 	{
-		// Arrow keys + WASD. s&box maps W/S to Forward/Backward and A/D to
-		// Left/Right, so fold them into single up/down/left/right intents.
-		bool up    = Input.Pressed("Up")    || Input.Pressed("Forward");
-		bool down  = Input.Pressed("Down")  || Input.Pressed("Backward");
-		bool left  = Input.Pressed("Left");
-		bool right = Input.Pressed("Right");
-		bool confirm = Input.Pressed("Jump") || Input.Pressed("Enter");
-		bool back  = Input.Pressed("Escape") || Input.Pressed("Menu") || Input.Pressed("run");
-		bool tab   = Input.Pressed("Score");
+		// W/S map to Forward/Backward in s&box; fold with the arrow keys.
+		bool up      = Input.Pressed("Up")    || Input.Pressed("Forward");
+		bool down    = Input.Pressed("Down")  || Input.Pressed("Backward");
+		bool confirm = Input.Pressed("Jump")  || Input.Pressed("Enter");
+		bool back    = Input.Pressed("Escape") || Input.Pressed("Menu") || Input.Pressed("run");
 
-		// ---- Tab toggles between the two focus zones --------------------
-		if (tab)
+		// ---- SCROLL mode: W/S scroll the content page, Q returns to nav ----
+		if (kbMode == "scroll")
 		{
-			if (kbFocusZone == "list") EnterContentZone();
-			else { kbFocusZone = "list"; SoundManager.PlayBack(); }
-			return;
-		}
-
-		if (kbFocusZone == "content")
-		{
-			// Q — internal back: return to the category list, not a close.
-			if (back) { kbFocusZone = "list"; SoundManager.PlayBack(); return; }
-
-			// Left/Right (A/D) cycle the current category's subtabs.
-			var subtabs = GetCategory(currentCategory)?.Subtabs;
-			if (subtabs != null && subtabs.Length > 0)
+			if (back)
 			{
-				int idx = Array.FindIndex(subtabs, s => s.Id == currentSubtab);
-				if (idx < 0) idx = 0;
-				if (left && idx > 0)
-				{
-					SelectSubtab(subtabs[idx - 1].Id);
-					return;
-				}
-				if (right && idx < subtabs.Length - 1)
-				{
-					SelectSubtab(subtabs[idx + 1].Id);
-					return;
-				}
-				// Slot1..9 jump straight to subtab N of the current category.
-				for (int n = 1; n <= 9 && n <= subtabs.Length; n++)
-				{
-					if (Input.Pressed("Slot" + n))
-					{
-						SelectSubtab(subtabs[n - 1].Id);
-						return;
-					}
-				}
+				kbMode = "nav";
+				// Re-anchor the cursor to the page that's on screen.
+				kbCursor = CurrentNavIndex(BuildNavRows());
+				SoundManager.PlayBack();
+				return;
 			}
-
-			// Up/Down (W/S) scroll the content page.
 			if ((up || down) && ContentInner != null)
 			{
 				var off = ContentInner.ScrollOffset;
@@ -539,54 +545,34 @@
 			return;
 		}
 
-		// ---- LIST zone --------------------------------------------------
-		// Q closes the whole panel from the list zone (universal back).
+		// ---- NAV mode: W/S walk the single flat cursor --------------------
+		// Q closes the whole panel.
 		if (back) { Hide(); return; }
 
-		if (up && kbCategoryCursor > 0)
-		{
-			kbCategoryCursor--;
-			SoundManager.PlayHover();
-			return;
-		}
-		if (down && kbCategoryCursor < Categories.Length - 1)
-		{
-			kbCategoryCursor++;
-			SoundManager.PlayHover();
-			return;
-		}
-		// Enter or Right commits the cursored category and crosses into content.
-		if (confirm || right)
-		{
-			var cat = Categories[Math.Clamp(kbCategoryCursor, 0, Categories.Length - 1)];
-			bool changed = currentCategory != cat.Id;
-			SelectCategory(cat.Id);             // plays its own click when the category changes
-			EnterContentZone(playSound: !changed);
-			return;
-		}
-		// Number keys jump straight to a category and into its content.
-		for (int n = 1; n <= 9 && n <= Categories.Length; n++)
-		{
-			if (Input.Pressed("Slot" + n))
-			{
-				kbCategoryCursor = n - 1;
-				bool changed = currentCategory != Categories[n - 1].Id;
-				SelectCategory(Categories[n - 1].Id);
-				EnterContentZone(playSound: !changed);
-				return;
-			}
-		}
-	}
+		// Space dives into page-scroll mode.
+		if (confirm) { kbMode = "scroll"; SoundManager.PlayClick(); return; }
 
-	// Cross into the content zone — sync the list cursor to the live category
-	// so returning to the list lands on the category being read. playSound is
-	// suppressed when the caller already played a forward/click sound (e.g.
-	// SelectCategory fired its own click on a category change).
-	private void EnterContentZone(bool playSound = true)
-	{
-		kbFocusZone = "content";
-		kbCategoryCursor = IndexOfCategory(currentCategory);
-		if (playSound) SoundManager.PlayClick();
+		var rows = BuildNavRows();
+		if (rows.Count == 0) return;
+
+		// Keep the cursor coherent — if a page switch changed the row count,
+		// re-anchor before moving.
+		kbCursor = Math.Clamp(kbCursor, 0, rows.Count - 1);
+
+		if (up && kbCursor > 0)
+		{
+			kbCursor--;
+			ApplyNavRow(rows[kbCursor]);   // live page switch
+			SoundManager.PlayHover();
+			return;
+		}
+		if (down && kbCursor < rows.Count - 1)
+		{
+			kbCursor++;
+			ApplyNavRow(rows[kbCursor]);   // live page switch
+			SoundManager.PlayHover();
+			return;
+		}
 	}
 
 	private void SelectCategory(string categoryId)
@@ -603,6 +589,8 @@
 				ContentInner.ScrollOffset = new Vector2(0, 0);
 			}
 		}
+		// Keyboard cursor follows mouse clicks too, so the two stay in sync.
+		kbCursor = CurrentNavIndex(BuildNavRows());
 	}
 
 	private void SelectSubtab(string subtabId)
@@ -616,14 +604,15 @@
 				ContentInner.ScrollOffset = new Vector2(0, 0);
 			}
 		}
+		kbCursor = CurrentNavIndex(BuildNavRows());
 	}
 
 	protected override int BuildHash()
 	{
-		// kbFocusZone + kbCategoryCursor drive the keyboard-focus highlight
-		// (.kb-focused on the cursored category, zone glow on the content area).
+		// kbMode + kbCursor drive the keyboard-cursor highlight and the
+		// content-area scroll-mode glow.
 		return HashCode.Combine(IsVisible, currentCategory, currentSubtab,
-			kbFocusZone, kbCategoryCursor);
+			kbMode, kbCursor);
 	}
 
 	// ==========================================
@@ -1032,15 +1021,15 @@
 			<div class="help-keypoints">
 				<div class="help-keypoint">
 					<iconify icon="lucide:list" Size=@(16) Color="#a78bfa" />
-					<span><strong>Up / Down (W / S)</strong> — move through the topic list on the left. <strong>Enter</strong> or <strong>Right</strong> opens a topic.</span>
+					<span><strong>W / S</strong> — walk the cursor down the topic list on the left. The page updates live as you move — every topic and sub-page in one list.</span>
 				</div>
 				<div class="help-keypoint">
 					<iconify icon="lucide:book-open" Size=@(16) Color="#34d399" />
-					<span><strong>Left / Right (A / D)</strong> — flip between a topic's pages. <strong>Up / Down (W / S)</strong> — scroll the page you're reading.</span>
+					<span><strong>Space</strong> — start reading. W / S now scroll the page you're on instead of moving the cursor.</span>
 				</div>
 				<div class="help-keypoint">
-					<iconify icon="lucide:arrow-left-right" Size=@(16) Color="#fbbf24" />
-					<span><strong>Tab</strong> — jump between the topic list and the page. <strong>Q</strong> — step back, then close the guide.</span>
+					<iconify icon="lucide:corner-up-left" Size=@(16) Color="#fb923c" />
+					<span><strong>Q</strong> — step back: from reading, return to the topic list; from the topic list, close the guide.</span>
 				</div>
 			</div>
 		</div>
