@@ -283,7 +283,10 @@ public class RaidScoreResponse
 /// </summary>
 public class XpResponse
 {
-	public int GuildXp { get; set; }
+	// long to match Guild.GuildXP and the guild-fetch DTO's GuildXp — guild XP
+	// is a long everywhere else (the L50 curve reaches ~3.75M; int still fits
+	// today, but a mismatched width is a latent truncation bug).
+	public long GuildXp { get; set; }
 	public int Level { get; set; }
 	public bool LeveledUp { get; set; }
 }
