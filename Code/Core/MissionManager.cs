@@ -124,6 +124,14 @@ public sealed class MissionManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	protected override void OnStart()
 	{
 		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )

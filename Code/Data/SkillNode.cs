@@ -88,8 +88,6 @@ public enum SkillEffectType
 	InstantLoyaltyChance,
 	FewerDemandsChance,
 
-	// Special unlocks
-	CartographerUnlock     // Unlocks special expedition modes
 }
 
 /// <summary>
@@ -145,7 +143,6 @@ public class SkillEffect
 			SkillEffectType.DoubleDropChance => $"{valueStr}% double drop chance",
 			SkillEffectType.BoostPotencyBonus => $"{valueStr}% boost potency",
 			SkillEffectType.GoldFromAllSources => $"{valueStr}% gold from all sources",
-			SkillEffectType.CartographerUnlock => "Unlock expedition mode",
 			SkillEffectType.BreedingCostReduction => $"{valueStr}% fusion cost reduction",
 			SkillEffectType.ContractSatisfactionDecayReduction => $"{valueStr}% slower satisfaction decay",
 			SkillEffectType.ContractDemandReduction => $"{valueStr}% reduced demand requirements",
@@ -191,7 +188,6 @@ public class SkillNode
 	public string RequiredSkillId { get; set; } = null;
 	public int RequiredSkillRank { get; set; } = 1;  // Minimum rank needed in required skill
 
-	// Special unlock data (for Cartographer skill)
 	public List<string> UnlocksAtRank { get; set; } = new();
 
 	// Legacy properties for backward compatibility

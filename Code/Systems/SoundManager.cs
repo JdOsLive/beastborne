@@ -35,6 +35,8 @@ public static class SoundManager
 	private const string RAID_COMPLETE = "sounds/ui/success.sound";
 
 	// Battle Sounds
+	// TODO(audio): BATTLE_MISS, BATTLE_CRIT, BATTLE_START, BATTLE_VICTORY, BATTLE_DEFEAT need custom recordings.
+	// Currently backed by s&box built-ins as placeholders — swap to sounds/battle/*.sound when assets are ready.
 	private const string BATTLE_HIT = "sounds/battle/battle_hit.sound";
 	private const string BATTLE_MISS = "player.attack.miss";
 	private const string BATTLE_CRIT = "player.attack.hit.crit";
@@ -42,11 +44,13 @@ public static class SoundManager
 	private const string BATTLE_VICTORY = "player.levelup";
 	private const string BATTLE_DEFEAT = "ui.navigate.deny";
 
-	// Game Sounds (s&box built-in)
+	// Game Sounds
+	// TODO(audio): MONSTER_CATCH and EVOLUTION need custom recordings (sounds/game/contract_success.sound,
+	// sounds/game/evolution.sound). REWARD_XP and REWARD_GOLD are acceptable s&box built-ins long-term.
 	private const string REWARD_GOLD = "player.pickup.coin";
 	private const string REWARD_XP = "player.levelup";
-	private const string MONSTER_CATCH = "player.levelup";
-	private const string EVOLUTION = "player.levelup";
+	private const string MONSTER_CATCH = "player.levelup";   // placeholder — same as levelup until dedicated sound ships
+	private const string EVOLUTION = "player.levelup";        // placeholder — PlayEvolution() layers it with maximize for a two-beat feel
 
 	// Volume settings
 	private static float _masterVolume = 1.0f;

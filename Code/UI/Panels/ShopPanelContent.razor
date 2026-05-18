@@ -132,7 +132,7 @@
 					 for dense stores without demanding attention. Positioned absolutely
 					 over the scroll area so it doesn't affect layout. -->
 				<div class="scroll-fade scroll-fade-bottom"></div>
-				<div class="items-scroll swap-@swapVersion">
+				<div @ref="shopGridRef" class="items-scroll swap-@swapVersion">
 					@{
 						var allFiltered = GetFilteredItems();
 						var featured = GetFeaturedItem(allFiltered);
@@ -618,7 +618,7 @@
 				<!-- Scroll-fade hint: same as gold side, flags "more below" for the
 					 dense boss store (consumables + runes). -->
 				<div class="scroll-fade scroll-fade-bottom"></div>
-				<div class="items-scroll swap-@swapVersion">
+				<div @ref="shopGridRef" class="items-scroll swap-@swapVersion">
 					@{
 						var bossConsumableGroups = GetConsumableGroups();
 						int bossSectionIdx = 0;
@@ -876,6 +876,10 @@
 
 	// Version counter to retrigger grid fade on category swap
 	private int swapVersion = 0;
+
+	// @ref to the shop item grid — keyboard up/down navigation reads its
+	// child .shop-item rects to find the row above/below.
+	private Panel shopGridRef;
 	// Version counter to retrigger detail-pane fade on selection change
 	private int detailVersion = 0;
 
@@ -1054,11 +1058,77 @@
 		try
 		{
 			HandleShopKeyboardInput();
+
+			// Keep the keyboard-selected item on screen. Resolve the index from
+			// the (already-updated) selected item — NOT the `.selected` CSS
+			// class, which only updates next render and lagged the scroll a row.
+			if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) )
+			{
+				int sidx = ResolveSelectedShopIndex();
+				if ( sidx >= 0 )
+					UiGridScroll.ScrollIndexIntoView( shopGridRef, sidx, "shop-item", "shop-item-coming-soon" );
+			}
 		}
 		catch ( Exception ex )
 		{
 			Log.Warning( $"ShopPanelContent.TickInput error: {ex.Message}" );
 		}
+	}
+
+	// Index of the currently-selected item within the grid's render order
+	// (the order .shop-item children appear in). -1 when nothing is selected.
+	private int ResolveSelectedShopIndex()
+	{
+		if ( shopView == "gold" )
+		{
+			if ( selectedItem == null ) return -1;
+			var af = GetFilteredItems();
+			var ri = GroupGoldSections( af, GetFeaturedItem( af ) ).SelectMany( s => s.Items ).ToList();
+			return ri.FindIndex( i => i.Id == selectedItem.Id );
+		}
+
+		if ( selectedConsumable == null ) return -1;
+		var bossItems = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
+		return bossItems.FindIndex( i => i.Id == selectedConsumable.Id );
+	}
+
+	// Position-based vertical navigation for the shop's sectioned flex-wrap
+	// grid. The K-th real .shop-item child of the grid is item K in the
+	// caller's render-order list. Finds the item in the nearest row above/
+	// below whose horizontal centre is closest — so W/S move one visual row
+	// and respect category section breaks instead of leaping across them.
+	private int GetVerticalNeighbor( int idx, int itemCount, bool down )
+	{
+		var grid = shopGridRef;
+		if ( grid == null ) return idx;
+		var panels = grid.Children
+			.Where( c => c.HasClass( "shop-item" ) && !c.HasClass( "shop-item-coming-soon" ) )
+			.ToList();
+		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count ) return idx;
+
+		var cur = panels[idx].Box.Rect;
+		float curCentreX = cur.Left + cur.Width * 0.5f;
+		float curTop = cur.Top;
+
+		int best = idx;
+		float bestRowDist = float.MaxValue;
+		float bestDX = float.MaxValue;
+		for ( int i = 0; i < panels.Count; i++ )
+		{
+			if ( i == idx ) continue;
+			var r = panels[i].Box.Rect;
+			// Only consider panels on a row in the requested direction.
+			if ( down ? r.Top <= curTop + 1f : r.Top >= curTop - 1f ) continue;
+			float rowDist = Math.Abs( r.Top - curTop );
+			float dx = Math.Abs( (r.Left + r.Width * 0.5f) - curCentreX );
+			if ( rowDist < bestRowDist - 1f || (rowDist <= bestRowDist + 1f && dx < bestDX) )
+			{
+				best = i;
+				bestRowDist = rowDist;
+				bestDX = dx;
+			}
+		}
+		return best;
 	}
 
 	private void HandleShopKeyboardInput()
@@ -1076,19 +1146,34 @@
 
 		if ( shopView == "gold" )
 		{
-			var items = GetFilteredItems();
+			var allFiltered = GetFilteredItems();
+			// Walk the SAME order the grid renders — GroupGoldSections regroups
+			// items by category, so navigating the raw filtered list would
+			// teleport across category sections.
+			var items = GroupGoldSections( allFiltered, GetFeaturedItem( allFiltered ) )
+				.SelectMany( s => s.Items ).ToList();
 			if ( items.Count == 0 ) return;
 
 			int idx = selectedItem == null ? -1 : items.FindIndex( i => i.Id == selectedItem.Id );
 
-			if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+			if ( Input.Pressed( "Left" ) )
 			{
 				idx = idx <= 0 ? 0 : idx - 1;
 				SelectItem( items[idx] );
 			}
-			else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+			else if ( Input.Pressed( "Right" ) )
 			{
 				idx = idx < 0 ? 0 : Math.Min( items.Count - 1, idx + 1 );
+				SelectItem( items[idx] );
+			}
+			else if ( Input.Pressed( "Up" ) )
+			{
+				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, false );
+				SelectItem( items[idx] );
+			}
+			else if ( Input.Pressed( "Down" ) )
+			{
+				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, true );
 				SelectItem( items[idx] );
 			}
 			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
@@ -1117,14 +1202,24 @@
 
 			int idx = selectedConsumable == null ? -1 : items.FindIndex( i => i.Id == selectedConsumable.Id );
 
-			if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+			if ( Input.Pressed( "Left" ) )
 			{
 				idx = idx <= 0 ? 0 : idx - 1;
 				SelectConsumable( items[idx] );
 			}
-			else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+			else if ( Input.Pressed( "Right" ) )
 			{
 				idx = idx < 0 ? 0 : Math.Min( items.Count - 1, idx + 1 );
+				SelectConsumable( items[idx] );
+			}
+			else if ( Input.Pressed( "Up" ) )
+			{
+				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, false );
+				SelectConsumable( items[idx] );
+			}
+			else if ( Input.Pressed( "Down" ) )
+			{
+				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, true );
 				SelectConsumable( items[idx] );
 			}
 			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )

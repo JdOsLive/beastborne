@@ -150,6 +150,14 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	protected override void OnStart()
 	{
 		// Reset hook: on Reset Game Data, drop in-memory guild state (the player's

@@ -43,6 +43,14 @@ public sealed class AchievementManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	public static void EnsureInstance( Scene scene )
 	{
 		if ( Instance != null ) return;
@@ -180,8 +188,10 @@ public sealed class AchievementManager : Component
 		// populates _expeditions) hasn't run when this initializer fires.
 		// LAUNCH_BOSS_COUNT must match the # of `HasBoss = true` expeditions
 		// in ExpeditionManager.GenerateExpeditions(). Bump when new boss
-		// expeditions ship.
-		const int LAUNCH_BOSS_COUNT = 2;
+		// expeditions ship. Currently: saltmoor_forest, old_saltmoor,
+		// mini_loomweaver_burrow (the mini-expedition boss is tracked via
+		// MarkBossCleared too, so it counts toward "defeat every boss").
+		const int LAUNCH_BOSS_COUNT = 3;
 
 		AddAchievement( "boss_first", "Boss Slayer", "Defeat your first expedition boss", AchievementCategory.Expedition,
 			AchievementRequirement.BossesCleared, 1, order++,
@@ -747,6 +757,7 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.TotalMonstersBred => tamer.TotalMonstersBred,
 			AchievementRequirement.MonstersEvolved => tamer.TotalMonstersEvolved,
 			AchievementRequirement.HighestExpeditionCleared => tamer.HighestExpeditionCleared,
+			AchievementRequirement.HighestHardModeCleared => tamer.HighestHardModeCleared,
 			AchievementRequirement.ArenaWins => tamer.ArenaWins,
 			AchievementRequirement.TamerLevel => tamer.Level,
 			AchievementRequirement.TotalGoldEarned => tamer.TotalGoldEarned,

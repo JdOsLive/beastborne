@@ -757,67 +757,6 @@ public sealed class ItemManager : Component
 		// === HELD ITEMS (Monster Equipment) ===
 		InitializeHeldItems();
 
-		// === QUEST ITEMS ===
-		AddItem( new ItemDefinition
-		{
-			Id = "map_nightmare",
-			Name = "Nightmare Map",
-			Description = "A cursed map revealing paths through nightmares.",
-			IconPath = "ui/items/quest/nightmare_map.png",
-			Category = ItemCategory.QuestItem,
-			Rarity = ItemRarity.Epic,
-			IsStackable = false,
-			MaxStack = 1,
-			EffectType = ItemEffectType.UnlockCartographerMode,
-			UnlocksModeId = "nightmare_mode",
-			SellPrice = 0
-		} );
-
-		AddItem( new ItemDefinition
-		{
-			Id = "map_element",
-			Name = "Elemental Compass",
-			Description = "A compass that tracks elemental concentrations.",
-			IconPath = "ui/items/quest/elemental_compass.png",
-			Category = ItemCategory.QuestItem,
-			Rarity = ItemRarity.Epic,
-			IsStackable = false,
-			MaxStack = 1,
-			EffectType = ItemEffectType.UnlockCartographerMode,
-			UnlocksModeId = "element_hunt",
-			SellPrice = 0
-		} );
-
-		AddItem( new ItemDefinition
-		{
-			Id = "map_boss",
-			Name = "Boss Tracker",
-			Description = "A device that detects powerful boss signatures.",
-			IconPath = "ui/items/quest/boss_tracker.png",
-			Category = ItemCategory.QuestItem,
-			Rarity = ItemRarity.Epic,
-			IsStackable = false,
-			MaxStack = 1,
-			EffectType = ItemEffectType.UnlockCartographerMode,
-			UnlocksModeId = "boss_rush",
-			SellPrice = 0
-		} );
-
-		AddItem( new ItemDefinition
-		{
-			Id = "map_den",
-			Name = "Rare Den Location",
-			Description = "Coordinates to a hidden den of rare beasts.",
-			IconPath = "ui/items/quest/rare_den_location.png",
-			Category = ItemCategory.QuestItem,
-			Rarity = ItemRarity.Legendary,
-			IsStackable = false,
-			MaxStack = 1,
-			EffectType = ItemEffectType.UnlockCartographerMode,
-			UnlocksModeId = "rare_den",
-			SellPrice = 0
-		} );
-
 		// === BOSS SHOP CONSUMABLES ===
 		AddItem( new ItemDefinition
 		{
@@ -1846,9 +1785,7 @@ public sealed class ItemManager : Component
 			{
 				new() { ItemId = "xp_feast", Weight = 100 },
 				new() { ItemId = "boost_crit", Weight = 80 },
-				new() { ItemId = "catch_lure", Weight = 60 },
 				new() { ItemId = "gold_bell", Weight = 50 },
-				new() { ItemId = "catch_prime", Weight = 20, MinExpeditionLevel = 40 },
 				// Relics from bosses (rare)
 				new() { ItemId = "relic_coin", Weight = 10, MinExpeditionLevel = 30 },
 				new() { ItemId = "relic_magnet", Weight = 10, MinExpeditionLevel = 35 },
@@ -1894,7 +1831,6 @@ public sealed class ItemManager : Component
 			BaseDropChance = 1.0f,
 			Entries = new()
 			{
-				new() { ItemId = "catch_prime", Weight = 100 },
 				new() { ItemId = "relic_coin", Weight = 50 },
 				new() { ItemId = "relic_magnet", Weight = 50 },
 				new() { ItemId = "relic_wisdom", Weight = 50 },
@@ -1931,11 +1867,6 @@ public sealed class ItemManager : Component
 				new() { ItemId = "relic_soul_mirror", Weight = 5 },
 				// Named boss signature materials
 				new() { ItemId = "mat_loomweaver", Weight = 35, MinExpeditionLevel = 25 },
-				// Quest maps from rare bosses
-				new() { ItemId = "map_nightmare", Weight = 5, MinExpeditionLevel = 40 },
-				new() { ItemId = "map_element", Weight = 5, MinExpeditionLevel = 50 },
-				new() { ItemId = "map_boss", Weight = 5, MinExpeditionLevel = 60 },
-				new() { ItemId = "map_den", Weight = 2, MinExpeditionLevel = 80 },
 			}
 		};
 
@@ -2743,8 +2674,11 @@ public sealed class ItemManager : Component
 		// Apply relic bonuses
 		itemFindBonus += GetRelicBonus( ItemEffectType.PassiveItemFind );
 
+		// Hard Mode drop rate multiplier (1.5x on Hard, 1x on Normal)
+		float hardDropMult = ExpeditionManager.Instance?.GetDropRateMultiplier() ?? 1f;
+
 		// Calculate final drop chance
-		float dropChance = table.BaseDropChance * (1 + itemFindBonus / 100f);
+		float dropChance = table.BaseDropChance * (1 + itemFindBonus / 100f) * hardDropMult;
 
 		// Roll for drop
 		double roll = Random.Shared.NextDouble();
@@ -2758,7 +2692,7 @@ public sealed class ItemManager : Component
 				var baseTable = _dropTables.GetValueOrDefault( "base" );
 				if ( baseTable != null )
 				{
-					float baseDropChance = baseTable.BaseDropChance * (1 + itemFindBonus / 100f);
+					float baseDropChance = baseTable.BaseDropChance * (1 + itemFindBonus / 100f) * hardDropMult;
 					double baseRoll = Random.Shared.NextDouble();
 					if ( baseRoll <= baseDropChance )
 					{
@@ -2780,7 +2714,7 @@ public sealed class ItemManager : Component
 		// Also roll on base table for consumables (unless boss)
 		if ( !isBoss && !isRareBoss && tableKey != "base" )
 		{
-			var baseDropChance = _dropTables["base"].BaseDropChance * (1 + itemFindBonus / 100f);
+			var baseDropChance = _dropTables["base"].BaseDropChance * (1 + itemFindBonus / 100f) * hardDropMult;
 			if ( Random.Shared.NextDouble() <= baseDropChance )
 			{
 				drops.AddRange( RollDropTable( "base", expeditionLevel, rareItemBonus, doubleDropChance ) );

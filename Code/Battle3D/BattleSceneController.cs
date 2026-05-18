@@ -123,6 +123,16 @@ public sealed class BattleSceneController : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference to this destroyed controller
+		// doesn't linger past play mode — otherwise consumers see Instance as
+		// non-null but Instance.Scene is null, and the next session's OnAwake
+		// singleton check would wrongly self-destruct the new controller.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	public static void EnsureInstance( Scene scene )
 	{
 		if ( Instance != null ) return;
@@ -824,7 +834,9 @@ public sealed class BattleSceneController : Component
 	public Vector2? GetMonsterScreenPosition( Guid monsterId )
 	{
 		if ( !billboards.TryGetValue( monsterId, out var bb ) ) return null;
-		var cam = Scene.Camera;
+		// Scene is null when Instance is a stale reference to a controller whose
+		// GameObject was destroyed (e.g. play mode stopped) — guard before .Camera.
+		var cam = Scene?.Camera;
 		if ( cam == null ) return null;
 
 		// Get the center of the sprite (offset up by half sprite height)
@@ -832,6 +844,32 @@ public sealed class BattleSceneController : Component
 		var screenNormal = cam.PointToScreenNormal( worldPos );
 
 		return new Vector2( screenNormal.x, screenNormal.y );
+	}
+
+	/// <summary>
+	/// Enumerate every visible, non-fainted billboard for screen-space FX overlays
+	/// (status condition halos, etc). Returns the monster id + screen-normalized
+	/// position. Skips KO'd/fainted/inactive-bench billboards so we don't render
+	/// status halos over invisible sprites.
+	/// </summary>
+	public IEnumerable<(Guid Id, Vector2 ScreenPos)> EnumerateVisibleBillboards()
+	{
+		// Scene is null when Instance is a stale reference to a controller whose
+		// GameObject was destroyed (e.g. play mode stopped) — guard before .Camera.
+		var cam = Scene?.Camera;
+		if ( cam == null ) yield break;
+
+		foreach ( var kvp in billboards )
+		{
+			var bb = kvp.Value;
+			if ( bb == null ) continue;
+			if ( bb.IsKO || bb.IsFainting || bb.FaintComplete ) continue;
+			if ( !bb.IsActive ) continue;
+
+			var worldPos = bb.WorldPosition + Vector3.Up * (bb.IsPlayerSide ? 14f : 22f);
+			var sn = cam.PointToScreenNormal( worldPos );
+			yield return (kvp.Key, new Vector2( sn.x, sn.y ));
+		}
 	}
 
 	// ── Utility ──

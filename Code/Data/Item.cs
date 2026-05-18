@@ -11,7 +11,7 @@ public enum ItemCategory
 	Consumable,  // Temporary boosts, catch rate, XP grants
 	Relic,       // Tamer passive effects (max 3 equipped)
 	HeldItem,    // Monster equipment (1 per monster)
-	QuestItem,   // Special unlocks (Cartographer modes)
+	QuestItem,   // Special quest items
 	Boost,       // Server-wide boosts (XP, Gold, etc.)
 	Material     // Signature drops from beasts — Monster Hunter-style themed mats
 }
@@ -92,9 +92,6 @@ public enum ItemEffectType
 	HeldAllyScaling,      // Bonus per ally in party
 	HeldBurnChance,       // Chance to apply burn status
 
-	// Quest item effects
-	UnlockCartographerMode,
-
 	// Server boost effects (time-based, max 8 hours)
 	ServerTamerXPBoost,    // Tamer XP multiplier
 	ServerBeastXPBoost,    // Monster XP multiplier
@@ -133,9 +130,6 @@ public class ItemDefinition
 	// Shop/economy
 	public int BuyPrice { get; set; }
 	public int SellPrice { get; set; }
-
-	// For quest items - what mode does this unlock
-	public string UnlocksModeId { get; set; }
 
 	/// <summary>
 	/// Get a formatted description of the item's effects
@@ -191,7 +185,6 @@ public class ItemDefinition
 			ItemEffectType.HeldEvasion => $"+{EffectValue}% evasion",
 			ItemEffectType.HeldAllyScaling => $"+{EffectValue}% all stats per ally in party",
 			ItemEffectType.HeldBurnChance => $"{EffectValue}% chance to burn on hit",
-			ItemEffectType.UnlockCartographerMode => $"Unlocks {UnlocksModeId} expedition mode",
 			ItemEffectType.ServerTamerXPBoost => $"{EffectValue}x Tamer XP for {BoostDurationMinutes / 60}h (Server-wide)",
 			ItemEffectType.ServerBeastXPBoost => $"{EffectValue}x Beast XP for {BoostDurationMinutes / 60}h (Server-wide)",
 			ItemEffectType.ServerGoldBoost => $"{EffectValue}x Gold for {BoostDurationMinutes / 60}h (Server-wide)",

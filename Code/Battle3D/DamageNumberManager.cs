@@ -67,6 +67,15 @@ public sealed class DamageNumberManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager (which would
+		// silently kill damage numbers for the rest of the editor session).
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	public static void EnsureInstance( Scene scene )
 	{
 		if ( Instance != null ) return;

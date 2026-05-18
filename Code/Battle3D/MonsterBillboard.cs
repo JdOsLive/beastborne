@@ -51,10 +51,14 @@ public sealed class MonsterBillboard : Component
 	// before the player registered the KO, especially during the KO money-
 	// shot zoom). Bumped to 0.85s with ease-in (gravity-style accel) so the
 	// drop reads as weight, not a teleport. Drop distance 15u → 22u for
-	// more visible travel.
+	// more visible travel. The sprite also tilts ~25° during the fall so
+	// the KO reads as "slumped over" rather than "rigidly translated down".
 	[Property] public float FaintDuration { get; set; } = 0.85f;
 	[Property] public float FaintDropDistance { get; set; } = 22f;
+	[Property] public float FaintTiltDegrees { get; set; } = 25f;
 	private Vector3 faintStartPos;
+	private Rotation faintStartRot;
+	private bool faintStartRotCaptured;
 
 	// Attack animation state (legacy PlayAttack lunge — currently unused; kept
 	// for compatibility. Real attack motion now flows through LungeForward).
@@ -131,11 +135,14 @@ public sealed class MonsterBillboard : Component
 	private float kbPhaseTimer;
 	private Vector3 kbPhaseStart;
 
-	// Hit flash state
+	// Hit flash state — single bright-white flash on damage taken.
+	// Was 0.4s red-flicker (3 pulses) which dragged across the camera shake
+	// and read more like "constant alarm" than "punch". 80ms white is the
+	// fighting-game standard — one frame of "I got hit", then back to normal
+	// so the next frame's animation reads cleanly.
 	private bool isFlashing;
 	private float flashTimer;
-	private const float FlashDuration = 0.4f;
-	private int flashCount = 3;
+	private const float FlashDuration = 0.08f;
 
 	// Entrance animation (for wave transitions)
 	public Vector3 EntranceStartPos { get; set; }
@@ -185,9 +192,12 @@ public sealed class MonsterBillboard : Component
 	protected override void OnUpdate()
 	{
 		UpdateAttackAnimation();
-		UpdateHitFlash();
 		UpdateSwapLerp();
 		UpdateVisualState();
+		// Hit flash runs AFTER UpdateVisualState — the normal-state branch of
+		// UpdateVisualState writes renderer.Color every frame, so a flash set
+		// before it would be overwritten and never seen.
+		UpdateHitFlash();
 		UpdateBillboardMotion();
 	}
 
@@ -259,6 +269,8 @@ public sealed class MonsterBillboard : Component
 			isFainting = true;
 			faintTimer = 0f;
 			faintStartPos = restPositionSet ? restPosition : WorldPosition;
+			faintStartRot = WorldRotation;
+			faintStartRotCaptured = true;
 			WorldPosition = faintStartPos;
 		}
 
@@ -269,18 +281,30 @@ public sealed class MonsterBillboard : Component
 
 			// Ease-in (quadratic) on the drop so it accelerates like gravity
 			// instead of falling at constant speed. Alpha stays linear so the
-			// sprite is still readable mid-fall.
+			// sprite is still readable mid-fall. Tilt eases the SAME curve so
+			// it visually couples with the drop — sprite slumps as it falls.
 			var dropProgress = progress * progress;
 
 			var alpha = 1f - progress;
 			renderer.Color = new Color( 1f, 1f, 1f, alpha );
 			WorldPosition = faintStartPos + Vector3.Down * (dropProgress * FaintDropDistance);
 
+			// Roll around world-X — for the angled side-view battle camera this
+			// reads as the sprite slumping forward toward the viewer. Player side
+			// tilts opposite direction from enemy side so both sides slump TOWARD
+			// the centerline (visually "falling into the battlefield" rather than
+			// "falling away from it"). Worst case if the billboard fully camera-
+			// locks the rotation: it's a no-op and we still get the drop+fade.
+			float tiltDir = IsPlayerSide ? 1f : -1f;
+			float tilt = dropProgress * FaintTiltDegrees * tiltDir;
+			WorldRotation = faintStartRot * Rotation.From( tilt, 0f, 0f );
+
 			if ( progress >= 1f )
 			{
 				renderer.Enabled = false;
 				isFainting = false;
 				faintComplete = true; // Prevents restart
+				WorldRotation = faintStartRot; // Restore so a future ResetFromFaint sees clean state
 			}
 			return;
 		}
@@ -664,6 +688,15 @@ public sealed class MonsterBillboard : Component
 	{
 		if ( !isFlashing || renderer == null ) return;
 
+		// A faint fade or entrance animation owns the sprite color — drop any
+		// in-flight flash so it doesn't fight them. UpdateVisualState already
+		// set the correct color this frame, so no need to restore it here.
+		if ( isFainting || faintComplete || isEntering )
+		{
+			isFlashing = false;
+			return;
+		}
+
 		flashTimer += Time.Delta;
 
 		if ( flashTimer >= FlashDuration )
@@ -673,12 +706,14 @@ public sealed class MonsterBillboard : Component
 			return;
 		}
 
-		// Rapid flash between white and red
-		var flashPhase = (int)(flashTimer / (FlashDuration / (flashCount * 2)));
-		if ( flashPhase % 2 == 0 )
-			renderer.Color = new Color( 1f, 0.3f, 0.3f, 1f );
-		else
-			renderer.Color = Color.White;
+		// Single bright-white flash that ramps out over the duration. Color
+		// stays above 1.0 at the start to wash the sprite toward pure white;
+		// the per-channel value eases back to 1.0 across the 80ms window so
+		// the tail of the flash blends back into the normal sprite color
+		// without a hard pop. Renderer.Color uses RGB scaling > 1.0 to brighten.
+		var t = flashTimer / FlashDuration;
+		var intensity = 1f + (1f - t) * 1.5f; // 2.5 → 1.0
+		renderer.Color = new Color( intensity, intensity, intensity, 1f );
 	}
 
 	/// <summary>
@@ -723,6 +758,14 @@ public sealed class MonsterBillboard : Component
 		faintComplete = false;
 		isEntering = false;
 		ClearMotion();
+		// Restore upright rotation so a healed/wave-cleared beast doesn't come
+		// back still tilted from the previous KO collapse. Gated on an explicit
+		// capture flag rather than comparing against default(Rotation).
+		if ( faintStartRotCaptured )
+		{
+			WorldRotation = faintStartRot;
+			faintStartRotCaptured = false;
+		}
 		if ( renderer != null )
 		{
 			renderer.Enabled = true;

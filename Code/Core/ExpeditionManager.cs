@@ -30,38 +30,119 @@ public sealed class ExpeditionManager : Component
 	public string AutoContractTargetSpecies { get; set; } = null;
 	public bool IsRunningInBackground { get; private set; } = false;
 
-	// Hard Mode (unlocked via Cartographer skill)
-	public bool HardModeEnabled { get; set; } = false;
-	public const int HARD_MODE_LEVEL_BONUS = 10;
-	public const float HARD_MODE_REWARD_MULTIPLIER = 1.5f;
+	// Hard Mode — per-expedition opt-in after Normal clear (see project_hard_mode_live.md).
+	// Multipliers locked by user 2026-05-13. Enemy multipliers apply at spawn after RecalculateStats.
+	public const float HARD_MODE_LEVEL_MULT = 1.25f;
+	public const float HARD_MODE_XP_MULT = 2.0f;
+	public const float HARD_MODE_GOLD_MULT = 2.0f;
+	public const float HARD_MODE_DROP_RATE_MULT = 1.5f;
+	public const float HARD_MODE_ATK_MULT = 1.15f;
+	public const float HARD_MODE_HPDEFSPD_MULT = 1.10f;
+	// Per-zone Hard Token award range, granted on EVERY Hard clear of an
+	// expedition (repeatable by design — Hard zones are a farmable token
+	// source). This is intentionally not gated to first-clear, unlike the
+	// HardModeCleared flag which only tracks the first clear.
+	public const int HARD_MODE_TOKEN_AWARD_MIN = 3;
+	public const int HARD_MODE_TOKEN_AWARD_MAX = 5;
 
 	/// <summary>
-	/// Check if Hard Mode is unlocked via Cartographer skill (rank 1+)
+	/// Check if Hard Mode is unlocked for a specific expedition.
+	/// Hard Mode unlocks per-expedition after the player clears that expedition on Normal.
 	/// </summary>
-	public bool IsHardModeUnlocked()
+	public bool IsHardModeUnlocked( string expeditionId = null )
 	{
-		return TamerManager.Instance?.GetSkillRank( "exp_cartographer" ) >= 1;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return false;
+		var id = expeditionId ?? CurrentExpedition?.Id;
+		if ( string.IsNullOrEmpty( id ) ) return false;
+		return tamer.HardModeUnlocked.GetValueOrDefault( id );
 	}
 
 	/// <summary>
-	/// Get the effective enemy level for the current expedition
+	/// Get the effective enemy level for the current expedition.
+	/// Hard Mode scales by 25% (floored) instead of the old flat +10.
 	/// </summary>
 	public int GetEffectiveEnemyLevel( int baseLevel )
 	{
-		if ( HardModeEnabled && IsHardModeUnlocked() )
-			return baseLevel + HARD_MODE_LEVEL_BONUS;
+		if ( CurrentExpedition?.IsHardMode == true )
+			return (int)Math.Floor( baseLevel * HARD_MODE_LEVEL_MULT );
 		return baseLevel;
 	}
 
-	/// <summary>
-	/// Get reward multiplier (includes hard mode bonus)
-	/// </summary>
-	public float GetRewardMultiplier()
+	/// <summary>XP multiplier — 2x in Hard Mode, 1x otherwise.</summary>
+	public float GetXPMultiplier()
 	{
-		float multiplier = 1f;
-		if ( HardModeEnabled && IsHardModeUnlocked() )
-			multiplier *= HARD_MODE_REWARD_MULTIPLIER;
-		return multiplier;
+		return CurrentExpedition?.IsHardMode == true ? HARD_MODE_XP_MULT : 1f;
+	}
+
+	/// <summary>Gold multiplier — 2x in Hard Mode, 1x otherwise.</summary>
+	public float GetGoldMultiplier()
+	{
+		return CurrentExpedition?.IsHardMode == true ? HARD_MODE_GOLD_MULT : 1f;
+	}
+
+	/// <summary>Drop rate multiplier — 1.5x in Hard Mode, 1x otherwise.</summary>
+	public float GetDropRateMultiplier()
+	{
+		return CurrentExpedition?.IsHardMode == true ? HARD_MODE_DROP_RATE_MULT : 1f;
+	}
+
+	/// <summary>
+	/// Apply Hard Mode enemy stat multipliers to a freshly-spawned wild enemy.
+	/// Called from CreateEnemyMonster/CreateBossMonster AFTER RecalculateStats so
+	/// the multiplier rides on top of the v1.0.3 linear stat formula without
+	/// touching the damage formula's inputs.
+	/// </summary>
+	private void ApplyHardModeStatMultipliers( Monster enemy )
+	{
+		if ( enemy == null || CurrentExpedition?.IsHardMode != true ) return;
+		enemy.MaxHP = (int)( enemy.MaxHP * HARD_MODE_HPDEFSPD_MULT );
+		enemy.ATK = (int)( enemy.ATK * HARD_MODE_ATK_MULT );
+		enemy.DEF = (int)( enemy.DEF * HARD_MODE_HPDEFSPD_MULT );
+		enemy.SpA = (int)( enemy.SpA * HARD_MODE_ATK_MULT );
+		enemy.SpD = (int)( enemy.SpD * HARD_MODE_HPDEFSPD_MULT );
+		// SPD intentionally unchanged — don't make Hard Mode a speed-tier nightmare.
+	}
+
+	/// <summary>
+	/// Zone-id → Tamer Hard Token field name. Used when awarding tokens on
+	/// Hard clear. Four launch zones; mini-expedition uses "threaded".
+	/// </summary>
+	private static readonly Dictionary<string, string> ZoneTokenBucket = new()
+	{
+		{ "weaverton_pasture", "tide" },     // Weaverton zone (the pasture is the Lv1 entry)
+		{ "weaverton_approach", "tide" },    // Tutorial alias maps to same bucket
+		{ "saltmoor_forest", "loom" },       // Weaverwood (internal id is saltmoor_forest)
+		{ "old_saltmoor", "dawn" },          // Weavermere (internal id is old_saltmoor)
+		{ "mini_loomweaver_burrow", "threaded" } // Whispering Hollow mini-expedition
+	};
+
+	/// <summary>
+	/// Award Hard Mode tokens to the appropriate per-zone bucket on Tamer.
+	/// Awards a random count in [HARD_MODE_TOKEN_AWARD_MIN..HARD_MODE_TOKEN_AWARD_MAX].
+	/// Granted on every Hard clear (repeatable — Hard zones are a farmable
+	/// token source); deliberately NOT first-clear-gated.
+	/// No-op if the expedition is not in the zone map or the player is on a Normal run.
+	/// </summary>
+	private void AwardHardModeTokens()
+	{
+		if ( CurrentExpedition?.IsHardMode != true ) return;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return;
+		if ( !ZoneTokenBucket.TryGetValue( CurrentExpedition.Id, out var bucket ) )
+		{
+			Log.Info( $"[Hard Mode] No token bucket mapped for expedition '{CurrentExpedition.Id}' — skipping token award." );
+			return;
+		}
+		int count = _sharedRandom.Next( HARD_MODE_TOKEN_AWARD_MIN, HARD_MODE_TOKEN_AWARD_MAX + 1 );
+		switch ( bucket )
+		{
+			case "tide": tamer.TideTokens += count; break;
+			case "loom": tamer.LoomTokens += count; break;
+			case "dawn": tamer.DawnTokens += count; break;
+			case "threaded": tamer.ThreadedTokens += count; break;
+		}
+		Log.Info( $"[Hard Mode] Awarded {count} {bucket} tokens for clearing {CurrentExpedition.Id} on Hard." );
 	}
 
 	// Species filter for auto-contract
@@ -155,6 +236,7 @@ public sealed class ExpeditionManager : Component
 	public Action<bool> OnExpeditionComplete;
 	public Action<Monster> OnMonsterCaught;
 	public Action<int, int> OnWaveCompleted; // wave number, total waves
+	public Action<string> OnHardModeUnlocked; // expeditionId — fires when Hard Mode first unlocks for a zone
 
 	protected override void OnAwake()
 	{
@@ -212,6 +294,11 @@ public sealed class ExpeditionManager : Component
 			BattleManager.Instance.OnBattleEnd -= OnBattleEndBackground;
 			BattleManager.Instance.OnMonsterDefeated -= OnEnemyDefeated;
 		}
+
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
 	}
 
 	/// <summary>
@@ -589,9 +676,9 @@ public sealed class ExpeditionManager : Component
 		SelectedTeam = team.Take( 3 ).ToList();
 	}
 
-	public void StartExpedition( string expeditionId )
+	public void StartExpedition( string expeditionId, bool hardMode = false )
 	{
-		Log.Info( $"StartExpedition called: expeditionId={expeditionId}" );
+		Log.Info( $"StartExpedition called: expeditionId={expeditionId}, hardMode={hardMode}" );
 
 		if ( SelectedTeam.Count == 0 )
 		{
@@ -607,6 +694,8 @@ public sealed class ExpeditionManager : Component
 		}
 
 		CurrentExpedition = GetExpedition( expeditionId );
+		if ( CurrentExpedition != null )
+			CurrentExpedition.IsHardMode = hardMode;
 		if ( CurrentExpedition == null )
 		{
 			Log.Warning( $"Unknown expedition: {expeditionId}" );
@@ -699,16 +788,43 @@ public sealed class ExpeditionManager : Component
 		// tutorial-only or mini-expedition runs — they don't count as canonical progression.
 		if ( CurrentExpedition.TutorialOnly || CurrentExpedition.IsMiniExpedition ) return;
 
-		// Compute index against the non-tutorial, non-mini chain so the highest-cleared
-		// counter matches the main-path chain the player actually sees.
-		var realChain = _expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
-		int expeditionIndex = realChain.IndexOf( CurrentExpedition );
-		if ( expeditionIndex >= 0 && expeditionIndex >= tamer.HighestExpeditionCleared )
+		if ( CurrentExpedition.IsHardMode )
 		{
-			tamer.HighestExpeditionCleared = Math.Min( expeditionIndex + 1, realChain.Count );
-			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
-			Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
+			// Hard Mode clear — record per-expedition and update the aggregate count for achievements.
+			if ( !tamer.HardModeCleared.GetValueOrDefault( CurrentExpedition.Id ) )
+			{
+				tamer.HardModeCleared[CurrentExpedition.Id] = true;
+				int hardClearCount = tamer.HardModeCleared.Count( kvp => kvp.Value );
+				tamer.HighestHardModeCleared = Math.Max( tamer.HighestHardModeCleared, hardClearCount );
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestHardModeCleared, tamer.HighestHardModeCleared );
+				Log.Info( $"[Hard Mode] First hard clear: {CurrentExpedition.Id} — total hard clears: {hardClearCount}" );
+			}
 		}
+		else
+		{
+			// Normal clear — update canonical highest-cleared counter.
+			var realChain = _expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
+			int expeditionIndex = realChain.IndexOf( CurrentExpedition );
+			if ( expeditionIndex >= 0 && expeditionIndex >= tamer.HighestExpeditionCleared )
+			{
+				tamer.HighestExpeditionCleared = Math.Min( expeditionIndex + 1, realChain.Count );
+				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
+				Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
+			}
+
+			// First Normal clear of this expedition → unlock Hard Mode for it.
+			if ( !tamer.HardModeUnlocked.GetValueOrDefault( CurrentExpedition.Id ) )
+			{
+				tamer.HardModeUnlocked[CurrentExpedition.Id] = true;
+				Log.Info( $"[Hard Mode] Unlocked for {CurrentExpedition.Id}" );
+				NotificationManager.Instance?.AddNotification(
+					NotificationType.Success,
+					"Hard Mode Unlocked!",
+					$"{CurrentExpedition.Name} — Hard Mode is now available." );
+				OnHardModeUnlocked?.Invoke( CurrentExpedition.Id );
+			}
+		}
+
 		tamer.TotalExpeditionsCompleted++;
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
 		Stats.SetValue( "expeditions-completed-launch", tamer.TotalExpeditionsCompleted );
@@ -733,17 +849,19 @@ public sealed class ExpeditionManager : Component
 			UpdateExpeditionStats();
 
 			// Award expedition completion rewards (accumulated battle rewards already given per-wave)
-			// Apply skill bonuses and hard mode multiplier to rewards
+			// Apply skill bonuses and hard mode multipliers to rewards
 			float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
 			float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
-			float hardModeMultiplier = GetRewardMultiplier();
+			float hardGoldMult = GetGoldMultiplier();
+			float hardXPMult = GetXPMultiplier();
 			float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardModeMultiplier);
-			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardGoldMult);
+			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardXPMult);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
 			AwardTeamCompletionXP( finalXP ); // completion bonus to every team member
-			Log.Info( $"RetryExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
+			Log.Info( $"RetryExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardGoldMult}), {finalXP} XP (+{xpBonus}%, x{hardXPMult})" );
+			AwardHardModeTokens();
 
 			// Guild XP for expedition completion
 			GuildManager.Instance?.AddGuildXP( 20 );
@@ -756,7 +874,7 @@ public sealed class ExpeditionManager : Component
 			}
 
 			// Track mission progress for expedition completion (retry path)
-			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
+			MissionManager.Instance?.TrackExpeditionComplete( hardMode: CurrentExpedition?.IsHardMode == true, goldEarned: finalGold );
 			SideQuestManager.Instance?.TrackExpeditionCleared( CurrentExpedition?.Id );
 
 			// Guild weekly goals — Expedition Blitz (count) + Treasury Push (gold).
@@ -1302,6 +1420,10 @@ public sealed class ExpeditionManager : Component
 		boss.ATK = (int)(boss.ATK * atkMult);
 		boss.DEF = (int)(boss.DEF * defMult);
 
+		// Hard Mode enemy stat multipliers (applied on TOP of boss tier multipliers,
+		// then FullHeal so the displayed HP matches the new MaxHP).
+		ApplyHardModeStatMultipliers( boss );
+
 		boss.FullHeal();
 
 		Log.Info( $"CreateBossMonster: Created {boss.Nickname} Lv.{level} with multipliers HP={hpMult}x ATK={atkMult}x DEF={defMult}x" );
@@ -1342,6 +1464,12 @@ public sealed class ExpeditionManager : Component
 		};
 
 		MonsterManager.Instance?.RecalculateStats( enemy );
+
+		// Hard Mode enemy stat multipliers (+15% ATK/SpA, +10% HP/DEF/SpD; SPD unchanged).
+		// Applied AFTER RecalculateStats so the v1.0.3 linear stat formula stays intact —
+		// this rides on top of the formula output, never modifying the formula inputs.
+		ApplyHardModeStatMultipliers( enemy );
+
 		enemy.FullHeal();
 
 		Log.Info( $"CreateEnemyMonster: Created {enemy.Nickname} Lv.{level} with HP={enemy.MaxHP}, ATK={enemy.ATK}" );
@@ -1410,17 +1538,19 @@ public sealed class ExpeditionManager : Component
 			UpdateExpeditionStats();
 
 			// Award expedition completion rewards (accumulated battle rewards already given per-wave)
-			// Apply skill bonuses and hard mode multiplier to rewards
+			// Apply skill bonuses and hard mode multipliers to rewards
 			float goldBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionGoldBonus ) ?? 0;
 			float xpBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.ExpeditionXPBonus ) ?? 0;
-			float hardModeMultiplier = GetRewardMultiplier();
+			float hardGoldMult = GetGoldMultiplier();
+			float hardXPMult = GetXPMultiplier();
 			float guildExpedBonus = (GuildManager.Instance?.IsInGuild == true && (GuildManager.Instance?.Guild?.Level ?? 0) >= 2) ? 0.05f : 0f;
-			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardModeMultiplier);
-			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardModeMultiplier);
+			int finalGold = (int)(CurrentExpedition.GoldReward * (1 + goldBonus / 100f) * (1 + guildExpedBonus) * hardGoldMult);
+			int finalXP = (int)(CurrentExpedition.XPReward * (1 + xpBonus / 100f) * hardXPMult);
 			TamerManager.Instance?.AddGold( finalGold );
 			TamerManager.Instance?.AddXP( finalXP );
 			AwardTeamCompletionXP( finalXP ); // completion bonus to every team member
-			Log.Info( $"CompleteExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardModeMultiplier}), {finalXP} XP (+{xpBonus}%, x{hardModeMultiplier})" );
+			Log.Info( $"CompleteExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardGoldMult}), {finalXP} XP (+{xpBonus}%, x{hardXPMult})" );
+			AwardHardModeTokens();
 
 			// Track expedition completions for veteran stats
 			foreach ( var monster in SelectedTeam )
@@ -1445,7 +1575,7 @@ public sealed class ExpeditionManager : Component
 			}
 
 			// Track mission progress for expedition completion
-			MissionManager.Instance?.TrackExpeditionComplete( hardMode: HardModeEnabled, goldEarned: finalGold );
+			MissionManager.Instance?.TrackExpeditionComplete( hardMode: CurrentExpedition?.IsHardMode == true, goldEarned: finalGold );
 			SideQuestManager.Instance?.TrackExpeditionCleared( CurrentExpedition?.Id );
 
 			// Guild weekly goals — Expedition Blitz (count) + Treasury Push (gold).
@@ -1841,4 +1971,11 @@ public class Expedition
 	/// When null or empty, falls back to uniform random selection.
 	/// </summary>
 	public Dictionary<string, float> SpeciesWeights { get; set; }
+
+	/// <summary>
+	/// Runtime flag — set to true when the player starts this expedition in Hard Mode.
+	/// NOT a persisted property on the definition; set by StartExpedition and cleared on reset.
+	/// BattleSimulator reads this to apply hard-mode enemy modifiers.
+	/// </summary>
+	public bool IsHardMode { get; set; } = false;
 }

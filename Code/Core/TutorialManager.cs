@@ -65,6 +65,14 @@ public sealed class TutorialManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	protected override void OnStart()
 	{
 		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
@@ -218,7 +226,7 @@ public sealed class TutorialManager : Component
 			{
 				Id = "pick-approach",
 				Title = "Choose an Approach",
-				Message = "Twelve approaches available, each with different costs. Kindness costs 1 Contract Ink and works on most Beasts. Pick whichever feels right — there's no wrong answer here.",
+				Message = "Four approaches, each with different ink costs and odds. Fair Terms costs 2 Contract Ink and lands half the time on most Beasts — a reliable opener. Pick whichever feels right.",
 				ActionHint = "Select an approach.",
 				TargetSelector = ".approach-pill.kindness",
 				AdvanceEvent = "contract.approach-selected",
@@ -260,7 +268,7 @@ public sealed class TutorialManager : Component
 			{
 				Id = "complete",
 				Title = "That's the Loop",
-				Message = "Tame · Fuse · Expedition · Ascend. Every system in the game feeds back into those four pillars. Open the Game Guide any time you want a deeper dive — and welcome to Beastborne.",
+				Message = "Tame · Fuse · Expedition · Ascend. Every system in the game feeds back into those four pillars. Once you've cleared a zone on Normal, you can replay it on Hard for doubled XP and gold. Open the Game Guide any time you want a deeper dive — and welcome to Beastborne.",
 				Position = TutorialPosition.Center,
 			},
 		};

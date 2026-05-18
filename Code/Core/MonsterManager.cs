@@ -147,6 +147,14 @@ public sealed class MonsterManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	private bool _otBackfillDone = false;
 
 	protected override void OnStart()
@@ -662,7 +670,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "seraphiel",
 			Name = "Seraphiel",
-			Description = "A warden seraph whose twin serpent arms cradle a silvered blade. When a Cherune has sheltered enough fragile lives, it ascends into this form, armed with the weight of every one it chose to guard.",
+			Description = "A warden seraph whose twin serpent arms cradle a silvered blade. It carries the weight of every life a Cherune chose to shelter.",
 			IconPath = "ui/monsters/seraphiel/idle/seraphiel_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7290,7 +7298,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "wishlift",
 			Name = "Wishlift",
-			Description = "A small fae who cannot fly on her own, so she gathers spent wishes from sleeping villagers and hardens them into drifting dream-bubbles. The bubbles carry her from garden to garden until they pop.",
+			Description = "A small fae who cannot fly on her own, so she hardens spent wishes into dream-bubbles and drifts from garden to garden until they pop.",
 			IconPath = "ui/monsters/wishlift/idle/wishlift_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7346,7 +7354,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "wishstar",
 			Name = "Wishstar",
-			Description = "When a Wishlift carries enough wishes home, the wishes outweigh her — and what falls out the other side is a king with a planet for a body and a sun for a crown. Each continent etched across him is a dream that found its way back. He sleeps standing up, and the small fae who used to ride his bubbles still drifts above his shoulder, refusing to let him out of her sight.",
+			Description = "A king with a planet for a body and a sun for a crown, each continent on him a dream that found its way back. The small fae who used to ride his bubbles still drifts above his shoulder.",
 			IconPath = "ui/monsters/wishstar/idle/wishstar_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7397,7 +7405,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "twincoil",
 			Name = "Twincoil",
-			Description = "A garden serpent born under a Janus moon. Its outer face is sweet and wide-eyed — but every so often it opens its jaws, and a second pair of eyes peers out from inside its mouth. Villagers say nothing in the herb beds escapes its notice, no matter which face is showing.",
+			Description = "A garden serpent born under a Janus moon. Its outer face is sweet and wide-eyed — but open its jaws and a second pair of eyes peers out from inside its mouth.",
 			IconPath = "ui/monsters/twincoil/idle/twincoil_idle_02.png",
 			AnimationFrames = new()
 			{
@@ -7510,7 +7518,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "sheepot",
 			Name = "Sheepot",
-			Description = "Underneath its fleece is a tangle of pale roots — fragile, easily torn — so the sheep learned to wear a clay pot like armor. Farmers leave fresh pots at the pasture's edge each dusk; in return, they shear the sheepot's mane every spring for the softest wool in the valley.",
+			Description = "A sheep with fragile roots for a body, hidden under wool and armored in a clay pot. Farmers leave fresh pots at dusk; the sheepot pays them back in the softest wool in the valley.",
 			IconPath = "ui/monsters/sheepot/idle/sheepot_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7561,7 +7569,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "cerametz",
 			Name = "Cerametz",
-			Description = "When a sheepot outgrows its starter pot, the village's master potter crafts it a glazed urn — wide-rimmed, vine-banded, sized to last a beast's full life. The cerametz settles in for good. Its fleece, now thick enough for a household's winter cloaks, is sheared each solstice in a ceremony as old as the village itself.",
+			Description = "When a sheepot outgrows its pot, the master potter fires it a glazed urn — wide-rimmed, vine-banded, built to last a life. Its solstice fleece is thick enough to cloak a household.",
 			IconPath = "ui/monsters/cerametz/idle/cerametz_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7621,7 +7629,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "gnoll",
 			Name = "Gnoll",
-			Description = "A gnome no taller than a thumb, hidden beneath the brim of its red mushroom cap. It tends a square foot of moss and considers it a kingdom — every fallen leaf swept, every mushroom dusted, every snail walked back to the brook by morning.",
+			Description = "A gnome no taller than a thumb, hidden beneath a red mushroom cap. It tends a square foot of moss and considers it a kingdom — every fallen leaf swept, every snail returned to the brook.",
 			IconPath = "ui/monsters/gnoll/idle/gnoll_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7671,7 +7679,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "gnollium",
 			Name = "Gnollium",
-			Description = "When a Gnoll finds a clearing untouched by axes or hooves, its cap unfurls into red petals and its body grows into a fairy-keeper sized to tend a whole grove. Walk softly through a forest where nothing seems out of place, and you have likely passed one without ever knowing.",
+			Description = "When a Gnoll finds a clearing untouched by axes, its cap unfurls into red petals and its body grows to tend a whole grove. Walk softly through a forest where nothing seems out of place — you have likely passed one.",
 			IconPath = "ui/monsters/gnollium/idle/gnollium_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7730,7 +7738,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "jackacabra",
 			Name = "Jackacabra",
-			Description = "A long-eared shadow that slips out of the Weaverwood at dusk and prowls the wool-pastures on Weaverton's outer edge. Sheepots in their pots are its favorite quarry — the village herders have been losing flock to it for years. The shepherds carry iron bells now, and bury extra clay pots along the fence-line to fool it. They argue, still, whether it walks on two legs or four — at dusk, in the trees, no one stays long enough to count.",
+			Description = "A long-eared shadow that slips out of the Weaverwood at dusk to raid Weaverton's wool-pastures. Sheepots in their pots are its favorite quarry — the village herders have been losing flock to it for years.",
 			IconPath = "ui/monsters/jackacabra/idle/jackacabra_idle_01.png",
 			AnimationFrames = new()
 			{
@@ -7842,7 +7850,7 @@ public sealed class MonsterManager : Component
 		{
 			Id = "liliprince",
 			Name = "Liliprince",
-			Description = "Once a Padlip is loved by something foolish enough not to mind the warts, the wandering crown finally settles where it always belonged. It stands taller than it has any right to, carrying the gentle dignity of the prince that lived inside it all along — and the slightly sheepish grin of a creature who knows perfectly well it still tastes like pondwater.",
+			Description = "Once a Padlip is loved by something foolish enough not to mind the warts, the wandering crown finally settles. It carries the gentle dignity of the prince that lived inside it all along — and the sheepish grin of one who knows it still tastes like pondwater.",
 			IconPath = "ui/monsters/liliprince/idle/liliprince_idle_01.png",
 			AnimationFrames = new()
 			{

@@ -97,6 +97,14 @@ public sealed class BattleManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	// Note: Background battle ticking is handled by GameHUD.OnUpdate via TickBackgroundExpedition()
 	// BattleView UI calls ManualTick() directly when visible, so no OnUpdate needed here.
 
@@ -198,6 +206,13 @@ public sealed class BattleManager : Component
 			if ( seed.HasValue )
 			{
 				CurrentBattleState.RandomSeed = seed.Value;
+				// Apply the seed to the simulator's RNG so manual turns are
+				// actually deterministic — storing RandomSeed alone did nothing.
+				BattleSimulator.SetSeed( seed.Value );
+			}
+			else
+			{
+				BattleSimulator.ClearSeed();
 			}
 			// Restore the player's active monster from previous wave (if valid)
 			if ( _lastPlayerActiveIndex > 0 && _lastPlayerActiveIndex < PlayerTeam.Count && PlayerTeam[_lastPlayerActiveIndex]?.CurrentHP > 0 )
@@ -905,6 +920,8 @@ public sealed class BattleManager : Component
 		CurrentResult = null;
 		CurrentTurnIndex = 0;
 		CurrentBattleState = null;
+		// Drop any battle seed so it can't leak into a later unseeded battle.
+		BattleSimulator.ClearSeed();
 	}
 
 	/// <summary>
@@ -1202,6 +1219,13 @@ public sealed class BattleManager : Component
 		if ( seed.HasValue )
 		{
 			CurrentBattleState.RandomSeed = seed.Value;
+			// Apply the seed to the simulator's RNG so manual turns are
+			// actually deterministic — storing RandomSeed alone did nothing.
+			BattleSimulator.SetSeed( seed.Value );
+		}
+		else
+		{
+			BattleSimulator.ClearSeed();
 		}
 		CurrentBattleState.IsArenaMode = isArena;
 		foreach ( var m in PlayerTeam.Concat( EnemyTeam ) )

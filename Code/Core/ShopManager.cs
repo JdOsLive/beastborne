@@ -69,6 +69,14 @@ public sealed class ShopManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	protected override void OnStart()
 	{
 		// Request any active server boosts from other players when joining

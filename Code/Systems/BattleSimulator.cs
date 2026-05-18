@@ -1756,15 +1756,37 @@ public static class BattleSimulator
 			} );
 
 			// Execute actions
-			foreach ( var (choice, actor, target, isPlayer) in actions )
+			foreach ( var action in actions )
 			{
+				// Non-deconstructed so `target` is a reassignable local (the
+				// retarget below depends on it).
+				var choice = action.choice;
+				var actor = action.actor;
+				var target = action.target;
+				var isPlayer = action.isPlayer;
+
 				if ( actor.CurrentHP <= 0 ) continue;
-				if ( target.CurrentHP <= 0 ) continue;
+
+				// Re-resolve a target KO'd earlier this turn: redirect the queued
+				// attack onto the side's current active beast instead of whiffing
+				// on a fainted one (mirrors ExecuteSingleTurn's retarget fix).
+				if ( target.CurrentHP <= 0 )
+				{
+					target = isPlayer
+						? aliveEnemies.FirstOrDefault( e => e.CurrentHP > 0 )
+						: GetActiveMonster( players, state.PlayerActiveIndex );
+				}
+				if ( target == null || target.CurrentHP <= 0 ) continue;
 				if ( IsTeamDefeated( players ) || IsTeamDefeated( enemies ) ) break;
 
-				// Handle swap (only player can swap)
-				if ( choice.ActionType == BattleActionType.Swap && isPlayer )
+				// Handle swap. Only the player has a bench in this horde sim — a
+				// stray enemy AI swap is skipped, otherwise it falls through to a
+				// null move id and the enemy wrongly uses Struggle.
+				if ( choice.ActionType == BattleActionType.Swap )
 				{
+					if ( !isPlayer )
+						continue;
+
 					// Apply on-switch-out effects to the monster being switched out
 					var switchOutEffects = ApplyOnSwitchOutEffects( actor, state );
 

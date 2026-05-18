@@ -69,6 +69,14 @@ public sealed class DailyRewardManager : Component
 		}
 	}
 
+	protected override void OnDestroy()
+	{
+		// Clear the static so a stale reference past play mode doesn't make the
+		// next session's OnAwake self-destruct the new manager.
+		if ( Instance == this )
+			Instance = null;
+	}
+
 	protected override void OnStart()
 	{
 		if ( SaveService.Instance != null && SaveService.Instance.IsLoaded )
@@ -413,7 +421,10 @@ public sealed class DailyRewardManager : Component
 	/// </summary>
 	public bool IsMilestoneClaimable( int milestone )
 	{
-		return DailyStreak >= milestone && !MilestonesClaimed.Contains( milestone );
+		// Milestones are total cumulative login days (see MilestoneThresholds /
+		// GetMilestoneReward), NOT the consecutive streak — a player who broke
+		// streak must still be able to reach the long-tail milestones.
+		return TotalLoginDays >= milestone && !MilestonesClaimed.Contains( milestone );
 	}
 
 	/// <summary>

@@ -75,6 +75,24 @@ public class Tamer
 
 	// Progression
 	public int HighestExpeditionCleared { get; set; } = 0;
+
+	// Hard Mode per-expedition tracking.
+	// HardModeUnlocked: expeditionId → true once the player clears Normal once.
+	// HardModeCleared:  expeditionId → true once the player clears Hard once.
+	// HighestHardModeCleared: count of distinct expeditions with a Hard clear (for achievements).
+	// All three default to empty / 0 for existing saves — no migration needed.
+	public Dictionary<string, bool> HardModeUnlocked { get; set; } = new();
+	public Dictionary<string, bool> HardModeCleared { get; set; } = new();
+	public int HighestHardModeCleared { get; set; } = 0;
+
+	// Hard Mode token currency — one bucket per zone. Awarded 3-5 per Hard clear.
+	// Tide  = Weaverton  · Loom = Weaverwood · Dawn = Weavermere · Threaded = Whispering Hollow.
+	// Redemption flow ships in a follow-up patch (items-economy lane).
+	public int TideTokens { get; set; } = 0;
+	public int LoomTokens { get; set; } = 0;
+	public int DawnTokens { get; set; } = 0;
+	public int ThreadedTokens { get; set; } = 0;
+
 	public string ArenaRank { get; set; } = "Unranked";
 	public int ArenaPoints { get; set; } = 0;
 
@@ -126,6 +144,16 @@ public class Tamer
 	public string FavoriteExpeditionId { get; set; }
 	public List<string> CardBadges { get; set; } = new();
 	public List<CollectedTamerCard> CollectedCards { get; set; } = new();
+
+	// UI popup drag positions (persisted so panels stay where the player moved them)
+	public float ChatPanelOffsetX { get; set; } = 0f;
+	public float ChatPanelOffsetY { get; set; } = 0f;
+	public float RadioWidgetOffsetX { get; set; } = 0f;
+	public float RadioWidgetOffsetY { get; set; } = 0f;
+	public float EffectsPanelOffsetX { get; set; } = 0f;
+	public float EffectsPanelOffsetY { get; set; } = 0f;
+	public float NotifPanelOffsetX { get; set; } = 0f;
+	public float NotifPanelOffsetY { get; set; } = 0f;
 
 	// Timestamps
 	public DateTime LastLogin { get; set; } = DateTime.UtcNow;
