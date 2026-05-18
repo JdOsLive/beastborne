@@ -1,16 +1,21 @@
 @namespace Beastborne.UI.Components
 @using Sandbox;
 @using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Data;
 @using Beastborne.Systems;
 @inherits Panel
 
+<div class="radio-drag-anchor">
+<div class="radio-drag-wrap" style="@GetDragStyle()">
 <div class="radio-widget @(HasStations() ? "" : "hidden")">
 	<div class="radio-panel @GetAccentClass() @(IsExpanded && HasStations() ? "open" : "")">
 		<div class="bg-scroll"><img src="ui/bg-patterns/bg-radio.svg" /></div>
 
 		<!-- Header -->
 		<div class="rp-hdr">
-			<div class="rp-hdr-left">
+			<div class="rp-hdr-left" onmousedown=@OnDragStart>
+				<iconify icon="lucide:grip-horizontal" Size=@(16) Color="rgba(139,92,246,0.45)" />
 				<iconify icon="lucide:radio" Size=@(22) Color="#c4b5fd" />
 				<span class="rp-hdr-title">Radio</span>
 			</div>
@@ -129,6 +134,12 @@
 		<span class="now-playing">@GetTrackName()</span>
 	</button>
 </div>
+</div>
+</div>
+@if ( _isDragging )
+{
+	<div class="radio-drag-shield" onmousemove=@OnDragMove onmouseup=@OnDragEnd></div>
+}
 
 @code {
 	private bool IsExpanded = false;
@@ -137,12 +148,72 @@
 	private bool _trackChanged = false;
 	private string _lastKnownTrack = "";
 
+	// ─── Drag state ────────────────────────────────────────────────
+	private bool _isDragging = false;
+	private bool _needsDragAnchor = false;
+	private float _dragStartMouseX, _dragStartMouseY;
+	private float _dragStartOffsetX, _dragStartOffsetY;
+	private float _dragOffsetX = 0f, _dragOffsetY = 0f;
+
+	private void OnDragStart( PanelEvent e )
+	{
+		_isDragging = true;
+		_dragStartOffsetX = _dragOffsetX;
+		_dragStartOffsetY = _dragOffsetY;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
+	private void OnDragMove( PanelEvent e )
+	{
+		if ( !_isDragging ) return;
+		if ( _needsDragAnchor )
+		{
+			_dragStartMouseX = MousePosition.x;
+			_dragStartMouseY = MousePosition.y;
+			_needsDragAnchor = false;
+			return;
+		}
+		_dragOffsetX = _dragStartOffsetX + ( MousePosition.x - _dragStartMouseX );
+		_dragOffsetY = _dragStartOffsetY + ( MousePosition.y - _dragStartMouseY );
+		StateHasChanged();
+	}
+
+	private void OnDragEnd( PanelEvent e )
+	{
+		_isDragging = false;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if (tamer != null)
+		{
+			tamer.RadioWidgetOffsetX = _dragOffsetX;
+			tamer.RadioWidgetOffsetY = _dragOffsetY;
+			TamerManager.Instance?.SaveToCloud();
+		}
+		StateHasChanged();
+	}
+
+	private string GetDragStyle()
+	{
+		if ( _dragOffsetX == 0f && _dragOffsetY == 0f ) return "";
+		return string.Format( System.Globalization.CultureInfo.InvariantCulture,
+			"transform: translate({0:F0}px, {1:F0}px);", _dragOffsetX, _dragOffsetY );
+	}
+
 	// Static instance for external access
 	public static RadioWidget Instance { get; private set; }
 
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
-		if ( firstTime ) Instance = this;
+		if ( firstTime )
+		{
+			Instance = this;
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if (tamer != null)
+			{
+				_dragOffsetX = tamer.RadioWidgetOffsetX;
+				_dragOffsetY = tamer.RadioWidgetOffsetY;
+			}
+		}
 	}
 
 	/// <summary>
@@ -384,6 +455,9 @@
 		hash.Add(RadioManager.IsRepeat);
 		hash.Add((int)RadioManager.TrackPosition);
 		hash.Add(_trackChanged);
+		hash.Add(_isDragging);
+		hash.Add((int)_dragOffsetX);
+		hash.Add((int)_dragOffsetY);
 		return hash.ToHashCode();
 	}
 }

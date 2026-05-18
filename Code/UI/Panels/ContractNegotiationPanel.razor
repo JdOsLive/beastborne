@@ -9,7 +9,7 @@
 @inherits Panel
 
 <div class="contract-radial @(IsVisible ? "visible" : "") @GetResultClass()">
-	@if (currentState == NegotiationState.Selecting)
+	@if (IsVisible && TargetMonster != null && currentState == NegotiationState.Selecting)
 	{
 		@{
 			var screenPos = GetBeastScreenPosition();
@@ -28,6 +28,13 @@
 					var isSelected = selectedOption == opt;
 					var canAfford = CanAffordOption(opt);
 					var posClass = posIdx switch { 0 => "radial-top", 1 => "radial-right", 2 => "radial-bottom", 3 => "radial-left", _ => "radial-top" };
+					// Cap number is owned by SCREEN POSITION, not approach identity
+					// or declaration order. The 2x2 grid is: BL=1, TL=2, TR=3, BR=4
+					// (sweep up the left column, then down the right). The loop
+					// visits declaration order, whose posClass→screen mapping is
+					// radial-top=BL, radial-right=TR, radial-bottom=BR, radial-left=TL
+					// — so declaration index 0/1/2/3 → cap 1/3/4/2.
+					var capNumber = SlotNumberForIndex(posIdx);
 					posIdx++;
 
 					<div class="radial-approach @posClass @(isSelected ? "selected" : "") @(!canAfford ? "cant-afford" : "") @(selectedOption != null && !isSelected ? "dimmed" : "")"
@@ -39,10 +46,11 @@
 						</div>
 						<div class="approach-label">
 							<div class="approach-name-row">
+								<span class="kb-key">@(capNumber)</span>
 								<span class="approach-name">@opt.Name</span>
 								@if (opt.IsPersonalityMatch)
 								{
-									<span class="approach-match">★</span>
+									<span class="approach-match"><iconify icon="lucide:star" Size=@(12) Color="#fbbf24" /></span>
 								}
 							</div>
 							<div class="approach-cost-row">
@@ -81,12 +89,15 @@
 
 			<!-- Below radial: hint + info + buttons -->
 			<div class="radial-bottom-section">
+				<div class="radial-kicker">
+					<span class="kicker-text">CONTRACT · LV @TargetMonster?.Level</span>
+				</div>
 				<div class="radial-hint">
 					<span class="hint-text">@GetPersonalityHint()</span>
 				</div>
 				<div class="radial-info-bar">
 			<div class="info-beast">
-				<div class="info-beast-diamond el-bg-@GetElementClass()">
+				<div class="info-beast-diamond el-border-@GetElementClass()">
 					@if (HasSprite())
 					{
 						<img class="info-beast-sprite" src="@GetMonsterIcon()" />
@@ -99,6 +110,7 @@
 					@if (HasMasterInk())
 					{
 						<div class="info-master-ink @(useMasterInk ? "active" : "")" onclick=@ToggleMasterInk>
+							<span class="kb-key kb-key-wide">Tab</span>
 							<span class="master-ink-label">Master Ink</span>
 						</div>
 					}
@@ -109,16 +121,18 @@
 		<!-- Action buttons -->
 		<div class="radial-actions">
 			<div class="radial-btn attempt @(selectedOption == null ? "disabled" : "")" onclick=@AttemptNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="kb-key kb-key-wide">Space</span>
 				<span class="radial-btn-text">ATTEMPT</span>
 			</div>
 			<div class="radial-btn cancel" onclick=@SkipNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="kb-key">Q</span>
 				<span class="radial-btn-text">CANCEL</span>
 			</div>
 		</div>
 			</div>
 		</div>
 	}
-	else if (currentState == NegotiationState.Success)
+	else if (IsVisible && TargetMonster != null && currentState == NegotiationState.Success)
 	{
 		<div class="radial-result success">
 			<span class="result-title">Contract Signed!</span>
@@ -128,16 +142,18 @@
 			}
 			<span class="result-text">@TargetMonster?.Nickname joined your team!</span>
 			<div class="radial-btn continue" onclick=@FinishNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="kb-key kb-key-wide">Space</span>
 				<span class="radial-btn-text">CONTINUE</span>
 			</div>
 		</div>
 	}
-	else if (currentState == NegotiationState.Failed)
+	else if (IsVisible && TargetMonster != null && currentState == NegotiationState.Failed)
 	{
 		<div class="radial-result failed">
 			<span class="result-title">Negotiation Failed</span>
 			<span class="result-text">@TargetMonster?.Nickname refused your contract!</span>
 			<div class="radial-btn continue" onclick=@FinishNegotiation onmouseover=@(() => SoundManager.PlayHover())>
+				<span class="kb-key kb-key-wide">Space</span>
 				<span class="radial-btn-text">CONTINUE</span>
 			</div>
 		</div>
@@ -148,6 +164,34 @@
 	// Localization helper
 	private string L( string key ) => LocalizationManager.Get( key );
 	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
+
+	// ── Screen-position numbering ──────────────────────────────────────────
+	// The 4 approach diamonds form a 2x2 grid. The cap number + hotkey are
+	// owned strictly by SCREEN POSITION (never by approach identity):
+	//   BL = 1, TL = 2, TR = 3, BR = 4   (up the left column, down the right)
+	// The foreach renders in declaration order; its posClass mapping is
+	//   declIdx 0 -> radial-top    -> BL -> slot 1
+	//   declIdx 1 -> radial-right  -> TR -> slot 3
+	//   declIdx 2 -> radial-bottom -> BR -> slot 4
+	//   declIdx 3 -> radial-left   -> TL -> slot 2
+	// _indexToSlot maps declaration index -> screen slot number; _slotToIndex
+	// is the inverse (indexed by slotNumber-1).
+	private static readonly int[] _indexToSlot = { 1, 3, 4, 2 };
+	private static readonly int[] _slotToIndex = { 0, 3, 1, 2 };
+
+	// Screen slot number (1-4) for a declaration index. Out-of-range indices
+	// (fewer than 4 options) fall back to declIdx+1 so the cap still shows.
+	private int SlotNumberForIndex( int declIdx )
+		=> ( declIdx >= 0 && declIdx < _indexToSlot.Length ) ? _indexToSlot[declIdx] : declIdx + 1;
+
+	// Declaration index for a screen slot number (1-4). Returns -1 if that
+	// slot isn't occupied (fewer than 4 options generated).
+	private int IndexForSlotNumber( int slot )
+	{
+		if ( slot < 1 || slot > _slotToIndex.Length ) return -1;
+		int idx = _slotToIndex[slot - 1];
+		return ( negotiationOptions != null && idx < negotiationOptions.Count ) ? idx : -1;
+	}
 
 	public Monster TargetMonster { get; set; }
 	public bool IsVisible { get; set; }
@@ -217,34 +261,78 @@
 
 		if (currentState == NegotiationState.Selecting)
 		{
-			// Navigate options
-			if (Input.Pressed("Up") || Input.Pressed("Left"))
+			int count = negotiationOptions?.Count ?? 0;
+			if (count == 0) { StateHasChanged(); return; }
+
+			// SINGLE-AXIS navigation. The 4 diamonds sit in a horizontal arc,
+			// NOT a 2x2 grid — left-to-right their screen slots are 1,2,3,4
+			// (BL=far-left, TL=center-left, TR=center-right, BR=far-right).
+			// A/Left steps to the previous slot, D/Right to the next, cycling
+			// through all four with wrap at the ends. W/S alias to prev/next so
+			// every key still moves the cursor. Worked in SCREEN-SLOT space:
+			// convert the current declaration index to its slot, step, convert
+			// back to a declaration index.
+			int curSlot = SlotNumberForIndex(selectedOptionIndex);
+			int step = 0;
+			if (Input.Pressed("Left")  || Input.Pressed("Up"))   step = -1;
+			else if (Input.Pressed("Right") || Input.Pressed("Down")) step = 1;
+
+			if (step != 0)
 			{
-				selectedOptionIndex = Math.Max(0, selectedOptionIndex - 1);
-				if (negotiationOptions?.Count > 0)
+				// Step through occupied slots (1..count) with wrap. count is
+				// almost always 4; if fewer options exist the arc is shorter.
+				int targetSlot = ((curSlot - 1 + step + count) % count) + 1;
+				int targetIdx = IndexForSlotNumber(targetSlot);
+				if (targetIdx >= 0 && targetIdx != selectedOptionIndex)
+				{
+					selectedOptionIndex = targetIdx;
 					selectedOption = negotiationOptions[selectedOptionIndex];
-				SoundManager.PlayHover();
+					SoundManager.PlayHover();
+				}
 			}
-			else if (Input.Pressed("Down") || Input.Pressed("Right"))
+
+			// Number keys 1-4 — instant-select the approach occupying that
+			// SCREEN slot (1=BL, 2=TL, 3=TR, 4=BR), independent of which
+			// approach identity lives there.
+			var slotKeys = new[] { "Slot1", "Slot2", "Slot3", "Slot4" };
+			for (int s = 1; s <= slotKeys.Length; s++)
 			{
-				selectedOptionIndex = Math.Min((negotiationOptions?.Count ?? 1) - 1, selectedOptionIndex + 1);
-				if (negotiationOptions?.Count > 0)
-					selectedOption = negotiationOptions[selectedOptionIndex];
-				SoundManager.PlayHover();
+				if (Input.Pressed(slotKeys[s - 1]))
+				{
+					int idx = IndexForSlotNumber(s);
+					if (idx >= 0)
+					{
+						selectedOptionIndex = idx;
+						selectedOption = negotiationOptions[idx];
+						SoundManager.PlayHover();
+					}
+					break;
+				}
 			}
-			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+
+			// Tab — toggle Master Ink (only meaningful when the player has it).
+			// Bound to the existing "Score" input action (Tab); the contract
+			// overlay is modal and suppresses battle input, so reusing the
+			// scoreboard key here is collision-free without editing Input.config.
+			if (Input.Pressed("Score") && HasMasterInk())
+			{
+				ToggleMasterInk();
+			}
+
+			// Keyboard confirm = Space or Enter (Attack1 is mouse1, not a key).
+			if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 			{
 				AttemptNegotiation();
 			}
-			else if (Input.Pressed("Menu") || Input.Pressed("run"))
+			else if (Input.Pressed("Menu"))
 			{
 				SkipNegotiation();
 			}
 		}
 		else
 		{
-			// Result state - any key to continue
-			if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Menu"))
+			// Result state - any continue key (Space / Enter / Q).
+			if (Input.Pressed("Jump") || Input.Pressed("Enter") || Input.Pressed("Menu"))
 			{
 				FinishNegotiation();
 			}

@@ -3,17 +3,20 @@
 @using Sandbox;
 @using Sandbox.UI;
 @using Beastborne.Core;
+@using Beastborne.Data;
 @using Beastborne.Systems;
 @inherits Panel
 
 
 <div class="notification-panel @(isExpanded ? "expanded" : "")">
+<div class="notif-drag-wrap" style="@GetDragStyle()">
 	<!-- Expanded History View — always rendered, animated via CSS -->
 	<div class="notification-history @(isExpanded ? "open" : "")">
 			<div class="bg-scroll"><img src="ui/bg-patterns/bg-notifications.svg" /></div>
 			<!-- Header -->
 			<div class="notif-header">
-				<div class="notif-header-left">
+				<div class="notif-header-left" onmousedown=@OnDragStart>
+					<iconify icon="lucide:grip-horizontal" Size=@(16) Color="rgba(139,92,246,0.45)" />
 					<iconify icon="lucide:bell" Size=@(22) Color="#c4b5fd" />
 					<span class="notif-title">@L("ui.notifications.title")</span>
 				</div>
@@ -80,7 +83,7 @@
 			}
 		</div>
 
-	@if (!isExpanded)
+	@if (!isExpanded && !_userDismissed)
 	{
 		<!-- Toast Notifications (below button) -->
 		@foreach (var notification in GetNotifications())
@@ -108,6 +111,11 @@
 		}
 	}
 </div>
+</div>
+@if ( _isDragging )
+{
+	<div class="notif-drag-shield" onmousemove=@OnDragMove onmouseup=@OnDragEnd></div>
+}
 
 @code {
 	// Localization helper
@@ -117,6 +125,61 @@
 	private bool isExpanded = false;
 	private string currentFilter = "all";
 	private HashSet<Guid> _dismissingIds = new();
+
+	// When the user manually dismisses all toasts or moves the popup, suppress
+	// auto-show toasts until the next new notification arrives.
+	private bool _userDismissed = false;
+
+	// ─── Drag state ────────────────────────────────────────────────
+	private bool _isDragging = false;
+	private bool _needsDragAnchor = false;
+	private float _dragStartMouseX, _dragStartMouseY;
+	private float _dragStartOffsetX, _dragStartOffsetY;
+	private float _dragOffsetX = 0f, _dragOffsetY = 0f;
+
+	private void OnDragStart( PanelEvent e )
+	{
+		_isDragging = true;
+		_dragStartOffsetX = _dragOffsetX;
+		_dragStartOffsetY = _dragOffsetY;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
+	private void OnDragMove( PanelEvent e )
+	{
+		if ( !_isDragging ) return;
+		if ( _needsDragAnchor )
+		{
+			_dragStartMouseX = MousePosition.x;
+			_dragStartMouseY = MousePosition.y;
+			_needsDragAnchor = false;
+			return;
+		}
+		_dragOffsetX = _dragStartOffsetX + ( MousePosition.x - _dragStartMouseX );
+		_dragOffsetY = _dragStartOffsetY + ( MousePosition.y - _dragStartMouseY );
+		StateHasChanged();
+	}
+
+	private void OnDragEnd( PanelEvent e )
+	{
+		_isDragging = false;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if (tamer != null)
+		{
+			tamer.NotifPanelOffsetX = _dragOffsetX;
+			tamer.NotifPanelOffsetY = _dragOffsetY;
+			TamerManager.Instance?.SaveToCloud();
+		}
+		StateHasChanged();
+	}
+
+	private string GetDragStyle()
+	{
+		if ( _dragOffsetX == 0f && _dragOffsetY == 0f ) return "";
+		return string.Format( System.Globalization.CultureInfo.InvariantCulture,
+			"transform: translate({0:F0}px, {1:F0}px);", _dragOffsetX, _dragOffsetY );
+	}
 
 	// Static instance for external access
 	public static NotificationPanel Instance { get; private set; }
@@ -136,7 +199,16 @@
 
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
-		if ( firstTime ) Instance = this;
+		if ( firstTime )
+		{
+			Instance = this;
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if (tamer != null)
+			{
+				_dragOffsetX = tamer.NotifPanelOffsetX;
+				_dragOffsetY = tamer.NotifPanelOffsetY;
+			}
+		}
 	}
 
 	private List<Notification> GetNotifications()
@@ -249,6 +321,10 @@
 		if (_dismissingIds.Contains(id)) return;
 		SoundManager.PlayClick();
 		_dismissingIds.Add(id);
+		// If user dismissed the last visible toast, suppress further auto-shows
+		// until the next new notification arrives.
+		var remaining = GetNotifications().Count(n => !_dismissingIds.Contains(n.Id));
+		if (remaining <= 1) _userDismissed = true;
 		StateHasChanged();
 		_ = RemoveAfterDismissAnimation(id);
 	}
@@ -267,6 +343,7 @@
 		IsNotificationsExpanded = isExpanded;
 		if (isExpanded)
 		{
+			_userDismissed = false;
 			NotificationManager.Instance?.MarkAllRead();
 			SoundManager.PlayPopup();
 		}
@@ -282,15 +359,30 @@
 		SoundManager.PlayBack();
 	}
 
+	private int _lastNotificationCount = 0;
+
+	public override void Tick()
+	{
+		base.Tick();
+		var count = GetNotifications().Count;
+		if (count > _lastNotificationCount)
+			_userDismissed = false;
+		_lastNotificationCount = count;
+	}
+
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
 		hash.Add(isExpanded);
+		hash.Add(_userDismissed);
 		hash.Add(currentFilter);
 		hash.Add(GetNotifications().Count);
 		hash.Add(GetHistory().Count);
 		hash.Add(GetUnreadCount());
 		hash.Add(_dismissingIds.Count);
+		hash.Add(_isDragging);
+		hash.Add((int)_dragOffsetX);
+		hash.Add((int)_dragOffsetY);
 		foreach (var n in GetNotifications())
 		{
 			hash.Add(n.Id);

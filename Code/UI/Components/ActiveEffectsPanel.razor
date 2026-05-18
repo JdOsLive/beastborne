@@ -7,11 +7,13 @@
 @inherits Panel
 
 <div class="active-effects-panel @(isExpanded ? "expanded" : "")">
+<div class="effects-drag-wrap" style="@GetDragStyle()">
 	<div class="effects-popup @(isExpanded ? "open" : "")">
 		<div class="bg-scroll"><img src="ui/bg-patterns/bg-effects.svg" /></div>
 		<!-- Header -->
 		<div class="ep-header">
-			<div class="ep-title">
+			<div class="ep-title" onmousedown=@OnDragStart>
+				<iconify icon="lucide:grip-horizontal" Size=@(16) Color="rgba(139,92,246,0.45)" />
 				<iconify icon="lucide:sparkles" Size=@(22) Color="#c4b5fd" />
 				<span>@L("ui.effects.title")</span>
 			</div>
@@ -207,6 +209,11 @@
 		</div>
 	</div>
 </div>
+</div>
+@if ( _isDragging )
+{
+	<div class="effects-drag-shield" onmousemove=@OnDragMove onmouseup=@OnDragEnd></div>
+}
 
 @code {
 	// Localization helper
@@ -215,6 +222,57 @@
 
 	private bool isExpanded = false;
 	private string currentTab = "boosts";
+
+	// ─── Drag state ────────────────────────────────────────────────
+	private bool _isDragging = false;
+	private bool _needsDragAnchor = false;
+	private float _dragStartMouseX, _dragStartMouseY;
+	private float _dragStartOffsetX, _dragStartOffsetY;
+	private float _dragOffsetX = 0f, _dragOffsetY = 0f;
+
+	private void OnDragStart( PanelEvent e )
+	{
+		_isDragging = true;
+		_dragStartOffsetX = _dragOffsetX;
+		_dragStartOffsetY = _dragOffsetY;
+		_needsDragAnchor = true;
+		StateHasChanged();
+	}
+
+	private void OnDragMove( PanelEvent e )
+	{
+		if ( !_isDragging ) return;
+		if ( _needsDragAnchor )
+		{
+			_dragStartMouseX = MousePosition.x;
+			_dragStartMouseY = MousePosition.y;
+			_needsDragAnchor = false;
+			return;
+		}
+		_dragOffsetX = _dragStartOffsetX + ( MousePosition.x - _dragStartMouseX );
+		_dragOffsetY = _dragStartOffsetY + ( MousePosition.y - _dragStartMouseY );
+		StateHasChanged();
+	}
+
+	private void OnDragEnd( PanelEvent e )
+	{
+		_isDragging = false;
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if (tamer != null)
+		{
+			tamer.EffectsPanelOffsetX = _dragOffsetX;
+			tamer.EffectsPanelOffsetY = _dragOffsetY;
+			TamerManager.Instance?.SaveToCloud();
+		}
+		StateHasChanged();
+	}
+
+	private string GetDragStyle()
+	{
+		if ( _dragOffsetX == 0f && _dragOffsetY == 0f ) return "";
+		return string.Format( System.Globalization.CultureInfo.InvariantCulture,
+			"transform: translate({0:F0}px, {1:F0}px);", _dragOffsetX, _dragOffsetY );
+	}
 
 	// Static instance for external access (bottom bar toggle)
 	public static ActiveEffectsPanel Instance { get; private set; }
@@ -228,7 +286,16 @@
 
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
-		if ( firstTime ) Instance = this;
+		if ( firstTime )
+		{
+			Instance = this;
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if (tamer != null)
+			{
+				_dragOffsetX = tamer.EffectsPanelOffsetX;
+				_dragOffsetY = tamer.EffectsPanelOffsetY;
+			}
+		}
 	}
 
 	public void ToggleExpanded()
@@ -507,6 +574,9 @@
 		hash.Add(isExpanded);
 		hash.Add(currentTab);
 		hash.Add(GetTotalEffectCount());
+		hash.Add(_isDragging);
+		hash.Add((int)_dragOffsetX);
+		hash.Add((int)_dragOffsetY);
 
 		var boosts = GetActiveBoosts();
 		foreach (var boost in boosts)

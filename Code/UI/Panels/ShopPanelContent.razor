@@ -4,6 +4,7 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @using Beastborne.UI.Components;
 @inherits Panel
 
@@ -1039,6 +1040,110 @@
 		purchaseQty = 1;
 		swapVersion++;
 		SoundManager.PlayClick();
+	}
+
+	// ============================================================
+	// Keyboard navigation — called by GameHUD.TickCurrentPanel().
+	// Reuses selectedItem / selectedConsumable as the cursor so the
+	// existing card-highlight + detail-pane state needs no parallel
+	// fields. Arrows move the cursor through the flat visible list,
+	// confirm purchases the selected item, Q/E swap stores.
+	// ============================================================
+	public void TickInput()
+	{
+		try
+		{
+			HandleShopKeyboardInput();
+		}
+		catch ( Exception ex )
+		{
+			Log.Warning( $"ShopPanelContent.TickInput error: {ex.Message}" );
+		}
+	}
+
+	private void HandleShopKeyboardInput()
+	{
+		if ( ChatPanel.IsChatFocused ) return;
+		// A blocking popup is open — it owns the keyboard.
+		if ( UIModalState.AnyModalOpen ) return;
+
+		// [ / ] swap stores (RadioPrev / RadioNext). The old PrevWeapon /
+		// NextWeapon names don't exist in Input.config so this was dead.
+		// [ / ] read as a prev/next pair and don't collide with the grid's
+		// arrows, Jump/Enter confirm, or Menu/Run back.
+		if ( Input.Pressed( "RadioPrev" ) ) { SwitchShopView( "gold" ); return; }
+		if ( Input.Pressed( "RadioNext" ) ) { SwitchShopView( "boss" ); return; }
+
+		if ( shopView == "gold" )
+		{
+			var items = GetFilteredItems();
+			if ( items.Count == 0 ) return;
+
+			int idx = selectedItem == null ? -1 : items.FindIndex( i => i.Id == selectedItem.Id );
+
+			if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+			{
+				idx = idx <= 0 ? 0 : idx - 1;
+				SelectItem( items[idx] );
+			}
+			else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+			{
+				idx = idx < 0 ? 0 : Math.Min( items.Count - 1, idx + 1 );
+				SelectItem( items[idx] );
+			}
+			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			{
+				if ( selectedItem != null ) PurchaseItem( selectedItem );
+				else SelectItem( items[0] );
+			}
+			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			{
+				// Back: deselect first, then exit to tab nav. The deselect is
+				// an INTERNAL action — claim the back key so GameHUD doesn't
+				// also exit to tabs the same frame. When nothing is selected,
+				// Q genuinely exits the panel, so the flag is NOT set there.
+				if ( selectedItem != null )
+				{
+					selectedItem = null; detailVersion++; SoundManager.PlayBack();
+					GameHUD.PanelHandledBackKey = true;
+				}
+				else GameHUD.ExitPanel();
+			}
+		}
+		else // boss store
+		{
+			var items = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
+			if ( items.Count == 0 ) return;
+
+			int idx = selectedConsumable == null ? -1 : items.FindIndex( i => i.Id == selectedConsumable.Id );
+
+			if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+			{
+				idx = idx <= 0 ? 0 : idx - 1;
+				SelectConsumable( items[idx] );
+			}
+			else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+			{
+				idx = idx < 0 ? 0 : Math.Min( items.Count - 1, idx + 1 );
+				SelectConsumable( items[idx] );
+			}
+			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			{
+				if ( selectedConsumable != null ) PurchaseConsumable( selectedConsumable );
+				else SelectConsumable( items[0] );
+			}
+			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			{
+				// Same two-stage back as the gold store: deselect = internal
+				// (claim the key), nothing selected = genuine exit (don't).
+				if ( selectedConsumable != null )
+				{
+					selectedConsumable = null; detailVersion++; SoundManager.PlayBack();
+					GameHUD.PanelHandledBackKey = true;
+				}
+				else GameHUD.ExitPanel();
+			}
+		}
 	}
 
 	private List<ShopItem> GetFilteredItems()

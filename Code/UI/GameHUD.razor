@@ -3,6 +3,7 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @using Beastborne.UI.Panels;
 @using Beastborne.UI.Components;
 @using Beastborne.Battle3D;
@@ -26,6 +27,7 @@
 		{
 			<DamageNumberOverlay />
 			<ImpactRingOverlay />
+			<StatusFXOverlay />
 		}
 
 		<!-- Tab-switch confirm dialog — fires when the player tries to
@@ -87,7 +89,7 @@
 				break;
 
 			case "shop":
-				<ShopPanelContent />
+				<ShopPanelContent @ref="shopPanel" />
 				break;
 		}
 	</div>
@@ -124,6 +126,7 @@
 					<span class="cb-tamer-name">@GetTamerName()</span>
 					<span class="cb-lv-chip">LV @GetTamerLevel()</span>
 				</div>
+				<div class="cb-tab-key cb-avatar-key"><span>0</span></div>
 			</div>
 
 			<div class="cb-currency-stack">
@@ -259,6 +262,7 @@
 					<img class="cb-action-icon" src="ui/icons/buttons/missions-star-static.png" />
 					<img class="cb-action-icon-anim" src="ui/icons/animated/missions-star.webp" />
 					<span class="cb-action-label">QUESTS</span>
+					<div class="cb-tab-key cb-action-key"><span>7</span></div>
 					@if (HasUnclaimedDailyRewards())
 					{
 						<span class="cb-action-badge quests-badge">!</span>
@@ -271,6 +275,7 @@
 					<img class="cb-action-icon" src="ui/icons/buttons/menu.svg" />
 					<img class="cb-action-icon-anim" src="ui/icons/animated/menu.webp" />
 					<span class="cb-action-label">MENU</span>
+					<div class="cb-tab-key cb-action-key"><span>8</span></div>
 				</button>
 
 				<button class="cb-action bag-action @(HasNewItems() ? "has-new" : "")" onclick=@OnInventoryClicked
@@ -279,6 +284,7 @@
 					<img class="cb-action-icon" src="ui/icons/buttons/inventory.svg" />
 					<img class="cb-action-icon-anim" src="ui/icons/animated/inventory.webp" />
 					<span class="cb-action-label">@L("ui.hud.inventory")</span>
+					<div class="cb-tab-key cb-action-key"><span>9</span></div>
 					@if (HasNewItems())
 					{
 						<span class="cb-action-badge bag-badge">@L("ui.hud.new")</span>
@@ -298,6 +304,7 @@
 							<iconify icon="lucide:message-circle" Size=@(20) Color=@(hoveredBar == "chat" ? "#ffffff" : "#c4b5fd") />
 						</div>
 					</div>
+					<div class="cb-tab-key cb-util-key"><span>T</span></div>
 					@if (GetChatUnreadCount() > 0)
 					{
 						<span class="cb-util-badge purple">@GetChatUnreadCount()</span>
@@ -312,6 +319,7 @@
 							<iconify icon="lucide:radio" Size=@(20) Color=@(hoveredBar == "radio" ? "#ffffff" : "#c4b5fd") />
 						</div>
 					</div>
+					<div class="cb-tab-key cb-util-key"><span>R</span></div>
 				</div>
 
 				<div class="cb-util cb-util-effects" onclick=@OnEffectsClicked
@@ -322,6 +330,7 @@
 							<iconify icon="lucide:sparkles" Size=@(20) Color=@(hoveredBar == "effects" ? "#ffffff" : "#fde68a") />
 						</div>
 					</div>
+					<div class="cb-tab-key cb-util-key"><span>C</span></div>
 					@if (GetEffectsCount() > 0)
 					{
 						<span class="cb-util-badge yellow">@GetEffectsCount()</span>
@@ -336,6 +345,7 @@
 							<iconify icon="lucide:bell" Size=@(20) Color=@(hoveredBar == "notifs" ? "#ffffff" : "#c4b5fd") />
 						</div>
 					</div>
+					<div class="cb-tab-key cb-util-key"><span>N</span></div>
 					@if (GetNotificationCount() > 0)
 					{
 						<span class="cb-util-badge purple">@GetNotificationCount()</span>
@@ -356,7 +366,6 @@
 	<RadioWidget />
 
 	<!-- Popup/Modal panels - render after HUD overlays so they appear on top -->
-	<AutoBattlerPopup OnViewExpedition=@OnViewExpedition />
 	<BeastShowcasePopup />
 	<TamerCardShowcasePopup />
 	<ProfilePanel />
@@ -396,12 +405,26 @@
 	private WorldMapPanel worldMapPanel;
 	private OnlineHubPanel onlineHubPanel;
 	private BeastiaryPanel beastiaryPanel;
+	private ShopPanelContent shopPanel;
 
 	// Keyboard navigation state
 	// When true, user is navigating tabs at top level (Left/Right to switch, Down to enter panel)
 	// When false, the current panel handles input (panel calls ExitPanel() to return)
 	// Starts false so panels work immediately - user presses Up to go to tab level
 	public static bool IsNavigatingTabs { get; set; } = false;
+
+	// Cross-handler "the active panel already used the back key this frame" flag.
+	//
+	// Why this exists: OnUpdate() calls TickCurrentPanel() (which runs the active
+	// panel's keyboard handler) and THEN HandleKeyboardInput() (GameHUD's own).
+	// `Input.Pressed("Menu")` is edge-triggered and reports true to BOTH in the
+	// same frame — so a panel consuming Q for an INTERNAL back action (close a
+	// sub-picker, detail->grid, etc.) could not stop GameHUD from ALSO seeing Q
+	// and flipping IsNavigatingTabs = true (exit-panel-to-tabs), which froze the
+	// panel. Now: a panel that uses Q internally sets PanelHandledBackKey = true;
+	// GameHUD's Menu->exit-panel flip skips when the flag is set. Reset to false
+	// at the TOP of OnUpdate() every frame, before the panel ticks.
+	public static bool PanelHandledBackKey { get; set; } = false;
 	// 7 tabs: home is position 0, then the original 6. Number keys 1–6
 	// still map to the original tabs (indexes 1–6) and H maps to home (index 0).
 	private static string[] tabs = { "monsters", "skills", "expedition", "online", "beastiary", "shop" };
@@ -433,12 +456,13 @@
 	private const float PULSE_DOWN_DURATION = 0.2f;
 
 	/// <summary>
-	/// Called by panels when user presses W/Up at top row to exit back to tab navigation
+	/// Formerly: panels called this on a W/Up press at their top row to jump
+	/// focus up to the tab bar. Keyboard tab navigation was removed (tabs switch
+	/// via the number keys 1-6 only), so this is now a no-op — kept so existing
+	/// panel call sites still compile.
 	/// </summary>
 	public static void ExitPanel()
 	{
-		IsNavigatingTabs = true;
-		SoundManager.PlayBack();
 	}
 
 	/// <summary>
@@ -515,6 +539,12 @@
 	{
 		try
 		{
+			// Clear the cross-handler back-key flag at the very top of the
+			// frame, BEFORE TickCurrentPanel() runs. A panel that consumes Q
+			// for an internal back action this frame will set it true; the
+			// Menu->exit-panel flip in HandleKeyboardInput() then yields to it.
+			PanelHandledBackKey = false;
+
 			// Update global sprite animations and force re-render for animation
 			if ( SpriteAnimator.Update() )
 			{
@@ -570,13 +600,19 @@
 					skillTreePanel?.TickInput();
 					break;
 				case "expedition":
+					// Exactly one of these is mounted at a time — the world map
+					// when no run is active, the expedition panel during a run.
 					expeditionPanel?.TickInput();
+					worldMapPanel?.TickInput();
 					break;
 				case "online":
 					onlineHubPanel?.TickInput();
 					break;
 				case "beastiary":
 					beastiaryPanel?.TickInput();
+					break;
+				case "shop":
+					shopPanel?.TickInput();
 					break;
 			}
 		}
@@ -863,6 +899,14 @@
 		// Don't process keyboard input when chat is focused (user is typing)
 		if (ChatPanel.IsChatFocused) return;
 
+		// A 3D battle owns the keyboard — BattleView handles its own input.
+		if (Is3DBattleActive()) return;
+
+		// A blocking popup/modal is open — it owns the keyboard. The popup's
+		// own Tick() drives nav/confirm/cancel; GameHUD must not also eat the
+		// global edge-triggered presses underneath it.
+		if (UIModalState.AnyModalOpen) return;
+
 		// Tab switching with number keys (always available)
 		// Number keys 1–6 switch to the 6 tabs (indexes 0–5 after Home removal).
 		if (Input.Pressed("Slot1")) { SwitchTabByIndex(0); IsNavigatingTabs = false; }
@@ -872,33 +916,37 @@
 		else if (Input.Pressed("Slot5")) { SwitchTabByIndex(4); IsNavigatingTabs = false; }
 		else if (Input.Pressed("Slot6")) { SwitchTabByIndex(5); IsNavigatingTabs = false; }
 
-		// Tab-level navigation (when at tab bar, after pressing Up from panel)
-		if (IsNavigatingTabs)
-		{
-			// Bar is horizontal now — Left/Right navigate primarily.
-			// Up/Down kept as aliases for muscle-memory from the vertical rail era.
-			if (Input.Pressed("Left") || Input.Pressed("Up"))
-			{
-				selectedTabIndex = Math.Max(0, selectedTabIndex - 1);
-				SwitchTabByIndex(selectedTabIndex);
-				SoundManager.PlayHover();
-			}
-			else if (Input.Pressed("Right") || Input.Pressed("Down"))
-			{
-				selectedTabIndex = Math.Min(tabs.Length - 1, selectedTabIndex + 1);
-				SwitchTabByIndex(selectedTabIndex);
-				SoundManager.PlayHover();
-			}
-			// Enter / Space / click enters the panel
-			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
-			{
-				IsNavigatingTabs = false;
-				SoundManager.PlayForward();
-			}
-		}
+		// Tabs switch ONLY via the number keys above. Directional (WASD / arrow)
+		// tab navigation was removed — those keys collided with movement and
+		// with panel content navigation.
 
-		// Escape/Menu to go back to main menu (or exit panel first)
-		if (Input.Pressed("Menu") || Input.Pressed("Escape"))
+		// Command-bar non-tab buttons. Keys 7/8/9/0 open the right-side
+		// action pills (Quests/Menu/Bag) + the left avatar (Profile). Those
+		// panels are UIModalState modals — once open AnyModalOpen is true and
+		// this handler stops running, so they re-close via the popup's own Q
+		// pass. The open press is all we need to wire here.
+		// T/R/C/N toggle the non-modal utility widgets (Chat/Radio/Effects/
+		// Notifications) — true press-to-toggle since this handler keeps
+		// running while they're open.
+		else if (Input.Pressed("Slot7")) { OnQuestsClicked(); }
+		else if (Input.Pressed("Slot8")) { OnMenuClicked(); }
+		else if (Input.Pressed("Slot9")) { OnInventoryClicked(); }
+		else if (Input.Pressed("Slot0")) { OnPlayerInfoClicked(); }
+		else if (Input.Pressed("Chat")) { OnChatClicked(); }
+		else if (Input.Pressed("Reload")) { OnRadioClicked(); }
+		else if (Input.Pressed("View")) { OnEffectsClicked(); }
+		else if (Input.Pressed("Notifications")) { OnNotificationsClicked(); }
+
+		// Escape/Menu to go back to main menu (or exit panel first).
+		//
+		// If the active panel already used Q THIS frame for an internal back
+		// action (closing a sub-picker, detail->grid, etc.) it sets
+		// PanelHandledBackKey — in that case GameHUD must NOT also flip into
+		// tab-nav, or the panel would freeze. Escape is exempt from that
+		// suppression: panels never consume Escape, so Escape always escalates.
+		bool backPressed = Input.Pressed("Menu") || Input.Pressed("Escape");
+		bool menuConsumedByPanel = Input.Pressed("Menu") && PanelHandledBackKey;
+		if (backPressed && !menuConsumedByPanel)
 		{
 			if (!IsNavigatingTabs)
 			{

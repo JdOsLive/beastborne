@@ -5,9 +5,14 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @inherits Panel
 
 <root class="options-container @(IsVisible ? "visible" : "")">
+
+	@* Reset the per-render toggle-row counter so RenderToggleRow can assign
+	   each row a stable index for the keyboard `.kb-active` highlight. *@
+	@{ _toggleRowCounter = 0; }
 
 	@* Dimming overlay — click anywhere outside to close *@
 	<div class="options-overlay" onclick=@Close></div>
@@ -351,6 +356,21 @@
 
 	public bool IsVisible { get; private set; }
 
+	/// <summary>
+	/// True when ANY mounted OptionsPanel instance is showing. The panel is
+	/// mounted under both MainMenu and GameHUD, so a single `Instance.IsVisible`
+	/// read is unreliable — UIModalState consults this instead.
+	/// </summary>
+	public static bool AnyVisible
+	{
+		get
+		{
+			foreach ( var inst in _instances )
+				if ( inst != null && inst.IsVisible ) return true;
+			return false;
+		}
+	}
+
 	// Two-stage reset confirmation state
 	private bool showResetConfirm = false;
 	private bool isResetting = false;
@@ -437,6 +457,64 @@
 		// Don't play PlayBack here — Hide() already plays PlayPopdown.
 		// Calling both was producing two overlapping sounds on close.
 		Hide();
+	}
+
+	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
+	// Cursor over the toggle rows (the only routinely-changed settings).
+	// Up/Down move, Space/Enter flips the highlighted toggle, Menu/run
+	// closes the panel. Order MUST match the RenderToggleRow render order:
+	// gameplay (3) → display (4) → confirmations (2) = 9 rows.
+	private int _kbRowIndex = 0;
+
+	/// <summary>Toggle actions in render order — index aligns with _kbRowIndex.</summary>
+	private List<Action> GetKbToggleActions() => new()
+	{
+		ToggleSkipAnimations,
+		ToggleShowLevelUpNotifications,
+		ToggleShowDiscoveryAlerts,
+		ToggleShowDamageNumbers,
+		ToggleShowTypeEffectiveness,
+		ToggleShowGeneticsOnCards,
+		ToggleShowPowerRatings,
+		ToggleConfirmBeforeRelease,
+		ToggleConfirmBeforeFusion,
+	};
+
+	/// <summary>
+	/// Keyboard handling — s&box calls Panel.Tick() automatically. Only acts
+	/// while this panel is the top-priority open modal. Escape is intentionally
+	/// NOT bound (reserved by s&box).
+	/// </summary>
+	public override void Tick()
+	{
+		base.Tick();
+		if ( !IsVisible ) return;
+		if ( !UIModalState.IsTopModal( "OptionsPanel" ) ) return;
+		// The two-stage reset confirmation is a sub-modal — leave it mouse-only
+		// so a stray keypress can't wipe the player's save.
+		if ( showResetConfirm ) return;
+
+		var toggles = GetKbToggleActions();
+		_kbRowIndex = Math.Clamp( _kbRowIndex, 0, toggles.Count - 1 );
+
+		if ( Input.Pressed( "Up" ) || Input.Pressed( "Left" ) )
+		{
+			_kbRowIndex = Math.Max( 0, _kbRowIndex - 1 );
+			SoundManager.PlayHover();
+		}
+		else if ( Input.Pressed( "Down" ) || Input.Pressed( "Right" ) )
+		{
+			_kbRowIndex = Math.Min( toggles.Count - 1, _kbRowIndex + 1 );
+			SoundManager.PlayHover();
+		}
+		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			toggles[_kbRowIndex]?.Invoke();
+		}
+		else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+		{
+			Close();
+		}
 	}
 
 	private void OnHover( string key )
@@ -712,9 +790,15 @@
 	// keeps the markup in the main file readable and per-row tweaks consistent.
 	// ============================================
 
+	// `rowIndex` advances per toggle row in render order. The keyboard cursor
+	// (`_kbRowIndex`) compares against it to paint the `.kb-active` highlight.
+	// Each call site passes the running counter via `_toggleRowCounter`.
+	private int _toggleRowCounter = 0;
+
 	private RenderFragment RenderToggleRow( string icon, string label, string desc, bool isOn, Action onToggle, string hoverKey ) => __builder =>
 	{
-		<div class="setting-row" onmouseover=@(() => OnHover(hoverKey))>
+		int rowIndex = _toggleRowCounter++;
+		<div class="setting-row @(_kbRowIndex == rowIndex ? "kb-active" : "")" onmouseover=@(() => OnHover(hoverKey))>
 			<div class="setting-icon-frame">
 				<iconify icon="@icon" Size=@(14) Color="@(isOn ? "#a78bfa" : "rgba(255, 255, 255, 0.55)")" />
 			</div>
@@ -778,6 +862,7 @@
 	{
 		var hash = new HashCode();
 		hash.Add( IsVisible );
+		hash.Add( _kbRowIndex );
 		hash.Add( showResetConfirm );
 		hash.Add( isResetting );
 		hash.Add( IsTutorialActive() );

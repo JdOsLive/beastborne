@@ -18,6 +18,7 @@
 			     by triggering drag-start on its mousedown. -->
 			<div class="chat-header">
 				<div class="header-left" onmousedown=@OnDragStart>
+					<iconify icon="lucide:grip-horizontal" Size=@(16) Color="rgba(139,92,246,0.45)" />
 					<iconify icon="lucide:message-square" Size=@(22) Color="#c4b5fd" />
 					<span class="chat-title">@L("ui.chat.title")</span>
 				</div>
@@ -361,11 +362,13 @@
 	private void OnDragEnd( PanelEvent e )
 	{
 		_isDragging = false;
-		// Force re-render so the shield un-mounts immediately. Without
-		// this, the shield stays in the DOM (Razor doesn't auto-rerender
-		// on plain field changes), keeping pointer-events captured and
-		// causing the next click to feel "click-to-toggle-drag" instead
-		// of "hold-to-drag."
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if (tamer != null)
+		{
+			tamer.ChatPanelOffsetX = _dragOffsetX;
+			tamer.ChatPanelOffsetY = _dragOffsetY;
+			TamerManager.Instance?.SaveToCloud();
+		}
 		StateHasChanged();
 	}
 
@@ -411,6 +414,13 @@
 			{
 				ChatManager.Instance.OnMessageReceived += OnMessageReceived;
 				ChatManager.Instance.OnMessagesCleared += OnMessagesCleared;
+			}
+
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			if (tamer != null)
+			{
+				_dragOffsetX = tamer.ChatPanelOffsetX;
+				_dragOffsetY = tamer.ChatPanelOffsetY;
 			}
 		}
 	}
@@ -594,6 +604,12 @@
 		hash.Add(chatInputBox?.GetText());
 		hash.Add(ChatManager.Instance?.Messages?.Count ?? 0);
 		hash.Add(GetOnlineCount());
+		// Drag state — without these the popup won't visually move while being
+		// dragged (s&box only re-renders when BuildHash changes). Matches the
+		// RadioWidget / NotificationPanel / ActiveEffectsPanel drag-hash pattern.
+		hash.Add(_isDragging);
+		hash.Add((int)_dragOffsetX);
+		hash.Add((int)_dragOffsetY);
 		return hash.ToHashCode();
 	}
 }

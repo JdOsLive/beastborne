@@ -339,6 +339,21 @@
 					     ============================================================ -->
 					<div class="bb-detail-scroll">
 
+						<!-- Keyboard focus-switch affordance. Clickable (mouse
+						     parity) and reflects the current focus zone. Only
+						     shown for fully-discovered species (the diamond
+						     actions it controls only exist then). -->
+						@if (isFullyDiscovered)
+						{
+							<div class="kb-focus-switch @(kbFocusZone == "detail" ? "active" : "")"
+								 onclick=@ToggleKbFocusZone
+								 onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="@(kbFocusZone == "detail" ? "lucide:arrow-left" : "lucide:arrow-left-right")" Size=@(13) Color="@(kbFocusZone == "detail" ? "#c4b5fd" : "rgba(255,255,255,0.55)")" />
+								<span class="kb-focus-switch-key">@(kbFocusZone == "detail" ? "Q" : "TAB")</span>
+								<span class="kb-focus-switch-label">@(kbFocusZone == "detail" ? "Back to grid" : "Control details")</span>
+							</div>
+						}
+
 						<!-- ====== ACTIONS — diamond row ======
 						     Cry / Moves / Evolution / Lore / Mastery. First thing in the
 						     scroll area — primary navigation for the swappable bottom view. -->
@@ -351,13 +366,13 @@
 								<div class="bb-diamond-row">
 
 								<!-- 1. Cry — plays beast cry, does NOT switch views -->
-								<div class="bb-detail-diamond cry" onclick=@OnPortraitClick onmouseover=@(() => OnDiamondHover("cry"))>
+								<div class="bb-detail-diamond cry @(IsDetailActionFocused("cry") ? "kb-focused" : "")" onclick=@OnPortraitClick onmouseover=@(() => OnDiamondHover("cry"))>
 									<div class="bb-diamond-shape"><iconify icon="lucide:volume-2" Size=@(16) Color="#c4b5fd" /></div>
 									<span class="bb-diamond-tooltip">@L("ui.beastbook.click_to_hear")</span>
 								</div>
 
 								<!-- 2. Moves — toggles bottom section to moves view -->
-								<div class="bb-detail-diamond moves @(detailView == "moves" ? "active" : "")" onclick=@(() => OnDiamondClick("moves")) onmouseover=@(() => OnDiamondHover("moves"))>
+								<div class="bb-detail-diamond moves @(detailView == "moves" ? "active" : "") @(IsDetailActionFocused("moves") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("moves")) onmouseover=@(() => OnDiamondHover("moves"))>
 									<div class="bb-diamond-shape"><iconify icon="lucide:sparkles" Size=@(16) Color="white" /></div>
 									<div class="bb-diamond-badge"><span>@moveCount</span></div>
 									<span class="bb-diamond-tooltip">@L("ui.beastbook.learns_moves", moveCount)</span>
@@ -366,20 +381,20 @@
 								<!-- 3. Evolution — toggles bottom section to evolution view -->
 								@if (hasEvolution)
 								{
-									<div class="bb-detail-diamond evolution @(detailView == "evolution" ? "active" : "")" onclick=@(() => OnDiamondClick("evolution")) onmouseover=@(() => OnDiamondHover("evolution"))>
+									<div class="bb-detail-diamond evolution @(detailView == "evolution" ? "active" : "") @(IsDetailActionFocused("evolution") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("evolution")) onmouseover=@(() => OnDiamondHover("evolution"))>
 										<div class="bb-diamond-shape"><iconify icon="lucide:git-fork" Size=@(16) Color="#7dd3fc" /></div>
 										<span class="bb-diamond-tooltip">View evolution line</span>
 									</div>
 								}
 
 								<!-- 4. Lore — toggles bottom section to lore view -->
-								<div class="bb-detail-diamond lore @(detailView == "lore" ? "active" : "")" onclick=@(() => OnDiamondClick("lore")) onmouseover=@(() => OnDiamondHover("lore"))>
+								<div class="bb-detail-diamond lore @(detailView == "lore" ? "active" : "") @(IsDetailActionFocused("lore") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("lore")) onmouseover=@(() => OnDiamondHover("lore"))>
 									<div class="bb-diamond-shape"><iconify icon="lucide:scroll" Size=@(16) Color="#fcd34d" /></div>
 									<span class="bb-diamond-tooltip">@(detailView == "lore" ? "Hide lore" : "Read lore")</span>
 								</div>
 
 								<!-- 5. Mastery — toggles bottom section to mastery view -->
-								<div class="bb-detail-diamond mastery @(detailView == "mastery" ? "active" : "")" onclick=@(() => OnDiamondClick("mastery")) onmouseover=@(() => OnDiamondHover("mastery"))>
+								<div class="bb-detail-diamond mastery @(detailView == "mastery" ? "active" : "") @(IsDetailActionFocused("mastery") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("mastery")) onmouseover=@(() => OnDiamondHover("mastery"))>
 									<div class="bb-diamond-shape"><iconify icon="lucide:crown" Size=@(16) Color="#c4b5fd" /></div>
 									<span class="bb-diamond-tooltip">@(detailView == "mastery" ? "Hide mastery" : "View mastery")</span>
 								</div>
@@ -914,6 +929,73 @@
 	// showMoves/showLore booleans with a single state string.
 	private string detailView = "stats";
 
+	// ---- Grid <-> detail-panel keyboard focus switch -------------------
+	// Mirrors the MonsterRosterPanel pattern. kbFocusZone is the zone the
+	// keyboard drives: "grid" (default — arrows move the species grid) or
+	// "detail" (arrows move between the detail panel's diamond actions).
+	// Tab (Score) hands focus to the detail panel; Tab or Q (Menu) returns.
+	private string kbFocusZone = "grid";
+	private int detailActionIndex = 0;
+
+	// Ordered list of keyboard-reachable detail-panel diamond actions for
+	// the selected species. "cry" plays the cry; the rest toggle the
+	// swappable bottom view. Evolution is only present when the species
+	// has an evolution chain — matches the conditional in the markup.
+	private List<string> GetDetailActions()
+	{
+		var actions = new List<string>();
+		if ( selectedSpecies == null || !IsDiscovered( selectedSpecies.Id ) ) return actions;
+		actions.Add( "cry" );
+		actions.Add( "moves" );
+		if ( GetEvolutionChain( selectedSpecies ).Count > 1 ) actions.Add( "evolution" );
+		actions.Add( "lore" );
+		actions.Add( "mastery" );
+		return actions;
+	}
+
+	// True when the detail panel has keyboard focus and the given diamond
+	// action id is under the keyboard cursor. Drives the .kb-focused style.
+	private bool IsDetailActionFocused( string id )
+	{
+		if ( kbFocusZone != "detail" ) return false;
+		var actions = GetDetailActions();
+		if ( actions.Count == 0 ) return false;
+		int idx = Math.Clamp( detailActionIndex, 0, actions.Count - 1 );
+		return actions[idx] == id;
+	}
+
+	private void FocusDetailZone()
+	{
+		// Detail focus only makes sense on a fully-discovered species —
+		// the diamond actions don't render otherwise.
+		if ( selectedSpecies == null || !IsDiscovered( selectedSpecies.Id ) ) return;
+		kbFocusZone = "detail";
+		detailActionIndex = 0;
+		SoundManager.PlayClick();
+	}
+
+	private void FocusGridZone()
+	{
+		kbFocusZone = "grid";
+		SoundManager.PlayBack();
+	}
+
+	private void ToggleKbFocusZone()
+	{
+		if ( kbFocusZone == "grid" ) FocusDetailZone();
+		else FocusGridZone();
+	}
+
+	private void ActivateFocusedDetailAction()
+	{
+		var actions = GetDetailActions();
+		if ( actions.Count == 0 ) return;
+		detailActionIndex = Math.Clamp( detailActionIndex, 0, actions.Count - 1 );
+		var id = actions[detailActionIndex];
+		if ( id == "cry" ) OnPortraitClick();
+		else OnDiamondClick( id );
+	}
+
 	// Hover-sound guard: track the last species id that fired a hover sound so we
 	// don't re-fire PlayHover() every frame while the mouse is over the same card.
 	private string lastHoveredCardId = null;
@@ -1252,9 +1334,54 @@
 			return;
 		}
 
+		// ---- DETAIL-ZONE focus: keyboard drives the detail panel --------
+		// When the player has Tab'd into the detail panel, arrows move
+		// between its diamond actions, Space/Enter activates, and Tab or Q
+		// returns to the grid. Handled before grid nav so the grid cursor
+		// stays put while the detail panel has keyboard focus.
+		if ( kbFocusZone == "detail" )
+		{
+			var detailActions = GetDetailActions();
+			if ( detailActions.Count == 0 ) { FocusGridZone(); return; }
+
+			// Tab or Q — back to the grid. This is an INTERNAL move, not an
+			// exit to the tab bar, so claim the back key (GameHUD ticks after
+			// this panel and would otherwise also see the Q and flip into
+			// tab-nav, freezing the panel — see GameHUD.PanelHandledBackKey).
+			if ( Input.Pressed( "Score" ) || Input.Pressed( "Menu" ) )
+			{
+				FocusGridZone();
+				GameHUD.PanelHandledBackKey = true;
+				return;
+			}
+			detailActionIndex = Math.Clamp( detailActionIndex, 0, detailActions.Count - 1 );
+			if ( Input.Pressed( "Up" ) || Input.Pressed( "Left" ) )
+			{
+				detailActionIndex = Math.Max( 0, detailActionIndex - 1 );
+				SoundManager.PlayHover();
+			}
+			else if ( Input.Pressed( "Down" ) || Input.Pressed( "Right" ) )
+			{
+				detailActionIndex = Math.Min( detailActions.Count - 1, detailActionIndex + 1 );
+				SoundManager.PlayHover();
+			}
+			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			{
+				ActivateFocusedDetailAction();
+			}
+			return;
+		}
+
 		selectedIndex = Math.Clamp( selectedIndex, 0, species.Count - 1 );
 		// Roster runs ~9 cols; we use 8 here so the wider detail pane reflow lines up.
 		int columns = 8;
+
+		// Tab — hand keyboard control to the detail panel.
+		if ( Input.Pressed( "Score" ) )
+		{
+			FocusDetailZone();
+			return;
+		}
 
 		if ( Input.Pressed( "Left" ) )
 		{
@@ -1287,11 +1414,16 @@
 			SelectSpecies( species[selectedIndex], IsDiscovered( species[selectedIndex].Id ) );
 			SoundManager.PlayHover();
 		}
-		else if ( Input.Pressed( "PrevWeapon" ) )
+		// Element filter cycle — [ / ] (RadioPrev / RadioNext). These are
+		// real actions in Input.config; the old PrevWeapon/NextWeapon names
+		// never existed so the shortcut was a dead no-op. [ / ] read as a
+		// natural prev/next pair and don't collide with the grid's arrows,
+		// Space/Enter confirm, or Q back.
+		else if ( Input.Pressed( "RadioPrev" ) )
 		{
 			CycleElementBack();
 		}
-		else if ( Input.Pressed( "NextWeapon" ) )
+		else if ( Input.Pressed( "RadioNext" ) )
 		{
 			CycleElementForward();
 		}
@@ -1710,6 +1842,10 @@
 		hash.Add( selectedSpecies?.Id );
 		hash.Add( detailView );
 		hash.Add( hoveredTraitId );
+		// Grid <-> detail keyboard focus switch — zone + action cursor both
+		// drive visible state (zone glow, affordance pill, .kb-focused).
+		hash.Add( kbFocusZone );
+		hash.Add( detailActionIndex );
 		hash.Add( GetDiscoveredCount() );
 		// Beast preview popup state — visibility + zoom level need to rehash
 		// so the popup opens, closes, and scales smoothly in response to

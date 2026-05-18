@@ -4,6 +4,7 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @using Beastborne.UI.Components;
 @inherits Panel
 
@@ -29,37 +30,44 @@
 
 			<div class="inv-pills">
 				<div class="inv-pill @(currentCategory == "all" ? "active" : "")" onclick=@(() => SetCategory("all"))>
-					<iconify icon="lucide:package" Size=@(18) Color="@(currentCategory == "all" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">1</span>
+					<iconify icon="lucide:package" Size=@(16) Color="@(currentCategory == "all" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.all_items")</span>
 					<span class="pill-badge">@GetTotalItemCount()</span>
 				</div>
 				<div class="inv-pill @(currentCategory == "consumable" ? "active" : "")" onclick=@(() => SetCategory("consumable"))>
-					<iconify icon="lucide:flask-conical" Size=@(18) Color="@(currentCategory == "consumable" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">2</span>
+					<iconify icon="lucide:flask-conical" Size=@(16) Color="@(currentCategory == "consumable" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.consumables")</span>
 					@if (GetCategoryItemCount("consumable") > 0) { <span class="pill-badge">@GetCategoryItemCount("consumable")</span> }
 				</div>
 				<div class="inv-pill @(currentCategory == "relic" ? "active" : "")" onclick=@(() => SetCategory("relic"))>
-					<iconify icon="lucide:gem" Size=@(18) Color="@(currentCategory == "relic" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">3</span>
+					<iconify icon="lucide:gem" Size=@(16) Color="@(currentCategory == "relic" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.relics")</span>
 					@if (GetCategoryItemCount("relic") > 0) { <span class="pill-badge">@GetCategoryItemCount("relic")</span> }
 				</div>
 				<div class="inv-pill @(currentCategory == "held" ? "active" : "")" onclick=@(() => SetCategory("held"))>
-					<iconify icon="lucide:link" Size=@(18) Color="@(currentCategory == "held" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">4</span>
+					<iconify icon="lucide:link" Size=@(16) Color="@(currentCategory == "held" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.held_items")</span>
 					@if (GetCategoryItemCount("held") > 0) { <span class="pill-badge">@GetCategoryItemCount("held")</span> }
 				</div>
 				<div class="inv-pill @(currentCategory == "boost" ? "active" : "")" onclick=@(() => SetCategory("boost"))>
-					<iconify icon="lucide:zap" Size=@(18) Color="@(currentCategory == "boost" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">5</span>
+					<iconify icon="lucide:zap" Size=@(16) Color="@(currentCategory == "boost" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.boosts")</span>
 					@if (GetCategoryItemCount("boost") > 0) { <span class="pill-badge">@GetCategoryItemCount("boost")</span> }
 				</div>
 				<div class="inv-pill @(currentCategory == "material" ? "active" : "")" onclick=@(() => SetCategory("material"))>
-					<iconify icon="lucide:package-open" Size=@(18) Color="@(currentCategory == "material" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">6</span>
+					<iconify icon="lucide:package-open" Size=@(16) Color="@(currentCategory == "material" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.drops")</span>
 					@if (GetCategoryItemCount("material") > 0) { <span class="pill-badge">@GetCategoryItemCount("material")</span> }
 				</div>
 				<div class="inv-pill @(currentCategory == "quest" ? "active" : "")" onclick=@(() => SetCategory("quest"))>
-					<iconify icon="lucide:scroll" Size=@(18) Color="@(currentCategory == "quest" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
+					<span class="kb-key">7</span>
+					<iconify icon="lucide:scroll" Size=@(16) Color="@(currentCategory == "quest" ? "#ffffff" : "rgba(255,255,255,0.7)")" />
 					<span class="pill-label">@L("ui.inventory.quest")</span>
 					@if (GetCategoryItemCount("quest") > 0) { <span class="pill-badge">@GetCategoryItemCount("quest")</span> }
 				</div>
@@ -70,6 +78,7 @@
 					<img class="header-gold-icon" src="ui/icons/currency/money.svg" />
 					<span class="header-gold-value">@($"{(TamerManager.Instance?.CurrentTamer?.Gold ?? 0):N0}")</span>
 				</div>
+				<span class="kb-key kb-key-close">Q</span>
 				<button class="close-btn" onclick=@Close>
 					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
 				</button>
@@ -506,6 +515,145 @@
 		SoundManager.PlaySelect();
 	}
 
+	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
+	// Scheme (handled entirely in HandleInventoryKeyboardInput, polled
+	// from Tick while this panel is the top modal):
+	//   1-7      → switch category tab (Slot1..Slot7 input actions)
+	//   W/A/S/D  → move the grid cursor (Forward/Backward/Left/Right actions)
+	//   Space    → use/activate the selected item (Jump action == space)
+	//   Q        → close the panel (Menu action == Q)
+	// Selection reuses the existing `selectedItem` field + its `.selected`
+	// highlight class — no parallel cursor state.
+	//
+	// NOTE on arrow keys: ProjectSettings/Input.config defines NO arrow-key
+	// bindings (Up/Down are themselves just W/S duplicates, Left/Right are
+	// A/D). Adding real arrow actions would require editing Input.config,
+	// which is outside this panel's edit scope — so arrows are intentionally
+	// NOT wired. WASD is the grid-nav scheme.
+	//
+	// Grid column count: the grid is a flex-wrap row of 140px cards with a
+	// 10px column gap inside an ~1243px-wide content box (1660 modal − 380
+	// detail − borders − 36px padding). 1243 / 150 ≈ 8.3 → 8 cards per row.
+	// MUST stay in sync with the .item-card layout in the .scss.
+	private const int InvGridColumns = 8;
+
+	// Category order for the 1-7 number keys — must match the declared
+	// .inv-pill order in the markup above (1=ALL … 7=QUEST).
+	private static readonly string[] CategoryKeyOrder =
+		{ "all", "consumable", "relic", "held", "boost", "material", "quest" };
+
+	private void HandleInventoryKeyboardInput()
+	{
+		// Don't steal keys while the player is typing in the search box or chat.
+		if (ChatPanel.IsChatFocused) return;
+		if (searchInput != null && searchInput.HasFocus) return;
+
+		// ── Q → close (Menu action is bound to Q). Works regardless of
+		//    whether the grid has items, and from any sub-state. ──
+		if (Input.Pressed("Menu"))
+		{
+			Close();
+			return;
+		}
+
+		// ── 1-7 → category tab switch (Slot1..Slot7). Always available,
+		//    even on an empty category — switching is how you leave it. ──
+		for (int i = 0; i < CategoryKeyOrder.Length; i++)
+		{
+			if (Input.Pressed($"Slot{i + 1}"))
+			{
+				if (currentCategory != CategoryKeyOrder[i])
+					SetCategory(CategoryKeyOrder[i]);
+				return;
+			}
+		}
+
+		// ── Space / Enter → use/activate the selected item. ──
+		if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+		{
+			var spaceItems = GetFilteredItems();
+			if (selectedItem == null && spaceItems.Count > 0)
+				SelectFilteredItem(spaceItems, 0);
+			else
+				ActivateSelectedItem();
+			return;
+		}
+
+		// ── W/A/S/D (+ arrow aliases) → grid cursor. No-op on an empty
+		//    category so the keys feel inert rather than broken. ──
+		var items = GetFilteredItems();
+		if (items.Count == 0) return;
+
+		int idx = selectedItem == null
+			? -1
+			: items.FindIndex(t => t.ItemId == selectedItem.Id);
+
+		// Forward == W, Backward == S, Left == A, Right == D.
+		bool up    = Input.Pressed("Forward");
+		bool down  = Input.Pressed("Backward");
+		bool left  = Input.Pressed("Left");
+		bool right = Input.Pressed("Right");
+
+		if (left)
+		{
+			idx = idx <= 0 ? 0 : idx - 1;
+			SelectFilteredItem(items, idx);
+		}
+		else if (right)
+		{
+			idx = idx < 0 ? 0 : Math.Min(items.Count - 1, idx + 1);
+			SelectFilteredItem(items, idx);
+		}
+		else if (up)
+		{
+			idx = idx < 0 ? 0 : Math.Max(0, idx - InvGridColumns);
+			SelectFilteredItem(items, idx);
+		}
+		else if (down)
+		{
+			// Move down a row; if the target row is short, clamp to the last
+			// item rather than overshooting past the end of the grid.
+			idx = idx < 0 ? 0 : Math.Min(items.Count - 1, idx + InvGridColumns);
+			SelectFilteredItem(items, idx);
+		}
+	}
+
+	private void SelectFilteredItem(List<(string ItemId, int Quantity)> items, int idx)
+	{
+		idx = Math.Clamp(idx, 0, items.Count - 1);
+		var def = ItemManager.Instance?.GetItem(items[idx].ItemId);
+		if (def != null) SelectItem(def);
+	}
+
+	/// <summary>
+	/// Fire the highlighted item's category-appropriate primary action —
+	/// mirrors whatever button the detail panel currently shows for it.
+	/// </summary>
+	private void ActivateSelectedItem()
+	{
+		if (selectedItem == null) { SoundManager.PlayDeny(); return; }
+		switch (selectedItem.Category)
+		{
+			case ItemCategory.Consumable:
+				OnUsePressed(selectedItem);
+				break;
+			case ItemCategory.Relic:
+				// In battle relics are locked; otherwise Space toggles
+				// equip/unequip exactly like the visible detail button.
+				if (IsInBattleMode()) SoundManager.PlayDeny();
+				else if (IsRelicEquipped(selectedItem.Id)) UnequipRelic(selectedItem);
+				else OnEquipPressed(selectedItem);
+				break;
+			case ItemCategory.Boost:
+				OnBoostPressed(selectedItem);
+				break;
+			default:
+				// Held / Material / Quest items have no primary action.
+				SoundManager.PlayDeny();
+				break;
+		}
+	}
+
 	private void OnCardHover(string itemId)
 	{
 		if (itemId == lastHoveredItemId) return;
@@ -563,11 +711,14 @@
 	{
 		base.Tick();
 
-		// Escape closes the panel
-		if (IsVisible && Input.Pressed("Escape"))
+		// Keyboard navigation — only while this panel is the top open modal.
+		// (Escape is NOT bound — s&box reserves it; Q closes instead, handled
+		// inside HandleInventoryKeyboardInput.) The monster picker (for
+		// consumables) is a sub-modal; leave it mouse-only so a stray keypress
+		// can't target the wrong beast.
+		if (IsVisible && !showMonsterPicker && UIModalState.IsTopModal("InventoryPanel"))
 		{
-			Close();
-			return;
+			HandleInventoryKeyboardInput();
 		}
 
 		// Apply pending battle category override (set in Show/Toggle, consumed here because SetCategory plays a sound we don't want on open)
@@ -1032,6 +1183,10 @@ private int GetCategoryItemCount(string category)
 	{
 		var hash = new HashCode();
 		hash.Add(IsVisible);
+		// currentCategory + selectedItem?.Id below ALSO cover the keyboard
+		// navigation state — 1-7 mutate currentCategory, WASD mutates
+		// selectedItem. No separate cursor field exists, so no extra hash
+		// entry is needed; the panel repaints on every keyboard move.
 		hash.Add(currentCategory);
 		hash.Add(currentRarityFilter);
 		hash.Add(currentSort);

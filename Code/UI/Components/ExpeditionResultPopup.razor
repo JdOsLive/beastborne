@@ -5,6 +5,7 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @using Beastborne.UI.Panels;
 @inherits Panel
 
@@ -65,26 +66,26 @@
 			<div class="result-popup-actions">
 				@if ( _won )
 				{
-					<button class="result-btn primary" onclick=@OnEmbarkAgain>
+					<button class="result-btn primary @(_kbIndex == 0 ? "kb-active" : "")" onclick=@OnEmbarkAgain>
 						<iconify icon="lucide:compass" Size=@(16) Color="#ffffff" />
 						<span>EMBARK AGAIN</span>
 					</button>
-					<button class="result-btn secondary" onclick=@OnReturnToMap>
+					<button class="result-btn secondary @(_kbIndex == 1 ? "kb-active" : "")" onclick=@OnReturnToMap>
 						<iconify icon="lucide:map" Size=@(14) Color="#cbd5e1" />
 						<span>RETURN TO MAP</span>
 					</button>
 				}
 				else
 				{
-					<button class="result-btn primary" onclick=@OnRetry>
+					<button class="result-btn primary @(_kbIndex == 0 ? "kb-active" : "")" onclick=@OnRetry>
 						<iconify icon="lucide:rotate-ccw" Size=@(16) Color="#ffffff" />
 						<span>RETRY</span>
 					</button>
-					<button class="result-btn secondary" onclick=@OnEmbarkAgain>
+					<button class="result-btn secondary @(_kbIndex == 1 ? "kb-active" : "")" onclick=@OnEmbarkAgain>
 						<iconify icon="lucide:users" Size=@(14) Color="#cbd5e1" />
 						<span>CHANGE TEAM</span>
 					</button>
-					<button class="result-btn ghost" onclick=@OnReturnToMap>
+					<button class="result-btn ghost @(_kbIndex == 2 ? "kb-active" : "")" onclick=@OnReturnToMap>
 						<iconify icon="lucide:map" Size=@(14) Color="#94a3b8" />
 						<span>MAP</span>
 					</button>
@@ -132,10 +133,14 @@
 		_xp = xp;
 		_tokens = tokens;
 		_lastTeam = team != null ? new System.Collections.Generic.List<Monster>( team ) : new System.Collections.Generic.List<Monster>();
+		_kbIndex = 0;
 		IsVisible = true;
 		Instance?.StateHasChanged();
 		Log.Info( $"[ExpeditionResultPopup] Show: won={won}, wave={wave}, zone={zoneId}, gold={gold}, xp={xp}" );
-		SoundManager.PlayPopup();
+		// Victory/defeat sting covers the popup open — no extra PlayPopup so the
+		// two cues don't fire on the same frame and step on each other.
+		if ( won ) SoundManager.PlayVictory();
+		else SoundManager.PlayDefeat();
 	}
 
 	public static void Close()
@@ -159,7 +164,55 @@
 		h.Add( _gold );
 		h.Add( _xp );
 		h.Add( _tokens );
+		h.Add( _kbIndex );
 		return h.ToHashCode();
+	}
+
+	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
+	// Cursor over the result buttons. Victory has 2 (Embark / Map), defeat
+	// has 3 (Retry / Change Team / Map). Left/Right move, Space/Enter
+	// activates, Menu/run = Return to Map. Escape NOT bound (s&box-reserved).
+	private static int _kbIndex = 0;
+
+	public override void Tick()
+	{
+		base.Tick();
+		if ( !IsVisible ) return;
+		if ( !UIModalState.IsTopModal( "ExpeditionResultPopup" ) ) return;
+
+		int count = _won ? 2 : 3;
+		_kbIndex = System.Math.Clamp( _kbIndex, 0, count - 1 );
+
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+		{
+			_kbIndex = System.Math.Max( 0, _kbIndex - 1 );
+			SoundManager.PlayHover();
+			StateHasChanged();
+		}
+		else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+		{
+			_kbIndex = System.Math.Min( count - 1, _kbIndex + 1 );
+			SoundManager.PlayHover();
+			StateHasChanged();
+		}
+		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			if ( _won )
+			{
+				if ( _kbIndex == 0 ) OnEmbarkAgain();
+				else OnReturnToMap();
+			}
+			else
+			{
+				if ( _kbIndex == 0 ) OnRetry();
+				else if ( _kbIndex == 1 ) OnEmbarkAgain();
+				else OnReturnToMap();
+			}
+		}
+		else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+		{
+			OnReturnToMap();
+		}
 	}
 
 	// ─── ACTIONS ─────────────────────────────────────────────────────

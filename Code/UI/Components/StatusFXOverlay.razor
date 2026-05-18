@@ -1,0 +1,79 @@
+@namespace Beastborne.UI.Components
+@using Sandbox;
+@using Sandbox.UI;
+@using System;
+@using System.Linq;
+@using Beastborne.Battle3D;
+@using Beastborne.Core;
+@using Beastborne.Data;
+@using Beastborne.Systems;
+@inherits Panel
+
+@{
+	var scene = BattleSceneController.Instance;
+	var state = BattleManager.Instance?.CurrentBattleState;
+}
+
+<root class="status-fx-overlay">
+	@if ( scene != null && state != null )
+	{
+		foreach ( var (id, pos) in scene.EnumerateVisibleBillboards() )
+		{
+			var statuses = state.GetStatuses( id );
+			if ( statuses == null || statuses.Count == 0 ) continue;
+
+			// Build a stable id-tag class so @keyframes re-mount when the
+			// status set changes (status added/cured replays the keyframe
+			// instead of leaving the old halo running on a stale class).
+			var idTag = id.ToString( "N" ).Substring( 0, 8 );
+			var leftPct = (int)( pos.x * 100 );
+			var topPct  = (int)( pos.y * 100 );
+
+			<div class="sfx-anchor sfx-@idTag"
+			     style="left: @(leftPct)%; top: @(topPct)%;">
+				@foreach ( var s in statuses )
+				{
+					var clsName = s.Condition.ToString().ToLowerInvariant();
+					<div class="sfx-halo sfx-@clsName">
+						<div class="sfx-halo-inner"></div>
+					</div>
+				}
+			</div>
+		}
+	}
+</root>
+
+@code {
+	// Re-hash only when the status SET changes (monster added/removed, or
+	// a status applied/cured). We deliberately do NOT add Time.Now or
+	// per-frame screen position to the hash — re-rendering would tear
+	// down the halo divs every frame and CSS @keyframes only play on
+	// first mount (CLAUDE.md quirk), so the animation would never run.
+	//
+	// Tradeoff: the halo anchor is baked at the moment a status is
+	// applied. The sprite will drift away from the halo during lunges /
+	// knockbacks (~0.2-0.5s motion), then snap back to center when it
+	// returns to rest. Acceptable — status halos read as a stable aura,
+	// not a glued-to-sprite glow.
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		var scene = BattleSceneController.Instance;
+		var state = BattleManager.Instance?.CurrentBattleState;
+		if ( scene == null || state == null )
+		{
+			hash.Add( 0 );
+			return hash.ToHashCode();
+		}
+
+		foreach ( var (id, _) in scene.EnumerateVisibleBillboards() )
+		{
+			hash.Add( id );
+			foreach ( var s in state.GetStatuses( id ) )
+			{
+				hash.Add( s.Condition );
+			}
+		}
+		return hash.ToHashCode();
+	}
+}

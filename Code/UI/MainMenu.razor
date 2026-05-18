@@ -712,6 +712,39 @@
 		</div>
 	}
 
+	@* Cloud-quarantine prompt — shown when cloud is unreachable AND there is no
+	   local cache to fall back on. The player cannot safely play without some
+	   save source: if they start fresh and we later push an empty blob, their
+	   real cloud save would be overwritten. Offer Retry (re-runs LoadAsync) or
+	   Play Offline (acknowledges the risk and lets them in with quarantined writes). *@
+	@if (IsVisible && showSaveLoadFailPrompt)
+	{
+		<div class="starter-overlay save-fail-overlay">
+			<div class="save-fail-panel" onclick:stopPropagation>
+				<div class="save-fail-tag"><span>Cloud Save</span></div>
+				<div class="save-fail-header">
+					<iconify icon="lucide:cloud-off" Size=@(28) Color="#f87171" />
+					<span class="save-fail-title">Save Server Unreachable</span>
+				</div>
+				<div class="save-fail-body">
+					<span class="save-fail-desc">Beastborne couldn't reach the save server, and there's no offline backup on this machine.</span>
+					<span class="save-fail-desc save-fail-emphasis">Progress made this session won't sync until you reconnect.</span>
+					<span class="save-fail-hint">Reconnecting and retrying is the safest option.</span>
+				</div>
+				<div class="save-fail-actions">
+					<button class="save-fail-retry-btn" onclick=@OnSaveFailRetry disabled=@isSaveRetrying>
+						<iconify icon="lucide:refresh-cw" Size=@(14) Color="#ffffff" />
+						<span>@(isSaveRetrying ? "RETRYING..." : "RETRY")</span>
+					</button>
+					<button class="save-fail-offline-btn" onclick=@OnPlayOffline>
+						<iconify icon="lucide:wifi-off" Size=@(14) Color="#94a3b8" />
+						<span>PLAY OFFLINE</span>
+					</button>
+				</div>
+			</div>
+		</div>
+	}
+
 </root>
 
 @code {
@@ -748,6 +781,50 @@
 		SoundManager.PlayClick();
 		_betaDisclaimerSeen = true;
 		StateHasChanged();
+	}
+
+	// Cloud-quarantine prompt — shown at boot when cloud is unreachable AND there
+	// is no local cache. Lets the player retry the cloud load or accept offline mode.
+	// _saveFailAcknowledged gates the check so "Play Offline" doesn't loop.
+	private bool showSaveLoadFailPrompt = false;
+	private bool isSaveRetrying = false;
+	private bool _saveFailAcknowledged = false;
+
+	private async void OnSaveFailRetry()
+	{
+		if (isSaveRetrying) return;
+		isSaveRetrying = true;
+		SoundManager.PlayClick();
+		StateHasChanged();
+
+		var svc = SaveService.Instance;
+		if (svc != null)
+		{
+			await svc.LoadAsync();
+			if (!svc.IsCloudQuarantined)
+			{
+				// Cloud recovered — dismiss prompt and resume the play flow
+				showSaveLoadFailPrompt = false;
+				isSaveRetrying = false;
+				StateHasChanged();
+				OnPlayClicked();
+				return;
+			}
+		}
+
+		isSaveRetrying = false;
+		StateHasChanged();
+	}
+
+	private void OnPlayOffline()
+	{
+		// Player accepts the risk — dismiss and let them through as-is.
+		// Cloud writes remain quarantined for this session (SaveService already set that).
+		SoundManager.PlayClick();
+		showSaveLoadFailPrompt = false;
+		_saveFailAcknowledged = true;
+		StateHasChanged();
+		OnPlayClicked();
 	}
 
 	// Now Hiring popup — opened by the bottom-left "JOIN THE TEAM" pill.
@@ -1458,7 +1535,7 @@
 				selectedStarter = selectedStarter < 0 ? 0 : Math.Min(2, selectedStarter + 1);
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 				OnConfirmStarter();
 			else if (Input.Pressed("Menu") || Input.Pressed("run"))
 			{
@@ -1478,7 +1555,7 @@
 				selectedIndex = Math.Min(5, selectedIndex + 1);
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 				ExecuteSelectedAction();
 		}
 	}
@@ -1515,6 +1592,18 @@
 		if ( SaveService.Instance != null && !SaveService.Instance.IsLoaded )
 		{
 			await SaveService.Instance.LoadAsync();
+		}
+
+		// Cloud quarantined + no local cache = we have no save source to read from.
+		// Block and give the player the option to retry before potentially starting
+		// fresh and overwriting their cloud save when they reconnect.
+		// _saveFailAcknowledged lets "Play Offline" bypass this on its recursive call.
+		var svc = SaveService.Instance;
+		if ( svc != null && svc.IsCloudQuarantined && !svc.HasSave && !_saveFailAcknowledged )
+		{
+			showSaveLoadFailPrompt = true;
+			StateHasChanged();
+			return;
 		}
 
 		var monsterCount = MonsterManager.Instance?.OwnedMonsters?.Count ?? 0;
@@ -1865,6 +1954,8 @@
 		hash.Add(showHiringPopup);
 		hash.Add(showPatchNotes);
 		hash.Add(_patchNotesSeen);
+		hash.Add(showSaveLoadFailPrompt);
+		hash.Add(isSaveRetrying);
 		hash.Add(transitionPhase);
 		// Add animation frame to hash so UI updates with animation
 		hash.Add(SpriteAnimator.GlobalFrame);

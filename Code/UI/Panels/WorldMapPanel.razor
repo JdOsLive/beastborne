@@ -4,6 +4,8 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
+@using Beastborne.UI.Components;
 @using System;
 @using System.Collections.Generic;
 @using System.Linq;
@@ -101,7 +103,7 @@
 				var zoneKey = "zone-" + zone.Id;
 				var isHovered = _hoveredZoneId == zone.Id;
 				var zonePos = GetZonePos( zone );
-				<div class="zone-marker @unlockedClass @clearedClass @(isHovered ? "hovered" : "") @(_editMode ? "editable" : "")"
+				<div class="zone-marker @unlockedClass @clearedClass @(isHovered ? "hovered" : "") @(_editMode ? "editable" : "") @(KbActiveMarkerId == zone.Id ? "kb-active" : "")"
 					 style="left: @(zonePos.X)%; top: @(zonePos.Y)%;"
 					 onclick=@(() => SelectZone(zone.Id))
 					 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
@@ -221,7 +223,7 @@
 				var mHovered = _hoveredMiniId == mx.Id;
 				var mPos = GetMiniPos( mx.Id );
 				var mEdge = mPos.X > 70f ? "right-edge" : "";
-				<div class="mini-marker @mClass @(mHovered ? "hovered" : "") @mEdge @(_editMode ? "editable" : "")"
+				<div class="mini-marker @mClass @(mHovered ? "hovered" : "") @mEdge @(_editMode ? "editable" : "") @(KbActiveMarkerId == mx.Id ? "kb-active" : "")"
 					 style="left: @(mPos.X)%; top: @(mPos.Y)%;"
 					 onclick=@(() => SelectMini(mx.Id))
 					 onmouseover=@(() => OnMiniHover(mx.Id, mKey))
@@ -1075,6 +1077,122 @@
 		}
 	}
 
+	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
+	// Cursor over the visible map markers — zones first, then mini-
+	// expeditions, in render order. Drives the `.kb-active` highlight on
+	// the matching marker. arrows = move, Space/Enter = open/embark,
+	// Menu/run = close pane or exit to the tab bar.
+	private int _kbMarkerIndex = 0;
+
+	/// <summary>
+	/// Flat ordered list of navigable markers: (id, isMini). Mirrors the
+	/// render order so arrow keys feel spatially sensible.
+	/// </summary>
+	private List<(string Id, bool IsMini)> GetKbMarkers()
+	{
+		var list = new List<(string, bool)>();
+		foreach ( var z in Zones )
+		{
+			if ( !IsZoneVisible( z ) ) continue;
+			list.Add( (z.Id, false) );
+		}
+		foreach ( var mx in GetMiniExpeditions() )
+		{
+			list.Add( (mx.Id, true) );
+		}
+		return list;
+	}
+
+	/// <summary>Id of the marker currently under the keyboard cursor, or null.</summary>
+	public string KbActiveMarkerId
+	{
+		get
+		{
+			var markers = GetKbMarkers();
+			if ( markers.Count == 0 ) return null;
+			int i = Math.Clamp( _kbMarkerIndex, 0, markers.Count - 1 );
+			return markers[i].Id;
+		}
+	}
+
+	/// <summary>
+	/// Called by GameHUD.TickCurrentPanel() — child panels don't auto-tick.
+	/// </summary>
+	public void TickInput()
+	{
+		try
+		{
+			HandleMapKeyboardInput();
+		}
+		catch ( Exception ex )
+		{
+			Log.Warning( $"WorldMapPanel.TickInput error: {ex.Message}" );
+		}
+	}
+
+	private void HandleMapKeyboardInput()
+	{
+		if ( ChatPanel.IsChatFocused ) return;
+		// A blocking popup (incl. the team picker) owns the keyboard.
+		if ( UIModalState.AnyModalOpen ) return;
+		// Dev edit mode swallows clicks for drag-place — skip keyboard nav too.
+		if ( _editMode ) return;
+
+		// ── A detail pane is open: confirm embarks, Menu/run closes it. ──
+		// Closing a detail pane is INTERNAL — claim the back key so GameHUD
+		// (which ticks after this panel) doesn't also exit to the tab bar.
+		if ( _selectedZoneId != null )
+		{
+			var sz = GetZone( _selectedZoneId );
+			if ( ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) ) && sz != null )
+				Embark( sz.ExpeditionId );
+			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			{
+				CloseZoneDetail();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			return;
+		}
+		if ( _selectedMiniId != null )
+		{
+			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+				EmbarkMini( _selectedMiniId );
+			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			{
+				CloseMiniDetail();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			return;
+		}
+
+		// ── No pane open: arrow through markers, confirm opens the pane. ──
+		var markers = GetKbMarkers();
+		if ( markers.Count == 0 ) return;
+		_kbMarkerIndex = Math.Clamp( _kbMarkerIndex, 0, markers.Count - 1 );
+
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+		{
+			_kbMarkerIndex = Math.Max( 0, _kbMarkerIndex - 1 );
+			SoundManager.PlayHover();
+		}
+		else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+		{
+			_kbMarkerIndex = Math.Min( markers.Count - 1, _kbMarkerIndex + 1 );
+			SoundManager.PlayHover();
+		}
+		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			var m = markers[_kbMarkerIndex];
+			if ( m.IsMini ) SelectMini( m.Id );
+			else SelectZone( m.Id );
+		}
+		else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+		{
+			// No pane open — back exits to the HUD tab bar.
+			GameHUD.ExitPanel();
+		}
+	}
+
 	private void SelectZone( string zoneId )
 	{
 		// Don't open the zone-detail pane while the player is repositioning
@@ -1623,6 +1741,7 @@
 		h.Add( _hoveredTradeNodeId );
 		h.Add( _hoveredMiniId );
 		h.Add( _selectedMiniId );
+		h.Add( _kbMarkerIndex );
 		h.Add( _editMode );
 		h.Add( _draggingId );
 		// Override dictionaries change on every drag tick — hash their counts +

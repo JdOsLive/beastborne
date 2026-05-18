@@ -4,6 +4,7 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @using Beastborne.UI.Components;
 @using System.Linq;
 @using System.Collections.Generic;
@@ -605,9 +606,38 @@
 						</div>
 					}
 				</div>
-				<button class="btn-primary btn-start @(selectedTeam.Count == 0 ? "disabled" : "")"
+
+				@{
+					var expeditionHardUnlocked = IsHardModeUnlocked(selectedExpedition?.Id);
+				}
+				<div class="difficulty-toggle">
+					<div class="diff-toggle-label">DIFFICULTY</div>
+					<div class="diff-toggle-pills">
+						<div class="diff-pill @(!hardModeEnabled ? "active" : "")"
+							 onclick=@(() => SelectDifficulty(false))
+							 onmouseover=@(() => SoundManager.PlayHover())>
+							<span>NORMAL</span>
+						</div>
+						<div class="diff-pill hard @(hardModeEnabled ? "active" : "") @(!expeditionHardUnlocked ? "locked" : "")"
+							 onclick=@(() => SelectDifficulty(true))
+							 onmouseover=@(() => SoundManager.PlayHover())>
+							@if (!expeditionHardUnlocked)
+							{
+								<span class="diff-lock">🔒</span>
+							}
+							<span class="diff-hard-label">HARD</span>
+							@if (expeditionHardUnlocked)
+							{
+								<span class="diff-hard-bonus">+100% REWARDS</span>
+							}
+						</div>
+					</div>
+				</div>
+
+				<button class="btn-primary btn-start @(selectedTeam.Count == 0 ? "disabled" : "") @(hardModeEnabled ? "hard-mode" : "")"
 						onclick=@StartExpedition>
-					BEGIN EXPEDITION
+					<span class="btn-start-hard-label @(hardModeEnabled ? "visible" : "hidden")">HARD MODE</span>
+					<span>BEGIN EXPEDITION</span>
 				</button>
 			</div>
 		</div>
@@ -803,9 +833,28 @@
 		if (firstTime)
 		{
 			SyncWithBackgroundExpedition();
-			// Mark cards as animated after entrance animation completes
 			_ = MarkCardsAnimated();
+
+			// Subscribe to hard mode unlock so we can toast + refresh the toggle
+			var expMgr = ExpeditionManager.Instance;
+			if (expMgr != null)
+				expMgr.OnHardModeUnlocked += OnHardModeUnlockedForExpedition;
 		}
+	}
+
+	public override void OnDeleted()
+	{
+		base.OnDeleted();
+		var expMgr = ExpeditionManager.Instance;
+		if (expMgr != null)
+			expMgr.OnHardModeUnlocked -= OnHardModeUnlockedForExpedition;
+	}
+
+	private void OnHardModeUnlockedForExpedition(string expeditionId)
+	{
+		// The manager already fires the notification; we just need to force a re-render
+		// so the toggle becomes clickable for the newly unlocked zone.
+		StateHasChanged();
 	}
 
 	private async Task MarkCardsAnimated()
@@ -855,6 +904,13 @@
 
 	private void HandleKeyboardInput()
 	{
+		// While a battle is in progress the battle UI (BattleView) owns the
+		// keyboard — it handles move/target/swap input itself. The expedition
+		// panel must not also consume the global edge-triggered presses.
+		if (BattleManager.Instance?.IsInBattle == true) return;
+
+		// A blocking popup is open — it owns the keyboard.
+		if (UIModalState.AnyModalOpen) return;
 
 		// List view - expedition selection
 		if (currentView == "list")
@@ -903,7 +959,7 @@
 				selectedExpeditionIndex = Math.Min(expeditions.Count - 1, selectedExpeditionIndex + columns);
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 			{
 				var exp = expeditions[selectedExpeditionIndex];
 				if (CanStartExpedition(exp))
@@ -961,7 +1017,7 @@
 					selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + columns);
 					SoundManager.PlayHover();
 				}
-				else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 				{
 					// Add monster to team
 					ToggleMonster(monsters[selectedMonsterIndex]);
@@ -973,10 +1029,13 @@
 			{
 				StartExpedition();
 			}
-			// Back to list
+			// Back to list — an INTERNAL sub-view move (team -> list), not an
+			// exit to the tab bar, so claim the back key (GameHUD ticks after
+			// this panel and would otherwise also see the Q and exit to tabs).
 			else if (Input.Pressed("Menu") || Input.Pressed("run"))
 			{
 				GoToList();
+				GameHUD.PanelHandledBackKey = true;
 			}
 			// Remove from team with number keys
 			else if (Input.Pressed("Slot1") && selectedTeam.Count > 0)
@@ -995,7 +1054,7 @@
 		// Result view
 		else if (currentView == "result")
 		{
-			if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Menu"))
+			if (Input.Pressed("Jump") || Input.Pressed("Enter") || Input.Pressed("Menu"))
 			{
 				if (lastBattleWon && currentWave < (selectedExpedition?.Waves ?? 0))
 				{
@@ -1005,6 +1064,9 @@
 				{
 					ReturnToList();
 				}
+				// Q here dismisses the result view internally — claim it so
+				// GameHUD doesn't also exit to the tab bar this frame.
+				if (Input.Pressed("Menu")) GameHUD.PanelHandledBackKey = true;
 			}
 		}
 	}
@@ -1091,21 +1153,21 @@
 	private int GetDisplayLevel(Expedition expedition)
 	{
 		if (hardModeEnabled)
-			return expedition.BaseEnemyLevel + ExpeditionManager.HARD_MODE_LEVEL_BONUS;
+			return (int)Math.Floor(expedition.BaseEnemyLevel * ExpeditionManager.HARD_MODE_LEVEL_MULT);
 		return expedition.BaseEnemyLevel;
 	}
 
 	private int GetDisplayGold(Expedition expedition)
 	{
 		if (hardModeEnabled)
-			return (int)(expedition.GoldReward * ExpeditionManager.HARD_MODE_REWARD_MULTIPLIER);
+			return (int)(expedition.GoldReward * ExpeditionManager.HARD_MODE_GOLD_MULT);
 		return expedition.GoldReward;
 	}
 
 	private int GetDisplayXP(Expedition expedition)
 	{
 		if (hardModeEnabled)
-			return (int)(expedition.XPReward * ExpeditionManager.HARD_MODE_REWARD_MULTIPLIER);
+			return (int)(expedition.XPReward * ExpeditionManager.HARD_MODE_XP_MULT);
 		return expedition.XPReward;
 	}
 
@@ -1224,9 +1286,9 @@
 		}
 	}
 
-	private bool IsHardModeUnlocked()
+	private bool IsHardModeUnlocked(string expeditionId = null)
 	{
-		return ExpeditionManager.Instance?.IsHardModeUnlocked() ?? false;
+		return ExpeditionManager.Instance?.IsHardModeUnlocked(expeditionId) ?? false;
 	}
 
 	// Difficulty dropdown methods
@@ -1239,16 +1301,21 @@
 
 	private void SelectDifficulty(bool hard)
 	{
-		// Can't select hard mode if not unlocked
-		if (hard && !IsHardModeUnlocked())
+		// Can't select hard mode if not unlocked. Use the selected expedition's
+		// id explicitly — the no-arg form falls back to CurrentExpedition, which
+		// is null at the pre-embark team-view screen and would wrongly deny.
+		if (hard && !IsHardModeUnlocked(selectedExpedition?.Id))
 		{
 			SoundManager.PlayDeny();
 			return;
 		}
 
 		hardModeEnabled = hard;
-		if (ExpeditionManager.Instance != null)
-			ExpeditionManager.Instance.HardModeEnabled = hardModeEnabled;
+		// hardModeEnabled is panel-local UI state; it's passed into
+		// ExpeditionManager.StartExpedition(id, hardMode) at embark time
+		// — the manager no longer caches a global flag (deleted with the
+		// Hard Mode v1.2.0 ship; per-expedition Expedition.IsHardMode is
+		// the source of truth at runtime).
 
 		difficultyDropdownOpen = false;
 		SoundManager.PlaySelect();
@@ -1586,7 +1653,7 @@
 		battleTokens = 0;
 
 		ExpeditionManager.Instance?.SelectTeam(selectedTeam);
-		ExpeditionManager.Instance?.StartExpedition(selectedExpedition.Id);
+		ExpeditionManager.Instance?.StartExpedition(selectedExpedition.Id, hardModeEnabled);
 
 		currentWave = 1;
 		currentView = "battle";
@@ -1824,6 +1891,9 @@
 	private void GoToTeam()
 	{
 		SoundManager.PlayForward();
+		// Reset hard mode to match the newly selected expedition's unlocked state.
+		// hardModeEnabled is local UI state — no manager-side cache to clear post-v1.2.0.
+		hardModeEnabled = false;
 		currentView = "team";
 		StateHasChanged();
 	}

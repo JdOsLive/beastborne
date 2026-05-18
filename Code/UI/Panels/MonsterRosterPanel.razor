@@ -157,7 +157,7 @@
 	<div class="view-container">
 		<div class="collection-layout with-detail">
 			<div class="collection-main">
-				<div class="roster-grid" onmouseup=@OnDragSelectEnd>
+				<div @ref="rosterGridRef" class="roster-grid" onmouseup=@OnDragSelectEnd>
 				@{
 					// In fusion mode, use the breeding filter state (separate from the
 					// collection filter state) so swapping in/out of fusion mode doesn't
@@ -179,7 +179,7 @@
 					// editor toolbar is enabled, and when no other interaction
 					// mode (fusion / multi-select) is competing for clicks.
 					var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
-					<div class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
+					<div @ref="cardSizeRef" class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
 						 onclick=@(() => OnMonsterCardClicked(monster, idx))
 						 onmousedown=@(() => { OnCardMouseDown(monster, idx); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
 						 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
@@ -649,7 +649,19 @@
 				}
 				else
 				{
-					<div class="detail-scroll">
+					<div @ref="detailScrollRef" class="detail-scroll">
+						<!-- Keyboard focus-switch affordance. Clickable (mouse
+						     parity) and reflects the current focus zone: in the
+						     grid it reads "TAB · Control details", once focused
+						     it reads "Q · Back to grid". Sits at the top of the
+						     detail content, on the grid/detail boundary. -->
+						<div class="kb-focus-switch @(kbFocusZone == "detail" ? "active" : "")"
+							 onclick=@ToggleKbFocusZone
+							 onmouseover=@(() => SoundManager.PlayHover())>
+							<iconify icon="@(kbFocusZone == "detail" ? "lucide:arrow-left" : "lucide:arrow-left-right")" Size=@(13) Color="@(kbFocusZone == "detail" ? "#c4b5fd" : "rgba(255,255,255,0.55)")" />
+							<span class="kb-focus-switch-key">@(kbFocusZone == "detail" ? "Q" : "TAB")</span>
+							<span class="kb-focus-switch-label">@(kbFocusZone == "detail" ? "Back to grid" : "Control details")</span>
+						</div>
 						<!-- Monster Portrait (always visible) -->
 						<div class="portrait-section">
 							<div class="portrait-wrapper">
@@ -721,9 +733,26 @@
 									else
 									{
 										<div class="nickname">@SelectedMonster.Nickname</div>
-										<div class="nickname-btn edit" onclick=@StartNicknameEdit>✎</div>
+										<div class="nickname-btn edit @(IsDetailControlFocused("nick") ? "kb-focused" : "")" onclick=@StartNicknameEdit>✎</div>
 									}
 								</div>
+								@if (isEditingNickname)
+								{
+									<!-- Hotkey caps for the nickname edit — placed BELOW the
+									     field (the diamond column is to the right, so caps
+									     there would overlap it). Q = cancel, Enter = confirm.
+									     Clickable too, for mouse parity with the ✓/✕ buttons. -->
+									<div class="nickname-keys-row">
+										<div class="nickname-key-hint cancel" onclick=@CancelNicknameEdit onmouseover=@(() => SoundManager.PlayHover())>
+											<span class="kb-key">Q</span>
+											<span class="nickname-key-label">Cancel</span>
+										</div>
+										<div class="nickname-key-hint confirm" onclick=@SaveNickname onmouseover=@(() => SoundManager.PlayHover())>
+											<span class="kb-key">Enter</span>
+											<span class="nickname-key-label">Confirm</span>
+										</div>
+									</div>
+								}
 								<div class="species-name">@GetSelectedSpeciesName()</div>
 								<div class="level-power-row">
 									<div class="level-badge">LV @SelectedMonster.Level</div>
@@ -739,18 +768,18 @@
 							</div>
 							<!-- Diamond Actions (vertical) -->
 							<div class="portrait-actions">
-								<div class="detail-diamond" onclick=@ShowOffBeast onmouseover=@(() => SoundManager.PlayHover())>
+								<div class="detail-diamond @(IsDetailControlFocused("diamond-showoff") ? "kb-focused" : "")" onclick=@ShowOffBeast onmouseover=@(() => SoundManager.PlayHover())>
 									<div class="diamond-shape"><iconify icon="lucide:megaphone" Size=@(16) Color="white" /></div>
 									<span class="diamond-tooltip">@L("ui.roster.show_off")</span>
 								</div>
 								@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
 								{
-									<div class="detail-diamond" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
+									<div class="detail-diamond @(IsDetailControlFocused("diamond-journal") ? "kb-focused" : "")" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
 										<div class="diamond-shape"><iconify icon="lucide:book-open" Size=@(16) Color="white" /></div>
 										<span class="diamond-tooltip">@L("ui.roster.journal")</span>
 									</div>
 								}
-								<div class="detail-diamond @(SelectedMonster.IsFavorite ? "active" : "")" onclick=@ToggleFavorite onmouseover=@(() => SoundManager.PlayHover())>
+								<div class="detail-diamond @(SelectedMonster.IsFavorite ? "active" : "") @(IsDetailControlFocused("diamond-fav") ? "kb-focused" : "")" onclick=@ToggleFavorite onmouseover=@(() => SoundManager.PlayHover())>
 									<div class="diamond-shape"><iconify icon="lucide:star" Size=@(16) Color="@(SelectedMonster.IsFavorite ? "#fbbf24" : "white")" /></div>
 									<span class="diamond-tooltip">@L("ui.roster.favorite")</span>
 								</div>
@@ -764,7 +793,7 @@
 							<div class="detail-actions-v2">
 							@if (CanSelectedMonsterEvolve())
 							{
-								<button class="action-v2 evolve" onclick=@OnEvolveClicked onmouseover=@(() => SoundManager.PlayHover())>
+								<button class="action-v2 evolve @(IsDetailControlFocused("evolve") ? "kb-focused" : "")" onclick=@OnEvolveClicked onmouseover=@(() => SoundManager.PlayHover())>
 									<div class="action-v2-diamond evolve-diamond">
 										<iconify icon="lucide:sparkles" Size=@(16) Color="white" />
 									</div>
@@ -772,7 +801,7 @@
 								</button>
 							}
 							<div class="action-v2-row">
-								<button class="action-v2 item @(HasSelectedHeldItem() ? "has-item" : "no-item")" onclick=@OpenItemPicker onmouseover=@(() => SoundManager.PlayHover())>
+								<button class="action-v2 item @(HasSelectedHeldItem() ? "has-item" : "no-item") @(IsDetailControlFocused("item") ? "kb-focused" : "")" onclick=@OpenItemPicker onmouseover=@(() => SoundManager.PlayHover())>
 									@* Ghost-child safety: always mount both icon slots, toggle
 									   visibility via has-item/no-item class on the button. Avoids
 									   s&box ghost-child bug when a Razor @if/else swaps different
@@ -784,13 +813,13 @@
 									</div>
 									<span class="action-v2-text">@(HasSelectedHeldItem() ? GetSelectedHeldItemName() : L("ui.roster.item"))</span>
 								</button>
-								<button class="action-v2 fuse" onclick=@OnBreedFromDetail onmouseover=@(() => SoundManager.PlayHover())>
+								<button class="action-v2 fuse @(IsDetailControlFocused("fuse") ? "kb-focused" : "")" onclick=@OnBreedFromDetail onmouseover=@(() => SoundManager.PlayHover())>
 									<div class="action-v2-diamond fuse-diamond">
 										<iconify icon="lucide:combine" Size=@(16) Color="white" />
 									</div>
 									<span class="action-v2-text">@L("ui.roster.fuse")</span>
 								</button>
-								<button class="action-v2 release @(CanReleaseMonster() ? "" : "disabled")" onclick=@OnReleaseClicked onmouseover=@(() => SoundManager.PlayHover())>
+								<button class="action-v2 release @(CanReleaseMonster() ? "" : "disabled") @(IsDetailControlFocused("release") ? "kb-focused" : "")" onclick=@OnReleaseClicked onmouseover=@(() => SoundManager.PlayHover())>
 									<div class="action-v2-diamond release-diamond">
 										<iconify icon="lucide:arrow-up-right" Size=@(16) Color="white" />
 									</div>
@@ -806,6 +835,7 @@
 							<div class="inline-picker-header">
 								<div class="picker-back" onclick=@CloseItemPicker onmouseover=@(() => SoundManager.PlayHover())>
 									<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
+									<span class="kb-key">Q</span>
 								</div>
 								<span class="picker-title-text">@L("ui.roster.item")</span>
 								<span class="picker-count">@GetAvailableHeldItems().Count</span>
@@ -823,9 +853,12 @@
 									</button>
 								</div>
 							}
+							@{ int _itemRowIdx = 0; }
 							@foreach (var item in GetAvailableHeldItems())
 							{
-								<div class="inline-item @($"rarity-{GetItemRarityClass(item)}")" onclick="@(() => EquipItem(item.Id))" onmouseover="@(() => { if (hoveredPickerItem?.Id != item.Id) { hoveredPickerItem = item; SoundManager.PlayHover(); } })">
+								var _itemKbFocused = IsPickerRowFocused(_itemRowIdx);
+								_itemRowIdx++;
+								<div class="inline-item @($"rarity-{GetItemRarityClass(item)}") @(_itemKbFocused ? "kb-focused" : "")" onclick="@(() => EquipItem(item.Id))" onmouseover="@(() => { if (hoveredPickerItem?.Id != item.Id) { hoveredPickerItem = item; SoundManager.PlayHover(); } })">
 									<div class="inline-item-diamond @($"rarity-{GetItemRarityClass(item)}")">
 										<img class="inline-item-img" src="@item.IconPath" />
 									</div>
@@ -853,6 +886,7 @@
 							<div class="inline-picker-header">
 								<div class="picker-back" onclick=@CloseMoveSwap onmouseover=@(() => SoundManager.PlayHover())>
 									<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
+									<span class="kb-key">Q</span>
 								</div>
 								<span class="picker-title-text">@(selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0) ? "Swap Move" : "Learn Move")</span>
 								<span class="picker-count">@GetAvailableMovesForPicker().Count</span>
@@ -881,9 +915,12 @@
 									pickerCurrentMove = MoveDatabase.GetMove(SelectedMonster.Moves[selectedMoveSlot].MoveId);
 								}
 							}
+							@{ int _moveRowIdx = 0; }
 							@foreach (var lm in GetAvailableMovesForPicker())
 							{
 								var moveDef = MoveDatabase.GetMove(lm.MoveId);
+								var _moveKbFocused = IsPickerRowFocused(_moveRowIdx);
+								_moveRowIdx++;
 								if (moveDef != null)
 								{
 									var elClass = moveDef.Element.ToString().ToLower();
@@ -892,7 +929,7 @@
 									var powerDiff = pickerCurrentMove != null && pickerCurrentMove.BasePower > 0 ? moveDef.BasePower - pickerCurrentMove.BasePower : 0;
 									var isUpgrade = powerDiff > 0;
 									var isDowngrade = powerDiff < 0;
-									<div class="inline-item @elClass @(isStab ? "stab" : "") @(isUpgrade ? "upgrade" : "") @(isDowngrade ? "downgrade" : "")" onclick="@(() => SwapMoveSlot(lm.MoveId))" onmouseover=@(() => SoundManager.PlayHover())>
+									<div class="inline-item @elClass @(isStab ? "stab" : "") @(isUpgrade ? "upgrade" : "") @(isDowngrade ? "downgrade" : "") @(_moveKbFocused ? "kb-focused" : "")" onclick="@(() => SwapMoveSlot(lm.MoveId))" onmouseover=@(() => SoundManager.PlayHover())>
 										<div class="inline-item-diamond @elClass">
 											<img class="inline-item-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
 										</div>
@@ -1073,7 +1110,7 @@
 												var elementClass = moveDef.Element.ToString().ToLower();
 												var isStab = IsMoveSTAB(moveDef);
 												var effectsSummary = GetMoveEffectsSummary(moveDef);
-												<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") has-move-tip" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
+												<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") has-move-tip @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
 													<div class="move-diamond-icon @elementClass">
 														<img class="move-el-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
 													</div>
@@ -1122,7 +1159,7 @@
 										}
 										else
 										{
-											<div class="move-diamond-slot empty" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
+											<div class="move-diamond-slot empty @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
 												<div class="move-diamond-icon empty-icon">
 													<span class="move-empty-plus">+</span>
 												</div>
@@ -1147,7 +1184,7 @@
 												var elementClass = moveDef.Element.ToString().ToLower();
 												var isStab = IsMoveSTAB(moveDef);
 												var effectsSummary = GetMoveEffectsSummary(moveDef);
-												<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") has-move-tip" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
+												<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") has-move-tip @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
 													<div class="move-diamond-icon @elementClass">
 														<img class="move-el-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
 													</div>
@@ -1196,7 +1233,7 @@
 										}
 										else
 										{
-											<div class="move-diamond-slot empty" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
+											<div class="move-diamond-slot empty @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
 												<div class="move-diamond-icon empty-icon">
 													<span class="move-empty-plus">+</span>
 												</div>
@@ -1701,6 +1738,9 @@
 	private bool isEditingNickname = false;
 	private string editingNickname = "";
 	private TextEntry nicknameInput;
+	// Set when the edit opens; consumed one Tick later to .Focus() the
+	// TextEntry once it has actually mounted (deferred-pending pattern).
+	private bool nicknameFocusPending = false;
 
 	// One-shot card-select pulse — a border flash that fires on the clicked
 	// monster card. `selectPulseVersion` increments on every click so the
@@ -1744,6 +1784,442 @@
 	// Track if keyboard navigation is active (vs mouse)
 	private bool isKeyboardNavigationActive = false;
 
+	// @ref handles for measuring the live grid layout. The roster grid is a
+	// responsive flex-wrap, so the column count must be measured, not hardcoded.
+	private Panel rosterGridRef;
+	private Panel cardSizeRef;
+
+	// ---- Grid <-> detail-panel keyboard focus switch -------------------
+	// kbFocusZone is the zone the keyboard currently drives:
+	//   "grid"   — WASD/arrows move the beast grid cursor (default)
+	//   "detail" — arrows move a 2D positional cursor over the detail panel
+	// Tab (Score) toggles grid -> detail; Tab or Q (Menu) returns to grid.
+	//
+	// The detail panel has a genuine TWO-COLUMN top region, so the cursor is
+	// a real 2D positional model — see DetailFocusItem + GetDetailFocusItems().
+	// Each control carries (Col, Band, Sub):
+	//   Col  0 = left/main column, 1 = the diamond column on the right edge
+	//   Band = vertical order within that column (0 at top)
+	//   Sub  = horizontal index within a band (the ACTIONS triplet, the
+	//          two-wide MOVES rows). Single controls have Sub 0.
+	// W/S walk a column by Band; A/D move within a band by Sub and, off the
+	// edge of a band, BRIDGE between the two columns landing on the control
+	// whose Band is nearest. detailFocusIndex is a flat cursor into the list.
+	private string kbFocusZone = "grid";
+	private int detailFocusIndex = 0;
+
+	// Cursor into the inline picker LIST (the move-swap / item picker that
+	// opens inside the detail scroll). A flat row index — W/S walk it, Space
+	// activates the row, Q/Tab close the picker. Seeded to 0 when a picker
+	// opens. Only meaningful while showMovePicker || showItemPicker.
+	private int pickerCursorIndex = 0;
+
+	// One keyboard-focusable control in the detail panel, with its position
+	// in the 2-column / banded layout.
+	private struct DetailFocusItem
+	{
+		public string Id;
+		public int Col;   // 0 = left/main column, 1 = diamond column
+		public int Band;  // vertical order within the column
+		public int Sub;   // horizontal index within the band
+		public DetailFocusItem( string id, int col, int band, int sub )
+		{ Id = id; Col = col; Band = band; Sub = sub; }
+	}
+
+	// @ref to the detail scroll container. The focused control itself is
+	// found by walking this container's descendants for the `.kb-focused`
+	// class (s&box has no native scroll-into-view, so we compute the target
+	// offset from Box.Rect). Avoids needing a separate @ref per control.
+	private Panel detailScrollRef;
+	// Set true when the cursor moves; Tick() consumes it to run the
+	// scroll-into-view AFTER layout has positioned the new focused element.
+	private bool detailScrollFollowPending = false;
+
+	// Recursively find the first descendant carrying `className`.
+	private static Panel FindPanelByClass( Panel root, string className )
+	{
+		if ( root == null ) return null;
+		if ( root.HasClass( className ) ) return root;
+		foreach ( var child in root.Children )
+		{
+			if ( child is Panel p )
+			{
+				var hit = FindPanelByClass( p, className );
+				if ( hit != null ) return hit;
+			}
+		}
+		return null;
+	}
+
+	// Builds the 2D positional layout of focusable controls for the current
+	// SelectedMonster. Two columns:
+	//
+	//   LEFT column (Col 0) — top-to-bottom:
+	//     Band 0  nick                    (the nickname-edit pencil)
+	//     Band 1  evolve                  (full-width, only when evolvable)
+	//     Band 2  item / fuse / release   (the ACTIONS triplet, Sub 0/1/2)
+	//     Band 3  move-0 / move-1         (MOVES row 1, Sub 0/1)
+	//     Band 4  move-2 / move-3         (MOVES row 2, Sub 0/1)
+	//
+	//   DIAMOND column (Col 1) — the vertical stack on the panel's top-right:
+	//     Band 0  diamond-showoff
+	//     Band 1  diamond-journal         (only when the beast has a journal)
+	//     Band 2  diamond-fav
+	//
+	// Conditional controls (Evolve, Journal) are simply omitted when not
+	// rendered — the navigation methods operate on whatever is in the list,
+	// so the cursor never lands on a control that isn't on screen. Bands are
+	// NOT renumbered when Evolve is absent: the cross-column "nearest band"
+	// mapping still works because it picks the closest available band.
+	private List<DetailFocusItem> GetDetailFocusItems()
+	{
+		var items = new List<DetailFocusItem>();
+		if ( SelectedMonster == null ) return items;
+
+		// --- LEFT / MAIN column (Col 0) ---
+		// Nickname pencil — hidden while editing (the TextEntry owns the keys).
+		if ( !isEditingNickname )
+			items.Add( new DetailFocusItem( "nick", 0, 0, 0 ) );
+
+		// Evolve — own band, only when the beast can evolve.
+		if ( CanSelectedMonsterEvolve() )
+			items.Add( new DetailFocusItem( "evolve", 0, 1, 0 ) );
+
+		// ACTIONS triplet — one band, three horizontal Subs.
+		items.Add( new DetailFocusItem( "item",    0, 2, 0 ) );
+		items.Add( new DetailFocusItem( "fuse",    0, 2, 1 ) );
+		items.Add( new DetailFocusItem( "release", 0, 2, 2 ) );
+
+		// MOVES 2x2 — two bands, two Subs each. All four slots always render
+		// (empty slots included — clicking one opens the learn-move picker).
+		items.Add( new DetailFocusItem( "move-0", 0, 3, 0 ) );
+		items.Add( new DetailFocusItem( "move-1", 0, 3, 1 ) );
+		items.Add( new DetailFocusItem( "move-2", 0, 4, 0 ) );
+		items.Add( new DetailFocusItem( "move-3", 0, 4, 1 ) );
+
+		// --- DIAMOND column (Col 1) ---
+		items.Add( new DetailFocusItem( "diamond-showoff", 1, 0, 0 ) );
+		if ( SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0 )
+			items.Add( new DetailFocusItem( "diamond-journal", 1, 1, 0 ) );
+		items.Add( new DetailFocusItem( "diamond-fav", 1, 2, 0 ) );
+
+		return items;
+	}
+
+	// The control id currently under the detail-panel keyboard cursor, or
+	// null if the detail zone isn't focused. Clamps the flat cursor to the
+	// live item list so a control disappearing (e.g. Evolve after evolving)
+	// never leaves the cursor pointing at nothing.
+	private string GetFocusedDetailControl()
+	{
+		if ( kbFocusZone != "detail" || isFusionMode ) return null;
+		var items = GetDetailFocusItems();
+		if ( items.Count == 0 ) return null;
+		int i = Math.Clamp( detailFocusIndex, 0, items.Count - 1 );
+		return items[i].Id;
+	}
+
+	// Markup helper — true when `id` is the focused detail control.
+	private bool IsDetailControlFocused( string id )
+		=> GetFocusedDetailControl() == id;
+
+	// Move keyboard focus to the detail panel (if a beast is selected).
+	// Cursor starts on the first item (the nickname pencil, top-left).
+	private void FocusDetailZone()
+	{
+		if ( SelectedMonster == null || isFusionMode ) return;
+		kbFocusZone = "detail";
+		detailFocusIndex = 0;
+		detailScrollFollowPending = true;
+		SoundManager.PlayClick();
+	}
+
+	// Return keyboard focus to the grid.
+	private void FocusGridZone()
+	{
+		kbFocusZone = "grid";
+		isKeyboardNavigationActive = true;
+		SoundManager.PlayBack();
+	}
+
+	// Clickable affordance toggles between the two zones (mouse parity).
+	private void ToggleKbFocusZone()
+	{
+		if ( kbFocusZone == "grid" ) FocusDetailZone();
+		else FocusGridZone();
+	}
+
+	// Commit a cursor move to the item at `items[newIndex]`. No-ops (and stays
+	// silent) when the move didn't change anything; otherwise plays the hover
+	// blip and queues the scroll-into-view.
+	private void SetDetailFocus( int newIndex )
+	{
+		if ( newIndex < 0 || newIndex == detailFocusIndex ) return;
+		detailFocusIndex = newIndex;
+		detailScrollFollowPending = true;
+		SoundManager.PlayHover();
+	}
+
+	// Place the detail cursor on the control with the given id (silent — used
+	// when returning from a sub-mode like nickname edit, not for normal nav).
+	// Queues a scroll-into-view so the control is shown if it was off-screen.
+	private void FocusDetailControl( string id )
+	{
+		var items = GetDetailFocusItems();
+		for ( int i = 0; i < items.Count; i++ )
+		{
+			if ( items[i].Id == id )
+			{
+				detailFocusIndex = i;
+				detailScrollFollowPending = true;
+				return;
+			}
+		}
+	}
+
+	// --- 2D positional navigation over the two-column detail layout ---
+	// W/S walk the CURRENT column by Band (keeping Sub where the band allows).
+	// A/D move within a band by Sub and, off the edge of a band, BRIDGE to
+	// the other column landing on the control whose Band is nearest.
+
+	// W / Up — previous Band in the same column, nearest Sub. If that steps
+	// off the TOP of the diamond column, bridge into the left/main column at
+	// the nearest band so the diamond column isn't a dead-end at its top.
+	private void MoveDetailUp()
+	{
+		var items = GetDetailFocusItems();
+		if ( items.Count == 0 ) return;
+		var cur = items[Math.Clamp( detailFocusIndex, 0, items.Count - 1 )];
+		int step = FindBandStep( items, cur, -1 );
+		if ( step < 0 && cur.Col == 1 )
+			step = FindNearestInColumn( items, 0, cur.Band, true ); // bridge to left col, rightmost on tie
+		SetDetailFocus( step );
+	}
+
+	// S / Down — next Band in the same column, nearest Sub. If that steps off
+	// the BOTTOM of the diamond column, bridge into the left/main column at
+	// the nearest band — landing on its RIGHTMOST control (closest to the
+	// diamonds), e.g. Favorite -> ACTIONS row -> Release.
+	private void MoveDetailDown()
+	{
+		var items = GetDetailFocusItems();
+		if ( items.Count == 0 ) return;
+		var cur = items[Math.Clamp( detailFocusIndex, 0, items.Count - 1 )];
+		int step = FindBandStep( items, cur, 1 );
+		if ( step < 0 && cur.Col == 1 )
+			step = FindNearestInColumn( items, 0, cur.Band, true ); // bridge to left col, rightmost on tie
+		SetDetailFocus( step );
+	}
+
+	// A / Left — step left within the band; off the left edge of the diamond
+	// column, bridge to the nearest-Band control in the left/main column.
+	private void MoveDetailLeft()
+	{
+		var items = GetDetailFocusItems();
+		if ( items.Count == 0 ) return;
+		var cur = items[Math.Clamp( detailFocusIndex, 0, items.Count - 1 )];
+
+		// Within-band step left (the ACTIONS triplet / a MOVES row).
+		int within = FindSubStep( items, cur, -1 );
+		if ( within >= 0 ) { SetDetailFocus( within ); return; }
+
+		// At the band's left edge: from the diamond column, cross to left col.
+		// Land on the leftmost control of the nearest band (preferRightmost
+		// false) — A reads as "go to the start of the row over there".
+		if ( cur.Col == 1 )
+			SetDetailFocus( FindNearestInColumn( items, 0, cur.Band, false ) );
+	}
+
+	// D / Right — step right within the band; off the right edge of the left
+	// column, bridge to the nearest-Band diamond.
+	private void MoveDetailRight()
+	{
+		var items = GetDetailFocusItems();
+		if ( items.Count == 0 ) return;
+		var cur = items[Math.Clamp( detailFocusIndex, 0, items.Count - 1 )];
+
+		// Within-band step right (the ACTIONS triplet / a MOVES row).
+		int within = FindSubStep( items, cur, 1 );
+		if ( within >= 0 ) { SetDetailFocus( within ); return; }
+
+		// At the band's right edge: from the left column, cross to diamonds.
+		// The diamond column is single-Sub, so the tie preference is moot.
+		if ( cur.Col == 0 )
+			SetDetailFocus( FindNearestInColumn( items, 1, cur.Band, false ) );
+	}
+
+	// Index of the item one Sub-step (dir = -1 / +1) from `cur` within the
+	// same Col+Band, or -1 if none (cur is at the band edge / band is 1-wide).
+	private int FindSubStep( List<DetailFocusItem> items, DetailFocusItem cur, int dir )
+	{
+		int wantSub = cur.Sub + dir;
+		for ( int i = 0; i < items.Count; i++ )
+		{
+			var it = items[i];
+			if ( it.Col == cur.Col && it.Band == cur.Band && it.Sub == wantSub )
+				return i;
+		}
+		return -1;
+	}
+
+	// Index of the control to land on when stepping one Band (dir = -1 / +1)
+	// within `cur`'s column. Picks the next band that actually has controls
+	// (so a missing Evolve band is skipped), and within that band the Sub
+	// closest to the current Sub. Returns -1 if cur is already at the column
+	// edge in that direction.
+	private int FindBandStep( List<DetailFocusItem> items, DetailFocusItem cur, int dir )
+	{
+		int bestBand = -1;
+		for ( int i = 0; i < items.Count; i++ )
+		{
+			var it = items[i];
+			if ( it.Col != cur.Col ) continue;
+			if ( dir > 0 && it.Band > cur.Band )
+			{
+				if ( bestBand < 0 || it.Band < bestBand ) bestBand = it.Band;
+			}
+			else if ( dir < 0 && it.Band < cur.Band )
+			{
+				if ( bestBand < 0 || it.Band > bestBand ) bestBand = it.Band;
+			}
+		}
+		if ( bestBand < 0 ) return -1; // at column edge
+		return FindNearestSubInBand( items, cur.Col, bestBand, cur.Sub );
+	}
+
+	// Index of the item in (col, band) whose Sub is closest to `wantSub`.
+	private int FindNearestSubInBand( List<DetailFocusItem> items, int col, int band, int wantSub )
+	{
+		int best = -1, bestDist = int.MaxValue;
+		for ( int i = 0; i < items.Count; i++ )
+		{
+			var it = items[i];
+			if ( it.Col != col || it.Band != band ) continue;
+			int d = Math.Abs( it.Sub - wantSub );
+			if ( d < bestDist ) { bestDist = d; best = i; }
+		}
+		return best;
+	}
+
+	// Index of the control in `col` whose Band is closest to `wantBand` —
+	// used to BRIDGE between the two columns.
+	//   preferRightmost = false : on a Band tie, the leftmost (lowest-Sub)
+	//     control wins. Used by A (diamond -> left column) so the cursor
+	//     lands at the start of the row it crosses into.
+	//   preferRightmost = true  : on a Band tie, the rightmost (highest-Sub)
+	//     control wins. Used by W/S off the ends of the diamond column so the
+	//     cursor lands on the control nearest the diamonds it came from.
+	private int FindNearestInColumn( List<DetailFocusItem> items, int col, int wantBand, bool preferRightmost )
+	{
+		int best = -1, bestDist = int.MaxValue;
+		for ( int i = 0; i < items.Count; i++ )
+		{
+			var it = items[i];
+			if ( it.Col != col ) continue;
+			int d = Math.Abs( it.Band - wantBand );
+			bool tieWins = d == bestDist && best >= 0
+				&& ( preferRightmost ? it.Sub > items[best].Sub : it.Sub < items[best].Sub );
+			if ( d < bestDist || tieWins )
+			{
+				bestDist = d; best = i;
+			}
+		}
+		return best;
+	}
+
+	// Activate the control under the detail cursor — dispatches to the same
+	// handler the control's onclick uses, so keyboard and mouse are identical.
+	private void ActivateFocusedDetailControl()
+	{
+		var id = GetFocusedDetailControl();
+		if ( string.IsNullOrEmpty( id ) ) return;
+		switch ( id )
+		{
+			case "nick": StartNicknameEdit(); break;
+			case "diamond-showoff": ShowOffBeast(); break;
+			case "diamond-journal": OpenJournal(); break;
+			case "diamond-fav": ToggleFavorite(); break;
+			case "evolve":
+				if ( CanSelectedMonsterEvolve() ) OnEvolveClicked();
+				else SoundManager.PlayDeny();
+				break;
+			case "item": OpenItemPicker(); break;
+			case "fuse": OnBreedFromDetail(); break;
+			case "release":
+				if ( CanReleaseMonster() ) OnReleaseClicked();
+				else SoundManager.PlayDeny();
+				break;
+			case "move-0": OpenMoveSwap( 0 ); break;
+			case "move-1": OpenMoveSwap( 1 ); break;
+			case "move-2": OpenMoveSwap( 2 ); break;
+			case "move-3": OpenMoveSwap( 3 ); break;
+		}
+	}
+
+	// True when the detail cursor is on the LAST navigable control — the
+	// bottom move row (the highest Band in the left/main column). Used by
+	// scroll-follow: on the last control, scroll all the way to the bottom
+	// so the display-only TRAITS section below the moves comes into view
+	// (traits are never a focus target, so scroll is the only way to see
+	// them). Not relevant while a picker is open.
+	private bool IsFocusedDetailControlLast()
+	{
+		if ( showItemPicker || showMovePicker ) return false;
+		var items = GetDetailFocusItems();
+		if ( items.Count == 0 ) return false;
+		var cur = items[Math.Clamp( detailFocusIndex, 0, items.Count - 1 )];
+		if ( cur.Col != 0 ) return false;
+		int maxLeftBand = 0;
+		foreach ( var it in items )
+			if ( it.Col == 0 && it.Band > maxLeftBand ) maxLeftBand = it.Band;
+		return cur.Band == maxLeftBand;
+	}
+
+	// Scroll the detail panel so the currently-focused control is fully
+	// visible. s&box has no scroll-into-view; we compute the target offset
+	// from screen-space Box.Rect. Called from Tick() one frame AFTER the
+	// cursor moved, so layout has positioned the new focused element.
+	private void ScrollFocusedDetailIntoView()
+	{
+		if ( detailScrollRef == null ) return;
+		var focused = FindPanelByClass( detailScrollRef, "kb-focused" );
+		if ( focused == null ) return;
+
+		var view = detailScrollRef.Box.Rect;
+		var ctrl = focused.Box.Rect;
+		if ( view.Height <= 0f || ctrl.Height <= 0f ) return;
+
+		float curOff = detailScrollRef.ScrollOffset.y;
+
+		// Special case: cursor on the LAST navigable control (bottom move
+		// row). The TRAITS section sits below it and is display-only — never
+		// focusable — so the only way a keyboard player ever sees it is for
+		// the scroll to go past the moves. Jump straight to the content
+		// bottom so everything beneath the last move (the traits) is shown.
+		if ( IsFocusedDetailControlLast() )
+		{
+			float bottomOff = Math.Max( 0f, detailScrollRef.ScrollSize.y );
+			if ( Math.Abs( bottomOff - curOff ) > 0.5f )
+				detailScrollRef.ScrollOffset = new Vector2( detailScrollRef.ScrollOffset.x, bottomOff );
+			return;
+		}
+
+		// Control top/bottom in the scroll container's content space.
+		float ctrlTop = ctrl.Top - view.Top + curOff;
+		float ctrlBottom = ctrlTop + ctrl.Height;
+
+		const float margin = 24f; // keep a little breathing room around the control
+		float newOff = curOff;
+		if ( ctrlTop - margin < curOff )
+			newOff = ctrlTop - margin;                       // control above viewport
+		else if ( ctrlBottom + margin > curOff + view.Height )
+			newOff = ctrlBottom + margin - view.Height;       // control below viewport
+
+		newOff = Math.Max( 0f, newOff );
+		if ( Math.Abs( newOff - curOff ) > 0.5f )
+			detailScrollRef.ScrollOffset = new Vector2( detailScrollRef.ScrollOffset.x, newOff );
+	}
+
 	// Track which card is being hovered (to prevent selected card from animating when hovering another)
 	private Guid? hoveredMonsterId = null;
 
@@ -1754,6 +2230,9 @@
 
 	// Public accessor for GameHUD to determine help category
 	public bool IsFusionMode => isFusionMode;
+
+	// Set by BreedingPanel's "VIEW BEAST" button — Tick() picks it up and selects the monster
+	public static Guid PendingFocusMonsterId = Guid.Empty;
 
 	private int GetMonsterCount()
 	{
@@ -2045,6 +2524,11 @@
 	{
 		editingNickname = SelectedMonster?.Nickname ?? "";
 		isEditingNickname = true;
+		// Auto-focus the text field so the player can type immediately with
+		// no click. The TextEntry doesn't exist yet (the @if branch renders
+		// it next frame), so .Focus() is deferred one Tick — same deferred-
+		// pending pattern as detailScrollFollowPending.
+		nicknameFocusPending = true;
 		SoundManager.PlayClick();
 	}
 
@@ -2801,6 +3285,8 @@
 	{
 		if (SelectedMonster == null) return;
 		showItemPicker = true;
+		pickerCursorIndex = 0;          // seed the keyboard cursor at row 0
+		detailScrollFollowPending = true;
 		SoundManager.PlayClick();
 	}
 
@@ -2908,6 +3394,9 @@
 	{
 		SoundManager.PlayClick();
 		isFusionMode = !isFusionMode;
+		// Fusion staging replaces the detail panel — detail-zone keyboard
+		// focus is meaningless there, so always fall back to the grid.
+		kbFocusZone = "grid";
 		ClearPendingFusionConfirm();
 		if (!isFusionMode)
 		{
@@ -3872,6 +4361,18 @@
 		base.Tick();
 		// Note: Input handling is now done via TickInput() called from GameHUD
 
+		// Pick up pending focus from BreedingPanel "VIEW BEAST"
+		if ( PendingFocusMonsterId != Guid.Empty )
+		{
+			var target = MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault( m => m.Id == PendingFocusMonsterId );
+			if ( target != null )
+			{
+				SelectedMonster = target;
+				selectedMonsterIndex = GetFilteredMonsters().IndexOf( target );
+			}
+			PendingFocusMonsterId = Guid.Empty;
+		}
+
 		// Auto-select first monster if none selected (detail panel always visible)
 		if ( SelectedMonster == null && !isFusionMode && !isDetailClosing )
 		{
@@ -3897,6 +4398,27 @@
 		// stage reveal: only the parent sidebar slides in, sub-sections
 		// are always visible (no .entered class gate on them).
 		if ( _ticksSinceMount == 3 && rosterRevealStage < 1 ) rosterRevealStage = 1;
+
+		// Scroll the keyboard-focused detail control into view. Deferred by
+		// one tick after the cursor moved (detailScrollFollowPending) so the
+		// layout pass has positioned the new .kb-focused element before we
+		// read its Box.Rect.
+		if ( detailScrollFollowPending )
+		{
+			detailScrollFollowPending = false;
+			if ( kbFocusZone == "detail" )
+				ScrollFocusedDetailIntoView();
+		}
+
+		// Auto-focus the nickname TextEntry the tick AFTER the edit opened —
+		// by now the @if branch has rendered the field so the @ref is bound
+		// and .Focus() lands. Lets the player type immediately, no click.
+		if ( nicknameFocusPending )
+		{
+			nicknameFocusPending = false;
+			if ( isEditingNickname )
+				nicknameInput?.Focus();
+		}
 	}
 
 	/// <summary>
@@ -3907,13 +4429,25 @@
 		HandleKeyboardInput();
 	}
 
+	// Live column count for keyboard up/down navigation. The grid is a
+	// responsive flex-wrap so this changes with window size — measured from
+	// the rendered grid/card widths (ratio is unit-agnostic). Falls back to 9
+	// before the first layout pass has populated Box.Rect.
+	private int GetGridColumns()
+	{
+		var gridW = rosterGridRef?.Box.Rect.Width ?? 0f;
+		var cardW = cardSizeRef?.Box.Rect.Width ?? 0f;
+		if ( gridW <= 0f || cardW <= 0f ) return 9;
+		return Math.Max( 1, (int)(gridW / cardW) );
+	}
+
 	private void HandleKeyboardInput()
 	{
 
 		// Handle result modal - Enter or Escape to close
 		if (showResult)
 		{
-			if (Input.Pressed("attack1") || Input.Pressed("jump") || Input.Pressed("Menu"))
+			if (Input.Pressed("Jump") || Input.Pressed("Enter") || Input.Pressed("Menu"))
 			{
 				CloseResult();
 			}
@@ -3925,15 +4459,18 @@
 		{
 			var monsters = GetAvailableBreedingMonsters();
 
-			// Q to exit fusion mode
-			if (Input.Pressed("PrevWeapon"))
+			// R to exit fusion mode. (Was the non-existent "PrevWeapon"
+			// action — dead no-op. Q/Menu is already taken by "breed" below,
+			// so exit uses Reload/R, which is otherwise unused in this panel.)
+			if (Input.Pressed("Reload"))
 			{
 				ToggleFusionMode();
 				return;
 			}
 
-			// Tab or E to switch between selecting for slot 1 or 2
-			if (Input.Pressed("NextWeapon"))
+			// E to switch between selecting for slot 1 or 2. (Was the
+			// non-existent "NextWeapon" action. Use/E is free in fusion mode.)
+			if (Input.Pressed("Use"))
 			{
 				selectedForSlot = selectedForSlot == 1 ? 2 : 1;
 				SoundManager.PlayHover();
@@ -3944,7 +4481,7 @@
 			if (monsters.Count > 0)
 			{
 				selectedMonsterIndex = Math.Clamp(selectedMonsterIndex, 0, monsters.Count - 1);
-				int columns = 5;
+				int columns = GetGridColumns();
 
 				if (Input.Pressed("Left"))
 				{
@@ -3977,18 +4514,22 @@
 					isKeyboardNavigationActive = true;
 					SoundManager.PlayHover();
 				}
-				else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+				else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 				{
 					OnBreedingMonsterClicked(monsters[selectedMonsterIndex]);
 				}
 			}
 
-			// Enter to breed when both parents selected
+			// Q to breed when both parents selected — an internal action, so
+			// claim the back key (otherwise GameHUD would also exit to tabs).
+			// When the parents aren't both set, Q is NOT consumed here and
+			// falls through to GameHUD's normal exit-to-tabs.
 			if (Input.Pressed("Menu"))
 			{
 				if (Parent1 != null && Parent2 != null)
 				{
 					OnBreedClicked();
+					GameHUD.PanelHandledBackKey = true;
 				}
 			}
 
@@ -4008,8 +4549,116 @@
 		// Collection view keyboard controls
 		else
 		{
-			// E to enter Fusion mode
-			if (Input.Pressed("NextWeapon"))
+			// ---- DETAIL-ZONE focus: keyboard drives the detail panel -----
+			// When the player has Tab'd into the detail panel, the arrows
+			// move a 2D cursor over EVERY interactive control (nickname
+			// pencil, the 3 portrait diamonds, the action buttons, the 4
+			// move slots): Up/Down step between rows, Left/Right within a
+			// row. Space/Enter activates, Tab or Q returns to the grid.
+			// Handled before grid nav so the grid cursor stays put.
+			if (kbFocusZone == "detail")
+			{
+				// Detail focus only makes sense with a beast selected.
+				if (SelectedMonster == null) { FocusGridZone(); return; }
+
+				// Q (Menu) and Tab (Score) are INTERNAL back keys throughout
+				// the detail zone — close a picker, leave nickname edit, or go
+				// detail->grid. Every time Q is consumed for one of those, set
+				// GameHUD.PanelHandledBackKey so GameHUD's own Menu->exit-to-
+				// tabs flip yields this frame (see GameHUD.PanelHandledBackKey).
+				// Without it, Q would do the internal action AND bump the HUD
+				// into tab-nav, freezing the panel.
+
+				// While editing the nickname, the TextEntry owns the keyboard
+				// for typing. We still watch for the two EXIT keys so the
+				// player is never trapped in edit mode:
+				//   Enter   -> CONFIRM (SaveNickname)
+				//   Q / Tab -> CANCEL  (CancelNicknameEdit)
+				// Both reset isEditingNickname=false so the handler resumes
+				// WASD next frame, re-seed the cursor onto the nickname
+				// control, and claim the back key so GameHUD doesn't also
+				// exit to tabs. Without the CONFIRM branch, pressing Enter
+				// left isEditingNickname stuck true and the panel frozen.
+				// (Space is NOT a confirm here — names may contain spaces;
+				// Enter is the natural text-field submit.)
+				if (isEditingNickname)
+				{
+					if (Input.Pressed("Enter"))
+					{
+						SaveNickname();
+						FocusDetailControl("nick");
+						GameHUD.PanelHandledBackKey = true;
+					}
+					else if (Input.Pressed("Score") || Input.Pressed("Menu"))
+					{
+						CancelNicknameEdit();
+						FocusDetailControl("nick");
+						GameHUD.PanelHandledBackKey = true;
+					}
+					return;
+				}
+
+				// An inline picker (item / move) is open inside the detail
+				// scroll. Full keyboard nav over its list:
+				//   W/S (Up/Down) — move the row cursor
+				//   Space/Enter   — activate the highlighted row (learn move
+				//                   / equip item) via its onclick handler
+				//   Q / Tab       — close the picker back to detail-control
+				//                   nav (claims the back key so GameHUD
+				//                   doesn't also exit to tabs)
+				// List rows stay mouse-operable too.
+				if (showItemPicker || showMovePicker)
+				{
+					if (Input.Pressed("Score") || Input.Pressed("Menu"))
+					{
+						if (showItemPicker) CloseItemPicker();
+						else CloseMoveSwap();
+						GameHUD.PanelHandledBackKey = true;
+					}
+					else if (Input.Pressed("Up"))
+					{
+						MovePickerCursor(-1);
+					}
+					else if (Input.Pressed("Down"))
+					{
+						MovePickerCursor(1);
+					}
+					else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+					{
+						ActivatePickerRow();
+					}
+					return;
+				}
+
+				// Tab or Q — back to the grid (an internal move, NOT an exit
+				// to the tab bar, so claim the back key).
+				if (Input.Pressed("Score") || Input.Pressed("Menu"))
+				{
+					FocusGridZone();
+					GameHUD.PanelHandledBackKey = true;
+					return;
+				}
+				if (Input.Pressed("Up"))         MoveDetailUp();
+				else if (Input.Pressed("Down"))  MoveDetailDown();
+				else if (Input.Pressed("Left"))  MoveDetailLeft();
+				else if (Input.Pressed("Right")) MoveDetailRight();
+				else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+				{
+					ActivateFocusedDetailControl();
+				}
+				return;
+			}
+
+			// Tab — hand keyboard control to the detail panel.
+			if (Input.Pressed("Score"))
+			{
+				FocusDetailZone();
+				return;
+			}
+
+			// E to enter Fusion mode. (Was the non-existent "NextWeapon"
+			// action — dead no-op. Use/E is free in the collection grid.)
+			if (Input.Pressed("Use"))
 			{
 				ToggleFusionMode();
 				return;
@@ -4029,13 +4678,13 @@
 			// Clamp index
 			selectedMonsterIndex = Math.Clamp(selectedMonsterIndex, 0, monsters.Count - 1);
 
-			// Navigation - assume 5 columns in the grid
-			int columns = 5;
+			// Up/Down moves one full row — column count is measured live.
+			int columns = GetGridColumns();
 
 			if (Input.Pressed("Left"))
 			{
 				selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - 1);
-				SelectedMonster = null; // Clear mouse selection when using keyboard
+				SelectedMonster = monsters[selectedMonsterIndex]; // Detail panel follows the keyboard cursor — keeps the sidebar mounted so the grid doesn't reflow/flicker
 				hoveredMonsterId = null; // Clear hover state when using keyboard
 				isKeyboardNavigationActive = true;
 				SoundManager.PlayHover();
@@ -4043,7 +4692,7 @@
 			else if (Input.Pressed("Right"))
 			{
 				selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + 1);
-				SelectedMonster = null; // Clear mouse selection when using keyboard
+				SelectedMonster = monsters[selectedMonsterIndex]; // Detail panel follows the keyboard cursor — keeps the sidebar mounted so the grid doesn't reflow/flicker
 				hoveredMonsterId = null; // Clear hover state when using keyboard
 				isKeyboardNavigationActive = true;
 				SoundManager.PlayHover();
@@ -4058,7 +4707,7 @@
 				else
 				{
 					selectedMonsterIndex = Math.Max(0, selectedMonsterIndex - columns);
-					SelectedMonster = null; // Clear mouse selection when using keyboard
+					SelectedMonster = monsters[selectedMonsterIndex]; // Detail panel follows the keyboard cursor — keeps the sidebar mounted so the grid doesn't reflow/flicker
 					hoveredMonsterId = null; // Clear hover state when using keyboard
 					isKeyboardNavigationActive = true;
 					SoundManager.PlayHover();
@@ -4067,12 +4716,12 @@
 			else if (Input.Pressed("Down"))
 			{
 				selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + columns);
-				SelectedMonster = null; // Clear mouse selection when using keyboard
+				SelectedMonster = monsters[selectedMonsterIndex]; // Detail panel follows the keyboard cursor — keeps the sidebar mounted so the grid doesn't reflow/flicker
 				hoveredMonsterId = null; // Clear hover state when using keyboard
 				isKeyboardNavigationActive = true;
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("attack1") || Input.Pressed("jump"))
+			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 			{
 				// Select the highlighted monster
 				OnMonsterSelected(monsters[selectedMonsterIndex]);
@@ -4116,9 +4765,17 @@
 		hash.Add(fusionPhase);
 		hash.Add(GetMonsterCount());
 		hash.Add(GetMaxMonsters());
+		hash.Add(PendingFocusMonsterId);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		hash.Add(selectedMonsterIndex);
 		hash.Add(isKeyboardNavigationActive);
+		// Grid <-> detail keyboard focus switch — the focus zone and the
+		// detail-panel cursor both drive visible state (affordance pill label
+		// + the .kb-focused highlight on the focused control). pickerCursorIndex
+		// drives the .kb-focused row inside an open move/item picker.
+		hash.Add(kbFocusZone);
+		hash.Add(detailFocusIndex);
+		hash.Add(pickerCursorIndex);
 		hash.Add(hoveredMonsterId);
 		hash.Add(isEditingNickname);
 		hash.Add(showReleaseConfirm);
@@ -4293,6 +4950,8 @@
 		}
 		selectedMoveSlot = slot;
 		showMovePicker = true;
+		pickerCursorIndex = 0;          // seed the keyboard cursor at row 0
+		detailScrollFollowPending = true;
 		SoundManager.PlayClick();
 	}
 
@@ -4300,6 +4959,62 @@
 	{
 		showMovePicker = false;
 		selectedMoveSlot = -1;
+	}
+
+	// ---- Inline picker keyboard navigation -----------------------------
+	// The move-swap / item picker open INSIDE the detail scroll. Their list
+	// rows are mouse-clickable; these helpers add a W/S keyboard cursor over
+	// the same rows. pickerCursorIndex is the row index; the markup tags the
+	// row at that index with `.kb-focused`.
+
+	// Row count of whichever picker is currently open (0 if none).
+	private int GetPickerRowCount()
+	{
+		if ( showMovePicker ) return GetAvailableMovesForPicker().Count;
+		if ( showItemPicker ) return GetAvailableHeldItems().Count;
+		return 0;
+	}
+
+	// True when the open picker's row `index` is under the keyboard cursor.
+	private bool IsPickerRowFocused( int index )
+	{
+		if ( !showMovePicker && !showItemPicker ) return false;
+		int count = GetPickerRowCount();
+		if ( count == 0 ) return false;
+		return Math.Clamp( pickerCursorIndex, 0, count - 1 ) == index;
+	}
+
+	// Move the picker cursor by `delta` rows, clamped; queues scroll-follow.
+	private void MovePickerCursor( int delta )
+	{
+		int count = GetPickerRowCount();
+		if ( count == 0 ) return;
+		int next = Math.Clamp( Math.Clamp( pickerCursorIndex, 0, count - 1 ) + delta, 0, count - 1 );
+		if ( next == pickerCursorIndex ) return;
+		pickerCursorIndex = next;
+		detailScrollFollowPending = true;
+		SoundManager.PlayHover();
+	}
+
+	// Activate the highlighted picker row — dispatches to the SAME handler
+	// the row's onclick uses (SwapMoveSlot / EquipItem), so keyboard and
+	// mouse are identical.
+	private void ActivatePickerRow()
+	{
+		if ( showMovePicker )
+		{
+			var moves = GetAvailableMovesForPicker();
+			if ( moves.Count == 0 ) return;
+			int i = Math.Clamp( pickerCursorIndex, 0, moves.Count - 1 );
+			SwapMoveSlot( moves[i].MoveId );
+		}
+		else if ( showItemPicker )
+		{
+			var items = GetAvailableHeldItems();
+			if ( items.Count == 0 ) return;
+			int i = Math.Clamp( pickerCursorIndex, 0, items.Count - 1 );
+			EquipItem( items[i].Id );
+		}
 	}
 
 	private void SwapMoveSlot(string newMoveId)
