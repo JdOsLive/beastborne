@@ -48,7 +48,7 @@
 					var isKbFocused = kbMode == "nav" && IsCategoryKbFocused(category.Id);
 					var iconColor = (isActive || isKbFocused) ? "#ffffff" : "#a78bfa";
 					<div class="sidebar-btn @(isActive ? "active" : "") @(isKbFocused ? "kb-focused" : "")"
-						 onclick=@(() => SelectCategory(category.Id))>
+						 onclick=@(() => OnCategoryClick(category.Id))>
 						<div class="sidebar-icon">
 							<iconify icon="@category.Icon" Size=@(18) Color="@iconColor" />
 						</div>
@@ -64,7 +64,7 @@
 							{
 								var isSubKbFocused = kbMode == "nav" && IsSubtabKbFocused(category.Id, sub.Id);
 								<div class="sidebar-subtab @(currentSubtab == sub.Id ? "active" : "") @(isSubKbFocused ? "kb-focused" : "")"
-									 onclick=@(() => SelectSubtab(sub.Id))>
+									 onclick=@(() => OnSubtabClick(category.Id, sub.Id))>
 									<span class="sidebar-subtab-tick"></span>
 									<span class="sidebar-subtab-label">@sub.Label</span>
 								</div>
@@ -267,10 +267,18 @@
 	private Panel ContentInner;
 
 	// ---- Keyboard navigation -------------------------------------------
-	// Single flat cursor model. The sidebar — categories AND the open
-	// category's subtabs — is treated as ONE top-to-bottom list of "nav
-	// rows". W/S (Up/Down) walk the cursor through that flat list; landing
-	// on any row immediately switches the page underneath (no Enter step).
+	// Single flat cursor model. The whole sidebar — every category header
+	// AND every category's subtabs — is treated as ONE stable top-to-bottom
+	// list of "nav rows". W/S (Up/Down) walk the cursor through that flat
+	// list; landing on any row immediately switches the page underneath
+	// (no Enter step).
+	//
+	// The nav list is built ALL-EXPANDED (every category's subtabs always
+	// present) so it NEVER re-flattens as the cursor moves — that keeps the
+	// integer cursor index stable in both directions. The sidebar markup
+	// still only RENDERS the open category's subtabs, but the logical nav
+	// list is constant, so stepping up past a category with subtabs walks
+	// through each of its subtabs correctly.
 	//
 	// Two modes:
 	//   "nav"    — W/S move the cursor; Q closes the panel.
@@ -278,27 +286,44 @@
 	//   Space toggles "nav" -> "scroll".
 	private string kbMode = "nav";
 	private int kbCursor = 0;
-	// How many content-inner pixels one W/S press scrolls in scroll mode.
-	// ~2/3 of a typical page viewport keeps long pages reachable in a few
-	// presses without overshooting headings.
+	// How many content-inner pixels one W/S press bumps the scroll TARGET
+	// in scroll mode. ~2/3 of a typical page viewport keeps long pages
+	// reachable in a few presses without overshooting headings.
 	private const float ContentScrollStep = 220f;
+
+	// ---- Smooth content scrolling --------------------------------------
+	// scrollTarget is where the content page wants to be; Tick() eases the
+	// live ScrollOffset.y toward it. W/S in scroll mode bumps the target;
+	// the mouse wheel moves the live offset directly, so we resync the
+	// target to the live offset whenever the two have settled (see Tick()).
+	private float scrollTarget = 0f;
+	// True while a keyboard-driven glide is in flight. While false, Tick()
+	// resyncs scrollTarget to the live offset every frame so mouse-wheel
+	// scrolling isn't fought by the easing.
+	private bool scrollAnimating = false;
+	// Per-frame ease factor toward the target (exponential smoothing). ~0.22
+	// reaches the target in ~0.15-0.2s at 60fps — a quick, soft glide.
+	private const float ScrollEase = 0.22f;
+	// Below this gap the glide is "done" — snap and resync to kill jitter.
+	private const float ScrollSnapEpsilon = 0.5f;
 
 	// A single keyboard-navigable row in the flattened sidebar. Kind is
 	// "category" or "subtab"; CategoryId is always set; SubtabId is set
 	// only for "subtab" rows.
 	private record NavRow(string Kind, string CategoryId, string SubtabId);
 
-	// Build the flat nav-row list: every category header, and — directly
-	// under the CURRENTLY OPEN category — that category's subtabs. This
-	// mirrors exactly what the sidebar markup renders, so the cursor index
-	// lines up 1:1 with the visible rows.
+	// Build the flat nav-row list ALL-EXPANDED: every category header
+	// followed by ALL of that category's subtabs, for every category. The
+	// list is therefore CONSTANT — it does not change as the cursor moves
+	// or as the open category changes — so the integer cursor index stays
+	// stable and W/S traverse it correctly in both directions.
 	private List<NavRow> BuildNavRows()
 	{
 		var rows = new List<NavRow>();
 		foreach (var cat in Categories)
 		{
 			rows.Add(new NavRow("category", cat.Id, null));
-			if (cat.Id == currentCategory && cat.Subtabs != null)
+			if (cat.Subtabs != null)
 			{
 				foreach (var sub in cat.Subtabs)
 					rows.Add(new NavRow("subtab", cat.Id, sub.Id));
@@ -308,12 +333,23 @@
 	}
 
 	// Apply a nav row: switch the page underneath the cursor immediately.
+	// A "category" row opens that category on its first subtab; a "subtab"
+	// row opens its parent category AND that subtab.
 	private void ApplyNavRow(NavRow row)
 	{
 		if (row.Kind == "category")
+		{
 			SelectCategory(row.CategoryId);
+		}
 		else
+		{
+			// Make sure the parent category is the open one before the
+			// subtab selection — keeps currentCategory/currentSubtab a
+			// valid pair for the page dispatcher.
+			if (currentCategory != row.CategoryId)
+				SelectCategory(row.CategoryId);
 			SelectSubtab(row.SubtabId);
+		}
 	}
 
 	// Index of the nav row that matches the page currently on screen — the
@@ -335,6 +371,9 @@
 	}
 
 	// True when the keyboard cursor is sitting on this category header.
+	// (The cursor lands on a header only when no subtab of that category
+	// is the open page — categories with subtabs auto-open their first
+	// subtab, so in practice the highlight tracks the subtab rows.)
 	private bool IsCategoryKbFocused(string categoryId)
 	{
 		var rows = BuildNavRows();
@@ -478,6 +517,7 @@
 			// Keyboard starts in nav mode with the cursor on the open page.
 			Instance.kbMode = "nav";
 			Instance.kbCursor = Instance.CurrentNavIndex(Instance.BuildNavRows());
+			Instance.ResetContentScroll();
 			SoundManager.PlayPopup();
 		}
 	}
@@ -489,10 +529,10 @@
 			Instance.IsVisible = true;
 			Instance.currentCategory = categoryId;
 			Instance.currentSubtab = GetCategory(categoryId)?.Subtabs?.FirstOrDefault()?.Id ?? "";
-			Instance.ContentInner?.ScrollOffset = new Vector2(0, 0);
 			// Opened straight to a category — cursor lands on that page.
 			Instance.kbMode = "nav";
 			Instance.kbCursor = Instance.CurrentNavIndex(Instance.BuildNavRows());
+			Instance.ResetContentScroll();
 			SoundManager.PlayForward();
 		}
 	}
@@ -507,12 +547,56 @@
 	{
 		base.Tick();
 
+		if (!IsVisible)
+			return;
+
+		// Ease the content page toward its smooth-scroll target. Runs every
+		// frame the panel is visible (independent of modal-top status) so a
+		// glide always finishes cleanly.
+		UpdateSmoothScroll();
+
 		// Only the topmost modal owns the keyboard — stay inert otherwise so
 		// this panel doesn't fight a ConfirmDialog/OptionsPanel stacked above.
-		if (!IsVisible || !UIModalState.IsTopModal("HelpPanel"))
+		if (!UIModalState.IsTopModal("HelpPanel"))
 			return;
 
 		HandleKeyboardInput();
+	}
+
+	// Exponentially eases ContentInner.ScrollOffset.y toward scrollTarget.
+	// While NOT animating, scrollTarget tracks the live offset so mouse-wheel
+	// scrolling moves freely and the next keyboard bump glides from there.
+	private void UpdateSmoothScroll()
+	{
+		if (ContentInner == null)
+			return;
+
+		var off = ContentInner.ScrollOffset;
+
+		if (!scrollAnimating)
+		{
+			// Idle — let the wheel drive. Keep the target shadowing the
+			// live offset so a future W/S bump starts from the right place.
+			scrollTarget = off.y;
+			return;
+		}
+
+		// Clamp the target in case the page (and thus ScrollSize) changed.
+		float maxY = Math.Max(0f, ContentInner.ScrollSize.y);
+		scrollTarget = Math.Clamp(scrollTarget, 0f, maxY);
+
+		float gap = scrollTarget - off.y;
+		if (Math.Abs(gap) <= ScrollSnapEpsilon)
+		{
+			// Settled — snap exactly and hand control back to the wheel.
+			off.y = scrollTarget;
+			ContentInner.ScrollOffset = off;
+			scrollAnimating = false;
+			return;
+		}
+
+		off.y += gap * ScrollEase;
+		ContentInner.ScrollOffset = off;
 	}
 
 	private void HandleKeyboardInput()
@@ -523,7 +607,7 @@
 		bool confirm = Input.Pressed("Jump")  || Input.Pressed("Enter");
 		bool back    = Input.Pressed("Escape") || Input.Pressed("Menu") || Input.Pressed("run");
 
-		// ---- SCROLL mode: W/S scroll the content page, Q returns to nav ----
+		// ---- SCROLL mode: W/S bump the scroll TARGET, Q returns to nav -----
 		if (kbMode == "scroll")
 		{
 			if (back)
@@ -536,10 +620,16 @@
 			}
 			if ((up || down) && ContentInner != null)
 			{
-				var off = ContentInner.ScrollOffset;
+				// Bump the smooth-scroll target; Tick() eases the live
+				// offset toward it. Clamp to the page extent. Seed the
+				// target from the live offset first so a wheel scroll the
+				// player just did isn't undone by a stale target.
 				float maxY = Math.Max(0f, ContentInner.ScrollSize.y);
-				off.y = Math.Clamp(off.y + (down ? ContentScrollStep : -ContentScrollStep), 0f, maxY);
-				ContentInner.ScrollOffset = off;
+				if (!scrollAnimating) scrollTarget = ContentInner.ScrollOffset.y;
+				scrollTarget = Math.Clamp(
+					scrollTarget + (down ? ContentScrollStep : -ContentScrollStep),
+					0f, maxY);
+				scrollAnimating = true;
 				return;
 			}
 			return;
@@ -549,32 +639,43 @@
 		// Q closes the whole panel.
 		if (back) { Hide(); return; }
 
-		// Space dives into page-scroll mode.
-		if (confirm) { kbMode = "scroll"; SoundManager.PlayClick(); return; }
+		// Space dives into page-scroll mode. Seed the scroll target from the
+		// live offset so the first W/S bump glides from where the page is.
+		if (confirm)
+		{
+			kbMode = "scroll";
+			if (ContentInner != null) scrollTarget = ContentInner.ScrollOffset.y;
+			SoundManager.PlayClick();
+			return;
+		}
 
+		// The nav list is ALL-EXPANDED and therefore CONSTANT — the cursor
+		// index stays valid across page switches, so a plain index step
+		// traverses every row correctly in both directions.
 		var rows = BuildNavRows();
 		if (rows.Count == 0) return;
-
-		// Keep the cursor coherent — if a page switch changed the row count,
-		// re-anchor before moving.
 		kbCursor = Math.Clamp(kbCursor, 0, rows.Count - 1);
 
 		if (up && kbCursor > 0)
 		{
 			kbCursor--;
-			ApplyNavRow(rows[kbCursor]);   // live page switch
+			ApplyNavRow(rows[kbCursor]);   // live page switch; does NOT move kbCursor
 			SoundManager.PlayHover();
 			return;
 		}
 		if (down && kbCursor < rows.Count - 1)
 		{
 			kbCursor++;
-			ApplyNavRow(rows[kbCursor]);   // live page switch
+			ApplyNavRow(rows[kbCursor]);   // live page switch; does NOT move kbCursor
 			SoundManager.PlayHover();
 			return;
 		}
 	}
 
+	// Page-switch primitives. These do NOT touch kbCursor — the keyboard
+	// handler owns the cursor while navigating, and the mouse onclick
+	// handlers sync the cursor themselves after calling these. Keeping the
+	// cursor out of here is what makes upward W traversal reliable.
 	private void SelectCategory(string categoryId)
 	{
 		if (currentCategory != categoryId)
@@ -582,15 +683,8 @@
 			currentCategory = categoryId;
 			currentSubtab = GetCategory(categoryId)?.Subtabs?.FirstOrDefault()?.Id ?? "";
 			SoundManager.PlayClick();
-
-			// Scroll content to top when switching pages
-			if (ContentInner != null)
-			{
-				ContentInner.ScrollOffset = new Vector2(0, 0);
-			}
+			ResetContentScroll();
 		}
-		// Keyboard cursor follows mouse clicks too, so the two stay in sync.
-		kbCursor = CurrentNavIndex(BuildNavRows());
 	}
 
 	private void SelectSubtab(string subtabId)
@@ -599,11 +693,34 @@
 		{
 			currentSubtab = subtabId;
 			SoundManager.PlayClick();
-			if (ContentInner != null)
-			{
-				ContentInner.ScrollOffset = new Vector2(0, 0);
-			}
+			ResetContentScroll();
 		}
+	}
+
+	// Snap the content page back to the top (live offset AND smooth-scroll
+	// target) — called on every page switch. Ends any glide instantly.
+	private void ResetContentScroll()
+	{
+		scrollTarget = 0f;
+		scrollAnimating = false;
+		if (ContentInner != null)
+			ContentInner.ScrollOffset = new Vector2(0, 0);
+	}
+
+	// Mouse click on a sidebar category — switch the page and re-anchor the
+	// keyboard cursor so a later W/S continues from where the mouse landed.
+	private void OnCategoryClick(string categoryId)
+	{
+		SelectCategory(categoryId);
+		kbCursor = CurrentNavIndex(BuildNavRows());
+	}
+
+	// Mouse click on a sidebar subtab — same, for a subtab row.
+	private void OnSubtabClick(string categoryId, string subtabId)
+	{
+		if (currentCategory != categoryId)
+			SelectCategory(categoryId);
+		SelectSubtab(subtabId);
 		kbCursor = CurrentNavIndex(BuildNavRows());
 	}
 
