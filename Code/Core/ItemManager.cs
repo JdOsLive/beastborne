@@ -1453,10 +1453,20 @@ public sealed class ItemManager : Component
 	/// </summary>
 	public void RegisterBeastMaterials( Dictionary<string, MonsterSpecies> speciesDb, HashSet<string> launchRoster )
 	{
-		if ( speciesDb == null || launchRoster == null ) return;
+		if ( speciesDb == null ) return;
+
+		// Register materials for EVERY species in the DB, not just the launch
+		// roster. The Beastbook is launch-roster-scoped (retired AI-gen species
+		// + hidden beasts like Staiju are kept in the DB so old contracts /
+		// materials don't break, but hidden from the book). Their MATERIALS,
+		// however, can still be in a player's inventory from prior play — those
+		// items must remain registered or InventoryPanel skips them (item ==
+		// null) and the bag silently hides them. `launchRoster` is kept on the
+		// signature for compatibility but is no longer used as a filter.
+		_ = launchRoster;
 
 		int registered = 0;
-		foreach ( var speciesId in launchRoster )
+		foreach ( var speciesId in speciesDb.Keys )
 		{
 			if ( !speciesDb.TryGetValue( speciesId, out var species ) ) continue;
 

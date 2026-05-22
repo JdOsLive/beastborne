@@ -166,6 +166,26 @@ public sealed class TamerManager : Component
 			// Purge expired boosts on load.
 			CurrentTamer.ActiveBoosts = CurrentTamer.ActiveBoosts.Where( b => !b.IsExpired ).ToList();
 
+			// Strip any inventory entries whose itemId no longer resolves via
+			// ItemManager.GetItem. The bag header (.inv-pill .all-items badge)
+			// sums every entry in CurrentTamer.Inventory, but the grid silently
+			// skips items where GetItem returns null — without this purge the
+			// "ALL ITEMS" total drifts above the visible card count.
+			//
+			// Sources of ghost entries we've seen in the wild:
+			// - Old typo'd reward IDs ("gene_booster" vs the registered
+			//   "boss_gene_booster"; fixed forward in DailyRewardManager).
+			// - mat_<species> for species that were renamed or fully removed
+			//   from the DB across pre-launch culls (RegisterBeastMaterials
+			//   now iterates every species in the current DB, but anything
+			//   removed entirely is still orphaned in old saves).
+			// - Stale IDs from removed items / dev cookie data.
+			//
+			// This guarantees, by construction, header total == sum of
+			// renderable cards going forward — even if a future
+			// rename/removal misses a registration.
+			NormalizeInventory();
+
 			// Apply title grants (Alpha + Johnson) and prune any orphans
 			// from the post-cull title cleanup.
 			ApplySpecialTitleGrants();
@@ -242,18 +262,48 @@ public sealed class TamerManager : Component
 				Log.Info( $"[TamerManager] Beta-launch migration v1: cleared inflated stats (was BattlesWon={prevBattles}, Damage={prevDamage}, KOs={prevKOs}, Caught={prevCaught}, Bred={prevBred}, Evolved={prevEvolved}, Expeditions={prevExpeditions}) and pushed 0 to public leaderboards" );
 			}
 
-			// MigrationVersion 2 — SP/level normalization. Keyed off
-			// Tamer.MigrationVersion (saved on the Tamer object itself,
-			// ridden reliably through every WriteSnapshot).
-			//
-			// The migration body is non-destructive: it prunes stale
-			// SkillRanks entries (talents that were cut from the tree) and
-			// TOPS UP SkillPoints if the player has fewer than they should,
-			// but never DECREASES the loose pool. Safe to re-run.
+			// MigrationVersion 2 — kept as a no-op marker so older saves that
+			// stamped it don't re-trip anything. The old destructive top-up
+			// behavior was replaced by NormalizeSkillState below, which runs
+			// on EVERY hydrate (idempotent, only logs when it actually repairs).
 			if ( CurrentTamer.MigrationVersion < 2 )
 			{
-				RunSkillPointMigrationV2();
 				CurrentTamer.MigrationVersion = 2;
+			}
+
+			// ── DEFINITIVE SKILL-STATE FIX ─────────────────────────────────
+			// Single self-healing audit on hydrate. Enforces the invariant
+			// TotalEarnedSP(Level) == SkillPoints + Σ(rank × CostPerRank).
+			// Idempotent — players whose tree is already valid see no change,
+			// no toast, no log spam. Players whose tree drifted (orphan keys
+			// from cut skills, ranks past MaxRank, over-budget spent, missing
+			// SP after a corrupted save) get a surgical repair + one toast.
+			//
+			// REPLACES the v1.2.1 aggressive blanket respec — which wiped
+			// valid trees and caused its own desync problems when the next
+			// session loaded an older cloud copy before autosave flushed.
+			var repair = CurrentTamer.NormalizeSkillState( SkillTree );
+			if ( repair.ChangedAnything )
+			{
+				Log.Info( $"[NormalizeSkillState/hydrate] Lv{CurrentTamer.Level} repaired: {repair}" );
+
+				// Only notify the player if the change is something they'll
+				// actually NOTICE in the tree UI. Pure SP top-up (e.g. they
+				// had 5 SP and we restored to 6) needs no scary "tree
+				// refunded" toast — silent fix.
+				bool playerVisibleRepair =
+					repair.OrphanRanksStripped > 0
+					|| repair.OverRankRefunds > 0
+					|| repair.OverBudgetRanksStripped > 0;
+
+				if ( playerVisibleRepair )
+				{
+					NotificationManager.Instance?.AddNotification(
+						NotificationType.Success,
+						"Skill Tree Repaired",
+						$"Your skill tree was out of sync — repaired and {repair.SkillPointsAfter} SP are available.",
+						8f );
+				}
 			}
 
 			// Clamp on LOAD as well as on save. Without this, a corrupted save
@@ -374,63 +424,9 @@ public sealed class TamerManager : Component
 		}
 	}
 
-	/// <summary>
-	/// SP/level migration v2. Clamps Level to <see cref="Tamer.MaxLevel"/>,
-	/// prunes stale SkillRanks entries (talents that no longer exist in the
-	/// tree), and TOPS UP SkillPoints if the player has fewer SP than the
-	/// level/rank formula expects.
-	///
-	/// Non-destructive by design: never reduces SkillPoints. Players can
-	/// legitimately have more SP than the formula predicts (refunds, dev
-	/// grants, mid-spend transient state) — taking SP away on every load was
-	/// the v1.0.2 SP-drain bug. Idempotent: safe to re-run.
-	/// </summary>
-	private void RunSkillPointMigrationV2()
-	{
-		CurrentTamer.Level = Math.Min( CurrentTamer.Level, Tamer.MaxLevel );
-		int capLevel = CurrentTamer.Level;
-
-		int totalEarnedSp = 6;
-		for ( int level = 2; level <= capLevel; level++ )
-		{
-			totalEarnedSp += Tamer.GetSkillPointsForLevel( level );
-		}
-
-		int preservedRanks = 0;
-		int prunedIds = 0;
-		int spSpentOnPreserved = 0;
-		if ( CurrentTamer.SkillRanks != null && SkillTree != null )
-		{
-			var newRanks = new Dictionary<string, int>();
-			foreach ( var kv in CurrentTamer.SkillRanks )
-			{
-				var node = SkillTree.GetNode( kv.Key );
-				if ( node == null ) { prunedIds++; continue; }
-
-				int clamped = Math.Min( kv.Value, node.MaxRank );
-				if ( clamped <= 0 ) continue;
-
-				newRanks[kv.Key] = clamped;
-				preservedRanks += clamped;
-				spSpentOnPreserved += clamped * node.CostPerRank;
-			}
-			CurrentTamer.SkillRanks = newRanks;
-		}
-
-		// Top-up only. If the player has fewer SP than (earned - spent),
-		// they've been short-changed somewhere — fix it. If they have more,
-		// leave it: legitimate sources include refunds and pre-launch grants,
-		// and the previous destructive version of this migration was the
-		// bug we're fixing.
-		int expectedSp = Math.Max( 0, totalEarnedSp - spSpentOnPreserved );
-		int spBefore = CurrentTamer.SkillPoints;
-		if ( spBefore < expectedSp )
-		{
-			CurrentTamer.SkillPoints = expectedSp;
-		}
-
-		Log.Info( $"[Migration v2] Lv {capLevel} → earned {totalEarnedSp} SP, spent {spSpentOnPreserved} on {preservedRanks} preserved ranks, pruned {prunedIds} cut talents. SP: {spBefore} → {CurrentTamer.SkillPoints}" );
-	}
+	// (RunSkillPointMigrationV2 deleted 2026-05-21 — replaced by the
+	// idempotent NormalizeSkillState pass invoked above. Same job, but it
+	// runs on EVERY hydrate / level-up / shop reset, not just once per save.)
 
 	// ═══════════════════════════════════════════════════════════════
 	// PERSISTENCE — push the in-memory Tamer back into the blob
@@ -488,6 +484,68 @@ public sealed class TamerManager : Component
 	/// <summary>
 	/// Clamp stats to reasonable maximums to prevent inflated/corrupted values from reaching leaderboards.
 	/// </summary>
+	/// <summary>
+	/// Strip every inventory entry whose itemId doesn't resolve via
+	/// <c>ItemManager.GetItem</c>. Hard guarantee that the bag header's
+	/// total (which sums every entry blind) stays equal to the sum of
+	/// the items the grid actually renders (which skips null-GetItem
+	/// entries).
+	///
+	/// Equipped relics are NEVER stripped — if a save references an
+	/// equipped relic whose definition was removed, dropping it would
+	/// also break the equip slot. Equipped relic IDs are excluded from
+	/// the purge.
+	///
+	/// Quantities are also clamped: any non-positive count is removed
+	/// (older code paths could push zeroes into the dict without
+	/// removing the key).
+	/// </summary>
+	private void NormalizeInventory()
+	{
+		if ( CurrentTamer?.Inventory == null ) return;
+		if ( ItemManager.Instance == null )
+		{
+			// Defensive: if ItemManager hasn't booted yet, do nothing rather
+			// than wipe every entry. This shouldn't happen because Hydrate
+			// runs after SaveService.OnSaveLoaded fires (which is after every
+			// manager's OnStart), but be safe.
+			Log.Warning( "[TamerManager] NormalizeInventory skipped: ItemManager.Instance is null" );
+			return;
+		}
+
+		var equipped = CurrentTamer.EquippedRelics ?? new();
+		var toRemove = new List<string>();
+
+		foreach ( var kvp in CurrentTamer.Inventory )
+		{
+			if ( kvp.Value <= 0 )
+			{
+				toRemove.Add( kvp.Key );
+				continue;
+			}
+
+			// Never strip an equipped relic, even if the definition is missing
+			// — keep the slot intact so the equip UI doesn't crater.
+			if ( equipped.Contains( kvp.Key ) ) continue;
+
+			if ( ItemManager.Instance.GetItem( kvp.Key ) == null )
+			{
+				toRemove.Add( kvp.Key );
+			}
+		}
+
+		if ( toRemove.Count > 0 )
+		{
+			int totalGhostQty = 0;
+			foreach ( var id in toRemove )
+			{
+				totalGhostQty += CurrentTamer.Inventory.GetValueOrDefault( id, 0 );
+				CurrentTamer.Inventory.Remove( id );
+			}
+			Log.Warning( $"[TamerManager] NormalizeInventory: stripped {toRemove.Count} ghost itemId(s) totaling {totalGhostQty} qty — bag header now matches visible cards. Removed: {string.Join( ", ", toRemove )}" );
+		}
+	}
+
 	private void ClampStats()
 	{
 		if ( CurrentTamer == null ) return;
@@ -678,6 +736,14 @@ public sealed class TamerManager : Component
 
 		if ( CurrentTamer.AddXP( boostedAmount ) )
 		{
+			// Defensive: AddXP just incremented SkillPoints by 1-per-level.
+			// Normalize so the invariant still holds (cheap on a clean save:
+			// idempotent, returns no-op). Catches any latent corruption that
+			// got worse with the level-up SP grant.
+			var rep = CurrentTamer.NormalizeSkillState( SkillTree );
+			if ( rep.ChangedAnything )
+				Log.Info( $"[NormalizeSkillState/level-up] Lv{CurrentTamer.Level} repaired: {rep}" );
+
 			OnLevelUp?.Invoke( CurrentTamer.Level );
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TamerLevel, CurrentTamer.Level );
 			Stats.SetValue( "tamer-level", CurrentTamer.Level );
@@ -964,14 +1030,23 @@ public sealed class TamerManager : Component
 		if ( CurrentTamer == null || SkillTree == null ) return 0;
 
 		int refundedPoints = GetTotalSkillPointsSpent();
-		CurrentTamer.SkillPoints += refundedPoints;
 		CurrentTamer.SkillRanks.Clear();
+		// Re-derive SP from the invariant rather than adding the refund to
+		// a possibly-stale free pool — this is the OFFICIAL reset path, so
+		// "all earned SP, all loose" is the only correct result.
+		CurrentTamer.SkillPoints = Tamer.GetTotalSkillPointsForLevel( CurrentTamer.Level );
+
+		// Belt-and-suspenders normalize so the invariant is guaranteed
+		// regardless of what state we entered from.
+		var rep = CurrentTamer.NormalizeSkillState( SkillTree );
+		if ( rep.ChangedAnything )
+			Log.Info( $"[NormalizeSkillState/reset] Lv{CurrentTamer.Level} repaired: {rep}" );
 
 		Stats.SetValue( "skills-unlocked", 0 );
 		Stats.SetValue( "skill-points", 0 );
 
 		SaveToCloud();
-		Log.Info( $"[TamerManager] Skill tree reset — refunded {refundedPoints} SP" );
+		Log.Info( $"[TamerManager] Skill tree reset — refunded {refundedPoints} SP, pool now {CurrentTamer.SkillPoints}" );
 		return refundedPoints;
 	}
 

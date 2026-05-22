@@ -42,7 +42,17 @@ public class Tamer
 	// Sticky once true. Drives the "Alpha" title grant.
 	public bool PlayedDuringAlpha { get; set; } = false;
 
-	// Skill tree state (skill ID -> rank invested)
+	// Skill tree state — SkillRanks is the SINGLE SOURCE OF TRUTH for invested
+	// ranks (skill ID → rank). SkillPoints is the loose / unspent pool.
+	//
+	// Invariant (codified in NormalizeSkillState):
+	//     TotalEarnedSP(Level) == SkillPoints + SUM(rank × node.CostPerRank)
+	//
+	// The legacy `UnlockedSkills` rank-blind List<string> view was removed
+	// 2026-05-21 — its getter allocated a throwaway list every call, so
+	// `.Clear()` / `.Add()` mutations on the property were silent no-ops
+	// (the source of the v1.2 shop-reset "free SP, ranks intact" corruption).
+	// All callers now go through SkillRanks directly.
 	public Dictionary<string, int> SkillRanks { get; set; } = new();
 	public int SkillPoints { get; set; } = 1;
 
@@ -54,24 +64,6 @@ public class Tamer
 
 	// Active consumable boosts
 	public List<ActiveItemBoost> ActiveBoosts { get; set; } = new();
-
-	// Legacy property for backward compatibility during migration
-	public List<string> UnlockedSkills
-	{
-		get => new List<string>( SkillRanks.Keys );
-		set
-		{
-			// Migration: convert old list to dictionary (assume rank 1 for each)
-			if ( value != null )
-			{
-				foreach ( var skillId in value )
-				{
-					if ( !SkillRanks.ContainsKey( skillId ) )
-						SkillRanks[skillId] = 1;
-				}
-			}
-		}
-	}
 
 	// Progression
 	public int HighestExpeditionCleared { get; set; } = 0;
@@ -105,6 +97,13 @@ public class Tamer
 	// pre-launch inflated battle/damage/KO totals so the open beta
 	// starts everyone clean).
 	public int MigrationVersion { get; set; } = 0;
+
+	// Legacy field — was a one-time v1.2.1 aggressive respec gate. The respec
+	// path was REPLACED by NormalizeSkillState (idempotent, self-healing,
+	// surgical) so this bool no longer drives any logic. Kept on the schema
+	// (don't break round-trip for any save that already stored true) and
+	// reserved for future per-version one-shot data fixes if we need one.
+	public bool SkillTreeRespecApplied { get; set; } = false;
 
 	// Stats tracking
 	public int TotalBattlesWon { get; set; } = 0;
@@ -224,6 +223,17 @@ public class Tamer
 		return 1;
 	}
 
+	/// <summary>
+	/// Total skill points a tamer has EARNED by <paramref name="level"/> —
+	/// 6 starting SP at level 1, plus 1 per level after. Level 50 → 55 SP,
+	/// matching the launch skill tree's 55-SP total.
+	/// </summary>
+	public static int GetTotalSkillPointsForLevel( int level )
+	{
+		int capped = level < 1 ? 1 : ( level > MaxLevel ? MaxLevel : level );
+		return 6 + ( capped - 1 );
+	}
+
 	// Add XP and handle level ups
 	public bool AddXP( int amount )
 	{
@@ -242,6 +252,136 @@ public class Tamer
 		}
 
 		return leveledUp;
+	}
+
+	/// <summary>
+	/// Self-healing audit of the skill state. Idempotent — safe to call from
+	/// hydrate, after every level-up, after every shop reset, after every
+	/// in-tree investment. Repairs invariant violations only; does NOT
+	/// aggressively respec a tree that's already in a valid state.
+	///
+	/// The invariant being enforced:
+	///   GetTotalSkillPointsForLevel(Level) == SkillPoints + Σ(rank × CostPerRank)
+	///
+	/// Repairs applied in order:
+	///   1. Clamp Level to [1, MaxLevel].
+	///   2. Strip keys in SkillRanks that aren't in the catalog (renamed/cut
+	///      skills) — refund their full cost.
+	///   3. Clamp each remaining rank to its node's MaxRank — refund the
+	///      excess.
+	///   4. If total spent still exceeds total earned (impossible-but-defensive):
+	///      remove cheapest-cost-per-rank skills first until invariant holds.
+	///   5. Set SkillPoints = (earned − spent), clamped >= 0.
+	///
+	/// Returns a struct describing what (if anything) was changed so callers
+	/// can show a toast only when there was an actual repair.
+	/// </summary>
+	public SkillStateRepairResult NormalizeSkillState( SkillTree tree )
+	{
+		var result = new SkillStateRepairResult();
+		if ( tree == null ) return result;
+
+		SkillRanks ??= new();
+
+		// 1. Clamp level.
+		int clampedLevel = Level < 1 ? 1 : ( Level > MaxLevel ? MaxLevel : Level );
+		if ( clampedLevel != Level )
+		{
+			Level = clampedLevel;
+			result.LevelClamped = true;
+		}
+
+		int earned = GetTotalSkillPointsForLevel( Level );
+
+		// 2 + 3. Walk SkillRanks, strip orphans, clamp ranks.
+		var toRemove = new List<string>();
+		var toClamp = new List<(string id, int newRank)>();
+		foreach ( var kv in SkillRanks )
+		{
+			var node = tree.GetNode( kv.Key );
+			if ( node == null )
+			{
+				toRemove.Add( kv.Key );
+				result.OrphanRanksStripped += kv.Value;
+				continue;
+			}
+			if ( kv.Value <= 0 )
+			{
+				toRemove.Add( kv.Key );
+				continue;
+			}
+			int clamped = Math.Min( kv.Value, node.MaxRank );
+			if ( clamped != kv.Value )
+			{
+				toClamp.Add( (kv.Key, clamped) );
+				result.OverRankRefunds += (kv.Value - clamped) * node.CostPerRank;
+			}
+		}
+		foreach ( var id in toRemove ) SkillRanks.Remove( id );
+		foreach ( var (id, r) in toClamp ) SkillRanks[id] = r;
+
+		// 4. If still over-budget, remove cheapest ranks first.
+		int spent = ComputeSpent( tree );
+		while ( spent > earned && SkillRanks.Count > 0 )
+		{
+			// Pick the cheapest cost-per-rank skill to bleed off first. Ties
+			// broken by descending rank so we keep at least one rank in skills
+			// the player obviously cared about.
+			string victimId = null;
+			int victimCost = int.MaxValue;
+			int victimRank = 0;
+			foreach ( var kv in SkillRanks )
+			{
+				var n = tree.GetNode( kv.Key );
+				if ( n == null ) continue;
+				if ( n.CostPerRank < victimCost
+					|| ( n.CostPerRank == victimCost && kv.Value > victimRank ) )
+				{
+					victimId = kv.Key;
+					victimCost = n.CostPerRank;
+					victimRank = kv.Value;
+				}
+			}
+			if ( victimId == null ) break;
+
+			int oldRank = SkillRanks[victimId];
+			int newRank = oldRank - 1;
+			if ( newRank <= 0 ) SkillRanks.Remove( victimId );
+			else SkillRanks[victimId] = newRank;
+
+			result.OverBudgetRanksStripped++;
+			spent -= victimCost;
+		}
+
+		// 5. Final SP = earned − spent.
+		int newFreeSp = Math.Max( 0, earned - spent );
+		if ( newFreeSp != SkillPoints )
+		{
+			result.SkillPointsBefore = SkillPoints;
+			result.SkillPointsAfter = newFreeSp;
+			SkillPoints = newFreeSp;
+		}
+		else
+		{
+			result.SkillPointsBefore = SkillPoints;
+			result.SkillPointsAfter = SkillPoints;
+		}
+
+		return result;
+	}
+
+	/// <summary>Sum the cost-weighted SP currently invested across SkillRanks.</summary>
+	private int ComputeSpent( SkillTree tree )
+	{
+		if ( tree == null || SkillRanks == null ) return 0;
+		int total = 0;
+		foreach ( var kv in SkillRanks )
+		{
+			var n = tree.GetNode( kv.Key );
+			if ( n == null ) continue;
+			total += kv.Value * n.CostPerRank;
+		}
+		return total;
 	}
 
 	// Resource management
@@ -284,6 +424,51 @@ public class Tamer
 			int total = ArenaWins + ArenaLosses;
 			return total > 0 ? (float)ArenaWins / total : 0;
 		}
+	}
+}
+
+/// <summary>
+/// Result of a <see cref="Tamer.NormalizeSkillState"/> pass. Lets callers decide
+/// whether to fire a player-facing notification (only when something was
+/// actually repaired). All-zero / all-false means "clean, no-op".
+/// </summary>
+public struct SkillStateRepairResult
+{
+	/// <summary>True if Level was clamped into [1, MaxLevel].</summary>
+	public bool LevelClamped;
+
+	/// <summary>Total ranks (not cost-weighted) stripped because their skill
+	/// id no longer exists in the catalog.</summary>
+	public int OrphanRanksStripped;
+
+	/// <summary>Cost-weighted SP refunded by clamping individual ranks to MaxRank.</summary>
+	public int OverRankRefunds;
+
+	/// <summary>Number of rank tiers removed by the over-budget bleed-off pass
+	/// (cheapest-first). Should always be 0 on a sane save; non-zero indicates
+	/// real prior corruption that this pass repaired.</summary>
+	public int OverBudgetRanksStripped;
+
+	/// <summary>Free SP pool before the pass.</summary>
+	public int SkillPointsBefore;
+
+	/// <summary>Free SP pool after the pass.</summary>
+	public int SkillPointsAfter;
+
+	/// <summary>True iff this pass actually changed something — clamped a
+	/// level, stripped an orphan or over-rank, bled off an over-budget rank,
+	/// or repaired SkillPoints.</summary>
+	public bool ChangedAnything =>
+		LevelClamped
+		|| OrphanRanksStripped > 0
+		|| OverRankRefunds > 0
+		|| OverBudgetRanksStripped > 0
+		|| SkillPointsBefore != SkillPointsAfter;
+
+	public override string ToString()
+	{
+		if ( !ChangedAnything ) return "no-op";
+		return $"orphan={OrphanRanksStripped} overRankRefund={OverRankRefunds} overBudgetBleed={OverBudgetRanksStripped} sp {SkillPointsBefore}→{SkillPointsAfter} levelClamp={LevelClamped}";
 	}
 }
 

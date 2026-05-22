@@ -391,12 +391,18 @@ public sealed class DailyRewardManager : Component
 	/// </summary>
 	public (int Gold, int Gems, string Title, string ItemId) GetMilestoneReward( int totalDays )
 	{
+		// ItemIds MUST match the keys registered in ItemManager.InitializeItemDatabase().
+		// Earlier revisions used the no-prefix names ("gene_booster", "master_ink",
+		// "trait_reroll") which never resolved via ItemManager.GetItem and left ghost
+		// entries in player inventories — the bag header counted them but the grid
+		// couldn't render them, so totals diverged from visible cards. The registered
+		// IDs use the `boss_` prefix.
 		return totalDays switch
 		{
 			7   => (25000, 5, "Dedicated", null),
-			14  => (50000, 10, null, "gene_booster"),
-			30  => (100000, 25, "Devoted", "master_ink"),
-			60  => (250000, 50, "Faithful", "trait_reroll"),
+			14  => (50000, 10, null, "boss_gene_booster"),
+			30  => (100000, 25, "Devoted", "boss_master_ink"),
+			60  => (250000, 50, "Faithful", "boss_trait_reroll"),
 			100 => (500000, 100, "Eternal", "boss_master_ink"),
 			365 => (1000000, 250, "Beastborne Veteran", null),
 			_ => (0, 0, null, null)

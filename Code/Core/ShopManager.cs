@@ -1222,27 +1222,22 @@ public sealed class ShopManager : Component
 	}
 
 	/// <summary>
-	/// Reset all skill points
+	/// Reset all skill points. Delegates to <see cref="TamerManager.ResetSkillTree"/>
+	/// which is the single canonical reset path — it clears SkillRanks,
+	/// re-derives the loose SP pool from the invariant, runs a defensive
+	/// NormalizeSkillState pass, and saves.
+	///
+	/// The shop used to do its own bespoke refund here, but it summed
+	/// `node.SkillPointCost` once per node id (not per-rank) AND called
+	/// `tamer.UnlockedSkills.Clear()` on a legacy property whose getter
+	/// allocated a throwaway list — clearing nothing. The result was players
+	/// getting partial refunds with their ranks fully intact. Bug fixed by
+	/// removing the duplicated code path entirely.
 	/// </summary>
 	private void ResetSkills()
 	{
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		var skillTree = TamerManager.Instance?.SkillTree;
-		if ( tamer == null || skillTree == null ) return;
-
-		// Calculate total points spent by summing each skill's cost
-		int refundedPoints = 0;
-		foreach ( var skillId in tamer.UnlockedSkills )
-		{
-			var node = skillTree.GetNode( skillId );
-			if ( node != null )
-				refundedPoints += node.SkillPointCost;
-		}
-
-		tamer.SkillPoints += refundedPoints;
-		tamer.UnlockedSkills.Clear();
-
-		Log.Info( $"Reset skills, refunded {refundedPoints} points" );
+		int refunded = TamerManager.Instance?.ResetSkillTree() ?? 0;
+		Log.Info( $"Reset skills via TamerManager — refunded {refunded} points" );
 	}
 
 	/// <summary>
