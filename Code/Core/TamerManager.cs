@@ -167,23 +167,13 @@ public sealed class TamerManager : Component
 			CurrentTamer.ActiveBoosts = CurrentTamer.ActiveBoosts.Where( b => !b.IsExpired ).ToList();
 
 			// Strip any inventory entries whose itemId no longer resolves via
-			// ItemManager.GetItem. The bag header (.inv-pill .all-items badge)
-			// sums every entry in CurrentTamer.Inventory, but the grid silently
-			// skips items where GetItem returns null — without this purge the
-			// "ALL ITEMS" total drifts above the visible card count.
-			//
-			// Sources of ghost entries we've seen in the wild:
-			// - Old typo'd reward IDs ("gene_booster" vs the registered
-			//   "boss_gene_booster"; fixed forward in DailyRewardManager).
-			// - mat_<species> for species that were renamed or fully removed
-			//   from the DB across pre-launch culls (RegisterBeastMaterials
-			//   now iterates every species in the current DB, but anything
-			//   removed entirely is still orphaned in old saves).
-			// - Stale IDs from removed items / dev cookie data.
-			//
-			// This guarantees, by construction, header total == sum of
-			// renderable cards going forward — even if a future
-			// rename/removal misses a registration.
+			// Diagnostic scan only — do NOT mutate the inventory dict.
+			// Previous version of this call deleted any itemId that didn't
+			// resolve via ItemManager.GetItem, which destroyed player data
+			// when manager load order races caused materials to not be
+			// registered before Hydrate fires. The bag badge mismatch is
+			// now fixed at the display layer (InventoryPanel.GetTotalItemCount
+			// filters through GetItem), so the data path can stay untouched.
 			NormalizeInventory();
 
 			// Apply title grants (Alpha + Johnson) and prune any orphans
@@ -502,47 +492,32 @@ public sealed class TamerManager : Component
 	/// </summary>
 	private void NormalizeInventory()
 	{
+		// NON-DESTRUCTIVE diagnostic only. We do NOT remove unresolvable
+		// itemIds from the inventory dict here — that destroyed player data
+		// when manager init-order races caused beast materials to not be
+		// registered yet at Hydrate time. The bag display now filters
+		// through ItemManager.GetItem at render time (see
+		// InventoryPanel.GetTotalItemCount), so unresolvable IDs simply
+		// don't count toward the header and don't render — but they remain
+		// in the save, so if a missing registration is added in a future
+		// patch the items reappear instead of being permanently gone.
 		if ( CurrentTamer?.Inventory == null ) return;
 		if ( ItemManager.Instance == null )
 		{
-			// Defensive: if ItemManager hasn't booted yet, do nothing rather
-			// than wipe every entry. This shouldn't happen because Hydrate
-			// runs after SaveService.OnSaveLoaded fires (which is after every
-			// manager's OnStart), but be safe.
-			Log.Warning( "[TamerManager] NormalizeInventory skipped: ItemManager.Instance is null" );
+			Log.Warning( "[TamerManager] NormalizeInventory: ItemManager.Instance is null at Hydrate time — display will filter on its own" );
 			return;
 		}
 
-		var equipped = CurrentTamer.EquippedRelics ?? new();
-		var toRemove = new List<string>();
-
+		int ghostCount = 0;
 		foreach ( var kvp in CurrentTamer.Inventory )
 		{
-			if ( kvp.Value <= 0 )
-			{
-				toRemove.Add( kvp.Key );
-				continue;
-			}
-
-			// Never strip an equipped relic, even if the definition is missing
-			// — keep the slot intact so the equip UI doesn't crater.
-			if ( equipped.Contains( kvp.Key ) ) continue;
-
-			if ( ItemManager.Instance.GetItem( kvp.Key ) == null )
-			{
-				toRemove.Add( kvp.Key );
-			}
+			if ( kvp.Value <= 0 ) continue;
+			if ( ItemManager.Instance.GetItem( kvp.Key ) == null ) ghostCount++;
 		}
 
-		if ( toRemove.Count > 0 )
+		if ( ghostCount > 0 )
 		{
-			int totalGhostQty = 0;
-			foreach ( var id in toRemove )
-			{
-				totalGhostQty += CurrentTamer.Inventory.GetValueOrDefault( id, 0 );
-				CurrentTamer.Inventory.Remove( id );
-			}
-			Log.Warning( $"[TamerManager] NormalizeInventory: stripped {toRemove.Count} ghost itemId(s) totaling {totalGhostQty} qty — bag header now matches visible cards. Removed: {string.Join( ", ", toRemove )}" );
+			Log.Info( $"[TamerManager] NormalizeInventory (diag): {ghostCount} inventory entries don't resolve via ItemManager — hidden from bag display but preserved in save. If you add the registration later they'll reappear." );
 		}
 	}
 
