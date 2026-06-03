@@ -23,6 +23,54 @@ Template:
 
 ## Entries
 
+## 2026-06-03 — Dewdrop evolution stat-block AUDIT (validate-only; user writes the entry)
+
+**Scope:** Audited a proposed new evolution for shipped species `dewdrop` (Water/Nature Common, BST 290, standalone). NO code edited this turn — user writes the final species block + the new MoveDefinition. This entry records the validated numbers + reasoning. Working name "Duodew" (final name TBD, user owns naming). Beastbook #26 (verified free — handmade roster occupies 20-25, nothing at 26+).
+
+### Proposed → Validated (final)
+
+| Field | Proposed | Final | Note |
+|---|---|---|---|
+| Rarity | Uncommon, evo-only, no wild pool | Uncommon, evo-only | Confirmed. Satisfies wild-pool rule (no spawn in Dewdrop's zone). |
+| EvolutionLevel | 30 | 30 | Confirmed — leafcap_drift learns L28 (verified in code), so L30 lets player get the signature first. |
+| BST | 390 | 390 | Confirmed. +100 over Dewdrop (gap rule +80-140). Top of Uncommon-evolved band (340-400) but justified: terminal form + Weavermere zone avg BST = 390 (zone parity, not above). |
+| Distribution | 62/46/60/88/66/68 | **60/42/58/92/66/72** | Retuned within same 390 budget. Moved 6 pts off ATK/DEF/HP onto SpA/SPD to sharpen the special-attacker/speedster silhouette (ATK is Dewdrop's dump stat; SpA+SPD are its leads). Final shape SpA 92 > SPD 72 > SpD 66 > HP 60 > DEF 58 > ATK 42. |
+| Growth total | 34 | 34 | Confirmed (Uncommon band 32-38). |
+| Per-stat growth | 5/3/5/8/5/8 | **5/3/4/9/5/8** | Trimmed DEF growth 5→4, fed SpA 8→9 so the lead stat scales hardest (matches new base distribution). |
+| BaseCatchRate | 0.4 | 0.4 | Confirmed (Uncommon 0.35-0.50). Nominal — evo-only. |
+| BaseExpYield | 150 | 150 | Confirmed (Uncommon 120-160; high-band per "final form = wall" rule; matches Liliprince/Cerametz/Gnollium = 150). |
+| Signature "Wellspring Surge" | 85 BP, heal 25%, L34 | **90 BP, Drain 0.25f, L34** | Power 85→90 to match the two existing 90-BP heal-signatures (Liliprince Sovereign's Boon, Skunkape Shepherd's Vigil). Heal mechanic = **Drain 0.25f** (Shepherd's Vigil shape — heals 25% of damage dealt), NOT flat Heal-25%-max-HP (that's the Epic Liliprince's stronger perk; Uncommon gets the damage-scaled version). |
+
+### Reasoning anchors
+- **principles §1/§5:** BST is the budget, archetype chooses the shape. Proposed block drifted toward bulky all-rounder (DEF 60 nearly tied SpA lead, ATK over-invested). Retune keeps BST identical, sharpens to special-attacker/speedster — faithful to parent.
+- **reference-values evolution gap rule:** Common→Uncommon +80-140; +100 is mid.
+- **reference-values zone table:** Weavermere avg BST 390 → evo lands at zone parity for the last main zone.
+- **Signature parity:** both shipped heal-signatures are 90 BP Special; no tier reason to dock the evo's to 85. The "<90 BP" rule applies to COMMON signatures (Dewdrop's own leafcap_drift 50, Staiju 85) — this evo is Uncommon.
+
+### Final stat block (for user to author)
+```
+Uncommon, evo-only, Beastbook #26, Water/Nature, EvolvesFrom dewdrop @ L30
+BaseHP 60 / BaseATK 42 / BaseDEF 58 / BaseSpA 92 / BaseSpD 66 / BaseSPD 72   (BST 390)
+HPGrowth 5 / ATKGrowth 3 / DEFGrowth 4 / SpAGrowth 9 / SpDGrowth 5 / SPDGrowth 8   (total 34)
+BaseCatchRate 0.4 / BaseExpYield 150
+Signature (new MoveDefinition): wellspring_surge — Water Special, BP 90, Acc 100, PP 10,
+  MakesContact false, Effects { Drain 0.25f }; add to evo LearnableMoves @ L34
+On the Dewdrop entry: add EvolvesTo = "<evo id>", EvolutionLevel = 30
+```
+
+### Impact
+- **Fusion zero-drift:** unaffected (GeneticsCalculator reads gene values, not base stats).
+- **Power formula:** untouched — no divisor/multiplier; evo uses existing linear stat path.
+- **Save migration:** none for the species add, but once Dewdrop gains EvolvesTo/EvolutionLevel=30, existing player Dewdrops ≥L30 become evolution-eligible on next load — intended, flag to QA.
+- **New MoveDefinition:** wellspring_surge reuses existing Drain effect plumbing (same as Shepherd's Vigil) — zero new effect-type code.
+
+### Red flags triggered
+None. BST in-band, growth in-band, evo-only (no wild-pool violation), no Power-formula change, not Epic+, not a roster add/removal (evolution of a shipped species is permitted content).
+
+**Approved by:** N/A — validate-only audit per user directive 2026-06-03 ("audit, validate, propose final figures … do NOT edit MonsterManager.cs — I'll write the final species entry myself"). User authors the species block + MoveDefinition.
+
+---
+
 ## 2026-05-18 — Off-element moveset enrichment pass (full handmade roster)
 
 **Scope:** Follow-up to the same-day lore-audit pass. That pass was almost entirely same-element clash-fixing; this pass proactively ADDS lore-supported OFF-ELEMENT moves, applying the Dewdrop precedent (a Water/Nature beast that gained dawn-light Spirit + dawn-mist Wind moves because its description supports them). Beasts are NOT STAB-locked — description-driven flavor beats element purity (per `project_moveset_off_type_rule.md` / CLAUDE.md). **6 beasts touched, 6 slot swaps.** Zero new MoveDefinitions, zero stat/growth/BST changes, all 1-for-1, all reuse existing MoveDatabase IDs.
