@@ -491,7 +491,7 @@
 	else if (currentView == "team")
 	{
 		<!-- Team Selection View -->
-		<div class="team-view @(isTransitioningToBattle ? "transitioning-out" : "") @(isTransitioningToList ? "transitioning-back" : "")">
+		<div class="team-view @(teamViewEntered ? "entered" : "") @(isTransitioningToBattle ? "transitioning-out" : "") @(isTransitioningToList ? "transitioning-back" : "")">
 		<div class="roster-header">
 			<div class="header-left">
 				<button class="back-btn" onclick=@GoToList onmouseover=@(() => SoundManager.PlayHover())><img class="back-icon" src="ui/icons/buttons/back.svg" /><img class="back-icon-anim" src="ui/icons/animated/back.webp" /></button>
@@ -741,6 +741,26 @@
 		</div>
 	}
 
+	@* ── Tier 3 expedition-CLEAR celebration ──────────────────────────────
+	   One-shot "ZONE CLEARED" burst on a full zone clear. The @key bumps every
+	   clear so the node is FRESHLY MOUNTED each time — which is exactly when
+	   s&box @keyframes fire, so the slam + ray sweep + spark ring replay on
+	   every clear without a transition two-step. pointer-events:none so it
+	   never blocks the global result popup that lands on top of it. *@
+	@if ( showClearCelebrate )
+	{
+		<div class="clear-celebrate" @key="clearCelebrateVersion">
+			<div class="cc-flash"></div>
+			<div class="cc-rays"></div>
+			<div class="cc-ring"></div>
+			<div class="cc-banner">
+				<div class="cc-kicker">EXPEDITION</div>
+				<div class="cc-title">ZONE CLEARED</div>
+				<div class="cc-underline"></div>
+			</div>
+		</div>
+	}
+
 </div>
 
 @code {
@@ -762,6 +782,19 @@
 		set { if (ExpeditionManager.Instance != null) ExpeditionManager.Instance.AutoContractTargetSpecies = value; }
 	}
 	private bool hasAnimatedCards = false;
+
+	// Team-view entrance: the `.team-view` mounts in its pre-entrance state, then
+	// `teamViewEntered` flips true one frame later so CSS TRANSITIONS (not @keyframes,
+	// which only fire on first DOM mount) drive the staggered slide-in. Re-entering
+	// the team view resets this to false → the cascade replays every open.
+	private bool teamViewEntered = false;
+
+	// Tier 3 expedition-CLEAR celebration. When OnBattleComplete resolves a full
+	// zone clear, ExpeditionPanel mounts a one-shot "ZONE CLEARED" burst overlay
+	// (render-keyed so it replays on every clear) that lands the milestone beat
+	// the panel itself owns, behind the global ExpeditionResultPopup.
+	private bool showClearCelebrate = false;
+	private int clearCelebrateVersion = 0;
 
 	// Dropdown states
 	private bool difficultyDropdownOpen = false;
@@ -1792,6 +1825,13 @@
 				battleTokens = ExpeditionManager.Instance?.LastAwardedBossTokens ?? 0;
 			}
 
+			// Tier 3 milestone beat: a successful FULL zone clear earns a one-shot
+			// "ZONE CLEARED" burst the panel renders itself (render-keyed so it
+			// replays on every clear). Defeats and partial exits skip it — the
+			// celebration must feel earned, never fire on a loss.
+			if ( playerWon )
+				_ = FireClearCelebrate();
+
 			// Fire the global result popup. Keep currentView = "battle" so the
 			// BattleView + 3D scene stay visible behind the modal.
 			ExpeditionResultPopup.Show(
@@ -1804,6 +1844,25 @@
 				team: resultTeam );
 		}
 
+		StateHasChanged();
+	}
+
+	// Tier 3 expedition-CLEAR celebration. Mounts a render-keyed burst overlay
+	// (the version bump forces a fresh DOM node so the transition replays even on
+	// a back-to-back clear), holds briefly, then unmounts. Purely additive —
+	// sits behind the global ExpeditionResultPopup and doesn't gate any flow.
+	private async Task FireClearCelebrate()
+	{
+		// Bump the @key so the overlay mounts FRESH — that fresh mount is what
+		// makes the @keyframes play (re-using the node would not replay them).
+		clearCelebrateVersion++;
+		showClearCelebrate = true;
+		SoundManager.PlaySuccess();
+		StateHasChanged();
+		// Hold the burst, then tear it down. The result popup carries the screen
+		// from here, so the celebration is a quick "you did it" punctuation.
+		await Task.Delay( 1100 );
+		showClearCelebrate = false;
 		StateHasChanged();
 	}
 
@@ -1917,16 +1976,24 @@
 
 		currentView = "list";
 		isTransitioningToList = false;
+		teamViewEntered = false; // re-arm the entrance cascade for next time
 		StateHasChanged();
 	}
 
-	private void GoToTeam()
+	private async void GoToTeam()
 	{
 		SoundManager.PlayForward();
 		// Reset hard mode to match the newly selected expedition's unlocked state.
 		// hardModeEnabled is local UI state — no manager-side cache to clear post-v1.2.0.
 		hardModeEnabled = false;
 		currentView = "team";
+		// Arm the transition-driven entrance cascade: mount in the pre-entered
+		// state, then flip `.entered` next frame so transitions fire (and replay
+		// on every re-open, unlike @keyframes).
+		teamViewEntered = false;
+		StateHasChanged();
+		await Task.Delay( 30 );
+		teamViewEntered = true;
 		StateHasChanged();
 	}
 
@@ -2027,6 +2094,10 @@
 		// Include transition states
 		hash.Add(isTransitioningToBattle);
 		hash.Add(isTransitioningToList);
+		// Team-view entrance cascade + clear-celebration overlay
+		hash.Add(teamViewEntered);
+		hash.Add(showClearCelebrate);
+		hash.Add(clearCelebrateVersion);
 		// Include dropdown states
 		hash.Add(difficultyDropdownOpen);
 		hash.Add(catchDropdownOpen);

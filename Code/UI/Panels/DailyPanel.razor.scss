@@ -1453,7 +1453,11 @@ DailyPanel {
 .today-hero.entered {
 	opacity: 1;
 	transform: translateY(0);
+	// 26.06.03: real transition-delay now works — the three streak sections
+	// arm on a single render flip and cascade top → bottom purely in CSS.
+	// Hero leads (no delay), week strip + milestone follow on 0.12 / 0.24.
 	transition: opacity 0.35s ease-out, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+	transition-delay: 0s;
 }
 
 // Featured beast — pixel sprite of the rotating legendary teaser, standing
@@ -1792,6 +1796,7 @@ DailyPanel {
 	opacity: 1;
 	transform: translateY(0);
 	transition: opacity 0.4s ease-out, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+	transition-delay: 0.12s;
 }
 
 .week-strip-label {
@@ -2014,6 +2019,7 @@ DailyPanel {
 	opacity: 1;
 	transform: translateY(0);
 	transition: opacity 0.4s ease-out, transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+	transition-delay: 0.24s;
 }
 
 .milestone-line-label {
@@ -2124,3 +2130,334 @@ DailyPanel {
 	padding-top: 20px;
 	margin-top: 8px;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// DAY-7 SETPIECE (Tier 4) — fullscreen cinematic
+// ═══════════════════════════════════════════════════════════════
+//
+// Hades-shaped reveal: anticipation → reveal → celebration → settle,
+// driven by the .stage-N class set on the layer root in C#.
+//
+// ARCHITECTURE (26.06.03 review fix): elements that PERSIST across stages
+// (scrim / spotlight / pillar / prize) drive their enter + exit via CSS
+// TRANSITIONS keyed off the parent `.day7-setpiece.stage-N` class — NOT
+// via per-phase @keyframes class swaps. s&box only plays a @keyframe on an
+// element's FIRST DOM MOUNT; swapping `.phase-2` → `.phase-3` on a still-
+// mounted element does NOT replay a keyframe (the earlier code relied on
+// this and the loop/exit phases were silently dead). Transitions DO re-fire
+// on every class toggle, so the stage-driven cascade is reliable.
+// Elements that MOUNT-AND-UNMOUNT exactly when they animate (iris @stage 1,
+// rays/banner/confetti @stage 3) keep @keyframes — those fire fresh on mount.
+// Infinite ambient loops (spotlight blaze, prize idle bob) start at the
+// element's mount (stage 2) and run continuously — the allowed loop case.
+//
+// Constraints honored: position:absolute against the fullscreen <root>
+// (no fixed); no display:block; no inset box-shadow; gradients use
+// rgba(...,0) not the `transparent` keyword; radial washes use percent
+// stops with no shape keyword; all line-heights in px.
+//
+// Anti-gacha note: the prize (Master Ink) is shown plainly the whole
+// time — no silhouette-then-reveal "what did I get?" tease. The beats
+// celebrate an EARNED 7-day streak, not an RNG roll.
+
+.day7-setpiece {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 2000;
+	pointer-events: all; // swallow clicks during the cinematic
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+}
+
+// ── Backdrop dim ─────────────────────────────────────────────
+// Persistent element — enter + exit driven by parent .stage-N TRANSITION
+// (re-fires on class toggle, unlike a @keyframe swap on a mounted element).
+.day7-scrim {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-color: rgba(4, 3, 10, 0);
+	transition: background-color 0.7s ease-out;
+}
+.day7-setpiece.stage-1 .day7-scrim,
+.day7-setpiece.stage-2 .day7-scrim,
+.day7-setpiece.stage-3 .day7-scrim { background-color: rgba(4, 3, 10, 0.92); }
+.day7-setpiece.stage-4 .day7-scrim {
+	background-color: rgba(4, 3, 10, 0);
+	transition: background-color 0.5s ease-in;
+}
+
+// ── Warm radial spotlight wash behind the prize ──────────────
+// Percent-stop radial with no shape keyword (s&box-safe). Enter/exit via
+// parent .stage-N transition; the blaze "alive" loop is an infinite
+// @keyframe that starts at mount (stage 2) and runs continuously — the
+// allowed ambient-loop case (no class-swap replay needed).
+.day7-spotlight {
+	position: absolute;
+	width: 900px;
+	height: 900px;
+	border-radius: 50%;
+	background-color: rgba(251, 191, 36, 0);
+	background-image: radial-gradient(rgba(251, 191, 36, 0.28) 0%, rgba(167, 139, 250, 0.12) 38%, rgba(0, 0, 0, 0) 68%);
+	opacity: 0;
+	transition: opacity 0.55s ease-out;
+	// Mounts at stage 2 → blaze scale-loop begins immediately, runs through
+	// 3 & 4. It animates TRANSFORM only — opacity stays fully transition-
+	// owned so the stage-4 fade-out isn't overridden by the infinite loop
+	// (animations beat transitions on a shared property).
+	animation: day7SpotBlaze 1.4s ease-in-out infinite;
+}
+.day7-setpiece.stage-2 .day7-spotlight,
+.day7-setpiece.stage-3 .day7-spotlight { opacity: 1; }
+.day7-setpiece.stage-4 .day7-spotlight {
+	opacity: 0;
+	transition: opacity 0.5s ease-in;
+}
+@keyframes day7SpotBlaze { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+
+// ── Anticipation iris — a ring that contracts toward the center ──
+.day7-iris {
+	position: absolute;
+	width: 1400px;
+	height: 1400px;
+	border-radius: 50%;
+	border: 3px solid rgba(251, 191, 36, 0.5);
+	box-shadow: 0 0 60px rgba(251, 191, 36, 0.35);
+	opacity: 0;
+	// Mounts only during stage 1 (Razor @if) so the contract fires on mount.
+	animation: day7IrisContract 0.7s ease-in forwards;
+}
+@keyframes day7IrisContract {
+	0%   { opacity: 0; transform: scale(1.0); }
+	30%  { opacity: 0.9; }
+	100% { opacity: 0; transform: scale(0.12); }
+}
+
+// ── Light pillar — the prize rides up on it ──────────────────
+// Persistent element: rises on a stage-2 transition (opacity + scaleY),
+// holds through celebration, fades on stage 4. No flicker loop — the
+// spotlight blaze + prize bob + rays carry celebration motion, and a
+// flicker on opacity would fight the transition-driven fade-out anyway.
+.day7-pillar {
+	position: absolute;
+	width: 220px;
+	height: 760px;
+	background-image: linear-gradient(to top, rgba(251, 191, 36, 0) 0%, rgba(251, 191, 36, 0.45) 45%, rgba(255, 240, 200, 0.6) 100%);
+	opacity: 0;
+	transform: scaleY(0.2);
+	transform-origin: center bottom;
+	transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.day7-setpiece.stage-2 .day7-pillar,
+.day7-setpiece.stage-3 .day7-pillar { opacity: 0.7; transform: scaleY(1); }
+.day7-setpiece.stage-4 .day7-pillar {
+	opacity: 0;
+	transition: opacity 0.45s ease-in;
+}
+
+// ── God-rays (celebration) ───────────────────────────────────
+// Mounts ONLY at stage 3 (Razor @if day7Stage == 3) and unmounts at the
+// settle, so the fade-in @keyframe fires fresh on mount. No phase-4 exit
+// rule — the element unmounts at settle and the scrim fade + prize lift
+// cover the transition. (The old .phase-4 swap was a dead keyframe.)
+.day7-rays {
+	position: absolute;
+	width: 4px;
+	height: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	animation: day7RaysIn 0.4s ease-out forwards;
+}
+@keyframes day7RaysIn  { 0% { opacity: 0; } 100% { opacity: 0.85; } }
+
+.day7-ray {
+	position: absolute;
+	width: 6px;
+	height: 420px;
+	background-image: linear-gradient(to top, rgba(251, 191, 36, 0) 0%, rgba(251, 191, 36, 0.5) 100%);
+	transform-origin: center bottom;
+	animation: day7RaySweep 7s linear infinite;
+}
+// Twelve rays fanned at 30° intervals — explicit per-ray rotation since
+// s&box has no :nth-child. Each rotates around its bottom edge.
+.day7-ray.ray-0  { transform: rotate(0deg); }
+.day7-ray.ray-1  { transform: rotate(30deg); }
+.day7-ray.ray-2  { transform: rotate(60deg); }
+.day7-ray.ray-3  { transform: rotate(90deg); }
+.day7-ray.ray-4  { transform: rotate(120deg); }
+.day7-ray.ray-5  { transform: rotate(150deg); }
+.day7-ray.ray-6  { transform: rotate(180deg); }
+.day7-ray.ray-7  { transform: rotate(210deg); }
+.day7-ray.ray-8  { transform: rotate(240deg); }
+.day7-ray.ray-9  { transform: rotate(270deg); }
+.day7-ray.ray-10 { transform: rotate(300deg); }
+.day7-ray.ray-11 { transform: rotate(330deg); }
+@keyframes day7RaySweep { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }
+
+// ── The hero prize ───────────────────────────────────────────
+// Persistent from stage 2. Enter/exit driven by parent .stage-N TRANSITION
+// on the WRAP (opacity + transform with an overshoot bezier for the "slam"
+// weight). The idle bob lives on the inner .day7-prize-img as an infinite
+// loop so it composes with — never fights — the wrap's enter/exit transform.
+.day7-prize-wrap {
+	position: absolute;
+	margin-top: -70px; // lift above the banner text
+	width: 200px;
+	height: 200px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	transform: translateY(60px) scale(0.4);
+	z-index: 5;
+	// Overshoot bezier approximates the slam's pop-and-settle in a transition.
+	transition: opacity 0.4s ease-out, transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.day7-setpiece.stage-2 .day7-prize-wrap,
+.day7-setpiece.stage-3 .day7-prize-wrap { opacity: 1; transform: translateY(0) scale(1); }
+.day7-setpiece.stage-4 .day7-prize-wrap {
+	opacity: 0;
+	transform: translateY(-40px) scale(0.85);
+	transition: opacity 0.45s ease-in, transform 0.45s ease-in;
+}
+
+.day7-prize-glow {
+	position: absolute;
+	width: 280px;
+	height: 280px;
+	border-radius: 50%;
+	background-color: rgba(251, 191, 36, 0);
+	background-image: radial-gradient(rgba(251, 191, 36, 0.5) 0%, rgba(251, 191, 36, 0) 65%);
+	z-index: 0;
+}
+
+.day7-prize-img {
+	width: 160px;
+	height: 160px;
+	image-rendering: pixelated;
+	background-repeat: no-repeat; // s&box object-fit:contain tiling guard
+	filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.7));
+	position: relative;
+	z-index: 1;
+	// Idle bob — infinite loop on the inner img, starts at mount (stage 2),
+	// composes with the wrap's enter/exit transform.
+	animation: day7PrizeIdle 2.4s ease-in-out infinite;
+}
+@keyframes day7PrizeIdle { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+// ── Name slam banner ─────────────────────────────────────────
+.day7-banner {
+	position: absolute;
+	margin-top: 150px; // sits below the prize
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	z-index: 6;
+	opacity: 0;
+	transform: translateY(20px);
+}
+// Mounts only at stage 3 and unmounts at settle, so the slam-in @keyframe
+// fires fresh on mount. No phase-4 exit (it was a dead class swap) — the
+// scrim fade covers the settle.
+.day7-banner { animation: day7BannerIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+@keyframes day7BannerIn { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
+
+.day7-eyebrow {
+	font-size: 13px;
+	font-weight: 800;
+	letter-spacing: 4px;
+	text-transform: uppercase;
+	color: rgba(251, 191, 36, 0.85);
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
+	line-height: 14px;
+}
+
+.day7-prize-name {
+	// Loudest stamp on screen — the P5 italic-display dialect at hero scale.
+	font-size: 52px;
+	font-weight: 900;
+	letter-spacing: 4px;
+	text-transform: uppercase;
+	font-style: italic;
+	transform: skewX(-8deg);
+	color: #ffffff;
+	text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85), 0 0 28px rgba(251, 191, 36, 0.6);
+	line-height: 56px;
+}
+
+.day7-subline {
+	font-size: 15px;
+	font-weight: 700;
+	letter-spacing: 1px;
+	color: rgba(255, 255, 255, 0.8);
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
+	line-height: 18px;
+}
+
+// ── Confetti / ember burst ───────────────────────────────────
+.day7-confetti {
+	position: absolute;
+	width: 4px;
+	height: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	// Mounts only at stage 3 (Razor @if) — fires fresh on mount.
+	animation: day7ConfShow 0.2s ease-out forwards;
+}
+@keyframes day7ConfShow { 0% { opacity: 0; } 100% { opacity: 1; } }
+
+.day7-conf {
+	position: absolute;
+	width: 9px;
+	height: 9px;
+	border-radius: 2px;
+	background-color: #fbbf24;
+	opacity: 0;
+}
+// Gold + purple alternating confetti (purple ties to the panel's accent).
+.day7-conf.c1, .day7-conf.c4, .day7-conf.c7, .day7-conf.c10,
+.day7-conf.c13, .day7-conf.c16 { background-color: #a78bfa; }
+.day7-conf.c2, .day7-conf.c5, .day7-conf.c8, .day7-conf.c11,
+.day7-conf.c14, .day7-conf.c17 { background-color: #ffe08a; border-radius: 50%; }
+
+// Each confetti piece arcs out + falls. Explicit per-piece keyframes (no
+// :nth-child) with varied direction + duration for an asymmetric pop.
+// Confetti mounts only at stage 3, so no ancestor gate is needed.
+.day7-conf.c0  { animation: confA 1.6s ease-out 0.00s forwards; }
+.day7-conf.c1  { animation: confB 1.7s ease-out 0.04s forwards; }
+.day7-conf.c2  { animation: confC 1.5s ease-out 0.02s forwards; }
+.day7-conf.c3  { animation: confD 1.8s ease-out 0.06s forwards; }
+.day7-conf.c4  { animation: confE 1.6s ease-out 0.03s forwards; }
+.day7-conf.c5  { animation: confF 1.7s ease-out 0.08s forwards; }
+.day7-conf.c6  { animation: confA 1.5s ease-out 0.05s forwards; }
+.day7-conf.c7  { animation: confB 1.9s ease-out 0.01s forwards; }
+.day7-conf.c8  { animation: confC 1.6s ease-out 0.07s forwards; }
+.day7-conf.c9  { animation: confD 1.7s ease-out 0.09s forwards; }
+.day7-conf.c10 { animation: confE 1.5s ease-out 0.02s forwards; }
+.day7-conf.c11 { animation: confF 1.8s ease-out 0.05s forwards; }
+.day7-conf.c12 { animation: confA 1.7s ease-out 0.08s forwards; }
+.day7-conf.c13 { animation: confB 1.6s ease-out 0.03s forwards; }
+.day7-conf.c14 { animation: confC 1.9s ease-out 0.10s forwards; }
+.day7-conf.c15 { animation: confD 1.5s ease-out 0.04s forwards; }
+.day7-conf.c16 { animation: confE 1.7s ease-out 0.06s forwards; }
+.day7-conf.c17 { animation: confF 1.6s ease-out 0.11s forwards; }
+
+@keyframes confA { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 30% { opacity: 1; transform: translate(180px, -160px) scale(1); } 100% { opacity: 0; transform: translate(240px, 120px) scale(0.6); } }
+@keyframes confB { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 30% { opacity: 1; transform: translate(-180px, -150px) scale(1); } 100% { opacity: 0; transform: translate(-240px, 130px) scale(0.6); } }
+@keyframes confC { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 30% { opacity: 1; transform: translate(90px, -210px) scale(1); } 100% { opacity: 0; transform: translate(130px, 100px) scale(0.6); } }
+@keyframes confD { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 30% { opacity: 1; transform: translate(-90px, -200px) scale(1); } 100% { opacity: 0; transform: translate(-130px, 110px) scale(0.6); } }
+@keyframes confE { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 30% { opacity: 1; transform: translate(240px, -90px) scale(1); } 100% { opacity: 0; transform: translate(300px, 150px) scale(0.6); } }
+@keyframes confF { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 30% { opacity: 1; transform: translate(-240px, -80px) scale(1); } 100% { opacity: 0; transform: translate(-300px, 160px) scale(0.6); } }

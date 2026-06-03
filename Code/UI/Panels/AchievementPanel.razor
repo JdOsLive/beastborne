@@ -87,7 +87,7 @@
 
 		@* SCROLLABLE BODY — achievement list (flat children of overflow scroll) *@
 		<div class="modal-scroll-wrap">
-			<div class="modal-scroll">
+			<div class="modal-scroll list-v@(listVersion % 8)">
 				@{
 					var list = GetFilteredAchievements();
 				}
@@ -103,9 +103,9 @@
 				}
 				else
 				{
-					@foreach (var achievement in list)
+					@for (int i = 0; i < list.Count; i++)
 					{
-						@RenderAchievementRow(achievement)
+						@RenderAchievementRow(list[i], i)
 					}
 				}
 				<div class="scroll-tail"></div>
@@ -113,6 +113,38 @@
 		</div>
 
 	</div>
+
+	@* ───────────────────────────────────────────────────────────
+	   CLAIM CELEBRATION (Tier 3) — sibling of .ach-modal so it paints
+	   above the whole modal and is never clipped. Mounts only during
+	   the claim window. Version key in the class forces the entrance
+	   transitions to replay on every claim.
+	   ─────────────────────────────────────────────────────────── *@
+	@if (claimCelebrationActive)
+	{
+		<div class="claim-celebration cb-@claimCelebrationVersion @(claimCelebrationIsAll ? "is-all" : "")">
+			<div class="cb-flash"></div>
+			<div class="cb-ring"></div>
+			<div class="cb-ring cb-ring-2"></div>
+			<div class="cb-particles">
+				@for (int i = 0; i < 12; i++)
+				{
+					<div class="cb-particle p@(i)"></div>
+				}
+			</div>
+			<div class="cb-card">
+				<div class="cb-card-icon">
+					<iconify icon="@claimCelebrationIcon" Size=@(30) Color="#fcd34d" />
+				</div>
+				<span class="cb-card-eyebrow">@claimCelebrationEyebrow</span>
+				<span class="cb-card-title">@claimCelebrationTitle</span>
+				@if (!string.IsNullOrEmpty(claimCelebrationReward))
+				{
+					<span class="cb-card-reward">@claimCelebrationReward</span>
+				}
+			</div>
+		</div>
+	}
 </root>
 
 @code {
@@ -124,6 +156,20 @@
 	public static bool IsVisible { get; set; } = false;
 	private string currentCategory = "all";
 	private string _lastHoveredKey;
+
+	// Staggered list entrance — incremented on open + category switch so the
+	// per-row transition-delay cascade replays every time the list remounts.
+	private int listVersion = 0;
+
+	// Tier 3 claim celebration state.
+	private bool claimCelebrationActive = false;
+	private int claimCelebrationVersion = 0;
+	private bool claimCelebrationIsAll = false;
+	private string claimCelebrationEyebrow = "ACHIEVEMENT · CLAIMED";
+	private string claimCelebrationTitle = "";
+	private string claimCelebrationReward = "";
+	private string claimCelebrationIcon = "lucide:trophy";
+	private string _celebratingId = "";
 
 	// ──────────────────────────────────────────────
 	// CATEGORY DEFINITIONS — id, label, iconify icon, accent color (hex)
@@ -192,9 +238,9 @@
 		if ( firstTime ) Instance = this;
 	}
 
-	public static void Show() { IsVisible = true; SoundManager.PlayPopup(); }
+	public static void Show() { IsVisible = true; if ( Instance != null ) Instance.listVersion++; SoundManager.PlayPopup(); }
 	public static void Close() { IsVisible = false; SoundManager.PlayPopdown(); }
-	public static void Toggle() { IsVisible = !IsVisible; if ( IsVisible ) SoundManager.PlayPopup(); else SoundManager.PlayPopdown(); }
+	public static void Toggle() { IsVisible = !IsVisible; if ( IsVisible ) { if ( Instance != null ) Instance.listVersion++; SoundManager.PlayPopup(); } else SoundManager.PlayPopdown(); }
 
 	// NOTE: Esc is reserved by s&box for the system pause / leave-game menu.
 	// Close via overlay click + close button only — don't bind Escape.
@@ -221,22 +267,82 @@
 		if ( currentCategory == category ) return;
 		SoundManager.PlayClick();
 		currentCategory = category;
+		// Replay the staggered entrance for the freshly-filtered list.
+		listVersion++;
 	}
 
-	private void ClaimReward( string achievementId )
+	private async void ClaimReward( string achievementId )
 	{
-		if ( AchievementManager.Instance?.ClaimReward( achievementId ) == true )
-		{
-			SoundManager.PlaySelect();
-		}
-	}
-
-	private void ClaimAll()
-	{
+		// Guard re-entrancy while a celebration is mid-flight.
+		if ( claimCelebrationActive ) return;
 		if ( AchievementManager.Instance == null ) return;
 
+		var achievement = AchievementManager.Instance.AllAchievements.FirstOrDefault( a => a.Id == achievementId );
+		if ( achievement == null ) return;
+
+		var progress = GetProgress( achievementId );
+		if ( progress == null || !progress.IsUnlocked || progress.IsClaimed ) return;
+
+		// t=0: layered success cue + mount the Tier 3 celebration overlay.
+		// Capture display content BEFORE the manager call flips the row to claimed.
+		var catId = GetCategoryIdForAchievement( achievement );
+		var firstReward = ( achievement.Rewards != null && achievement.Rewards.Count > 0 ) ? achievement.Rewards[0] : null;
+
+		claimCelebrationIsAll = false;
+		claimCelebrationEyebrow = "ACHIEVEMENT · CLAIMED";
+		claimCelebrationTitle = achievement.Name;
+		claimCelebrationReward = firstReward != null ? GetRewardText( firstReward ) : "";
+		claimCelebrationIcon = firstReward != null ? GetRewardIconify( firstReward ) : GetCategoryIcon( catId );
+		_celebratingId = achievementId;
+
+		StartCelebration();
+
+		SoundManager.PlayClick();
+		SoundManager.PlaySuccess();
+		SoundManager.PlayGoldReward();
+
+		// Defer the grant so the row flip + GameHUD currency roll-up land as the
+		// burst peaks — cause-effect link (DailyPanel pattern).
+		await GameTask.DelaySeconds( 0.42f );
+		AchievementManager.Instance?.ClaimReward( achievementId );
+
+		await EndCelebrationAfter( 0.9f );
+	}
+
+	private async void ClaimAll()
+	{
+		if ( claimCelebrationActive ) return;
+		if ( AchievementManager.Instance == null ) return;
+
+		// Snapshot the pending set BEFORE claiming so we can show a representative
+		// reward and an accurate count in the celebration.
+		var pending = AchievementManager.Instance.AllAchievements
+			.Where( a =>
+			{
+				var p = GetProgress( a.Id );
+				return p?.IsUnlocked == true && p?.IsClaimed != true;
+			} )
+			.ToList();
+
+		if ( pending.Count == 0 ) return;
+
+		claimCelebrationIsAll = true;
+		claimCelebrationEyebrow = "ALL REWARDS · CLAIMED";
+		claimCelebrationTitle = L( "ui.achievement.rewards_collected", pending.Count, pending.Count > 1 ? "s" : "" );
+		claimCelebrationReward = "";
+		claimCelebrationIcon = "lucide:gift";
+		_celebratingId = "";
+
+		StartCelebration();
+
+		SoundManager.PlayClick();
+		SoundManager.PlaySuccess();
+		SoundManager.PlayGoldReward();
+
+		await GameTask.DelaySeconds( 0.42f );
+
 		int claimed = 0;
-		foreach ( var achievement in AchievementManager.Instance.AllAchievements )
+		foreach ( var achievement in pending )
 		{
 			if ( AchievementManager.Instance.ClaimReward( achievement.Id ) )
 				claimed++;
@@ -244,13 +350,28 @@
 
 		if ( claimed > 0 )
 		{
-			SoundManager.PlaySelect();
 			NotificationManager.Instance?.AddNotification(
 				NotificationType.Success,
 				L( "ui.achievement.rewards_claimed" ),
 				L( "ui.achievement.rewards_collected", claimed, claimed > 1 ? "s" : "" )
 			);
 		}
+
+		await EndCelebrationAfter( 0.9f );
+	}
+
+	// ── Celebration lifecycle ──
+	private void StartCelebration()
+	{
+		claimCelebrationVersion++;
+		claimCelebrationActive = true;
+	}
+
+	private async Task EndCelebrationAfter( float seconds )
+	{
+		await GameTask.DelaySeconds( seconds );
+		claimCelebrationActive = false;
+		_celebratingId = "";
 	}
 
 	// ──────────────────────────────────────────────
@@ -382,7 +503,7 @@
 	// ROW RENDERER
 	// ──────────────────────────────────────────────
 
-	private RenderFragment RenderAchievementRow( Achievement achievement ) => __builder =>
+	private RenderFragment RenderAchievementRow( Achievement achievement, int index ) => __builder =>
 	{
 		var progress = GetProgress( achievement.Id );
 		var isUnlocked = progress?.IsUnlocked ?? false;
@@ -395,7 +516,15 @@
 
 		var stateClass = isClaimed ? "claimed" : (canClaim ? "claimable" : (isUnlocked ? "unlocked" : "locked"));
 
-		<div class="ach-row state-@stateClass cat-@catId">
+		// Staggered entrance: real transition-delay (26.06.03). Cap the cumulative
+		// delay so a long list still finishes its cascade quickly — only the first
+		// dozen visible rows carry a perceptible offset.
+		var stagger = Math.Min( index, 12 ) * 0.035f;
+		var delayStyle = $"transition-delay: {stagger.ToString( System.Globalization.CultureInfo.InvariantCulture )}s;";
+
+		var celebrateClass = ( achievement.Id == _celebratingId && claimCelebrationActive ) ? " row-celebrate" : "";
+
+		<div class="ach-row state-@stateClass cat-@catId@(celebrateClass)" style="@delayStyle">
 
 			@* Left: category-tinted icon diamond (or lock if hidden secret) *@
 			<div class="ach-icon-col">
@@ -481,6 +610,9 @@
 		var hash = new HashCode();
 		hash.Add( IsVisible );
 		hash.Add( currentCategory );
+		hash.Add( listVersion );
+		hash.Add( claimCelebrationActive );
+		hash.Add( claimCelebrationVersion );
 		hash.Add( GetUnlockedCount() );
 		hash.Add( GetTotalCount() );
 		hash.Add( GetUnclaimedCount() );

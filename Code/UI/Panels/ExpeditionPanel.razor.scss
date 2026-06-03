@@ -79,7 +79,11 @@ ExpeditionPanel {
 	line-height: 24px;
 }
 
-// Team view wrapper with transition
+// Team view wrapper. Entrance is TRANSITION-driven (not @keyframes) so it
+// replays every time the player re-opens the team view — the element mounts
+// in the pre-entered state below and the `.entered` class (set one frame
+// later from code) animates it home. 26.06.03 transition-delay then lets the
+// header / team / start-button cascade in sequence (see children below).
 .team-view {
 	display: flex;
 	flex-direction: column;
@@ -88,7 +92,54 @@ ExpeditionPanel {
 	min-height: 0;
 	position: relative;
 	z-index: 1;
-	animation: slideInFromRight 0.3s ease-out;
+
+	// Pre-entered state. IMPORTANT: the parent fades on OPACITY ONLY — it must
+	// NOT carry a `transform`, because a transform on this flex parent poisons
+	// flex-grow / flex-wrap width resolution in the `.available-monsters` grid
+	// inside it (documented s&box quirk). The parent just fades; the slide is
+	// carried by the `.team-section` leaf controls (the scroll-grid cards fade
+	// opacity-only — see leak note on `.monster-option` below).
+	opacity: 0;
+	transition: opacity 0.32s ease-out;
+
+	&.entered {
+		opacity: 1;
+	}
+
+	// ── Staggered child cascade (real transition-delay, 26.06.03) ──────────
+	// Each major block starts pre-entered and reveals on its own delay once
+	// `.team-view.entered` is set. Reads as "the screen assembles itself."
+	//
+	// FLEX-POISON GUARD: `.roster-header` (holds the wrap-flex FilterBar) and
+	// `.team-selection` (holds the `flex-wrap` `.available-monsters` grid whose
+	// live column count the keyboard nav MEASURES) fade on OPACITY ONLY — a
+	// lingering transform on them would mis-resolve those wrap widths. Only the
+	// `.team-section` leaf controls (no measured wrap grid under them) carry the
+	// translateY slide. `.selected-team` is a fixed 3-slot column, safe to slide.
+	.roster-header,
+	.team-selection {
+		opacity: 0;
+		transition: opacity 0.3s ease-out;
+	}
+
+	.team-section .team-label,
+	.team-section .selected-team,
+	.team-section .difficulty-toggle,
+	.team-section .btn-start {
+		opacity: 0;
+		transform: translateY(16px);
+		transition: opacity 0.3s ease-out, transform 0.4s cubic-bezier(0.18, 0.9, 0.28, 1.12);
+	}
+
+	&.entered {
+		.roster-header  { opacity: 1; transition-delay: 0.04s; }
+		.team-selection { opacity: 1; transition-delay: 0.12s; }
+		// Right-column team panel assembles top→bottom after the grid lands.
+		.team-section .team-label      { opacity: 1; transform: translateY(0); transition-delay: 0.20s; }
+		.team-section .selected-team   { opacity: 1; transform: translateY(0); transition-delay: 0.28s; }
+		.team-section .difficulty-toggle { opacity: 1; transform: translateY(0); transition-delay: 0.36s; }
+		.team-section .btn-start       { opacity: 1; transform: translateY(0); transition-delay: 0.44s; }
+	}
 
 	&.transitioning-out {
 		animation: slideOutToLeft 0.3s ease-in forwards;
@@ -96,15 +147,6 @@ ExpeditionPanel {
 
 	&.transitioning-back {
 		animation: slideOutToRight 0.25s ease-in forwards;
-	}
-}
-
-@keyframes slideInFromRight {
-	from {
-		transform: translateX(40px);
-	}
-	to {
-		transform: translateX(0);
 	}
 }
 
@@ -1707,7 +1749,7 @@ ExpeditionPanel {
 .monster-option {
 	border-radius: 16px;
 	border: 2px solid rgba(255, 255, 255, 0);
-	transition: all 0.2s ease;
+	transition: transform 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
 	pointer-events: all;
 
 	&:hover {
@@ -1723,6 +1765,48 @@ ExpeditionPanel {
 		opacity: 0.4;
 		pointer-events: none;
 	}
+}
+
+// ── Staggered roster-card reveal on team-view entrance ─────────────────────
+// Real transition-delay (26.06.03) ripples the cards in after the grid block
+// lands. Pre-entered state lives here; `.entered` releases them.
+//
+// OPACITY-ONLY (no transform): `.available-monsters` is an `overflow-y: scroll`
+// grid, and the s&box quirk is that scroll containers do NOT clip descendant
+// `transform` — even a transient reveal translateY can poke a bottom-row card
+// past the scroll viewport mid-animation. The whole left column already fades
+// opacity-only by the flex-poison guard above, so the cards match: a clean
+// fade-ripple reads as the cascade without any leak surface.
+.team-view .available-monsters .monster-option {
+	opacity: 0;
+	transition: opacity 0.3s ease-out;
+}
+
+.team-view.entered .available-monsters .monster-option {
+	opacity: 1;
+
+	// Wave the first two rows in; deeper cards arrive together so a big roster
+	// doesn't drag the cascade out. Base offset ~0.22s lines up with the grid
+	// block (.team-selection) settling.
+	&:nth-child(1)  { transition-delay: 0.22s; }
+	&:nth-child(2)  { transition-delay: 0.26s; }
+	&:nth-child(3)  { transition-delay: 0.30s; }
+	&:nth-child(4)  { transition-delay: 0.34s; }
+	&:nth-child(5)  { transition-delay: 0.38s; }
+	&:nth-child(6)  { transition-delay: 0.41s; }
+	&:nth-child(7)  { transition-delay: 0.44s; }
+	&:nth-child(8)  { transition-delay: 0.47s; }
+	&:nth-child(9)  { transition-delay: 0.49s; }
+	&:nth-child(10) { transition-delay: 0.51s; }
+	&:nth-child(11) { transition-delay: 0.53s; }
+	&:nth-child(12) { transition-delay: 0.54s; }
+}
+
+// In-team cards keep their dimmed resting state once revealed (the cascade
+// only animates opacity in; the 0.4 dim is applied by .in-team and
+// wins because it's the resting value the transition lands on after entrance).
+.team-view.entered .available-monsters .monster-option.in-team {
+	opacity: 0.4;
 }
 
 // ============================================
@@ -3239,4 +3323,159 @@ ExpeditionPanel {
 .result-popup-root .result-popup-backdrop,
 .result-popup-root .result-popup-modal {
 	pointer-events: all;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TIER 3 — EXPEDITION CLEAR CELEBRATION
+// One-shot "ZONE CLEARED" burst rendered by ExpeditionPanel on a full zone
+// clear, behind the global result popup. Render-keyed → freshly mounted each
+// clear, so these @keyframes (which only fire on first mount in s&box) replay
+// every time. ~1s total: green wash flash → light-ray sweep → spark ring +
+// banner slam. Milestone weight, NOT a Tier 4 fullscreen setpiece — the
+// result popup is the destination; this is the punctuation that gets it there.
+// ═══════════════════════════════════════════════════════════════════════
+// Scoped under .expedition-panel to beat the panel's
+// `.expedition-panel > *:not(...) { position: relative; z-index: 1 }` rule,
+// which would otherwise pin this overlay in-flow at z-index 1.
+.expedition-panel .clear-celebrate {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 90; // below the result-popup-root (z 100) — it lands on top
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none; // never blocks the result popup buttons
+	overflow: hidden;
+}
+
+// Green success wash — quick bloom-and-fade across the whole panel.
+.cc-flash {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background-image: radial-gradient(rgba(74, 222, 128, 0.42) 0%, rgba(74, 222, 128, 0.10) 45%, rgba(74, 222, 128, 0) 75%);
+	opacity: 0;
+	animation: ccFlash 1.0s ease-out both;
+}
+
+@keyframes ccFlash {
+	0%   { opacity: 0; }
+	18%  { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+// Conic-feel light rays — a wide soft gradient bar that sweeps + fades behind
+// the banner. Uses a plain linear-gradient (no `transparent` keyword) and a
+// scale/rotate-free transform so it reads as a glow flare, not a spinner.
+.cc-rays {
+	position: absolute;
+	width: 720px;
+	height: 320px;
+	border-radius: 50%;
+	background-image: linear-gradient(to right, rgba(134, 239, 172, 0) 0%, rgba(134, 239, 172, 0.22) 50%, rgba(134, 239, 172, 0) 100%);
+	opacity: 0;
+	transform: scale(0.6);
+	animation: ccRays 1.0s ease-out both;
+}
+
+@keyframes ccRays {
+	0%   { opacity: 0; transform: scale(0.6); }
+	22%  { opacity: 0.9; transform: scale(1.04); }
+	100% { opacity: 0; transform: scale(1.18); }
+}
+
+// Expanding spark ring — a thin bright-bordered circle that pops out and fades.
+.cc-ring {
+	position: absolute;
+	width: 120px;
+	height: 120px;
+	border-radius: 50%;
+	border: 3px solid rgba(134, 239, 172, 0.85);
+	box-shadow: 0 0 24px rgba(74, 222, 128, 0.5);
+	opacity: 0;
+	transform: scale(0.3);
+	animation: ccRing 0.85s ease-out both;
+}
+
+@keyframes ccRing {
+	0%   { opacity: 0; transform: scale(0.3); }
+	14%  { opacity: 1; }
+	100% { opacity: 0; transform: scale(3.4); }
+}
+
+// Banner — kicker + slammed title + underline, P5-stamp dialect to match the
+// panel's CTA language (italic / skew / hard offset shadow).
+.cc-banner {
+	position: relative;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	transform: skewX(-8deg);
+}
+
+.cc-kicker {
+	font-size: 13px;
+	font-weight: 800;
+	letter-spacing: 5px;
+	line-height: 16px;
+	color: rgba(134, 239, 172, 0.95);
+	text-transform: uppercase;
+	font-style: italic;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
+	opacity: 0;
+	animation: ccKicker 1.0s ease-out both;
+	animation-delay: 0.10s;
+}
+
+@keyframes ccKicker {
+	0%   { opacity: 0; transform: translateY(8px); }
+	22%  { opacity: 1; transform: translateY(0); }
+	82%  { opacity: 1; transform: translateY(0); }
+	100% { opacity: 0; transform: translateY(-4px); }
+}
+
+.cc-title {
+	font-size: 56px;
+	font-weight: 900;
+	letter-spacing: 4px;
+	line-height: 60px;
+	color: rgb(236, 253, 245);
+	text-transform: uppercase;
+	font-style: italic;
+	text-shadow: 0 0 30px rgba(74, 222, 128, 0.55), 3px 3px 0 rgba(0, 0, 0, 0.6);
+	opacity: 0;
+	// Overshoot slam — drops in oversized then settles.
+	animation: ccTitle 1.0s cubic-bezier(0.16, 0.9, 0.26, 1.18) both;
+}
+
+@keyframes ccTitle {
+	0%   { opacity: 0; transform: scale(1.4); }
+	16%  { opacity: 1; transform: scale(0.96); }
+	26%  { transform: scale(1.0); }
+	80%  { opacity: 1; transform: scale(1.0); }
+	100% { opacity: 0; transform: scale(1.02); }
+}
+
+.cc-underline {
+	width: 0;
+	height: 4px;
+	border-radius: 2px;
+	background-color: rgba(74, 222, 128, 0.9);
+	box-shadow: 0 0 14px rgba(74, 222, 128, 0.6);
+	animation: ccUnderline 1.0s ease-out both;
+	animation-delay: 0.18s;
+}
+
+@keyframes ccUnderline {
+	0%   { width: 0; opacity: 0; }
+	30%  { width: 280px; opacity: 1; }
+	80%  { width: 280px; opacity: 1; }
+	100% { width: 280px; opacity: 0; }
 }

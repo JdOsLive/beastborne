@@ -609,6 +609,80 @@
 			}
 		</div>
 	}
+
+	<!-- ═══════════════════════════════════════════════════════════════
+	     DAY-7 SETPIECE (Tier 4) — fullscreen cinematic for the week's
+	     final claim. Driven by day7Stage: 0 idle, 1 anticipation (dim +
+	     iris), 2 reveal (light pillar + Master Ink slam), 3 celebration
+	     (name slam + radial gold rays + confetti), 4 settle. The whole
+	     layer is gated on day7SetpieceActive (mounts only during the
+	     sequence) and all motion is CSS @keyframes — fine here because the
+	     layer remounts fresh every Day-7 claim, so first-mount play is the
+	     only play we need.
+	     ═══════════════════════════════════════════════════════════════ -->
+	@if (day7SetpieceActive)
+	{
+		<div class="day7-setpiece stage-@day7Stage">
+			<!-- Persistent layers (scrim / spotlight / pillar / prize) DON'T
+			     carry a per-phase class — their enter/hold/exit ride the
+			     parent .stage-N class via CSS TRANSITIONS (which re-fire on
+			     class toggle; a @keyframe on a still-mounted element does
+			     NOT replay). Only mount-and-unmount layers keep @keyframes. -->
+			<div class="day7-scrim"></div>
+
+			<!-- Spotlight / pillar / prize mount with the layer (stage 0) in
+			     their hidden base state so the stage-2 ENTER transition fires
+			     on a real class change (mount-into-state won't transition). -->
+			<div class="day7-spotlight"></div>
+			<div class="day7-pillar"></div>
+
+			<!-- Anticipation iris ring — mounts ONLY for stage 1 so its
+			     contract @keyframe fires fresh on mount. -->
+			@if (day7Stage == 1)
+			{
+				<div class="day7-iris"></div>
+			}
+
+			<!-- Radial god-rays — mount ONLY at celebration (stage 3) so the
+			     fade-in @keyframe fires fresh; unmount at settle. -->
+			@if (day7Stage == 3)
+			{
+				<div class="day7-rays">
+					@for (int r = 0; r < 12; r++)
+					{
+						<div class="day7-ray ray-@r"></div>
+					}
+				</div>
+			}
+
+			<!-- The hero prize: Master Ink slams in at reveal (stage-2 enter
+			     transition), idle-bobs through celebration, lifts out on
+			     settle (stage-4 exit transition). Mounts with the layer in
+			     hidden base state so its stage-2 enter transition fires. -->
+			<div class="day7-prize-wrap">
+				<div class="day7-prize-glow"></div>
+				<img class="day7-prize-img" src="ui/items/consumables/master_ink.png" />
+			</div>
+
+			<!-- Name slam + streak banner — mounts ONLY at celebration. -->
+			@if (day7Stage == 3)
+			{
+				<div class="day7-banner">
+					<span class="day7-eyebrow">7-DAY STREAK COMPLETE</span>
+					<span class="day7-prize-name">MASTER INK</span>
+					<span class="day7-subline">+ @($"{GetTodayReward().Gold:N0}") Gold@(GetTodayReward().Gems > 0 ? $"  ·  {GetTodayReward().Gems} Gems" : "")</span>
+				</div>
+
+				<!-- Confetti / ember burst -->
+				<div class="day7-confetti">
+					@for (int c = 0; c < 18; c++)
+					{
+						<div class="day7-conf c@(c)"></div>
+					}
+				</div>
+			}
+		</div>
+	}
 </root>
 
 @code {
@@ -639,6 +713,12 @@
 	private bool claimBurstIsMilestone = false;
 	private bool claimBurstHasInk = false;
 	private bool claimBurstHasToken = false;
+
+	// Day-7 Tier-4 setpiece state. day7Stage drives the CSS phase classes:
+	//   0 idle · 1 anticipation (dim + iris contract) · 2 reveal (pillar +
+	//   prize slam) · 3 celebration (name slam + rays + confetti) · 4 settle.
+	private bool day7SetpieceActive = false;
+	private int day7Stage = 0;
 
 	private static DailyPanel _instance;
 
@@ -682,15 +762,19 @@
 	//   3 = milestone line slides in from above
 	private async Task PlayStreakRevealSequence()
 	{
+		// 26.06.03: the visual stagger now lives in CSS via real
+		// `transition-delay` on .today-hero / .week-strip / .milestone-line
+		// (see the .streak-content.entered rules). One render flip arms all
+		// three; CSS cascades them top → bottom. We keep the per-section
+		// swoosh cues here, timed to land on each section's CSS delay, so
+		// the staircase still has audio weight (sound is UI).
 		streakRevealStage = 0;
 		await GameTask.DelaySeconds( 0.04f );
-		streakRevealStage = 1;
+		streakRevealStage = 3; // arm all three sections at once; CSS delays them
 		SoundManager.PlaySwoosh();
-		await GameTask.DelaySeconds( 0.18f );
-		streakRevealStage = 2;
+		await GameTask.DelaySeconds( 0.13f );
 		SoundManager.PlaySwoosh();
-		await GameTask.DelaySeconds( 0.14f );
-		streakRevealStage = 3;
+		await GameTask.DelaySeconds( 0.13f );
 		SoundManager.PlaySwoosh();
 	}
 
@@ -759,8 +843,18 @@
 	private async void ClaimDailyReward()
 	{
 		// Guard against double-clicks mid-sequence
-		if ( claimBurstActive ) return;
+		if ( claimBurstActive || day7SetpieceActive ) return;
 		if ( IsTodayClaimed() ) return;
+
+		// Day 7 is the week's payoff — escalate to the Tier-4 cinematic
+		// instead of the routine Tier-2 burst. Keeps routine claims tight
+		// (per feel-principles "restraint makes impact possible") so this
+		// moment reads as clearly bigger.
+		if ( GetTodayReward().IsDay7 )
+		{
+			_ = PlayDay7Setpiece();
+			return;
+		}
 
 		// t=0: layered sound + click + button overshoot + particle burst
 		SoundManager.PlayClick();
@@ -794,6 +888,66 @@
 	{
 		await GameTask.DelaySeconds( 0.1f );
 		claimButtonPulse = false;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// DAY-7 SETPIECE (Tier 4) — anticipation → reveal → celebration
+	// ═══════════════════════════════════════════════════════════════
+	//
+	// Hades-shaped boon reveal (NOT a gacha pull — the prize is known, so
+	// the beats celebrate an EARNED outcome rather than concealing an RNG
+	// roll). ~3.4s total: a held-beat dim + iris contract builds tension,
+	// then a light pillar carries Master Ink up with a name slam, then a
+	// god-ray + confetti celebration, then a settle that hands control back.
+	//
+	// Persistent layers (scrim/spotlight/pillar/prize) animate via CSS
+	// TRANSITIONS keyed on the .stage-N parent class — those only fire on a
+	// class CHANGE after mount, so we mount the layer at stage 0 (all base/
+	// hidden) for one frame, THEN advance to stage 1+. That stage-0 priming
+	// frame is what makes the scrim dim-in and every later enter/exit actually
+	// transition instead of popping. Mount-and-unmount layers (iris @1, rays/
+	// banner/confetti @3) use @keyframes — those fire fresh on their mount.
+	private async Task PlayDay7Setpiece()
+	{
+		day7SetpieceActive = true;
+		day7Stage = 0;
+
+		// Stage-0 priming frame — layer mounts hidden so the stage-1 flip
+		// drives the scrim's dim-in transition (mount-into-state won't fade).
+		await GameTask.DelaySeconds( 0.05f );
+
+		// Stage 1 — ANTICIPATION. Dim the room, a tense low cue, the click.
+		SoundManager.PlayClick();
+		day7Stage = 1;
+		await GameTask.DelaySeconds( 0.7f );
+
+		// Stage 2 — REVEAL. The prize slams up the light pillar. Big hit.
+		SoundManager.PlaySuccess();
+		SoundManager.PlayGoldReward();
+		day7Stage = 2;
+		await GameTask.DelaySeconds( 0.55f );
+
+		// Stage 3 — CELEBRATION. Name slam, god-rays, confetti. Second
+		// layered success so the audio swells rather than repeating flat.
+		SoundManager.PlaySuccess();
+		day7Stage = 3;
+
+		// Commit the actual reward mid-celebration so the GameHUD currency
+		// roll-up fires while the rays are still blazing (cause↔effect).
+		await GameTask.DelaySeconds( 0.45f );
+		DailyRewardManager.Instance?.ClaimDailyReward();
+
+		// Hold the celebration so the player can feel it (Tier-4 rule:
+		// "stop, watch, feel it, remember it").
+		await GameTask.DelaySeconds( 1.0f );
+
+		// Stage 4 — SETTLE. Everything eases out, scrim lifts.
+		SoundManager.PlaySwoosh();
+		day7Stage = 4;
+		await GameTask.DelaySeconds( 0.55f );
+
+		day7SetpieceActive = false;
+		day7Stage = 0;
 	}
 
 	private int GetNextMilestone()
@@ -949,6 +1103,8 @@
 		hash.Add( claimButtonPulse );
 		hash.Add( claimBurstActive );
 		hash.Add( claimBurstVersion );
+		hash.Add( day7SetpieceActive );
+		hash.Add( day7Stage );
 		hash.Add( hoveredDay );
 		return hash.ToHashCode();
 	}

@@ -821,3 +821,266 @@ AchievementPanel {
 	color: rgba(255, 255, 255, 0.4);
 	text-align: center;
 }
+
+// ════════════════════════════════════════════════════════════════
+// STAGGERED LIST ENTRANCE (26.06.03 — real transition-delay)
+//
+// Each .ach-row carries an inline `transition-delay` (computed per-row
+// index in code-behind, capped at 12 rows). The `.list-v@N` class on the
+// scroll container changes on every open + category switch, which forces
+// the DOM subtree to re-evaluate so the entrance transition replays.
+//
+// Rows transition opacity + translateY only — NO transform lift on hover
+// (scroll-clip rule), but a one-shot translateY on ENTRANCE is safe here:
+// it animates from below into place and settles inside the viewport (it
+// never overhangs the clip during steady state). The base hidden state is
+// declared on .ach-row; the .list-v* gate flips it to the resting state so
+// the transition fires fresh each remount.
+// ════════════════════════════════════════════════════════════════
+
+// Hidden (pre-entrance) state on every row. The entrance animates opacity +
+// translateY; the inline per-row `transition-delay` (from code-behind) drives
+// the cascade. We DON'T put bg/border in this transition list so the existing
+// hover-feedback transition (declared on .ach-row) is untouched and stays
+// instant — only opacity + transform are delayed for the stagger.
+//
+// NOTE on opacity vs state dimming: claimed rows rest at opacity 0.65. The
+// `.visible` resting rule below restores them to their NATURAL resting opacity
+// per state (1 for active, 0.65 for claimed) so the entrance never fights the
+// claimed-dim treatment.
+.modal-scroll .ach-row {
+	opacity: 0;
+	transform: translateY(10px);
+	transition: opacity 0.3s ease-out,
+				transform 0.34s cubic-bezier(0.16, 1, 0.3, 1),
+				background-color 0.14s ease-out,
+				border-color 0.14s ease-out;
+
+	// The inline per-row transition-delay would otherwise lag hover feedback by
+	// up to ~0.42s, making hovers feel broken. Zero it on hover so bg/border
+	// snap immediately — only the one-shot entrance carries the stagger delay.
+	&:hover {
+		transition-delay: 0s;
+	}
+}
+
+// Resting (revealed) state gated behind the `.visible` class. The `<root>`
+// element carries BOTH `ach-container` and `visible` (see the .razor markup),
+// so we gate on `.ach-container.visible` — the SAME proven selector the modal
+// entrance already uses (line ~60). Using the element-name form
+// (`AchievementPanel.visible`) is unverified in s&box and risked never
+// matching, which would leave every row stuck at opacity:0 (invisible list).
+// `.visible` toggles on every Show/Close, so the resting state re-applies each
+// open and the per-row transition-delay cascade replays. Category switches
+// remount rows with fresh content (and bump list-v*), re-firing the entrance.
+.ach-container.visible .modal-scroll .ach-row {
+	opacity: 1;
+	transform: translateY(0);
+}
+
+// Preserve the claimed-row dim through the entrance — higher specificity than
+// the generic .visible resting rule above.
+.ach-container.visible .modal-scroll .ach-row.state-claimed {
+	opacity: 0.65;
+}
+
+// One-shot emphasis on the row being claimed — gold border flare while the
+// celebration overlay is up. Border/bg only (inside scroll clip).
+.ach-row.row-celebrate {
+	background-color: rgba(251, 191, 36, 0.16);
+	border-color: rgba(252, 211, 77, 0.9);
+}
+
+// ════════════════════════════════════════════════════════════════
+// TIER 3 CLAIM CELEBRATION
+//
+// Sibling of .ach-modal (full-bleed overlay). Mounts only during the claim
+// window; the `cb-@version` class makes the @keyframes fire fresh each claim
+// (a brand-new DOM subtree mounts per claim, so first-mount keyframes are
+// the correct tool here — they DO play, because the node is new every time).
+// ════════════════════════════════════════════════════════════════
+
+.claim-celebration {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 20;
+}
+
+// Soft gold screen flash — quick wash, then fades.
+.cb-flash {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-image: radial-gradient(
+		rgba(252, 211, 77, 0.34) 0%,
+		rgba(251, 191, 36, 0.10) 38%,
+		rgba(0, 0, 0, 0) 70%);
+	opacity: 0;
+	animation: cbFlash 0.9s ease-out;
+}
+
+@keyframes cbFlash {
+	0%   { opacity: 0; }
+	16%  { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+// Expanding gold ring — the "burst" shockwave.
+.cb-ring {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 120px;
+	height: 120px;
+	margin-top: -60px;
+	margin-left: -60px;
+	border-radius: 999px;
+	border: 3px solid rgba(252, 211, 77, 0.85);
+	background-color: rgba(0, 0, 0, 0);
+	opacity: 0;
+	animation: cbRing 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cb-ring-2 {
+	border-color: rgba(251, 191, 36, 0.5);
+	animation: cbRing2 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes cbRing {
+	0%   { transform: scale(0.3); opacity: 0.95; }
+	100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes cbRing2 {
+	0%   { transform: scale(0.3); opacity: 0; }
+	18%  { transform: scale(0.6); opacity: 0.7; }
+	100% { transform: scale(3.4); opacity: 0; }
+}
+
+// Radial particle burst — 12 gold motes flung outward from center.
+.cb-particles {
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	width: 1px;
+	height: 1px;
+}
+
+.cb-particle {
+	position: absolute;
+	top: -4px;
+	left: -4px;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background-color: rgba(253, 224, 71, 0.95);
+	opacity: 0;
+}
+
+// 12 evenly-spread directions (30° apart). Each mote flings out + fades.
+.cb-particle.p0  { animation: cbP0  0.85s ease-out; }
+.cb-particle.p1  { animation: cbP1  0.85s ease-out; }
+.cb-particle.p2  { animation: cbP2  0.85s ease-out; }
+.cb-particle.p3  { animation: cbP3  0.85s ease-out; }
+.cb-particle.p4  { animation: cbP4  0.85s ease-out; }
+.cb-particle.p5  { animation: cbP5  0.85s ease-out; }
+.cb-particle.p6  { animation: cbP6  0.85s ease-out; }
+.cb-particle.p7  { animation: cbP7  0.85s ease-out; }
+.cb-particle.p8  { animation: cbP8  0.85s ease-out; }
+.cb-particle.p9  { animation: cbP9  0.85s ease-out; }
+.cb-particle.p10 { animation: cbP10 0.85s ease-out; }
+.cb-particle.p11 { animation: cbP11 0.85s ease-out; }
+
+@keyframes cbP0  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(96px, 0) scale(0.3); opacity: 0; } }
+@keyframes cbP1  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(83px, 48px) scale(0.3); opacity: 0; } }
+@keyframes cbP2  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(48px, 83px) scale(0.3); opacity: 0; } }
+@keyframes cbP3  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(0, 96px) scale(0.3); opacity: 0; } }
+@keyframes cbP4  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(-48px, 83px) scale(0.3); opacity: 0; } }
+@keyframes cbP5  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(-83px, 48px) scale(0.3); opacity: 0; } }
+@keyframes cbP6  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(-96px, 0) scale(0.3); opacity: 0; } }
+@keyframes cbP7  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(-83px, -48px) scale(0.3); opacity: 0; } }
+@keyframes cbP8  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(-48px, -83px) scale(0.3); opacity: 0; } }
+@keyframes cbP9  { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(0, -96px) scale(0.3); opacity: 0; } }
+@keyframes cbP10 { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(48px, -83px) scale(0.3); opacity: 0; } }
+@keyframes cbP11 { 0% { transform: translate(0,0) scale(1); opacity: 1; } 100% { transform: translate(83px, -48px) scale(0.3); opacity: 0; } }
+
+// Center reward card — slams in with overshoot, holds, fades out.
+.cb-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	padding: 20px 32px;
+	background-color: rgba(20, 16, 10, 0.96);
+	border: 2px solid rgba(252, 211, 77, 0.85);
+	border-radius: 14px;
+	box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7),
+				0 0 0 1px rgba(0, 0, 0, 0.4);
+	opacity: 0;
+	transform: scale(0.7);
+	animation: cbCard 0.9s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes cbCard {
+	0%   { opacity: 0; transform: scale(0.7); }
+	22%  { opacity: 1; transform: scale(1.06); }
+	34%  { transform: scale(1); }
+	78%  { opacity: 1; transform: scale(1); }
+	100% { opacity: 0; transform: scale(0.96); }
+}
+
+.cb-card-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 56px;
+	height: 56px;
+	min-width: 56px;
+	min-height: 56px;
+	background-color: rgba(251, 191, 36, 0.16);
+	border: 1.5px solid rgba(252, 211, 77, 0.8);
+	border-radius: 12px;
+	transform: rotate(45deg);
+	margin-bottom: 4px;
+
+	iconify {
+		transform: rotate(-45deg);
+	}
+}
+
+.cb-card-eyebrow {
+	font-size: 10px;
+	font-weight: 900;
+	color: rgba(252, 211, 77, 0.85);
+	letter-spacing: 0.22em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.cb-card-title {
+	font-size: 18px;
+	font-weight: 800;
+	color: #ffffff;
+	line-height: 22px;
+	letter-spacing: 0.02em;
+	text-align: center;
+	white-space: normal;
+	max-width: 320px;
+}
+
+.cb-card-reward {
+	font-size: 13px;
+	font-weight: 800;
+	color: #fcd34d;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}

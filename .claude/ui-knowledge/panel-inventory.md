@@ -124,12 +124,14 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Files:** `Code/UI/Panels/DailyPanel.razor` (~600), `.scss` (~1200)
 - **Purpose:** Daily login streak (7-day track) + daily/weekly/monthly missions, side-by-side reward and milestone display.
 - **Visual style notes:** 1200px wide modal, pop-@popVersion class retriggers modal-scale entrance, escalating day-node heights (90→165px), Day 7 gold tint + rotating legendary silhouette (3s cycle), bg-scroll SVG pattern. Uses the established header with sort-btn pill tabs.
-- **Juice tier (current / target):** **Tier 2 solid** on routine claim (Phase 1 landed 2026-04-08): coordinated claim sequence with button overshoot + 12-particle radial burst + gold/ink/token reward flyers toward GameHUD currency pill + deferred manager call timed to flyer landing for cause-effect; staggered content reveal on open (streak → day-nodes cascade → reward row, total ~700ms); mission card state hierarchy (near-complete amber tint + purple glow pulse, completed green glow + pulsing claim button, claimed compressed + dimmed). Target: **Tier 4 setpiece on Day 7** (Phase 2).
+- **Juice tier (current / target):** **Tier 2 routine claim + Tier 4 Day-7 setpiece** (Phase 1 2026-04-08, Phase 2 2026-06-03). Routine claim: coordinated button overshoot + 12-particle radial burst + gold/ink/token reward flyers toward GameHUD currency pill + deferred manager call timed to flyer landing. Day-7 claim now branches to a fullscreen cinematic (`PlayDay7Setpiece()` → `.day7-setpiece` overlay, sibling of the modal, z-index 2000): 4-stage anticipation (scrim dim + contracting iris, ~700ms held beat) → reveal (Master Ink slams up a light pillar + spotlight bloom) → celebration (52px name-slam banner + 12 god-rays + 18 confetti, manager call committed mid-celebration for cause↔effect) → settle. **Animation architecture (corrected in 2026-06-03 adversarial review):** PERSISTENT layers (scrim/spotlight/pillar/prize-wrap) drive enter+exit via CSS TRANSITIONS keyed on the `.day7-setpiece.stage-N` parent class — NOT per-phase `@keyframes` class swaps (the original code did that and the loop/exit phases were silently dead, since a @keyframe never replays on a still-mounted element). They mount at a stage-0 priming frame (`day7Stage=0; await 0.05s`) in hidden base state so later stage flips are real class changes the transitions fire on. Infinite ambient loops (spotlight scale-blaze, prize-img idle bob) are `@keyframes` on a DIFFERENT property than the transition owns. MOUNT-AND-UNMOUNT layers (iris @stage 1, rays/banner/confetti @stage 3) are gated `@if (stage == N)` so their entrance `@keyframes` fire fresh on mount; scrim fade covers the settle (no exit anim on those). Open stagger converted to real `transition-delay` (26.06.03): hero/week-strip/milestone cascade off ONE `.entered` flip at 0/0.12/0.24s; per-section swoosh cues kept in C#. Mission card state hierarchy unchanged.
 - **Known issues:**
   - ~~Claim action has zero visual payoff~~ FIXED (Phase 1).
   - ~~Mission cards visually identical regardless of state~~ FIXED (Phase 1).
   - ~~Reveal on open is a single modal scale~~ FIXED (Phase 1).
-  - Day 7 claim still uses the routine Tier 2 claim path — this is intentional until Phase 2 lands the Tier 4 setpiece (milestone flag is already wired via `claimBurstIsMilestone` → purple particle mix, but no fullscreen sequence yet).
+  - ~~Day 7 claim uses the routine Tier 2 path~~ FIXED (Phase 2, 2026-06-03) — now a true T4 fullscreen setpiece. The legacy `claimBurstIsMilestone` purple-particle mix is now only reachable by the milestone-line CLAIM button, not the Day-7 daily claim.
+  - Day-7 setpiece has NO dedicated sound cue — it reuses `PlayClick`/`PlaySuccess`/`PlayGoldReward`/`PlaySwoosh`. A true T4 wants its own audio (anticipation drone → reveal impact → celebration swell → music duck). PROPOSED to user; no sound files created (out of scope). ~50% feel loss per "sound is UI" until filled.
+  - Day-7 prize is hardcoded to Master Ink in the setpiece markup (matches the current reward). If the Day-7 reward ever becomes data-driven, the setpiece img/name must read from the reward def.
   - Streak counter number itself is still static — no roll-up animation when the streak advances. Low priority; the day-track + node stagger carry the entrance.
   - Potential s&box clip risk at `streak-day-big` (42px font / 42 line-height) — still working, untouched by Phase 1.
   - `missions-content` has `padding-bottom: 200px` (line ~671) which is a scroll-height workaround — still load-bearing, do not remove.
@@ -183,13 +185,13 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Known issues:** Search input is placeholder only (line 24 comment) — may be inert.
 - **Neighbors:** ShopPanel, MonsterDetailPanel (equip flow).
 
-### AchievementPanel
-- **Files:** `Code/UI/Panels/AchievementPanel.razor` (359), `.scss`
-- **Purpose:** Achievement list with unlocked counter.
-- **Visual style notes:** Modal + overlay, current/total counter in header-right, standard pattern.
-- **Juice tier (current / target):** Tier 1. Target: Tier 3 on unlock celebration.
-- **Known issues:** Unknown without deeper read. Likely flat-list pattern similar to DailyPanel missions.
-- **Neighbors:** DailyPanel, ProfilePanel.
+### AchievementPanel _[T3 juice pass 2026-06-03]_
+- **Files:** `Code/UI/Panels/AchievementPanel.razor` (~600), `.scss` (~1000)
+- **Purpose:** Achievement list with unlocked counter, per-category tabs, claim + claim-all.
+- **Visual style notes:** Center modal (720px, 84%h), gold chrome + per-category accent on rows/tabs/progress bars. P5-stamp tabs. Unclaimed gold banner with CLAIM ALL. Category icon diamonds per row.
+- **Juice tier (current / target):** **Tier 3 (achieved 2026-06-03).** Entrance: rows cascade in via real `transition-delay` (26.06.03) capped at 12 rows, gated on `.ach-container.visible` (the `<root>` carries both classes — element-name selector `AchievementPanel.visible` is unverified in s&box and was corrected in adversarial review) so it replays every open; category switch remounts rows so it re-fires (also bumps `listVersion % 8`). Hover delay zeroed so feedback stays instant. **T3 claim celebration:** `pointer-events:none` sibling-of-modal overlay (mounts via `@if claimCelebrationActive`), gold radial flash + 2 expanding shockwave rings + 12-mote radial burst (`cbP0..cbP11`) + center reward card slam naming the achievement + its first reward; `ClaimReward()` deferred ~0.42s so row flip + GameHUD currency roll-up land as the burst peaks. Claim All reuses the overlay with `is-all` variant + claimed count. Anti-gacha clean (deterministic rewards, "CLAIMED" framing). Target: keep — milestone-frequency claims are correctly T3.
+- **Known issues:** Celebration sound is layered `PlayClick + PlaySuccess + PlayGoldReward` (reuses existing cues). A dedicated achievement-claim chime would sharpen the T3 audio signature — no such file exists, flag for product if wanted. Reward card shows only the FIRST reward when an achievement grants multiple (kept the card uncluttered); the row's reward pills still show all.
+- **Neighbors:** DailyPanel (sibling reward panel + shared claim/burst patterns), ProfilePanel.
 
 ### ProfilePanel
 - **Files:** `Code/UI/Panels/ProfilePanel.razor` (669), `.scss`
@@ -267,8 +269,8 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Files:** `Code/UI/Panels/BreedingPanel.razor` (615), `.scss`
 - **Purpose:** Fusion/breeding UI — 2 parent slots + result preview.
 - **Visual style notes:** Parent slots (filled/empty), uses MonsterCard component.
-- **Juice tier (current / target):** Tier 2. Target: Tier 4 on fuse setpiece (should be an evolution-grade moment).
-- **Known issues:** Almost certainly flat on the actual fuse action — needs review. Candidate for Tier 4 work after DailyPanel.
+- **Juice tier (current / target):** Tier 4 on fuse (achieved 2026-06-03). The fusion-result modal is now a 4-stage cinematic driven by the `fusionStage` int: (0) hidden → (1) wash darkens + `.result-charge` ring spins up over a ~620ms held anticipation beat (soft `PlayForward` cue) → (2) `.result-flash` bloom (gated on `fusionStage == 2`, auto-fades) + portrait SLAM (`scale(0.55)→1` overshoot) on a `.result-pillar` light column + kicker kern-open + `PlayMonsterCatch` impact → (3) gene table rows cascade in via inline `transition-delay` (0.04→0.50s) + `PlaySuccess` chime. All transition-based (no `@keyframes`) so it replays on every fuse. Anti-gacha-safe: celebrates the deterministic result, not an RNG roll. Tier 1-2 elsewhere (parent-slot hover/fill, fusion-icon ambient pulse).
+- **Known issues:** `.result-charge` / `.result-flash` use clamp-sized discs centered via fixed negative margins (`-180px`/`-220px`) tuned for typical viewport heights — at extreme `vh` the soft glow may sit slightly off-center, but it's purely decorative behind the panel. Sound is placeholder reuse (PlayForward/PlayMonsterCatch/PlaySuccess) — a dedicated fusion cue would complete the T4 feel (flag for audio).
 - **Neighbors:** MonsterRosterPanel (fusion view class on roster).
 
 ### SkillTreePanel _[batch polish 2026-04-17]_
@@ -305,12 +307,15 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Neighbors:** FilterBar (shared, untouched), MonsterRosterPanel, BeastiaryManager (data API, untouched).
 - **Data additions:** `MonsterSpecies.IsAIGenerated` (bool) and `MonsterSpecies.ArtistCredit` (string, nullable) — additive, UI-only, do not affect battle or breeding. `SecondaryElement` already existed.
 
-### ContractNegotiationPanel
-- **Files:** `Code/UI/Panels/ContractNegotiationPanel.razor` (533), `.scss`
+### ContractNegotiationPanel _[T3 capture celebration + per-slot keyframe entrance, 2026-06-03]_
+- **Files:** `Code/UI/Panels/ContractNegotiationPanel.razor` (~545), `.scss` (~1000)
 - **Purpose:** Radial diamond UI overlay for capturing beasts — 4 approach options positioned around the target beast's 3D screen position.
-- **Visual style notes:** Radial positioning, diamond container, result class states, 4 position classes (top/right/bottom/left).
-- **Juice tier (current / target):** Tier 2. Target: Tier 3 on successful capture.
-- **Known issues:** Unique radial layout — worth preserving, may have specific s&box positioning quirks.
+- **Visual style notes:** Radial positioning, diamond container, result class states, 4 position classes (top/right/bottom/left) preserved exactly.
+- **Juice tier (current / target):** **Tier 3 achieved on successful capture (2026-06-03).** Open entrance: the 4 approach diamonds fan in left→right (screen slot 1→4) via per-slot `@keyframes` (`fanInTop/Mid/Bottom`) staggered by `animation-delay` (0.02/0.09/0.16/0.23s); the bottom chrome slides up after via `bottomSectionUp` (0.28s delay). NOTE: the panel is MOUNTED FRESH every contract (BattleView `@if showNegotiationOverlay`, `IsVisible=@true` hardcoded), so it never toggles an already-painted element — that's exactly the case where CSS transitions DON'T fire (no prior state to interpolate from). Keyframes are the correct tool here for the same reason they're correct on the result subtree. An earlier pass wired this to `transition-delay` on `.contract-radial.visible`; that was reverted to keyframes because the entrance simply never played (diamonds appeared instantly). Success reveal is a Hades-shape sequence (fresh-mount `@keyframes`, fires every catch): frame slam + white anticipation flash → title slam (skew-preserving) → portrait spring + expanding light-ring + warm-green radial-ray bloom → 8-spark radial burst (per-spark directional keyframes `sparkPop0-7`) → gentle green border-breath settle. Text + CONTINUE fade up last. Deterministic / anti-gacha: identical beat for a 30% or 100% catch, no RNG framing.
+- **Known issues:**
+  - Interactive transforms on the two vertically-centered slots (`.radial-top`/`.radial-bottom`) re-compose `translateY(-50%)` per-state under `.visible` so hover/selected/dimmed/cant-afford don't snap out of center (see learnings 2026-06-03).
+  - **Sound gap (flag for product):** the T3 visual rides only the existing `SoundManager.PlayMonsterCatch()` fired in code-behind. A layered cue (success chime + soft bass hit timed to the portrait spring ~0.3-0.4s) would close the "sound is 50% of feel" gap. No new sound file exists yet — proposed, user's call.
+  - Diamond `.selected`/`.approach-diamond` colored `box-shadow` glows are SAFE — the radial container is absolutely positioned (`pointer-events: all`), NOT inside a scroll viewport, so the scroll-grid glow-leak rule doesn't apply.
 - **Neighbors:** BattleView, MonsterRosterPanel (post-capture).
 
 ---
