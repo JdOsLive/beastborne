@@ -4701,6 +4701,27 @@ public static class MoveDatabase
 			}
 		} );
 
+		// Duodew (#26) signature — the pond's source wells up beneath the foe
+		// and pulls life back into the user. Uncommon-tier Drain, mirroring
+		// shepherds_vigil's shape (90 BP special, heals 25% of damage dealt) —
+		// the damage-scaled heal, not Liliprince's stronger flat heal.
+		AddMove( new MoveDefinition
+		{
+			Id = "wellspring_surge",
+			Name = "Wellspring Surge",
+			Description = "The still pond wells up beneath the foe and draws life back into the user. Heals the user for 25% of damage dealt.",
+			Element = ElementType.Water,
+			Category = MoveCategory.Special,
+			BasePower = 90,
+			Accuracy = 100,
+			MaxPP = 10,
+			MakesContact = false,
+			Effects = new()
+			{
+				new MoveEffect { Type = MoveEffectType.Drain, Value = 0.25f }
+			}
+		} );
+
 		// Dewdrop (#23) — the leaf-cap tilts forward and a curl of pondsteam
 		// drifts across the foe. A Nature special with damage + sleep chance,
 		// matching the "sleeps through the heat of the day" framing. Mirrors

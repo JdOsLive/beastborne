@@ -102,7 +102,7 @@ public sealed class MonsterManager : Component
 
 		// Zone 3 — Weavermere, all handmade
 		"padlip", "liliprince",                   // Jet — frog-prince line (liliprince boss-only)
-		"dewdrop",                                // Jet — leaf-capped pond drop (Water/Nature)
+		"dewdrop", "duodew",                      // Jet — leaf-capped pond drop (Water/Nature); duodew is evo-only (Lv 30)
 
 		// Starter evolutions (handmade — SirPlnguin)
 		"pyrgard",      // embrik mid-evo
@@ -930,6 +930,8 @@ public sealed class MonsterManager : Component
 			Element = ElementType.Water,
 			SecondaryElement = ElementType.Nature,
 			BaseRarity = Rarity.Common,
+			EvolvesTo = "duodew",
+			EvolutionLevel = 30,
 			BaseCatchRate = 0.7f,
 			BaseExpYield = 75,
 			SignatureDropName = "Dewdroplet",
@@ -962,6 +964,55 @@ public sealed class MonsterManager : Component
 			MiniScale = 1.5f, MiniOffsetX = 2f, MiniOffsetY = 2f,
 			DetailIconScale = 1.4f, DetailIconOffsetX = 7f, DetailIconOffsetY = -10f,
 			BeastiaryNumber = 23
+
+		} );
+
+		AddSpecies( new MonsterSpecies
+		{
+			Id = "duodew",
+			Name = "Duodew",
+			Description = "A Dewdrop that found water still enough to never leave. It set vine-roots in the pond floor, raised a leaf overhead like a parasol, and tends a second little drop at its side — the next Dewdrop, not yet ready to drift.",
+			IconPath = "ui/monsters/duodew/idle/duodew_idle_01.png",
+			ArtistCredit = "Jet",
+			BaseHP = 60, BaseATK = 42, BaseDEF = 58, BaseSpA = 92, BaseSpD = 66, BaseSPD = 72,
+			HPGrowth = 5, ATKGrowth = 3, DEFGrowth = 4, SpAGrowth = 9, SpDGrowth = 5, SPDGrowth = 8,
+			Element = ElementType.Water,
+			SecondaryElement = ElementType.Nature,
+			BaseRarity = Rarity.Uncommon,
+			EvolvesFrom = "dewdrop",
+			BaseCatchRate = 0.4f,
+			BaseExpYield = 150,
+			SignatureDropName = "Twin Dewdroplet",
+			SignatureDropDescription = "Two perfect globes of water, one large and one small, that never drift apart. Cool to the touch; a single leaf-cap shades them both.",
+			Personality = BeastPersonality.Loyal,
+			PersonalityHint = "It will not leave the little drop's side — patient, watchful, and slow to trust anyone who approaches the pair.",
+			PossibleTraits = new() { "torrent_soul", "cleansing_retreat", "vital_recovery" },
+			LearnableMoves = new()
+			{
+				new LearnableMove { MoveId = "splash_jet", LearnLevel = 1 },
+				new LearnableMove { MoveId = "strike", LearnLevel = 1 },
+				new LearnableMove { MoveId = "drizzle_mist", LearnLevel = 3 },
+				new LearnableMove { MoveId = "harden", LearnLevel = 5 },
+				new LearnableMove { MoveId = "water_bolt", LearnLevel = 7 },
+				new LearnableMove { MoveId = "deep_slumber", LearnLevel = 8 },
+				new LearnableMove { MoveId = "foam_coat", LearnLevel = 10 },
+				new LearnableMove { MoveId = "spirit_breeze", LearnLevel = 12 },
+				new LearnableMove { MoveId = "ripple_burst", LearnLevel = 14 },
+				new LearnableMove { MoveId = "waterlog", LearnLevel = 16 },
+				new LearnableMove { MoveId = "mist_veil", LearnLevel = 17 },
+				new LearnableMove { MoveId = "tidal_pulse", LearnLevel = 19 },
+				new LearnableMove { MoveId = "nature_shield", LearnLevel = 20 },
+				new LearnableMove { MoveId = "gust_shield", LearnLevel = 22 },
+				new LearnableMove { MoveId = "blade_leaf", LearnLevel = 23 },
+				new LearnableMove { MoveId = "aether_pulse", LearnLevel = 25 },
+				new LearnableMove { MoveId = "deep_pressure", LearnLevel = 26 },
+				new LearnableMove { MoveId = "leafcap_drift", LearnLevel = 28 },
+				new LearnableMove { MoveId = "wellspring_surge", LearnLevel = 34 },
+			},
+			CardScale = 1.15f, CardOffsetX = 0f, CardOffsetY = 23f,
+			MiniScale = 1.5f, MiniOffsetX = 2f, MiniOffsetY = 2f,
+			DetailIconScale = 1.4f, DetailIconOffsetX = 7f, DetailIconOffsetY = -10f,
+			BeastiaryNumber = 24
 
 		} );
 
@@ -7958,7 +8009,7 @@ public sealed class MonsterManager : Component
 				new LearnableMove { MoveId = "geode_burst", LearnLevel = 38 },
 				new LearnableMove { MoveId = "ground_pulse", LearnLevel = 40 },
 			},
-			BeastiaryNumber = 24,
+			BeastiaryNumber = 25,
 			CardScale = 1.25f, CardOffsetX = 19f, CardOffsetY = 49f,
 			MiniScale = 1.35f, MiniOffsetX = 24f, MiniOffsetY = 9f,
 			DetailIconScale = 1.3f, DetailIconOffsetX = 40f, DetailIconOffsetY = 2f,
@@ -8015,7 +8066,7 @@ public sealed class MonsterManager : Component
 				// Signature move — unique to Loomweaver
 				new LearnableMove { MoveId = "weavers_verdict", LearnLevel = 55 },
 			},
-			BeastiaryNumber = 25,
+			BeastiaryNumber = 26,
 			CardScale = 1.4f, CardOffsetX = -5f, CardOffsetY = 71f,
 			MiniScale = 1.35f, MiniOffsetX = -4f, MiniOffsetY = -12f,
 			DetailIconScale = 1.15f, DetailIconOffsetX = 0f, DetailIconOffsetY = -12f,
