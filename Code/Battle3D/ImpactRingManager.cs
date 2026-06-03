@@ -46,6 +46,7 @@ public sealed class ImpactRingManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 		}
 		else
 		{

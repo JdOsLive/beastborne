@@ -35,6 +35,7 @@ public sealed class SettingsManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "SettingsManager initialized" );
 		}
 		else

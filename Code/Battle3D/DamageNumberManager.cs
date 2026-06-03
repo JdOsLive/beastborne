@@ -59,6 +59,7 @@ public sealed class DamageNumberManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 		}
 		else
 		{

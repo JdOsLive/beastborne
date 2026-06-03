@@ -44,6 +44,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		// Always set instance - the networked object from the scene should be authoritative
 		Instance = this;
 		GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+		GameObject.Tags.Add( "bb-persistent" );
 		Log.Info( $"ChatManager initialized (IsProxy: {IsProxy}, NetworkMode: {GameObject.NetworkMode})" );
 	}
 

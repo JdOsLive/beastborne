@@ -97,6 +97,7 @@ public sealed class VoiceChatManager : Component, Component.INetworkListener
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			EnsureLobbyExists();
 			SetupVoiceComponent();
 			Log.Info( "VoiceChatManager initialized" );
@@ -121,6 +122,7 @@ public sealed class VoiceChatManager : Component, Component.INetworkListener
 		var go = scene.CreateObject();
 		go.Name = "VoiceChatManager";
 		go.Flags = GameObjectFlags.DontDestroyOnLoad;
+		go.Tags.Add( "bb-persistent" );
 		go.Components.Create<VoiceChatManager>();
 	}
 

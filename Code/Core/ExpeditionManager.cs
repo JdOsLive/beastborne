@@ -244,6 +244,7 @@ public sealed class ExpeditionManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Enabled = true; // Ensure component is enabled for OnUpdate to be called
 			Log.Info( "ExpeditionManager initialized" );
 		}
@@ -437,6 +438,7 @@ public sealed class ExpeditionManager : Component
 		var go = scene.CreateObject();
 		go.Name = "ExpeditionManager";
 		go.Flags = GameObjectFlags.DontDestroyOnLoad;
+		go.Tags.Add( "bb-persistent" );
 		var em = go.Components.Create<ExpeditionManager>();
 		em.Enabled = true;
 		Log.Info( $"ExpeditionManager.EnsureInstance: Created new instance, Enabled={em.Enabled}" );

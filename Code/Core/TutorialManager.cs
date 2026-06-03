@@ -55,6 +55,7 @@ public sealed class TutorialManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			InitializeSteps();
 			Log.Info( "TutorialManager initialized" );
 		}

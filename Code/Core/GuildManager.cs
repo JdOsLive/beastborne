@@ -140,6 +140,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			_ = LoadFromApi();
 			Log.Info( "GuildManager initialized" );
 		}

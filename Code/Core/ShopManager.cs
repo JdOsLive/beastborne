@@ -58,6 +58,7 @@ public sealed class ShopManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			InitializeShop();
 			ResolveSpotlight();
 			Log.Info( "ShopManager initialized" );

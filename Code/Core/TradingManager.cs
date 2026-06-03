@@ -62,6 +62,7 @@ public sealed class TradingManager : Component, Component.INetworkListener
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "TradingManager initialized" );
 		}
 		else
@@ -77,6 +78,7 @@ public sealed class TradingManager : Component, Component.INetworkListener
 		var go = scene.CreateObject();
 		go.Name = "TradingManager";
 		go.Flags = GameObjectFlags.DontDestroyOnLoad;
+		go.Tags.Add( "bb-persistent" );
 		go.Components.Create<TradingManager>();
 	}
 

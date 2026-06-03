@@ -25,18 +25,73 @@ public sealed class GameManager : Component
 	// Events - UI components subscribe to these to show/hide themselves
 	public Action<GameState, GameState> OnStateChanged;
 
+	/// <summary>
+	/// Shared tag stamped on every DontDestroyOnLoad manager GameObject (this one
+	/// plus all the singletons created in <see cref="InitializeManagers"/>). Used
+	/// by the reboot path below to find and tear down a previous session's stale
+	/// persistent objects on an editor hotload / scene reload.
+	/// </summary>
+	public const string PersistentTag = "bb-persistent";
+
 	protected override void OnAwake()
 	{
 		if ( Instance == null )
 		{
-			Instance = this;
-			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			ClaimInstance();
 			Log.Info( "GameManager initialized" );
 		}
-		else
+		else if ( Instance != this )
 		{
-			Log.Info( "GameManager already exists, removing duplicate" );
-			Destroy();
+			// A GameManager from a previous editor session is still lingering (its
+			// GameObject survived as DontDestroyOnLoad, but on hotload the manager
+			// statics get cleared — so SaveService.Instance etc. read null and the
+			// game "resumes" half-dead: save never reloads, panels mount invisible).
+			// Instead of self-destructing and inheriting that broken state, the
+			// freshly-loaded GameManager WINS: nuke every stale persistent object
+			// from the old session (each manager's OnDestroy nulls its own static),
+			// then claim Instance and let OnStart rebuild everything from a clean
+			// boot — same path a real player gets. Shipped builds never hit this
+			// (no scene reload during play), so it's an editor-only safety net.
+			Log.Info( "GameManager: stale session detected — forcing clean reboot" );
+			ClearStalePersistents();
+			ClaimInstance();
+		}
+	}
+
+	private void ClaimInstance()
+	{
+		Instance = this;
+		GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+		GameObject.Tags.Add( PersistentTag );
+	}
+
+	/// <summary>
+	/// Destroy every DontDestroyOnLoad manager object left over from a prior
+	/// session (everything tagged <see cref="PersistentTag"/> except this fresh
+	/// GameManager). Uses DestroyImmediate so each manager's OnDestroy runs
+	/// synchronously and nulls its static Instance BEFORE OnStart re-runs
+	/// InitializeManagers — otherwise the lingering statics would make every
+	/// EnsureInstance a no-op and we'd resume just as broken.
+	/// </summary>
+	private void ClearStalePersistents()
+	{
+		// Query both enabled states into a dedup set — s&box's GetAllObjects(bool)
+		// filters by enabled-state and we want every persistent object regardless.
+		var stale = new System.Collections.Generic.HashSet<GameObject>();
+		foreach ( var enabled in new[] { true, false } )
+		{
+			foreach ( var go in Scene.GetAllObjects( enabled ) )
+			{
+				if ( go == GameObject || !go.IsValid() ) continue;
+				if ( go.Tags.Has( PersistentTag ) )
+					stale.Add( go );
+			}
+		}
+
+		foreach ( var go in stale )
+		{
+			if ( go.IsValid() )
+				go.DestroyImmediate();
 		}
 	}
 

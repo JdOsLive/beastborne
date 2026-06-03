@@ -114,6 +114,7 @@ public sealed class BattleSceneController : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "Battle3D: Controller initialized" );
 		}
 		else

@@ -31,6 +31,7 @@ public sealed class BeastiaryManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "BeastiaryManager initialized" );
 		}
 		else

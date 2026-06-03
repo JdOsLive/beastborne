@@ -47,6 +47,7 @@ public sealed class TamerManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "TamerManager initialized" );
 		}
 		else

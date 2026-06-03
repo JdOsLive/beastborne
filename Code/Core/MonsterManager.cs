@@ -139,6 +139,7 @@ public sealed class MonsterManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "MonsterManager initialized" );
 		}
 		else

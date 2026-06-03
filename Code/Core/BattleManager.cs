@@ -87,6 +87,7 @@ public sealed class BattleManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Enabled = true; // Ensure component is enabled
 			Log.Info( "BattleManager initialized" );
 		}
@@ -119,6 +120,7 @@ public sealed class BattleManager : Component
 		var go = scene.CreateObject();
 		go.Name = "BattleManager";
 		go.Flags = GameObjectFlags.DontDestroyOnLoad;
+		go.Tags.Add( "bb-persistent" );
 		var bm = go.Components.Create<BattleManager>();
 		bm.Enabled = true;
 		Log.Info( $"BattleManager.EnsureInstance: Created new instance, Enabled={bm.Enabled}" );

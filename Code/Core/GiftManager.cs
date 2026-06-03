@@ -48,6 +48,7 @@ public sealed class GiftManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "GiftManager initialized" );
 		}
 		else

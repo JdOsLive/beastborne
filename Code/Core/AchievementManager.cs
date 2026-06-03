@@ -33,6 +33,7 @@ public sealed class AchievementManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			InitializeAchievements();
 			Log.Info( $"AchievementManager initialized with {_achievements.Count} achievements" );
 		}

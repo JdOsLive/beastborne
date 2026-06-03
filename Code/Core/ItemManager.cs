@@ -35,6 +35,7 @@ public sealed class ItemManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			InitializeItemDatabase();
 			InitializeDropTables();
 			Log.Info( "ItemManager initialized" );

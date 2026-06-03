@@ -196,6 +196,7 @@ public sealed class TradeNodeManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "TradeNodeManager initialized" );
 		}
 		else

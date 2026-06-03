@@ -161,6 +161,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			InitializeSeason();
 			Log.Info( "CompetitiveManager initialized" );
 		}

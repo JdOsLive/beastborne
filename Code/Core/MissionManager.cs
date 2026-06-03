@@ -115,6 +115,7 @@ public sealed class MissionManager : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "MissionManager initialized" );
 		}
 		else

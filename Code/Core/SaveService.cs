@@ -123,6 +123,7 @@ public sealed class SaveService : Component
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
+			GameObject.Tags.Add( "bb-persistent" );
 			Log.Info( "[SaveService] initialized (shadow mode)" );
 			// One-time log of the local Steam ID — handy for /gift testing from
 			// Discord. Prints as `[SteamID] 7656119...` on game start.
