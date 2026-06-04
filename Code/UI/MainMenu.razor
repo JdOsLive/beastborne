@@ -271,10 +271,13 @@
 
 	@if (transitionPhase > 0)
 	{
-		<div class="menu-transition phase-@(transitionPhase)">
-			<div class="tx-bar tx-bar-gold"></div>
-			<div class="tx-bar tx-bar-purple"></div>
-			<img class="tx-mascot" src="ui/logo/bb_mascot.png" />
+		<div class="menu-transition">
+			<div class="tx-panel tx-panel-gold"><div class="tx-fill tx-fill-gold"></div></div>
+			<div class="tx-panel tx-panel-purple"><div class="tx-fill tx-fill-purple"></div></div>
+			<div class="tx-stamp">
+				<img class="tx-stamp-mascot" src="ui/logo/bb_mascot.png" />
+				<span class="tx-stamp-word">BEASTBORNE</span>
+			</div>
 		</div>
 	}
 
@@ -1678,50 +1681,36 @@
 		}
 	}
 
-	// Persona-style angled-bar sweep from main menu into Hub.
-	// Two chunky bars slide in from opposite corners, cover the screen, the
-	// chibi mascot peeks through for ~240ms, then the bars sweep OFF in the
-	// opposite directions to reveal the Hub (which is mounted under cover).
-	// Tier-3 moment — PLAY is a meaningful commitment, it deserves the juice.
+	// Persona-style DIAGONAL WIPE from main menu into Hub (P5 dialect).
+	// Gold + purple angular slabs sweep IN from opposite corners to cover the
+	// screen, the mascot + BEASTBORNE wordmark slam in over the seam, then the
+	// slabs split back OUT in opposite directions to reveal the Hub (mounted
+	// under cover). Tier-3 moment — PLAY is a commitment, it deserves the juice.
 	//
-	// CSS phase contract (see .menu-transition rules in MainMenu.razor.scss):
-	//   phase-1 = mounted, bars parked off-screen at their starting corners
-	//   phase-2 = bars transition to (0,0) resting, mascot peeks via @keyframes
-	//   phase-3 = bars transition to OPPOSITE corners (X-scissor exit)
-	//
-	// The one-frame Task.Delay(16) between phase 1 and phase 2 is load-bearing:
-	// without it, the element mounts WITH the phase-1 class and would SKIP
-	// straight to phase-2 in the same render pass, so the browser never
-	// registers the off-screen state as the transition's "from" value and
-	// the slide-in silently never fires. Giving the DOM one frame to settle
-	// the phase-1 transform before flipping to phase-2 makes the transition
-	// fire reliably.
+	// Driven by mount-time @keyframes (see .tx-panel / .tx-fill / tx-wipe-* in
+	// MainMenu.razor.scss), NOT class-toggle transform transitions — s&box
+	// 26.06.03 stopped firing those reliably. The overlay is conditionally
+	// rendered, so it mounts fresh on every PLAY and the wipe always runs; the
+	// whole thing is a single 1150ms timeline (in 0-30% / hold 30-62% / out
+	// 62-100%). Code-behind just times the cover handoff + the unmount.
 	private async Task PlayBondedSweepAndStart()
 	{
-		// Phase 1: mount overlay with bars parked off-screen.
+		// Mount the overlay — both slabs begin sweeping in immediately.
 		transitionPhase = 1;
 		StateHasChanged();
-		await Task.Delay( 16 );  // let the DOM register the off-screen starting transform
 
-		// Phase 2: class swap → transform value changes → CSS transition fires.
-		// Bars slide from off-screen corners to (0,0) resting (covering) position.
-		// 420ms matches the transition duration on `.tx-bar`. After they land,
-		// hold for the mascot peek beat.
+		// ~360ms in, the slabs fully cover the screen. Flip to phase 2 so the
+		// root's `.covering` class hides the menu visuals, and mount the Hub
+		// behind the cover — the split-open then reveals a laid-out Hub, never
+		// a flash of the old menu.
+		await Task.Delay( 360 );
 		transitionPhase = 2;
-		StateHasChanged();
-		await Task.Delay( 420 + 240 );  // slide-in + mascot peek
-
-		// Swap to Hub under the cover of the bars — by the time they sweep
-		// off, the Hub is already mounted and laid out behind them.
 		StartGame();
-
-		// Phase 3: bars transition off in OPPOSITE directions, mascot fades out.
-		// 480ms matches the transition override in SCSS for the phase-3 selectors.
-		transitionPhase = 3;
 		StateHasChanged();
-		await Task.Delay( 480 );
 
-		// Done — unmount the overlay.
+		// Stamp holds, then the slabs split back out and finish at the 1150ms
+		// mark. Wait out the rest of the timeline, then unmount the overlay.
+		await Task.Delay( 790 );
 		transitionPhase = 0;
 		StateHasChanged();
 	}
