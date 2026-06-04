@@ -201,13 +201,13 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Known issues:** Hero banner is a clear "one hero per screen" win — worth referencing for other panels.
 - **Neighbors:** CardCollectionPanel, AchievementPanel.
 
-### CardCollectionPanel
-- **Files:** `Code/UI/Panels/CardCollectionPanel.razor` (207), `.scss`
+### CardCollectionPanel _[T2 juice pass 2026-06-03]_
+- **Files:** `Code/UI/Panels/CardCollectionPanel.razor` (~250), `.scss`
 - **Purpose:** Tamer card collection view with "your card" section + favorite monster selector.
-- **Visual style notes:** Modal, standard collection header with count.
-- **Juice tier (current / target):** Tier 1. Target: Tier 2 on new card.
-- **Known issues:** None noted in skim.
-- **Neighbors:** TamerCardComponent, TamerCardShowcasePopup.
+- **Visual style notes:** Modal, standard collection header with count. Two-pane (your-card left, collected grid right). Collected grid is `flex-wrap` inside an `overflow-y: scroll` column.
+- **Juice tier (current / target):** **Tier 2 (achieved 2026-06-03).** Open entrance: collected cards cascade in via real 26.06.03 `transition-delay` (inline per-card, step 0.045s capped 0.5s, InvariantCulture-formatted), gated on a code-flipped `.entered` class on `<root>` (set ~30ms after open via `OnOpened()`, edge-detected in `Tick()`), so it replays every open — OPACITY only per the reliability rule. NEW-card reveal: the top card is flagged `is-new` when its `CollectedAt` is within 12s of open (`CollectedAt`, not `LastUpdated`, so re-collected/updated cards don't false-trigger); it mounts an `@if`-gated `.new-card-fx` subtree (border ring + diagonal sheen sweep + rotated P5 "NEW" ribbon) whose `@keyframes` fire fresh on mount + `SoundManager.PlaySuccess()`. Scroll-clip safe: ring is border-only (no leaking colored box-shadow), ribbon stays inside card bounds. Target: keep — collecting another player's card is a routine social moment, correctly T2.
+- **Known issues:** Reveal reuses `PlaySuccess` (no dedicated card-collected chime — flag for product if wanted). No patch-notes entry added (Assets/data is out of UI-agent edit scope — flag for user). The existing `transform: scale(1.02)` hover on grid cards predates this pass and is a mild transform inside a scroll container (borderline per the scroll-leak quirk) — left untouched as it pre-exists and is subtle.
+- **Neighbors:** TamerCardComponent (wrapped, unmodified), TamerCardShowcasePopup, ProfilePanel.
 
 ### HelpPanel
 - **Files:** `Code/UI/Panels/HelpPanel.razor` (2085), `.scss`
@@ -223,11 +223,12 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Juice tier (current / target):** Tier 1 scroll. Target: keep simple.
 - **Neighbors:** MainMenu.
 
-### TradingPanel
-- **Files:** `Code/UI/Panels/TradingPanel.razor` (744), `.scss`
+### TradingPanel _[T3 trade-complete + request-popup polish 2026-06-03]_
+- **Files:** `Code/UI/Panels/TradingPanel.razor` (~760), `.scss`
 - **Purpose:** P2P monster trading with request popups.
-- **Visual style notes:** Nested trade-request-popup + main trade UI.
-- **Juice tier (current / target):** Tier 2 on accept/decline. Target: Tier 3 on trade complete.
+- **Visual style notes:** Nested trade-request-popup + main trade UI. Scrolling pattern bg, P5-stamp dialect on headers/CTAs (italic skewX, hard offset shadows). Lock-in countdown overlay (ambient @keyframes loops). Trade-complete is a sibling-of-trade-body overlay OUTSIDE the scroll containers, so its burst/rings are unclipped.
+- **Juice tier (current / target):** **Tier 3 achieved (2026-06-03)** on trade complete + Tier 2 polish on accept/decline + request popup. **T3 celebration:** the `@if showTradeComplete` overlay mounts fresh so all @keyframes fire reliably — scrim fade, green screen flash, twin shockwave rings, 12-mote baked-direction burst (`cmote1..cmote12` — NO custom props), opacity-fading god-rays under a slow-spinning parent, slab slam (overshoot) with icon pop + staggered title/sub. Layered `PlaySuccess()` + `PlayGoldReward()` cue; auto-close extended 2.5s→3.2s. **T2 request popup (preserved):** gold icon disc swap-in spin + halo loop, content stagger-in (title/body/buttons 0.12/0.20/0.28s), accept/decline `:active` press states, accept `PlayForward()`. Anti-gacha clean — celebrates the earned exchange, no RNG framing. Target: keep — milestone-frequency trade is correctly T3, no T4 needed.
+- **Known issues:** No dedicated trade-complete sound (reuses success+gold chime) — flag for product if a unique cue is wanted. Partner avatar is hardcoded to `male_tamer.png` (line ~62) — doesn't reflect the partner's actual gender (data not plumbed to the preview). Lock-in + ready-pulse use infinite ambient @keyframes loops (fine for their gated/active contexts).
 - **Neighbors:** OnlineHubPanel, MonsterRosterPanel.
 
 ### GuildPanel _[plaza redesigned 2026-04-24, P5 stamp pass]_
@@ -251,11 +252,15 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Juice tier (current / target):** Tier 1. Target: Tier 2 on section swap.
 - **Neighbors:** ArenaPanel, GuildPanel, TradingPanel, LeaderboardPanel.
 
-### ArenaPanel
-- **Files:** `Code/UI/Panels/ArenaPanel.razor` (1387), `.scss`
+### ArenaPanel _[T3 rank-up + T4 win-streak setpiece 2026-06-03]_
+- **Files:** `Code/UI/Panels/ArenaPanel.razor` (~1460), `.scss` (~2900)
 - **Purpose:** PvP arena — mode select → queue → battle, ranked rank display.
-- **Visual style notes:** Mode cards (ranked/casual), season badge, rank display with dynamic colors.
-- **Juice tier (current / target):** Tier 2. Target: Tier 3 on rank-up, Tier 4 on win streak milestones.
+- **Visual style notes:** Persona-stamp dialect throughout (italic skewX(-8deg) display text, hard offset shadows, gold slab CTAs). Mode cards (casual/AI/ranked-locked), season badge, dynamic rank colors via `CompetitiveManager.GetRankColor`. Mode-select entrance already has `ms-anim-1..6` mount-keyframe staggers (each mode-open remounts, so they replay). Result screen (`currentView == "result"`) is the payoff surface and hosts both celebrations.
+- **Juice tier (current / target):** **Tier 3 rank-up + Tier 4 win-streak (achieved 2026-06-03).** Both overlays live INSIDE the result view block as siblings of the result content, anchored to `.result-screen` (`position: relative`, NOT a scroll container — colored glow + scale transforms are safe). Both are conditionally-rendered + render-keyed (`@key="rankup-{rankUpVersion}"` / `"streak-{streakSetpieceVersion}"`) so the mount-time `@keyframes` replay every fire. `OnSetCompleteEvent` got an explicit `StateHasChanged()` added (was missing — sibling handlers all had it) so the overlays mount on the result frame.
+  - **T3 RANK UP:** gold one-shot screen-flash + `rankUpBounce` content slam + OLD rank → `lucide:chevrons-up` (bobbing) → NEW rank in its dynamic color; `rankUpGlow` text-shadow loop + `rankUpTextPulse` (skew baked into the keyframe so the pulse keeps skewX). Ranked-only (`DidRankUp && selectedMode == Ranked`).
+  - **T4 WIN STREAK:** fires on `won && streak ∈ {3,5,10,15,20,25,30,40,50}` (StreakMilestones array). Anticipation scrim → `streakBurstIn` god-ray fan (14 static-rotated rays via EXPLICIT rules — NO Sass `@for`, the toolchain has zero precedent for Sass control flow) → 2 `streakShock` expanding rings → `streakStackIn` number slam (150px) flanked by flickering `lucide:flame` icons + `streakNumberBreath` ambient loop. If a streak milestone fires, the rank-up overlay is SUPPRESSED that set (no double celebration); rank still updates on the result card. Keyboard dismiss order: streak → rank-up → continue.
+- **Anti-gacha:** both moments are deterministic outcomes of winning (climb a tier / extend a streak) — "earned through wins, not luck." No RNG framing.
+- **Known issues / notes:** No dedicated celebration sound — rank-up/streak reuse `PlayVictory` (set win) + `PlayClick` (dismiss). A T3 chime + T4 swell would sharpen the audio signature; no such files exist — flag for product. Win-streak only advances when `CurrentMatchConfig.TrackResult` is true (ranked-tracked sets), so casual/AI play won't trigger the T4 — correct, the streak is a tracked-record stat. The pre-pass `.rank-up-*` SCSS was DEAD (overlay styled but never rendered in markup; `DismissRankUp` referenced by keyboard with no UI) — now live + modernized.
 - **Neighbors:** OnlineHubPanel, LeaderboardPanel.
 
 ### LeaderboardPanel
@@ -295,12 +300,14 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Known issues:** **User flagged on 2026-04-09 as flat on open.** High-priority for next dedicated pass.
 - **Neighbors:** ExpeditionPopup, AutoBattlerPopup, BattleView.
 
-### BeastiaryPanel (user-facing name: "BEASTBOOK") _[robustness pass 2026-04-17]_
-- **Files:** `Code/UI/Panels/BeastiaryPanel.razor` (~1075), `.scss` (~2060)
+### BeastiaryPanel (user-facing name: "BEASTBOOK") _[T3 discovery reveal + entrance polish 2026-06-03]_
+- **Files:** `Code/UI/Panels/BeastiaryPanel.razor` (~1990), `.scss` (~3500)
 - **Purpose:** Species catalog / "book of bound beasts." Full-screen two-pane grimoire — 8-col grid of beast cards on the left, detail "page" on the right.
 - **Visual style notes:** Roster-style full-screen layout with animated-bg.webp, floating filter header, 480px detail sidebar. Grid cards (172x216) with 180px sprites, number pill header, thin rarity-colored bottom strip (not badge), element icon tiles in name strip. Detail pane: 180x180 portrait container with 160px sprite, neutral dark frame (no rarity/element bleed), identity block (vertical stack: number pill / name / element+personality pills wrap / rarity+BST summary row), diamond action row (Cry/Moves/Evolution/Lore/Mastery). Architecture: fixed top (portrait + identity + flavor) + swappable bottom section via `detailView` state string ("stats"|"moves"|"evolution"|"lore"|"mastery"). Stats default view has 6-bar stat grid + TOTAL row + TRAITS row. Moves view uses strict 4-column row grid (diamond 40px | name+level flex | category pill 50px | power/accuracy 60px right-aligned). Evolution view uses 100x100 headshot-cropped portrait frames per stage (sprite sized 140% with `object-position: 50% 25%` for face focus) with name + "Lv N" evolution requirement below; chevron-right arrows between stages. Lore view = neutral dark rows (not amber) with tier-colored LV chip + tier-colored box-shadow left accent on unlocked rows, dim italic locked text. Mastery view has level badge (1-6 tier colors), tier-colored title pill (`#b8b8b8` Lv0 → `#ec4899` Lv6; selectors flattened to avoid s&box nested-combinator resolution issue), purple progress bar toward next tier, 6-tier checklist with tier-colored row text. Filter state filters by primary OR secondary element (dual-type aware).
-- **Juice tier (current / target):** Tier 1-2 ambient (sprite idle on grid cards + portrait + current-stage evo). Target: Tier 3 on new-species discovery reveal — not implemented yet, candidate for a future setpiece.
+- **Juice tier (current / target):** **Tier 3 achieved on new-species discovery (2026-06-03).** Plus T1-2 ambient (sprite idle on grid cards + portrait + current-stage evo) and new entrance polish. **T3 discovery reveal:** fullscreen Hades-shape celebration fired off `BeastiaryManager.OnSpeciesDiscovered` (subscribed in `OnAfterTreeRender(firstTime)`, torn down in `OnDeleted`; panel mounts fresh per tab activation so subscribe-on-first-render is safe). Overlay is a SIBLING of the panel body inside `<root>` (NOT a child of the scroll grid — colored rings/rays would leak past the scroll viewport per the glow-leak rule), gated `@if discoveryCelebrationActive` + keyed `disc-{discoveryVersion}` so the whole subtree mounts fresh and every entrance `@keyframes` replays per discovery (proven one-shot pattern). Needs the `.beastbook-panel > .bb-discovery-overlay` SPECIFICITY BOOST or the `.beastbook-panel > * { position: relative; z-index: 1 }` rule stomps the overlay's `position: absolute` + z-index (same trick the edit toolbar/drag-shield use). Sequence: scrim dim → white anticipation flash → radial ray bloom + 2 expanding light rings behind portrait → portrait spring (overshoot) → name slam (number chip + 38px italic) → element + rarity meta pills → 8 directional radial sparks (per-spark `bbDiscSpark0..7` keyframes) → late dismiss hint. Auto-dismisses after 4.5s (RealTimeSince) or click anywhere. Rarity only changes the COLOR signature (rays/rings/sparks retint for epic/legendary/mythic) — identical beat for any species, deterministic, "NEW SPECIES DISCOVERED" framing, no RNG/pity/luck language (anti-gacha clean). **Detail-pane entrance (T2):** `.bb-detail-fixed` carries a `detail-rev-{detailRevealVersion}` key bumped on every species change so the subtree remounts and mount-time `@keyframes` replay — portrait springs in, then identity rows cascade (`bbDetailRowIn` with 0.08-0.34s `animation-delay` staggers). **Grid entrance (T1):** cards now deal in with a capped per-index `animation-delay` stagger (inline, `Math.Min(gi,16)*0.025s`, skipped in edit mode) on the existing `bbCardFadeIn` (added `both` fill-mode so the delay holds the start state).
 - **Known issues:**
+  - **Discovery reveal sound is layered `PlayClick + PlaySuccess + PlayGoldReward`** (reuses existing cues). A dedicated discovery cue (anticipation shimmer → reveal impact → soft chime swell timed to the portrait spring ~0.26-0.5s) would close the "sound is 50% of feel" gap. No new file exists — flag for product, user's call.
+  - Discovery eyebrow + dismiss strings are HARDCODED English literals ("NEW SPECIES DISCOVERED" / "CLICK TO CONTINUE") rather than `L(...)` keys — missing `ui.beastbook.*` keys return the raw key string (ugly), and localization JSON is in `Assets/` (out of UI-agent scope). If localizing, add the keys + swap to `L(...)`.
   - Trait tooltip uses a positioned `:hover` div (s&box won't render native `title` attribute); if `:hover` on a flex child misbehaves, fallback is to track a `hoveredTraitId` in code-behind.
   - Beast-cry click on portrait currently calls `PlayClick()` as placeholder — no per-species audio pipeline yet.
   - **[fixed 2026-04-17]** `.bb-evo-stage.current .bb-evo-portrait` (scss:1779-1789) had element-colored 22px blur halos at 0.42-0.45 alpha inside the `.bb-detail-scroll` scroll container — classic Lesson 3 leak pattern (s&box does not clip outer box-shadow against scroll viewport). Removed colored halos; kept the 0.9-alpha colored border + dark offset drop shadow + existing `transform: translateY(-2px) scale(1.05)` hero lift, which carry the "you are here" feedback cleanly.

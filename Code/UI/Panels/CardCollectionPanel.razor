@@ -1,4 +1,7 @@
 @namespace Beastborne.UI.Panels
+@using System;
+@using System.Linq;
+@using System.Threading.Tasks;
 @using Sandbox;
 @using Sandbox.UI;
 @using Beastborne.Core;
@@ -7,7 +10,7 @@
 @using Beastborne.UI.Components;
 @inherits Panel
 
-<root class="@(IsVisible ? "visible" : "")">
+<root class="@($"{(IsVisible ? "visible" : "")} {(hasEntered ? "entered" : "")}")">
 	<div class="collection-overlay" onclick=@Close></div>
 
 	<div class="collection-window">
@@ -88,10 +91,26 @@
 				else
 				{
 					<div class="card-grid">
-						@foreach ( var card in GetCollectedCards() )
+						@{
+							var collected = GetCollectedCards();
+							var staggerIndex = 0;
+						}
+						@foreach ( var card in collected )
 						{
-							<div class="collected-card-wrapper" onclick=@(() => SelectCard( card ))>
+							var isNew = card.SteamId == newCardSteamId;
+							var delaySec = GetStaggerDelay( staggerIndex ).ToString( "0.###", System.Globalization.CultureInfo.InvariantCulture );
+							var delayStyle = $"transition-delay: {delaySec}s";
+							staggerIndex++;
+							<div class="collected-card-wrapper @(isNew ? "is-new" : "")" style="@delayStyle" onclick=@(() => SelectCard( card ))>
 								<TamerCardComponent CollectedCard=@card />
+								@if ( isNew )
+								{
+									<div class="new-card-fx">
+										<div class="new-card-ring"></div>
+										<div class="new-card-sheen"></div>
+										<div class="new-card-ribbon"><span>NEW</span></div>
+									</div>
+								}
 							</div>
 						}
 					</div>
@@ -143,6 +162,14 @@
 	private CollectedTamerCard selectedCard = null;
 	private bool showFavSelector = false;
 
+	// Entrance + new-card reveal state
+	private bool hasEntered = false;       // flipped after mount so the stagger transitions replay every open
+	private bool wasVisible = false;       // edge-detect open/close transitions
+	private long newCardSteamId = 0;       // SteamId of a freshly-collected card to celebrate this open (0 = none)
+
+	// A card counts as "new" (worth the T2 reveal) if collected within this window before opening the panel.
+	private const double NewCardWindowSeconds = 12.0;
+
 	public static void Show() { IsVisible = true; SoundManager.PlayPopup(); }
 	public static void Close() { IsVisible = false; SoundManager.PlayPopdown(); }
 	public static void Toggle() { IsVisible = !IsVisible; if (IsVisible) SoundManager.PlayPopup(); else SoundManager.PlayPopdown(); }
@@ -162,6 +189,35 @@
 	private void SelectCard( CollectedTamerCard card )
 	{
 		selectedCard = card;
+	}
+
+	// Per-card entrance stagger. Capped so a large collection doesn't trail a long tail of late reveals.
+	private float GetStaggerDelay( int index )
+	{
+		const float step = 0.045f;
+		const float cap = 0.5f;
+		var d = index * step;
+		return d > cap ? cap : d;
+	}
+
+	// Runs once each time the panel transitions hidden -> visible.
+	private async void OnOpened()
+	{
+		// Detect a freshly-collected card to celebrate (top of the LastUpdated-sorted list).
+		newCardSteamId = 0;
+		var newest = GetCollectedCards().FirstOrDefault();
+		if ( newest != null && (DateTime.UtcNow - newest.CollectedAt).TotalSeconds <= NewCardWindowSeconds )
+		{
+			newCardSteamId = newest.SteamId;
+			SoundManager.PlaySuccess();
+		}
+
+		// Flip the entrance class one frame after mount so the opacity-stagger transitions actually fire
+		// (a value already-true at mount-time would snap in with no animation).
+		hasEntered = false;
+		await Task.Delay( 30 );
+		if ( !IsVisible ) return;
+		hasEntered = true;
 	}
 
 	private string GetFavoriteName()
@@ -193,6 +249,19 @@
 	public override void Tick()
 	{
 		base.Tick();
+
+		// Edge-detect open/close so the entrance + new-card reveal fire every time the panel is shown.
+		if ( IsVisible && !wasVisible )
+		{
+			OnOpened();
+		}
+		else if ( !IsVisible && wasVisible )
+		{
+			hasEntered = false;
+			newCardSteamId = 0;
+		}
+		wasVisible = IsVisible;
+
 		if ( IsVisible && Input.Pressed( "Escape" ) )
 		{
 			if ( selectedCard != null )
@@ -211,6 +280,8 @@
 		hash.Add( GetCollectedCount() );
 		hash.Add( selectedCard?.SteamId ?? 0 );
 		hash.Add( showFavSelector );
+		hash.Add( hasEntered );
+		hash.Add( newCardSteamId );
 		return hash.ToHashCode();
 	}
 }

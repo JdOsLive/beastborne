@@ -8,7 +8,7 @@
 @using System.Linq;
 @inherits Panel
 
-<root class="@(IsVisible ? "visible" : "")">
+<root class="@(IsVisible ? "visible" : "") @(hasEntered ? "entered" : "")">
 	<div class="profile-overlay" onclick=@Close></div>
 
 	<div class="profile-modal @GetRankClass()" style="box-shadow: 6px 6px 0 @(GetRankShadow()), 0 18px 48px rgba(0, 0, 0, 0.7)">
@@ -226,6 +226,43 @@
 			</div>
 		}
 	</div>
+
+	<!-- ═══════════════════════════════════════════════════════════
+		T3 RANK-UP CELEBRATION — fires when the computed arena rank
+		INCREASES (point gains that cross a tier threshold). Full-bleed
+		sibling of the modal so it is never clipped by modal/content
+		bounds. Every layer is conditionally rendered + render-keyed
+		(@key=rankUpVersion) so its mount-time @keyframes fire FRESH each
+		time — the proven one-shot reveal pattern (per 26.06.03 rules;
+		class-toggle transforms snap, mounted @keyframes don't replay).
+		Anti-gacha: deterministic — you EARNED this rank by climbing
+		points, there is no roll. Themed to the rank you just reached.
+	═══════════════════════════════════════════════════════════ -->
+	@if ( rankUpActive )
+	{
+		<div class="rankup-overlay" @key=rankUpVersion>
+			<div class="rankup-flash" style="background-color: @(rankUpColor)"></div>
+			<div class="rankup-ring rankup-ring-1" style="border-color: @(rankUpColor)"></div>
+			<div class="rankup-ring rankup-ring-2" style="border-color: @(rankUpColor)"></div>
+			<div class="rankup-burst">
+				@for ( int i = 0; i < 12; i++ )
+				{
+					<div class="rankup-mote rankup-mote-@i" style="background-color: @(rankUpColor)"></div>
+				}
+			</div>
+			<div class="rankup-card" style="border-color: @(rankUpColor); box-shadow: 6px 6px 0 @(rankUpShadow), 0 18px 48px rgba(0, 0, 0, 0.7)">
+				<!-- Literal string (not L()) — the `ui.profile.rank_up` key isn't in
+					the localization files (Assets/, out of UI-agent scope). A missing
+					key renders the raw key string, so a literal avoids that. Flag to
+					product to add the key if localization is wanted. -->
+				<span class="rankup-eyebrow">RANK UP</span>
+				<div class="rankup-icon-square" style="background-color: @(rankUpColor); box-shadow: 3px 3px 0 @(rankUpShadow)">
+					<iconify icon="@rankUpIcon" Size=@(40) Color="#1a0f30" />
+				</div>
+				<span class="rankup-rank-name" style="color: @(rankUpColor)">@rankUpRank</span>
+			</div>
+		</div>
+	}
 </root>
 
 @code {
@@ -241,6 +278,42 @@
 
 	private bool showTitleSelector = false;
 	private bool showBeastSelector = false;
+
+	// ── Open-entrance state ──
+	// `.entered` is flipped ON a frame after the panel mounts/opens so the
+	// CSS opacity+delay staggers (on .visible.entered ...) re-fire EVERY open.
+	// We can't rely on first-mount @keyframes (they don't replay on re-open)
+	// nor on class-toggle transforms (they snap in 26.06.03). Opacity
+	// transitions off a code-flipped class are the reliable pattern.
+	private bool hasEntered = false;
+	private bool _wasVisible = false;
+
+	// ── T3 rank-up celebration state ──
+	// Tracks the last rank index we rendered so we can detect a tier-crossing
+	// INCREASE (point gains). Only an increase celebrates — a point loss that
+	// drops a tier is silently absorbed.
+	private int _lastRankIndex = -1;
+	private bool rankUpActive = false;
+	private int rankUpVersion = 0;          // render key — remounts overlay so @keyframes re-fire
+	private string rankUpRank = "";
+	private string rankUpColor = "#9ca3af";
+	private string rankUpShadow = "rgba(75, 85, 99, 0.78)";
+	private string rankUpIcon = "lucide:shield";
+
+	// Ordered low→high so a larger index = a higher rank. Mirrors
+	// CompetitiveManager.GetRankFromPoints thresholds.
+	private static readonly string[] RankOrder =
+	{
+		"Unranked", "Bronze", "Silver", "Gold", "Platinum",
+		"Diamond", "Master", "Legendary", "Mythic"
+	};
+
+	private int RankIndexOf( string rank )
+	{
+		for ( int i = 0; i < RankOrder.Length; i++ )
+			if ( RankOrder[i] == rank ) return i;
+		return 0;
+	}
 
 	private Tamer GetTamer() => TamerManager.Instance?.CurrentTamer;
 
@@ -476,10 +549,80 @@
 	public override void Tick()
 	{
 		base.Tick();
+
+		// ── Open-entrance: flip `.entered` a frame after the panel becomes
+		// visible so the opacity+delay stagger replays every open. Reset on
+		// close so the next open re-runs from the hidden base state.
+		if ( IsVisible && !_wasVisible )
+		{
+			hasEntered = false;
+			_ = PlayEntrance();
+			// Seed the rank baseline on open so the FIRST open never fires a
+			// false celebration (we only celebrate a change observed while open).
+			if ( _lastRankIndex < 0 )
+				_lastRankIndex = RankIndexOf( GetRankComputed() );
+		}
+		else if ( !IsVisible && _wasVisible )
+		{
+			hasEntered = false;
+		}
+		_wasVisible = IsVisible;
+
+		// ── Rank-up detection (only while the panel is open + visible so the
+		// celebration is seen). Compares the live computed rank against the
+		// last index; an INCREASE fires the T3 moment.
+		if ( IsVisible )
+		{
+			var idx = RankIndexOf( GetRankComputed() );
+			if ( _lastRankIndex >= 0 && idx > _lastRankIndex )
+				TriggerRankUp();
+			if ( idx != _lastRankIndex )
+				_lastRankIndex = idx;
+		}
+
 		// Escape (s&box-reserved) AND the canonical Menu/run "back" keys close.
 		if ( IsVisible && UIModalState.IsTopModal( "ProfilePanel" )
 			&& ( Input.Pressed( "Escape" ) || Input.Pressed( "Menu" ) || Input.Pressed( "run" ) ) )
 			Close();
+	}
+
+	// Flip `.entered` shortly after mount/open so CSS opacity transitions +
+	// transition-delay staggers fire. Small delay lets the hidden base state
+	// paint one frame first, so the transition has a from→to to animate.
+	private async System.Threading.Tasks.Task PlayEntrance()
+	{
+		await System.Threading.Tasks.Task.Delay( 30 );
+		if ( !IsVisible ) return;
+		hasEntered = true;
+	}
+
+	// ── T3 rank-up: capture the reached rank's theme + remount the overlay so
+	// its mount-time @keyframes play, then auto-dismiss after the celebration.
+	private void TriggerRankUp()
+	{
+		rankUpRank = GetRankComputed();
+		rankUpColor = GetRankColor();
+		rankUpShadow = GetRankShadow();
+		rankUpIcon = GetRankLucideIcon();
+		rankUpVersion++;
+		rankUpActive = true;
+
+		// Layered cue — milestone vocabulary (click impact + success swell +
+		// gold reward sting). No dedicated rank-up cue file exists yet; flagged
+		// to product. Per "sound is UI" this is ~the right T3 shape until then.
+		SoundManager.PlayClick();
+		SoundManager.PlaySuccess();
+		SoundManager.PlayGoldReward();
+
+		_ = DismissRankUp();
+	}
+
+	private async System.Threading.Tasks.Task DismissRankUp()
+	{
+		// Hold long enough for flash → rings → burst → card slam to read,
+		// then unmount (overlay fades via its own settle keyframe end-state).
+		await System.Threading.Tasks.Task.Delay( 2200 );
+		rankUpActive = false;
 	}
 
 	protected override int BuildHash()
@@ -495,6 +638,9 @@
 		hash.Add( GetTamer()?.FavoriteMonsterSpeciesId );
 		hash.Add( showTitleSelector );
 		hash.Add( showBeastSelector );
+		hash.Add( hasEntered );
+		hash.Add( rankUpActive );
+		hash.Add( rankUpVersion );
 		return hash.ToHashCode();
 	}
 }

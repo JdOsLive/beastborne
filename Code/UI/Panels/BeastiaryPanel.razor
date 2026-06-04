@@ -79,8 +79,9 @@
 					}
 					else
 					{
-						@foreach (var species in filteredSpecies)
+						@for (int gi = 0; gi < filteredSpecies.Count; gi++)
 						{
+							var species = filteredSpecies[gi];
 							var isDiscovered = IsDiscovered(species.Id);
 							var isSeen = IsSeen(species.Id);
 							var stateClass = isDiscovered ? "discovered" : (isSeen ? "seen" : "undiscovered");
@@ -91,11 +92,21 @@
 								: null;
 							var elementClass = $"element-{primaryClass}";
 							var rarityClassCard = $"rarity-{species.BaseRarity.ToString().ToLower()}";
+							// Per-card entrance stagger — small, capped delay so the
+							// grid "deals in" on open instead of snapping as one block.
+							// Capped at 16 cards (~0.4s) so a large filtered set never
+							// drips in slowly; cards past the cap share the final delay.
+							// Skipped entirely in edit mode (drag/scale needs instant
+							// repaint). InvariantCulture for the `.` decimal s&box needs.
+							var gci = System.Globalization.CultureInfo.InvariantCulture;
+							var cardDelay = _editMode ? 0f : Math.Min(gi, 16) * 0.025f;
+							var cardDelayStyle = $"animation-delay: {cardDelay.ToString("F3", gci)}s;";
 							// Card = flat uniform #0c0a18 bg for every card. Element color
 							// is bounded to the small square badge(s) in the bottom strip —
 							// no per-card tint floods anymore. Rarity = border color + thickness.
 							// Number = LV-style dark pill in the top-left corner.
 							<div class="bb-card @stateClass @elementClass @rarityClassCard @(isSelected ? "selected" : "") @(_editMode ? "bb-edit" : "") @(_editMode && _hoveredEditCardId == species.Id ? "bb-edit-hover" : "")"
+								 style="@cardDelayStyle"
 								 onclick=@(() => { if (!_editMode) SelectSpecies(species, isDiscovered); })
 								 onmousedown=@(() => StartDragCard(species))
 								 onmouseover=@(() => { OnCardHover(species.Id); OnEditCardEnter(species.Id); })
@@ -228,10 +239,17 @@
 					     scroll. Pinned so the beast + its flavor stay visible no
 					     matter which swappable view is active below.
 					     ============================================================ -->
-					<div class="bb-detail-fixed">
+					<div class="@($"bb-detail-fixed detail-rev-{detailRevealVersion}")">
 
-						<!-- ====== HERO ROW: portrait + identity block ====== -->
-						<div class="bb-portrait-section">
+						<!-- ====== HERO ROW: portrait + identity block ======
+						     Render-key token (`drev-N`) on every entrance-animated
+						     element below so s&box remounts THAT element on species
+						     change and its mount-time @keyframes replay. A version
+						     class on the parent `.bb-detail-fixed` alone does NOT
+						     remount descendants — s&box patches the parent's class
+						     attribute in place and the children's keyframes never
+						     re-fire. The token must live on each animated node. -->
+						<div class="@($"bb-portrait-section drev-{detailRevealVersion}")">
 
 							<!-- Portrait — clean dark frame, no rarity/element color bleed. -->
 							<div class="bb-portrait-wrapper">
@@ -262,19 +280,19 @@
 							     Per user feedback — number on top, name below, element beneath
 							     with its full word, stats+rarity as a final summary row. -->
 							<div class="bb-name-section">
-								<div class="bb-identity-row-num">
+								<div class="@($"bb-identity-row-num drev-{detailRevealVersion}")">
 									<div class="bb-number-pill">
 										<span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
 									</div>
 								</div>
-								<div class="bb-identity-row-name">
+								<div class="@($"bb-identity-row-name drev-{detailRevealVersion}")">
 									<div class="bb-name">@selectedSpecies.Name</div>
 								</div>
 								@if (isFullyDiscovered || IsSeen(selectedSpecies.Id))
 								{
 									<!-- Element pills — own row. Dual-type (FIRE + SHADOW)
 									     sits horizontally, wraps only if column gets cramped. -->
-									<div class="bb-identity-elements-row">
+									<div class="@($"bb-identity-elements-row drev-{detailRevealVersion}")">
 										<div class="bb-pill element-@primaryClass bb-element-pill-full">
 											<img src="ui/icons/elements/element_white/@(primaryClass).svg" />
 											<span>@primaryClass.ToUpper()</span>
@@ -293,7 +311,7 @@
 									<!-- Rarity + BST row — sits directly under the element pills
 									     so the "what kind of beast" summary reads top-down as
 									     element → rarity/stats → personality (identity trailer). -->
-									<div class="bb-identity-row-bottom">
+									<div class="@($"bb-identity-row-bottom drev-{detailRevealVersion}")">
 										<div class="bb-rarity-badge rarity-@selectedSpecies.BaseRarity.ToString().ToLower()">
 											<span>@selectedSpecies.BaseRarity.ToString().ToUpper()</span>
 										</div>
@@ -313,7 +331,7 @@
 									     iconify prefix (lucide:user) gives the pill a shape
 									     distinct from the element pills (which use element
 									     glyphs) without coloring it like a third element. -->
-									<div class="bb-identity-personality-row">
+									<div class="@($"bb-identity-personality-row drev-{detailRevealVersion}")">
 										<div class="bb-pill personality bb-personality-pill-inline">
 											<iconify icon="lucide:user" Size=@(11) Color="rgba(255,255,255,0.7)" />
 											<span>@selectedSpecies.Personality.ToString().ToUpper()</span>
@@ -329,11 +347,11 @@
 						     view is active. Core identity, not view-specific content. -->
 						@if (isFullyDiscovered && !string.IsNullOrEmpty(selectedSpecies.Description))
 						{
-							<div class="bb-flavor"><span>@selectedSpecies.Description</span></div>
+							<div class="@($"bb-flavor drev-{detailRevealVersion}")"><span>@selectedSpecies.Description</span></div>
 						}
 						else if (!isFullyDiscovered && (IsDiscovered(selectedSpecies.Id) || IsSeen(selectedSpecies.Id)))
 						{
-							<div class="bb-flavor"><span>???</span></div>
+							<div class="@($"bb-flavor drev-{detailRevealVersion}")"><span>???</span></div>
 						}
 
 					</div>
@@ -893,6 +911,91 @@
 			 onmousemove=@OnEditDragMove
 			 onmouseup=@OnEditDragEnd></div>
 	}
+
+	@* ════════════════════════════════════════════════════════════
+	   T3 — NEW-SPECIES DISCOVERY REVEAL
+	   ------------------------------------------------------------
+	   Fullscreen sibling of the whole panel body — NOT a child of
+	   the scroll grid (the scroll-clip glow-leak rule). Mounts fresh
+	   via `@if discoveryCelebrationActive` so every layer's entrance
+	   @keyframes fire on a clean DOM node (the proven one-shot
+	   celebration pattern — keyframes never replay on a persistent
+	   element). `discoveryVersion` is folded into the wrapper key so
+	   a back-to-back second discovery remounts a brand-new subtree.
+	   Hades-shape sequence (anticipation → reveal → celebration →
+	   settle), identical beat for ANY species — deterministic, no RNG
+	   framing (anti-gacha). Driven by BeastiaryManager.OnSpeciesDiscovered.
+	   ════════════════════════════════════════════════════════════ *@
+	@if ( discoveryCelebrationActive && discoverySpecies != null )
+	{
+		var discPrimary = discoverySpecies.Element.ToString().ToLower();
+		var discRarity = discoverySpecies.BaseRarity.ToString().ToLower();
+		<div class="@($"bb-discovery-overlay rarity-{discRarity} disc-{discoveryVersion}")" onclick=@DismissDiscovery>
+
+			<!-- Scrim — dims the panel behind so the reveal owns the screen. -->
+			<div class="bb-disc-scrim"></div>
+
+			<!-- Anticipation flash — one white pop on the held beat. -->
+			<div class="bb-disc-flash"></div>
+
+			<!-- Reveal bloom — expanding light ring + warm radial ray wash
+			     behind the portrait. Rarity tint flows through the wrapper. -->
+			<div class="bb-disc-bloom">
+				<div class="bb-disc-rays"></div>
+				<div class="bb-disc-ring"></div>
+				<div class="bb-disc-ring ring-2"></div>
+			</div>
+
+			<!-- Center stack — eyebrow → portrait spring → name slam → meta. -->
+			<div class="bb-disc-stack">
+				<div class="bb-disc-eyebrow">
+					<iconify icon="lucide:sparkles" Size=@(14) Color="#fbbf24" />
+					<span>NEW SPECIES DISCOVERED</span>
+				</div>
+
+				<div class="bb-disc-portrait-wrap">
+					@if ( HasSprite( discoverySpecies ) )
+					{
+						<img class="bb-disc-sprite" src="@GetAnimatedIcon( discoverySpecies )" />
+					}
+					else
+					{
+						<div class="bb-disc-unknown">?</div>
+					}
+				</div>
+
+				<div class="bb-disc-name-row">
+					<div class="bb-disc-number"><span>#@discoverySpecies.BeastiaryNumber.ToString( "D3" )</span></div>
+					<div class="bb-disc-name">@discoverySpecies.Name</div>
+				</div>
+
+				<div class="bb-disc-meta-row">
+					<div class="bb-pill element-@discPrimary bb-disc-el-pill">
+						<img src="ui/icons/elements/element_white/@(discPrimary).svg" />
+						<span>@discPrimary.ToUpper()</span>
+					</div>
+					<div class="bb-disc-rarity-pill rarity-@discRarity">
+						<span>@discoverySpecies.BaseRarity.ToString().ToUpper()</span>
+					</div>
+				</div>
+
+				<!-- Radial spark burst — 8 directional motes, fresh-mount
+				     keyframes per spark. Sits behind the stack content. -->
+				<div class="bb-disc-sparks">
+					<div class="bb-disc-spark s0"></div>
+					<div class="bb-disc-spark s1"></div>
+					<div class="bb-disc-spark s2"></div>
+					<div class="bb-disc-spark s3"></div>
+					<div class="bb-disc-spark s4"></div>
+					<div class="bb-disc-spark s5"></div>
+					<div class="bb-disc-spark s6"></div>
+					<div class="bb-disc-spark s7"></div>
+				</div>
+
+				<div class="bb-disc-dismiss-hint"><span>CLICK TO CONTINUE</span></div>
+			</div>
+		</div>
+	}
 </root>
 
 @code {
@@ -995,6 +1098,63 @@
 	// re-fire every click (s&box quirk). Ported from ShopPanelContent.
 	private string justSelectedSpeciesId = null;
 	private int selectPulseVersion = 0;
+
+	// Detail-pane entrance — bumped each time the selected species changes so
+	// the `detail-rev-N` class remounts the `.bb-detail-fixed` subtree and its
+	// staggered reveal @keyframes (portrait → name → pills → flavor) fire fresh.
+	// Mount-time keyframes are the right tool here: the subtree genuinely
+	// remounts on species change, so there's no "replay on persistent element"
+	// trap. T2 state-change polish — gives selecting a beast a satisfying
+	// "the page turns to it" cascade instead of an instant snap.
+	private int detailRevealVersion = 0;
+
+	// ───────────────────── T3 NEW-SPECIES DISCOVERY REVEAL ────────────────
+	// Fullscreen Hades-shape celebration fired off BeastiaryManager's
+	// OnSpeciesDiscovered action. The overlay is a sibling of the panel body
+	// (NOT inside the scroll grid) so colored glows / rings don't leak past
+	// the scroll viewport. `discoveryVersion` keys the wrapper so a second
+	// discovery while one is still on screen remounts a fresh subtree and the
+	// entrance @keyframes replay (the proven one-shot pattern). Deterministic
+	// beat for ANY species — anti-gacha (no RNG framing, identical for a
+	// common or a legendary aside from the rarity tint).
+	private bool discoveryCelebrationActive = false;
+	private MonsterSpecies discoverySpecies = null;
+	private int discoveryVersion = 0;
+	private RealTimeSince _discoveryShownAt;
+	// Auto-dismiss after the celebration has played + had a beat to be read.
+	// Player can also click anywhere on the overlay to dismiss early.
+	private const float DISCOVERY_AUTO_DISMISS = 4.5f;
+	private bool _discoverySubscribed = false;
+
+	private void OnSpeciesDiscoveredFired( string speciesId )
+	{
+		if ( string.IsNullOrEmpty( speciesId ) ) return;
+		var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+		if ( sp == null ) return;
+		// Only celebrate species the player can actually browse here — keeps
+		// the reveal scoped to the launch roster (matches the completion math).
+		if ( !MonsterManager.LaunchRoster.Contains( speciesId ) ) return;
+
+		discoverySpecies = sp;
+		discoveryCelebrationActive = true;
+		discoveryVersion++;
+		_discoveryShownAt = 0f;
+		// Layered cue — reuse existing vocab (no dedicated discovery file yet;
+		// flagged for product). Click = anticipation, Success+Gold = reveal.
+		SoundManager.PlayClick();
+		SoundManager.PlaySuccess();
+		SoundManager.PlayGoldReward();
+		StateHasChanged();
+	}
+
+	private void DismissDiscovery()
+	{
+		if ( !discoveryCelebrationActive ) return;
+		discoveryCelebrationActive = false;
+		discoverySpecies = null;
+		SoundManager.PlayBack();
+		StateHasChanged();
+	}
 
 	// ───────────────────── DEV: GRID-CARD ART EDITOR ──────────────────────
 	// Toggle EDIT MODE to drag any grid card's sprite to retune CardOffsetX/Y
@@ -1267,12 +1427,41 @@
 			// previous edits show up the moment the Beastbook opens. See
 			// SavedCardArtFile / PrintCardArt above for the persistence path.
 			LoadSavedCardArt();
+
+			// Subscribe to the discovery hook so a beast caught/owned while
+			// the Beastbook is open fires the T3 reveal. The panel is mounted
+			// fresh each tab activation in this game's tab model, so subscribe
+			// here and tear down in OnDeleted to avoid duplicate handlers.
+			var bmgr = BeastiaryManager.Instance;
+			if ( bmgr != null && !_discoverySubscribed )
+			{
+				bmgr.OnSpeciesDiscovered += OnSpeciesDiscoveredFired;
+				_discoverySubscribed = true;
+			}
+		}
+	}
+
+	public override void OnDeleted()
+	{
+		base.OnDeleted();
+		var bmgr = BeastiaryManager.Instance;
+		if ( bmgr != null && _discoverySubscribed )
+		{
+			bmgr.OnSpeciesDiscovered -= OnSpeciesDiscoveredFired;
+			_discoverySubscribed = false;
 		}
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
+
+		// Auto-dismiss the discovery reveal once it's played + had a beat to
+		// land. Cheap StateHasChanged only when the overlay is actually up.
+		if ( discoveryCelebrationActive && _discoveryShownAt > DISCOVERY_AUTO_DISMISS )
+		{
+			DismissDiscovery();
+		}
 	}
 
 	// Mouse-wheel zoom for the beast preview popup — override the Panel
@@ -1645,6 +1834,9 @@
 			// Ported from ShopPanelContent.
 			justSelectedSpeciesId = species?.Id;
 			selectPulseVersion++;
+			// Bump the detail reveal key so the detail-fixed subtree remounts
+			// and its staggered entrance @keyframes replay for the new beast.
+			detailRevealVersion++;
 			SoundManager.PlayClick();
 		}
 	}
@@ -1881,6 +2073,13 @@
 		// re-render on re-click and the one-shot flash won't remount.
 		hash.Add( justSelectedSpeciesId );
 		hash.Add( selectPulseVersion );
+		// T3 discovery reveal — visibility + version (remount key) + which
+		// species so the overlay mounts/dismisses and swaps subject cleanly.
+		hash.Add( discoveryCelebrationActive );
+		hash.Add( discoveryVersion );
+		hash.Add( discoverySpecies?.Id );
+		// Detail reveal key — drives the per-species entrance cascade remount.
+		hash.Add( detailRevealVersion );
 		// Edit-mode state — toolbar visibility, drag/hover targets, and the
 		// override-count badge all need to react to these.
 		hash.Add( _editMode );

@@ -738,6 +738,49 @@
 			<button class="result-continue-btn" onclick=@ReturnToModeSelect>
 				<span class="result-continue-text">CONTINUE</span>
 			</button>
+
+			<!-- T3 RANK-UP CELEBRATION — deterministic (you climbed a tier), not RNG -->
+			@if (showRankUp)
+			{
+				<div class="rank-up-overlay" @key=rankUpVersion onclick=@DismissRankUp>
+					<div class="rank-up-flash"></div>
+					<div class="rank-up-content">
+						<span class="rank-up-text">RANK UP</span>
+						<div class="rank-up-ranks">
+							<span class="rank-up-old" style="color: @CompetitiveManager.GetRankColor(previousRank)">@previousRank</span>
+							<iconify class="rank-up-arrow" icon="lucide:chevrons-up" Size=@(34) Color="#fbbf24" />
+							<span class="rank-up-new" style="color: @GetRankColor()">@GetRank()</span>
+						</div>
+						<span class="rank-up-hint">Click to continue</span>
+					</div>
+				</div>
+			}
+
+			<!-- T4 WIN-STREAK MILESTONE SETPIECE — earned through consecutive wins -->
+			@if (showStreakMilestone)
+			{
+				<div class="streak-setpiece" @key=streakSetpieceVersion onclick=@DismissStreakMilestone>
+					<div class="streak-scrim"></div>
+					<div class="streak-burst">
+						@for (int r = 0; r < 14; r++)
+						{
+							<div class="streak-ray streak-ray-@r"></div>
+						}
+					</div>
+					<div class="streak-shock streak-shock-1"></div>
+					<div class="streak-shock streak-shock-2"></div>
+					<div class="streak-stack">
+						<span class="streak-kicker">WIN STREAK</span>
+						<div class="streak-number-wrap">
+							<iconify class="streak-flame streak-flame-l" icon="lucide:flame" Size=@(56) Color="#f97316" />
+							<span class="streak-number">@streakMilestoneValue</span>
+							<iconify class="streak-flame streak-flame-r" icon="lucide:flame" Size=@(56) Color="#f97316" />
+						</div>
+						<span class="streak-label">WINS IN A ROW</span>
+						<span class="streak-hint">Click to continue</span>
+					</div>
+				</div>
+			}
 		</div>
 	}
 	else if (currentView == "leaderboard")
@@ -863,9 +906,17 @@
 	private bool lastSetWon = false;
 	private int lastPointsChange = 0;
 
-	// Rank-up state
+	// Rank-up state (T3 celebration)
 	private bool showRankUp = false;
 	private string previousRank = "";
+
+	// Win-streak milestone state (T4 setpiece)
+	private bool showStreakMilestone = false;
+	private int streakMilestoneValue = 0;
+	private int streakSetpieceVersion = 0;   // render-key so the mount @keyframes replay each fire
+	private int rankUpVersion = 0;           // render-key for the rank-up overlay
+	// Streak thresholds that earn a fullscreen moment. Earned, deterministic — not RNG.
+	private static readonly int[] StreakMilestones = { 3, 5, 10, 15, 20, 25, 30, 40, 50 };
 
 	// Match settings overlay state
 	private bool _showMatchSettings = false;
@@ -1086,7 +1137,9 @@
 		{
 			if (Input.Pressed("Jump") || Input.Pressed("Enter") || Input.Pressed("Menu"))
 			{
-				if (showRankUp)
+				if (showStreakMilestone)
+					DismissStreakMilestone();
+				else if (showRankUp)
 					DismissRankUp();
 				else
 					ReturnToModeSelect();
@@ -1566,9 +1619,27 @@
 		lastSetWon = won;
 		lastPointsChange = pointsChange;
 
-		// Detect rank-up
+		// Detect rank-up (T3) and win-streak milestone (T4).
 		showRankUp = CompetitiveManager.Instance?.DidRankUp == true && selectedMode == CompetitiveManager.ArenaMode.Ranked;
 		previousRank = CompetitiveManager.Instance?.PreviousRank ?? "";
+
+		showStreakMilestone = false;
+		streakMilestoneValue = 0;
+		if (won)
+		{
+			var streak = GetWinStreak();
+			if (System.Array.IndexOf(StreakMilestones, streak) >= 0)
+			{
+				showStreakMilestone = true;
+				streakMilestoneValue = streak;
+				streakSetpieceVersion++;   // fresh @key → mount @keyframes replay
+				// Don't pile two celebrations on one set — the streak T4 takes the stage.
+				// Rank still reads on the result card; rank-up overlay is suppressed this set.
+				showRankUp = false;
+			}
+		}
+
+		if (showRankUp) rankUpVersion++;
 
 		if (won) SoundManager.PlayVictory();
 		else SoundManager.PlayDefeat();
@@ -1581,6 +1652,10 @@
 		isOnlineMatchmaking = false;
 		isWaitingForOpponent = false;
 		currentView = "result";
+		// Explicit re-render so the result view + any celebration overlay mount on
+		// this frame (matches the sibling event handlers; the overlays' mount-time
+		// @keyframes need a fresh mount to play).
+		StateHasChanged();
 	}
 
 	// ═══════════════════════════════════════════════════════════════
@@ -1682,6 +1757,7 @@
 		isOnlineMatchmaking = false;
 		isWaitingForOpponent = false;
 		showRankUp = false;
+		showStreakMilestone = false;
 		_modeSelectVisible = false;
 		currentView = "mode-select";
 		_ = System.Threading.Tasks.Task.Delay( 30 ).ContinueWith( _ => { _modeSelectVisible = true; StateHasChanged(); } );
@@ -1689,7 +1765,18 @@
 
 	private void DismissRankUp()
 	{
+		SoundManager.PlayClick();
 		showRankUp = false;
+		// Result view doesn't force a Tick() re-render, so the keyboard-dismiss
+		// path needs an explicit StateHasChanged to clear the overlay.
+		StateHasChanged();
+	}
+
+	private void DismissStreakMilestone()
+	{
+		SoundManager.PlayClick();
+		showStreakMilestone = false;
+		StateHasChanged();
 	}
 
 	private void ViewLeaderboard()
