@@ -80,6 +80,20 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
 - **`@variableName` inside string text needs parens to disambiguate.** `Reach Lv@loreIdx to unlock` renders LITERALLY because Razor can't tell where the identifier ends. Use `@(loreIdx + 1)` form OR hoist to a local variable: `var n = loreIdx; ... Lv@n`. Common gotcha when interpolating numbers into UI strings.
 - **Inline style transforms with culture-sensitive floats need InvariantCulture.** s&box CSS expects `1.30` not `1,30`. Format floats with `value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)` when building inline `transform: scale(...)` or `translate(...)` strings.
 
+## box-shadow — two confirmed gotchas (menu focus-ring debugging, 2026-06) [PROMOTE]
+
+- **s&box paints box-shadows LAST-on-top (opposite of browsers).** With multiple shadows
+  the LAST-listed wins the overlap, not the first. For a gapped ring
+  (`0 0 0 Rpx <ring>, 0 0 0 Gpx <gap>`) the GAP must be listed **last** to knock through
+  the ring's inner edge — the reverse of what you'd write for a browser.
+- **box-shadow spread distorts ring corners.** s&box doesn't add the spread to the inner
+  shadow's corner radius, so a thick box-shadow ring reads "stretched"/uneven at the
+  corners. For a clean concentric focus ring, use a **real bordered element**, not
+  box-shadow: a child at `inset:-10px; border:4px solid <color>; border-radius:
+  hostRadius+10` gives a 6px gap + 4px ring with smooth corners. If the host has
+  `overflow:hidden` (e.g. a button clipping a sheen), put the ring in a wrapper *slot*
+  sibling instead of a child. Canonical: menu `.lh-play-ring` / `.lh-item-ring`.
+
 ## When in doubt
 
 - **s&box has an LLM documentation index at `https://sbox.game/llms.txt`.** WebFetch it when stuck on s&box-specific APIs or CSS behavior. Docs may be outdated — verify against actual project code when something feels off.

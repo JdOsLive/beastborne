@@ -118,6 +118,23 @@ The handoff assumes standard browser CSS. Translate every pattern to engine-safe
 
 ---
 
+## Focus ring & button interaction (reusable — built on the menu)
+
+The keyboard/focus cursor is a **violet ring** (`#9B6CFF` = `--bb-purple-lite`) with a small
+GAP, implemented as a **real bordered element** — NOT a box-shadow (s&box distorts box-shadow
+ring corners; see `css-quirks.md`). Pattern: a child at `inset:-10px; border:4px solid
+#9b6cff; border-radius: hostRadius+10; background-color: rgba(0,0,0,0); opacity:0`, flipped
+to `opacity:1` on the focused/selected state. If the host has `overflow:hidden`, wrap it in a
+slot and make the ring a *sibling* (menu `.lh-play-slot` / `.lh-play-ring`); otherwise the
+ring is a direct *child* (menu `.lh-item-ring` / `.lh-util-ring`). Scale the inset/border
+down for small controls.
+
+**The rule:** a button carrying this ring must NOT transform on hover/active — a lift/slide
+breaks the even gap; feedback is **brighten (hover) / dim (active)** only. Mouse-only buttons
+with NO ring follow the guide's hover-lift 1px + brighten / active press + dim. **Hue never
+changes** between states. Where hover also sets the keyboard index (hover == focus), the ring
+shows on hover too — one identical cursor on every control.
+
 ## Live-game corrections vs the handoff (quick list)
 1. **Wind = teal** (`#2dd4bf`), not slate-gray, not the handoff's `#1FD6C8`. ✅ shipped.
 2. **Nature** = `#22c55e/#16a34a`, not `#2FD24F`.
