@@ -169,12 +169,18 @@
 					</div>
 					<div class="lh-feat-desc">@featuredDesc</div>
 					<div class="lh-feat-ctas">
-						<button class="lh-feat-cta" onclick=@OnPlayClicked>
+						<button class="lh-feat-cta @(selectedIndex == 7 ? "selected" : "")"
+								onclick=@OnPlayClicked
+								onmouseover=@(() => OnButtonHover(7))>
 							<span class="lh-feat-cta-tri">▶</span>
 							<span>Play Now</span>
+							<span class="lh-feat-cta-ring"></span>
 						</button>
-						<button class="lh-feat-cta lh-feat-cta-ghost" onclick=@OnPatchNotesClicked>
+						<button class="lh-feat-cta lh-feat-cta-ghost @(selectedIndex == 8 ? "selected" : "")"
+								onclick=@OnPatchNotesClicked
+								onmouseover=@(() => OnButtonHover(8))>
 							<span>Patch Notes</span>
+							<span class="lh-feat-cta-ring"></span>
 						</button>
 					</div>
 				</div>
@@ -182,22 +188,36 @@
 
 			<!-- BOTTOM CARD ROW — Roadmap + Community -->
 			<div class="lh-cards @(entranceStage >= 6 ? "entered" : "")">
-				<button class="lh-card lh-card-roadmap" onclick=@OnRoadmapClicked>
-					<span class="lh-card-edge"></span>
-					<span class="lh-card-kicker">WHAT'S NEXT</span>
-					<span class="lh-card-title">Roadmap</span>
-					<span class="lh-card-sub">See what's coming to Beastborne</span>
-					<span class="lh-card-glyph"><iconify icon="lucide:map" Size=@(96) Color="rgba(96, 165, 250, 0.18)" /></span>
-					<span class="lh-card-arrow">▶</span>
-				</button>
-				<button class="lh-card lh-card-community" onclick=@OnDiscordClick>
-					<span class="lh-card-edge"></span>
-					<span class="lh-card-kicker">COMMUNITY</span>
-					<span class="lh-card-title">Join the Pack</span>
-					<span class="lh-card-sub">Join the Discord</span>
-					<span class="lh-card-glyph"><iconify icon="lucide:message-circle" Size=@(96) Color="rgba(124, 138, 255, 0.2)" /></span>
-					<span class="lh-card-arrow">▶</span>
-				</button>
+				<!-- Roadmap card — selectedIndex 9. Wrapped in a slot so the violet
+					 focus ring can be a SIBLING (the card has overflow:hidden, which
+					 would clip a child ring — see .lh-play-slot/.lh-play-ring). -->
+				<div class="lh-card-slot @(selectedIndex == 9 ? "selected" : "")">
+					<button class="lh-card lh-card-roadmap"
+							onclick=@OnRoadmapClicked
+							onmouseover=@(() => OnButtonHover(9))>
+						<span class="lh-card-edge"></span>
+						<span class="lh-card-kicker">WHAT'S NEXT</span>
+						<span class="lh-card-title">Roadmap</span>
+						<span class="lh-card-sub">See what's coming to Beastborne</span>
+						<span class="lh-card-glyph"><iconify icon="lucide:map" Size=@(96) Color="rgba(96, 165, 250, 0.18)" /></span>
+						<span class="lh-card-arrow">▶</span>
+					</button>
+					<div class="lh-card-ring"></div>
+				</div>
+				<!-- Community card — selectedIndex 10. Same slot+sibling-ring pattern. -->
+				<div class="lh-card-slot @(selectedIndex == 10 ? "selected" : "")">
+					<button class="lh-card lh-card-community"
+							onclick=@OnDiscordClick
+							onmouseover=@(() => OnButtonHover(10))>
+						<span class="lh-card-edge"></span>
+						<span class="lh-card-kicker">COMMUNITY</span>
+						<span class="lh-card-title">Join the Pack</span>
+						<span class="lh-card-sub">Join the Discord</span>
+						<span class="lh-card-glyph"><iconify icon="lucide:message-circle" Size=@(96) Color="rgba(124, 138, 255, 0.2)" /></span>
+						<span class="lh-card-arrow">▶</span>
+					</button>
+					<div class="lh-card-ring"></div>
+				</div>
 			</div>
 		</main>
 	</div>
@@ -1585,20 +1605,33 @@
 		}
 		else
 		{
-			// Navigate menu (7 entries: PLAY, ROADMAP, OPTIONS, PATCH NOTES,
-			// DISCORD, LANG, QUIT). Any of these is a keyboard action → flip into
-			// keyboard mode so mouse hover on the main-area CTAs/cards is suppressed.
-			if (Input.Pressed("Up"))
+			// Navigate the menu as a 2D grid (sidebar column 0–6 on the left, the
+			// main-area CTA pair 7/8 + card pair 9/10 on the right). Movement is
+			// resolved through MenuNavTarget() — an adjacency table keyed by the
+			// current index. Any nav/confirm key flips into keyboard mode so mouse
+			// hover on the main-area CTAs/cards is suppressed (never two cursors).
+			//
+			// The Up/Down/Left/Right actions are bound to W/S/A/D in
+			// ProjectSettings/Input.config (there are no separate arrow-key binds in
+			// this project — "arrow nav" in the codebase IS WASD). The Forward/
+			// Backward actions are the SAME physical W/S keys, polled too so a future
+			// re-bind that splits them apart still drives the menu.
+			bool up    = Input.Pressed("Up")    || Input.Pressed("Forward");   // W
+			bool down  = Input.Pressed("Down")  || Input.Pressed("Backward");  // S
+			bool left  = Input.Pressed("Left");                                // A
+			bool right = Input.Pressed("Right");                               // D
+
+			if (up || down || left || right)
 			{
 				EnterKeyboardMode();
-				selectedIndex = Math.Max(0, selectedIndex - 1);
-				SoundManager.PlayHover();
-			}
-			else if (Input.Pressed("Down"))
-			{
-				EnterKeyboardMode();
-				selectedIndex = Math.Min(6, selectedIndex + 1);
-				SoundManager.PlayHover();
+				char dir = up ? 'W' : down ? 'S' : left ? 'A' : 'D';
+				int target = MenuNavTarget(selectedIndex, dir);
+				if (target >= 0 && target != selectedIndex)
+				{
+					selectedIndex = target;
+					SoundManager.PlayHover();
+				}
+				// No neighbor in that direction = no-op (don't wrap, don't crash).
 			}
 			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 			{
@@ -1606,6 +1639,55 @@
 				ExecuteSelectedAction();
 			}
 		}
+	}
+
+	// ─── MENU 2D NAVIGATION (adjacency table) ───────────────────────────
+	// Returns the selectedIndex reached by pressing `dir` (W/A/S/D) from
+	// `from`, or -1 for "no neighbor" (the caller leaves selection unchanged).
+	//
+	// Layout the table encodes:
+	//   SIDEBAR column (left):   0 PLAY → 1 Roadmap → 2 Options → 3 PatchNotes
+	//                            → 4 Discord, then the 5 LANGUAGE | 6 QUIT pair.
+	//   MAIN area (right):       7 PlayNow | 8 PatchCTA   (CTA pair, top)
+	//                            9 RoadmapCard | 10 CommCard (card pair, bottom)
+	// Crossing: D from a sidebar item jumps to the nearest main element
+	//   (top sidebar rows → Play Now; Discord → Roadmap card). A from a main
+	//   element returns to the sidebar (leftmost of each pair → PLAY / Discord;
+	//   rightmost stays within its pair). LANGUAGE|QUIT are a horizontal pair —
+	//   D goes LANG→QUIT, A goes QUIT→LANG; W from either returns to Discord.
+	private int MenuNavTarget( int from, char dir )
+	{
+		switch (from)
+		{
+			// ── Sidebar column ──
+			case 0: // PLAY
+				return dir == 'S' ? 1 : dir == 'D' ? 7 : -1;
+			case 1: // Roadmap
+				return dir == 'W' ? 0 : dir == 'S' ? 2 : dir == 'D' ? 7 : -1;
+			case 2: // Options
+				return dir == 'W' ? 1 : dir == 'S' ? 3 : dir == 'D' ? 7 : -1;
+			case 3: // Patch Notes
+				return dir == 'W' ? 2 : dir == 'S' ? 4 : dir == 'D' ? 7 : -1;
+			case 4: // Discord card
+				return dir == 'W' ? 3 : dir == 'S' ? 5 : dir == 'D' ? 9 : -1;
+			case 5: // LANGUAGE (left of the footer pair)
+				return dir == 'W' ? 4 : dir == 'D' ? 6 : -1;
+			case 6: // QUIT (right of the footer pair)
+				return dir == 'W' ? 4 : dir == 'A' ? 5 : -1;
+
+			// ── Main area: CTA pair (top) ──
+			case 7: // Play Now CTA (left of pair)
+				return dir == 'A' ? 0 : dir == 'D' ? 8 : dir == 'S' ? 9 : -1;
+			case 8: // Patch Notes CTA (right of pair)
+				return dir == 'A' ? 7 : dir == 'S' ? 10 : -1;
+
+			// ── Main area: card pair (bottom) ──
+			case 9: // Roadmap card (left of pair)
+				return dir == 'W' ? 7 : dir == 'A' ? 4 : dir == 'D' ? 10 : -1;
+			case 10: // Community card (right of pair)
+				return dir == 'W' ? 8 : dir == 'A' ? 9 : -1;
+		}
+		return -1;
 	}
 
 	// ─── TWO-BUTTON DIALOG KEYBOARD HELPER ──────────────────────────
@@ -1676,6 +1758,11 @@
 			case 4: OnDiscordClick(); break;
 			case 5: ToggleMainMenuLanguage(); break;
 			case 6: OnQuitClicked(); break;
+			// Main-area elements (keyboard-reachable via D from the sidebar).
+			case 7: OnPlayClicked(); break;        // Play Now CTA
+			case 8: OnPatchNotesClicked(); break;  // Patch Notes CTA
+			case 9: OnRoadmapClicked(); break;     // Roadmap card
+			case 10: OnDiscordClick(); break;      // Community card
 		}
 	}
 
