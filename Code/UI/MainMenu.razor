@@ -7,7 +7,7 @@
 @using Beastborne.UI.Components;
 @inherits PanelComponent
 
-<root class="main-menu @(IsVisible || transitionPhase > 0 ? "" : "hidden") @(transitionPhase >= 2 ? "covering" : "")">
+<root class="main-menu @(keyboardMode ? "kbd-nav" : "mouse-nav") @(IsVisible || transitionPhase > 0 ? "" : "hidden") @(transitionPhase >= 2 ? "covering" : "")" onmousemove=@OnMenuMouseMove>
 	<div class="menu-background"></div>
 	<div @ref="videoBackgroundPanel" class="menu-video-background"></div>
 	<div class="menu-nebula"></div>
@@ -736,6 +736,16 @@
 	private bool contentVisible = false;
 	private int entranceStage = 0;
 	private int selectedIndex = 0;
+
+	// Device-mode flag for the MOUSE↔KEYBOARD model. When true the root carries
+	// `.kbd-nav` and ALL `:hover` rules (gated behind `.mouse-nav` in the SCSS)
+	// stop matching, so mouse hover can't linger on a main-area element while the
+	// player is keyboarding the sidebar. Flipped via EnterKeyboardMode() (any
+	// nav/confirm keypress) and EnterMouseMode() (mouseover OR onmousemove on the
+	// root). selectedIndex already defaults to 0 (PLAY) and resets to 0 on
+	// return-to-menu, so the keyboard cursor always has a valid seed.
+	// NOTE: starts in mouse mode — the menu opens under the cursor.
+	private bool keyboardMode = false;
 
 	// Shared keyboard cursor for two-button modal dialogs (save-fail,
 	// hiring, reset confirm). 0 = left button focused, 1 = right. Reset
@@ -1575,19 +1585,26 @@
 		}
 		else
 		{
-			// Navigate menu (6 entries: PLAY, ROADMAP, OPTIONS, PATCH NOTES, LANG, QUIT)
+			// Navigate menu (7 entries: PLAY, ROADMAP, OPTIONS, PATCH NOTES,
+			// DISCORD, LANG, QUIT). Any of these is a keyboard action → flip into
+			// keyboard mode so mouse hover on the main-area CTAs/cards is suppressed.
 			if (Input.Pressed("Up"))
 			{
+				EnterKeyboardMode();
 				selectedIndex = Math.Max(0, selectedIndex - 1);
 				SoundManager.PlayHover();
 			}
 			else if (Input.Pressed("Down"))
 			{
+				EnterKeyboardMode();
 				selectedIndex = Math.Min(6, selectedIndex + 1);
 				SoundManager.PlayHover();
 			}
 			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+			{
+				EnterKeyboardMode();
 				ExecuteSelectedAction();
+			}
 		}
 	}
 
@@ -1664,9 +1681,41 @@
 
 	private void OnButtonHover(int index)
 	{
+		// Hovering a sidebar entry is a MOUSE action — re-assert mouse mode so
+		// hover styling comes back even if we were just keyboarding.
+		EnterMouseMode();
 		if (selectedIndex == index) return;
 		selectedIndex = index;
 		PlayHoverSound();
+	}
+
+	// ─── DEVICE-MODE (MOUSE ↔ KEYBOARD) ─────────────────────────────
+	// Flip into keyboard mode the instant any nav/confirm key is used; flip back
+	// into mouse mode the instant the mouse moves. Both guard on the current
+	// value so they only re-render on an actual change (onmousemove fires every
+	// frame the cursor moves). Reflected as `.kbd-nav` / `.mouse-nav` on the root
+	// — the SCSS gates every main-area `:hover` behind `.mouse-nav`, so keyboard
+	// mode suppresses ALL mouse hover. Never both cursors at once.
+	private void EnterKeyboardMode()
+	{
+		if (keyboardMode) return;
+		keyboardMode = true;
+		StateHasChanged();
+	}
+
+	// onmousemove on the menu root — catches movement WITHIN an element (where
+	// onmouseover never re-fires), so parking-then-twitching the mouse restores
+	// hover. Same pattern as SkillTreePanel's OnPanelMouseMove.
+	private void OnMenuMouseMove()
+	{
+		EnterMouseMode();
+	}
+
+	private void EnterMouseMode()
+	{
+		if (!keyboardMode) return;
+		keyboardMode = false;
+		StateHasChanged();
 	}
 
 	private async void OnPlayClicked()
@@ -2011,6 +2060,7 @@
 		hash.Add(contentVisible);
 		hash.Add(entranceStage);
 		hash.Add(selectedIndex);
+		hash.Add(keyboardMode);
 		hash.Add(showStarterSelection);
 		hash.Add(showRoadmap);
 		hash.Add(selectedStarter);
