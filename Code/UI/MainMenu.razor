@@ -1920,11 +1920,11 @@
 	private int _cursorPersp = 1300; // perspective px for the cursor's rotateY
 	private string _cursorOrigin = "center"; // pivot — the rotated element's left edge in cursor-local px
 
-	// Liquid stretch: squash/stretch along the travel axis on a jump, decaying back
-	// to rest after a short launch window so it reads as a rubber-band arrival.
+	// Liquid stretch: squash/stretch along the travel axis on a jump; eased back to rest
+	// each frame in code (rubber-band arrival).
 	private float _stretchSX = 1f, _stretchSY = 1f;
-	private float _stretchUntil = 0f;
-	private bool _stretchActive = false;
+	// Punchy "ink lean" wave (Splatoon/Persona) — recomputed from Time.Now each frame.
+	private float _waveSkewX = 0f, _waveSkewY = 0f, _waveRotZ = 0f;
 
 	private void UpdateCursor()
 	{
@@ -1968,23 +1968,21 @@
 		if ( angle != _cursorSkew || persp != _cursorPersp ) { _cursorSkew = angle; _cursorPersp = persp; RebuildCursorTransform(); changed = true; }
 		if ( origin != _cursorOrigin ) { _cursorOrigin = origin; changed = true; }
 
-		// Liquid stretch when jumping to a different item.
+		// Liquid stretch when jumping to a different item — set the spike NOW (instant
+		// snap = punchy); it eases back to rest each frame below via code-lerp, so we don't
+		// need a CSS transform transition (which would smear the per-frame wave).
 		if ( idx != _lastCursorIndex && _lastCursorIndex >= 0 && _cursorVisible )
 		{
 			float dx = cx - _cursorCenterX;
 			float dy = cy - _cursorCenterY;
 			float dist = MathF.Sqrt( dx * dx + dy * dy );
-			float k = Math.Clamp( dist / 620f, 0f, 1f ) * 0.24f; // up to ~24% stretch on long jumps
+			float k = Math.Clamp( dist / 620f, 0f, 1f ) * 0.30f; // up to ~30% stretch on long jumps
 			if ( k > 0.012f )
 			{
 				if ( MathF.Abs( dx ) >= MathF.Abs( dy ) )
 				{ _stretchSX = 1f + k; _stretchSY = 1f - k * 0.55f; }
 				else
 				{ _stretchSX = 1f - k * 0.55f; _stretchSY = 1f + k; }
-				_stretchUntil = Time.Now + 0.14f;
-				_stretchActive = true;
-				RebuildCursorTransform();
-				changed = true;
 			}
 		}
 		_lastCursorIndex = idx;
@@ -1996,25 +1994,34 @@
 		if ( !_cursorVisible ) { _cursorVisible = true; changed = true; }
 		if ( _cursorWarmup < 2 ) { _cursorWarmup++; changed = true; } // snap first 1-2 frames, then animate
 
-		// Decay the stretch back to rest after the launch window.
-		if ( _stretchActive && Time.Now >= _stretchUntil )
-		{
-			_stretchActive = false;
-			_stretchSX = 1f; _stretchSY = 1f;
-			RebuildCursorTransform();
-			changed = true;
-		}
+		// Ease the launch stretch back toward rest (code-lerp ~0.15s feel).
+		_stretchSX += ( 1f - _stretchSX ) * 0.16f;
+		_stretchSY += ( 1f - _stretchSY ) * 0.16f;
 
-		if ( changed ) StateHasChanged();
+		// Punchy Splatoon "ink lean": two skew axes oscillating OUT OF PHASE (liquid
+		// wobble) + a slow rotateZ drift (the lean). Driven by sin(clock) so it's seamless
+		// (no loop boundary = no glitch) and center-symmetric (never leaves the button).
+		// Recomputed every visible frame and folded into the transform.
+		float wt = Time.Now;
+		_waveSkewX = 3.4f * MathF.Sin( wt * 1.9f );
+		_waveSkewY = 2.4f * MathF.Sin( wt * 1.4f + 1.9f );
+		_waveRotZ = 1.1f * MathF.Sin( wt * 0.6f );
+
+		RebuildCursorTransform();
+		StateHasChanged(); // continuous wave -> re-render every visible frame
 	}
 
 	private void RebuildCursorTransform()
 	{
 		var inv = System.Globalization.CultureInfo.InvariantCulture;
+		// Wave is INNERMOST of the 3D (applied in the ring's local space, then the
+		// perspective/rotateY tilt the already-flexing ring as a unit). No CSS transition
+		// on transform — it's recomputed each frame, so the wave stays crisp.
+		string wave = $"rotateZ({_waveRotZ.ToString( "0.##", inv )}deg) skewX({_waveSkewX.ToString( "0.##", inv )}deg) skewY({_waveSkewY.ToString( "0.##", inv )}deg)";
 		string scale = $"scale({_stretchSX.ToString( "0.###", inv )}, {_stretchSY.ToString( "0.###", inv )})";
 		_cursorTransform = _cursorSkew != 0f
-			? $"perspective({_cursorPersp}px) rotateY({_cursorSkew.ToString( "0.#", inv )}deg) {scale}"
-			: scale;
+			? $"perspective({_cursorPersp}px) rotateY({_cursorSkew.ToString( "0.#", inv )}deg) {wave} {scale}"
+			: $"{wave} {scale}";
 	}
 
 	private async void OnPlayClicked()
