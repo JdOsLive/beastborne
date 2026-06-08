@@ -222,15 +222,8 @@
 					</button>
 					<div class="lh-card-ring"></div>
 				</div>
-				<!-- Community card — selectedIndex 10. Same slot+sibling-ring pattern.
-					 transform-origin is set INLINE (negative px) so this card pivots around
-					 the ROW's left edge (= Roadmap's left edge), continuing Roadmap's plane
-					 instead of starting a fresh one at its own left edge. The value is
-					 computed each frame in ComputeCommunityCardOrigin() (cards are flex:1 1 0,
-					 so it's resolution-dependent). The inline transform-origin overrides the
-					 SCSS `left center`; the SCSS `transform: perspective rotateY` still applies. -->
-				<div class="lh-card-slot @(selectedIndex == 10 ? "selected" : "")" @ref="_refSlot10"
-					 style="transform-origin: @(_communityOriginX)px center;">
+				<!-- Community card — selectedIndex 10. Same slot+sibling-ring pattern. -->
+				<div class="lh-card-slot @(selectedIndex == 10 ? "selected" : "")" @ref="_refSlot10">
 					<button class="lh-card lh-card-community"
 							onclick=@OnDiscordClick
 							onmouseover=@(() => OnButtonHover(10))>
@@ -1904,14 +1897,6 @@
 	// controls nested inside them (CTAs in the featured card, pills in the cards).
 	private Panel _refFeatured, _refSlot9, _refSlot10;
 
-	// Community card's transform-origin X (negative px, relative to its OWN box). Pivots the
-	// Community slot around the ROW's left edge (= Roadmap's left edge) so the two cards form
-	// ONE continuous receding plane (Community's left edge sits at the same depth Roadmap's
-	// right edge recedes to). Dynamic because cards are flex:1 1 0 — width varies by
-	// resolution. Computed each frame in ComputeCommunityCardOrigin(); bound inline on the
-	// slot. Seeded to 0 (= "left center", the SCSS default) until the first layout pass.
-	private int _communityOriginX = 0;
-
 	// Per-item 3D rotation for the cursor: (rotateY degrees, perspective px, element to
 	// pivot around). Left buttons (0-3) rotate around THEMSELVES; the featured CTAs (7,8)
 	// and the card pills (9,10) rotate around their containing panel. Keep in sync with
@@ -1963,11 +1948,6 @@
 			return;
 		}
 
-		// Keep the Community card's pivot in sync with the row geometry (cheap; only
-		// re-renders when the value actually changes). Done here because UpdateCursor
-		// already runs every frame once the hub is laid out (entranceStage >= 7).
-		ComputeCommunityCardOrigin();
-
 		int idx = selectedIndex;
 		var el = FocusEl( idx );
 		if ( el == null || el.Box.Rect.Width < 1f ) return; // not laid out yet — hold last position
@@ -2010,23 +1990,13 @@
 		if ( panelEl != null && angle != 0f && panelEl.Box.Rect.Width >= 1f )
 		{
 			var pr = panelEl.Box.Rect;
-			// Rotation origin X = the panel's transform-origin in screen px. For the featured
-			// CTAs (7/8) that's the featured card's own left edge (pr.Left). For the card pills
-			// (9/10) BOTH cards now pivot around the ROW's left edge (= Roadmap/slot9's left),
-			// because Community's transform-origin was shifted there to make one continuous
-			// plane (see ComputeCommunityCardOrigin). So the nudge must use slot9.Left as the
-			// origin for BOTH pills — Roadmap (9) is unchanged (its origin IS slot9.Left);
-			// Community (10) now displaces along the same continuous plane and lands correctly.
-			float originX = ( idx == 9 || idx == 10 ) && _refSlot9 != null && _refSlot9.Box.Rect.Width >= 1f
-				? _refSlot9.Box.Rect.Left
-				: pr.Left;
 			float aRad = angle * MathF.PI / 180f;
-			float originY = pr.Top + pr.Height / 2f;     // panel transform-origin: <originX> center
-			float rx = cx - originX;                     // control center relative to the origin
+			float originY = pr.Top + pr.Height / 2f;     // panel transform-origin: left center
+			float rx = cx - pr.Left;                     // control center relative to the origin
 			float ry = cy - originY;
 			float z = -rx * MathF.Sin( aRad );           // CSS Z — right side recedes (away)
 			float scale = (float)persp / ( (float)persp - z ); // perspective foreshorten
-			float vx = originX + rx * MathF.Cos( aRad ) * scale; // visual X after the panel transform
+			float vx = pr.Left + rx * MathF.Cos( aRad ) * scale; // visual X after the panel transform
 			float vy = originY + ry * scale;                     // visual Y
 			left += (int)( vx - cx );
 			top += (int)( vy - cy );
@@ -2077,31 +2047,6 @@
 
 		if ( changed ) StateHasChanged(); // markup (position / origin) changes only — rare, not per-frame
 		ApplyCursorTransform();            // transform applied imperatively each frame — no re-render
-	}
-
-	// Make the Community card CONTINUE Roadmap's tilted plane instead of starting a fresh
-	// one. Both card slots carry `transform: perspective rotateY` in the SCSS; left as-is,
-	// each pivots around its OWN left edge (`transform-origin: left center`) so Roadmap's
-	// right edge recedes back, then Community's left edge jumps forward again — a visible
-	// seam. To make ONE surface, Community must pivot around the ROW's left edge (= Roadmap's
-	// left edge), which is to its LEFT by (Roadmap width + gap). That distance, as a NEGATIVE
-	// px offset from Community's own box, is the difference of the two slots' left edges.
-	// We set it inline (overrides the SCSS `left center`); the SCSS rotateY/perspective still
-	// apply and now use this origin. Recomputed each frame, but only re-renders on change.
-	private void ComputeCommunityCardOrigin()
-	{
-		if ( _refSlot9 == null || _refSlot10 == null ) return;
-		var r9 = _refSlot9.Box.Rect;
-		var r10 = _refSlot10.Box.Rect;
-		if ( r9.Width < 1f || r10.Width < 1f ) return; // not laid out yet — keep last value
-
-		// Negative: Roadmap's left edge sits left of Community's left edge.
-		int originX = (int)( r9.Left - r10.Left );
-		if ( originX != _communityOriginX )
-		{
-			_communityOriginX = originX;
-			StateHasChanged(); // markup (inline transform-origin) changed — re-render once
-		}
 	}
 
 	// Apply the cursor's transform IMPERATIVELY via PanelTransform (Style.Transform) — no
@@ -2488,9 +2433,6 @@
 		hash.Add(_cursorR);
 		hash.Add(_cursorOrigin);
 		hash.Add(_cursorWarmup);
-		// Community card's dynamic transform-origin (continuous-plane pivot — see
-		// ComputeCommunityCardOrigin). Bound inline on the slot, so re-render on change.
-		hash.Add(_communityOriginX);
 		hash.Add(discordOnline);
 		hash.Add(discordMembers);
 		hash.Add(showStarterSelection);
