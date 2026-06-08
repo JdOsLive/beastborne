@@ -1918,6 +1918,7 @@
 	private int _cursorWarmup = 0; // 0/1 = snap to position (no glide), 2 = animate
 	private float _cursorSkew = 0f; // rotateY degrees — matches the angled element
 	private int _cursorPersp = 1300; // perspective px for the cursor's rotateY
+	private int _cursorPivotX = 0;   // rotateY pivot (panel left edge) from the cursor's left edge
 	private string _cursorOrigin = "center"; // pivot — the rotated element's left edge in cursor-local px
 
 	// Liquid stretch: squash/stretch along the travel axis on a jump; eased back to rest
@@ -1958,15 +1959,15 @@
 		// containing PANEL for controls nested in a rotated panel). Keeps the ring
 		// concentric instead of pinching on the receding side.
 		var (angle, persp, pivotEl) = CursorRot( idx );
-		string origin;
+		int pivotX = 0; // rotateY pivot (panel's left edge), measured from the cursor's own left edge
 		if ( angle != 0f && pivotEl != null && pivotEl.Box.Rect.Width >= 1f )
 		{
-			int originX = (int)pivotEl.Box.Rect.Left - left; // left = the cursor's own left edge
-			origin = $"{originX}px center";
+			pivotX = (int)pivotEl.Box.Rect.Left - left;
 		}
-		else { angle = 0f; persp = 0; origin = "center"; }
-		if ( angle != _cursorSkew || persp != _cursorPersp ) { _cursorSkew = angle; _cursorPersp = persp; } // applied imperatively each frame
-		if ( origin != _cursorOrigin ) { _cursorOrigin = origin; changed = true; }
+		else { angle = 0f; persp = 0; }
+		// transform-origin stays CENTER (so scale + wave pivot center). The rotateY uses a
+		// translate-sandwich (below) to pivot at the panel's left edge instead.
+		_cursorSkew = angle; _cursorPersp = persp; _cursorPivotX = pivotX;
 
 		// Liquid stretch when jumping to a different item — set the spike NOW (instant
 		// snap = punchy); it eases back to rest each frame below via code-lerp, so we don't
@@ -2024,11 +2025,17 @@
 		if ( _cursorSkew != 0f )
 		{
 			t.AddPerspective( _cursorPersp );
-			t.AddRotation( 0f, _cursorSkew, 0f );   // rotateY — pivots at the inline transform-origin
+			// rotateY pivots at the panel's LEFT edge (matches the angled panel) while the
+			// scale + wave below pivot at CENTER. Sandwich: shift the pivot to center, rotate,
+			// shift back. qx = left-edge position relative to the cursor's center.
+			float qx = _cursorPivotX - _cursorW / 2f;
+			t.AddTranslate( new Vector2( qx, 0f ) );
+			t.AddRotation( 0f, _cursorSkew, 0f );
+			t.AddTranslate( new Vector2( -qx, 0f ) );
 		}
-		t.AddRotation( 0f, 0f, _waveRotZ );             // rotateZ — the wave "lean"
-		t.AddSkew( _waveSkewX, _waveSkewY, 0f );        // the wave wobble (x, y, z)
-		t.AddScale( new Vector2( _stretchSX, _stretchSY ) ); // launch stretch (non-uniform)
+		t.AddRotation( 0f, 0f, _waveRotZ );             // rotateZ — wave lean (center)
+		t.AddSkew( _waveSkewX, _waveSkewY, 0f );        // wave wobble (center)
+		t.AddScale( new Vector2( _stretchSX, _stretchSY ) ); // launch stretch — CENTER now, no right-only growth
 		_cursorRef.Style.Transform = t;
 	}
 
