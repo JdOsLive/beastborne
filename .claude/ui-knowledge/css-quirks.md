@@ -105,10 +105,13 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
   specific ancestor (which breaks across nesting/intermediate wrappers).
 - **`skewX`/`skewY` only shear (parallelogram), no depth.** For "receding/going back" use
   perspective+rotateY, not skew. skewY tilts top/bottom edges but they stay parallel.
-- **BUT `border` AND `box-shadow` render AXIS-ALIGNED on a 3D-rotated element** — they do
-  NOT follow the rotation, so they float as a flat mismatched rectangle around the tilted
-  element (the "purple box" bug on the menu featured card). The element's BACKGROUND and
-  CONTENT rotate correctly; only border + box-shadow stay flat. Fix: drop the border/shadow
+- **BUT an element's OWN `background`, `border`, AND `box-shadow` render AXIS-ALIGNED on a
+  3D-rotated element** — they do NOT follow the rotation, so they float as a flat mismatched
+  rectangle at the un-rotated box (the "purple box" bug on the menu featured card). Only the
+  element's CHILDREN rotate correctly. So a 3D-rotated card with its own bg/border/shadow
+  leaks all three flat. Fix: move the visible surface to a full-cover CHILD (e.g. an absolute
+  bg layer that rotates) and make the rotated element's own bg/border/shadow transparent/none;
+  OR rotate an outer wrapper and keep the styled element flat inside it. Fix: drop the border/shadow
   on any 3D-rotated element (define the edge via its background/gradient), OR rotate an outer
   WRAPPER and keep the bordered element un-transformed inside it. Elements with no visible
   border/shadow (e.g. the menu's PLAY/nav buttons) are unaffected.
