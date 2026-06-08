@@ -158,7 +158,7 @@
 				 update them each release. Later these could be wired to event or
 				 patch-notes data. The hero <img> reuses currentFeatureArt (rotating
 				 starter art placeholder) — swap for a real key-art screenshot later. -->
-			<section class="lh-featured @(entranceStage >= 5 ? "entered" : "")">
+			<section class="lh-featured @(entranceStage >= 5 ? "entered" : "")" @ref="_refFeatured">
 				<!-- KEY ART background (placeholder). When art is ready, set on .lh-feat-shot:
 					 background-image: url(<screenshot>); background-size: cover; and delete the
 					 label. The scrim dims the left so the headline stays readable over the art. -->
@@ -199,7 +199,7 @@
 				<!-- Roadmap card — selectedIndex 9. Wrapped in a slot so the violet
 					 focus ring can be a SIBLING (the card has overflow:hidden, which
 					 would clip a child ring — see .lh-play-slot/.lh-play-ring). -->
-				<div class="lh-card-slot @(selectedIndex == 9 ? "selected" : "")">
+				<div class="lh-card-slot @(selectedIndex == 9 ? "selected" : "")" @ref="_refSlot9">
 					<button class="lh-card lh-card-roadmap"
 							onclick=@OnRoadmapClicked
 							onmouseover=@(() => OnButtonHover(9))>
@@ -223,7 +223,7 @@
 					<div class="lh-card-ring"></div>
 				</div>
 				<!-- Community card — selectedIndex 10. Same slot+sibling-ring pattern. -->
-				<div class="lh-card-slot @(selectedIndex == 10 ? "selected" : "")">
+				<div class="lh-card-slot @(selectedIndex == 10 ? "selected" : "")" @ref="_refSlot10">
 					<button class="lh-card lh-card-community"
 							onclick=@OnDiscordClick
 							onmouseover=@(() => OnButtonHover(10))>
@@ -1893,9 +1893,22 @@
 		_ => (14, 14, 30),        // PLAY + nav + discord
 	};
 
-	// rotateY (degrees) per item — the left sidebar buttons (0-3) recede in 3D, so the
-	// cursor matches (perspective + rotateY). Sync with the SCSS. 0 = flat.
-	private float CursorSkewDeg( int i ) => ( i >= 0 && i <= 3 ) ? 10f : 0f;
+	// Panels that hold a 3D rotation — so the cursor can pivot around THEIR left edge for
+	// controls nested inside them (CTAs in the featured card, pills in the cards).
+	private Panel _refFeatured, _refSlot9, _refSlot10;
+
+	// Per-item 3D rotation for the cursor: (rotateY degrees, perspective px, element to
+	// pivot around). Left buttons (0-3) rotate around THEMSELVES; the featured CTAs (7,8)
+	// and the card pills (9,10) rotate around their containing panel. Keep in sync with
+	// the SCSS transforms; angle 0 = flat.
+	private (float angle, int persp, Panel pivot) CursorRot( int i ) => i switch
+	{
+		0 or 1 or 2 or 3 => (10f, 1300, FocusEl( i )),
+		7 or 8 => (7f, 2000, _refFeatured),
+		9 => (7f, 2000, _refSlot9),
+		10 => (7f, 2000, _refSlot10),
+		_ => (0f, 0, null),
+	};
 
 	private bool _cursorVisible = false;
 	private int _cursorL, _cursorT, _cursorW, _cursorH, _cursorR;
@@ -1903,8 +1916,9 @@
 	private int _lastCursorIndex = -1;
 	private string _cursorTransform = "scale(1, 1)";
 	private int _cursorWarmup = 0; // 0/1 = snap to position (no glide), 2 = animate
-	private float _cursorSkew = 0f; // degrees — matches the angled (skewed) buttons
-	private string _cursorOrigin = "center"; // pivot — for angled items, the button's left edge
+	private float _cursorSkew = 0f; // rotateY degrees — matches the angled element
+	private int _cursorPersp = 1300; // perspective px for the cursor's rotateY
+	private string _cursorOrigin = "center"; // pivot — the rotated element's left edge in cursor-local px
 
 	// Liquid stretch: squash/stretch along the travel axis on a jump, decaying back
 	// to rest after a short launch window so it reads as a rubber-band arrival.
@@ -1939,14 +1953,19 @@
 
 		bool changed = false;
 
-		// Match the item's skew (angled buttons) so the ring stays a parallelogram on them.
-		float skew = CursorSkewDeg( idx );
-		if ( skew != _cursorSkew ) { _cursorSkew = skew; RebuildCursorTransform(); changed = true; }
-
-		// Pivot the rotateY around the BUTTON's left edge (gx px into the cursor box), so
-		// the ring stays concentric with the angled button — otherwise the gap pinches on
-		// the receding (right) side. Flat items pivot from center for a clean stretch.
-		string origin = ( skew != 0f ) ? $"{gx}px center" : "center";
+		// Match the angled element's 3D rotation so the ring rotates WITH it, pivoting
+		// around that element's LEFT edge (the item itself for the sidebar buttons; the
+		// containing PANEL for controls nested in a rotated panel). Keeps the ring
+		// concentric instead of pinching on the receding side.
+		var (angle, persp, pivotEl) = CursorRot( idx );
+		string origin;
+		if ( angle != 0f && pivotEl != null && pivotEl.Box.Rect.Width >= 1f )
+		{
+			int originX = (int)pivotEl.Box.Rect.Left - left; // left = the cursor's own left edge
+			origin = $"{originX}px center";
+		}
+		else { angle = 0f; persp = 0; origin = "center"; }
+		if ( angle != _cursorSkew || persp != _cursorPersp ) { _cursorSkew = angle; _cursorPersp = persp; RebuildCursorTransform(); changed = true; }
 		if ( origin != _cursorOrigin ) { _cursorOrigin = origin; changed = true; }
 
 		// Liquid stretch when jumping to a different item.
@@ -1994,7 +2013,7 @@
 		var inv = System.Globalization.CultureInfo.InvariantCulture;
 		string scale = $"scale({_stretchSX.ToString( "0.###", inv )}, {_stretchSY.ToString( "0.###", inv )})";
 		_cursorTransform = _cursorSkew != 0f
-			? $"perspective(1300px) rotateY({_cursorSkew.ToString( "0.#", inv )}deg) {scale}"
+			? $"perspective({_cursorPersp}px) rotateY({_cursorSkew.ToString( "0.#", inv )}deg) {scale}"
 			: scale;
 	}
 
