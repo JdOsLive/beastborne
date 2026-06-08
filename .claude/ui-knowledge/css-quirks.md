@@ -105,6 +105,13 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
   specific ancestor (which breaks across nesting/intermediate wrappers).
 - **`skewX`/`skewY` only shear (parallelogram), no depth.** For "receding/going back" use
   perspective+rotateY, not skew. skewY tilts top/bottom edges but they stay parallel.
+- **BUT `border` AND `box-shadow` render AXIS-ALIGNED on a 3D-rotated element** — they do
+  NOT follow the rotation, so they float as a flat mismatched rectangle around the tilted
+  element (the "purple box" bug on the menu featured card). The element's BACKGROUND and
+  CONTENT rotate correctly; only border + box-shadow stay flat. Fix: drop the border/shadow
+  on any 3D-rotated element (define the edge via its background/gradient), OR rotate an outer
+  WRAPPER and keep the bordered element un-transformed inside it. Elements with no visible
+  border/shadow (e.g. the menu's PLAY/nav buttons) are unaffected.
 - Not yet tested: `translateZ`, `rotateX`, `preserve-3d`, hover `translateZ` pop. Try them.
 - Canonical: menu `.lh-play` / `.lh-item` + the living cursor's matching transform.
 
