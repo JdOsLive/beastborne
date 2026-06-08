@@ -1912,6 +1912,16 @@
 	// is a uniform-tilted plane, so matching the angle is what reads right; pivoting at the
 	// panel's far edge collapsed the tilt (large translate + perspective).
 
+	// The panel a control sits inside (for the visual-displacement nudge), or null if the
+	// item isn't nested in a 3D-tilted panel.
+	private Panel CursorPanel( int i ) => i switch
+	{
+		7 or 8 => _refFeatured,
+		9 => _refSlot9,
+		10 => _refSlot10,
+		_ => null
+	};
+
 	private bool _cursorVisible = false;
 	private int _cursorL, _cursorT, _cursorW, _cursorH, _cursorR;
 	private int _cursorCenterX, _cursorCenterY;
@@ -1970,6 +1980,29 @@
 		// transform-origin stays CENTER (so scale + wave pivot center). The rotateY uses a
 		// translate-sandwich (below) to pivot at the panel's left edge instead.
 		_cursorSkew = angle; _cursorPersp = persp; _cursorPivotX = pivotX;
+
+		// Controls INSIDE a 3D-tilted panel (CTAs/pills) are visually displaced by the
+		// panel's perspective+rotateY, but el.Box.Rect is the FLAT layout rect — so the ring
+		// lands down-right of the visual control, more so the further it is from the panel's
+		// left-edge pivot (e.g. Patch Notes vs Play Now). Apply the panel's transform to the
+		// control's center and nudge the ring onto the visual position.
+		var panelEl = CursorPanel( idx );
+		if ( panelEl != null && angle != 0f && panelEl.Box.Rect.Width >= 1f )
+		{
+			var pr = panelEl.Box.Rect;
+			float aRad = angle * MathF.PI / 180f;
+			float originY = pr.Top + pr.Height / 2f;     // panel transform-origin: left center
+			float rx = cx - pr.Left;                     // control center relative to the origin
+			float ry = cy - originY;
+			float z = -rx * MathF.Sin( aRad );           // CSS Z — right side recedes (away)
+			float scale = (float)persp / ( (float)persp - z ); // perspective foreshorten
+			float vx = pr.Left + rx * MathF.Cos( aRad ) * scale; // visual X after the panel transform
+			float vy = originY + ry * scale;                     // visual Y
+			left += (int)( vx - cx );
+			top += (int)( vy - cy );
+			cx = left + w / 2;
+			cy = top + h / 2;
+		}
 
 		// Liquid stretch when jumping to a different item — set the spike NOW (instant
 		// snap = punchy); it eases back to rest each frame below via code-lerp, so we don't
