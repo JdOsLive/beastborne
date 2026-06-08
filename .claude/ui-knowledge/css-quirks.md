@@ -94,6 +94,20 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
   `overflow:hidden` (e.g. a button clipping a sheen), put the ring in a wrapper *slot*
   sibling instead of a child. Canonical: menu `.lh-play-ring` / `.lh-item-ring`.
 
+## 3D transforms ARE supported (confirmed 2026-06) [PROMOTE]
+
+- **`perspective()`, `rotateY()`, `transform-origin` work in s&box** — confirmed in-engine
+  on the main menu's angled buttons. Despite zero prior usage anywhere in the project,
+  s&box's CSS DOES render 3D transforms. `transform: perspective(1300px) rotateY(10deg)`
+  with `transform-origin: left center` tilts an element so its far edge recedes (a real
+  trapezoid/depth effect — NOT a shear). Use the `perspective()` transform FUNCTION on the
+  element itself (self-perspective) so you don't depend on a `perspective` property on a
+  specific ancestor (which breaks across nesting/intermediate wrappers).
+- **`skewX`/`skewY` only shear (parallelogram), no depth.** For "receding/going back" use
+  perspective+rotateY, not skew. skewY tilts top/bottom edges but they stay parallel.
+- Not yet tested: `translateZ`, `rotateX`, `preserve-3d`, hover `translateZ` pop. Try them.
+- Canonical: menu `.lh-play` / `.lh-item` + the living cursor's matching transform.
+
 ## When in doubt
 
 - **s&box has an LLM documentation index at `https://sbox.game/llms.txt`.** WebFetch it when stuck on s&box-specific APIs or CSS behavior. Docs may be outdated — verify against actual project code when something feels off.
