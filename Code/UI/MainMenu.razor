@@ -12,7 +12,7 @@
 	@* Living selection cursor — one ring that glides + liquid-stretches between
 	   focusable items (mouse hover + keyboard both drive selectedIndex). Positioned
 	   in code from each item's Box.Rect; CSS transitions do the motion. *@
-	<div class="lh-cursor @(_cursorVisible ? "visible" : "") @(_cursorWarmup >= 2 ? "" : "snap")" style="left: @(_cursorL)px; top: @(_cursorT)px; width: @(_cursorW)px; height: @(_cursorH)px; border-radius: @(_cursorR)px; transform: @(_cursorTransform); transform-origin: @(_cursorOrigin);"></div>
+	<div @ref="_cursorRef" class="lh-cursor @(_cursorVisible ? "visible" : "") @(_cursorWarmup >= 2 ? "" : "snap")" style="left: @(_cursorL)px; top: @(_cursorT)px; width: @(_cursorW)px; height: @(_cursorH)px; border-radius: @(_cursorR)px; transform-origin: @(_cursorOrigin);"></div>
 	<div class="menu-background"></div>
 	<div @ref="videoBackgroundPanel" class="menu-video-background"></div>
 	<div class="menu-nebula"></div>
@@ -1914,7 +1914,7 @@
 	private int _cursorL, _cursorT, _cursorW, _cursorH, _cursorR;
 	private int _cursorCenterX, _cursorCenterY;
 	private int _lastCursorIndex = -1;
-	private string _cursorTransform = "scale(1, 1)";
+	private Panel _cursorRef; // the cursor element — transform set imperatively each frame
 	private int _cursorWarmup = 0; // 0/1 = snap to position (no glide), 2 = animate
 	private float _cursorSkew = 0f; // rotateY degrees — matches the angled element
 	private int _cursorPersp = 1300; // perspective px for the cursor's rotateY
@@ -1965,7 +1965,7 @@
 			origin = $"{originX}px center";
 		}
 		else { angle = 0f; persp = 0; origin = "center"; }
-		if ( angle != _cursorSkew || persp != _cursorPersp ) { _cursorSkew = angle; _cursorPersp = persp; RebuildCursorTransform(); changed = true; }
+		if ( angle != _cursorSkew || persp != _cursorPersp ) { _cursorSkew = angle; _cursorPersp = persp; } // applied imperatively each frame
 		if ( origin != _cursorOrigin ) { _cursorOrigin = origin; changed = true; }
 
 		// Liquid stretch when jumping to a different item — set the spike NOW (instant
@@ -2007,21 +2007,27 @@
 		_waveSkewY = 1.4f * MathF.Sin( wt * 2.1f + 1.9f );      // smaller — was lifting the right corner too high
 		_waveRotZ = 0.6f * MathF.Sin( wt * 1.1f );              // smaller lean
 
-		RebuildCursorTransform();
-		StateHasChanged(); // continuous wave -> re-render every visible frame
+		if ( changed ) StateHasChanged(); // markup (position / origin) changes only — rare, not per-frame
+		ApplyCursorTransform();            // transform applied imperatively each frame — no re-render
 	}
 
-	private void RebuildCursorTransform()
+	// Apply the cursor's transform IMPERATIVELY via PanelTransform (Style.Transform) — no
+	// StateHasChanged, so no panel re-render and no animation restart (same @ref-imperative
+	// pattern the video bg uses every Tick). Order matches the old CSS string:
+	// perspective -> rotateY (3D per-item) -> rotateZ + skew (the wave) -> scale (stretch).
+	private void ApplyCursorTransform()
 	{
-		var inv = System.Globalization.CultureInfo.InvariantCulture;
-		// Wave is INNERMOST of the 3D (applied in the ring's local space, then the
-		// perspective/rotateY tilt the already-flexing ring as a unit). No CSS transition
-		// on transform — it's recomputed each frame, so the wave stays crisp.
-		string wave = $"rotateZ({_waveRotZ.ToString( "0.##", inv )}deg) skewX({_waveSkewX.ToString( "0.##", inv )}deg) skewY({_waveSkewY.ToString( "0.##", inv )}deg)";
-		string scale = $"scale({_stretchSX.ToString( "0.###", inv )}, {_stretchSY.ToString( "0.###", inv )})";
-		_cursorTransform = _cursorSkew != 0f
-			? $"perspective({_cursorPersp}px) rotateY({_cursorSkew.ToString( "0.#", inv )}deg) {wave} {scale}"
-			: $"{wave} {scale}";
+		if ( _cursorRef == null || !_cursorVisible ) return;
+		var t = new PanelTransform();
+		if ( _cursorSkew != 0f )
+		{
+			t.AddPerspective( _cursorPersp );
+			t.AddRotation( 0f, _cursorSkew, 0f );   // rotateY — pivots at the inline transform-origin
+		}
+		t.AddRotation( 0f, 0f, _waveRotZ );          // rotateZ — the wave "lean"
+		t.AddSkew( _waveSkewX, _waveSkewY );          // the wave wobble
+		t.AddScale( _stretchSX, _stretchSY );         // launch stretch (eased in code)
+		_cursorRef.Style.Transform = t;
 	}
 
 	private async void OnPlayClicked()
@@ -2381,7 +2387,6 @@
 		hash.Add(_cursorW);
 		hash.Add(_cursorH);
 		hash.Add(_cursorR);
-		hash.Add(_cursorTransform);
 		hash.Add(_cursorOrigin);
 		hash.Add(_cursorWarmup);
 		hash.Add(discordOnline);
