@@ -115,6 +115,18 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
   on any 3D-rotated element (define the edge via its background/gradient), OR rotate an outer
   WRAPPER and keep the bordered element un-transformed inside it. Elements with no visible
   border/shadow (e.g. the menu's PLAY/nav buttons) are unaffected.
+- **To CLIP content inside a 3D-rotated element, use `mask`, NOT `overflow:hidden`** (confirmed
+  2026-06 on the menu featured card). `overflow:hidden` computes a clip rect in flat space then
+  projects it → the receding corner SQUARES + the clip can short the receding side. A `mask`
+  (`mask-image: linear-gradient(rgba(0,0,0,1) 0%, rgba(0,0,0,1) 100%); mask-mode: alpha;`)
+  composites WITH the element, so it clips correctly AND projects with the 3D rotation. Caveat:
+  the mask is a RECTANGLE (no rounding) — full-cover overlay children that should be rounded need
+  their OWN `border-radius` (the rect mask sits outside the rounded content, so it doesn't square
+  them, but un-rounded overlays will fill the corners up to the rect). Canonical: `.lh-feat-shot`.
+- **The clean recipe for a 3D-receding bordered/rounded card with bleeding content:** transform-
+  holder = transparent, no border, no overflow (those render flat); a DIRECT-child "surface" carries
+  the bg + border + `border-radius` + the `mask` clip; bleeding content (e.g. a beast) lives inside
+  the surface and is masked. Canonical: menu `.lh-featured` (holder) + `.lh-feat-shot` (surface).
 - Not yet tested: `translateZ`, `rotateX`, `preserve-3d`, hover `translateZ` pop. Try them.
 - Canonical: menu `.lh-play` / `.lh-item` + the living cursor's matching transform.
 
