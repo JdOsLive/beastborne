@@ -1893,14 +1893,34 @@
 		_ => (14, 14, 30),        // PLAY + nav + discord
 	};
 
-	// @ref'd holders for the featured card + bottom card slots (used as @ref anchors in markup).
+	// Panels that hold a 3D rotation — so the cursor can pivot around THEIR left edge for
+	// controls nested inside them (CTAs in the featured card, pills in the cards).
 	private Panel _refFeatured, _refSlot9, _refSlot10;
 
-	// Uniform 2D skew (degrees) applied to every angled element. Keep in sync with the SCSS
-	// `skewY(5deg)` on .lh-play / .lh-item / .lh-featured / .lh-card-slot — same value + sign.
-	// Since the skew is uniform (no per-item perspective/pivot anymore) the cursor just leans
-	// by this constant to become a parallelogram matching the leaning items.
-	private const float CursorSkew = 5f;
+	// Per-item 3D rotation for the cursor: (rotateY degrees, perspective px, element to
+	// pivot around). Left buttons (0-3) rotate around THEMSELVES; the featured CTAs (7,8)
+	// and the card pills (9,10) rotate around their containing panel. Keep in sync with
+	// the SCSS transforms; angle 0 = flat.
+	private (float angle, int persp, Panel pivot) CursorRot( int i ) => i switch
+	{
+		0 or 1 or 2 or 3 => (10f, 1300, FocusEl( i )),     // sidebar buttons
+		7 or 8 => (10f, 2000, FocusEl( i )),              // featured CTAs — match the featured's 10° plane
+		9 or 10 => (10f, 900, FocusEl( i )),              // card pills — match the cards' 10°/900px-perspective plane
+		_ => (0f, 0, null),
+	};
+	// NOTE: panel controls (7-10) self-pivot at the SAME angle as their panel — the panel
+	// is a uniform-tilted plane, so matching the angle is what reads right; pivoting at the
+	// panel's far edge collapsed the tilt (large translate + perspective).
+
+	// The panel a control sits inside (for the visual-displacement nudge), or null if the
+	// item isn't nested in a 3D-tilted panel.
+	private Panel CursorPanel( int i ) => i switch
+	{
+		7 or 8 => _refFeatured,
+		9 => _refSlot9,
+		10 => _refSlot10,
+		_ => null
+	};
 
 	private bool _cursorVisible = false;
 	private int _cursorL, _cursorT, _cursorW, _cursorH, _cursorR;
@@ -1908,7 +1928,10 @@
 	private int _lastCursorIndex = -1;
 	private Panel _cursorRef; // the cursor element — transform set imperatively each frame
 	private int _cursorWarmup = 0; // 0/1 = snap to position (no glide), 2 = animate
-	private string _cursorOrigin = "center"; // transform-origin for the cursor
+	private float _cursorSkew = 0f; // rotateY degrees — matches the angled element
+	private int _cursorPersp = 1300; // perspective px for the cursor's rotateY
+	private int _cursorPivotX = 0;   // rotateY pivot (panel left edge) from the cursor's left edge
+	private string _cursorOrigin = "center"; // pivot — the rotated element's left edge in cursor-local px
 
 	// Liquid stretch: squash/stretch along the travel axis on a jump; eased back to rest
 	// each frame in code (rubber-band arrival).
@@ -1943,11 +1966,43 @@
 
 		bool changed = false;
 
-		// The angled items all lean by a UNIFORM skewY(CursorSkew) (no per-item perspective or
-		// pivot anymore), so the cursor just needs the same constant skew to become a matching
-		// parallelogram — applied in ApplyCursorTransform(). No per-item rotation lookup and no
-		// visual-displacement nudge required: the skew doesn't foreshorten, so el.Box.Rect (the
-		// flat layout rect) already lines up with the leaning control.
+		// Match the angled element's 3D rotation so the ring rotates WITH it, pivoting
+		// around that element's LEFT edge (the item itself for the sidebar buttons; the
+		// containing PANEL for controls nested in a rotated panel). Keeps the ring
+		// concentric instead of pinching on the receding side.
+		var (angle, persp, pivotEl) = CursorRot( idx );
+		int pivotX = 0; // rotateY pivot (panel's left edge), measured from the cursor's own left edge
+		if ( angle != 0f && pivotEl != null && pivotEl.Box.Rect.Width >= 1f )
+		{
+			pivotX = (int)pivotEl.Box.Rect.Left - left;
+		}
+		else { angle = 0f; persp = 0; }
+		// transform-origin stays CENTER (so scale + wave pivot center). The rotateY uses a
+		// translate-sandwich (below) to pivot at the panel's left edge instead.
+		_cursorSkew = angle; _cursorPersp = persp; _cursorPivotX = pivotX;
+
+		// Controls INSIDE a 3D-tilted panel (CTAs/pills) are visually displaced by the
+		// panel's perspective+rotateY, but el.Box.Rect is the FLAT layout rect — so the ring
+		// lands down-right of the visual control, more so the further it is from the panel's
+		// left-edge pivot (e.g. Patch Notes vs Play Now). Apply the panel's transform to the
+		// control's center and nudge the ring onto the visual position.
+		var panelEl = CursorPanel( idx );
+		if ( panelEl != null && angle != 0f && panelEl.Box.Rect.Width >= 1f )
+		{
+			var pr = panelEl.Box.Rect;
+			float aRad = angle * MathF.PI / 180f;
+			float originY = pr.Top + pr.Height / 2f;     // panel transform-origin: left center
+			float rx = cx - pr.Left;                     // control center relative to the origin
+			float ry = cy - originY;
+			float z = -rx * MathF.Sin( aRad );           // CSS Z — right side recedes (away)
+			float scale = (float)persp / ( (float)persp - z ); // perspective foreshorten
+			float vx = pr.Left + rx * MathF.Cos( aRad ) * scale; // visual X after the panel transform
+			float vy = originY + ry * scale;                     // visual Y
+			left += (int)( vx - cx );
+			top += (int)( vy - cy );
+			cx = left + w / 2;
+			cy = top + h / 2;
+		}
 
 		// Liquid stretch when jumping to a different item — set the spike NOW (instant
 		// snap = punchy); it eases back to rest each frame below via code-lerp, so we don't
@@ -1996,18 +2051,26 @@
 
 	// Apply the cursor's transform IMPERATIVELY via PanelTransform (Style.Transform) — no
 	// StateHasChanged, so no panel re-render and no animation restart (same @ref-imperative
-	// pattern the video bg uses every Tick). All 2D now: rotateZ (wave lean) -> skew (constant
-	// CursorSkew folded into the wave wobble) -> scale (launch stretch).
+	// pattern the video bg uses every Tick). Order matches the old CSS string:
+	// perspective -> rotateY (3D per-item) -> rotateZ + skew (the wave) -> scale (stretch).
 	private void ApplyCursorTransform()
 	{
 		if ( _cursorRef == null || !_cursorVisible ) return;
 		var t = new PanelTransform();
+		if ( _cursorSkew != 0f )
+		{
+			t.AddPerspective( _cursorPersp );
+			// rotateY pivots at the panel's LEFT edge (matches the angled panel) while the
+			// scale + wave below pivot at CENTER. Sandwich: shift the pivot to center, rotate,
+			// shift back. qx = left-edge position relative to the cursor's center.
+			float qx = _cursorPivotX - _cursorW / 2f;
+			t.AddTranslate( Length.Pixels( qx ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+			t.AddRotation( 0f, _cursorSkew, 0f );
+			t.AddTranslate( Length.Pixels( -qx ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+		}
 		t.AddRotation( 0f, 0f, _waveRotZ );             // rotateZ — wave lean (center)
-		// Constant uniform skew (matches the SCSS skewY on the angled items) folded into the
-		// per-frame wave wobble on the Y axis — so the ring leans like the items AND keeps the
-		// ink-wobble. X carries only the wave's horizontal wobble.
-		t.AddSkew( _waveSkewX, CursorSkew + _waveSkewY, 0f );
-		t.AddScale( new Vector2( _stretchSX, _stretchSY ) ); // launch stretch — center
+		t.AddSkew( _waveSkewX, _waveSkewY, 0f );        // wave wobble (center)
+		t.AddScale( new Vector2( _stretchSX, _stretchSY ) ); // launch stretch — CENTER now, no right-only growth
 		_cursorRef.Style.Transform = t;
 	}
 
