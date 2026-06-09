@@ -91,8 +91,47 @@ Common grey · Uncommon green · Rare blue · Epic purple · Legendary gold (glo
 
 ---
 
-## Motion
-Quick on interaction, slow/subtle on ambience. Hover 120ms · selection glow 140ms · panel-in opacity+scale .98→1 180ms · live-dot pulse 1.6s∞ · hero float ±18px 6s∞ · stat fill 400ms · evolve/reward burst 600–900ms gold. Interaction feedback ≤150ms. Reserve big celebratory motion for real milestones (evolve, rare, level-up).
+## Motion — the three-layer doctrine (v2, 2026-06-09)
+
+Every motion in the game belongs to exactly ONE of three layers. If you can't name the
+layer, the motion is wrong. This is what makes "flowy overall, snappy when interacting"
+a system instead of a vibe — and it ports to every panel, not just the menu.
+
+| Layer | Speed | Owner | Examples |
+|---|---|---|---|
+| **FLOW** (ambient) | slow, continuous, environmental | the *scene*, never controls | wave video bg, nebula drift, hero beast bob, live-dot pulse 1.6s∞ |
+| **ALIVE** (the selector) | organic, perpetual, small | the violet cursor/ring ONLY | ring glide 0.27s, slow sine wave/skew, liquid stretch |
+| **SNAP** (interaction) | fast, sharp, finite ≤150ms | the control the player touched | Persona pop (translateX+scale 0.14s), press dim, brighten, flash |
+
+Rules that fall out of it:
+- **Surfaces are SOLID.** Panels/buttons/cards never deform, ripple, or breathe.
+  Organic motion lives in the selector and the scene. ⚠️ HARD VETO (motion sickness,
+  2026-06-09): never put wave/skew motion on a large surface near the player's focus
+  (PLAY's liquid gold was tried twice and vetoed). Small fills mostly hidden behind a
+  label are the only tolerated exception — and even those are candidates for
+  simplification if consistency questions keep coming up.
+- **Player input creates the sharpest motion on screen.** Nothing ambient may move as
+  fast as interaction feedback — that contrast is what makes clicking feel like *doing*.
+- **NO GLOWS on/near animated backgrounds.** Soft box-shadow halos read as smudge over
+  moving gradients (user call, 2026-06-09 — removed from PLAY/Play Now/View). Crisp
+  edges + motion draw the eye instead. Colored glows survive only inside static, dark,
+  non-scroll contexts (and sparingly).
+- Old timing values still hold: hover 120ms · selection 140ms · panel-in 180ms ·
+  stat fill 400ms · burst 600–900ms. Interaction ≤150ms always.
+- Reserve big celebratory motion for real milestones (tier system in feel-principles).
+
+## Surface & stroke discipline (the "vector" rule, 2026-06-09)
+
+The menu was accumulating hairline `1px rgba(255,255,255,0.1–0.2)` borders on every chip,
+pill, and card — the generic "AI dashboard" look (user flagged it). The language is
+**solid color blocks, not outlines**:
+- A component is a **filled slab** on one of the surface tones, separated from its
+  parent by CONTRAST, not by a stroke.
+- Permitted lines: the **violet ring** (selection), the **left accent bar** (cards),
+  a **bottom rarity strip**. That's the budget. A border that just "defines an edge"
+  → delete it and fix the fill contrast instead.
+- Idle controls sit DARK and quiet (surface tones); brightness is earned by selection
+  (the "make the other buttons darker" instinct — idle = quiet, focus = lit).
 
 ---
 
