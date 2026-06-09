@@ -40,6 +40,21 @@ Exo2Italic {
 	&.snap {
 		transition: opacity 0.2s ease-out;
 	}
+
+	// PLAY detonation — the ring flips GOLD and slams SHUT around the fired
+	// button (geometry override in UpdateCursor: gap → 2px). Fast transitions
+	// here = the slam; when .firing drops (~140ms) the base 0.27s glide takes
+	// back over for the ease back open. Border-color snaps (no transition) —
+	// instant gold is the point. Last in source so it wins over .snap.
+	&.firing {
+		border-color: #ffce3a;
+		transition: left 0.09s ease-out,
+					top 0.09s ease-out,
+					width 0.09s ease-out,
+					height 0.09s ease-out,
+					border-radius 0.09s ease-out,
+					opacity 0.2s ease-out;
+	}
 }
 
 // The single .lh-cursor supersedes the old per-item rings — hide them so there's
@@ -194,7 +209,9 @@ MainMenu {
 	width: 100%;
 	height: 100%;
 	opacity: 0;
-	transition: opacity 0.8s ease;
+	// 0.45s (was 0.8): the collapsed entrance is ~1s to interactive — a slow
+	// container fade on top of it read as mush over the per-element cascade.
+	transition: opacity 0.45s ease;
 
 	&.visible {
 		opacity: 1;
@@ -259,6 +276,10 @@ MainMenu {
 	margin-left: -18px; // nudge left to line up with the nudged nav rows
 }
 
+// Splash text — randomized per visit (RandomizeSplash), remounted via @key so the
+// mount-time stamp keyframe replays every menu visit. Long splashes wrap to two
+// lines inside the sidebar's 420px content width (white-space: normal + px line
+// height); the nav below just shifts down 22px for the second line.
 .lh-tag {
 	margin-top: 12px;
 	margin-left: 4px;
@@ -269,19 +290,44 @@ MainMenu {
 	line-height: 22px;
 	letter-spacing: 0.04em;
 	color: rgba(210, 200, 240, 0.6);
+	white-space: normal;
+	// Stamp-in: invisible through the 0.5s delay (fill: both), then rotates/scales
+	// down onto the page like an ink stamp. Fresh mount each visit → always fires.
+	animation: lh-splash-stamp 0.32s ease-out 0.5s both;
+}
+
+@keyframes lh-splash-stamp {
+	0%   { opacity: 0; transform: rotate(-1.5deg) scale(1.06); }
+	100% { opacity: 1; transform: rotate(0deg) scale(1); }
 }
 
 .lh-nav {
 	margin-top: 56px;
 	display: flex;
 	flex-direction: column;
-	// Cascade in slightly after the sidebar shell
-	opacity: 0;
-	transform: translateY(14px);
-	transition: opacity 0.45s ease-out, transform 0.45s ease-out;
+
+	// Deal-in cascade — the container no longer animates (its old translateY rode
+	// on top of every row's 3D lean); instead each ROW fades in on its own
+	// transition-delay (0 / 60 / 120 / 180ms). Opacity-only on the rows: they
+	// carry rotateY planes, so entrance motion on them would fight the geometry —
+	// the sidebar slab's slide supplies the motion, the stagger the rhythm.
+	// Children: 1 .lh-play-slot · 2-4 .lh-item (nth-child is the supported form).
+	> * { opacity: 0; }
 	&.entered {
-		opacity: 1;
-		transform: translateY(0);
+		> *:nth-child(1) { opacity: 1; transition-delay: 0s; }
+		> *:nth-child(2) { opacity: 1; transition-delay: 0.06s; }
+		> *:nth-child(3) { opacity: 1; transition-delay: 0.12s; }
+		> *:nth-child(4) { opacity: 1; transition-delay: 0.18s; }
+	}
+	// transition-delay is per-ELEMENT (it would lag bg/color/transform selection
+	// feedback too), so it is zeroed the moment it could matter:
+	// (1) a row selected mid-entrance answers instantly… (after the nth-child
+	// block: equal specificity, source order wins)
+	&.entered > .selected { transition-delay: 0s; }
+	// (2) …and once the entrance settles (stage 4) every delay is gone for good.
+	// nth-child kept in the selector so specificity beats the .entered rules above.
+	&.entered.settled {
+		> *:nth-child(1), > *:nth-child(2), > *:nth-child(3), > *:nth-child(4) { transition-delay: 0s; }
 	}
 }
 
@@ -384,6 +430,15 @@ MainMenu {
 	}
 	// (Keyboard focus ring + selected-state brighten now live on .lh-play-slot below,
 	// using a real bordered ring element instead of a box-shadow — see notes there.)
+
+	// PLAY detonation window — the squash-overshoot is driven imperatively
+	// per-frame (Style.Transform), and the 0.14s transform TRANSITION would
+	// lowpass those values to mush (same reason the cursor carries no transform
+	// transition). Drop it for the firing window only; the Persona-pop transition
+	// returns when .squash clears at ~320ms.
+	&.squash {
+		transition: background-color 0.14s ease-out;
+	}
 }
 
 // PLAY slot — wraps the button + a real focus-ring element so the ring sits OUTSIDE the
@@ -395,6 +450,8 @@ MainMenu {
 	display: flex;
 	flex-direction: column;
 	margin-bottom: 20px; // clearance for the 10px focus ring so it can't crowd Roadmap
+	// Entrance fade (the .lh-nav cascade sets opacity 0 → 1 with a per-row delay).
+	transition: opacity 0.3s ease-out;
 
 	// Focus ring (#9b6cff = --bb-purple-lite). Sits in the gap OUTSIDE the button:
 	// -10px inset + 4px border = 6px gap + 4px ring. radius = button 16px + 10px = 26px
@@ -440,6 +497,30 @@ MainMenu {
 	100% { transform: translateX(700%); }
 }
 
+// PLAY detonation flash — one-shot gold bloom over the button. Conditionally
+// mounted (@if playFiring in the slot) so the keyframe fires fresh on every
+// PLAY (mount-time-only quirk). Keyframes carry the button's full 3D chain so
+// the flash expands ON the tilted plane instead of flat over it. Transient
+// SNAP feedback, not chrome — allowed under the stroke/glow budget.
+.lh-play-flash {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 2; // above the button (z 1) — it's a muzzle flash, not an underlay
+	border-radius: 16px;
+	background-color: #ffce3a;
+	pointer-events: none;
+	transform-origin: left center;
+	animation: lh-play-flash-pop 0.24s ease-out both;
+}
+
+@keyframes lh-play-flash-pop {
+	0%   { opacity: 0.85; transform: perspective(1300px) translateX(9px) rotateY(13deg) scale(1); }
+	100% { opacity: 0;    transform: perspective(1300px) translateX(9px) rotateY(13deg) scale(1.16); }
+}
+
 // Secondary nav rows (Roadmap / Options / Patch Notes)
 .lh-item {
 	position: relative; // for the focus-ring child
@@ -464,7 +545,9 @@ MainMenu {
 	color: rgba(216, 208, 238, 0.78);
 	cursor: pointer;
 	pointer-events: all;
-	transition: background-color 0.14s ease-out, color 0.14s ease-out, transform 0.14s ease-out;
+	// opacity rides the same list for the entrance cascade (per-row delay set by
+	// .lh-nav.entered, zeroed by .settled / .selected so feedback never lags).
+	transition: background-color 0.14s ease-out, color 0.14s ease-out, transform 0.14s ease-out, opacity 0.3s ease-out;
 
 	// Children pass cursor through so :hover stays stable over the icon/label
 	// (prevents flicker — s&box hover quirk). The pip stays under this too; it's
@@ -773,8 +856,10 @@ MainMenu {
 	// Entrance is OPACITY-ONLY. A transform on this flex column poisons flex
 	// width/height resolution in its children (s&box quirk), which collapses the
 	// featured text column to min-content → the title wraps one char per line.
+	// The deal-in MOTION lives on .lh-featured/.lh-cards (which already hold
+	// transforms); this wrapper only fades.
 	opacity: 0;
-	transition: opacity 0.6s ease-out;
+	transition: opacity 0.4s ease-out;
 	&.entered {
 		opacity: 1;
 	}
@@ -793,6 +878,14 @@ MainMenu {
 	// inside is the accent; the pill body just needs fill contrast vs the video.
 	background-color: rgba(13, 8, 30, 0.92);
 	border-radius: 999px;
+
+	// Entrance cascade — trails the main area by a beat (no interaction
+	// transitions on this pill, so a lingering delay is harmless). Also covers
+	// the late-mount case: if the live-events fetch lands after the entrance,
+	// the pill fades in with the same delayed ease instead of popping.
+	opacity: 0;
+	transition: opacity 0.3s ease-out;
+	transition-delay: 0.06s;
 
 	.lh-event-live {
 		display: flex;
@@ -854,6 +947,10 @@ MainMenu {
 	}
 }
 
+.lh-main.entered .lh-event {
+	opacity: 1;
+}
+
 @keyframes lh-pulse {
 	0% { opacity: 1; }
 	50% { opacity: 0.35; }
@@ -890,9 +987,13 @@ MainMenu {
 	border-width: 0;                    // own border renders flat under 3D — border is on .lh-feat-shot
 	// NO overflow:hidden — it renders flat under 3D (square corner). .lh-feat-shot clips instead.
 
-	// Entrance — opacity only.
+	// Entrance — the FADE is here (class-toggle, reliable); the deal-in MOTION
+	// (rotateY 15°→10° + translateX 70px→0) is imperative per-frame from
+	// UpdateDealIn() in MainMenu.razor, which nulls the inline transform on
+	// settle so the steady-state rule above resumes. Don't add a transform
+	// transition here — it would lowpass the per-frame values.
 	opacity: 0;
-	transition: opacity 0.55s ease-out;
+	transition: opacity 0.35s ease-out;
 	&.entered {
 		opacity: 1;
 	}
@@ -1129,6 +1230,17 @@ MainMenu {
 	flex-direction: row;
 	align-items: center;
 	gap: 16px;
+
+	// Entrance cascade — the CTA row lands last inside the featured card (0.18s
+	// behind its fade), so the card reads art → headline → actions. The wrapper
+	// has no interaction transitions, so the lingering delay is harmless.
+	opacity: 0;
+	transition: opacity 0.3s ease-out;
+	transition-delay: 0.18s;
+}
+
+.lh-featured.entered .lh-feat-ctas {
+	opacity: 1;
 }
 
 .lh-feat-cta {
@@ -1220,6 +1332,65 @@ MainMenu {
 	&.selected .lh-feat-cta-ring {
 		opacity: 1;
 	}
+
+	// PLAY detonation window (firing via the Play Now CTA) — drop the transform
+	// transition so the imperative per-frame squash isn't lowpassed. See
+	// .lh-play.squash for the full note.
+	&.squash {
+		transition: background-color 0.14s ease-out;
+	}
+}
+
+// ─── ELEMENT-REACTIVE FEATURED CARD ─────────────────────────────────────────
+// currentFeatureArt rotates fire/water/wind per visit; the card's AMBIANCE
+// follows the beast — kicker bar, top-edge specular tint, scrim undertone.
+// Gold/orange stay on every ACTION (CTAs, OUT NOW): gold = action, element =
+// ambiance. Colors from guiding-star: Fire #FF5A1F · Water #1F8FFF · Wind
+// #2dd4bf. No borders, no glows (stroke budget). feat-neutral = no overrides.
+.lh-featured.feat-fire {
+	.lh-feat-bar { background-color: #ff5a1f; }
+	.lh-feat-topedge {
+		background-image: linear-gradient(to right,
+			rgba(255, 90, 31, 0) 0%,
+			rgba(255, 122, 60, 0.5) 30%,
+			rgba(255, 236, 222, 0.6) 50%,
+			rgba(255, 122, 60, 0.5) 70%,
+			rgba(255, 90, 31, 0) 100%);
+	}
+	// Same darkness curve as the base scrim, hue nudged warm (ember undertone).
+	.lh-feat-scrim {
+		background-image: linear-gradient(to right, rgba(28, 9, 6, 0.96) 0%, rgba(28, 9, 6, 0.8) 40%, rgba(28, 9, 6, 0.28) 100%);
+	}
+}
+
+.lh-featured.feat-water {
+	.lh-feat-bar { background-color: #1f8fff; }
+	.lh-feat-topedge {
+		background-image: linear-gradient(to right,
+			rgba(31, 143, 255, 0) 0%,
+			rgba(74, 168, 255, 0.5) 30%,
+			rgba(224, 240, 255, 0.6) 50%,
+			rgba(74, 168, 255, 0.5) 70%,
+			rgba(31, 143, 255, 0) 100%);
+	}
+	.lh-feat-scrim {
+		background-image: linear-gradient(to right, rgba(5, 11, 30, 0.96) 0%, rgba(5, 11, 30, 0.8) 40%, rgba(5, 11, 30, 0.28) 100%);
+	}
+}
+
+.lh-featured.feat-wind {
+	.lh-feat-bar { background-color: #2dd4bf; }
+	.lh-feat-topedge {
+		background-image: linear-gradient(to right,
+			rgba(45, 212, 191, 0) 0%,
+			rgba(94, 234, 212, 0.5) 30%,
+			rgba(224, 252, 247, 0.6) 50%,
+			rgba(94, 234, 212, 0.5) 70%,
+			rgba(45, 212, 191, 0) 100%);
+	}
+	.lh-feat-scrim {
+		background-image: linear-gradient(to right, rgba(4, 20, 18, 0.96) 0%, rgba(4, 20, 18, 0.8) 40%, rgba(4, 20, 18, 0.28) 100%);
+	}
 }
 
 // BOTTOM CARD ROW
@@ -1246,9 +1417,11 @@ MainMenu {
 	// line") instead of diverging. Tune the -374 if the gap over/under-corrects.
 	transform-origin: left -374px;
 
-	// Entrance — opacity only (the transform above is the steady-state angle).
+	// Entrance — fade via class toggle; deal-in motion is imperative (see
+	// .lh-featured note / UpdateDealIn). The transform above is the steady-state
+	// pose the deal-in converges onto before nulling its inline transform.
 	opacity: 0;
-	transition: opacity 0.5s ease-out;
+	transition: opacity 0.32s ease-out;
 	&.entered {
 		opacity: 1;
 	}
@@ -3875,6 +4048,28 @@ MainMenu {
 	// the menu under the bars during the exit sweep. Other transitions on
 	// these elements are overridden for the covering state.
 	transition: opacity 0s;
+}
+
+// ---- PLAY detonation streak ----------------------------------------------
+// A 6px gold bolt fired from the PLAY button toward the incoming gold slab —
+// it reads as the click SUMMONING the wipe. Mounts fresh with the overlay
+// (conditional @if), so the keyframe runs at t=0 of the transition timeline.
+// Inline style carries top/left from the fired button's live Box.Rect. The
+// overlay's overflow:hidden clips the off-screen end of the travel.
+.tx-streak {
+	position: absolute;
+	width: 320px;
+	height: 6px;
+	border-radius: 3px;
+	// Tail fades behind the bright head (no `transparent` keyword — rgba(...,0)).
+	background-image: linear-gradient(to right, rgba(255, 206, 58, 0) 0%, rgba(255, 206, 58, 1) 35%, rgba(255, 246, 216, 1) 100%);
+	pointer-events: none;
+	animation: tx-streak-fire 0.2s ease-in both;
+}
+
+@keyframes tx-streak-fire {
+	0%   { transform: translateX(0px); opacity: 1; }
+	100% { transform: translateX(2200px); opacity: 0.7; }
 }
 
 // ---- PERSONA SLIDE panels -------------------------------------------------

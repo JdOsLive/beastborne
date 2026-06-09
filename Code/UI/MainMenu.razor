@@ -12,7 +12,7 @@
 	@* Living selection cursor — one ring that glides + liquid-stretches between
 	   focusable items (mouse hover + keyboard both drive selectedIndex). Positioned
 	   in code from each item's Box.Rect; CSS transitions do the motion. *@
-	<div @ref="_cursorRef" class="lh-cursor @(_cursorVisible ? "visible" : "") @(_cursorWarmup >= 2 ? "" : "snap")" style="left: @(_cursorL)px; top: @(_cursorT)px; width: @(_cursorW)px; height: @(_cursorH)px; border-radius: @(_cursorR)px; transform-origin: @(_cursorOrigin);"></div>
+	<div @ref="_cursorRef" class="lh-cursor @(_cursorVisible ? "visible" : "") @(_cursorWarmup >= 2 ? "" : "snap") @(_cursorFiring ? "firing" : "")" style="left: @(_cursorL)px; top: @(_cursorT)px; width: @(_cursorW)px; height: @(_cursorH)px; border-radius: @(_cursorR)px; transform-origin: @(_cursorOrigin);"></div>
 	<div @ref="videoBackgroundPanel" class="menu-video-background"></div>
 	<div class="menu-nebula"></div>
 
@@ -34,12 +34,15 @@
 		<!-- ===== LEFT SIDEBAR ===== -->
 		<aside class="lh-sidebar @(entranceStage >= 1 ? "entered" : "")">
 			<img class="lh-logo" src="ui/logo/bb_logo_stroke_mascot.png" />
-			<div class="lh-tag">Genetics go brrrrr.</div>
+			@* Splash text — randomized per menu visit (RandomizeSplash). @key forces a
+			   REMOUNT when splashVersion bumps, so the mount-time stamp keyframe
+			   (lh-splash-stamp) fires fresh on every visit, not just the first. *@
+			<div class="lh-tag" @key=@($"splash-{splashVersion}")>@currentSplashText</div>
 
-			<nav class="lh-nav @(entranceStage >= 3 ? "entered" : "")">
+			<nav class="lh-nav @(entranceStage >= 2 ? "entered" : "") @(entranceStage >= 4 ? "settled" : "")">
 				<!-- PLAY block — selectedIndex 0 -->
 				<div class="lh-play-slot @(selectedIndex == 0 ? "selected" : "")">
-					<button class="lh-play"
+					<button class="lh-play @(_playSquashing && _playFireIndex == 0 ? "squash" : "")"
 							onclick=@OnPlayClicked
 							@ref="_ref0" onmouseover=@(() => OnButtonHover(0))>
 						@* Gold surface layer (the sheen clips to it). Static by design — a
@@ -49,6 +52,12 @@
 						<span class="lh-play-lbl">@L("ui.menu.play")</span>
 					</button>
 					<div class="lh-play-ring"></div>
+					@* PLAY detonation flash — one-shot gold bloom. Conditionally mounted so
+					   the @keyframes fire fresh on every PLAY (mount-time-only quirk). *@
+					@if (_playFlashMounted && _playFireIndex == 0)
+					{
+						<div class="lh-play-flash" @key=@($"play-flash-{_playFireVersion}")></div>
+					}
 				</div>
 
 				<!-- Roadmap — selectedIndex 1 -->
@@ -129,7 +138,7 @@
 		</aside>
 
 		<!-- ===== MAIN AREA ===== -->
-		<main class="lh-main @(entranceStage >= 4 ? "entered" : "")">
+		<main class="lh-main @(entranceStage >= 2 ? "entered" : "")">
 			<!-- LIVE event pill — driven by the same live-events fields as before -->
 			@if ( !string.IsNullOrEmpty( currentEventText ) )
 			{
@@ -158,7 +167,7 @@
 				 update them each release. Later these could be wired to event or
 				 patch-notes data. The hero <img> reuses currentFeatureArt (rotating
 				 starter art placeholder) — swap for a real key-art screenshot later. -->
-			<section class="lh-featured @(entranceStage >= 5 ? "entered" : "")" @ref="_refFeatured">
+			<section class="lh-featured @(entranceStage >= 2 ? "entered" : "") feat-@(GetFeatureElementClass())" @ref="_refFeatured">
 				<!-- KEY ART background (placeholder). When art is ready, set on .lh-feat-shot:
 					 background-image: url(<screenshot>); background-size: cover; and delete the
 					 label. The scrim dims the left so the headline stays readable over the art. -->
@@ -177,7 +186,7 @@
 					</div>
 					<div class="lh-feat-desc">@featuredDesc</div>
 					<div class="lh-feat-ctas">
-						<button class="lh-feat-cta @(selectedIndex == 7 ? "selected" : "")"
+						<button class="lh-feat-cta @(selectedIndex == 7 ? "selected" : "") @(_playSquashing && _playFireIndex == 7 ? "squash" : "")"
 								onclick=@OnPlayClicked
 								@ref="_ref7" onmouseover=@(() => OnButtonHover(7))>
 							<span class="lh-feat-cta-tri">▶</span>
@@ -195,7 +204,7 @@
 			</section>
 
 			<!-- BOTTOM CARD ROW — Roadmap + Community -->
-			<div class="lh-cards @(entranceStage >= 6 ? "entered" : "")" @ref="_refCardsRow">
+			<div class="lh-cards @(entranceStage >= 3 ? "entered" : "")" @ref="_refCardsRow">
 				<!-- Roadmap card — selectedIndex 9. Wrapped in a slot so the violet
 					 focus ring can be a SIBLING (the card has overflow:hidden, which
 					 would clip a child ring — see .lh-play-slot/.lh-play-ring). -->
@@ -358,6 +367,14 @@
 	@if (transitionPhase > 0)
 	{
 		<div class="menu-transition">
+			@* PLAY detonation streak — 6px gold bolt fired from the PLAY button's
+			   screen Y toward the incoming gold slab. Mounts fresh with the overlay,
+			   so its @keyframes run at t=0 of the wipe. Inline top/left come from the
+			   fired button's live Box.Rect (StartPlayDetonation). *@
+			@if (_playFlashMounted)
+			{
+				<div class="tx-streak" @key=@($"streak-{_playFireVersion}") style="top: @(_streakTop)px; left: @(_streakLeft)px;"></div>
+			}
 			<div class="tx-slab tx-slab-gold"></div>
 			<div class="tx-slab tx-slab-purple"></div>
 			<div class="tx-logo-wrap"><img class="tx-logo" src="ui/logo/bb_logo_stroke.png" /></div>
@@ -1006,8 +1023,11 @@
 		StateHasChanged();
 	}
 
-	// Splash text system
+	// Splash text system. splashVersion bumps on every randomize — it keys the
+	// .lh-tag element (@key) so it REMOUNTS per menu visit and the mount-time
+	// stamp keyframe replays (even when the random pick repeats the same text).
 	private string currentSplashText = "";
+	private int splashVersion = 0;
 
 	// Featured portrait on the right side of the menu — placeholder rotation
 	// through the three starter artworks until a dedicated hero piece lands.
@@ -1175,38 +1195,140 @@
 		PlayEntranceSequence();
 	}
 
+	// ─── "DEAL-IN" ENTRANCE ──────────────────────────────────────────────
+	// Collapsed stage machine (was 7 stages / ~1.5s; now 4 / ~0.7s-to-interactive):
+	//   stage 1 (t≈60ms)  — sidebar slab slides in (CSS transition, unchanged)
+	//   stage 2 (t≈180ms) — nav rows cascade (transition-delay stagger) + main
+	//                        area fades + the FEATURED card deals in along its
+	//                        3D plane (imperative per-frame transform below)
+	//   stage 3 (t≈300ms) — bottom CARD ROW deals in, ~120ms behind the featured
+	//   stage 4 (~t≈750ms) — both planes settled → cursor goes live, stagger
+	//                        delays zero out (.lh-nav.settled). Flipped from
+	//                        UpdateDealIn(), not a Task.Delay.
+	//
+	// The plane slide is IMPERATIVE (the proven cursor pattern — class-toggle
+	// transform transitions snap in s&box): rotateY 15°→10° + translateX 70px→0,
+	// code-eased (lerp 0.16/frame ≈ 450ms), then the inline transform is NULLED
+	// so the steady-state CSS rule resumes. The cursor stays hidden until stage 4,
+	// so CursorRot's static angles never see the animation. .lh-main stays
+	// opacity-only (a transform there poisons descendant flex-grow widths).
 	private async void PlayEntranceSequence()
 	{
 		entranceStage = 0;
+		// Reset any leftover imperative state from a previous visit (deal-in /
+		// PLAY detonation) so the CSS defaults are this entrance's baseline.
+		_dealFeatActive = false;
+		_dealCardsActive = false;
+		_playFireStart = -1f;
+		_playSquashing = false;
+		_playFlashMounted = false;
+		_cursorFiring = false;
+		if ( _ref0 != null ) _ref0.Style.Transform = null;
+		if ( _ref7 != null ) _ref7.Style.Transform = null;
+		if ( _refFeatured != null ) _refFeatured.Style.Transform = null;
+		if ( _refCardsRow != null ) _refCardsRow.Style.Transform = null;
 		StateHasChanged();
 
-		await Task.Delay( 200 );  // Brief pause before logo drops in
-		entranceStage = 1;
+		await Task.Delay( 60 );   // one rendered frame at stage 0 so entrance states commit
+		entranceStage = 1;        // sidebar slab slides in
 		StateHasChanged();
 
-		await Task.Delay( 400 );  // Logo settles, splash + ticker fade in together
+		await Task.Delay( 120 );  // nav cascade + main fade + featured deal-in
 		entranceStage = 2;
+		StartFeaturedDealIn();
 		StateHasChanged();
 
-		await Task.Delay( 300 );  // PLAY button — hero entrance
+		await Task.Delay( 120 );  // card row deals in, trailing the featured
 		entranceStage = 3;
+		StartCardsDealIn();
 		StateHasChanged();
+		// Stage 4 flips in UpdateDealIn() the frame both planes settle.
+	}
 
-		await Task.Delay( 120 );  // ROADMAP — quick cascade
-		entranceStage = 4;
-		StateHasChanged();
+	// Deal-in state — current displaced pose of each angled plane. Active flags
+	// gate the per-frame ease in UpdateDealIn().
+	private bool _dealFeatActive = false, _dealCardsActive = false;
+	private float _dealFeatX, _dealFeatDeg, _dealCardsX, _dealCardsDeg;
 
-		await Task.Delay( 120 );  // OPTIONS — continues the cascade
-		entranceStage = 5;
-		StateHasChanged();
+	private void StartFeaturedDealIn()
+	{
+		_dealFeatX = 70f;
+		_dealFeatDeg = 15f;
+		_dealFeatActive = true;
+		ApplyDealTransform( _refFeatured, _dealFeatX, _dealFeatDeg );
+	}
 
-		await Task.Delay( 120 );  // Utility stack (LANG + QUIT) enters together
-		entranceStage = 6;
-		StateHasChanged();
+	private void StartCardsDealIn()
+	{
+		_dealCardsX = 70f;
+		_dealCardsDeg = 15f;
+		_dealCardsActive = true;
+		ApplyDealTransform( _refCardsRow, _dealCardsX, _dealCardsDeg );
+	}
 
-		await Task.Delay( 250 );  // Bottom HUD fades in last
-		entranceStage = 7;
-		StateHasChanged();
+	// Same chain SHAPE as the steady-state CSS (perspective(2000px) ... rotateY)
+	// so the pose converges exactly onto the stylesheet value at x=0 / deg=10.
+	// transform-origin comes from CSS and is untouched (left center for the
+	// featured, left -374px for the cards row — the shared vanishing point).
+	private static void ApplyDealTransform( Panel el, float x, float deg )
+	{
+		if ( el == null ) return;
+		var t = new PanelTransform();
+		t.AddPerspective( 2000 );
+		t.AddTranslate( Length.Pixels( x ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+		t.AddRotation( 0f, deg, 0f );
+		el.Style.Transform = t;
+	}
+
+	// Per-frame deal-in ease — exponential approach (matches the cursor-stretch
+	// pattern). On settle the inline transform is NULLED so the steady-state CSS
+	// transform rule takes back over with identical values (no snap).
+	private void UpdateDealIn()
+	{
+		if ( _dealFeatActive )
+		{
+			if ( _refFeatured == null ) { _dealFeatActive = false; }
+			else
+			{
+				_dealFeatX += ( 0f - _dealFeatX ) * 0.16f;
+				_dealFeatDeg += ( 10f - _dealFeatDeg ) * 0.16f;
+				if ( MathF.Abs( _dealFeatX ) < 0.5f && MathF.Abs( _dealFeatDeg - 10f ) < 0.04f )
+				{
+					_refFeatured.Style.Transform = null;
+					_dealFeatActive = false;
+				}
+				else
+				{
+					ApplyDealTransform( _refFeatured, _dealFeatX, _dealFeatDeg );
+				}
+			}
+		}
+
+		if ( _dealCardsActive )
+		{
+			if ( _refCardsRow == null ) { _dealCardsActive = false; }
+			else
+			{
+				_dealCardsX += ( 0f - _dealCardsX ) * 0.16f;
+				_dealCardsDeg += ( 10f - _dealCardsDeg ) * 0.16f;
+				if ( MathF.Abs( _dealCardsX ) < 0.5f && MathF.Abs( _dealCardsDeg - 10f ) < 0.04f )
+				{
+					_refCardsRow.Style.Transform = null;
+					_dealCardsActive = false;
+				}
+				else
+				{
+					ApplyDealTransform( _refCardsRow, _dealCardsX, _dealCardsDeg );
+				}
+			}
+		}
+
+		// Both planes home (or never started — null refs) → menu is interactive.
+		if ( entranceStage == 3 && !_dealFeatActive && !_dealCardsActive )
+		{
+			entranceStage = 4;
+			StateHasChanged();
+		}
 	}
 
 	private async void PlayStarterRingEntrance()
@@ -1354,6 +1476,7 @@
 	{
 		var random = new Random();
 		currentSplashText = SplashTexts[random.Next( SplashTexts.Length )];
+		splashVersion++; // remount the tag → replay the stamp keyframe
 	}
 
 	private void RandomizeFeatureArt()
@@ -1508,6 +1631,8 @@
 
 		if ( !IsVisible ) return;
 		HandleKeyboardInput();
+		UpdatePlayDetonation(); // PLAY detonation — before UpdateCursor so the ring-slam geometry lands same-frame
+		UpdateDealIn();         // entrance deal-in planes; flips entranceStage 3→4 on settle
 		UpdateCursor();
 
 		// Periodic refresh of the live announcements feed (every 5 min while
@@ -1975,8 +2100,9 @@
 
 	private void UpdateCursor()
 	{
-		// Only once the menu is fully laid out (every item rect valid).
-		if ( !IsVisible || entranceStage < 7 )
+		// Only once the entrance has settled (stage 4 — the deal-in planes are
+		// home, so CursorRot's static angles match what's on screen).
+		if ( !IsVisible || entranceStage < 4 )
 		{
 			if ( _cursorVisible || _cursorWarmup != 0 ) { _cursorVisible = false; _cursorWarmup = 0; StateHasChanged(); }
 			return;
@@ -1988,6 +2114,10 @@
 
 		var t = el.Box.Rect;
 		var (gx, gy, radius) = CursorGeom( idx );
+
+		// PLAY detonation — the ring SLAMS shut around the fired control for the
+		// firing window (.firing also flips it gold + speeds the glide in SCSS).
+		if ( _cursorFiring ) { gx = 2; gy = 2; radius = 18; }
 
 		// Persona-pop mirror: the cursor's target is by definition the SELECTED item,
 		// and the selected item carries the CSS lunge (translateX + scale on .selected)
@@ -2137,9 +2267,117 @@
 	// surfaces are SOLID — the ALIVE layer is the violet ring alone, interaction is SNAP
 	// (the Persona pop). One organic mover + sharp input feedback, consistent everywhere.
 
+	// ─── PLAY "DETONATION" ───────────────────────────────────────────────
+	// Clicking PLAY physically FIRES the transition instead of politely waiting
+	// for it. Four layers on one ~400ms timeline (all SNAP-layer, transient):
+	//   (a) squash-overshoot on the fired button — imperative per-frame transform
+	//       (scale 1→0.93 @70ms → 1.05 @180ms → 1.0 @320ms), re-including the
+	//       static perspective/translateX/rotateY chain so it never un-tilts.
+	//       The .squash class drops the 0.14s transform TRANSITION for the
+	//       window (a transition would lowpass the per-frame values to mush).
+	//   (b) the cursor ring SLAMS shut (gap → 2px) and flips gold (.firing,
+	//       ~140ms), then glides back open on the base 0.27s transition.
+	//   (c) a one-shot gold flash mounts in .lh-play-slot (fresh mount →
+	//       @keyframes fire): opacity 0.85→0, scale 1→1.16, 240ms.
+	//   (d) a 6px gold streak in the .menu-transition overlay shoots from the
+	//       button's screen Y toward the incoming gold slab (200ms).
+	private float _playFireStart = -1f;     // Time.Now stamp; -1 = idle
+	private int _playFireIndex = 0;          // which control fired: 0 sidebar PLAY, 7 featured CTA
+	private bool _playSquashing = false;     // (a) window — also gates the .squash class
+	private bool _playFlashMounted = false;  // (c)+(d) mount window
+	private bool _cursorFiring = false;      // (b) window — .firing on the ring
+	private int _streakTop = 0, _streakLeft = 0; // (d) inline position from the fired rect
+	private int _playFireVersion = 0;        // @key for the one-shots — a re-fire remounts them
+
+	private void StartPlayDetonation()
+	{
+		_playFireIndex = selectedIndex == 7 ? 7 : 0;
+		_playFireStart = Time.Now;
+		_playFireVersion++;
+		_playSquashing = true;
+		_playFlashMounted = true;
+		_cursorFiring = true;
+
+		var el = FocusEl( _playFireIndex );
+		if ( el != null && el.Box.Rect.Width >= 1f )
+		{
+			var r = el.Box.Rect;
+			_streakTop = (int)r.Center.y - 3; // center the 6px streak on the button
+			_streakLeft = (int)r.Right + 16;
+		}
+		StateHasChanged();
+	}
+
+	private static float Lerp01( float a, float b, float x )
+		=> a + ( b - a ) * Math.Clamp( x, 0f, 1f );
+
+	private static float EaseOutQuad( float x ) => 1f - ( 1f - x ) * ( 1f - x );
+
+	// Piecewise squash-overshoot envelope (multiplier on the button's resting scale).
+	private static float DetonationScale( float t )
+	{
+		if ( t < 0.07f ) return Lerp01( 1f, 0.93f, EaseOutQuad( t / 0.07f ) );          // squash
+		if ( t < 0.18f ) return Lerp01( 0.93f, 1.05f, EaseOutQuad( ( t - 0.07f ) / 0.11f ) ); // overshoot
+		return Lerp01( 1.05f, 1f, ( t - 0.18f ) / 0.14f );                               // settle
+	}
+
+	private void UpdatePlayDetonation()
+	{
+		if ( _playFireStart < 0f ) return;
+		float t = Time.Now - _playFireStart;
+		bool changed = false;
+
+		// (b) ring slam window ends — base class glides the ring back open.
+		if ( _cursorFiring && t >= 0.14f ) { _cursorFiring = false; changed = true; }
+
+		// (a) imperative squash on the fired button. The chain MUST re-include the
+		// static perspective/translateX/rotateY pose (sidebar PLAY) or the button
+		// un-tilts for the duration; the featured CTA is flat (its 3D lives on the
+		// featured panel), so it gets scale only.
+		var el = FocusEl( _playFireIndex );
+		if ( el != null )
+		{
+			if ( t < 0.32f )
+			{
+				float s = DetonationScale( t );
+				var tr = new PanelTransform();
+				if ( _playFireIndex == 0 )
+				{
+					// LOCKSTEP with .lh-play-slot.selected .lh-play in SCSS:
+					// perspective(1300px) translateX(9px) rotateY(13deg) scale(1.04).
+					tr.AddPerspective( 1300 );
+					tr.AddTranslate( Length.Pixels( 9f ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+					tr.AddRotation( 0f, 13f, 0f );
+					tr.AddScale( new Vector2( 1.04f * s, 1.04f * s ) );
+				}
+				else
+				{
+					tr.AddScale( new Vector2( s, s ) );
+				}
+				el.Style.Transform = tr;
+			}
+			else if ( _playSquashing )
+			{
+				el.Style.Transform = null; // settle EXACTLY onto the CSS .selected pose
+			}
+		}
+		if ( _playSquashing && t >= 0.32f ) { _playSquashing = false; changed = true; }
+
+		// (c)/(d) unmount the one-shots once their keyframes have finished.
+		if ( _playFlashMounted && t >= 0.40f ) { _playFlashMounted = false; changed = true; }
+
+		if ( t >= 0.40f ) _playFireStart = -1f;
+		if ( changed ) StateHasChanged();
+	}
+
 	private async void OnPlayClicked()
 	{
 		SoundManager.PlayPopup();
+
+		// Fire the detonation IMMEDIATELY on input — interaction feedback must be
+		// the sharpest motion on screen, and it can't wait on the save check below.
+		// If the save-fail prompt intercepts, it reads as plain press feedback.
+		StartPlayDetonation();
 
 		// Wait for SaveService to finish loading before deciding the route.
 		// The real question we're answering is "has the player committed to a
@@ -2504,6 +2742,16 @@
 		hash.Add(hoveredStarter);
 		hash.Add(starterStage);
 		hash.Add(currentSplashText);
+		hash.Add(splashVersion);
+		// PLAY detonation — markup-affecting transient state (squash class, flash
+		// mount, gold ring, streak position).
+		hash.Add(_cursorFiring);
+		hash.Add(_playSquashing);
+		hash.Add(_playFireIndex);
+		hash.Add(_playFlashMounted);
+		hash.Add(_playFireVersion);
+		hash.Add(_streakTop);
+		hash.Add(_streakLeft);
 		hash.Add(currentEventText);
 		hash.Add(currentEventIcon);
 		hash.Add(currentEventTimer);
