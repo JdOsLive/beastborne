@@ -101,8 +101,31 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
   s&box's CSS DOES render 3D transforms. `transform: perspective(1300px) rotateY(10deg)`
   with `transform-origin: left center` tilts an element so its far edge recedes (a real
   trapezoid/depth effect — NOT a shear). Use the `perspective()` transform FUNCTION on the
-  element itself (self-perspective) so you don't depend on a `perspective` property on a
-  specific ancestor (which breaks across nesting/intermediate wrappers).
+  element itself (self-perspective) — and this is the ONLY 3D option: the standalone
+  `perspective` PROPERTY does NOT exist, and `transform-style: preserve-3d` does NOT exist
+  (see binary verdict below). So you CANNOT do the "shared camera on a parent + rotateY on a
+  preserve-3d wrapper" approach. Every 3D element gets its OWN per-element `perspective()`,
+  hence its OWN camera/vanishing point.
+- **VERIFIED FROM SHIPPED BINARIES (2026-06-08, sbox 26.06.03):** read `Sandbox.Engine.dll`
+  (the CSS-property parser) and `Sandbox.System.dll` (the transform-function parser) via
+  `System.Reflection.Metadata` + raw UTF-16 string scan. Results:
+  - **NO standalone `perspective` property.** `Sandbox.UI.BaseStyles` (the full supported-CSS
+    property surface) has NO `Perspective` member; Engine's property-token set is exactly
+    `transform`, `transform-origin(-x/-y)`, `perspective-origin(-x/-y)`. The literal
+    `perspective:` declaration is unparseable.
+  - **`perspective-origin` DOES exist** as a property (`PerspectiveOriginX/Y` on BaseStyles) —
+    BUT with no standalone `perspective` property to re-origin, it only affects the
+    `perspective()` transform FUNCTION's vanishing point. Niche; rarely useful here.
+  - **NO `transform-style` and NO `preserve-3d`/`flat`** — the strings appear in NEITHER DLL.
+    No `TransformStyle` enum/property exists anywhere. Conclusively unsupported.
+  - The `perspective`, `rotateY/X/Z`, `rotate3d`, `matrix3d`, `translate3d`, `scale3d`,
+    `skewX/Y` tokens live in `Sandbox.System.dll` — they are transform-FUNCTION names valid
+    INSIDE a `transform:` value, not properties.
+  - **Consequence:** per-element `perspective()` is the only 3D path; its size-dependent dip
+    mismatch (wider element at same angle recedes further — see learnings 2026-06-08) is
+    INHERENT and cannot be fixed by a shared camera. For a truly UNIFORM dip across mixed-width
+    stacked elements, the only option is a 2D `skewY` fallback (parallel edges, identical slant,
+    no depth) — accept "no real recede" in exchange for perfect consistency.
 - **`skewX`/`skewY` only shear (parallelogram), no depth.** For "receding/going back" use
   perspective+rotateY, not skew. skewY tilts top/bottom edges but they stay parallel.
 - **BUT an element's OWN `background`, `border`, AND `box-shadow` render AXIS-ALIGNED on a
@@ -127,7 +150,10 @@ Do not treat this file as authoritative — CLAUDE.md is the source of truth. Th
   holder = transparent, no border, no overflow (those render flat); a DIRECT-child "surface" carries
   the bg + border + `border-radius` + the `mask` clip; bleeding content (e.g. a beast) lives inside
   the surface and is masked. Canonical: menu `.lh-featured` (holder) + `.lh-feat-shot` (surface).
-- Not yet tested: `translateZ`, `rotateX`, `preserve-3d`, hover `translateZ` pop. Try them.
+- `preserve-3d`: CONFIRMED UNSUPPORTED (binary verdict above) — do not try.
+- Not yet tested: `translateZ`, `rotateX`, hover `translateZ` pop. (Function tokens for these
+  exist in `Sandbox.System.dll`, so they likely parse — `translate3d`/`rotate3d` are present —
+  but without `preserve-3d` a child's Z won't composite against a parent's 3D space.)
 - Canonical: menu `.lh-play` / `.lh-item` + the living cursor's matching transform.
 
 ## When in doubt
