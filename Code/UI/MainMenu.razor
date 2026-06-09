@@ -13,14 +13,12 @@
 	   focusable items (mouse hover + keyboard both drive selectedIndex). Positioned
 	   in code from each item's Box.Rect; CSS transitions do the motion. *@
 	<div @ref="_cursorRef" class="lh-cursor @(_cursorVisible ? "visible" : "") @(_cursorWarmup >= 2 ? "" : "snap")" style="left: @(_cursorL)px; top: @(_cursorT)px; width: @(_cursorW)px; height: @(_cursorH)px; border-radius: @(_cursorR)px; transform-origin: @(_cursorOrigin);"></div>
-	<div class="menu-background"></div>
 	<div @ref="videoBackgroundPanel" class="menu-video-background"></div>
 	<div class="menu-nebula"></div>
 
 	<div class="menu-vignette"></div>
 	<div class="menu-content-wash"></div>
 	<div class="menu-grain"></div>
-	<div class="menu-light-beam"></div>
 
 	<div class="menu-content @(contentVisible ? "visible" : "") @(showStarterSelection ? "fading" : "")">
 		<!-- ============================================================
@@ -1107,8 +1105,20 @@
 		// on its own GameObject so its Component.OnUpdate tick pumps the decoder
 		// every frame — a Razor PanelComponent can't host a VideoPlayer safely
 		// since OnUpdate cadence there is tied to the panel's mount state.
-		// The static image bg shows through when the video isn't ready or fails.
-		if ( VideoBackground.Instance == null )
+		// Until the texture binds, the layer is empty and the dark root shows.
+		//
+		// A surviving instance playing a STALE path (hot reload after a video
+		// swap — the old component outlives the assembly change) is torn down
+		// and respawned so the current default always wins.
+		var existing = VideoBackground.Instance;
+		if ( existing != null && existing.VideoPath != VideoBackground.DefaultVideoPath )
+		{
+			Log.Info( $"[MainMenu] VideoBackground exists but plays stale path '{existing.VideoPath}' — destroying to respawn with current default" );
+			existing.GameObject.Destroy();
+			existing = null;
+		}
+
+		if ( existing == null )
 		{
 			Log.Info( "[MainMenu] VideoBackground.Instance is null — spawning GameObject + component" );
 			var go = new GameObject();
@@ -2435,7 +2445,7 @@
 		var texture = vb.VideoTexture;
 		if ( texture == null )
 		{
-			// Texture isn't ready yet — static .menu-background shows through.
+			// Texture isn't ready yet — the dark root shows through.
 			return;
 		}
 
