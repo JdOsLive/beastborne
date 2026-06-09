@@ -128,8 +128,10 @@ pill, and card — the generic "AI dashboard" look (user flagged it). The langua
 - A component is a **filled slab** on one of the surface tones, separated from its
   parent by CONTRAST, not by a stroke.
 - Permitted lines: the **violet ring** (selection), the **left accent bar** (cards),
-  a **bottom rarity strip**. That's the budget. A border that just "defines an edge"
-  → delete it and fix the fill contrast instead.
+  a **bottom rarity strip**, and **one optional solid panel signature strip** (e.g. a
+  2px violet top strip on a modal — ONE per panel, solid not gradient; added from the
+  OptionsPanel port feedback 2026-06-09). That's the budget. A border that just
+  "defines an edge" → delete it and fix the fill contrast instead.
 - Idle controls sit DARK and quiet (surface tones); brightness is earned by selection
   (the "make the other buttons darker" instinct — idle = quiet, focus = lit).
 
