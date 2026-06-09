@@ -1915,10 +1915,28 @@
 	// the SCSS transforms; angle 0 = flat.
 	private (float angle, int persp, Panel pivot) CursorRot( int i ) => i switch
 	{
-		0 or 1 or 2 or 3 => (10f, 1300, FocusEl( i )),     // sidebar buttons
+		0 or 1 or 2 or 3 => (13f, 1300, FocusEl( i )),     // sidebar buttons — 13° (matches .lh-play/.lh-item SCSS)
 		7 or 8 => (10f, 2000, FocusEl( i )),              // featured CTAs — match the featured's 10° plane
 		9 or 10 => (10f, 2000, FocusEl( i )),             // card pills — match the row's shared 10°/2000px plane (Approach A)
 		_ => (0f, 0, null),
+	};
+
+	// ─── PERSONA POP (selected lunge) ────────────────────────────────────
+	// The selected sidebar item physically lunges via a CSS transform on its
+	// .selected state — but transforms don't move Box.Rect, so the gliding ring
+	// would land on the un-popped layout rect and the gap look would break.
+	// These values mirror the CSS pop into the cursor's TARGET rect (UpdateCursor):
+	// the offset is folded into left/top/width/height, so it inherits the ring's
+	// 0.27s CSS glide for free and stays concentric mid-travel.
+	// LOCKSTEP with the SCSS .selected transforms:
+	//   .lh-play-slot.selected .lh-play / .lh-item.selected → translateX(9px) scale(1.04)
+	//   .lh-discord.selected → translateX(6px) · .lh-util.selected → translateX(4px)
+	private (float x, float scale) SelectedPop( int i ) => i switch
+	{
+		0 or 1 or 2 or 3 => (9f, 1.04f), // PLAY + nav rows — full lunge out of the 3D lean
+		4 => (6f, 1f),                   // Discord card — flat, quieter slide
+		5 or 6 => (4f, 1f),              // LANGUAGE / QUIT — tiny nudge
+		_ => (0f, 1f),                   // main-area items don't pop (their planes are shared)
 	};
 	// NOTE: panel controls (7-10) self-pivot at the SAME angle as their panel — the panel
 	// is a uniform-tilted plane, so matching the angle is what reads right; pivoting at the
@@ -1965,13 +1983,27 @@
 
 		var t = el.Box.Rect;
 		var (gx, gy, radius) = CursorGeom( idx );
+
+		// Persona-pop mirror: the cursor's target is by definition the SELECTED item,
+		// and the selected item carries the CSS lunge (translateX + scale on .selected)
+		// — which moves it visually but not its Box.Rect. Apply the same pop to the
+		// rect here so the ring wraps the item where it VISUALLY is. The scale pivots
+		// at the item's left-center (transform-origin: left center), so the left edge
+		// holds and only Y re-centers. Folding this into left/top/w/h means the pop
+		// rides the cursor's CSS glide — concentric through the whole transition.
+		var (popX, popS) = SelectedPop( idx );
+		float visW = t.Width * popS;
+		float visH = t.Height * popS;
+		float visL = t.Left + popX;
+		float visT = t.Top - ( visH - t.Height ) / 2f;
+
 		// The MainMenu root is full-screen at (0,0), so an item's screen-px rect is
 		// already the cursor's local coordinate (the cursor's offset parent is that
 		// root). No origin subtraction — same as TutorialPanel positions its spotlight.
-		int left = (int)t.Left - gx;
-		int top = (int)t.Top - gy;
-		int w = (int)t.Width + gx * 2;
-		int h = (int)t.Height + gy * 2;
+		int left = (int)visL - gx;
+		int top = (int)visT - gy;
+		int w = (int)visW + gx * 2;
+		int h = (int)visH + gy * 2;
 		int cx = left + w / 2;
 		int cy = top + h / 2;
 
@@ -1985,7 +2017,10 @@
 		int pivotX = 0; // rotateY pivot (panel's left edge), measured from the cursor's own left edge
 		if ( angle != 0f && pivotEl != null && pivotEl.Box.Rect.Width >= 1f )
 		{
-			pivotX = (int)pivotEl.Box.Rect.Left - left;
+			// + popX: when the pivot is the item itself (sidebar), its VISUAL left edge
+			// carries the Persona-pop offset too. popX is 0 for every case where the
+			// pivot is a different element, so adding unconditionally is safe.
+			pivotX = (int)( pivotEl.Box.Rect.Left + popX ) - left;
 		}
 		else { angle = 0f; persp = 0; }
 		// transform-origin stays CENTER (so scale + wave pivot center). The rotateY uses a
