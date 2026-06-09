@@ -64,6 +64,18 @@ public sealed class VideoBackground : Component
 	{
 		// Must be called every frame to advance the video decoder and refresh Texture.
 		Player?.Present();
+
+		// C#-MANAGED LOOP: the engine's Repeat wraps by letting the decoder hit EOF
+		// and restart, which has shown freezes ("H264: dropping pending sample (MFT
+		// deadlock)") right at the seam. Instead we Seek(0) ourselves ~1.5 frames
+		// before the end so the decoder never reaches EOF. The wave bg is encoded
+		// all-intra (every frame a keyframe), so the seek is stateless + instant.
+		// Repeat stays on as a backstop in case a stall makes us miss the window.
+		if ( VideoLoaded && Player != null && Player.Duration > 0.1f )
+		{
+			if ( Player.PlaybackTime >= Player.Duration - 0.025f )
+				Player.Seek( 0f );
+		}
 	}
 
 	protected override void OnDestroy()
