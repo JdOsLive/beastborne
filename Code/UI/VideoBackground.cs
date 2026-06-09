@@ -25,7 +25,7 @@ public sealed class VideoBackground : Component
 {
 	public static VideoBackground Instance { get; private set; }
 
-	[Property] public string VideoPath { get; set; } = "ui/main menu/loopbackground_purple.mp4";
+	[Property] public string VideoPath { get; set; } = "ui/main menu/loopbackground_wave.webm";
 	[Property] public bool Loop { get; set; } = true;
 	[Property] public bool Muted { get; set; } = true;
 
