@@ -25,7 +25,9 @@ public sealed class VideoBackground : Component
 {
 	public static VideoBackground Instance { get; private set; }
 
-	public const string DefaultVideoPath = "ui/main menu/loopbackground_wave.webm";
+	// h264 mp4 ONLY — s&box's VideoPlayer rejects VP8/VP9 webm with
+	// "[engine/VideoPlayer] No supported streams found" (verified 2026-06-09).
+	public const string DefaultVideoPath = "ui/main menu/loopbackground_wave.mp4";
 
 	[Property] public string VideoPath { get; set; } = DefaultVideoPath;
 	[Property] public bool Loop { get; set; } = true;
