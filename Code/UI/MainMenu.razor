@@ -746,6 +746,7 @@
 	// toggles re-fire transitions; content mounted already-open would snap.)
 	private async void OpenDetail( MenuDetail view )
 	{
+		SoundManager.PlaySlideIn(); // panel-arrival whoosh (owns the open sound — callers don't double it)
 		detailView = view;
 		StateHasChanged();
 		await Task.Delay( 30 );
@@ -760,7 +761,7 @@
 		if ( !detailOpen ) return;
 		detailOpen = false;
 		if ( detailView == MenuDetail.Options ) OptionsPanel.Hide();
-		else SoundManager.PlayBack();
+		else SoundManager.PlaySlideOut();
 		StateHasChanged();
 	}
 
@@ -840,9 +841,8 @@
 
 	private void OnPatchNotesClicked()
 	{
-		SoundManager.PlayPopup();
 		_patchNotesSeen = true;
-		OpenDetail( MenuDetail.PatchNotes );
+		OpenDetail( MenuDetail.PatchNotes ); // OpenDetail owns the slide-in sound
 	}
 
 	// News ticker
@@ -1393,6 +1393,15 @@
 		var random = new Random();
 		currentSplashText = SplashTexts[random.Next( SplashTexts.Length )];
 		splashVersion++; // remount the tag → replay the stamp keyframe
+		_ = PlayStampWithKeyframeDelay();
+	}
+
+	// The stamp keyframe sits behind a 0.5s animation-delay — the press sound
+	// must land WITH the visual stamp, not at randomize time.
+	private async Task PlayStampWithKeyframeDelay()
+	{
+		await Task.Delay( 500 );
+		if ( IsVisible ) SoundManager.PlayStamp();
 	}
 
 	private void RandomizeFeatureArt()
@@ -2055,6 +2064,9 @@
 		float visH = t.Height * popS;
 		float visL = t.Left + popX;
 		float visT = t.Top - ( visH - t.Height ) / 2f;
+		// The card View/Join pills sit inside the tilted cards plane — the ring
+		// landed a few px high on them (user-tuned 2026-06-09). Small Y fudge.
+		if ( idx == 9 || idx == 10 ) visT += 4f;
 
 		// The MainMenu root is full-screen at (0,0), so an item's screen-px rect is
 		// already the cursor's local coordinate (the cursor's offset parent is that
@@ -2224,6 +2236,11 @@
 
 	private void StartPlayDetonation()
 	{
+		// The audio half of the detonation: heavy fire cue + the ring's metallic
+		// snap layered on top (Tier 3 — the menu's biggest press deserves both).
+		SoundManager.PlayMenuFire();
+		SoundManager.PlayRingSlam();
+
 		_playFireIndex = selectedIndex == 7 ? 7 : 0;
 		_playFireStart = Time.Now;
 		_playFireVersion++;
@@ -2339,7 +2356,7 @@
 
 	private async void OnPlayClicked()
 	{
-		SoundManager.PlayPopup();
+		// (No PlayPopup here — StartPlayDetonation below owns the fire + slam audio.)
 
 		// Fire the detonation IMMEDIATELY on input — interaction feedback must be
 		// the sharpest motion on screen, and it can't wait on the save check below.
@@ -2519,8 +2536,7 @@
 
 	private void OnRoadmapClicked()
 	{
-		SoundManager.PlayPopup();
-		OpenDetail( MenuDetail.Roadmap );
+		OpenDetail( MenuDetail.Roadmap ); // OpenDetail owns the slide-in sound
 	}
 
 	private void OnOptionsClicked()
@@ -2631,9 +2647,17 @@
 	}
 
 
+	// Sidebar focus = the PITCH LADDER — the same dry tick pitched from high
+	// (PLAY, rung 0) to low (QUIT, rung 5; LANGUAGE/QUIT share a row/rung), so
+	// you can HEAR where you are in the column. Right-side items (7-10) keep
+	// the standard hover. Fires for mouse hover AND keyboard moves (both run
+	// through here after selectedIndex changes).
 	private void PlayHoverSound()
 	{
-		SoundManager.PlayHover();
+		if ( selectedIndex >= 0 && selectedIndex <= 6 )
+			SoundManager.PlayMenuTick( Math.Min( selectedIndex, 5 ), 6 );
+		else
+			SoundManager.PlayHover();
 	}
 
 	private void PlayClickSound()
