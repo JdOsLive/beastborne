@@ -2481,6 +2481,32 @@
 	private Panel _refMenuContent;
 	private float _lastGhostAudit = -10f; // census timer (SWAP_DEBUG)
 	private int _lastMenuCount = -1, _lastChildCount = -1; // census change-detection
+
+	// GHOST SWEEP — the engine's render differ DUPLICATES root children at the
+	// swap-frame rebuild (census caught rootChildren 6→14 with TWO .menu-content
+	// panels; the stale copy carries pre-swap markup = fully visible menu, and
+	// lives ~0.5s until the differ cleans its own debris). This hook runs after
+	// every tree build, BEFORE drawing — debris dies without ever being drawn.
+	protected override void OnAfterTreeRender( bool firstTime )
+	{
+		base.OnAfterTreeRender( firstTime );
+		if ( _scene == SceneId.Menu || Panel == null ) return;
+
+		List<Panel> ghosts = null;
+		foreach ( var child in Panel.Children )
+		{
+			if ( child != null && child.HasClass( "menu-content" ) && !ReferenceEquals( child, _refMenuContent ) )
+				( ghosts ??= new List<Panel>() ).Add( child );
+		}
+		if ( ghosts != null )
+		{
+			foreach ( var g in ghosts )
+			{
+				if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] ghost menu-content SWEPT pre-draw t={Time.Now:F3}" );
+				g.Delete( true );
+			}
+		}
+	}
 	// NOTE: no surface waves anywhere — motion-doctrine v2: surfaces are SOLID (the
 	// PLAY liquid was vetoed as motion-sick 2026-06-09; the nav-fill liquid was then
 	// retired for consistency). The violet ring is the only ALIVE element; buttons
