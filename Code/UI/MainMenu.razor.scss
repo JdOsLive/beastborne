@@ -217,6 +217,14 @@ MainMenu {
 		opacity: 1;
 	}
 
+	// Scene swap — the menu scene's display flip. Applied at the SWAP FRAME
+	// (after the 160ms departure), removed at the return swap frame with the
+	// re-arrival classes already staged (mounted-closed rule). The menu stays
+	// MOUNTED throughout — no re-mount, no splash re-stamp on returns.
+	&.scene-off {
+		display: none;
+	}
+
 	// When the starter/slot takeover activates, dissolve the launcher-hub
 	// surfaces. Each child fades independently so the whole panel feels like
 	// it melts away rather than hard-cuts.
@@ -1750,6 +1758,97 @@ MainMenu {
 .lh-card-slot.selected .lh-card-go,
 .mouse-nav .lh-card:hover .lh-card-go {
 	transform: scale(1.06);
+}
+
+// ============================================================
+// SCENE SWAP — MENU DEPARTURE + CHEAP RETURN  (scene-swap-spec)
+// ============================================================
+// Departure (~160ms, ease-in, all at t=0): the angled planes fly out
+// imperatively (PlaneTween, rate 0.28 — NOT here); these rules carry the
+// class-toggle halves: the sidebar slab's slide+fade, the opacity tails on
+// the planes and the .lh-main shell (opacity ONLY — flex-poison rule), and
+// the .depart-hold beat that lets the CLICKED sidebar control die last.
+// Source order: AFTER every entrance/selection rule so equal-specificity
+// ties resolve to the exit.
+
+.lh-sidebar.departing {
+	// Exit along the entrance vector, overshot (-40px in → -60px out).
+	opacity: 0;
+	transform: translateX(-60px);
+	transition: opacity 0.16s ease-in, transform 0.16s ease-in;
+
+	// Children drop faster than the slab so the held control reads as the
+	// last thing alive on the panel.
+	.lh-logo,
+	.lh-tag,
+	.lh-discord,
+	.lh-foot {
+		opacity: 0;
+		transition: opacity 0.10s ease-in;
+	}
+	.lh-nav > * {
+		opacity: 0;
+		transition: opacity 0.10s ease-in;
+	}
+}
+
+// The clicked control dies LAST — holds its Persona pop (still .selected) and
+// fades on a 0.06s delay. High-specificity selector so the .entered.settled
+// nth-child delay-zeroing can't strip the hold delay.
+.lh-sidebar.departing .lh-nav.entered > .depart-hold,
+.lh-sidebar.departing .lh-nav > .depart-hold {
+	opacity: 0;
+	transition: opacity 0.10s ease-in;
+	transition-delay: 0.06s;
+}
+
+// Main shell + event pill: opacity only (a transform here poisons descendant
+// flex-grow widths — see .lh-main note).
+.lh-main.departing {
+	opacity: 0;
+	transition: opacity 0.14s ease-in;
+}
+
+// The planes' opacity tails — the deal-out MOTION is imperative; these fades
+// finish just before the swap frame so the arrival can overlap (the
+// perceived-speed trick).
+.lh-featured.departing,
+.lh-cards.departing {
+	opacity: 0;
+	transition: opacity 0.16s ease-in;
+}
+
+// ── Return trip (menu re-arrival) — mirror, but cheaper ──
+// Halved group staggers come from RunSwap's timers; these halve the
+// within-group bits: a faster sidebar glide (the 0.6s entrance ease reads
+// sluggish on a 350ms return) and halved nav-row delays.
+.lh-sidebar.return {
+	transition: opacity 0.24s ease-out, transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.lh-nav.return.entered {
+	> *:nth-child(1) { transition-delay: 0s; }
+	> *:nth-child(2) { transition-delay: 0.03s; }
+	> *:nth-child(3) { transition-delay: 0.06s; }
+	> *:nth-child(4) { transition-delay: 0.09s; }
+}
+// Settle still wins once stage 4 lands (matches the .entered.settled rule).
+.lh-nav.return.entered.settled {
+	> *:nth-child(1), > *:nth-child(2), > *:nth-child(3), > *:nth-child(4) { transition-delay: 0s; }
+}
+
+// ── DECISION 5 — the CARD acknowledges its pill's selection ──
+// Keyboard/hover selection on a bottom card doesn't just pop the View/Join
+// pill: the card itself reacts — accent edge flares 4→7px + a deeper dark
+// elevation (the "slight lift" read without a transform, which the coplanar
+// shared-camera row must never carry on selection — the ring math doesn't
+// track card translates). SNAP timing: both properties already transition
+// at 0.16s on the card.
+.lh-card-slot.selected .lh-card {
+	box-shadow: 0 22px 48px rgba(0, 0, 0, 0.45);
+
+	.lh-card-edge {
+		width: 7px;
+	}
 }
 
 // ============================================
@@ -3378,97 +3477,185 @@ MainMenu {
 }
 
 // ════════════════════════════════════════════════════════════════
-// DETAIL SLIDE-IN — Roadmap / Options / Patch Notes  (classes `lhd-`)
+// SCENE SWAP — Roadmap / Options / Patch Notes  (shell `lh-scene`, content `lhd-`)
 // ════════════════════════════════════════════════════════════════
-// Replaces the old centered popups ("rather than a popup, have it slide onto
-// the menu" — user call 2026-06-09; guiding-star already prescribes "detail
-// panel slides out from under the content grid"). One shared shell:
-//   .lh-detail-scrim — full-screen dimmer over the WHOLE menu (sidebar incl.)
-//                      so mouse hover can't retarget the living cursor under
-//                      an open panel; click closes (same gating the old
-//                      .starter-overlay popups provided).
-//   .lh-detail       — 720px right-edge panel, full height, slides via the
-//                      `right` PROPERTY (class-toggle transition — re-fires
-//                      every open). NOT transform: a transform here would
-//                      poison flex-grow widths in every descendant (incl. the
-//                      docked OptionsPanel rows — see css-quirks).
-// Content speaks the OptionsPanel dialect: solid slabs on guiding-star tones,
-// 3px tone left-accent bars per card, ONE violet signature strip (.lhd-topline),
-// SNAP hover/press ≤150ms, staggered opacity reveal via transition-delay.
-// z-order: cursor 100 < scrim 300 < panel 310 < wipe 1500 < confirms 2000+.
+// Replaces the right-edge drawer with a full sibling-scene swap (deal-out /
+// deal-in — see .claude/ui-knowledge/scene-swap-spec.md). The shell:
+//   .lh-scene        — fullscreen wrapper, display flex↔none at the swap
+//                      frame (.shown). NO scrim — the menu is gone, not dimmed.
+//   .lh-scene-bg     — the ANGLED decorative backdrop slab (DECISION 1:
+//                      backgrounds angled, text flat). It rests on the menu's
+//                      10° plane dialect and is the only element the PlaneTween
+//                      tweener moves (imperative — class-toggle transform = snap).
+//                      Steady chain SHAPE matches the imperative chain
+//                      (perspective → translateX → rotateY) for seamless
+//                      null-on-settle.
+//   .lh-scene-frame  — FLAT 1000px reading column (topline/header/scroll/footer
+//                      or the docked OptionsPanel). Never transformed: it hosts
+//                      flex-grow + scroll descendants (flex-poison rule).
+// Arrival stagger (all class-toggle opacity + transition-delay, fired by
+// .arrived after a mounted-closed frame): A header slab (SlabLeft, +0) →
+// B content rows (+70ms, riding the backdrop plane) → C footer (+140ms).
+// .settled zeroes every delay so hover SNAP never lags; .departing is the
+// all-at-once 140ms exit for the return trip.
+// z-order: menu content (auto) < scene 90 < cursor 100 < starter overlays
+// (later siblings) < wipe 1500.
 
-.lh-detail-scrim {
+.lh-scene {
 	position: absolute;
 	top: 0;
 	left: 0;
 	width: 100%;
 	height: 100%;
-	background-color: rgba(4, 6, 15, 0.66);
-	opacity: 0;
+	display: none;
+	flex-direction: row;
+	justify-content: center;
+	padding: 72px 0;
 	pointer-events: none;
-	z-index: 300;
-	transition: opacity 0.22s ease-out;
+	z-index: 90;
 
-	&.open {
-		opacity: 1;
-		pointer-events: all;
-	}
-}
-
-.lh-detail {
-	position: absolute;
-	top: 0;
-	bottom: 0;
-	width: 720px;
-	// Parked off the right edge (+ shadow allowance). Slide = `right` toggle.
-	right: -790px;
-	display: flex;
-	flex-direction: column;
-	background-color: #15121F;              // guiding-star panel tone, SOLID
-	box-shadow: -18px 0 50px rgba(0, 0, 0, 0.55); // dark elevation, not glow
-	pointer-events: none;
-	z-index: 310;
-	overflow: hidden;
-	// OUT — slightly faster than in (panel-out reads best a touch quicker).
-	transition: right 0.18s ease-in;
-
-	&.open {
-		right: 0;
-		pointer-events: all;
-		// IN — 0.26s decelerating glide.
-		transition: right 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+	&.shown {
+		display: flex;
 	}
 
-	// ── Staggered content reveal ──
-	// Children fade in on a transition-delay cascade once .open lands (26.06.03
-	// unlocked transition-delay). Opacity ONLY — entrances never use transforms
-	// (flex poison) and these sections live inside a scroll container (no
-	// transforms/shadows on scroll children). Base state has NO delay, so
-	// closing fades everything together with the 0.18s slide-out.
-	// NOTE: this selector outweighs the per-class rules below (.lhd-card etc.),
-	// so its transition list must CARRY background-color too — otherwise the
-	// cards' hover SNAP would be silently dropped from the cascade.
-	.lhd-header,
-	.lhd-footer,
+	// ── The angled plane. Near-fullbleed vertically so its projected top/bottom
+	// edges (which pull toward the vertical center on the receding side) still
+	// cover the flat frame's corners at the 10° rest pose. Width overshoots the
+	// frame ~160px on the right for the same reason (perspective foreshortening
+	// pulls the visual right edge in ~130px).
+	.lh-scene-bg {
+		position: absolute;
+		top: 16px;
+		bottom: 16px;
+		left: 50%;
+		margin-left: -530px;  // frame half-width 500 + 30px bleed (no transform centering — planes own their transform)
+		width: 1190px;
+		border-radius: 30px;
+		background-image: linear-gradient(135deg, rgba(23, 17, 45, 0.98), rgba(10, 7, 26, 0.99));
+		box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); // dark elevation, not glow
+		// Steady-state pose — same chain shape as ApplyDealTransform so the
+		// tweener's null-on-settle hands back seamlessly.
+		transform: perspective(2000px) translateX(0px) rotateY(10deg);
+		transform-origin: left center;
+		opacity: 0;
+		transition: opacity 0.30s ease-out;
+	}
+	&.arrived .lh-scene-bg { opacity: 1; transition-delay: 0.07s; } // fades in WITH group B
+	&.settled .lh-scene-bg { transition-delay: 0s; }
+
+	// ── The flat reading column ──
+	.lh-scene-frame {
+		position: relative;
+		flex: 0 0 1000px;
+		width: 1000px;
+		display: flex;
+		flex-direction: column;
+		pointer-events: all;
+	}
+
+	// Scene-context polish on the reused lhd- slabs: they now float on the
+	// angled backdrop instead of filling a flat drawer, so they get rounded
+	// corners + a little air. The docked OptionsPanel sheet matches.
+	.lhd-header { border-radius: 18px; margin-top: 6px; }
+	.lhd-footer { border-radius: 18px; }
+	.lhd-topline { border-radius: 2px; width: 220px; margin-left: 4px; }
+	.options-modal { border-radius: 18px; }
+
+	// ── Arrival groups (base = mounted-closed state) ──
+	// Group A — header slab: SlabLeft (translateX(-40px) → 0 + fade). Safe:
+	// .lhd-header-left/right are pinned auto-width in scene context (below),
+	// so no flex-grow descendant sits under this transform.
+	.lhd-topline,
+	.lhd-header {
+		opacity: 0;
+		transition: opacity 0.30s ease-out;
+	}
+	.lhd-header {
+		transform: translateX(-40px);
+		transition: opacity 0.30s ease-out, transform 0.30s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	// Group B — content rows (the backdrop plane carries the motion; rows are
+	// opacity-only — they live in a scroll container). NOTE: this selector
+	// outweighs the per-class rules (.lhd-card etc.), so the transition list
+	// must CARRY background-color or the cards' hover SNAP gets dropped.
 	.lhd-scroll > * {
 		opacity: 0;
-		transition: opacity 0.18s ease-out, background-color 0.12s ease-out;
+		transition: opacity 0.26s ease-out, background-color 0.12s ease-out;
+	}
+	// Group C — footer.
+	.lhd-footer {
+		opacity: 0;
+		transition: opacity 0.26s ease-out, background-color 0.12s ease-out;
+	}
+	// The docked OptionsPanel rides group B as one block (it staggers its own
+	// sections internally via its .visible cascade). Scoped at 0-3/4-0
+	// specificity so it outweighs the component's own `.options-container
+	// .visible { opacity: 1 }` (0-2-0) — Show() fires at CLICK time, so by the
+	// swap frame the panel is already .visible inside the hidden wrapper and
+	// would otherwise pop fully-formed during the mounted-closed frame.
+	// Only the Options scene ever lifts it (`.scene-options.arrived`) — in
+	// Roadmap/PatchNotes the docked sheet stays pinned invisible.
+	.options-container.docked {
+		opacity: 0;
+		transition: opacity 0.26s ease-out;
+	}
+	&.scene-options.arrived .options-container.docked { opacity: 1; transition-delay: 0.07s; }
+	&.scene-options.settled .options-container.docked { transition-delay: 0s; }
+	&.departing .options-container.docked { opacity: 0; transition: opacity 0.14s ease-in; }
+
+	&.arrived {
+		.lhd-topline { opacity: 1; }
+		.lhd-header { opacity: 1; transform: translateX(0px); }
+		// Generic first (rows 5+ share the last beat), nth overrides below.
+		.lhd-scroll > * { opacity: 1; transition-delay: 0.22s; }
+		.lhd-scroll > *:nth-child(1) { transition-delay: 0.07s; }
+		.lhd-scroll > *:nth-child(2) { transition-delay: 0.12s; }
+		.lhd-scroll > *:nth-child(3) { transition-delay: 0.17s; }
+		.lhd-scroll > *:nth-child(4) { transition-delay: 0.22s; }
+		.lhd-footer { opacity: 1; transition-delay: 0.14s; }
 	}
 
-	&.open {
-		.lhd-header { opacity: 1; transition-delay: 0.05s; }
-		// Generic first (children 8+ share the last beat), nth overrides below.
-		.lhd-scroll > * { opacity: 1; transition-delay: 0.46s; }
-		.lhd-scroll > *:nth-child(1) { transition-delay: 0.10s; }
-		.lhd-scroll > *:nth-child(2) { transition-delay: 0.16s; }
-		.lhd-scroll > *:nth-child(3) { transition-delay: 0.22s; }
-		.lhd-scroll > *:nth-child(4) { transition-delay: 0.28s; }
-		.lhd-scroll > *:nth-child(5) { transition-delay: 0.34s; }
-		.lhd-scroll > *:nth-child(6) { transition-delay: 0.40s; }
-		.lhd-scroll > *:nth-child(7) { transition-delay: 0.46s; }
-		.lhd-footer { opacity: 1; transition-delay: 0.30s; }
+	// Settle — zero every delay so interaction feedback is instant.
+	&.settled {
+		.lhd-scroll > * { transition-delay: 0s; }
+		.lhd-scroll > *:nth-child(1),
+		.lhd-scroll > *:nth-child(2),
+		.lhd-scroll > *:nth-child(3),
+		.lhd-scroll > *:nth-child(4) { transition-delay: 0s; }
+		.lhd-footer { transition-delay: 0s; }
+	}
+
+	// Return-trip exit — all at once, fast, along the entrance vector (the
+	// backdrop plane over-rotates out imperatively; header retraces its slide).
+	&.departing {
+		.lh-scene-frame { pointer-events: none; }
+		.lhd-topline { opacity: 0; transition: opacity 0.14s ease-in; }
+		.lhd-header {
+			opacity: 0;
+			transform: translateX(-40px);
+			transition: opacity 0.14s ease-in, transform 0.14s ease-in;
+		}
+		.lhd-scroll > * { opacity: 0; transition: opacity 0.14s ease-in, background-color 0.12s ease-out; }
+		.lhd-footer { opacity: 0; transition: opacity 0.14s ease-in, background-color 0.12s ease-out; }
 	}
 }
+
+// Scene-context header columns: pin both sides auto-width so the header's
+// SlabLeft transform never sits above a flex-grow descendant (flex-poison
+// rule). margin-left:auto replaces the grow-based space-between.
+.lh-scene .lhd-header-left {
+	flex: 0 0 auto;
+	min-width: 0;
+}
+.lh-scene .lhd-header-right {
+	margin-left: auto;
+}
+
+// Keyboard focus (.kb-sel — the living cursor's ring wraps the control; this
+// mirrors the mouse-hover brighten so keyboard = hover, same as the menu).
+.lhd-close.kb-sel { background-color: #3A2F63; }
+.lhd-feedback-btn.kb-sel { background-color: #FFD95A; }
+.lhd-discord-btn.kb-sel { background-color: #4B3A82; color: #ffffff; }
 
 // Signature strip — the ONE permitted panel line (solid violet, top edge).
 // The Options view supplies its own (.modal-top-line inside the docked
