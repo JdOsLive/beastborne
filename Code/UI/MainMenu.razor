@@ -907,6 +907,7 @@
 		EnsureTweens(); // before any _tw* field is passed by value below
 		int v = ++_swapVersion;
 		bool fromMenu = _scene == SceneId.Menu;
+		if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] DEPART begin dest={dest} fromMenu={fromMenu} v={v} t={Time.Now:F3}" );
 		_swap = SwapState.Departing;
 		_pending = null;
 		_sceneSettled = false;
@@ -938,6 +939,7 @@
 		// if it points back at the CURRENT scene we still run the arrival branch
 		// — re-arriving where we are recovers the departed pose coherently)
 		if ( _pending.HasValue ) { dest = _pending.Value; _pending = null; }
+		if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] SWAP FRAME dest={dest} v={v} t={Time.Now:F3} featX={_twFeatured.X:F1} cardsX={_twCards.X:F1}" );
 		_swap = SwapState.Arriving;
 		_scene = dest;
 		_departHoldIndex = -1;
@@ -1465,8 +1467,13 @@
 	// so the steady-state CSS rule resumes. The cursor stays hidden until stage 4,
 	// so CursorRot's static angles never see the animation. .lh-main stays
 	// opacity-only (a transform there poisons descendant flex-grow widths).
+	// TEMP swap diagnostics (2026-06-10, hunting the departure teleport) — every
+	// log is single-line (multiline Log.Info truncates). Flip off when solved.
+	private const bool SWAP_DEBUG = true;
+
 	private async void PlayEntranceSequence()
 	{
+		if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] ENTRANCE begin (nulls plane transforms!) t={Time.Now:F3} swap={_swap} scene={_scene}" );
 		entranceStage = 0;
 		// Reset any leftover imperative state from a previous visit (deal-in /
 		// PLAY detonation) so the CSS defaults are this entrance's baseline.
@@ -1600,18 +1607,20 @@
 	{
 		if ( tw == null || !tw.Active ) return;
 		var el = ResolvePlane( tw.PlaneId );
-		if ( el == null ) { tw.Active = false; return; }
+		if ( el == null ) { tw.Active = false; if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] tween p{tw.PlaneId} LOST PANEL t={Time.Now:F3}" ); return; }
 
 		tw.X += ( tw.TX - tw.X ) * tw.Rate;
 		tw.Deg += ( tw.TDeg - tw.Deg ) * tw.Rate;
 		if ( MathF.Abs( tw.X - tw.TX ) < 0.5f && MathF.Abs( tw.Deg - tw.TDeg ) < 0.04f )
 		{
+			if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] tween p{tw.PlaneId} SETTLE x={tw.TX:F1} null={tw.NullAtTarget} t={Time.Now:F3}" );
 			if ( tw.NullAtTarget ) el.Style.Transform = null;
 			else ApplyDealTransform( el, tw.TX, tw.TDeg, tw.Persp );
 			tw.Active = false;
 		}
 		else
 		{
+			if ( SWAP_DEBUG && _swap != SwapState.Idle ) Log.Info( $"[swapdbg] tween p{tw.PlaneId} x={tw.X:F1} deg={tw.Deg:F1} t={Time.Now:F3}" );
 			ApplyDealTransform( el, tw.X, tw.Deg, tw.Persp );
 		}
 	}
