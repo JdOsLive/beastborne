@@ -545,9 +545,10 @@
 
 	// The scene detail scroll body (roadmap OR patch notes — only one view
 	// mounts at a time) now lives in the LighthouseScene component; resolve
-	// it fresh on every read (hotload-safe, never stale after a content
-	// remount — the component nulls its refs when Mounted changes).
-	private Sandbox.UI.Panel detailScrollBody => _sceneComp?.ScrollBody;
+	// it fresh on every read through ResolveScrollBody (hotload-safe, never
+	// stale after a content remount — the component nulls its refs when
+	// Mounted changes AND self-heals by class walk if the @ref never rebinds).
+	private Sandbox.UI.Panel detailScrollBody => _sceneComp?.ResolveScrollBody();
 	private const float DetailKeyScrollStep = 90f;  // arrow Up/Down nudge
 	private const float DetailWheelStep = 60f;       // per wheel notch
 
@@ -678,8 +679,13 @@
 		{
 			_sceneArrived = false;
 			_sceneDeparting = true;
-			// From-pose = the wide slab's 7° rest (see .lh-scene-bg) — over-rotate out.
-			StartTween( _twSceneBg, 0f, 7f, 90f, 14f, 0.28f, false );
+			// From-pose = the DEPARTING scene's rest lean (see SceneRestDeg —
+			// +7 roadmap / −7 patch notes / +5 options) — over-rotate out along
+			// the same signed direction (Suto rails: exit along your entrance
+			// vector).
+			float rest = SceneRestDeg( _scene );
+			float sgn = MathF.Sign( rest );
+			StartTween( _twSceneBg, 0f, rest, 90f, rest + 7f * sgn, 0.28f, false );
 		}
 		_pendingSceneFocus = false; // a new swap supersedes any in-flight retarget
 		StateHasChanged();
@@ -778,6 +784,11 @@
 			// now strands the ring over the dead menu control's stale rect).
 			// Options has no scene-shell focusable (the docked panel owns its
 			// own kb cursor) — the living cursor hides there instead.
+			// A stale SCENE index from a scene→scene cycle (e.g. discord 22
+			// while arriving in patch notes, which has no 22) would CANCEL the
+			// retarget (the poll reads >= 20 as "player already chose") — clear
+			// it so the ring re-homes; a real hover during arrival still wins.
+			if ( selectedIndex >= 20 ) selectedIndex = -1;
 			_sceneArrived = true;
 			_pendingSceneFocus = dest != SceneId.Options;
 			_sceneFocusFrames = 0;
@@ -785,10 +796,14 @@
 			await Task.Delay( 70 );
 			if ( v != _swapVersion ) return;
 
-			// Group B — the angled backdrop plane deals in (x 70→0, deg 12→7,
-			// arrival rate). Low-key land beat (PlayStamp is currently a no-op
-			// stub — wired for the next sound pass, DECISION 3).
-			StartTween( _twSceneBg, 70f, 12f, 0f, 7f, 0.16f, true );
+			// Group B — the angled backdrop plane deals in toward the DEST
+			// scene's signed rest lean (x 70→0, deg rest+5→rest; lean per
+			// SceneRestDeg — the angle itself says where you are). Low-key land
+			// beat (PlayStamp is currently a no-op stub — wired for the next
+			// sound pass, DECISION 3).
+			float rest = SceneRestDeg( dest );
+			float sgn = MathF.Sign( rest );
+			StartTween( _twSceneBg, 70f, rest + 5f * sgn, 0f, rest, 0.16f, true );
 			SoundManager.PlayStamp();
 			await Task.Delay( 280 );
 			if ( v != _swapVersion ) return;
@@ -819,9 +834,23 @@
 		_twSceneBg.Active = false;
 		if ( dest != SceneId.Menu )
 		{
-			ApplyDealTransform( ResolvePlane( 2 ), 70f, 12f, 2000 );
+			// Pre-pose at the DEST scene's signed arrival start (rest + 5° more
+			// over-rotated) so the slab can't flash its steady pose pre-tween.
+			float rest = SceneRestDeg( dest );
+			ApplyDealTransform( ResolvePlane( 2 ), 70f, rest + 5f * MathF.Sign( rest ), 2000 );
 		}
 	}
+
+	// Per-scene backdrop rest lean (Scene Identity v3 — Suto wayfinding: the
+	// angle itself says where you are). LOCKSTEP with the per-scene steady CSS
+	// (.lh-scene.scene-* .lh-scene-bg transform) — the tween settles + nulls
+	// onto that pose. Patch notes MIRRORS (−7°); Options sits shallower (+5°).
+	private static float SceneRestDeg( SceneId s ) => s switch
+	{
+		SceneId.PatchNotes => -7f,
+		SceneId.Options => 5f,
+		_ => 7f, // Roadmap (and the safe default)
+	};
 
 	// Deferred scene-arrival cursor retarget (see _pendingSceneFocus). Runs
 	// every OnUpdate; cheap no-op when idle. A user hover that already moved
@@ -829,24 +858,37 @@
 	// so it can't stomp the player's choice a few frames later.
 	private void UpdatePendingSceneFocus()
 	{
-		if ( !_pendingSceneFocus ) return;
+		if ( !_pendingSceneFocus ) { _focusPollTicks = 0; return; }
 		if ( _scene != SceneId.Roadmap && _scene != SceneId.PatchNotes ) { _pendingSceneFocus = false; return; }
 		if ( selectedIndex >= 20 ) { _pendingSceneFocus = false; return; }
 
-		var el = _sceneComp?.CloseButton;
+		// Resolved through FindFocusable — trusts the @ref when it reads live
+		// geometry, otherwise self-heals by class walk (the post-split
+		// stranded-ring fix; a branch @ref that never rebound read null here
+		// forever and the ring froze over the dead sidebar control).
+		var el = _sceneComp?.FindFocusable( 20 );
 		// Left > -1000 — the scene shell HIDES by parking at left -10000px (layout
 		// stays warm), so a rect can be "real" while still offscreen for a frame.
 		bool real = el != null && el.Box.Rect.Width >= 1f && el.Box.Rect.Top >= 1f && el.Box.Rect.Left > -1000f;
+		// TEMP (rides SWAP_DEBUG): trace the poll — first frame, every 30th
+		// no-progress frame, and the landing — so a strand is diagnosable from
+		// the log alone (which condition failed, what the rect read).
+		if ( SWAP_DEBUG && ( ++_focusPollTicks == 1 || ( !real && _focusPollTicks % 30 == 0 ) ) )
+			Log.Info( $"[swapdbg] focus poll t{_focusPollTicks}: closeNull={el == null} rect={( el != null ? el.Box.Rect.ToString() : "-" )} real={real} frames={_sceneFocusFrames} sel={selectedIndex} compNull={_sceneComp == null}" );
 		_sceneFocusFrames = real ? _sceneFocusFrames + 1 : 0;
 		if ( _sceneFocusFrames >= 2 )
 		{
 			_pendingSceneFocus = false;
+			if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] focus LANDED on 20 after {_focusPollTicks} poll frames t={Time.Now:F3}" );
+			_focusPollTicks = 0;
 			selectedIndex = 20;     // ring cross-glides to the close button
 			StateHasChanged();
 		}
 	}
 
-	// Scene focusable activation (Enter/Space on indices 20-22).
+	private int _focusPollTicks = 0; // TEMP diagnostics counter (SWAP_DEBUG window)
+
+	// Scene focusable activation (Enter/Space on indices 20-25).
 	private void ExecuteSceneAction()
 	{
 		switch ( selectedIndex )
@@ -857,7 +899,31 @@
 				else OnDiscordClick();
 				break;
 			case 22: OnDiscordClick(); break;
+			// Roadmap posters — ENTER opens Send Feedback (v3 spec: a poster is
+			// an invitation to weigh in on that feature; plain panel for now).
+			case 23:
+			case 24:
+			case 25: OnSendFeedback(); break;
 		}
+	}
+
+	// ─── A/D FOCUS RAILS + DIRECT SCENE CYCLING (v3) ─────────────────────
+	// Each content scene declares its A/D walk order; pushing PAST either end
+	// CYCLES directly to the sibling scene (Roadmap ⇄ Patch Notes) through the
+	// normal RunSwap scene→scene path — full fly-out/fly-in, no menu detour.
+	// OPTIONS IS DELIBERATELY NOT IN THE CYCLE: its docked panel owns the
+	// keyboard outright (the AnyVisible early-return in HandleKeyboardInput),
+	// so A/D can never reach the shell there. Documented on the footer
+	// key-rail ("A·D MOVE · SWITCH SCENE" only renders on the two cycling
+	// scenes; Options keeps its own W/S · SPACE · Q rail).
+	private static readonly int[] RoadmapFocusRail = { 20, 23, 24, 25, 21, 22 };
+	private static readonly int[] PatchNotesFocusRail = { 20, 21 };
+
+	private void CycleScene()
+	{
+		var dest = _scene == SceneId.Roadmap ? SceneId.PatchNotes : SceneId.Roadmap;
+		if ( dest == SceneId.PatchNotes ) _patchNotesSeen = true;
+		OpenScene( dest ); // owns the open sound; RunSwap handles scene→scene
 	}
 
 	// Mouse hover on a scene focusable — same contract as OnButtonHover but
@@ -1950,15 +2016,35 @@
 				ExecuteSceneAction();
 				return;
 			}
-			int focusCount = showRoadmap ? 3 : 2; // close + feedback + discord / close + discord
+			// A/D walks the scene's focus rail (close → posters → footer CTAs on
+			// roadmap; close → discord on patch notes). Pushing PAST either end
+			// cycles directly to the sibling scene — the v3 "exciting switching"
+			// path (Roadmap ⇄ Patch Notes; Options excluded, see the rail note).
 			if (Input.Pressed("Left") || Input.Pressed("Right"))
 			{
 				EnterKeyboardMode();
-				int cur = Math.Clamp(selectedIndex - 20, 0, focusCount - 1);
-				int next = Input.Pressed("Left") ? Math.Max(0, cur - 1) : Math.Min(focusCount - 1, cur + 1);
-				if (20 + next != selectedIndex)
+				int[] rail = showRoadmap ? RoadmapFocusRail : PatchNotesFocusRail;
+				int cur = Array.IndexOf(rail, selectedIndex);
+				if (cur < 0)
 				{
-					selectedIndex = 20 + next;
+					// Ring mid-retarget / stale index — the first press SEEDS
+					// focus at close instead of walking (a blind A press must
+					// not surprise-cycle the scene).
+					_pendingSceneFocus = false;
+					selectedIndex = rail[0];
+					SoundManager.PlayHover();
+					return;
+				}
+				int next = cur + (Input.Pressed("Left") ? -1 : 1);
+				if (next < 0 || next >= rail.Length)
+				{
+					CycleScene();
+					return;
+				}
+				if (rail[next] != selectedIndex)
+				{
+					_pendingSceneFocus = false; // player took the wheel — drop the auto-retarget
+					selectedIndex = rail[next];
 					SoundManager.PlayHover();
 				}
 				return;
@@ -2215,9 +2301,13 @@
 	{
 		0 => _ref0, 1 => _ref1, 2 => _ref2, 3 => _ref3, 4 => _ref4, 5 => _ref5,
 		6 => _ref6, 7 => _ref7, 8 => _ref8, 9 => _ref9, 10 => _ref10,
-		// Scene focusables (Roadmap/PatchNotes): 20 close · 21/22 footer actions.
-		// Resolved fresh through the scene component (it nulls these on remount).
-		20 => _sceneComp?.CloseButton, 21 => _sceneComp?.Act1, 22 => _sceneComp?.Act2,
+		// Scene focusables (Roadmap/PatchNotes): 20 close · 21/22 footer actions
+		// · 23/24/25 roadmap posters. Resolved through FindFocusable — the
+		// component trusts its @ref when it reads live geometry and otherwise
+		// SELF-HEALS by class walk (the post-split stranded-ring fix: a branch
+		// @ref that never rebound left the focus poll reading null forever
+		// while the ring held the dead sidebar control).
+		>= 20 and <= 25 => _sceneComp?.FindFocusable( i ),
 		_ => null
 	};
 
@@ -2233,6 +2323,7 @@
 		1 or 2 or 3 => (11, 11, 27), // nav rows — tighter ring (hugs the filled selection)
 		20 => (8, 8, 16),         // scene close button (32px square slab)
 		21 or 22 => (9, 9, 17),   // scene footer actions (36px pills)
+		23 or 24 or 25 => (10, 10, 26), // roadmap posters (520×560 slabs, radius 16)
 		_ => (14, 14, 30),        // PLAY + discord
 	};
 
@@ -2290,6 +2381,7 @@
 		5 or 6 => (4f, 1f),              // LANGUAGE / QUIT — tiny nudge
 		7 or 8 => (0f, 1.05f),           // featured CTAs — swell from left edge (origin: left center)
 		9 or 10 => (0f, 1.06f),          // card View/Join pills — swell from left edge
+		23 or 24 or 25 => (0f, 1.02f),   // roadmap posters — COMMANDING scale (origin: left center, see .lhp)
 		_ => (0f, 1f),
 	};
 	// NOTE: panel controls (7-10) self-pivot at the SAME angle as their panel — the panel
