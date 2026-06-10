@@ -3,8 +3,17 @@
 Distilled from the design team's "UI Guiding Star" handoff, **reconciled to the live
 codebase + s&box CSS reality**. This is the target every panel converges to in the
 all-panel consistency pass. Where the design handoff conflicted with the shipped game,
-the live value wins (noted inline). Supersedes the older notes in `style-guide.md` for
-tokens; keep `css-quirks.md` as the engine-constraint companion.
+the live value wins (noted inline).
+
+**THE MIX (user mandate 2026-06-09 — UI work reads ALL of these, each owning its lane):**
+- **guiding-star.md (this doc)** — principles, color/type tokens, motion doctrine,
+  stroke discipline. WINS on any token/color/motion conflict (style-guide's element
+  colors predate the Wind→teal and Nature corrections).
+- **style-guide.md** — the COMPONENT COOKBOOK: buttons, pills, badges, diamonds,
+  section chrome, with `MonsterRosterPanel` as the living reference ("copy roster,
+  don't invent"). WINS on component anatomy/recipes.
+- **css-quirks.md** — the engine-constraint companion (what parses, what breaks).
+- **scene-swap-spec.md** — the transition system for sibling screen changes.
 
 > **North star:** *Make the deep feel simple.* Beastborne is genuinely complex
 > (genetics, breeding, fusion, teams); the UI's whole job is to make that feel
