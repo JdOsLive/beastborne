@@ -34,6 +34,7 @@ public sealed class VideoBackground : Component
 	[Property] public bool Muted { get; set; } = true;
 
 	public VideoPlayer Player { get; private set; }
+	private bool _seekedThisWrap = false;
 	public Texture VideoTexture => Player?.Texture;
 	public bool VideoLoaded { get; private set; } = false;
 
@@ -67,14 +68,27 @@ public sealed class VideoBackground : Component
 
 		// C#-MANAGED LOOP: the engine's Repeat wraps by letting the decoder hit EOF
 		// and restart, which has shown freezes ("H264: dropping pending sample (MFT
-		// deadlock)") right at the seam. Instead we Seek(0) ourselves ~1.5 frames
+		// deadlock)") right at the seam. Instead we Seek(0) ourselves ~2 frames
 		// before the end so the decoder never reaches EOF. The wave bg is encoded
 		// all-intra (every frame a keyframe), so the seek is stateless + instant.
-		// Repeat stays on as a backstop in case a stall makes us miss the window.
+		//
+		// DEBOUNCED (2026-06-09): PlaybackTime does not reset the same frame the
+		// seek is issued — without the flag this fired a BURST of seeks at every
+		// wrap (one per frame until PlaybackTime caught up), which itself read as
+		// a loop stutter. One seek per wrap; the flag re-arms once playback is
+		// observably back near the start. Repeat stays on as a backstop.
 		if ( VideoLoaded && Player != null && Player.Duration > 0.1f )
 		{
-			if ( Player.PlaybackTime >= Player.Duration - 0.025f )
+			if ( !_seekedThisWrap && Player.PlaybackTime >= Player.Duration - 0.034f )
+			{
+				Log.Info( $"[VideoBackground] wrap seek at t={Player.PlaybackTime:F3}/{Player.Duration:F3}" );
 				Player.Seek( 0f );
+				_seekedThisWrap = true;
+			}
+			else if ( _seekedThisWrap && Player.PlaybackTime < 1f )
+			{
+				_seekedThisWrap = false; // back near the start — re-arm for the next wrap
+			}
 		}
 	}
 
