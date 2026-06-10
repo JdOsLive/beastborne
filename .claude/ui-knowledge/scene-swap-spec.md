@@ -99,3 +99,41 @@ ONLY (class-toggle transform = snap) · transforms only on elements that already
 them; FadeOnly for flex-grow hosts · transition-delay needs `.settled` zeroing ·
 scene wrappers flip display flex↔none · steady CSS transform chain must match the
 imperative chain shape for seamless null-on-settle.
+
+## V2 AMENDMENTS (2026-06-09, post-first-pass fixes + full-width redesign)
+1. **NEVER null an OUTGOING plane's inline transform at the swap frame.**
+   Style.Transform applies same-frame; the wrapper's display:none lands on the
+   NEXT rendered frame → 1-2 frames of the menu at its steady pose ("departure
+   flash", user-visible). ResetPlanesForSwap now only halts tweens + pre-poses
+   the INCOMING backdrop. Outgoing planes keep their flown-out pose while
+   hidden; the next arrival re-seeds them (StartTween seeds when inactive;
+   PlayEntranceSequence nulls on fresh entrance).
+2. **Cursor retarget is a POLL, not a timed set.** `_pendingSceneFocus` arms at
+   the swap frame; UpdatePendingSceneFocus (OnUpdate) lands selectedIndex=20
+   only after the close button's Box.Rect reads real (W≥1, Top≥1) for 2
+   consecutive frames. Scene-content @refs (`_refSceneClose` etc. +
+   detailScrollBody) are NULLED whenever the `_mountedScene` branch swaps so a
+   deleted panel's frozen rect can never strand the ring. A user hover that
+   lands on a scene focusable first cancels the pending retarget.
+3. **Full-width footprint:** frame = 1700px (1920 canvas, 64px vert padding);
+   backdrop slab = 2070px wide, **7° rest** (10° foreshortened the far edge too
+   hard to cover the frame's corners at this width). Tween numbers: arrive
+   12→7, depart 7→14. Roadmap = lead + 3 fixed-height 2-card grid rows in a
+   non-scrolling `.lhd-body` (stagger selector `.lhd-body > *`); Patch Notes =
+   `.lhd-pn` row (360px `.lhd-rail` version/TOC rail + `.lhd-scroll` reading
+   column). Menu planes keep their 10° dialect — the angle difference is
+   Suto-style wayfinding.
+4. **Key caps everywhere** (`.lhd-key`, ported from BattleView `.kb-key`):
+   Q on close, number caps (Slot1/Slot2 actions) on the footer CTAs, A/D ·
+   ENTER · Q hint cluster in the footer, W/S hint in the patch-notes rail.
+   Docked Options mirrors with `.opt-key` (W/S · SPACE · Q) + Q cap on close.
+5. **Docked Options = two scroll columns** (`.modal-content.docked-cols` +
+   `.opt-col`): sections live in RenderFragments shared with the in-game
+   single-column modal; all 9 toggle rows render in the LEFT column so the
+   panel's W/S cursor walks one coherent column.
+6. Title headers are GAP-FLEX word-span rows (`.lhd-title-white` +
+   `.lhd-title-gold`) — bare text + nested span drops the separating space in
+   s&box.
+7. Focusable map (unchanged indices): 20 close · 21 primary footer action ·
+   22 secondary (roadmap only). Options scene = no shell focusables (docked
+   panel owns keyboard; ring hides).
