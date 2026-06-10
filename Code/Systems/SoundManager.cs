@@ -28,6 +28,14 @@ public static class SoundManager
 	private const string UI_FIGHT_WHOOSH = "sounds/ui/fight-whoosh.sound";
 	private const string UI_FIGHT_BACK_WHOOSH = "sounds/ui/fight-back-whoosh.sound";
 
+	// Menu sound ladder (synthesized 2026-06-09 — swap wavs 1:1 when recordings land)
+	private const string UI_MENU_TICK = "sounds/ui/ui_hover_tick.sound";  // dry tok — pitch-laddered per sidebar row
+	private const string UI_MENU_FIRE = "sounds/ui/ui_fire.sound";        // PLAY detonation thump + shimmer
+	private const string UI_RING_SLAM = "sounds/ui/ui_ring_slam.sound";   // cursor ring snapping shut (gold)
+	private const string UI_STAMP = "sounds/ui/ui_stamp.sound";           // splash text stamping in
+	private const string UI_SLIDE_IN = "sounds/ui/ui_slide_in.sound";     // slide-in panel opening
+	private const string UI_SLIDE_OUT = "sounds/ui/ui_slide_out.sound";   // slide-in panel closing
+
 	// Guild Sounds (reuse existing)
 	private const string GUILD_JOIN = "sounds/ui/success.sound";
 	private const string GUILD_INVITE = "sounds/ui/notification.sound";
@@ -207,6 +215,60 @@ public static class SoundManager
 	public static void PlayPopdown()
 	{
 		PlaySound( UI_POPDOWN, _uiVolume * 0.7f );
+	}
+
+	// ==========================================
+	// Menu sound ladder (main menu)
+	// ==========================================
+
+	/// <summary>
+	/// Pitch-laddered hover tick for the main-menu sidebar — pass the focus row's
+	/// rung (0 = PLAY = highest) and the ladder size; you can HEAR where you are
+	/// in the column. Shares the hover debounce so mouse sweeps don't machine-gun.
+	/// </summary>
+	public static void PlayMenuTick( int rung, int totalRungs )
+	{
+		if ( _lastHoverSoundTime < HOVER_SOUND_MIN_INTERVAL ) return;
+		_lastHoverSoundTime = 0;
+		float t = totalRungs <= 1 ? 0f : (float)rung / ( totalRungs - 1 );
+		float pitch = 1.22f - 0.42f * t; // PLAY ≈1.22 → QUIT ≈0.80
+		PlaySoundPitched( UI_MENU_TICK, _uiVolume * 0.5f, pitch );
+	}
+
+	/// <summary>PLAY detonation — the heavy fire cue (Tier 3; menus' biggest press).</summary>
+	public static void PlayMenuFire() => PlaySound( UI_MENU_FIRE, _uiVolume );
+
+	/// <summary>The living cursor's ring snapping shut (layer over the fire cue).</summary>
+	public static void PlayRingSlam() => PlaySound( UI_RING_SLAM, _uiVolume * 0.6f );
+
+	/// <summary>Splash tagline stamping onto the sidebar.</summary>
+	public static void PlayStamp() => PlaySound( UI_STAMP, _uiVolume * 0.45f );
+
+	/// <summary>Slide-in panel arriving / leaving.</summary>
+	public static void PlaySlideIn() => PlaySound( UI_SLIDE_IN, _uiVolume * 0.6f );
+	public static void PlaySlideOut() => PlaySound( UI_SLIDE_OUT, _uiVolume * 0.5f );
+
+	/// <summary>
+	/// PlaySound with a runtime pitch override (SoundHandle.Pitch).
+	/// </summary>
+	private static void PlaySoundPitched( string soundName, float volumeMultiplier, float pitch )
+	{
+		if ( string.IsNullOrEmpty( soundName ) ) return;
+		var volume = _masterVolume * volumeMultiplier;
+		if ( volume <= 0 ) return;
+		try
+		{
+			var sound = Sound.Play( soundName );
+			if ( sound.IsValid() )
+			{
+				sound.Volume = volume;
+				sound.Pitch = pitch;
+			}
+		}
+		catch ( System.Exception e )
+		{
+			Log.Warning( $"SoundManager: Failed to play pitched sound '{soundName}': {e.Message}" );
+		}
 	}
 
 	/// <summary>
