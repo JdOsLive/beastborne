@@ -809,13 +809,6 @@
 				return;
 			}
 
-			// Skip catching if strategy is set to skip (-1)
-			if ( em.AutoNegotiateStrategy == -1 )
-			{
-				Log.Info( "[GameHUD] Auto-catch: Skipping catch (strategy set to Skip)" );
-				return;
-			}
-
 			// Find a catchable enemy from the battle
 			Monster targetMonster = null;
 			var targetSpecies = em.AutoContractTargetSpecies;
@@ -842,40 +835,27 @@
 			var species2 = MonsterManager.Instance?.GetSpecies( targetMonster.SpeciesId );
 			if ( species2 == null ) return;
 
-			// Generate negotiation options
+			// Generate negotiation options — the SAME curated set + success math
+			// the contract radial would show the player for this beast.
 			var options = ContractGenerator.GenerateNegotiationOptions( species2, targetMonster );
 			if ( options == null || options.Count == 0 ) return;
 
-			// Select option based on AutoNegotiateStrategy (0=GEN, 1=FAIR, 2=STR, 3=GOLD)
-			int strategyIndex = Math.Clamp( em.AutoNegotiateStrategy, 0, options.Count - 1 );
-			var selectedOption = options[strategyIndex];
-			var currentInk = TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
+			// Smart auto-contract: pick the approach with the highest displayed
+			// success chance among the ones we can afford right now. Approaches
+			// with side costs the auto path doesn't implement (HP sacrifice,
+			// XP drain, skip-turns, item offerings) are excluded.
+			var tamer = TamerManager.Instance?.CurrentTamer;
+			var currentInk = tamer?.ContractInk ?? 0;
+			var selectedOption = ContractGenerator.PickBestOption(
+				options, currentInk, tamer?.Gold ?? 0, tamer?.BossTokens ?? 0, simpleCostsOnly: true );
 
-			// Check if we can afford ink cost
-			if ( currentInk < selectedOption.InkCost )
+			if ( selectedOption == null )
 			{
-				// Try to fall back to a cheaper option
-				var affordableOption = options.Where( o => currentInk >= o.InkCost ).OrderByDescending( o => o.InkCost ).FirstOrDefault();
-				if ( affordableOption == null )
-				{
-					Log.Info( $"[GameHUD] Auto-catch: Not enough ink! Have {currentInk}, need {selectedOption.InkCost}" );
-					return;
-				}
-				Log.Info( $"[GameHUD] Auto-catch: Can't afford {selectedOption.Name} ({selectedOption.InkCost} ink), using {affordableOption.Name}" );
-				selectedOption = affordableOption;
+				Log.Info( $"[GameHUD] Auto-catch: No affordable approach (ink={currentInk})" );
+				return;
 			}
 
-			// Check if we can afford gold cost
-			if ( selectedOption.GoldCost > 0 )
-			{
-				int currentGold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
-				if ( currentGold < selectedOption.GoldCost )
-				{
-					Log.Info( $"[GameHUD] Auto-catch: Can't afford gold cost ({selectedOption.GoldCost}), trying Fair Terms instead" );
-					// Fall back to Fair Terms (no gold cost)
-					selectedOption = options[1];
-				}
-			}
+			Log.Info( $"[GameHUD] Auto-catch: Best approach is {selectedOption.Name} at {(int)(selectedOption.SuccessChance * 100)}%" );
 
 			// Spend contract ink based on option's cost
 			if ( !TamerManager.Instance.SpendContractInk( selectedOption.InkCost ) )

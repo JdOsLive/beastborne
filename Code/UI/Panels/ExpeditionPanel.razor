@@ -80,34 +80,19 @@
 				@if (catchDropdownOpen)
 				{
 					<div class="dropdown-menu catch-menu">
-						<div class="dropdown-item @(!autoNegotiate ? "active" : "")" onclick=@(() => SelectCatchStrategy(-2)) onmouseover=@(() => SoundManager.PlayHover())>
+						<div class="dropdown-item @(!autoNegotiate ? "active" : "")" onclick=@(() => SetAutoCatchMode(false)) onmouseover=@(() => SoundManager.PlayHover())>
 							<img class="item-icon-svg" src="ui/icons/sort/x-circle.svg" />
 							<span class="item-label">@L("ui.expedition.off")</span>
 						</div>
 						<div class="dropdown-divider"></div>
-						<div class="dropdown-item @(autoNegotiate && autoNegotiateStrategy == -1 ? "active" : "")" onclick=@(() => SelectCatchStrategy(-1)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sort/skip.svg" />
-							<span class="item-label">@L("ui.expedition.skip")</span>
-						</div>
-						<div class="dropdown-item @(autoNegotiate && autoNegotiateStrategy == 0 ? "active" : "")" onclick=@(() => SelectCatchStrategy(0)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sort/generous.svg" />
-							<span class="item-label">@L("ui.expedition.generous")</span>
-							<span class="item-cost">3<img class="currency-icon" src="ui/icons/currency/ink.svg" /></span>
-						</div>
-						<div class="dropdown-item @(autoNegotiate && autoNegotiateStrategy == 1 ? "active" : "")" onclick=@(() => SelectCatchStrategy(1)) onmouseover=@(() => SoundManager.PlayHover())>
+						<!-- Smart auto-contract: the old fixed strategies (Skip/Generous/
+						     Fair/Strict/Golden) are gone — the auto path now evaluates
+						     every approach offered for the beast with the real success
+						     math and takes the highest chance. -->
+						<div class="dropdown-item @(autoNegotiate ? "active" : "")" onclick=@(() => SetAutoCatchMode(true)) onmouseover=@(() => SoundManager.PlayHover())>
 							<img class="item-icon-svg" src="ui/icons/sort/handshake.svg" />
-							<span class="item-label">@L("ui.expedition.fair")</span>
-							<span class="item-cost">2<img class="currency-icon" src="ui/icons/currency/ink.svg" /></span>
-						</div>
-						<div class="dropdown-item @(autoNegotiate && autoNegotiateStrategy == 2 ? "active" : "")" onclick=@(() => SelectCatchStrategy(2)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sort/strict.svg" />
-							<span class="item-label">@L("ui.expedition.strict")</span>
-							<span class="item-cost">1<img class="currency-icon" src="ui/icons/currency/ink.svg" /></span>
-						</div>
-						<div class="dropdown-item @(autoNegotiate && autoNegotiateStrategy == 3 ? "active" : "")" onclick=@(() => SelectCatchStrategy(3)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/currency/money.svg" />
-							<span class="item-label">@L("ui.expedition.golden")</span>
-							<span class="item-cost">2<img class="currency-icon" src="ui/icons/currency/ink.svg" />+<img class="currency-icon" src="ui/icons/currency/money.svg" /></span>
+							<span class="item-label">@L("ui.expedition.auto_best")</span>
+							<span class="item-hint">@L("ui.expedition.auto_best_hint")</span>
 						</div>
 						<div class="dropdown-divider"></div>
 						<div class="dropdown-item" onclick=@OpenContractTargetSearch onmouseover=@(() => SoundManager.PlayHover())>
@@ -775,7 +760,6 @@
 	private bool hardModeEnabled = false;
 	private bool isTransitioningToBattle = false;
 	private bool isTransitioningToList = false;
-	private int autoNegotiateStrategy = 0;
 	private string autoContractTargetSpecies
 	{
 		get => ExpeditionManager.Instance?.AutoContractTargetSpecies;
@@ -1148,7 +1132,6 @@
 
 		// Sync toggle states
 		autoNegotiate = expMgr.AutoNegotiate;
-		autoNegotiateStrategy = expMgr.AutoNegotiateStrategy;
 
 		// If there's an expedition running (background or not), sync to it
 		if (expMgr.CurrentExpedition != null)
@@ -1395,57 +1378,23 @@
 		SoundManager.PlayClick();
 	}
 
-	private void SelectCatchStrategy(int strategy)
+	// Smart auto-contract: on/off only — when on, the auto path picks the
+	// best approach for each beast itself (ContractGenerator.PickBestOption).
+	private void SetAutoCatchMode(bool enabled)
 	{
-		// -2 means Manual (auto catch disabled)
-		if (strategy == -2)
-		{
-			autoNegotiate = false;
-			if (ExpeditionManager.Instance != null)
-				ExpeditionManager.Instance.AutoNegotiate = false;
-		}
-		else
-		{
-			autoNegotiate = true;
-			autoNegotiateStrategy = strategy;
-			if (ExpeditionManager.Instance != null)
-			{
-				ExpeditionManager.Instance.AutoNegotiate = true;
-				ExpeditionManager.Instance.AutoNegotiateStrategy = strategy;
-			}
-		}
+		autoNegotiate = enabled;
+		if (ExpeditionManager.Instance != null)
+			ExpeditionManager.Instance.AutoNegotiate = enabled;
 
 		catchDropdownOpen = false;
 		SoundManager.PlaySelect();
 		StateHasChanged();
 	}
 
-	private string GetCatchStrategyIcon()
-	{
-		if (!autoNegotiate) return "✋";
-		return autoNegotiateStrategy switch
-		{
-			-1 => "⏭",
-			0 => "💝",
-			1 => "🤝",
-			2 => "📋",
-			3 => "💰",
-			_ => "🤝"
-		};
-	}
-
 	private string GetCatchStrategyLabel()
 	{
 		if (!autoNegotiate) return "Off";
-		var label = autoNegotiateStrategy switch
-		{
-			-1 => "Skip",
-			0 => "Generous",
-			1 => "Fair",
-			2 => "Strict",
-			3 => "Golden",
-			_ => "Fair"
-		};
+		var label = "Best Approach";
 		if (autoContractTargetSpecies != null)
 		{
 			var targetName = MonsterManager.Instance?.GetSpecies(autoContractTargetSpecies)?.Name ?? "?";
@@ -2025,7 +1974,6 @@
 			battleGold = expMgr.AccumulatedGold;
 			battleXP = expMgr.AccumulatedXP;
 			autoNegotiate = expMgr.AutoNegotiate;
-			autoNegotiateStrategy = expMgr.AutoNegotiateStrategy;
 		}
 
 		// Disable background mode so UI takes over
@@ -2070,7 +2018,6 @@
 		hash.Add(battleGold);
 		hash.Add(battleXP);
 		hash.Add(autoNegotiate);
-		hash.Add(autoNegotiateStrategy);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		hash.Add(MonsterManager.Instance?.OwnedMonsters?.Count ?? 0);
 		foreach (var m in selectedTeam)

@@ -565,6 +565,53 @@ public static class ContractGenerator
 
 		return (success, criticalFail);
 	}
+
+	/// <summary>
+	/// Pick the best negotiation option from a generated set using ONLY
+	/// player-visible information — the same SuccessChance the contract UI
+	/// displays (AttemptNegotiation rolls against that exact value, so this
+	/// never peeks at hidden RNG). Used by smart Auto-Contract.
+	///
+	/// Filters to options the player can actually afford right now. When
+	/// simpleCostsOnly is true, approaches with side costs the automated
+	/// path doesn't implement (HP sacrifice, beast XP drain, skip-turns,
+	/// item offerings) are excluded.
+	///
+	/// "Best" = highest success chance; deterministic tie-break:
+	/// safer (no critical-fail risk) → cheaper ink → cheaper gold →
+	/// cheaper boss tokens → earliest in the list.
+	/// </summary>
+	public static NegotiationOption PickBestOption( List<NegotiationOption> options, int availableInk, int availableGold, int availableBossTokens, bool simpleCostsOnly = false )
+	{
+		if ( options == null || options.Count == 0 ) return null;
+
+		NegotiationOption best = null;
+		foreach ( var option in options )
+		{
+			if ( option == null ) continue;
+			if ( option.InkCost > availableInk ) continue;
+			if ( option.GoldCost > availableGold ) continue;
+			if ( option.BossTokenCost > availableBossTokens ) continue;
+			if ( simpleCostsOnly && (option.CostsPlayerHP || option.CostsBeastXP || option.CostsSkipTurns || option.CostsItem) ) continue;
+
+			// Strict comparison — on a full tie the earlier option wins,
+			// keeping the pick deterministic for a given option list.
+			if ( best == null || IsBetterOption( option, best ) )
+				best = option;
+		}
+
+		return best;
+	}
+
+	private static bool IsBetterOption( NegotiationOption a, NegotiationOption b )
+	{
+		if ( a.SuccessChance != b.SuccessChance ) return a.SuccessChance > b.SuccessChance;
+		if ( a.HasCriticalFail != b.HasCriticalFail ) return !a.HasCriticalFail;
+		if ( a.InkCost != b.InkCost ) return a.InkCost < b.InkCost;
+		if ( a.GoldCost != b.GoldCost ) return a.GoldCost < b.GoldCost;
+		if ( a.BossTokenCost != b.BossTokenCost ) return a.BossTokenCost < b.BossTokenCost;
+		return false;
+	}
 }
 
 /// <summary>

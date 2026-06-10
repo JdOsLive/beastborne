@@ -68,7 +68,6 @@ public sealed class SettingsManager : Component
 
 		// Battle settings
 		Settings.DefaultAutoContract = Game.Cookies.Get<bool>( GetKey( "settings-auto-contract" ), false );
-		Settings.DefaultNegotiationStrategy = Game.Cookies.Get<int>( GetKey( "settings-negotiation-strategy" ), 1 );
 		Settings.UseAutoContractSpeciesFilter = Game.Cookies.Get<bool>( GetKey( "settings-species-filter-enabled" ), false );
 		Settings.AutoContractEnabledSpecies = Game.Cookies.Get<string>( GetKey( "settings-species-filter-list" ), "" );
 		Settings.SkipBattleAnimations = Game.Cookies.Get<bool>( GetKey( "settings-skip-animations" ), false );
@@ -104,7 +103,6 @@ public sealed class SettingsManager : Component
 	{
 		// Battle settings
 		Game.Cookies.Set( GetKey( "settings-auto-contract" ), Settings.DefaultAutoContract );
-		Game.Cookies.Set( GetKey( "settings-negotiation-strategy" ), Settings.DefaultNegotiationStrategy );
 		Game.Cookies.Set( GetKey( "settings-species-filter-enabled" ), Settings.UseAutoContractSpeciesFilter );
 		Game.Cookies.Set( GetKey( "settings-species-filter-list" ), Settings.AutoContractEnabledSpecies );
 		Game.Cookies.Set( GetKey( "settings-skip-animations" ), Settings.SkipBattleAnimations );
@@ -163,12 +161,6 @@ public sealed class SettingsManager : Component
 	public void SetAutoContract( bool enabled )
 	{
 		Settings.DefaultAutoContract = enabled;
-		SaveSettings();
-	}
-
-	public void SetNegotiationStrategy( int strategy )
-	{
-		Settings.DefaultNegotiationStrategy = strategy;
 		SaveSettings();
 	}
 

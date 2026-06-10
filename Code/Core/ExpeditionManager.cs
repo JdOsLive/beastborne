@@ -24,9 +24,10 @@ public sealed class ExpeditionManager : Component
 	public int CurrentWave { get; private set; }
 	public List<Monster> SelectedTeam { get; private set; } = new();
 
-	// Auto-contract settings
+	// Auto-contract settings. When AutoNegotiate is on, the auto path picks
+	// the best approach for each beast itself (ContractGenerator.PickBestOption)
+	// — the old fixed AutoNegotiateStrategy index was retired with that change.
 	public bool AutoNegotiate { get; set; } = false;
-	public int AutoNegotiateStrategy { get; set; } = 0; // Index into negotiation options (0-3)
 	public string AutoContractTargetSpecies { get; set; } = null;
 	public bool IsRunningInBackground { get; private set; } = false;
 
@@ -718,7 +719,6 @@ public sealed class ExpeditionManager : Component
 		{
 			var settings = SettingsManager.Instance.Settings;
 			AutoNegotiate = settings.DefaultAutoContract;
-			AutoNegotiateStrategy = settings.DefaultNegotiationStrategy;
 			UseSpeciesFilter = settings.UseAutoContractSpeciesFilter;
 			EnabledSpeciesFilter = SettingsManager.Instance.GetSpeciesFilterList();
 		}

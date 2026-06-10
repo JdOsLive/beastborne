@@ -15,10 +15,8 @@ public class GameSettings
 	/// </summary>
 	public bool DefaultAutoContract { get; set; } = false;
 
-	/// <summary>
-	/// Default negotiation strategy (-1 = skip, 0 = generous, 1 = fair, 2 = strict, 3 = gold)
-	/// </summary>
-	public int DefaultNegotiationStrategy { get; set; } = 1;
+	// (DefaultNegotiationStrategy was retired — Auto-Contract now picks the
+	// best approach per beast via ContractGenerator.PickBestOption.)
 
 	/// <summary>
 	/// Whether to use species filter for auto-contract (if false, all species are auto-contracted)
@@ -126,7 +124,6 @@ public class GameSettings
 		{
 			// Battle
 			DefaultAutoContract = DefaultAutoContract,
-			DefaultNegotiationStrategy = DefaultNegotiationStrategy,
 			UseAutoContractSpeciesFilter = UseAutoContractSpeciesFilter,
 			AutoContractEnabledSpecies = AutoContractEnabledSpecies,
 			SkipBattleAnimations = SkipBattleAnimations,
