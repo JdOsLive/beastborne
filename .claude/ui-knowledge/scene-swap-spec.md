@@ -137,3 +137,35 @@ imperative chain shape for seamless null-on-settle.
 7. Focusable map (unchanged indices): 20 close · 21 primary footer action ·
    22 secondary (roadmap only). Options scene = no shell focusables (docked
    panel owns keyboard; ring hides).
+
+## V3 AMENDMENTS (2026-06-10, swap-frame hitch root-caused via swapdbg logs)
+1. **The "menu ghost flash" + "backdrop loads late" were ONE bug: a 90–230ms
+   single-frame stall at the swap frame.** Per-frame logs proved zero ticks ran
+   for ~230ms after SWAP FRAME — the engine paid the scene wrapper's FIRST
+   LAYOUT (display none→flex on a ~200-panel subtree) + the menu's layout drop
+   (flex→none) + a 3,300-line tree rebuild in one frame. The screen froze on
+   the last pre-swap image (read as "menu ghost"), the time-based backdrop
+   tween ate its first ~30% inside the stall (read as "backdrop won't load in"),
+   and Task.Delay-based choreography (the mounted-closed frame) expired unseen.
+2. **Scene wrappers do NOT flip display anymore — they PARK OFFSCREEN.**
+   `.lh-scene` is always `display: flex` and hides via `left: -10000px`
+   (`.shown` → `left: 0`). Layout stays warm from boot; base states (children
+   opacity 0) are committed long before any swap, so the arrival stagger no
+   longer depends on a cleanly-rendered mounted-closed frame. Same rule for the
+   menu surface: `.menu-content` hides via opacity 0 + left -10000 (inline +
+   imperative + per-frame battery), NEVER display:none — the return trip pays
+   no relayout. Any rect-validity poll must also check `Left > -1000` (a parked
+   panel's rect is "real" but offscreen).
+3. **The scene shell is its own component** (`Components/LighthouseScene.razor`,
+   `@inherits Panel`, mounted inside the menu root so MainMenu.razor.scss still
+   cascades). Own BuildHash/differ = the host's rebuild can never duplicate or
+   churn scene panels. Host drives it via params (SceneCode/MountedCode codes in
+   LOCKSTEP with SceneId; Arrived/Settled/Departing; KbIndex) + METHOD-GROUP
+   callbacks (hotload-safe). Its `MountedCode` setter nulls the focusable refs on
+   content change (replaces the host-side null block from V2 amendment 2).
+4. **Differ root-children duplication (rootChildren 6→14, two `.menu-content`)
+   is a HOTLOAD-rebuild artifact, not click-swap behavior** — per-swap census
+   showed menuCount=1 on every real swap. Don't build runtime mitigations
+   against it. Related: `PanelComponent` NEVER fires `OnAfterTreeRender` (the
+   hook exists only on Panel-derived razor components) — the old "ghost sweep"
+   there was a silent no-op and was deleted.

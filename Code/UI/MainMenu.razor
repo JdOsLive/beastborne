@@ -22,8 +22,11 @@
 
 	@* The hide rides INLINE so every rebuild renders already-hidden (re-renders
 	   rebuild this panel and wipe imperative styles — the strobing-menu bug;
-	   inline style is part of the render output, atomic with the rebuild). *@
-	<div @ref="_refMenuContent" class="menu-content @(contentVisible ? "visible" : "") @(showStarterSelection ? "fading" : "") @(_scene == SceneId.Menu ? "" : "scene-off")" style="@(_scene == SceneId.Menu ? "" : "display: none; opacity: 0; left: -10000px;")">
+	   inline style is part of the render output, atomic with the rebuild).
+	   OPACITY + OFFSCREEN ONLY — no display:none: flipping display dropped the
+	   whole menu layout and re-laying it out on return was its own hitch; parked
+	   offscreen the layout stays warm and both hide paths are still honored. *@
+	<div @ref="_refMenuContent" class="menu-content @(contentVisible ? "visible" : "") @(showStarterSelection ? "fading" : "") @(_scene == SceneId.Menu ? "" : "scene-off") @(_menuReturning ? "returning" : "")" style="@(_scene == SceneId.Menu ? "" : "opacity: 0; left: -10000px;")">
 		<!-- ============================================================
 			 CONCEPT C — LAUNCHER HUB
 			 Fixed left sidebar (460px) + main content area. Recreated from
@@ -392,269 +395,30 @@
 	}
 
 	@* ============================================================
-	   SCENE SWAP — Roadmap / Options / Patch Notes (`lh-scene` + `lhd-`)
-	   Replaces the right-edge drawer: a full sibling-scene swap. The
-	   wrapper flips display flex↔none at the swap frame (mounted
-	   CLOSED one frame, then .arrived fires the stagger transitions).
-	   DECISION 1: the .lh-scene-bg slab is the ANGLED plane (imperative
-	   PlaneTween — rests at the menu's 10° dialect); the text/content
-	   frame sits FLAT on top of it for reading. No scrim — the menu is
-	   gone, not dimmed. _mountedScene keeps Roadmap/PatchNotes content
-	   mounted through the scene's departure so it never empties
-	   mid-exit; the docked OptionsPanel is always mounted (its own
-	   .visible gates display). z 90: above the menu, UNDER the living
-	   cursor (100) — the ring lands on the scene's focusables.
+	   SCENE SWAP — Roadmap / Options / Patch Notes
+	   The shell + content live in their OWN component (LighthouseScene,
+	   Components/LighthouseScene.razor) with its OWN render tree: the
+	   menu's swap-frame rebuild can never duplicate/churn scene panels
+	   (differ-ghost family) and a scene class flip re-renders ~250 lines,
+	   not 3,300. MainMenu keeps the whole swap state machine and drives
+	   the shell via params; callbacks come back as METHOD GROUPS
+	   (hotload-safe). Scene/Mounted ints are in LOCKSTEP with SceneId
+	   (Menu 0 · Roadmap 1 · Options 2 · PatchNotes 3). The shell hides
+	   by PARKING OFFSCREEN (always display:flex — layout stays warm, so
+	   the swap frame doesn't pay a first-layout hitch; see .lh-scene SCSS).
+	   z 90: above the menu, UNDER the living cursor (100).
 	   ============================================================ *@
-	<div class="lh-scene @(SceneShellClasses())">
-		<div class="lh-scene-bg" @ref="_refSceneBg"></div>
-		<div class="lh-scene-frame">
-		@if (_mountedScene == SceneId.Roadmap)
-		{
-			<div class="lhd-topline"></div>
-			<div class="lhd-header">
-				<div class="lhd-header-left">
-					<div class="lhd-icon-frame tone-gold">
-						<iconify icon="lucide:map" Size=@(19) Color="#fbbf24" />
-					</div>
-					<div class="lhd-header-text">
-						@* Title words are SIBLING spans in a gap-flex row — bare text + nested
-						   span fused together in s&box ("What We'reBuilding"): the whitespace
-						   between a text node and an element node gets dropped. *@
-						<span class="lhd-title"><span class="lhd-title-white">What We're</span><span class="lhd-title-gold">Building</span></span>
-						<span class="lhd-subtitle">ROAD TO FULL RELEASE</span>
-					</div>
-				</div>
-				<div class="lhd-header-right">
-					<div class="lhd-status-pill"><div class="lhd-status-dot"></div><span>OPEN BETA · LIVE</span></div>
-					<button class="lhd-close @(selectedIndex == 20 ? "kb-sel" : "")" onclick=@CloseScene
-							@ref="_refSceneClose" onmouseover=@(() => OnSceneHover(20))>
-						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-						<span class="lhd-key">Q</span>
-					</button>
-				</div>
-			</div>
-			@* Full-width 2-column grid — six cards, three fixed-height rows, no
-			   scroll (everything fits the 1080 canvas). Rows are the staggered
-			   arrival children (.lhd-body > *). *@
-			<div class="lhd-body">
-				<div class="lhd-lead">
-					<span>The features we're working on and exploring on the way to full release. Nothing here is locked — <span class="lhd-lead-bright">your feedback shapes what's next.</span></span>
-				</div>
-				<div class="lhd-grid-row">
-					<div class="lhd-card lhd-dev">
-						<div class="lhd-card-row">
-							<div class="lhd-card-icon"><iconify icon="lucide:castle" Size=@(18) Color="#c4b5fd" /></div>
-							<div class="lhd-badge lhd-badge-dev"><div class="lhd-badge-dot"></div><span>IN DEVELOPMENT</span></div>
-						</div>
-						<span class="lhd-card-title">Tower Mode</span>
-						<span class="lhd-card-desc">An endless climb — fight beasts in a row and push your high round count. Our biggest mode yet.</span>
-					</div>
-					<div class="lhd-card lhd-dev">
-						<div class="lhd-card-row">
-							<div class="lhd-card-icon"><iconify icon="lucide:trophy" Size=@(18) Color="#c4b5fd" /></div>
-							<div class="lhd-badge lhd-badge-dev"><div class="lhd-badge-dot"></div><span>IN DEVELOPMENT</span></div>
-						</div>
-						<span class="lhd-card-title">Ranked Battling</span>
-						<span class="lhd-card-desc">A seasonal ladder with matchmaking and rewards for the sharpest tamers in the pack.</span>
-					</div>
-				</div>
-				<div class="lhd-grid-row">
-					<div class="lhd-card lhd-soon">
-						<div class="lhd-card-row">
-							<div class="lhd-card-icon"><iconify icon="lucide:users" Size=@(18) Color="#9ca3c7" /></div>
-							<div class="lhd-badge lhd-badge-soon"><span>COMING UP</span></div>
-						</div>
-						<span class="lhd-card-title">Co-op Expeditions</span>
-						<span class="lhd-card-desc">Bring a friend through a zone — shared loot, shared boss fights, double the chaos.</span>
-					</div>
-					<div class="lhd-card lhd-soon">
-						<div class="lhd-card-row">
-							<div class="lhd-card-icon"><iconify icon="lucide:paw-print" Size=@(18) Color="#9ca3c7" /></div>
-							<div class="lhd-badge lhd-badge-soon"><span>COMING UP</span></div>
-						</div>
-						<span class="lhd-card-title">New Beasts &amp; Regions</span>
-						<span class="lhd-card-desc">More species to tame and new corners of the world to wander, study and conquer.</span>
-					</div>
-				</div>
-				<div class="lhd-grid-row">
-					<div class="lhd-card lhd-soon">
-						<div class="lhd-card-row">
-							<div class="lhd-card-icon"><iconify icon="lucide:music" Size=@(18) Color="#9ca3c7" /></div>
-							<div class="lhd-badge lhd-badge-soon"><span>COMING UP</span></div>
-						</div>
-						<span class="lhd-card-title">Original Soundtrack</span>
-						<span class="lhd-card-desc">A full original score, SFX pass and ambient layers to bring every zone to life.</span>
-					</div>
-					<div class="lhd-card lhd-soon">
-						<div class="lhd-card-row">
-							@* lucide:coins — lucide:scale rendered an EMPTY gem in-engine
-							   (unverified icon name); coins is proven and fits the economy read. *@
-							<div class="lhd-card-icon"><iconify icon="lucide:coins" Size=@(18) Color="#9ca3c7" /></div>
-							<div class="lhd-badge lhd-badge-soon"><span>COMING UP</span></div>
-						</div>
-						<span class="lhd-card-title">Balance &amp; Economy</span>
-						<span class="lhd-card-desc">Ongoing tuning toward a deep, fair meta and a healthy in-game economy at launch.</span>
-					</div>
-				</div>
-			</div>
-			<div class="lhd-footer">
-				<div class="lhd-footer-text">
-					<span class="lhd-footer-title">Help shape what's next</span>
-					<span class="lhd-footer-sub">Vote on features, send ideas, and report bugs.</span>
-				</div>
-				<div class="lhd-hints">
-					<span class="lhd-key">A</span><span class="lhd-key">D</span><span class="lhd-hint-lbl">MOVE</span>
-					<span class="lhd-key lhd-key-wide">ENTER</span><span class="lhd-hint-lbl">SELECT</span>
-					<span class="lhd-key">Q</span><span class="lhd-hint-lbl">BACK</span>
-				</div>
-				<button class="lhd-feedback-btn @(selectedIndex == 21 ? "kb-sel" : "")" onclick=@OnSendFeedback
-						@ref="_refSceneAct1" onmouseover=@(() => OnSceneHover(21))>
-					<span class="lhd-key lhd-key-gold">1</span>
-					<iconify icon="lucide:send" Size=@(14) Color="#2A1605" />
-					<span>Send Feedback</span>
-				</button>
-				<button class="lhd-discord-btn @(selectedIndex == 22 ? "kb-sel" : "")" onclick=@OnDiscordClick
-						@ref="_refSceneAct2" onmouseover=@(() => OnSceneHover(22))>
-					<span class="lhd-key">2</span>
-					<iconify icon="simple-icons:discord" Size=@(15) Color="#c4b5fd" />
-					<span>discord.gg/dJTTyCqKru</span>
-				</button>
-			</div>
-		}
-		else if (_mountedScene == SceneId.PatchNotes)
-		{
-			<div class="lhd-topline"></div>
-			<div class="lhd-header">
-				<div class="lhd-header-left">
-					<div class="lhd-icon-frame">
-						<iconify icon="lucide:scroll-text" Size=@(19) Color="#a78bfa" />
-					</div>
-					<div class="lhd-header-text">
-						@* Sibling spans in a gap-flex row — see the roadmap title note
-						   (bare text + nested span fuses without the space in s&box). *@
-						<span class="lhd-title"><span class="lhd-title-white">Whispering</span><span class="lhd-title-gold">Hollow</span></span>
-						<span class="lhd-subtitle">PATCH NOTES</span>
-					</div>
-				</div>
-				<div class="lhd-header-right">
-					<button class="lhd-close @(selectedIndex == 20 ? "kb-sel" : "")" onclick=@CloseScene
-							@ref="_refSceneClose" onmouseover=@(() => OnSceneHover(20))>
-						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-						<span class="lhd-key">Q</span>
-					</button>
-				</div>
-			</div>
-			@* Full-width body: fixed version/category rail on the left + the wide
-			   reading column (the only scroll container) on the right. *@
-			<div class="lhd-pn">
-				<div class="lhd-rail">
-					<div class="lhd-rail-version">
-						<span class="lhd-rail-v">v1.2.0</span>
-						<span class="lhd-rail-vname">Whispering Hollow</span>
-						<span class="lhd-rail-date">MAY 9, 2026</span>
-					</div>
-					<div class="lhd-rail-lead">
-						<span>A hidden mini-expedition opens above Weavermere. Seven new beasts join the Beastbook. <span class="lhd-lead-bright">Polish and balance across every panel.</span></span>
-					</div>
-					<div class="lhd-rail-toc">
-						<span class="lhd-toc-head">IN THIS PATCH</span>
-						<div class="lhd-toc-row tone-features"><div class="lhd-toc-d"></div><span class="lhd-toc-name">Features</span><span class="lhd-toc-count">6</span></div>
-						<div class="lhd-toc-row tone-balance"><div class="lhd-toc-d"></div><span class="lhd-toc-name">Balance</span><span class="lhd-toc-count">5</span></div>
-						<div class="lhd-toc-row tone-fixes"><div class="lhd-toc-d"></div><span class="lhd-toc-name">Fixes</span><span class="lhd-toc-count">6</span></div>
-						<div class="lhd-toc-row tone-polish"><div class="lhd-toc-d"></div><span class="lhd-toc-name">Polish</span><span class="lhd-toc-count">6</span></div>
-					</div>
-					<div class="lhd-rail-hint">
-						<span class="lhd-key">W</span><span class="lhd-key">S</span><span class="lhd-hint-lbl">SCROLL THE NOTES</span>
-					</div>
-				</div>
-				<div class="lhd-scroll" @ref="detailScrollBody">
-				<div class="lhd-section tone-features">
-					<div class="lhd-section-head">
-						<iconify icon="lucide:sparkles" Size=@(13) Color="#fbbf24" />
-						<span class="lhd-section-title">Features</span>
-					</div>
-					<div class="lhd-rows">
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Battle UI Reborn.</span> The whole battle screen redrawn in a stamp-and-slab dialect. Action bar is now a diamond cluster — FIGHT anchored full-size with a strobe-jitter flame, SWITCH / BAG / CONTRACT / END zig-zagging beside it.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Move Picker.</span> Clicking FIGHT blooms 4 element-tinted move diamonds in a chevron. Hover any move for a slide-in info card with PP, power, and description. FIGHT itself becomes BACK.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Target / Contract / Switch Pickers.</span> Target picker shows 3 element-tinted enemy diamonds numbered #1 / #2 / #3 — same numbering as the HP cards. Switch is a 4-diamond carousel (BACK · ◀ PREV · ▶ NEXT · ✓ SWAP) with the active beast in a side card.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Sheepot &amp; Cerametz.</span> New beast line — pale roots tangle under Sheepot's fleece so it wears a clay pot like armor. Spawns wild in Weaverton, evolves into Cerametz at Lv 25. Art by new artist Jet — welcome to the team!</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Live Events.</span> +50% XP for everyone all launch week. Live announcements ticker now drives in-game XP/gold boosts — server-pushed events light up across battles and expeditions automatically (no client patch required).</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Battle Comms.</span> Chat &amp; Radio docked at the bottom-left of battle — read the latest message and skip tracks without leaving combat. Click either dock body to open the full panel.</span></div>
-					</div>
-				</div>
-				<div class="lhd-section tone-balance">
-					<div class="lhd-section-head">
-						@* lucide:sliders-horizontal — lucide:scale renders empty in-engine
-						   (same unverified icon name as the old roadmap Balance gem). *@
-						<iconify icon="lucide:sliders-horizontal" Size=@(13) Color="#7dd3fc" />
-						<span class="lhd-section-title">Balance</span>
-					</div>
-					<div class="lhd-rows">
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Linear stat growth all the way to 100.</span> Stats no longer slow to a crawl past Lv 30 — high-level beasts actually feel high-level. Damage formula retuned to match.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Defense rebased.</span> Same-level fights now resolve in 3–5 turns at every level band, not 7–10 against tank archetypes.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Boss tier multipliers retuned.</span> HP scaled up across all tiers (Normal 1.4×→1.9×, Elite 1.7×→2.4×, Legendary 2.0×→2.9×, Mythic 2.4×→3.5×); ATK/DEF trimmed so they don't one-shot the player team.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Wave scaling +1 instead of +2.</span> Expeditions feel like a steady climb instead of hitting a wall on wave 4.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Status ticks rebalanced.</span> Poison 1/8 → 1/12 max HP per turn, Burn 1/16 → 1/20. Status pressure still matters without single-handedly winning fights.</span></div>
-					</div>
-				</div>
-				<div class="lhd-section tone-fixes">
-					<div class="lhd-section-head">
-						<iconify icon="lucide:wrench" Size=@(13) Color="#fb7185" />
-						<span class="lhd-section-title">Fixes</span>
-					</div>
-					<div class="lhd-rows">
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Cloud save protection.</span> Cloud saves can no longer get silently overwritten by an empty save after a network blip on a fresh machine. Sync pauses for the session (with a warning toast) instead of pushing an empty blob over your real save.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Expedition unlock chain.</span> Clearing the first expedition now actually unlocks the second — the cleared-counter was off by one because the tutorial zone was being miscounted.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Skill points no longer drained between sessions.</span> The save-migration that runs on load is now non-destructive. If you've been losing SP to this bug, your next login will set you right.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text">Tutorial highlight no longer floats above the wrong spot — the arrow waits for the target button to settle into its real position before locking on.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text">Beastbook grid stops squashing non-square art — Aurael especially shows much more wing/halo/blade detail.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text">Chat join notices show the player's name instead of "System joined the server."</span></div>
-					</div>
-				</div>
-				<div class="lhd-section tone-polish">
-					<div class="lhd-section-head">
-						<iconify icon="lucide:gem" Size=@(13) Color="#c4b5fd" />
-						<span class="lhd-section-title">Polish</span>
-					</div>
-					<div class="lhd-rows">
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Stamp-and-slab dialect everywhere.</span> Expedition · Beastbook · Arena · Quest · Trading · Breeding · Daily · Card Collection · Contract Negotiation panels all redrawn — slab tab pills, italic-display headers, hard-offset shadow buttons. The whole game speaks one voice now.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Cinematic battle moments.</span> Slanted CRITICAL stamp on every crit. Boss splash card on wave entry. "WAVE CLEAR!" banner on wave end. Slab stamps for poison / burn / paralyze / sleep / freeze / confuse.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text"><span class="lhd-row-strong">Punchier feel.</span> Move names slam in from the right, HP bars shake on hit, swap-outs get a slanted yellow-edged banner moment, HP bars wait for the attack visual to land before draining.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text">HP cards now color-match each beast's element with a #1 / #2 / #3 slot tag matching the target picker.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text">Battle nameplates rebuilt — flat saturated element diamonds (both shown for dual-typed beasts), yellow LV slab pills, crisp HP bar borders.</span></div>
-						<div class="lhd-row"><div class="lhd-row-d"></div><span class="lhd-row-text">WAVE badge now shows progress through the expedition (e.g. WAVE 3/5) instead of just the current wave number.</span></div>
-					</div>
-				</div>
-				</div>
-			</div>
-			<div class="lhd-footer">
-				<div class="lhd-footer-text">
-					<span class="lhd-footer-title">Spotted something off?</span>
-					<span class="lhd-footer-sub">Tell us on Discord — reports shape the next patch.</span>
-				</div>
-				<div class="lhd-hints">
-					<span class="lhd-key">A</span><span class="lhd-key">D</span><span class="lhd-hint-lbl">MOVE</span>
-					<span class="lhd-key lhd-key-wide">ENTER</span><span class="lhd-hint-lbl">SELECT</span>
-					<span class="lhd-key">Q</span><span class="lhd-hint-lbl">BACK</span>
-				</div>
-				<button class="lhd-discord-btn @(selectedIndex == 21 ? "kb-sel" : "")" onclick=@OnDiscordClick
-						@ref="_refSceneAct1" onmouseover=@(() => OnSceneHover(21))>
-					<span class="lhd-key">1</span>
-					<iconify icon="simple-icons:discord" Size=@(15) Color="#c4b5fd" />
-					<span>discord.gg/dJTTyCqKru</span>
-				</button>
-			</div>
-		}
-
-		@* OPTIONS — the SAME OptionsPanel component GameHUD mounts as a centered
-		   modal, here in Docked mode: it fills the scene frame instead of
-		   rendering its own overlay + centered card. Always mounted (its own
-		   .visible class gates display), so Show()/Hide() transitions replay.
-		   OptionsPanel routes Show() to whichever instance sits under a
-		   non-hidden ancestor — see PickActiveInstance() in OptionsPanel.razor. *@
-		<OptionsPanel Docked=@true />
-		</div>
-	</div>
+	<LighthouseScene @ref="_sceneComp"
+					 SceneCode=@((int)_scene)
+					 MountedCode=@((int)_mountedScene)
+					 Arrived=@_sceneArrived
+					 Settled=@_sceneSettled
+					 Departing=@_sceneDeparting
+					 KbIndex=@selectedIndex
+					 CloseRequested=@CloseScene
+					 FeedbackRequested=@OnSendFeedback
+					 DiscordRequested=@OnDiscordClick
+					 HoverRequested=@OnSceneHover />
 
 	@* Gift inbox — auto-opens once per session when GiftManager finds pending
 	   dev-granted rewards. Same instance-picker pattern as OptionsPanel so a
@@ -779,10 +543,11 @@
 	// to 0 (the safe choice) whenever such a dialog opens.
 	private int _dialogIndex = 0;
 
-	// @ref to the slide-in detail panel's scroll body (roadmap OR patch notes —
-	// only one view mounts at a time, so they share the ref). Arrow keys +
-	// mouse wheel drive its ScrollOffset.
-	private Sandbox.UI.Panel detailScrollBody;
+	// The scene detail scroll body (roadmap OR patch notes — only one view
+	// mounts at a time) now lives in the LighthouseScene component; resolve
+	// it fresh on every read (hotload-safe, never stale after a content
+	// remount — the component nulls its refs when Mounted changes).
+	private Sandbox.UI.Panel detailScrollBody => _sceneComp?.ScrollBody;
 	private const float DetailKeyScrollStep = 90f;  // arrow Up/Down nudge
 	private const float DetailWheelStep = 60f;       // per wheel notch
 
@@ -845,27 +610,12 @@
 	private bool showRoadmap => _scene == SceneId.Roadmap;
 	private bool showPatchNotes => _scene == SceneId.PatchNotes;
 
-	// Scene-side refs: the angled decorative backdrop slab (the plane the
-	// tweener drives — DECISION 1: backgrounds angled, text flat) + the scene
-	// focusables the living cursor can land on (indices 20/21/22 in FocusEl).
-	private Panel _refSceneBg, _refSceneClose, _refSceneAct1, _refSceneAct2;
-
-	// Scene wrapper class string (markup helper).
-	private string SceneShellClasses()
-	{
-		var cls = _scene != SceneId.Menu ? "shown" : "";
-		if ( _sceneArrived ) cls += " arrived";
-		if ( _sceneSettled ) cls += " settled";
-		if ( _sceneDeparting ) cls += " departing";
-		cls += _scene switch
-		{
-			SceneId.Roadmap => " scene-roadmap",
-			SceneId.PatchNotes => " scene-patchnotes",
-			SceneId.Options => " scene-options",
-			_ => "",
-		};
-		return cls;
-	}
+	// The scene shell component (own render tree — see LighthouseScene.razor).
+	// Its public refs replace the old _refSceneBg/_refSceneClose/_refSceneAct1/
+	// _refSceneAct2 fields: the backdrop plane resolves via ResolvePlane(2),
+	// the focusables via FocusEl(20/21/22) — always read fresh through the
+	// component so a content remount can never strand a stale panel here.
+	private LighthouseScene _sceneComp;
 
 	// Open a content scene from the menu. Owns the open sound (same cue the
 	// old drawer used — callers don't double it). Records where the cursor
@@ -950,10 +700,17 @@
 
 		if ( dest == SceneId.Menu )
 		{
-			// Menu stays mounted — display flip + a CHEAP re-arrival: halved
+			// Menu stays mounted — un-park + a CHEAP re-arrival: halved
 			// group staggers (0/40/80) + tween rate 0.20. No splash re-stamp
 			// (RandomizeSplash isn't called on returns).
-			if ( _refMenuContent != null ) _refMenuContent.Style.Display = null; // clear the imperative hide — stylesheet resumes
+			if ( _refMenuContent != null )
+			{
+				// Clear the imperative hide — stylesheet resumes. (Display is
+				// cleared too in case an older build's hotload left None set.)
+				_refMenuContent.Style.Display = null;
+				_refMenuContent.Style.Opacity = null;
+				_refMenuContent.Style.Left = null;
+			}
 			_sceneDeparting = false;
 			_menuReturning = true;
 			entranceStage = 0;
@@ -991,23 +748,23 @@
 			// flips and the transition-delay stagger fires.
 			if ( dest != SceneId.Options )
 			{
-				if ( _mountedScene != dest )
-				{
-					// The @if branch is about to REMOUNT — drop the stale refs so
-					// the cursor retarget can never read a deleted panel's frozen
-					// Box.Rect (the stranded-ring bug's second failure mode).
-					_refSceneClose = null;
-					_refSceneAct1 = null;
-					_refSceneAct2 = null;
-					detailScrollBody = null;
-				}
+				// A content change remounts the @if branch inside LighthouseScene;
+				// the component nulls its own focusable refs in the Mounted setter
+				// (so the cursor retarget can never read a deleted panel's frozen
+				// Box.Rect — the stranded-ring bug's second failure mode).
 				_mountedScene = dest;
 			}
 			// Imperative menu hide — the .scene-off class proved unreliable here
-			// (menu lingered visible under the arriving scene). TYPED property,
-			// not the string Set API (parse path unverified).
-			if ( _refMenuContent != null ) _refMenuContent.Style.Display = DisplayMode.None;
-			if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] menu Display=None typed, refNull={_refMenuContent == null} t={Time.Now:F3}" );
+			// (menu lingered visible under the arriving scene). OPACITY + OFFSCREEN,
+			// not Display: flipping display:none dropped the whole menu layout and
+			// the return-trip relayout was its own hitch. Both paths are honored
+			// independently; the inline markup style mirrors them atomically.
+			if ( _refMenuContent != null )
+			{
+				_refMenuContent.Style.Opacity = 0f;
+				_refMenuContent.Style.Left = Length.Pixels( -10000f );
+			}
+			if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] menu parked offscreen (op 0, left -10000), refNull={_refMenuContent == null} t={Time.Now:F3}" );
 			_sceneDeparting = false;
 			_sceneArrived = false;
 			StateHasChanged();
@@ -1062,7 +819,7 @@
 		_twSceneBg.Active = false;
 		if ( dest != SceneId.Menu )
 		{
-			ApplyDealTransform( _refSceneBg, 70f, 12f, 2000 );
+			ApplyDealTransform( ResolvePlane( 2 ), 70f, 12f, 2000 );
 		}
 	}
 
@@ -1076,8 +833,10 @@
 		if ( _scene != SceneId.Roadmap && _scene != SceneId.PatchNotes ) { _pendingSceneFocus = false; return; }
 		if ( selectedIndex >= 20 ) { _pendingSceneFocus = false; return; }
 
-		var el = _refSceneClose;
-		bool real = el != null && el.Box.Rect.Width >= 1f && el.Box.Rect.Top >= 1f;
+		var el = _sceneComp?.CloseButton;
+		// Left > -1000 — the scene shell HIDES by parking at left -10000px (layout
+		// stays warm), so a rect can be "real" while still offscreen for a frame.
+		bool real = el != null && el.Box.Rect.Width >= 1f && el.Box.Rect.Top >= 1f && el.Box.Rect.Left > -1000f;
 		_sceneFocusFrames = real ? _sceneFocusFrames + 1 : 0;
 		if ( _sceneFocusFrames >= 2 )
 		{
@@ -1487,7 +1246,13 @@
 	private async void PlayEntranceSequence()
 	{
 		if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] ENTRANCE begin (nulls plane transforms!) t={Time.Now:F3} swap={_swap} scene={_scene}" );
-		if ( _refMenuContent != null ) _refMenuContent.Style.Display = null; // fresh entrance always clears the imperative hide
+		if ( _refMenuContent != null )
+		{
+			// Fresh entrance always clears the imperative hide (all three paths).
+			_refMenuContent.Style.Display = null;
+			_refMenuContent.Style.Opacity = null;
+			_refMenuContent.Style.Left = null;
+		}
 		entranceStage = 0;
 		// Reset any leftover imperative state from a previous visit (deal-in /
 		// PLAY detonation) so the CSS defaults are this entrance's baseline.
@@ -1495,7 +1260,8 @@
 		_twFeatured.Active = false;
 		_twCards.Active = false;
 		_twSceneBg.Active = false;
-		if ( _refSceneBg != null ) _refSceneBg.Style.Transform = null;
+		var sceneBg = ResolvePlane( 2 );
+		if ( sceneBg != null ) sceneBg.Style.Transform = null;
 		_playFireStart = -1f;
 		_playSquashing = false;
 		_playFlashMounted = false;
@@ -1554,7 +1320,7 @@
 	{
 		0 => _refFeatured,
 		1 => _refCardsRow,
-		2 => _refSceneBg,
+		2 => _sceneComp?.SceneBg,
 		_ => null,
 	};
 
@@ -1971,17 +1737,15 @@
 		// that was hidden while the menu STILL rendered, meaning a duplicate/
 		// ghost .menu-content exists in the tree that no ref reaches. Walk the
 		// actual children every frame and hide EVERY panel wearing the class.
+		// (No Display writes — see the swap-frame hide: opacity + offscreen only,
+		// so the menu's layout stays warm for the return trip.)
 		if ( Panel != null )
 		{
-			// BATTERY hide: census proved ComputedStyle.Display=None while the menu
-			// still DREW — imperative `display` may be a renderer no-op. Opacity +
-			// off-screen Left are independently honored paths; at least one sticks.
 			bool hideMenu = _scene != SceneId.Menu;
 			foreach ( var child in Panel.Children )
 			{
 				if ( child != null && child.HasClass( "menu-content" ) )
 				{
-					child.Style.Display = hideMenu ? DisplayMode.None : (DisplayMode?)null;
 					child.Style.Opacity = hideMenu ? 0f : (float?)null;
 					child.Style.Left = hideMenu ? Length.Pixels( -10000f ) : (Length?)null;
 				}
@@ -2452,7 +2216,8 @@
 		0 => _ref0, 1 => _ref1, 2 => _ref2, 3 => _ref3, 4 => _ref4, 5 => _ref5,
 		6 => _ref6, 7 => _ref7, 8 => _ref8, 9 => _ref9, 10 => _ref10,
 		// Scene focusables (Roadmap/PatchNotes): 20 close · 21/22 footer actions.
-		20 => _refSceneClose, 21 => _refSceneAct1, 22 => _refSceneAct2,
+		// Resolved fresh through the scene component (it nulls these on remount).
+		20 => _sceneComp?.CloseButton, 21 => _sceneComp?.Act1, 22 => _sceneComp?.Act2,
 		_ => null
 	};
 
@@ -2474,44 +2239,23 @@
 	// Panels that hold a 3D rotation — so the cursor can pivot around THEIR left edge for
 	// controls nested inside them (CTAs in the featured card, pills in the cards).
 	private Panel _refFeatured, _refSlot9, _refSlot10, _refCardsRow;
-	// The whole menu surface — its display is driven IMPERATIVELY at the swap
-	// frame (Style.Display) because the .scene-off class proved unreliable
-	// (menu lingered visible under the arriving scene; cascade-resolution bug
-	// family, see the .entered/.departing teleport fix).
+	// The whole menu surface — hidden IMPERATIVELY at the swap frame
+	// (Style.Opacity 0 + Style.Left -10000px; display is never flipped so the
+	// menu's layout stays warm for the return trip) because the .scene-off
+	// class proved unreliable (menu lingered visible under the arriving scene;
+	// cascade-resolution bug family, see the .entered/.departing teleport fix).
 	private Panel _refMenuContent;
-	private float _lastGhostAudit = -10f; // census timer (SWAP_DEBUG)
 	private int _lastMenuCount = -1, _lastChildCount = -1; // census change-detection
 
-	// GHOST SWEEP — the engine's render differ DUPLICATES root children at the
-	// swap-frame rebuild (census caught rootChildren 6→14 with TWO .menu-content
-	// panels; the stale copy carries pre-swap markup = fully visible menu, and
-	// lives ~0.5s until the differ cleans its own debris). This hook runs after
-	// every tree build, BEFORE drawing — debris dies without ever being drawn.
-	protected override void OnAfterTreeRender( bool firstTime )
-	{
-		base.OnAfterTreeRender( firstTime );
-		if ( _scene == SceneId.Menu || Panel == null ) return;
-
-		// Sweep ALL of them — no ref test. During a rebuild the @ref can briefly
-		// point at the STALE copy, so a ref-sparing sweep kept the ghost and
-		// deleted the clean panel (the residual flash). While a scene owns the
-		// screen the menu container shouldn't exist at all; the markup recreates
-		// a properly-hidden one (inline hide) whenever the differ wants it back.
-		List<Panel> ghosts = null;
-		foreach ( var child in Panel.Children )
-		{
-			if ( child != null && child.HasClass( "menu-content" ) )
-				( ghosts ??= new List<Panel>() ).Add( child );
-		}
-		if ( ghosts != null )
-		{
-			foreach ( var g in ghosts )
-			{
-				if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] menu-content SWEPT pre-draw (isRef={ReferenceEquals( g, _refMenuContent )}) t={Time.Now:F3}" );
-				g.Delete( true );
-			}
-		}
-	}
+	// NOTE (2026-06-10): the old "ghost sweep" OnAfterTreeRender override was
+	// REMOVED — proven dead code. PanelComponent never fires OnAfterTreeRender
+	// (zero "SWEPT" lines across every session in sbox-dev.log; the hook only
+	// works on Panel-derived razor components like OptionsPanel). Had it ever
+	// fired it would have been actively harmful: the markup renders .menu-content
+	// unconditionally, so the sweep would have deleted the LIVE menu panel on
+	// every re-render while a scene was up. The differ-duplication it targeted
+	// (rootChildren 6→14, two .menu-content) was a HOTLOAD-rebuild artifact, not
+	// a click-swap behavior — per-swap census shows menuCount=1 on every swap.
 	// NOTE: no surface waves anywhere — motion-doctrine v2: surfaces are SOLID (the
 	// PLAY liquid was vetoed as motion-sick 2026-06-09; the nav-fill liquid was then
 	// retired for consistency). The violet ring is the only ALIVE element; buttons
