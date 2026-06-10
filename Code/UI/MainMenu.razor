@@ -1964,14 +1964,32 @@
 		UpdateVideoBackgroundStyle();
 
 		// PER-FRAME assert: the menu surface is hard-hidden while any scene owns
-		// the screen. One-shot imperative sets do NOT survive — the swap-frame
-		// re-render REBUILDS .menu-content into a fresh panel (verified: typed
-		// Display=None set on a non-null ref, menu still rendered), and the
-		// rebuilt panel's .scene-off class loses the cascade bug. Re-asserting
-		// every frame outruns any rebuild — same pattern as the video texture
-		// rebind above and the cursor's imperative transform.
-		if ( _refMenuContent != null )
-			_refMenuContent.Style.Display = _scene != SceneId.Menu ? DisplayMode.None : (DisplayMode?)null;
+		// the screen. NOT via @ref — the ref provably pointed at a live panel
+		// that was hidden while the menu STILL rendered, meaning a duplicate/
+		// ghost .menu-content exists in the tree that no ref reaches. Walk the
+		// actual children every frame and hide EVERY panel wearing the class.
+		foreach ( var child in Children )
+		{
+			if ( child != null && child.HasClass( "menu-content" ) )
+				child.Style.Display = _scene != SceneId.Menu ? DisplayMode.None : (DisplayMode?)null;
+		}
+
+		// 1Hz ghost census while a scene is up — how many .menu-content panels
+		// actually exist, and is our ref among them?
+		if ( SWAP_DEBUG && _scene != SceneId.Menu && Time.Now - _lastGhostAudit > 1f )
+		{
+			_lastGhostAudit = Time.Now;
+			int found = 0;
+			foreach ( var child in Children )
+			{
+				if ( child != null && child.HasClass( "menu-content" ) )
+				{
+					found++;
+					Log.Info( $"[swapdbg] census menu-content #{found} isRef={ReferenceEquals( child, _refMenuContent )} display={child.ComputedStyle?.Display} opacity={child.ComputedStyle?.Opacity:F2}" );
+				}
+			}
+			Log.Info( $"[swapdbg] census total={found} t={Time.Now:F3}" );
+		}
 
 		if ( !IsVisible ) return;
 		HandleKeyboardInput();
@@ -2442,6 +2460,7 @@
 	// (menu lingered visible under the arriving scene; cascade-resolution bug
 	// family, see the .entered/.departing teleport fix).
 	private Panel _refMenuContent;
+	private float _lastGhostAudit = -10f; // 1Hz census timer (SWAP_DEBUG)
 	// NOTE: no surface waves anywhere — motion-doctrine v2: surfaces are SOLID (the
 	// PLAY liquid was vetoed as motion-sick 2026-06-09; the nav-fill liquid was then
 	// retired for consistency). The violet ring is the only ALIVE element; buttons
