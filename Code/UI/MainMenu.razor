@@ -1512,7 +1512,12 @@
 	// start poses — the player never waits for choreography twice).
 	private class PlaneTween
 	{
-		public Func<Panel> Get;      // resolve the panel fresh each frame (refs can re-bind)
+		// HOTLOAD-SAFE plane resolution: an int ID resolved through ResolvePlane()
+		// each frame — NOT a Func<Panel> closure. Lambdas captured by long-lived
+		// objects DIE on s&box hot reload ("Unable to find matching substitution
+		// for a lambda method", thrown every frame from StepTween — seen live
+		// 2026-06-09). Methods substitute cleanly across hotloads; closures don't.
+		public int PlaneId;          // 0 featured · 1 cards row · 2 scene backdrop
 		public float X, Deg;         // current pose
 		public float TX, TDeg;       // targets
 		public float Rate;           // lerp factor per frame
@@ -1523,13 +1528,21 @@
 
 	private PlaneTween _twFeatured, _twCards, _twSceneBg;
 
-	// Lazy init — Func<Panel> closures need `this`, so field initializers can't.
+	// Fresh-each-frame panel resolution (refs can re-bind; hotload-safe).
+	private Panel ResolvePlane( int id ) => id switch
+	{
+		0 => _refFeatured,
+		1 => _refCardsRow,
+		2 => _refSceneBg,
+		_ => null,
+	};
+
 	private void EnsureTweens()
 	{
 		if ( _twFeatured != null ) return;
-		_twFeatured = new PlaneTween { Get = () => _refFeatured, Persp = 2000 };
-		_twCards = new PlaneTween { Get = () => _refCardsRow, Persp = 2000 };
-		_twSceneBg = new PlaneTween { Get = () => _refSceneBg, Persp = 2000 };
+		_twFeatured = new PlaneTween { PlaneId = 0, Persp = 2000 };
+		_twCards = new PlaneTween { PlaneId = 1, Persp = 2000 };
+		_twSceneBg = new PlaneTween { PlaneId = 2, Persp = 2000 };
 	}
 
 	// Retarget a plane. Seeds the start pose only when the tween is at rest —
@@ -1544,7 +1557,7 @@
 		tw.Rate = rate;
 		tw.NullAtTarget = nullAtTarget;
 		tw.Active = true;
-		ApplyDealTransform( tw.Get?.Invoke(), tw.X, tw.Deg, tw.Persp );
+		ApplyDealTransform( ResolvePlane( tw.PlaneId ), tw.X, tw.Deg, tw.Persp );
 	}
 
 	private void StartFeaturedDealIn() => StartTween( _twFeatured, 70f, 15f, 0f, 10f, 0.16f, true );
@@ -1586,7 +1599,7 @@
 	private void StepTween( PlaneTween tw )
 	{
 		if ( tw == null || !tw.Active ) return;
-		var el = tw.Get?.Invoke();
+		var el = ResolvePlane( tw.PlaneId );
 		if ( el == null ) { tw.Active = false; return; }
 
 		tw.X += ( tw.TX - tw.X ) * tw.Rate;
