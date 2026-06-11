@@ -348,6 +348,10 @@ public sealed class BattleCameraController : Component
 
 	public void TriggerShake( float intensity, float duration = 0.3f )
 	{
+		// Player setting — covers every shake source (hits, crits, hitstop)
+		// since they all funnel through here.
+		if ( Beastborne.Core.SettingsManager.Instance?.Settings?.ScreenShake == false ) return;
+
 		shakeIntensity = intensity;
 		shakeTimer = duration;
 	}

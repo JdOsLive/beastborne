@@ -68,20 +68,21 @@
 		   RenderFragment helpers (see SECTION FRAGMENTS in @code) so both layouts
 		   share one source: DOCKED (the full-width main-menu scene) lays them out
 		   as TWO independent scroll columns; the in-game modal keeps the original
-		   single column. Toggle-row keyboard indices depend on render order —
-		   gameplay → display → confirmations render first in BOTH modes (they all
-		   sit in the docked LEFT column, so W/S walks one coherent column). *@
+		   single column. Keyboard-row indices depend on render order — the kb
+		   sections render gameplay → audio → display → confirmations in BOTH
+		   modes, so W/S walks the docked LEFT column top-to-bottom, then
+		   continues from the top of the RIGHT column (natural reading order). *@
 		<div class="modal-scroll-wrap">
 			@if (Docked)
 			{
 				<div class="modal-content docked-cols">
 					<div class="opt-col">
 						@SectionGameplay
-						@SectionDisplay
-						@SectionConfirmations
+						@SectionAudio
 					</div>
 					<div class="opt-col">
-						@SectionAccessibility
+						@SectionDisplay
+						@SectionConfirmations
 						@SectionLanguage
 						@SectionDanger
 					</div>
@@ -91,9 +92,9 @@
 			{
 				<div class="modal-content">
 					@SectionGameplay
+					@SectionAudio
 					@SectionDisplay
 					@SectionConfirmations
-					@SectionAccessibility
 					@SectionLanguage
 					@SectionDanger
 				</div>
@@ -108,6 +109,7 @@
 				<div class="opt-hints">
 					<span class="opt-key">W</span><span class="opt-key">S</span><span class="opt-hint-lbl">NAVIGATE</span>
 					<span class="opt-key opt-key-wide">SPACE</span><span class="opt-hint-lbl">TOGGLE</span>
+					<span class="opt-key">A</span><span class="opt-key">D</span><span class="opt-hint-lbl">ADJUST</span>
 					<span class="opt-key">Q</span><span class="opt-hint-lbl">CLOSE</span>
 				</div>
 			}
@@ -250,24 +252,52 @@
 	}
 
 	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
-	// Cursor over the toggle rows (the only routinely-changed settings).
-	// Up/Down move, Space/Enter flips the highlighted toggle, Menu/run
-	// closes the panel. Order MUST match the RenderToggleRow render order:
-	// gameplay (3) → display (4) → confirmations (2) = 9 rows.
+	// Cursor over the kb rows (toggles + audio steppers). Up/Down move,
+	// Space/Enter activates the highlighted row, Left/Right ADJUST the row
+	// when it's adjustable (the audio volume steppers) and otherwise fall
+	// back to prev/next navigation (the old behavior on toggle rows).
+	// Menu/run closes the panel. Order MUST match the RenderToggleRow /
+	// RenderVolumeRow render order: gameplay (5) → audio (3) → display (4)
+	// → confirmations (2) = 14 rows.
 	private int _kbRowIndex = 0;
 
-	/// <summary>Toggle actions in render order — index aligns with _kbRowIndex.</summary>
-	private List<Action> GetKbToggleActions() => new()
+	/// <summary>
+	/// One entry per kb-navigable row, in render order — index aligns with
+	/// _kbRowIndex. Activate fires on Space/Enter. Dec/Inc (nullable) fire on
+	/// Left/Right for adjustable rows (audio steppers).
+	/// </summary>
+	private readonly struct KbRow
 	{
-		ToggleSkipAnimations,
-		ToggleShowLevelUpNotifications,
-		ToggleShowDiscoveryAlerts,
-		ToggleShowDamageNumbers,
-		ToggleShowTypeEffectiveness,
-		ToggleShowGeneticsOnCards,
-		ToggleShowPowerRatings,
-		ToggleConfirmBeforeRelease,
-		ToggleConfirmBeforeFusion,
+		public KbRow( Action activate, Action dec = null, Action inc = null )
+		{
+			Activate = activate; Dec = dec; Inc = inc;
+		}
+		public Action Activate { get; }
+		public Action Dec { get; }
+		public Action Inc { get; }
+	}
+
+	private List<KbRow> GetKbRows() => new()
+	{
+		// GAMEPLAY
+		new KbRow( ToggleSkipAnimations ),
+		new KbRow( ToggleAutoContract ),
+		new KbRow( ToggleScreenShake ),
+		new KbRow( ToggleShowLevelUpNotifications ),
+		new KbRow( ToggleShowDiscoveryAlerts ),
+		// AUDIO — Left/Right are the real adjusters; Space/Enter nudges the
+		// level up one step (clamped at 100) so the row still answers it.
+		new KbRow( () => AdjustMasterVolume( VolumeStepPct ), () => AdjustMasterVolume( -VolumeStepPct ), () => AdjustMasterVolume( VolumeStepPct ) ),
+		new KbRow( () => AdjustUIVolume( VolumeStepPct ), () => AdjustUIVolume( -VolumeStepPct ), () => AdjustUIVolume( VolumeStepPct ) ),
+		new KbRow( () => AdjustMusicVolume( VolumeStepPct ), () => AdjustMusicVolume( -VolumeStepPct ), () => AdjustMusicVolume( VolumeStepPct ) ),
+		// DISPLAY
+		new KbRow( ToggleShowDamageNumbers ),
+		new KbRow( ToggleShowTypeEffectiveness ),
+		new KbRow( ToggleShowGeneticsOnCards ),
+		new KbRow( ToggleShowPowerRatings ),
+		// CONFIRMATIONS
+		new KbRow( ToggleConfirmBeforeRelease ),
+		new KbRow( ToggleConfirmBeforeFusion ),
 	};
 
 	/// <summary>
@@ -284,22 +314,46 @@
 		// so a stray keypress can't wipe the player's save.
 		if ( showResetConfirm ) return;
 
-		var toggles = GetKbToggleActions();
-		_kbRowIndex = Math.Clamp( _kbRowIndex, 0, toggles.Count - 1 );
+		var rows = GetKbRows();
+		_kbRowIndex = Math.Clamp( _kbRowIndex, 0, rows.Count - 1 );
 
-		if ( Input.Pressed( "Up" ) || Input.Pressed( "Left" ) )
+		if ( Input.Pressed( "Up" ) )
 		{
 			_kbRowIndex = Math.Max( 0, _kbRowIndex - 1 );
 			SoundManager.PlayHover();
 		}
-		else if ( Input.Pressed( "Down" ) || Input.Pressed( "Right" ) )
+		else if ( Input.Pressed( "Down" ) )
 		{
-			_kbRowIndex = Math.Min( toggles.Count - 1, _kbRowIndex + 1 );
+			_kbRowIndex = Math.Min( rows.Count - 1, _kbRowIndex + 1 );
 			SoundManager.PlayHover();
+		}
+		else if ( Input.Pressed( "Left" ) )
+		{
+			if ( rows[_kbRowIndex].Dec != null )
+			{
+				rows[_kbRowIndex].Dec.Invoke();
+			}
+			else
+			{
+				_kbRowIndex = Math.Max( 0, _kbRowIndex - 1 );
+				SoundManager.PlayHover();
+			}
+		}
+		else if ( Input.Pressed( "Right" ) )
+		{
+			if ( rows[_kbRowIndex].Inc != null )
+			{
+				rows[_kbRowIndex].Inc.Invoke();
+			}
+			else
+			{
+				_kbRowIndex = Math.Min( rows.Count - 1, _kbRowIndex + 1 );
+				SoundManager.PlayHover();
+			}
 		}
 		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
 		{
-			toggles[_kbRowIndex]?.Invoke();
+			rows[_kbRowIndex].Activate?.Invoke();
 		}
 		else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 		{
@@ -330,11 +384,17 @@
 
 	private bool GetAutoContract() => GetSettings().DefaultAutoContract;
 	private bool GetSkipAnimations() => GetSettings().SkipBattleAnimations;
+	private bool GetScreenShake() => GetSettings().ScreenShake;
+
+	// Audio — UI works in whole percent (0–100), settings store 0–1.
+	private static int ToPct( float v ) => (int)Math.Round( Math.Clamp( v, 0f, 1f ) * 100f );
+	private int GetMasterVolumePct() => ToPct( GetSettings().MasterVolume );
+	private int GetUIVolumePct() => ToPct( GetSettings().UIVolume );
+	private int GetMusicVolumePct() => ToPct( GetSettings().MusicVolume );
 
 	private bool GetShowDamageNumbers() => GetSettings().ShowDamageNumbers;
 	private bool GetShowTypeEffectiveness() => GetSettings().ShowTypeEffectiveness;
 	private bool GetShowGeneticsOnCards() => GetSettings().ShowGeneticsOnCards;
-	private bool GetCompactCardView() => GetSettings().CompactCardView;
 	private bool GetShowPowerRatings() => GetSettings().ShowPowerRatings;
 
 	private int GetContractWarning() => GetSettings().ContractWarningThreshold;
@@ -344,9 +404,6 @@
 	private bool GetConfirmBeforeRelease() => GetSettings().ConfirmBeforeRelease;
 	private bool GetConfirmBeforeFusion() => GetSettings().ConfirmBeforeFusion;
 	private int GetPurchaseThreshold() => GetSettings().ConfirmPurchaseThreshold;
-
-	private bool GetLargerTextMode() => GetSettings().LargerTextMode;
-	private bool GetHighContrastMode() => GetSettings().HighContrastMode;
 
 	// ============================================
 	// SETTERS
@@ -364,6 +421,42 @@
 		var current = GetSkipAnimations();
 		SettingsManager.Instance?.SetSkipAnimations( !current );
 		PlayToggleSound( !current );
+	}
+
+	private void ToggleScreenShake()
+	{
+		var current = GetScreenShake();
+		SettingsManager.Instance?.SetScreenShake( !current );
+		PlayToggleSound( !current );
+	}
+
+	// ── Audio steppers — 10% steps, clamped 0–100. Setters apply LIVE
+	// (SoundManager statics / RadioManager handle) AND persist, so the click
+	// that follows is an instant preview at the new level. ──
+	private const int VolumeStepPct = 10;
+
+	private void AdjustMasterVolume( int deltaPct )
+	{
+		var pct = Math.Clamp( GetMasterVolumePct() + deltaPct, 0, 100 );
+		if ( pct == GetMasterVolumePct() ) return;
+		SettingsManager.Instance?.SetMasterVolume( pct / 100f );
+		SoundManager.PlayClick();
+	}
+
+	private void AdjustUIVolume( int deltaPct )
+	{
+		var pct = Math.Clamp( GetUIVolumePct() + deltaPct, 0, 100 );
+		if ( pct == GetUIVolumePct() ) return;
+		SettingsManager.Instance?.SetUIVolume( pct / 100f );
+		SoundManager.PlayClick();
+	}
+
+	private void AdjustMusicVolume( int deltaPct )
+	{
+		var pct = Math.Clamp( GetMusicVolumePct() + deltaPct, 0, 100 );
+		if ( pct == GetMusicVolumePct() ) return;
+		SettingsManager.Instance?.SetMusicVolume( pct / 100f );
+		SoundManager.PlayClick();
 	}
 
 	private void ToggleShowDamageNumbers()
@@ -384,13 +477,6 @@
 	{
 		var current = GetShowGeneticsOnCards();
 		SettingsManager.Instance?.SetShowGeneticsOnCards( !current );
-		PlayToggleSound( !current );
-	}
-
-	private void ToggleCompactCardView()
-	{
-		var current = GetCompactCardView();
-		SettingsManager.Instance?.SetCompactCardView( !current );
 		PlayToggleSound( !current );
 	}
 
@@ -463,20 +549,6 @@
 		var newValue = current == 0 ? 100 : current + 500;
 		SettingsManager.Instance?.SetConfirmPurchaseThreshold( Math.Min( 10000, newValue ) );
 		SoundManager.PlayClick();
-	}
-
-	private void ToggleLargerTextMode()
-	{
-		var current = GetLargerTextMode();
-		SettingsManager.Instance?.SetLargerTextMode( !current );
-		PlayToggleSound( !current );
-	}
-
-	private void ToggleHighContrastMode()
-	{
-		var current = GetHighContrastMode();
-		SettingsManager.Instance?.SetHighContrastMode( !current );
-		PlayToggleSound( !current );
 	}
 
 	private void PlayToggleSound( bool newState )
@@ -628,22 +700,38 @@
 		</div>
 	};
 
-	// Disabled row — rendered for planned features (e.g. accessibility) so
-	// players see what's coming. Identical structure to a toggle row but the
-	// toggle is replaced with a "SOON" pill and the whole row is muted.
-	private RenderFragment RenderDisabledRow( string icon, string label, string desc ) => __builder =>
+	// Volume row — same anatomy as a toggle row (icon gem · label/desc · control)
+	// but the control is a 0–100% stepper with a solid violet fill meter.
+	// Participates in the kb cursor (counter-indexed like toggle rows) so
+	// Left/Right adjust it when highlighted. `percent` is whole 0–100.
+	private RenderFragment RenderVolumeRow( string icon, string label, string desc, int percent, Action onDec, Action onInc, string hoverKey ) => __builder =>
 	{
-		<div class="setting-row setting-row-disabled">
+		int rowIndex = _toggleRowCounter++;
+		<div class="setting-row @(_kbRowIndex == rowIndex ? "kb-active" : "")" onmouseover=@(() => OnHover(hoverKey))>
 			<div class="setting-icon-frame">
-				<iconify icon="@icon" Size=@(14) Color="rgba(255, 255, 255, 0.35)" />
+				<iconify icon="@icon" Size=@(14) Color="@(percent > 0 ? "#a78bfa" : "rgba(255, 255, 255, 0.55)")" />
 			</div>
 			<div class="setting-text">
 				<span class="setting-label">@label</span>
 				<span class="setting-desc">@desc</span>
 			</div>
-			<div class="soon-pill">
-				<iconify icon="lucide:clock" Size=@(10) Color="#fcd34d" />
-				<span>SOON</span>
+			<div class="bb-stepper vol-stepper">
+				<button class="step-btn step-dec"
+						onclick=@onDec
+						onmouseover=@(() => OnHover(hoverKey + "-dec"))>
+					<iconify icon="lucide:minus" Size=@(12) Color="#c4b5fd" />
+				</button>
+				<div class="vol-meter">
+					<div class="vol-track">
+						<div class="vol-fill" style="width: @(percent)%;"></div>
+					</div>
+					<span class="vol-pct">@(percent)%</span>
+				</div>
+				<button class="step-btn step-inc"
+						onclick=@onInc
+						onmouseover=@(() => OnHover(hoverKey + "-inc"))>
+					<iconify icon="lucide:plus" Size=@(12) Color="#c4b5fd" />
+				</button>
 			</div>
 		</div>
 	};
@@ -651,9 +739,10 @@
 	// ============================================
 	// SECTION FRAGMENTS — the six settings sections, shared by both layouts
 	// (docked two-column scene / in-game single-column modal). Render order of
-	// the TOGGLE sections (gameplay → display → confirmations) must stay aligned
-	// with GetKbToggleActions — they all live in the docked LEFT column so the
-	// keyboard cursor walks one coherent column.
+	// the KB sections (gameplay → audio → display → confirmations) must stay
+	// aligned with GetKbRows — docked splits them LEFT (gameplay, audio) /
+	// RIGHT (display, confirmations) and the cursor walks left column first,
+	// then the right column top-down.
 	// ============================================
 
 	// ──── GAMEPLAY ────
@@ -679,6 +768,22 @@
 					GetSkipAnimations(),
 					ToggleSkipAnimations,
 					"skip-anims")
+
+				@RenderToggleRow(
+					"lucide:handshake",
+					L("ui.options.auto_contract_smart"),
+					"Negotiates contracts for you after battle, using the approach with the best odds.",
+					GetAutoContract(),
+					ToggleAutoContract,
+					"auto-contract")
+
+				@RenderToggleRow(
+					"lucide:vibrate",
+					L("ui.options.screen_shake"),
+					"The camera shakes on hits and critical strikes in battle.",
+					GetScreenShake(),
+					ToggleScreenShake,
+					"screen-shake")
 
 				@RenderToggleRow(
 					"lucide:badge-check",
@@ -802,31 +907,51 @@
 		</div>
 	};
 
-	// ──── ACCESSIBILITY (planned features, disabled UI) ────
-	private RenderFragment SectionAccessibility => __builder =>
+	// ──── AUDIO ────
+	// Wears the panel's own teal (the Options "workshop" identity) — the one
+	// section allowed to share the signature hue, since sound IS the panel's
+	// own domain rather than a game-system category.
+	private RenderFragment SectionAudio => __builder =>
 	{
-		<div class="settings-section section-access">
+		<div class="settings-section section-audio">
 			<div class="section-header">
-				<div class="section-icon-frame tone-green">
-					<iconify icon="lucide:accessibility" Size=@(15) Color="#86efac" />
+				<div class="section-icon-frame tone-teal">
+					<iconify icon="lucide:volume-2" Size=@(15) Color="#5eead4" />
 				</div>
 				<div class="section-head-text">
-					<span class="section-title">ACCESSIBILITY</span>
-					<span class="section-sub">Readability options — planned, on the way.</span>
+					<span class="section-title">AUDIO</span>
+					<span class="section-sub">How loud the world is. Changes apply instantly.</span>
 				</div>
 				<div class="section-rule"></div>
 			</div>
 			<div class="section-rows">
 
-				@RenderDisabledRow(
-					"lucide:type",
-					L("ui.options.larger_text"),
-					"Increase the size of UI text where supported.")
+				@RenderVolumeRow(
+					"lucide:volume-2",
+					L("ui.options.master_volume"),
+					"Every sound in the game — UI, battle, and music together.",
+					GetMasterVolumePct(),
+					() => AdjustMasterVolume(-VolumeStepPct),
+					() => AdjustMasterVolume(VolumeStepPct),
+					"master-volume")
 
-				@RenderDisabledRow(
-					"lucide:contrast",
-					L("ui.options.high_contrast"),
-					"Boost contrast for better readability.")
+				@RenderVolumeRow(
+					"lucide:mouse-pointer-click",
+					L("ui.options.ui_volume"),
+					"Clicks, hovers, toggles, and popup sounds.",
+					GetUIVolumePct(),
+					() => AdjustUIVolume(-VolumeStepPct),
+					() => AdjustUIVolume(VolumeStepPct),
+					"ui-volume")
+
+				@RenderVolumeRow(
+					"lucide:music",
+					L("ui.options.music_volume"),
+					"The radio. Also adjustable from the radio widget in-game.",
+					GetMusicVolumePct(),
+					() => AdjustMusicVolume(-VolumeStepPct),
+					() => AdjustMusicVolume(VolumeStepPct),
+					"music-volume")
 			</div>
 		</div>
 	};
@@ -970,10 +1095,13 @@
 			var s = SettingsManager.Instance.Settings;
 			hash.Add( s.DefaultAutoContract );
 			hash.Add( s.SkipBattleAnimations );
+			hash.Add( s.ScreenShake );
+			hash.Add( s.MasterVolume );
+			hash.Add( s.UIVolume );
+			hash.Add( s.MusicVolume );
 			hash.Add( s.ShowDamageNumbers );
 			hash.Add( s.ShowTypeEffectiveness );
 			hash.Add( s.ShowGeneticsOnCards );
-			hash.Add( s.CompactCardView );
 			hash.Add( s.ShowPowerRatings );
 			hash.Add( s.ContractWarningThreshold );
 			hash.Add( s.ShowLevelUpNotifications );
@@ -981,8 +1109,6 @@
 			hash.Add( s.ConfirmBeforeRelease );
 			hash.Add( s.ConfirmBeforeFusion );
 			hash.Add( s.ConfirmPurchaseThreshold );
-			hash.Add( s.LargerTextMode );
-			hash.Add( s.HighContrastMode );
 		}
 		return hash.ToHashCode();
 	}

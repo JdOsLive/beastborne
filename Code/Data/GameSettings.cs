@@ -34,6 +34,30 @@ public class GameSettings
 	/// </summary>
 	public bool SkipBattleAnimations { get; set; } = false;
 
+	/// <summary>
+	/// Camera shake on hits/crits during battle
+	/// </summary>
+	public bool ScreenShake { get; set; } = true;
+
+	// ============================================
+	// AUDIO SETTINGS (0..1 — defaults mirror SoundManager/RadioManager statics)
+	// ============================================
+
+	/// <summary>
+	/// Master volume — scales every sound in the game (UI, SFX, music)
+	/// </summary>
+	public float MasterVolume { get; set; } = 1.0f;
+
+	/// <summary>
+	/// UI sound volume (clicks, hovers, popups)
+	/// </summary>
+	public float UIVolume { get; set; } = 0.5f;
+
+	/// <summary>
+	/// Music volume (the radio system)
+	/// </summary>
+	public float MusicVolume { get; set; } = 0.3f;
+
 	// ============================================
 	// DISPLAY SETTINGS
 	// ============================================
@@ -52,11 +76,6 @@ public class GameSettings
 	/// Show genetics on monster cards in roster view
 	/// </summary>
 	public bool ShowGeneticsOnCards { get; set; } = false;
-
-	/// <summary>
-	/// Use compact card view (smaller cards, more visible)
-	/// </summary>
-	public bool CompactCardView { get; set; } = false;
 
 	/// <summary>
 	/// Show power ratings on monster cards
@@ -127,12 +146,17 @@ public class GameSettings
 			UseAutoContractSpeciesFilter = UseAutoContractSpeciesFilter,
 			AutoContractEnabledSpecies = AutoContractEnabledSpecies,
 			SkipBattleAnimations = SkipBattleAnimations,
+			ScreenShake = ScreenShake,
+
+			// Audio
+			MasterVolume = MasterVolume,
+			UIVolume = UIVolume,
+			MusicVolume = MusicVolume,
 
 			// Display
 			ShowDamageNumbers = ShowDamageNumbers,
 			ShowTypeEffectiveness = ShowTypeEffectiveness,
 			ShowGeneticsOnCards = ShowGeneticsOnCards,
-			CompactCardView = CompactCardView,
 			ShowPowerRatings = ShowPowerRatings,
 
 			// Notifications

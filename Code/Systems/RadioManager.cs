@@ -417,7 +417,10 @@ public static class RadioManager
 	}
 
 	/// <summary>
-	/// Set the music volume.
+	/// Set the music volume. Persists through SettingsManager (cheap
+	/// single-cookie write) so the RadioWidget slider AND the Options panel
+	/// both survive a restart. Boot hydrate assigns Volume directly
+	/// (SettingsManager.ApplyAudioSettings) and skips this round-trip.
 	/// </summary>
 	public static void SetVolume( float volume )
 	{
@@ -426,6 +429,7 @@ public static class RadioManager
 		{
 			_currentMusic.Volume = Volume * SoundManager.MasterVolume;
 		}
+		Beastborne.Core.SettingsManager.Instance?.NotifyMusicVolumeChanged( Volume );
 	}
 
 	/// <summary>
