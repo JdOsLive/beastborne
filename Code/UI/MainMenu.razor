@@ -672,8 +672,8 @@
 			// deg 10→17) at the fast departure rate. Mid-entrance poses are
 			// kept (StartTween only seeds when inactive) — interrupt-safe.
 			_menuReturning = false; // a re-arrival interrupted mid-flight is over
-			StartTween( _twFeatured, 0f, 10f, 90f, 17f, 0.28f, false );
-			StartTween( _twCards, 0f, 10f, 90f, 17f, 0.28f, false );
+			StartTween( _twFeatured, 0f, 10f, 90f, 17f, 0.34f, false ); // 0.34: snappier exit for the 110ms overlap window
+			StartTween( _twCards, 0f, 10f, 90f, 17f, 0.34f, false );
 		}
 		else
 		{
@@ -685,13 +685,17 @@
 			// vector).
 			float rest = SceneRestDeg( _scene );
 			float sgn = MathF.Sign( rest );
-			StartTween( _twSceneBg, 0f, rest, 90f, rest + 7f * sgn, 0.28f, false );
+			StartTween( _twSceneBg, 0f, rest, 90f, rest + 7f * sgn, 0.34f, false );
 		}
 		_pendingSceneFocus = false; // a new swap supersedes any in-flight retarget
 		StateHasChanged();
 
-		// TIMER → swap frame (return trips are cheaper).
-		await Task.Delay( (int)(( dest == SceneId.Menu ? 150 : 170 ) * SWAP_SLOWMO) );
+		// TIMER → swap frame. 110ms (was 170/150): the P5 OVERLAP trick — the
+		// arrival begins while the departure's opacity tails (0.14-0.16s) are
+		// still finishing, so the screen never sits empty between scenes (the
+		// "waiting period" the user flagged). Park-based hiding makes the brief
+		// coexistence free — no display flip, no layout stall.
+		await Task.Delay( (int)(110 * SWAP_SLOWMO) );
 		if ( v != _swapVersion ) return;
 
 		// ── SWAP FRAME ── (a queued _pending may have replaced the destination;
@@ -1307,11 +1311,8 @@
 	// opacity-only (a transform there poisons descendant flex-grow widths).
 	// TEMP swap diagnostics (2026-06-10, hunting the departure teleport) — every
 	// log is single-line (multiline Log.Info truncates). Flip off when solved.
-	private const bool SWAP_DEBUG = true;
-	// TEMP slow-motion: scales every swap timer + tween + (via .swap-slowmo on the
-	// root) the departure opacity transitions, so the teleport can be SEEN and
-	// screenshotted. Set back to 1f when solved.
-	private const float SWAP_SLOWMO = 5f;
+	private const bool SWAP_DEBUG = false; // teleport bug solved (swap-frame layout stall) — re-enable only for swap forensics
+	private const float SWAP_SLOWMO = 1f; // real time — slow-mo retired with the bug
 
 	private async void PlayEntranceSequence()
 	{
@@ -1791,8 +1792,11 @@
 
 	protected override void OnUpdate()
 	{
-		// Update global sprite animations and force re-render for animation
-		if ( SpriteAnimator.Update() )
+		// Update global sprite animations — but only re-render for them when the
+		// starter selection is up (the ONLY menu state with animated sprites).
+		// Unconditionally hashing GlobalFrame re-rendered the whole ~3k-line tree
+		// every sprite tick — a large share of the menu's frame cost.
+		if ( SpriteAnimator.Update() && showStarterSelection )
 		{
 			StateHasChanged();
 		}
@@ -2374,7 +2378,7 @@
 		5 or 6 => (4f, 1f),              // LANGUAGE / QUIT — tiny nudge
 		7 or 8 => (0f, 1.05f),           // featured CTAs — swell from left edge (origin: left center)
 		9 or 10 => (0f, 1.06f),          // card View/Join pills — swell from left edge
-		23 or 24 or 25 => (0f, 1.02f),   // roadmap posters — COMMANDING scale (origin: left center, see .lhp)
+		23 or 24 or 25 => (0f, 1.035f),  // roadmap posters — GROW (the -10px lift is mirrored as a Y fudge in UpdateCursor)
 		// Scene arrows nudge toward their own edge on hover/focus — LOCKSTEP
 		// with `.settled .lhd-arrow-prev/next:hover` translateX(∓5px) in SCSS.
 		26 => (-5f, 1f),
@@ -2457,6 +2461,9 @@
 		// The card View/Join pills sit inside the tilted cards plane — the ring
 		// landed a few px high on them (user-tuned 2026-06-09). Small Y fudge.
 		if ( idx == 9 || idx == 10 ) visT += 4f;
+		// Roadmap posters LIFT -10px on hover/focus (.settled .lhp rules) — the
+		// ring rides the lift. LOCKSTEP with the SCSS translateY(-10px).
+		if ( idx >= 23 && idx <= 25 ) visT -= 10f;
 
 		// The MainMenu root is full-screen at (0,0), so an item's screen-px rect is
 		// already the cursor's local coordinate (the cursor's offset parent is that
@@ -3166,8 +3173,9 @@
 		hash.Add(isSaveRetrying);
 		hash.Add(_dialogIndex);
 		hash.Add(transitionPhase);
-		// Add animation frame to hash so UI updates with animation
-		hash.Add(SpriteAnimator.GlobalFrame);
+		// Sprite frame only matters while starter selection shows animated sprites
+		// — hashing it unconditionally re-rendered the whole tree every sprite tick.
+		if (showStarterSelection) hash.Add(SpriteAnimator.GlobalFrame);
 		return hash.ToHashCode();
 	}
 }
