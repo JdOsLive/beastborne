@@ -110,7 +110,7 @@
 				</div>
 				<span class="lhp-title">Story</span>
 				<span class="lhp-rule"></span>
-				<span class="lhp-line">Weaverton's tale, told properly.</span>
+				<span class="lhp-line">Creating the journey you will take.</span>
 			</button>
 			<button class="lhp lhp-3 lhp-bugs @(KbIndex == 25 ? "kb-sel" : "")" @ref="Poster3"
 					onclick=@OnPosterClicked onmouseover=@(() => OnHover(25))>
@@ -120,7 +120,7 @@
 				</div>
 				<span class="lhp-title">Bug Fixing</span>
 				<span class="lhp-rule"></span>
-				<span class="lhp-line">Always. Forever. Relentlessly.</span>
+				<span class="lhp-line">Forever stomping bugs. Ew.</span>
 			</button>
 		</div>
 		@* v3.1 delta 3: FOOTER REMOVED — the posters get the vertical room. ENTER
@@ -438,11 +438,65 @@
 	public override void Tick()
 	{
 		base.Tick();
+		TickContentSlide();
 		if ( !ICON_DEBUG || _iconDiagDone || Time.Now < 5f ) return;
 		_iconDiagDone = true;
 		int n = 0;
 		IconCensus( this, ref n );
 		Log.Info( $"[scenedbg] iconify census complete: {n} icon panel(s) under LighthouseScene (mounted={_mounted})" );
+	}
+
+	// ─── CONTENT SLIDE — IMPERATIVE (class-toggle transform transitions SNAP) ──
+	// The v3.1 arrival/departure slides were authored as class-toggle transform
+	// transitions; the engine snaps those (the same law the planes obey — spec
+	// compliance section), so posters "spawned" in place (user report). The
+	// slide is driven per-frame here instead; the inline transform is NULLED at
+	// arrival settle so the steady CSS and the settle-gated hover transforms
+	// take over seamlessly. The CSS keeps the same targets as a harmless
+	// fallback (inline wins while the slide runs).
+	private bool _prevArrived, _prevDeparting;
+	private float _slideT0 = -1f;
+	private bool _slideIn;
+
+	private static readonly (string cls, float from, float stagger)[] SlideSpec = new[]
+	{
+		("lhp-1", 60f, 0.00f),
+		("lhp-2", 60f, 0.05f),
+		("lhp-3", 60f, 0.10f),
+		("lhd-rail", 60f, 0.00f),
+		("lhd-arrow-prev", -24f, 0.14f),
+		("lhd-arrow-next", 24f, 0.14f),
+	};
+
+	private void TickContentSlide()
+	{
+		if ( Arrived && !_prevArrived ) { _slideT0 = Time.Now; _slideIn = true; }
+		if ( Departing && !_prevDeparting ) { _slideT0 = Time.Now; _slideIn = false; }
+		_prevArrived = Arrived;
+		_prevDeparting = Departing;
+		if ( _slideT0 < 0f ) return;
+
+		float dur = _slideIn ? 0.30f : 0.14f;
+		bool allDone = true;
+		foreach ( var (cls, from, stagger) in SlideSpec )
+		{
+			var el = FindByClass( this, cls );
+			if ( el == null ) continue;
+			float t = Time.Now - _slideT0 - ( _slideIn ? stagger : 0f );
+			float u = Math.Clamp( t / dur, 0f, 1f );
+			if ( u < 1f ) allDone = false;
+			// out-cubic on arrival (decelerating land), in-quad on departure (accelerating exit)
+			float e = _slideIn ? 1f - MathF.Pow( 1f - u, 3f ) : u * u;
+			float x = _slideIn ? from * ( 1f - e ) : from * e;
+			if ( _slideIn && u >= 1f ) { el.Style.Transform = null; continue; }
+			var tr = new PanelTransform();
+			tr.AddTranslate( Length.Pixels( x ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+			el.Style.Transform = tr;
+		}
+		// Arrival ends by nulling everything (CSS resumes); a finished departure
+		// holds its final pose — the wrapper parks offscreen right after, and the
+		// next arrival's rising edge restarts from its own start poses.
+		if ( allDone ) _slideT0 = -1f;
 	}
 
 	private void IconCensus( Panel p, ref int n )
