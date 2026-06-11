@@ -777,6 +777,17 @@
 			if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] menu parked offscreen (op 0, left -10000), refNull={_refMenuContent == null} t={Time.Now:F3}" );
 			_sceneDeparting = false;
 			_sceneArrived = false;
+
+			// Group B starts NOW as a HELD tween: it ASSERTS its start pose (x70,
+			// over-rotated lean) every frame through the swap-frame rebuilds —
+			// a one-shot pre-pose got wiped by the re-render and the slab flashed
+			// FLAT at its styleless pose for ~100ms (user-visible) — and begins
+			// moving when the hold expires at the Group-B beat (+100ms).
+			float rest = SceneRestDeg( dest );
+			float sgn = MathF.Sign( rest );
+			StartTween( _twSceneBg, 70f, rest + 5f * sgn, 0f, rest, 0.16f, true );
+			_twSceneBg.HoldUntil = Time.Now + 0.10f * SWAP_SLOWMO;
+
 			StateHasChanged();
 			await Task.Delay( (int)(30 * SWAP_SLOWMO) );
 			if ( v != _swapVersion ) return;
@@ -800,14 +811,9 @@
 			await Task.Delay( 70 );
 			if ( v != _swapVersion ) return;
 
-			// Group B — the angled backdrop plane deals in toward the DEST
-			// scene's signed rest lean (x 70→0, deg rest+5→rest; lean per
-			// SceneRestDeg — the angle itself says where you are). Low-key land
-			// beat (PlayStamp is currently a no-op stub — wired for the next
-			// sound pass, DECISION 3).
-			float rest = SceneRestDeg( dest );
-			float sgn = MathF.Sign( rest );
-			StartTween( _twSceneBg, 70f, rest + 5f * sgn, 0f, rest, 0.16f, true );
+			// Group B beat — the backdrop tween (started HELD at the swap frame)
+			// releases on its own ~now; this is just the land-beat moment.
+			// (PlayStamp is currently a no-op stub — next sound pass, DECISION 3.)
 			SoundManager.PlayStamp();
 			await Task.Delay( 280 );
 			if ( v != _swapVersion ) return;
@@ -1382,6 +1388,9 @@
 		public int Persp;            // perspective px (matches the steady CSS chain)
 		public bool Active;
 		public bool NullAtTarget;    // target == steady CSS pose → null inline transform on settle
+		public float HoldUntil;     // while Time.Now < this, ASSERT the start pose each frame but don't move —
+		                            // a held tween survives swap-frame rebuilds (one-shot pre-poses get wiped
+		                            // by the re-render and the slab flashed FLAT/steady; user-visible 2026-06-11)
 	}
 
 	private PlaneTween _twFeatured, _twCards, _twSceneBg;
@@ -1459,6 +1468,14 @@
 		if ( tw == null || !tw.Active ) return;
 		var el = ResolvePlane( tw.PlaneId );
 		if ( el == null ) { tw.Active = false; if ( SWAP_DEBUG ) Log.Info( $"[swapdbg] tween p{tw.PlaneId} LOST PANEL t={Time.Now:F3}" ); return; }
+
+		// HELD: re-assert the start pose every frame (rebuild-proof) until the
+		// hold expires, then begin moving. See PlaneTween.HoldUntil.
+		if ( Time.Now < tw.HoldUntil )
+		{
+			ApplyDealTransform( el, tw.X, tw.Deg, tw.Persp );
+			return;
+		}
 
 		// TIME-BASED easing (2026-06-10): Rate is authored as "lerp factor per frame
 		// AT 60fps"; convert to a per-second exponential so the motion covers the
