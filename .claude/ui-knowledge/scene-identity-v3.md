@@ -104,3 +104,73 @@ Engine quirks per CLAUDE.md + scene-swap-spec compliance section. Park, never
 display-flip. No perspective in keyframes. Class-toggle transforms only on flat
 non-plane elements. transition-delay needs .settled zeroing. SWAP_DEBUG/SLOWMO
 stay ON until the user's final verification pass.
+
+## V3.1 DELTAS (2026-06-11, user live-iteration on the shipped v3)
+1. **"OPEN BETA · LIVE" pill REMOVED** from the Roadmap header (and exists
+   nowhere in scenes). `.lhd-status-pill`/`.lhd-status-dot` SCSS deleted; the
+   `lhd-dot-pulse` keyframes survive (the IN DEVELOPMENT stamp dot rides them).
+2. **Close button upsized to the 56px family** (was a 32px pill): height 56,
+   radius 12, X glyph 24, Q cap scaled via `.lhd-key-lg` (22px, 14px glyph).
+   CursorGeom(20) → (9, 9, 21) in lockstep. Children got `pointer-events:
+   none` (hover-flicker rule).
+3. **FOOTER REMOVED from both scenes** (`.lhd-footer` + text + hints +
+   feedback/discord CTAs + the Slot1/Slot2 number hotkeys). Posters/content
+   get the vertical room. ENTER-on-poster still opens FeedbackPanel; Discord
+   lives on the menu's own sidebar card. The key vocabulary moved ONTO the
+   controls: Q on close (as before), **A/D caps ride the new arrows** — no
+   hint bar was recreated, the arrows themselves are the hint.
+4. **PREV/NEXT SCENE ARROWS** (`.lhd-arrow-prev`/`-next`) — the mouse
+   affordance for the A/D cycle. Tall chevron slabs (64×170, radius 14,
+   #1C1830) floating at mid-height OUTSIDE the flat frame (absolute, left/
+   right −92px — they sit in the 1920-canvas wings over the backdrop slab's
+   bleed, reading as part of the angled composition). Chevron wears the scene
+   identity color per branch (gold/violet); A/D key cap below it. Focusable
+   **26/27 at the rail ENDS** so A-from-prev / D-from-next cycles naturally;
+   click/ENTER → `CycleScene(±1)` (dir param added — 2-scene ring today, both
+   directions land on the sibling; honest API for a 3-scene future).
+   Commanding hover: bg step + translateX(∓5px) nudge toward the edge,
+   SelectedPop(26/27) = (∓5, 1) in ring lockstep. Hidden hard
+   (`display: none`) in `.scene-options` — the docked sheet only covers the
+   frame, and the previous scene's content (incl. arrows) stays mounted there.
+5. **Accent moved UNDER THE TITLE**: posters drop the 4px left edge
+   (`.lhp-edge` deleted, `.lhp` no longer needs overflow:hidden) for
+   `.lhp-rule` — 72×5px scene-gold bar under the title that **FLARES 72→128px
+   on hover/focus** (the commanding flare; bg step + scale 1.02 + stamp
+   straighten + title lift all kept). Patch Notes section heads speak the
+   same language: `.lhd-section-rule` (56×4px, tone-colored) replaces the
+   3px left border on `.lhd-section`. Static there — sections aren't
+   interactive, no flare.
+6. **Flat content now ANIMATES WITH the angled backdrop** (the big one):
+   - Arrival: header keeps SlabLeft (−40→0); **posters + patch-notes rail
+     slide translateX(+60→0)** (matching the backdrop's x 70→0 travel) on a
+     0.30s decelerating curve, layered on the existing opacity stagger
+     (posters keep 0/50/100ms); arrows slide in from their own edges
+     (∓24→0) on the +140ms beat.
+   - Departure: the mirror — posters/rail retrace to +60, header to −40,
+     arrows to their edges, all 0.14s ease-in with the opacity exit.
+   - **Fallback taken: the patch-notes READING COLUMN (`.lhd-scroll > *`)
+     stays opacity-only.** Its children live in a scroll container —
+     transformed descendants ESCAPE the scroll clip (engine quirk; a
+     translateX'd below-fold section would render outside the viewport) —
+     and the column itself is a flex-grow host (flex-poison). The rail
+     carries the motion for that scene instead.
+   - To make the rail transform-legal, `.lhd-toc-name` was re-pinned
+     `flex: 1 1 0` → `flex: 0 0 auto` with `margin-left: auto` on the count
+     (same fix as `.lhd-header-right`) — the rail now has zero flex-grow
+     descendants.
+   - **Specificity architecture:** the arrival's `&.arrived .lhd-body > *
+     { transform: translateX(0px) }` (0,3,0) would stomp per-class hover
+     transforms (0,2,0), so all commanding hover/focus transforms moved to
+     boosted `&.settled .lhd-body > .lhp:hover` / `&.settled
+     .lhd-arrow-*:hover` rules (0,4-5,0). `.settled` also swaps the content
+     transform transition from the 0.30s arrival glide to the 0.12s SNAP
+     duration. Safe because the host's Settled/Departing/Arrived flags are
+     mutually exclusive in code. Known cosmetic edge: hover SCALE/nudge is
+     inert during the ~300ms .arrived-but-not-.settled window (bg step,
+     rule flare, stamp straighten still respond — they're child properties).
+
+Focusable map after v3.1: **20 close · 23/24/25 roadmap posters · 26 prev
+arrow · 27 next arrow** (21/22 retired with the footer). Rails:
+Roadmap `{26, 20, 23, 24, 25, 27}` · Patch Notes `{26, 20, 27}`. Blind A/D
+press with a stale index seeds at 20 (close) explicitly — rail[0] is now an
+arrow and a blind press must not surprise-cycle.

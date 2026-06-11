@@ -3528,11 +3528,17 @@ MainMenu {
 //                      (.lhd-body, no scroll); Patch Notes = version rail +
 //                      reading column (.lhd-pn). Never transformed: it hosts
 //                      flex-grow + scroll descendants (flex-poison rule).
-// Arrival stagger (all class-toggle opacity + transition-delay, fired by
-// .arrived after a mounted-closed frame): A header slab (SlabLeft, +0) →
-// B content rows (+70ms, riding the backdrop plane) → C footer (+140ms).
-// .settled zeroes every delay so hover SNAP never lags; .departing is the
-// all-at-once 140ms exit for the return trip.
+// Arrival stagger (class-toggle opacity + transform + transition-delay, fired
+// by .arrived after a mounted-closed frame): A header slab (SlabLeft −40px→0,
+// +0) → B content (+70ms, riding the backdrop plane: posters/rail SLIDE
+// +60px→0 along the backdrop's travel vector — v3.1 delta 6 "flat content
+// animates WITH the plane") → C arrows (+140ms, sliding in from their own
+// edges). The patch-notes READING COLUMN is the one opacity-only fallback:
+// its children live in a scroll container (transforms escape the scroll clip
+// — engine quirk) and the column itself is a flex-grow host (flex-poison).
+// .settled zeroes every delay AND swaps the content transform transition to
+// the 0.12s SNAP duration so hover feedback never lags; .departing is the
+// all-at-once 140ms exit — every group retraces its entrance vector.
 // z-order: menu content (auto) < scene 90 < cursor 100 < starter overlays
 // (later siblings) < wipe 1500.
 
@@ -3626,7 +3632,6 @@ MainMenu {
 	// angled backdrop instead of filling a flat drawer, so they get rounded
 	// corners + a little air. The docked OptionsPanel sheet matches.
 	.lhd-header { border-radius: 18px; margin-top: 6px; }
-	.lhd-footer { border-radius: 18px; }
 	.lhd-topline { border-radius: 2px; margin-left: 4px; }
 	.options-modal { border-radius: 18px; }
 
@@ -3648,28 +3653,50 @@ MainMenu {
 		transform: translateX(-40px);
 		transition: opacity 0.30s ease-out, transform 0.30s cubic-bezier(0.16, 1, 0.3, 1);
 	}
-	// Group B — content rows (the backdrop plane carries the motion; rows are
-	// opacity-only — the patch-notes ones live in a scroll container).
-	// .lhd-scroll > * = patch-notes sections · .lhd-body > * = the THREE
-	// roadmap posters (the body IS the marquee row) · .lhd-rail = the
-	// patch-notes version/category rail. NOTE: these selectors outweigh the
-	// per-class rules (.lhp etc.), so the transition list must CARRY
-	// background-color AND transform or the posters' COMMANDING hover SNAP
-	// (bg step + scale 1.02, ≤0.12s) gets dropped.
-	.lhd-scroll > *,
-	.lhd-body > * {
-		opacity: 0;
-		transition: opacity 0.26s ease-out, background-color 0.12s ease-out, transform 0.12s ease-out;
-	}
-	.lhd-rail {
-		opacity: 0;
-		transition: opacity 0.26s ease-out;
-	}
-	// Group C — footer.
-	.lhd-footer {
+	// Group B — content (v3.1 delta 6: flat content ANIMATES WITH the angled
+	// plane). The roadmap posters (.lhd-body > * — the body IS the marquee
+	// row) and the patch-notes rail SLIDE in from +60px, matching the
+	// backdrop's deal-in vector (x 70→0), layered on the opacity stagger.
+	// Both are transform-SAFE: posters are fixed-size slabs with no flex-grow
+	// descendants (the hover scale already proved them); the rail is fixed
+	// 360px and its one flex-grow descendant (.lhd-toc-name) was re-pinned to
+	// auto + margin-left:auto on the count (flex-poison rule).
+	// The patch-notes READING COLUMN children (.lhd-scroll > *) stay
+	// OPACITY-ONLY — they live in a scroll container, and transformed
+	// descendants ESCAPE the scroll clip (engine quirk: a translateX'd
+	// below-fold section would render outside the viewport).
+	// NOTE: the .lhd-body selector outweighs the per-class rules (.lhp etc.),
+	// so the transition list must CARRY background-color or the posters'
+	// COMMANDING hover bg step gets dropped; the hover TRANSFORM now lives at
+	// boosted specificity in the .settled rules below (the arrival's
+	// translateX(0) would stomp .lhp:hover's scale otherwise).
+	.lhd-scroll > * {
 		opacity: 0;
 		transition: opacity 0.26s ease-out, background-color 0.12s ease-out;
 	}
+	.lhd-body > * {
+		opacity: 0;
+		transform: translateX(60px);
+		transition: opacity 0.26s ease-out, background-color 0.12s ease-out, transform 0.30s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	.lhd-rail {
+		opacity: 0;
+		transform: translateX(60px);
+		transition: opacity 0.26s ease-out, transform 0.30s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	// Group C — the prev/next scene arrows (v3.1; the footer is gone). They
+	// slide in from their OWN edges — edge chrome arriving from offstage.
+	// Fixed-size slabs, no flex-grow descendants: transform-safe.
+	.lhd-arrow {
+		opacity: 0;
+		transition: opacity 0.26s ease-out, background-color 0.12s ease-out, transform 0.30s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	.lhd-arrow-prev { transform: translateX(-24px); }
+	.lhd-arrow-next { transform: translateX(24px); }
+	// The arrows hang OUTSIDE the flat frame on the backdrop's wings — in the
+	// Options scene the docked sheet can't cover them (it fills the frame
+	// only) and the previous scene's content stays mounted, so hide them hard.
+	&.scene-options .lhd-arrow { display: none; }
 	// The docked OptionsPanel rides group B as one block (it staggers its own
 	// sections internally via its .visible cascade). Scoped at 0-3/4-0
 	// specificity so it outweighs the component's own `.options-container
@@ -3692,6 +3719,7 @@ MainMenu {
 		// Generic first (rows 5+ share the last beat), nth overrides below.
 		.lhd-scroll > *,
 		.lhd-body > * { opacity: 1; transition-delay: 0.22s; }
+		.lhd-body > * { transform: translateX(0px); }
 		.lhd-scroll > *:nth-child(1),
 		.lhd-body > *:nth-child(1) { transition-delay: 0.07s; }
 		.lhd-scroll > *:nth-child(2),
@@ -3700,14 +3728,19 @@ MainMenu {
 		.lhd-body > *:nth-child(3) { transition-delay: 0.17s; }
 		.lhd-scroll > *:nth-child(4),
 		.lhd-body > *:nth-child(4) { transition-delay: 0.22s; }
-		.lhd-rail { opacity: 1; transition-delay: 0.07s; }
-		.lhd-footer { opacity: 1; transition-delay: 0.14s; }
+		.lhd-rail { opacity: 1; transform: translateX(0px); transition-delay: 0.07s; }
+		.lhd-arrow { opacity: 1; transform: translateX(0px); transition-delay: 0.14s; }
 	}
 
-	// Settle — zero every delay so interaction feedback is instant.
+	// Settle — zero every delay so interaction feedback is instant, and swap
+	// the content transform transition from the 0.30s arrival glide to the
+	// 0.12s SNAP duration (posters' commanding scale + arrows' edge nudge).
 	&.settled {
-		.lhd-scroll > *,
-		.lhd-body > * { transition-delay: 0s; }
+		.lhd-scroll > * { transition-delay: 0s; }
+		.lhd-body > * {
+			transition: opacity 0.26s ease-out, background-color 0.12s ease-out, transform 0.12s ease-out;
+			transition-delay: 0s;
+		}
 		.lhd-scroll > *:nth-child(1),
 		.lhd-scroll > *:nth-child(2),
 		.lhd-scroll > *:nth-child(3),
@@ -3717,11 +3750,29 @@ MainMenu {
 		.lhd-body > *:nth-child(3),
 		.lhd-body > *:nth-child(4) { transition-delay: 0s; }
 		.lhd-rail { transition-delay: 0s; }
-		.lhd-footer { transition-delay: 0s; }
+		.lhd-arrow {
+			transition: opacity 0.26s ease-out, background-color 0.12s ease-out, transform 0.12s ease-out;
+			transition-delay: 0s;
+		}
 	}
 
-	// Return-trip exit — all at once, fast, along the entrance vector (the
-	// backdrop plane over-rotates out imperatively; header retraces its slide).
+	// COMMANDING hover/focus transforms, declared HERE at boosted specificity:
+	// the .arrived translateX(0px) rules above are (0,3,0) and would stomp the
+	// per-class .lhp:hover scale (0,2,0). .settled-gated (0,4/5,0) wins clean;
+	// .settled and .departing never coexist (host flags are exclusive), so the
+	// exit pose can't be overridden mid-departure. SelectedPop(23-27) in
+	// MainMenu mirrors these into the living ring — keep in LOCKSTEP.
+	&.settled .lhd-body > .lhp:hover,
+	&.settled .lhd-body > .lhp.kb-sel { transform: translateX(0px) scale(1.02); }
+	&.settled .lhd-arrow-prev:hover,
+	&.settled .lhd-arrow-prev.kb-sel { transform: translateX(-5px); }
+	&.settled .lhd-arrow-next:hover,
+	&.settled .lhd-arrow-next.kb-sel { transform: translateX(5px); }
+
+	// Exit — all at once, fast, along the entrance vector (v3.1 delta 6: the
+	// backdrop plane over-rotates out imperatively and the flat content RIDES
+	// OUT WITH IT — posters/rail retrace to +60px, header to −40px, arrows to
+	// their own edges — instead of the old fade-in-place).
 	&.departing {
 		.lh-scene-frame { pointer-events: none; }
 		// Width resets with the exit so the NEXT arrival re-signs from 0.
@@ -3731,10 +3782,23 @@ MainMenu {
 			transform: translateX(-40px);
 			transition: opacity 0.14s ease-in, transform 0.14s ease-in;
 		}
-		.lhd-scroll > *,
-		.lhd-body > * { opacity: 0; transition: opacity 0.14s ease-in, background-color 0.12s ease-out, transform 0.12s ease-out; }
-		.lhd-rail { opacity: 0; transition: opacity 0.14s ease-in; }
-		.lhd-footer { opacity: 0; transition: opacity 0.14s ease-in, background-color 0.12s ease-out; }
+		.lhd-scroll > * { opacity: 0; transition: opacity 0.14s ease-in, background-color 0.12s ease-out; }
+		.lhd-body > * {
+			opacity: 0;
+			transform: translateX(60px);
+			transition: opacity 0.14s ease-in, transform 0.14s ease-in, background-color 0.12s ease-out;
+		}
+		.lhd-rail {
+			opacity: 0;
+			transform: translateX(60px);
+			transition: opacity 0.14s ease-in, transform 0.14s ease-in;
+		}
+		.lhd-arrow { opacity: 0; transition: opacity 0.14s ease-in, transform 0.14s ease-in, background-color 0.12s ease-out; }
+		// Compound (0,4,0) so the per-direction exit pose can't tie with the
+		// generic .lhd-arrow rule above (equal-specificity source-order is
+		// unreliable in s&box — the .entered.departing lesson).
+		.lhd-arrow.lhd-arrow-prev { transform: translateX(-24px); }
+		.lhd-arrow.lhd-arrow-next { transform: translateX(24px); }
 	}
 }
 
@@ -3752,8 +3816,6 @@ MainMenu {
 // Keyboard focus (.kb-sel — the living cursor's ring wraps the control; this
 // mirrors the mouse-hover brighten so keyboard = hover, same as the menu).
 .lhd-close.kb-sel { background-color: #3A2F63; }
-.lhd-feedback-btn.kb-sel { background-color: #FFD95A; }
-.lhd-discord-btn.kb-sel { background-color: #4B3A82; color: #ffffff; }
 
 // Signature strip — the ONE permitted panel line, now the scene's IDENTITY
 // carrier (v3): gold on roadmap / violet on patch notes / teal on options,
@@ -3871,36 +3933,9 @@ MainMenu {
 	flex-shrink: 0;
 }
 
-// Status pill — solid slab, live dot pulses (FLOW layer: opacity-only, 1.6s∞).
-.lhd-status-pill {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 7px;
-	height: 26px;
-	padding: 0 12px;
-	background-color: #251E3D;
-	border-radius: 999px;
-
-	span {
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.14em;
-		color: #c4b5fd;
-		text-transform: uppercase;
-		white-space: nowrap;
-	}
-}
-
-.lhd-status-dot {
-	width: 7px;
-	height: 7px;
-	min-width: 7px;
-	border-radius: 999px;
-	background-color: #EE5421;
-	animation: lhd-dot-pulse 1.6s ease-in-out infinite;
-}
-
+// (v3.1: the "OPEN BETA · LIVE" status pill was removed from scene headers —
+// user delta 1. The lhd-dot-pulse keyframes stay: the roadmap's IN
+// DEVELOPMENT stamp dot rides them.)
 @keyframes lhd-dot-pulse {
 	0%   { opacity: 1; }
 	50%  { opacity: 0.35; }
@@ -3908,8 +3943,10 @@ MainMenu {
 }
 
 // ── KEY CAPS — the game's established hotkey-cap dialect (BattleView .kb-key):
-// italic Exo2 glyph, recessed near-black fill, crisp 4px-radius tinted edge.
-// Violet edge by default (menu chrome); .lhd-key-gold inverts for gold CTAs. ──
+// italic Exo2 glyph, recessed near-black fill, crisp 4px-radius tinted edge,
+// violet edge (menu chrome). (v3.1: the footer key rail and its -wide/-gold
+// variants left with the footer; caps now live ON the controls they fire —
+// Q on close, A/D on the scene arrows, W/S in the patch-notes rail.) ──
 .lhd-key {
 	display: flex;
 	align-items: center;
@@ -3930,53 +3967,37 @@ MainMenu {
 	flex-shrink: 0;
 }
 
-.lhd-key-wide {
+// Scaled cap for the 56px close button (v3.1 delta 2 — the cap grows with
+// its host). Compound selector: equal-specificity source-order is unreliable.
+.lhd-key.lhd-key-lg {
+	font-size: 14px;
+	line-height: 22px;
+	min-width: 22px;
+	height: 22px;
+	border-radius: 5px;
 	padding: 0 6px;
-	letter-spacing: 0.04em;
-}
-
-// On the gold feedback CTA: dark punched cap with a gold glyph (the cap reads
-// as part of the button, not a detached badge — same rule as battle's
-// per-diamond border tints).
-.lhd-key-gold {
-	background-color: rgba(35, 20, 4, 0.9);
-	border-color: rgba(120, 80, 10, 0.9);
-	color: #ffd95a;
-}
-
-// Footer hint cluster — quiet key vocabulary strip (A/D MOVE · ENTER SELECT ·
-// Q BACK). Sits between the footer text and the action buttons.
-.lhd-hints {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 5px;
-	margin-right: 14px;
-	flex-shrink: 0;
-}
-
-.lhd-hint-lbl {
-	font-size: 10px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.35);
-	letter-spacing: 0.1em;
-	white-space: nowrap;
-	margin: 0 10px 0 3px;
 }
 
 // Close — quiet slab pill (X glyph + Q cap); hover brighten, press dim. SNAP.
+// v3.1 delta 2: upsized to the 56px family (comfortable mouse target).
+// CursorGeom(20) in MainMenu = (9, 9, 21) — LOCKSTEP with radius 12 + gap 9.
 .lhd-close {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: center;
-	gap: 7px;
-	height: 32px;
-	padding: 0 10px;
+	gap: 9px;
+	height: 56px;
+	padding: 0 16px;
 	background-color: #251E3D;
-	border-radius: 8px;
+	border-radius: 12px;
 	cursor: pointer;
 	transition: background-color 0.12s ease-out;
+
+	// Inner glyph/cap pass the cursor through (hover-flicker rule).
+	> * {
+		pointer-events: none;
+	}
 
 	&:hover {
 		background-color: #3A2F63;
@@ -3985,6 +4006,49 @@ MainMenu {
 		background-color: #1C1730;
 	}
 }
+
+// ── PREV/NEXT SCENE ARROWS (v3.1 delta 4) — the mouse affordance for the
+// A/D scene cycle. Tall chevron slabs floating on the angled backdrop's
+// wings at mid-height, OUTSIDE the flat frame (absolute ±92px past the
+// frame edges; the .lh-scene-frame is 1700px on the 1920 canvas, so they
+// sit in the ~110px wings over the slab bleed — part of the composition,
+// not stickers on the content). Solid fills, no glows; chevron wears the
+// scene identity color (set per-branch in markup); the A/D cap below the
+// chevron IS the key hint now. Focusable 26/27 — CursorGeom (10,10,24);
+// hover/focus nudges toward the edge (SelectedPop lockstep, .settled rules
+// in the scene block). Frame is 952px tall (1080 − 2×64 padding):
+// top 391 = (952 − 170) / 2.
+.lhd-arrow {
+	position: absolute;
+	top: 391px;
+	width: 64px;
+	height: 170px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	background-color: #1C1830;
+	border-radius: 14px;
+	cursor: pointer;
+	z-index: 2;
+
+	// Chevron + cap pass the cursor through (hover-flicker rule).
+	> * {
+		pointer-events: none;
+	}
+
+	&:hover,
+	&.kb-sel {
+		background-color: #2A2348;
+	}
+	&:active {
+		background-color: #15101F;
+	}
+}
+
+.lhd-arrow-prev { left: -92px; }
+.lhd-arrow-next { right: -92px; }
 
 // ── ROADMAP BODY = THE 3-POSTER MARQUEE ROW (Scene Identity v3) ──
 // The body IS the row: the three .lhp posters are its DIRECT children, so
@@ -4166,13 +4230,15 @@ MainMenu {
 	flex-shrink: 0;
 }
 
+// v3.1: pinned auto-width + margin-auto count (was flex: 1 1 0 on the name)
+// so the rail carries NO flex-grow descendant — it now rides the arrival/
+// departure translateX slide (flex-poison rule; same fix as .lhd-header-right).
 .lhd-toc-name {
 	font-size: 12px;
 	font-weight: 700;
 	color: rgba(255, 255, 255, 0.78);
 	white-space: nowrap;
-	flex: 1 1 0;
-	min-width: 0;
+	flex: 0 0 auto;
 }
 
 .lhd-toc-count {
@@ -4180,6 +4246,7 @@ MainMenu {
 	font-weight: 800;
 	white-space: nowrap;
 	flex-shrink: 0;
+	margin-left: auto;
 }
 
 // W/S scroll hint — pinned to the rail's bottom.
@@ -4208,13 +4275,18 @@ MainMenu {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// ROADMAP POSTERS (`.lhp`) — Scene Identity v3 marquee.
-// Anatomy: 72px diamond gem top-left → 40px italic title → one-liner →
-// status stamp top-right rotated −3° (straightens on hover) → 4px gold
-// identity edge (left, full height — flares to 10px).
+// ROADMAP POSTERS (`.lhp`) — Scene Identity v3 marquee (accent v3.1).
+// Anatomy: 72px diamond gem top-left → 40px italic title → UNDER-TITLE
+// identity rule (scene gold, 72px × 5px — v3.1 delta 5, replaces the old
+// 4px left edge) → one-liner → status stamp top-right rotated −3°
+// (straightens on hover).
 // COMMANDING hover/focus (≤0.12s, no glows): bg steps #1C1830 → #241E3E,
-// edge 4→10px, scale 1.02 (flat element, outside any scroll — transform
-// legal), stamp snaps to attention, title lifts to full white.
+// the rule FLARES 72→128px, scale 1.02 (flat element, outside any scroll —
+// transform legal), stamp snaps to attention, title lifts to full white.
+// NOTE: the hover/focus SCALE lives in the .lh-scene block (`.settled
+// .lhd-body > .lhp:hover`) at boosted specificity — the v3.1 arrival slide
+// (translateX 60→0 on `.arrived .lhd-body > *`, (0,3,0)) would stomp a
+// plain .lhp:hover transform.
 // hover == focus: .kb-sel mirrors :hover exactly; SelectedPop(23-25) in
 // MainMenu mirrors the scale into the living ring (origin left center).
 // ════════════════════════════════════════════════════════════════════
@@ -4222,19 +4294,15 @@ MainMenu {
 	// CONTENT-BOX MATH (s&box has no border-box): target footprint 520×560;
 	// padding 40L+36R / 28T+40B → declare 444×492. 3 × 520 + 2 × 42 gap = 1644
 	// = frame 1700 − 56 body padding. No border (filled slab — stroke budget).
-	position: relative; // anchors the absolute .lhp-edge (matches .lh-card)
+	position: relative;
 	flex: 0 0 444px;
 	width: 444px;
 	height: 492px;
 	display: flex;
 	flex-direction: column;
-	// background-IMAGE, not background-color — the absolute .lhp-edge would
-	// render BEHIND a parent background-color fill (engine quirk; .lh-card
-	// precedent uses a gradient for exactly this reason). Subtle vertical
-	// tone shift, raised-card family.
+	// Gradient fill — subtle vertical tone shift, raised-card family.
 	background-image: linear-gradient(to bottom, #1E1934, #181330);
 	border-radius: 16px;
-	overflow: hidden; // clips the edge bar's square corners (explicit-size child — safe)
 	padding: 28px 36px 40px 40px;
 	cursor: pointer;
 	transform-origin: left center; // scale swells rightward — SelectedPop math expects this
@@ -4250,27 +4318,26 @@ MainMenu {
 	&:hover,
 	&.kb-sel {
 		// Gradient swap is instant (gradients don't interpolate) — fine: the
-		// scale + edge flare carry the motion, the bg step is the SNAP accent.
+		// scale + rule flare carry the motion, the bg step is the SNAP accent.
 		background-image: linear-gradient(to bottom, #282148, #221C40);
-		transform: scale(1.02);
 
-		.lhp-edge { width: 10px; }
+		.lhp-rule { width: 128px; } // the commanding flare (v3.1 — was the edge 4→10px)
 		.lhp-stamp { transform: rotate(0deg); } // snaps to attention
 		.lhp-title { color: #ffffff; }
 	}
 }
 
-// Identity accent edge — gold on every poster (the accent bar carries the
-// SCENE identity; the gems carry the per-feature fun). Same absolute-child
-// width-transition pattern as the menu cards' .lh-card-edge.
-.lhp-edge {
-	position: absolute;
-	left: 0;
-	top: 0;
-	height: 100%; // explicit height, not top+bottom stretch (content-height trap)
-	width: 4px;
+// Under-title identity rule — gold on every poster (the rule carries the
+// SCENE identity; the gems carry the per-feature fun). Width-transition
+// flare on hover/focus, same mechanism as the menu cards' .lh-card-edge.
+.lhp-rule {
+	width: 72px;
+	height: 5px;
+	min-height: 5px;
+	border-radius: 3px;
 	background-color: #FFCE3A;
-	z-index: 2;
+	margin-top: 10px;
+	flex-shrink: 0;
 	transition: width 0.12s ease-out;
 }
 
@@ -4378,24 +4445,25 @@ MainMenu {
 	margin-top: 8px;
 }
 
-// ── PATCH-NOTES SECTION SLABS — same card slab, tone bar per category, rows
-// as inset slabs (#131019) with SNAP hover. ──
+// ── PATCH-NOTES SECTION SLABS — same card slab, UNDER-TITLE tone rule per
+// category (v3.1 delta 5 — same accent language as the roadmap posters;
+// replaces the old 3px left border), rows as inset slabs (#131019) with
+// SNAP hover. ──
 .lhd-section {
 	display: flex;
 	flex-direction: column;
 	width: 100%;
 	background-color: #1C1830;
-	border-left: 3px solid #a78bfa;
 	border-radius: 12px;
 	padding: 12px 10px 10px 10px;
 	gap: 8px;
 	flex-shrink: 0;
 
 	// Saturated a step (v3 fun mandate) — matches the rail TOC tones.
-	&.tone-features { border-left-color: #FFCE3A; }
-	&.tone-balance  { border-left-color: #4DA6FF; }
-	&.tone-fixes    { border-left-color: #FF5C78; }
-	&.tone-polish   { border-left-color: #9B6CFF; }
+	&.tone-features .lhd-section-rule { background-color: #FFCE3A; }
+	&.tone-balance  .lhd-section-rule { background-color: #4DA6FF; }
+	&.tone-fixes    .lhd-section-rule { background-color: #FF5C78; }
+	&.tone-polish   .lhd-section-rule { background-color: #9B6CFF; }
 
 	&.tone-features .lhd-section-title { color: #FFCE3A; }
 	&.tone-balance  .lhd-section-title { color: #4DA6FF; }
@@ -4436,6 +4504,18 @@ MainMenu {
 	color: rgba(255, 255, 255, 0.35);
 	letter-spacing: 0.08em;
 	white-space: nowrap;
+}
+
+// Under-title tone rule (v3.1) — static accent (sections aren't interactive;
+// no flare). Aligned with the section title's left padding.
+.lhd-section-rule {
+	width: 56px;
+	height: 4px;
+	min-height: 4px;
+	border-radius: 2px;
+	background-color: #a78bfa; // fallback — tone classes recolor
+	margin: -2px 0 2px 8px;
+	flex-shrink: 0;
 }
 
 .lhd-rows {
@@ -4490,90 +4570,8 @@ MainMenu {
 	color: #ffffff;
 }
 
-// ── FOOTER — dark slab (contrast divider). Primary action = gold (guiding-star
-// Primary tier); Discord = solid violet slab. ──
-.lhd-footer {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 12px;
-	padding: 16px 28px;
-	width: 100%;
-	flex-shrink: 0;
-	background-color: #0E0C16;
-	z-index: 1;
-}
-
-.lhd-footer-text {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-	flex: 1 1 0;
-	min-width: 0;
-
-	.lhd-footer-title {
-		font-size: 13px;
-		font-weight: 800;
-		color: #ffffff;
-		line-height: 17px;
-		white-space: nowrap;
-		letter-spacing: 0.01em;
-	}
-	.lhd-footer-sub {
-		font-size: 11px;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.45);
-		line-height: 14px;
-		white-space: nowrap;
-	}
-}
-
-.lhd-feedback-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	height: 36px;
-	padding: 0 18px;
-	background-color: #FFCE3A;
-	border-radius: 8px;
-	color: #2A1605;
-	font-size: 12px;
-	font-weight: 800;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	cursor: pointer;
-	white-space: nowrap;
-	flex-shrink: 0;
-	transition: background-color 0.12s ease-out;
-
-	&:hover { background-color: #FFD95A; }
-	&:active { background-color: #F59312; }
-}
-
-.lhd-discord-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	height: 36px;
-	padding: 0 16px;
-	background-color: #322350;
-	border-radius: 8px;
-	color: #c4b5fd;
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.04em;
-	cursor: pointer;
-	white-space: nowrap;
-	flex-shrink: 0;
-	transition: background-color 0.12s ease-out, color 0.12s ease-out;
-
-	&:hover {
-		background-color: #4B3A82;
-		color: #ffffff;
-	}
-	&:active { background-color: #281D45; }
-}
+// (v3.1 delta 3: the scene FOOTER — text + key-hint rail + Feedback/Discord
+// CTAs — was removed from both scenes; the posters/content get the vertical
+// room. ENTER/click on a poster still opens Send Feedback; Q rides the close
+// button's cap; A/D ride the prev/next arrows; Discord lives on the menu's
+// own sidebar card.)

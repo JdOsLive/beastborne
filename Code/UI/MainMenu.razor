@@ -417,7 +417,7 @@
 					 KbIndex=@selectedIndex
 					 CloseRequested=@CloseScene
 					 FeedbackRequested=@OnSendFeedback
-					 DiscordRequested=@OnDiscordClick
+					 CycleRequested=@CycleScene
 					 HoverRequested=@OnSceneHover />
 
 	@* Gift inbox — auto-opens once per session when GiftManager finds pending
@@ -614,7 +614,7 @@
 	// The scene shell component (own render tree — see LighthouseScene.razor).
 	// Its public refs replace the old _refSceneBg/_refSceneClose/_refSceneAct1/
 	// _refSceneAct2 fields: the backdrop plane resolves via ResolvePlane(2),
-	// the focusables via FocusEl(20/21/22) — always read fresh through the
+	// the focusables via FocusEl(20/23-27) — always read fresh through the
 	// component so a content remount can never strand a stale panel here.
 	private LighthouseScene _sceneComp;
 
@@ -784,8 +784,8 @@
 			// now strands the ring over the dead menu control's stale rect).
 			// Options has no scene-shell focusable (the docked panel owns its
 			// own kb cursor) — the living cursor hides there instead.
-			// A stale SCENE index from a scene→scene cycle (e.g. discord 22
-			// while arriving in patch notes, which has no 22) would CANCEL the
+			// A stale SCENE index from a scene→scene cycle (e.g. poster 24
+			// while arriving in patch notes, which has no 24) would CANCEL the
 			// retarget (the poll reads >= 20 as "player already chose") — clear
 			// it so the ring re-homes; a real hover during arrival still wins.
 			if ( selectedIndex >= 20 ) selectedIndex = -1;
@@ -888,38 +888,42 @@
 
 	private int _focusPollTicks = 0; // TEMP diagnostics counter (SWAP_DEBUG window)
 
-	// Scene focusable activation (Enter/Space on indices 20-25).
+	// Scene focusable activation (Enter/Space on indices 20-27).
 	private void ExecuteSceneAction()
 	{
 		switch ( selectedIndex )
 		{
 			case 20: CloseScene(); break;
-			case 21:
-				if ( _scene == SceneId.Roadmap ) OnSendFeedback();
-				else OnDiscordClick();
-				break;
-			case 22: OnDiscordClick(); break;
 			// Roadmap posters — ENTER opens Send Feedback (v3 spec: a poster is
 			// an invitation to weigh in on that feature; plain panel for now).
 			case 23:
 			case 24:
 			case 25: OnSendFeedback(); break;
+			// Prev/next scene arrows (v3.1) — ENTER mirrors the click.
+			case 26: CycleScene( -1 ); break;
+			case 27: CycleScene( 1 ); break;
 		}
 	}
 
-	// ─── A/D FOCUS RAILS + DIRECT SCENE CYCLING (v3) ─────────────────────
+	// ─── A/D FOCUS RAILS + DIRECT SCENE CYCLING (v3, rails reshaped v3.1) ──
 	// Each content scene declares its A/D walk order; pushing PAST either end
 	// CYCLES directly to the sibling scene (Roadmap ⇄ Patch Notes) through the
 	// normal RunSwap scene→scene path — full fly-out/fly-in, no menu detour.
-	// OPTIONS IS DELIBERATELY NOT IN THE CYCLE: its docked panel owns the
-	// keyboard outright (the AnyVisible early-return in HandleKeyboardInput),
-	// so A/D can never reach the shell there. Documented on the footer
-	// key-rail ("A·D MOVE · SWITCH SCENE" only renders on the two cycling
-	// scenes; Options keeps its own W/S · SPACE · Q rail).
-	private static readonly int[] RoadmapFocusRail = { 20, 23, 24, 25, 21, 22 };
-	private static readonly int[] PatchNotesFocusRail = { 20, 21 };
+	// v3.1: the footer (and its CTAs 21/22) is GONE; the prev/next ARROWS
+	// (26/27) bookend each rail, so A from the prev arrow / D from the next
+	// arrow cycles naturally — the arrow IS the edge of the rail. They also
+	// carry the A/D key caps (the footer key-rail's vocabulary moved onto
+	// them). OPTIONS IS DELIBERATELY NOT IN THE CYCLE: its docked panel owns
+	// the keyboard outright (the AnyVisible early-return in
+	// HandleKeyboardInput), so A/D can never reach the shell there.
+	private static readonly int[] RoadmapFocusRail = { 26, 20, 23, 24, 25, 27 };
+	private static readonly int[] PatchNotesFocusRail = { 26, 20, 27 };
 
-	private void CycleScene()
+	// dir −1 = prev arrow / A past the rail start; +1 = next arrow / D past
+	// the end. With two scenes in the ring (Options excluded) both directions
+	// land on the sibling — the param keeps the arrows honest and is ready for
+	// a 3-scene ring. Also the CycleRequested method-group callback target.
+	private void CycleScene( int dir )
 	{
 		var dest = _scene == SceneId.Roadmap ? SceneId.PatchNotes : SceneId.Roadmap;
 		if ( dest == SceneId.PatchNotes ) _patchNotesSeen = true;
@@ -1989,37 +1993,23 @@
 		{
 			// Content scenes: Q/back swaps home; W/S scroll the body (mouse
 			// wheel handled in OnMouseWheel); A/D walk the scene focusables
-			// (close → footer actions) with the living cursor; Enter/Space
-			// activates. Options is NOT here — the docked OptionsPanel owns
-			// its own keyboard loop (the AnyVisible early-return above).
+			// (prev arrow → close → posters → next arrow) with the living
+			// cursor; Enter/Space activates. Options is NOT here — the docked
+			// OptionsPanel owns its own keyboard loop (the AnyVisible
+			// early-return above).
 			if (Input.Pressed("Menu") || Input.Pressed("run"))
 			{
 				CloseScene();
 				return;
 			}
-			// Direct number hotkeys — match the visible caps on the footer
-			// actions (battle dialect: Slot1-5 are the 1-5 keys). The ring
-			// jumps to the fired control so the activation reads.
-			if (Input.Pressed("Slot1"))
-			{
-				EnterKeyboardMode();
-				_pendingSceneFocus = false;
-				selectedIndex = 21;
-				ExecuteSceneAction();
-				return;
-			}
-			if (showRoadmap && Input.Pressed("Slot2"))
-			{
-				EnterKeyboardMode();
-				_pendingSceneFocus = false;
-				selectedIndex = 22;
-				ExecuteSceneAction();
-				return;
-			}
-			// A/D walks the scene's focus rail (close → posters → footer CTAs on
-			// roadmap; close → discord on patch notes). Pushing PAST either end
-			// cycles directly to the sibling scene — the v3 "exciting switching"
-			// path (Roadmap ⇄ Patch Notes; Options excluded, see the rail note).
+			// (v3.1: the footer CTAs and their Slot1/Slot2 number hotkeys left
+			// with the footer — Q close + A/D rail + ENTER is the whole scene
+			// key vocabulary now, and every key wears a visible cap.)
+			// A/D walks the scene's focus rail (prev arrow → close → posters →
+			// next arrow on roadmap; prev arrow → close → next arrow on patch
+			// notes). Pushing PAST either end cycles directly to the sibling
+			// scene — the v3 "exciting switching" path (Roadmap ⇄ Patch Notes;
+			// Options excluded, see the rail note).
 			if (Input.Pressed("Left") || Input.Pressed("Right"))
 			{
 				EnterKeyboardMode();
@@ -2029,16 +2019,18 @@
 				{
 					// Ring mid-retarget / stale index — the first press SEEDS
 					// focus at close instead of walking (a blind A press must
-					// not surprise-cycle the scene).
+					// not surprise-cycle the scene). Explicit 20: the rail now
+					// STARTS at the prev arrow (26), but close stays the
+					// natural landing spot (matches the arrival retarget).
 					_pendingSceneFocus = false;
-					selectedIndex = rail[0];
+					selectedIndex = 20;
 					SoundManager.PlayHover();
 					return;
 				}
 				int next = cur + (Input.Pressed("Left") ? -1 : 1);
 				if (next < 0 || next >= rail.Length)
 				{
-					CycleScene();
+					CycleScene(Input.Pressed("Left") ? -1 : 1);
 					return;
 				}
 				if (rail[next] != selectedIndex)
@@ -2301,13 +2293,14 @@
 	{
 		0 => _ref0, 1 => _ref1, 2 => _ref2, 3 => _ref3, 4 => _ref4, 5 => _ref5,
 		6 => _ref6, 7 => _ref7, 8 => _ref8, 9 => _ref9, 10 => _ref10,
-		// Scene focusables (Roadmap/PatchNotes): 20 close · 21/22 footer actions
-		// · 23/24/25 roadmap posters. Resolved through FindFocusable — the
+		// Scene focusables (Roadmap/PatchNotes): 20 close · 23/24/25 roadmap
+		// posters · 26/27 prev/next scene arrows (the footer CTAs 21/22 left
+		// with the footer, v3.1). Resolved through FindFocusable — the
 		// component trusts its @ref when it reads live geometry and otherwise
 		// SELF-HEALS by class walk (the post-split stranded-ring fix: a branch
 		// @ref that never rebound left the focus poll reading null forever
 		// while the ring held the dead sidebar control).
-		>= 20 and <= 25 => _sceneComp?.FindFocusable( i ),
+		>= 20 and <= 27 => _sceneComp?.FindFocusable( i ),
 		_ => null
 	};
 
@@ -2321,9 +2314,9 @@
 		7 or 8 => (11, 11, 24),   // featured CTAs (Play Now / Patch Notes) — tighter than sidebar
 		9 or 10 => (10, 10, 21),  // roadmap/community View+Join pills
 		1 or 2 or 3 => (11, 11, 27), // nav rows — tighter ring (hugs the filled selection)
-		20 => (8, 8, 16),         // scene close button (32px square slab)
-		21 or 22 => (9, 9, 17),   // scene footer actions (36px pills)
+		20 => (9, 9, 21),         // scene close button (56px slab, radius 12 — v3.1 upsize)
 		23 or 24 or 25 => (10, 10, 26), // roadmap posters (520×560 slabs, radius 16)
+		26 or 27 => (10, 10, 24), // prev/next scene arrows (64×170 slabs, radius 14)
 		_ => (14, 14, 30),        // PLAY + discord
 	};
 
@@ -2382,6 +2375,10 @@
 		7 or 8 => (0f, 1.05f),           // featured CTAs — swell from left edge (origin: left center)
 		9 or 10 => (0f, 1.06f),          // card View/Join pills — swell from left edge
 		23 or 24 or 25 => (0f, 1.02f),   // roadmap posters — COMMANDING scale (origin: left center, see .lhp)
+		// Scene arrows nudge toward their own edge on hover/focus — LOCKSTEP
+		// with `.settled .lhd-arrow-prev/next:hover` translateX(∓5px) in SCSS.
+		26 => (-5f, 1f),
+		27 => (5f, 1f),
 		_ => (0f, 1f),
 	};
 	// NOTE: panel controls (7-10) self-pivot at the SAME angle as their panel — the panel
