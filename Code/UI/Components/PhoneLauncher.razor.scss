@@ -1,0 +1,328 @@
+// ═══════════════════════════════════════════════════════════════════════
+// PhoneLauncher — the phone-shaped nav launcher (Fable 5 sweep).
+//
+// TOKEN HEADER — synced to .claude/ui-knowledge/tokens.md (Path B):
+//   bg root        #04060f    backdrop dim rgba(4, 6, 15, 0.72)
+//   panel slab     #15121f    / slab gradient rgba(24,17,48,1)→rgba(11,7,28,1)
+//   raised card    #1c1830    / empty slot #131019
+//   violet ring    #9b6cff    — the phone's ONE accent (nav / "you")
+//   text           #f4f1ea    / dim rgba(214, 206, 236, 0.6)
+//   r-slab 30 (phone body) · r-button 16 (tiles) · ring = host + 5 @ tile scale
+//   ease-glide     cubic-bezier(0.22, 1, 0.36, 1) · t-snap 0.14s
+//
+// Engine rules in force here:
+//   - Root parks at left -10000px when hidden (never display-flip).
+//   - .pl-device carries the 3D lean and NOTHING visual; .pl-surface (a
+//     plain child) carries bg/radius/shadow (3D transform-holder rule).
+//   - Tiles: explicit widths (no flex-grow under a transformed ancestor),
+//     children pointer-events none (hover-flicker rule), ring = real
+//     bordered child (box-shadow rings distort corners).
+//   - Circle: solid div + border-radius 50% — scale/opacity are IMPERATIVE
+//     (per-frame Style writes from the razor); only rest-state lives here.
+//   - Vector rule: filled slabs, no hairline borders, no colored glows.
+// ═══════════════════════════════════════════════════════════════════════
+
+.phone-root {
+    position: absolute;
+    top: 0;
+    left: -10000px; // parked — no transition on left, the park is a teleport
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    // Above every destination it can reveal (QuestPanel 1000, InventoryPanel
+    // 9000) so the liquid circle covers them and the fade IS the reveal.
+    z-index: 9500;
+    pointer-events: none;
+
+    &.shown {
+        left: 0;
+    }
+
+    // ── Backdrop — solid dim (no backdrop-filter in s&box) ──
+    .pl-backdrop {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(4, 6, 15, 0.72);
+        opacity: 0;
+        transition: opacity 0.18s ease-out;
+        pointer-events: none;
+    }
+
+    &.open .pl-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    // ── Entrance/exit — class-toggle transitions (they re-fire on every
+    // open, unlike @keyframes). Transform lives on this un-3D wrapper;
+    // everything inside uses explicit widths so the transform can't
+    // poison flex-grow resolution. ──
+    .pl-wrap {
+        display: flex;
+        flex: 0 0 auto;
+        opacity: 0;
+        transform: translateY(30px);
+        transition: opacity 0.18s ease-out, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+        pointer-events: none;
+    }
+
+    &.open .pl-wrap {
+        opacity: 1;
+        transform: translateY(0px);
+        pointer-events: auto;
+    }
+
+    // ── The 3D lean holder — signed scene lean as wayfinding (+6°, a
+    // device held slightly toward you). NO bg/border/overflow here — a
+    // 3D transform-holder renders its own surface flat. ──
+    .pl-device {
+        display: flex;
+        flex: 0 0 auto;
+        transform: perspective(2000px) rotateY(6deg);
+        transform-origin: center center;
+    }
+
+    // ── The phone body — RSlab 30, dark slab gradient, real elevation ──
+    .pl-surface {
+        display: flex;
+        flex-direction: column;
+        width: 388px;
+        flex: 0 0 auto;
+        padding: 22px 28px 20px 28px;
+        border-radius: 30px;
+        background: linear-gradient(to bottom, rgba(24, 17, 48, 1) 0%, rgba(11, 7, 28, 1) 100%);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6);
+    }
+
+    // ── Top strip — clock + tamer line (flavor chrome, dim + quiet) ──
+    .pl-top {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        width: 388px;
+        margin-bottom: 14px;
+    }
+
+    .pl-clock {
+        font-family: Exo2;
+        font-size: 13px;
+        font-weight: 900;
+        line-height: 16px;
+        letter-spacing: 2px;
+        color: rgba(214, 206, 236, 0.6);
+    }
+
+    .pl-lv {
+        font-family: Exo2Italic;
+        font-style: italic;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 15px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: rgba(214, 206, 236, 0.6);
+    }
+
+    // ── Header row — BbSectionHeader + tilted PROTOTYPE stamp ──
+    .pl-head {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: space-between;
+        width: 388px;
+        margin-bottom: 18px;
+
+        .pl-proto-stamp {
+            margin-top: 4px;
+        }
+    }
+
+    // ── App grid — 4 explicit rows of 3 (flex-wrap miscalculates height) ──
+    .pl-grid {
+        display: flex;
+        flex-direction: column;
+        width: 388px;
+    }
+
+    .pl-row {
+        display: flex;
+        flex-direction: row;
+        gap: 14px;
+        margin-bottom: 14px;
+    }
+
+    // ── App tile — filled slab, idle-dark, focus = lit + violet ring.
+    // Content-box: 120px is the full footprint (no border on the slab). ──
+    .pl-app {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 120px;
+        min-width: 120px;
+        height: 96px;
+        flex: 0 0 120px;
+        gap: 6px;
+        border-radius: 16px;
+        background-color: #131019;
+        cursor: pointer;
+        transition: background-color 0.14s ease-out;
+        pointer-events: auto;
+
+        // Hover-flicker rule — every child passes the cursor through.
+        > * {
+            pointer-events: none;
+        }
+
+        // Focus/hover = brighten only (ring-bearing controls never transform).
+        &:hover,
+        &.focused {
+            background-color: #1c1830;
+        }
+
+        &:active {
+            background-color: #100d18;
+        }
+    }
+
+    // The violet cursor — real bordered child, concentric (host 16 + 5 = 21).
+    .pl-app-ring {
+        position: absolute;
+        top: -5px;
+        left: -5px;
+        right: -5px;
+        bottom: -5px;
+        border: 3px solid #9b6cff;
+        border-radius: 21px;
+        background-color: rgba(0, 0, 0, 0);
+        opacity: 0;
+        transition: opacity 0.14s ease-out;
+    }
+
+    .pl-app.focused .pl-app-ring {
+        opacity: 1;
+    }
+
+    // Label row — key cap + italic label (the command-bar dialect).
+    .pl-app-labelrow {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .pl-app-label {
+        font-family: Exo2Italic;
+        font-style: italic;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 15px;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        color: #f4f1ea;
+    }
+
+    // Key cap — the battle .kb-key dialect (its dark border is the cap's
+    // physical edge, not a decorative hairline — allowed).
+    .pl-key {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 14px;
+        padding: 0 4px;
+        flex: 0 0 auto;
+        background-color: rgba(8, 6, 16, 0.88);
+        border: 2px solid rgba(0, 0, 0, 0.85);
+        border-radius: 4px;
+
+        span {
+            font-family: Exo2;
+            font-size: 10px;
+            font-weight: 900;
+            line-height: 14px;
+            color: rgba(255, 255, 255, 0.82);
+        }
+    }
+
+    // Count badge — solid accent pill, INSIDE tile bounds.
+    .pl-badge {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 12px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 999px;
+        font-family: Exo2;
+        font-size: 11px;
+        font-weight: 900;
+        line-height: 18px;
+        color: #ffffff;
+
+        &.dark-ink {
+            color: #2a1605;
+        }
+    }
+
+    // Bag NEW stamp — BbStamp scaled into the tile corner.
+    .pl-new-stamp {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+
+        .bb-stamp-body {
+            padding: 1px 6px;
+        }
+
+        .bb-stamp-text {
+            font-size: 10px;
+            line-height: 13px;
+            letter-spacing: 0.8px;
+        }
+    }
+
+    // ── Hints row — WASD · ENTER · Q ──
+    .pl-hints {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 388px;
+        margin-top: 4px;
+    }
+
+    .pl-hint-label {
+        font-family: Exo2;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 13px;
+        letter-spacing: 1.2px;
+        color: rgba(214, 206, 236, 0.45);
+        margin-right: 8px;
+    }
+
+    // ── THE LIQUID EXPANSION circle — rest state only; position, scale and
+    // opacity are written imperatively every frame while active. Solid
+    // fill + border-radius 50% (radial-gradient is engine-rejected). ──
+    .pl-circle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        opacity: 0;
+        pointer-events: none;
+    }
+}

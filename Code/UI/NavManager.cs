@@ -56,6 +56,19 @@ public static class NavManager
 	/// <summary>The tab currently mounted by the host. Updated via NotifyTabChanged.</summary>
 	public static string CurrentTab { get; private set; } = "monsters";
 
+	// ── Same-frame double-fire latch ─────────────────────────────────────
+	// Input.Pressed is EDGE-TRIGGERED and reports true to EVERY handler that
+	// polls it in the same frame (the PanelHandledBackKey lesson). When two
+	// keyboard handlers can both route the same key in one frame (GameHUD's
+	// hotkeys + the PhoneLauncher's direct-route keys, across the modal
+	// open/close boundary), the SECOND one must yield. Any successful route
+	// stamps this; handlers check RoutedThisFrame before acting on nav keys.
+	private static float _lastRouteAt = -100f;
+
+	/// <summary>True if a route already fired this frame (Time.Now is constant
+	/// within a frame; the small window also absorbs phase boundaries).</summary>
+	public static bool RoutedThisFrame => Time.Now - _lastRouteAt < 0.05f;
+
 	/// <summary>
 	/// Monotonic nav-change counter. Bumps on every committed tab change and
 	/// every overlay open routed through the router. Panels hash this.
@@ -66,9 +79,17 @@ public static class NavManager
 	public static event Action<string> TabChanged;
 
 	// ── Host registration ────────────────────────────────────────────────
-	// GameHUD registers on OnStart and unregisters on OnDestroy. The router
-	// holds ONE host at a time; a re-register (hotload, scene reload) simply
-	// replaces the delegates.
+	// HOTLOAD LAW (the PlaneTween lesson): delegates stored by long-lived
+	// statics can go stale on s&box hot reload — closures DIE ("Unable to
+	// find matching substitution for a lambda method"), method groups
+	// substitute cleanly. Contract:
+	//   1. Hosts register METHOD GROUPS ONLY (RegisterHost(HandleNavTab, ...)),
+	//      never lambdas/closures.
+	//   2. Hosts RE-REGISTER every frame from their update tick (idempotent
+	//      two-field write) — a hotload-replaced host instance re-owns the
+	//      router within one frame, so a stale delegate can never linger.
+	//   3. Dispatch is null-tolerant AND exception-tolerant: a throw from a
+	//      stale delegate clears the host instead of spamming per-call.
 	private static Func<string, bool> _tabHandler;
 	private static Func<string, bool> _overlayHandler;
 
@@ -77,6 +98,8 @@ public static class NavManager
 	/// tab id and runs the guarded switch (returns true if it handled the
 	/// request — switched OR queued behind a confirm). overlayHandler
 	/// receives an overlay id and opens/toggles it.
+	/// METHOD GROUPS ONLY — see the hotload law above. Safe (and intended)
+	/// to call every frame from the host's update tick.
 	/// </summary>
 	public static void RegisterHost( Func<string, bool> tabHandler, Func<string, bool> overlayHandler )
 	{
@@ -84,7 +107,9 @@ public static class NavManager
 		_overlayHandler = overlayHandler;
 	}
 
-	/// <summary>Clear the host (only if it's still the registered one — a newer host wins).</summary>
+	/// <summary>Clear the host (only if it's still the registered one — a newer host wins).
+	/// Delegate equality compares method + target, so a method group passed here matches
+	/// the method group registered earlier by the same instance.</summary>
 	public static void UnregisterHost( Func<string, bool> tabHandler )
 	{
 		if ( _tabHandler == tabHandler )
@@ -94,13 +119,34 @@ public static class NavManager
 		}
 	}
 
+	/// <summary>Exception-tolerant dispatch — a stale (hotload-orphaned) delegate
+	/// that throws gets cleared instead of spamming every subsequent call. The
+	/// host re-registers on its next frame and routing self-heals.</summary>
+	private static bool SafeInvoke( Func<string, bool> handler, string arg )
+	{
+		if ( handler == null ) return false;
+		try
+		{
+			return handler( arg );
+		}
+		catch ( Exception e )
+		{
+			Log.Warning( $"NavManager: host delegate threw ({e.Message}) — clearing host, it re-registers next frame." );
+			if ( _tabHandler == handler ) _tabHandler = null;
+			if ( _overlayHandler == handler ) _overlayHandler = null;
+			return false;
+		}
+	}
+
 	// ── Routing ──────────────────────────────────────────────────────────
 
 	/// <summary>Navigate to a destination tab (guards apply). False if no host / unknown tab.</summary>
 	public static bool GoTo( string tab )
 	{
 		if ( string.IsNullOrEmpty( tab ) || IndexOf( tab ) < 0 ) return false;
-		return _tabHandler?.Invoke( tab ) ?? false;
+		var handled = SafeInvoke( _tabHandler, tab );
+		if ( handled ) _lastRouteAt = Time.Now;
+		return handled;
 	}
 
 	/// <summary>Navigate by number-key index (0-5).</summary>
@@ -113,8 +159,12 @@ public static class NavManager
 	/// <summary>Open/toggle a non-tab overlay (see Overlay* constants).</summary>
 	public static bool OpenOverlay( string id )
 	{
-		var handled = _overlayHandler?.Invoke( id ) ?? false;
-		if ( handled ) Version++;
+		var handled = SafeInvoke( _overlayHandler, id );
+		if ( handled )
+		{
+			Version++;
+			_lastRouteAt = Time.Now;
+		}
 		return handled;
 	}
 

@@ -21,7 +21,7 @@ namespace Beastborne.UI;
 /// counted. Non-blocking HUD widgets (chat, radio, notification tray, active
 /// effects) are intentionally NOT counted — they don't capture the keyboard.
 ///
-/// Covered: ConfirmDialog, MenuPopup, OptionsPanel, TeamPickerPopup,
+/// Covered: ConfirmDialog, MenuPopup, OptionsPanel, PhoneLauncher, TeamPickerPopup,
 /// ExpeditionResultPopup, BeastShowcasePopup, TamerCardShowcasePopup,
 /// InventoryPanel, ProfilePanel, AchievementPanel, DailyPanel, QuestPanel,
 /// HelpPanel, FeedbackPanel, CreditsPanel, TradingPanel, and the centered
@@ -59,6 +59,10 @@ public static class UIModalState
 			// OptionsPanel is mounted under BOTH MainMenu and GameHUD, so a
 			// single Instance.IsVisible read is unreliable — use AnyVisible.
 			if ( OptionsPanel.AnyVisible ) return "OptionsPanel";
+			// Phone launcher — the experimental nav router. Can only open
+			// when no other modal is up (GameHUD's hotkey handler is gated
+			// on AnyModalOpen), so it never fights the panels below.
+			if ( PhoneLauncher.IsVisible ) return "PhoneLauncher";
 
 			// ── Team picker — blocking modal opened from the world map ──
 			if ( TeamPickerPopup.IsVisible ) return "TeamPickerPopup";

@@ -1,0 +1,501 @@
+@namespace Beastborne.UI.Components
+@using System;
+@using System.Collections.Generic;
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.UI;
+@using Beastborne.UI.Primitives;
+@using Beastborne.Systems;
+@inherits Panel
+
+@*
+    PhoneLauncher — the phone-shaped navigation launcher (Fable 5 sweep,
+    guiding-star §Navigation). Summoned by the MENU button / Slot8; the
+    persistent bottom bar stays mounted for now (A/B trial — retirement
+    comes after the user blesses the phone).
+
+    The phone is a ROUTER, not content: a 3×4 grid of "app" tiles, one per
+    destination, each owning a single accent color. Tapping an app plays
+    THE LIQUID EXPANSION (the locked signature): a solid circle in the
+    app's accent scales from the tile to cover the screen via IMPERATIVE
+    per-frame transforms (class-toggle transforms snap; radial-gradient is
+    engine-rejected), NavManager routes mid-cover, the circle fades out.
+
+    Juice-tier discipline: the liquid plays for DESTINATIONS (the 6 tabs +
+    Quests + Bag — full-screen contexts the circle "becomes"). The four
+    widget apps (Chat/Radio/Effects/Notifications) just close the phone
+    and toggle their popup — a fullscreen accent flood to open a chat
+    widget would be Tier-4 juice on a Tier-1 action.
+
+    Engine rules honored (css-quirks.md):
+    - Root PARKS OFFSCREEN when closed (left -10000px, never display-flip).
+    - 3D lean holder (.pl-device) carries NO bg/border — the surface lives
+      on a direct child (.pl-surface).
+    - Circle = solid scaling div, border-radius 50%, per-frame
+      Style.Transform (PanelTransform.AddScale) — re-asserted every frame
+      so re-renders can never strand it.
+    - Tile children are pointer-events: none (hover-flicker rule).
+    - Coordinates: against a fullscreen root at (0,0), Box.Rect screen px
+      ARE the local style px (the MainMenu cursor precedent).
+
+    Keyboard (registered with UIModalState as "PhoneLauncher"):
+    WASD walk the grid · Enter/Space launch · number keys + T/R/C/N route
+    directly to their app · Q/Esc/Slot8 close. Hover == focus (one cursor).
+*@
+
+<root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "") @(_fx != FxPhase.Idle ? "fx-live" : "")">
+    <div class="pl-backdrop" onclick=@OnBackdropClicked></div>
+
+    <div class="pl-wrap">
+        <div class="pl-device">
+            <div class="pl-surface">
+                <!-- Flavor chrome strip: clock + tamer level. Light — the phone routes, it doesn't inform. -->
+                <div class="pl-top">
+                    <span class="pl-clock">@ClockText</span>
+                    <span class="pl-lv">@TamerLine</span>
+                </div>
+
+                <div class="pl-head">
+                    <BbSectionHeader Kicker="TAMER-LINK" Title="Launcher" Size=@(24) AccentColor="#9b6cff" AccentWidthIdle=@(44) AccentWidthFlare=@(88) />
+                    <BbStamp Text="PROTOTYPE" Tone="violet" Tilt=@(3) Class="pl-proto-stamp" />
+                </div>
+
+                <div class="pl-grid">
+                    @for ( int r = 0; r < 4; r++ )
+                    {
+                        <div class="pl-row">
+                            @for ( int c = 0; c < 3; c++ )
+                            {
+                                var i = r * 3 + c;
+                                var app = Apps[i];
+                                var badge = GetBadgeCount( app.Id );
+                                <div class="pl-app @(i == _kb ? "focused" : "")"
+                                     onclick=@(() => LaunchIndex( i ))
+                                     onmouseover=@(() => HoverTile( i ))>
+                                    <div class="pl-app-ring"></div>
+                                    <BbDiamond Icon=@app.Icon Size=@(30) Tint=@app.Accent DarkGlyph=@app.DarkGlyph HoverSound=@false />
+                                    <div class="pl-app-labelrow">
+                                        <div class="pl-key"><span>@app.Key</span></div>
+                                        <span class="pl-app-label">@app.Label</span>
+                                    </div>
+                                    @if ( app.Id == "bag" && HasNewItems() )
+                                    {
+                                        <BbStamp Text="NEW" Tone="gold" Tilt=@(3) Class="pl-new-stamp" />
+                                    }
+                                    else if ( badge > 0 )
+                                    {
+                                        <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="pl-hints">
+                    <div class="pl-key"><span>WASD</span></div>
+                    <span class="pl-hint-label">MOVE</span>
+                    <div class="pl-key"><span>ENTER</span></div>
+                    <span class="pl-hint-label">LAUNCH</span>
+                    <div class="pl-key"><span>Q</span></div>
+                    <span class="pl-hint-label">CLOSE</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- THE LIQUID EXPANSION circle — solid accent fill, driven entirely
+         imperatively from StepFx(). Sits AFTER .pl-wrap so it paints over
+         the phone. pointer-events: none — input outruns animation. -->
+    <div class="pl-circle" @ref="_circle" style="background-color: @_fxAccent;"></div>
+</root>
+
+@code {
+    // ── Static show/hide API (the house pattern: static IsVisible + BuildHash) ──
+
+    public static PhoneLauncher Instance { get; private set; }
+
+    /// <summary>True while the phone UI is open (UIModalState reads this).</summary>
+    public static bool IsVisible { get; private set; }
+
+    // Close animation window — the root stays on-screen (parked-open) until
+    // this expires so the reverse transition is visible before parking.
+    private static float _closingUntil;
+
+    public static void Show()
+    {
+        if ( IsVisible ) return;
+        IsVisible = true;
+        _closingUntil = 0f;
+        SoundManager.PlayPopup();
+        Instance?.ResetForOpen();
+    }
+
+    public static void Close()
+    {
+        if ( !IsVisible ) return;
+        IsVisible = false;
+        _closingUntil = Time.Now + 0.18f;
+        SoundManager.PlayPopdown();
+    }
+
+    public static void Toggle()
+    {
+        if ( IsVisible ) Close();
+        else Show();
+    }
+
+    // ── App registry — grid order (3 cols × 4 rows) ─────────────────────
+    // Each destination owns ONE accent (guiding-star three-color identity:
+    // that token drives the tile gem, the badge, and the liquid expansion).
+    // Liquid = full-screen destinations only (juice-tier discipline).
+    private record PhoneApp( string Id, string Label, string Icon, string Accent, string Key, bool IsTab, string RouteId, bool Liquid, bool DarkGlyph );
+
+    private static readonly PhoneApp[] Apps =
+    {
+        // Row 1 — the core loop
+        new( "beasts",      "BEASTS",     "lucide:paw-print",      "#7b4ddb", "1", true,  "monsters",   true,  false ),
+        new( "skills",      "SKILLS",     "lucide:network",        "#ff6bd6", "2", true,  "skills",     true,  false ),
+        new( "expedition",  "EXPEDITION", "lucide:map",            "#ee5421", "3", true,  "expedition", true,  false ),
+        // Row 2 — the world
+        new( "online",      "ONLINE",     "lucide:globe",          "#3f8fe0", "4", true,  "online",     true,  false ),
+        new( "beastbook",   "BEASTBOOK",  "lucide:book-open",      "#2dd4bf", "5", true,  "beastiary",  true,  false ),
+        new( "shop",        "SHOP",       "lucide:shopping-bag",   "#ffce3a", "6", true,  "shop",       true,  true ),
+        // Row 3 — your stuff
+        new( "quests",      "QUESTS",     "lucide:scroll-text",    "#3fb45e", "7", false, NavManager.OverlayQuests, true,  false ),
+        new( "bag",         "BAG",        "lucide:backpack",       "#d9a054", "9", false, NavManager.OverlayBag,    true,  false ),
+        new( "chat",        "CHAT",       "lucide:message-circle", "#4aa8ff", "T", false, NavManager.OverlayChat,   false, false ),
+        // Row 4 — the widgets
+        new( "radio",       "RADIO",      "lucide:radio",          "#c26bff", "R", false, NavManager.OverlayRadio,         false, false ),
+        new( "effects",     "EFFECTS",    "lucide:sparkles",       "#f7e024", "C", false, NavManager.OverlayEffects,       false, true ),
+        new( "alerts",      "ALERTS",     "lucide:bell",           "#e0414a", "N", false, NavManager.OverlayNotifications, false, false ),
+    };
+
+    private const int Cols = 3;
+    private const int Rows = 4;
+
+    // ── Keyboard cursor (hover == focus, one violet ring) ───────────────
+    private int _kb = 0;
+
+    // ── Liquid expansion state machine ──────────────────────────────────
+    // Idle → Expanding (240ms, eased scale-up from the tile; ROUTE fires at
+    // the 120ms mid-cover point, phone body hides behind the circle) →
+    // Fading (180ms opacity 1→0 at full cover) → Idle. 420ms total input →
+    // settled — under the 450ms hard bar. Interrupt-safe: a new launch
+    // re-seeds the circle in place; a lost @ref kills the phase cleanly.
+    private enum FxPhase { Idle, Expanding, Fading }
+
+    private const float ExpandSeconds = 0.24f;
+    private const float FadeSeconds = 0.18f;
+    private const float RouteAtFrac = 0.5f;    // eased coverage ≈ 87% here — the swap hides behind the flood
+    private const float CircleHalf = 50f;      // circle base is 100×100 (scss)
+
+    private FxPhase _fx = FxPhase.Idle;
+    private float _fxT0;
+    private float _fxX, _fxY;                  // bloom center, root-local px
+    private float _fxCover;                    // scale factor that covers the farthest corner
+    private string _fxAccent = "#9b6cff";
+    private bool _fxRouted;
+    private int _fxAppIndex = -1;
+
+    private Panel _circle;
+
+    private bool Shown => IsVisible || _fx != FxPhase.Idle || Time.Now < _closingUntil;
+
+    // ── Flavor chrome ────────────────────────────────────────────────────
+    private string ClockText => DateTime.Now.ToString( "HH:mm" );
+    private string TamerLine
+    {
+        get
+        {
+            var t = Beastborne.Core.TamerManager.Instance?.CurrentTamer;
+            return t == null ? "TAMER" : $"{t.Name}  ·  LV {t.Level}";
+        }
+    }
+
+    // ── Badges (carried over from the command bar's counts) ─────────────
+    private int GetBadgeCount( string appId ) => appId switch
+    {
+        "quests" => Panels.QuestPanel.GetTotalUnclaimedCount(),
+        "chat" => ChatPanel.UnreadMessageCount,
+        "effects" => ActiveEffectsPanel.TotalEffectCount,
+        "alerts" => NotificationPanel.UnreadCount,
+        _ => 0,
+    };
+
+    private bool HasNewItems() => Beastborne.Core.ItemManager.Instance?.HasNewItems ?? false;
+
+    private string FormatBadge( int n ) => n > 99 ? "99+" : n.ToString();
+
+    // ── Open/close plumbing ──────────────────────────────────────────────
+    private void ResetForOpen()
+    {
+        // Land the cursor on the CURRENT tab's tile (tabs occupy tiles 0-5
+        // in NavManager order) so Enter re-launches where you are.
+        var idx = NavManager.IndexOf( NavManager.CurrentTab );
+        _kb = idx >= 0 ? idx : 0;
+    }
+
+    private void OnBackdropClicked()
+    {
+        Close();
+    }
+
+    private void HoverTile( int i )
+    {
+        if ( !IsVisible || i == _kb ) return;
+        _kb = i;
+        SoundManager.PlayHover();
+    }
+
+    // ── Launch ───────────────────────────────────────────────────────────
+    private void LaunchIndex( int i )
+    {
+        if ( i < 0 || i >= Apps.Length ) return;
+        var app = Apps[i];
+        _kb = i;
+
+        if ( app.Liquid )
+        {
+            SoundManager.PlayForward();
+            StartLiquid( i, app );
+        }
+        else
+        {
+            // Widget apps: no flood — close the phone (Close plays its own
+            // popdown), toggle the popup (which plays its own open sound).
+            Close();
+            RouteApp( i );
+        }
+    }
+
+    private void RouteApp( int i )
+    {
+        if ( i < 0 || i >= Apps.Length ) return;
+        var app = Apps[i];
+        if ( app.IsTab ) NavManager.GoTo( app.RouteId );
+        else NavManager.OpenOverlay( app.RouteId );
+    }
+
+    // ── The liquid expansion ─────────────────────────────────────────────
+    private void StartLiquid( int i, PhoneApp app )
+    {
+        // Bloom origin = the tile's visual center. Against this fullscreen
+        // root at (0,0), Box.Rect screen px are the local style px (the
+        // MainMenu cursor precedent). Fallback: screen center.
+        var rootRect = Box.Rect;
+        var tile = FindTilePanel( i );
+        if ( tile != null && tile.Box.Rect.Width >= 1f )
+        {
+            _fxX = tile.Box.Rect.Center.x - rootRect.Left;
+            _fxY = tile.Box.Rect.Center.y - rootRect.Top;
+        }
+        else
+        {
+            _fxX = rootRect.Width / 2f;
+            _fxY = rootRect.Height / 2f;
+        }
+
+        // Cover scale: farthest corner distance / base radius, + margin.
+        float dx = MathF.Max( _fxX, rootRect.Width - _fxX );
+        float dy = MathF.Max( _fxY, rootRect.Height - _fxY );
+        float dist = MathF.Sqrt( dx * dx + dy * dy );
+        _fxCover = ( dist / CircleHalf ) * 1.08f;
+
+        _fxAccent = app.Accent;
+        _fxAppIndex = i;
+        _fxRouted = false;
+        _fxT0 = Time.Now;
+        _fx = FxPhase.Expanding;   // re-seeding mid-flight IS the interrupt path
+
+        // Seed the first frame immediately so there's no 1-frame pop.
+        if ( _circle != null ) ApplyCircle( _circle, 0f, 1f );
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Per-frame liquid step. Everything is TIME-based (not per-frame lerp)
+    /// so the mount-stall a tab swap can cause mid-cover only skips frames,
+    /// never changes the total duration — and the freeze lands while the
+    /// screen is a solid accent flood, which is the whole point of routing
+    /// mid-cover.
+    /// </summary>
+    private void StepFx()
+    {
+        if ( _fx == FxPhase.Idle ) return;
+        var el = _circle;
+        if ( el == null ) { _fx = FxPhase.Idle; return; }
+
+        if ( _fx == FxPhase.Expanding )
+        {
+            float u = Math.Clamp( ( Time.Now - _fxT0 ) / ExpandSeconds, 0f, 1f );
+            float s = 1f - MathF.Pow( 1f - u, 3f );   // ease-out cubic — fast early coverage
+            ApplyCircle( el, s, 1f );
+
+            if ( !_fxRouted && u >= RouteAtFrac )
+            {
+                _fxRouted = true;
+                // Hide the phone body instantly behind the flood — no close
+                // animation (it would never be seen) and the modal releases
+                // so the destination owns input immediately.
+                IsVisible = false;
+                _closingUntil = 0f;
+                RouteApp( _fxAppIndex );
+            }
+
+            if ( u >= 1f )
+            {
+                _fx = FxPhase.Fading;
+                _fxT0 = Time.Now;
+            }
+        }
+        else if ( _fx == FxPhase.Fading )
+        {
+            float v = Math.Clamp( ( Time.Now - _fxT0 ) / FadeSeconds, 0f, 1f );
+            ApplyCircle( el, 1f, 1f - v );
+
+            if ( v >= 1f )
+            {
+                _fx = FxPhase.Idle;
+                _fxAppIndex = -1;
+                // Return the circle to its CSS rest state (opacity 0).
+                el.Style.Opacity = null;
+                el.Style.Transform = null;
+                StateHasChanged();
+            }
+        }
+    }
+
+    // Re-asserts position + transform + opacity EVERY frame (rebuild-proof —
+    // the PlaneTween HoldUntil lesson: one-shot style writes get wiped by
+    // re-renders; per-frame writes survive anything).
+    private void ApplyCircle( Panel el, float progress, float opacity )
+    {
+        el.Style.Left = Length.Pixels( _fxX - CircleHalf );
+        el.Style.Top = Length.Pixels( _fxY - CircleHalf );
+        var t = new PanelTransform();
+        float s = MathF.Max( 0.02f, progress * _fxCover );
+        t.AddScale( new Vector2( s, s ) );
+        el.Style.Transform = t;
+        el.Style.Opacity = opacity;
+    }
+
+    // ── Tile lookup — fresh traversal each call (hotload-safe; no stored refs) ──
+    private Panel FindTilePanel( int idx )
+    {
+        var tiles = new List<Panel>();
+        CollectTiles( this, tiles );
+        return idx >= 0 && idx < tiles.Count ? tiles[idx] : null;
+    }
+
+    private static void CollectTiles( Panel p, List<Panel> outList )
+    {
+        foreach ( var c in p.Children )
+        {
+            if ( c.HasClass( "pl-app" ) ) outList.Add( c );
+            else CollectTiles( c, outList );
+        }
+    }
+
+    // ── Per-frame — s&box auto-ticks Panel-derived razor components ──────
+    public override void Tick()
+    {
+        base.Tick();
+        Instance = this;   // re-asserted every frame — hotload can never strand a stale instance
+
+        // Leaving the game (back to main menu) force-closes the phone —
+        // otherwise the static IsVisible would hold UIModalState.AnyModalOpen
+        // true over the menu forever.
+        if ( Beastborne.Core.GameManager.Instance?.IsInGame != true )
+        {
+            if ( IsVisible ) { IsVisible = false; _closingUntil = 0f; }
+            if ( _fx != FxPhase.Idle )
+            {
+                // Abandon the flight AND clear the circle's inline styles —
+                // a stale opacity-1 cover would otherwise flash on next open.
+                _fx = FxPhase.Idle;
+                _fxAppIndex = -1;
+                if ( _circle != null )
+                {
+                    _circle.Style.Opacity = null;
+                    _circle.Style.Transform = null;
+                }
+            }
+            return;
+        }
+
+        StepFx();
+
+        if ( !IsVisible ) return;
+        if ( !UIModalState.IsTopModal( "PhoneLauncher" ) ) return;
+        if ( ChatPanel.IsChatFocused ) return;
+
+        HandleKeyboard();
+    }
+
+    private void HandleKeyboard()
+    {
+        // Same-frame double-fire guard: Input.Pressed is edge-triggered and
+        // reports true to EVERY handler this frame. The Slot8 press that just
+        // OPENED the phone (via GameHUD → NavManager) must not also be read
+        // here as "close"; ditto any direct-route key GameHUD handled.
+        if ( NavManager.RoutedThisFrame ) return;
+
+        // Close — Q ("Menu"), Escape, or Slot8 (the key that opened it: true toggle).
+        if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) || Input.Pressed( "Slot8" ) )
+        {
+            Close();
+            return;
+        }
+
+        // Direct-route keys — number keys + the widget letters, same map as
+        // the command bar so muscle memory transfers 1:1.
+        if ( Input.Pressed( "Slot1" ) ) { LaunchIndex( 0 ); return; }
+        if ( Input.Pressed( "Slot2" ) ) { LaunchIndex( 1 ); return; }
+        if ( Input.Pressed( "Slot3" ) ) { LaunchIndex( 2 ); return; }
+        if ( Input.Pressed( "Slot4" ) ) { LaunchIndex( 3 ); return; }
+        if ( Input.Pressed( "Slot5" ) ) { LaunchIndex( 4 ); return; }
+        if ( Input.Pressed( "Slot6" ) ) { LaunchIndex( 5 ); return; }
+        if ( Input.Pressed( "Slot7" ) ) { LaunchIndex( 6 ); return; }
+        if ( Input.Pressed( "Slot9" ) ) { LaunchIndex( 7 ); return; }
+        if ( Input.Pressed( "Chat" ) ) { LaunchIndex( 8 ); return; }
+        if ( Input.Pressed( "Reload" ) ) { LaunchIndex( 9 ); return; }
+        if ( Input.Pressed( "View" ) ) { LaunchIndex( 10 ); return; }
+        if ( Input.Pressed( "Notifications" ) ) { LaunchIndex( 11 ); return; }
+
+        // Grid walk — WASD, wrapping both axes.
+        int col = _kb % Cols;
+        int row = _kb / Cols;
+        bool moved = false;
+        if ( Input.Pressed( "Left" ) ) { col = ( col + Cols - 1 ) % Cols; moved = true; }
+        else if ( Input.Pressed( "Right" ) ) { col = ( col + 1 ) % Cols; moved = true; }
+        else if ( Input.Pressed( "Forward" ) ) { row = ( row + Rows - 1 ) % Rows; moved = true; }
+        else if ( Input.Pressed( "Backward" ) ) { row = ( row + 1 ) % Rows; moved = true; }
+
+        if ( moved )
+        {
+            _kb = row * Cols + col;
+            SoundManager.PlayHover();
+            return;
+        }
+
+        // Launch — Enter or Space (the canonical confirm pair).
+        if ( Input.Pressed( "Enter" ) || Input.Pressed( "Jump" ) )
+        {
+            LaunchIndex( _kb );
+        }
+    }
+
+    protected override int BuildHash()
+    {
+        return HashCode.Combine(
+            HashCode.Combine( IsVisible, Shown, (int)_fx, _kb, _fxAccent ),
+            HashCode.Combine(
+                GetBadgeCount( "quests" ),
+                GetBadgeCount( "chat" ),
+                GetBadgeCount( "effects" ),
+                GetBadgeCount( "alerts" ),
+                HasNewItems(),
+                ClockText ) );
+    }
+}
