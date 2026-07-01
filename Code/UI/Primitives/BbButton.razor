@@ -1,0 +1,131 @@
+@namespace Beastborne.UI.Primitives
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.UI;
+@using Beastborne.Systems;
+@inherits Panel
+
+@*
+    BbButton — THE Beastborne button, written once (guiding-star §Components).
+
+    Tiers (one primary per view — ration the loud ones):
+        primary   — gold gradient, dark ink text. THE "go" button.
+        commit    — solid red. Embark / start-battle / destructive-forward.
+        secondary — raised surface slab; optional 45° diamond icon slot
+                    (pass Icon + IconTint — the diamond means action).
+        ghost     — quiet dark slab, idle-dim. Cancel / back / tertiary.
+        danger    — red-tinted slab. Destructive. HoldToConfirm=true renders
+                    the HOLD cap affordance (visual only this round — actual
+                    press-and-hold timing ships later).
+
+    Sizes: 56 / 44 / 34 (px height). Main flows use ≥44.
+
+    States per the motion doctrine: hover brighten / active press-dim, hue
+    NEVER changes, all transitions ≤0.14s SNAP. No transforms — a
+    ring-bearing button must keep its even focus-ring gap.
+
+    Focus: Focused=true lights the concentric violet ring (real bordered
+    child, ring radius = host radius + 10). Use it for kb-cursor state.
+
+    Sounds: hover plays SoundManager.PlayHover() automatically (HoverSound
+    =false to opt out). Click sound is OFF by default — click handlers own
+    their own audio house-wide (ClickSound=true to opt in).
+
+    Callbacks: pass method groups (OnClick=@DoThing) — hotload law, don't
+    wrap in closures at call sites when a method group works.
+
+    Child content: the engine gives every Panel a built-in ChildContent
+    fragment — markup between <BbButton>...</BbButton> tags renders inside
+    the root (after the template children). Prefer Label for plain text.
+
+    Usage:
+        <BbButton Tier="primary" Size=@(56) Label="EMBARK" OnClick=@Embark KeyCap="R" />
+        <BbButton Tier="secondary" Size=@(44) Label="FUSE" Icon="lucide:combine" IconTint="#ff6bd6" OnClick=@OpenFusion />
+        <BbButton Tier="ghost" Size=@(44) Label="CANCEL" Stretch=@true Focused=@(_kb == 1) OnClick=@Close />
+        <BbButton Tier="danger" Size=@(34) Label="RELEASE" HoldToConfirm=@true OnClick=@AskRelease />
+*@
+
+<root class="bb-btn tier-@TierClass size-@Size @(Stretch ? "stretch" : "") @(Disabled ? "disabled" : "") @(Focused ? "focused" : "") @Class"
+      onclick=@HandleClick onmouseover=@HandleMouseOver onmouseout=@HandleMouseOut>
+    <div class="bb-btn-ring"></div>
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        if (TierClass == "secondary")
+        {
+            <BbDiamond Icon=@Icon Size=@DiamondSize Tint=@IconTint />
+        }
+        else
+        {
+            <iconify class="bb-btn-icon" icon="@Icon" Size=@IconSize Color=@GlyphColor />
+        }
+    }
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="bb-btn-label">@Label</span>
+    }
+    @if (!string.IsNullOrEmpty(KeyCap))
+    {
+        <span class="bb-btn-keycap">@KeyCap</span>
+    }
+    @if (TierClass == "danger" && HoldToConfirm)
+    {
+        <span class="bb-btn-hold">HOLD</span>
+    }
+</root>
+
+@code {
+    [Property] public string Tier { get; set; } = "secondary";  // primary | commit | secondary | ghost | danger
+    [Property] public int Size { get; set; } = 44;              // 56 | 44 | 34
+    [Property] public string Label { get; set; } = "";
+    [Property] public string Icon { get; set; } = "";           // iconify name; secondary tier renders it in a 45° diamond
+    [Property] public string IconTint { get; set; } = BbTokens.Violet; // diamond fill (secondary tier only) — tint to function
+    [Property] public string KeyCap { get; set; } = "";         // hotkey cap (battle .kb-key dialect), e.g. "Q"
+    [Property] public bool Disabled { get; set; } = false;
+    [Property] public bool Focused { get; set; } = false;       // violet concentric ring (keyboard cursor / selection)
+    [Property] public bool Stretch { get; set; } = false;       // flex: 1 1 0 — fill the row (dialog button pairs)
+    [Property] public bool HoldToConfirm { get; set; } = false; // danger tier: render the HOLD cap affordance
+    [Property] public Action OnClick { get; set; }
+    [Property] public bool HoverSound { get; set; } = true;
+    [Property] public bool ClickSound { get; set; } = false;    // click handlers own their own audio house-wide
+    [Property] public string Class { get; set; } = "";
+
+    private bool _hoverPlayed;
+
+    private string TierClass => string.IsNullOrEmpty( Tier ) ? "secondary" : Tier.ToLowerInvariant();
+    private int IconSize => Size >= 56 ? 22 : Size >= 44 ? 18 : 14;
+    private int DiamondSize => Size >= 56 ? 26 : Size >= 44 ? 22 : 16;
+
+    private string GlyphColor => TierClass switch
+    {
+        "primary" => BbTokens.GoldInk,
+        "danger" => "#ff8a92",
+        "ghost" => "rgba(214, 206, 236, 0.75)",
+        _ => BbTokens.Text,
+    };
+
+    private void HandleClick()
+    {
+        if ( Disabled ) return;
+        OnClick?.Invoke();
+        if ( ClickSound ) SoundManager.PlayClick();
+    }
+
+    private void HandleMouseOver()
+    {
+        if ( Disabled || _hoverPlayed ) return;
+        _hoverPlayed = true;
+        if ( HoverSound ) SoundManager.PlayHover();
+    }
+
+    private void HandleMouseOut()
+    {
+        _hoverPlayed = false;
+    }
+
+    protected override int BuildHash()
+    {
+        return HashCode.Combine(
+            HashCode.Combine( Tier, Size, Label, Icon, IconTint, KeyCap ),
+            HashCode.Combine( Disabled, Focused, Stretch, HoldToConfirm, Class ) );
+    }
+}

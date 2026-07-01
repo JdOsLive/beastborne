@@ -33,25 +33,31 @@ This rule applies even when you're working on a new panel that has no obvious ro
 | Hover purple bg | `rgba(139, 92, 246, 0.18)` |
 | Active purple border | `rgba(139, 92, 246, 0.45)` |
 
-### Element color map (CANONICAL — match exactly)
+### Element color map (BASELINE — hues being redesigned by Fable 5)
 
-**Canonical source: `Code/UI/Components/FilterBar.razor.scss` filter pill active state (lines 86-95).** Use these across every panel for consistency — element pills, grid card badges, detail badges, anywhere an element color appears as a solid fill.
+> ⚠️ **The full per-element palette (Wind included) is being redesigned as one cohesive set**
+> (see `guiding-star.md` → Element identity). Treat this table as the **shipped baseline to
+> iterate from**, not gospel. The one constant that must survive: the **two-tone dark-fill +
+> bright-rim** rendering system (dark cards, element in a rimmed badge only). Wind is
+> currently teal (`#0d9488`/`#2dd4bf`) — a fine anchor, but no longer locked.
 
-All backgrounds are dark/saturated. White text works for every element — no dark-text-on-light exception needed.
+**Shipped source: `Code/UI/Panels/BeastiaryPanel.razor.scss:797-807` (grid card badges,
+most-visible in-game) + `Code/UI/Components/FilterBar.razor.scss:102-112` (filter pills).**
+All backgrounds are dark/saturated; white text works for every element.
 
-| Element | Background | Border (companion) | Text on solid pill |
+| Element | Background (dark fill) | Border (bright rim) | Text on solid pill |
 |---------|-----------|--------------------|--------------------|
 | Fire | `#b91c1c` | `#dc2626` | white |
 | Water | `#1d4ed8` | `#2563eb` | white |
 | Earth | `#78350f` | `#92400e` | white |
-| Wind | `#15803d` | `#16a34a` | white |
+| **Wind** | `#0d9488` | `#2dd4bf` | white — currently teal (anchor, not locked) |
 | Electric | `#a16207` | `#ca8a04` | white |
 | Ice | `#0284c7` | `#0ea5e9` | white |
-| Nature | `#166534` | `#15803d` | white |
+| Nature | `#16a34a` | `#22c55e` | white |
 | Metal | `#475569` | `#64748b` | white |
 | Shadow | `#4c1d95` | `#5b21b6` | white |
 | Spirit | `#9d174d` | `#be185d` | white |
-| Neutral | `#525252` | `#737373` | white (extrapolated — not in filter pills) |
+| Neutral | `#525252` | `#737373` | white |
 
 **Allowed exception:** subtle rim-light accents (e.g. Beastbook `.bb-move-row` borders, `.bb-evo-stage.current` portrait outlines) may use the lighter "game palette" values at 0.65 alpha against a dark neutral background. These are ambient glows, not identity pills — the canonical palette above applies to every solid-fill element surface.
 
@@ -110,7 +116,69 @@ For per-tier text colors in mastery sections (Lv0 unbound → Lv6 grandmaster):
 
 ---
 
-## Design system primitives
+## Shared primitives (`Code/UI/Primitives/`) — reach for these FIRST
+
+**Wave 1 of the Fable 5 sweep (2026-07-01).** These are real Razor components, not recipes. Per `tokens.md` Path B (s&box has no CSS `var()`), **their SCSS is the token mechanism**: chrome values live ONCE in each primitive's `.razor.scss` (token-header banner at the top, synced to `tokens.md`), and `BbTokens.cs` supplies dynamic/inline values. A recolor = edit the primitive + BbTokens, every panel follows. **Do not re-implement a button/header/stamp/diamond by hand in a new panel — use these.** Pilot adoption: `ConfirmDialog.razor`.
+
+Shared conventions (all four): stateless — parents drive state via `[Property]` params (all params are in `BuildHash()`, so param changes re-render); callbacks are `Action` params — pass **method groups** (`OnClick=@DoThing`, hotload law); every inner element is `pointer-events: none` (hover-flicker rule); add call-site classes via the `Class` param (don't put a `class` attribute on the component tag); child markup between tags works via the engine's built-in `ChildContent` (renders after template children — prefer value params).
+
+### `<BbButton>` — the button
+| Param | Type / default | Notes |
+|---|---|---|
+| `Tier` | `"secondary"` | `primary` (gold grad, ink text — ONE per view) · `commit` (solid red — embark/destructive-forward) · `secondary` (surface slab + optional diamond icon) · `ghost` (quiet, idle-dim — cancels) · `danger` (red-tinted slab) |
+| `Size` | `44` | `56` / `44` / `34` heights. Main flows ≥44. Radius 16 (11 at size-34). |
+| `Label` | `""` | italic-900 uppercase CTA voice |
+| `Icon` / `IconTint` | `""` / violet | secondary tier renders the icon inside a `BbDiamond` (tint to function); other tiers render a plain iconify |
+| `KeyCap` | `""` | hotkey cap in the battle `.kb-key` dialect (`"Q"`) |
+| `Focused` | `false` | violet concentric focus ring (host radius +10). This IS the kb-cursor treatment — no more per-panel `kb-active` glows. |
+| `Disabled` / `Stretch` | `false` | inert-dim / `flex: 1 1 0` row fill |
+| `HoldToConfirm` | `false` | danger tier only — renders the HOLD cap (visual affordance; timing logic later) |
+| `OnClick` | — | method group |
+| `HoverSound` / `ClickSound` | `true` / `false` | hover audio is automatic; click audio stays in handlers (house convention) |
+
+States: hover brighten / active dim, **hue never changes, no transforms** (ring gap stays even). No borders, no glows — filled slabs only.
+
+### `<BbSectionHeader>` — kicker + italic title + accent rule
+| Param | Type / default | Notes |
+|---|---|---|
+| `Kicker` / `Title` | `""` | 13px/800/UPPER 2px-tracked eyebrow · Exo2Italic-900 title |
+| `Size` | `34` | title px: `24` (panel section) / `34` (screen section) / `52` (scene title) |
+| `AccentColor` | gold | the view's ONE accent; kicker inherits (override via `KickerColor`) |
+| `AccentWidthIdle` / `AccentWidthFlare` | `56` / `112` | the under-title rule's two widths |
+| `Flare` | `false` | parent-gated widen (hover/focus/arrival) on the 0.27s glide ease. Pure-CSS alternative: `.parent:hover BbSectionHeader .bb-sechead-accent { width: 112px; }` |
+
+### `<BbStamp>` — the tilted status stamp
+| Param | Type / default | Notes |
+|---|---|---|
+| `Text` | `""` | 12px/800/UPPER on a solid pill |
+| `Tone` | `"gold"` | semantic fills, FIXED meanings: gold (ink text) · violet · orange (live) · red · green · blue · neutral (dark slab) |
+| `Tilt` | `-3` | sign picks the lean: `<0` → −3°, `>0` → +3°, `0` → flat. Only ±3 exists in the language. |
+| `Dot` | `false` | pulsing 1.6s live-dot |
+| `Class` | `""` | pass `"straighten"` to snap upright ("snaps to attention"); or parent CSS: `.card:hover BbStamp .bb-stamp-body { transform: rotate(0deg); }` |
+
+### `<BbDiamond>` — the 45° action gem
+| Param | Type / default | Notes |
+|---|---|---|
+| `Icon` | sparkles | iconify name, counter-rotated upright |
+| `Size` | `36` | frame side px; root bounding box = Size×1.45 (never overhangs flex rows) |
+| `Tint` | violet | solid fill — tint to FUNCTION (Item blue, Fuse pink, Release red) |
+| `DarkGlyph` | `false` | ink glyph for light tints (gold) |
+| `OnClick` | — | when set: pointer cursor, spring hover scale, press dip, hover sound. **Hover scales = transforms — don't put interactive diamonds directly in scroll grids.** |
+
+The diamond MEANS action — never on nav/Play/passive chrome.
+
+### Adoption cheat-sheet (converting a panel)
+1. `@using Beastborne.UI.Primitives;` at the top of the `.razor`.
+2. Map each hand-rolled button: gold CTA → `primary`; embark/red-forward → `commit`; icon-action rows → `secondary` + `Icon`; cancel/back → `ghost`; release/delete → `danger`. One `primary` per view — demote the rest.
+3. Replace per-panel `kb-active` styling with `Focused=@(kbIndex == N)` — delete the old glow CSS.
+4. Delete the panel's button SCSS. If the panel needs layout control, use `Stretch` or wrap in its own container — never restyle the primitive's chrome from panel SCSS.
+5. Keep click sounds in your handlers (primitive doesn't double-play); drop any `onmouseover` hover-sound lambdas (built in).
+6. Section headers with a kicker/title/accent → `BbSectionHeader`; status badges → `BbStamp`; icon-diamonds → `BbDiamond`.
+7. Angling: primitives ship FLAT. For the angled-plane dialect, put the 3D transform on a parent wrapper (transform holders can't carry bg — the primitive is the surface child).
+
+---
+
+## Design system recipes (copy-paste patterns — predate the shared primitives above; when a shared component exists, USE IT instead of the recipe)
 
 ### Solid pill (`.bb-pill` family — Beastbook canonical, but apply everywhere)
 - Height **22px**
