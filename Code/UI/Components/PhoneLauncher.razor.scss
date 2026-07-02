@@ -1,5 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════════
-// PhoneLauncher v2 — the phone-shaped nav launcher (Fable 5 sweep).
+// PhoneLauncher v3 — the PawPad (TamerLink OS). Phone-shaped nav launcher
+// (Fable 5 sweep).
+//
+// v3 ALIGNMENT DOCTRINE (from the v2 live test — everything drifted
+// right, labels/stamp ran off the body edge): under the leaned device,
+// auto-width flex children placed by align-items / space-between land as
+// if their width were ZERO — content then paints rightward from the
+// wrong anchor. Rule for this file: every centered or right-anchored box
+// carries an EXPLICIT width; centering happens via justify-content
+// INSIDE a fixed box or a hard margin. Absolute overlays (badges/stamps)
+// always get explicit widths (width:auto never shrink-wraps an absolute
+// element — CLAUDE.md quirk).
 //
 // TOKEN HEADER — synced to .claude/ui-knowledge/tokens.md (Path B):
 //   bg root        #04060f    backdrop dim rgba(4, 6, 15, 0.72)
@@ -22,8 +33,10 @@
 //   - .pl-device carries the 3D lean and NOTHING visual; .pl-surface (a
 //     plain child) carries bg/radius/shadow (3D transform-holder rule).
 //   - Icons: explicit widths (no flex-grow under a transformed ancestor),
-//     children pointer-events none (hover-flicker rule), ring = real
-//     bordered child (box-shadow rings distort corners).
+//     children pointer-events none (hover-flicker rule). The cursor is
+//     ONE real bordered div (box-shadow rings distort corners) living in
+//     .pl-grid — it shares the device lean with the icons, so the razor's
+//     flat Box.Rect math positions it with no perspective compensation.
 //   - Swipe slab: solid div — position/size/translate/skew are IMPERATIVE
 //     (per-frame Style writes from the razor); only rest-state lives here.
 //   - Vector rule: filled slabs, no hairline borders, no colored glows.
@@ -119,7 +132,13 @@
         margin-bottom: 16px;
     }
 
+    // Both strip spans get EXPLICIT widths + text-align (alignment
+    // doctrine): the space-between placement of an auto-width right span
+    // ran the LV line toward/off the body edge in the v2 live test.
+    // 140 + 400 = 540 exactly; the clock hugs left, the LV line rag-rights.
     .pl-clock {
+        width: 140px;
+        text-align: left;
         font-family: Exo2;
         font-size: 15px;
         font-weight: 900;
@@ -129,6 +148,8 @@
     }
 
     .pl-lv {
+        width: 400px;
+        text-align: right;
         font-family: Exo2Italic;
         font-style: italic;
         font-size: 14px;
@@ -152,11 +173,21 @@
 
         .pl-proto-stamp {
             margin-top: 22px;
+            // Explicit box, pill hugs its right edge (alignment doctrine —
+            // the auto-width stamp fell off the body edge in the v2 test).
+            // BbStamp's root is already display:flex; the tilted body
+            // shrink-fits inside and flex-end pins it to x=540.
+            width: 112px;
+            justify-content: flex-end;
         }
     }
 
-    // ── App grid — 4 explicit rows of 3 (flex-wrap miscalculates height) ──
+    // ── App grid — 4 explicit rows of 3 (flex-wrap miscalculates height).
+    // position: relative — it hosts the living cursor (.pl-cursor), whose
+    // left/top are grid-local. NO background here (absolute children paint
+    // BEHIND a parent's own background-color — engine quirk). ──
     .pl-grid {
+        position: relative;
         display: flex;
         flex-direction: column;
         width: 540px;
@@ -170,12 +201,16 @@
     }
 
     // ── App tile — a transparent hit target: icon square + label below,
-    // like a real launcher. 168px column ×3 + 18px gaps ×2 = 540. ──
+    // like a real launcher. 168px column ×3 + 18px gaps ×2 = 540.
+    // ALIGNMENT DOCTRINE: align-items stays flex-start — v2's `center`
+    // placed the auto-width label rows as zero-width (left edge at the
+    // tile's center, content running rightward past the icon). Children
+    // are hard-placed instead: icon via margin, label row full-width. ──
     .pl-app {
         position: relative;
         display: flex;
         flex-direction: column;
-        align-items: center;
+        align-items: flex-start;
         width: 168px;
         min-width: 168px;
         // 88 icon + 10 gap + 20 label row (key cap 16 + 2×2 border) = 118 content
@@ -191,12 +226,14 @@
         }
     }
 
-    // Icon anchor — holds the icon square, the focus ring, and the badge.
+    // Icon anchor — holds the icon square and the badge. HARD-centered:
+    // (168 − 88) / 2 = 40 (content-box, tile has no x padding/border).
     .pl-app-iconwrap {
         position: relative;
         width: 88px;
         height: 88px;
         flex: 0 0 auto;
+        margin-left: 40px;
     }
 
     // THE APP ICON — 88px rounded square (r-card 22), FILLED SOLID with
@@ -212,7 +249,7 @@
         border-radius: 22px;
 
         // Press dip — the glyph sinks into the icon. The icon square itself
-        // never transforms (it hosts the concentric ring; ring-bearing
+        // never transforms (it's the living cursor's target; ring-bearing
         // controls never transform — the even gap is the point).
         iconify {
             transition: transform 0.1s ease-out;
@@ -223,33 +260,57 @@
         transform: scale(0.88);
     }
 
-    // The violet cursor — real bordered child, concentric with the ICON
-    // square (host 22 + 6 = 28), not the whole tile. Wraps the app like a
-    // launcher selection.
-    .pl-app-ring {
+    // ── THE LIVING CURSOR — the main menu's signature, ONE ring for the
+    // whole grid (the per-tile static rings are gone). Real bordered div
+    // (box-shadow rings distort corners); left/top/width/height arrive
+    // from the razor (focused icon's Box.Rect → grid-local style px) and
+    // the CSS transitions do the glide on the signature ease. The ink-lean
+    // wave is an imperative per-frame Style.Transform — NO transform
+    // transition here, it would lowpass the wave to mush (menu rule).
+    // Gap look: razor insets the box 12px = ~8px visible air + 4px border.
+    .pl-cursor {
         position: absolute;
-        top: -6px;
-        left: -6px;
-        right: -6px;
-        bottom: -6px;
-        border: 3px solid #9b6cff;
-        border-radius: 28px;
+        z-index: 20;
+        border: 4px solid #9b6cff;
+        border-radius: 30px; // icon r-card 22 + the gap → the "gap look" radius
         background-color: rgba(0, 0, 0, 0);
+        pointer-events: none;
         opacity: 0;
-        transition: opacity 0.14s ease-out;
+        transform-origin: center;
+        transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1),
+                    top 0.27s cubic-bezier(0.22, 1, 0.36, 1),
+                    width 0.27s cubic-bezier(0.22, 1, 0.36, 1),
+                    height 0.27s cubic-bezier(0.22, 1, 0.36, 1),
+                    opacity 0.2s ease-out;
+
+        // First lock-on after open snaps to the icon instead of gliding in
+        // from a stale corner — only opacity animates during warmup.
+        &.snap {
+            transition: opacity 0.2s ease-out;
+        }
     }
 
-    .pl-app.focused .pl-app-ring {
+    &.open .pl-cursor {
         opacity: 1;
     }
 
-    // Label row — italic app name + key cap, BELOW the icon, outside it.
+    // Label row — italic app name + key cap, BELOW the icon. Full tile
+    // width + justify-content: center (alignment doctrine: never center
+    // an auto-width box via align-items — v2's drifted right).
     .pl-app-labelrow {
         display: flex;
         flex-direction: row;
         align-items: center;
+        justify-content: center;
+        width: 168px;
         gap: 6px;
         margin-top: 10px;
+
+        // Grid key caps are all single characters — pin a uniform content
+        // width so the caps are identical squares and never shrink-fit.
+        .pl-key {
+            width: 10px;
+        }
     }
 
     .pl-app-label {
@@ -289,6 +350,9 @@
     // corner (inside the tile bounds — the iconwrap sits 40px in from the
     // tile edge and 8px below its top). The dark punch-out border separates
     // accent-on-accent (badge and icon share the app's color).
+    // EXPLICIT width — width:auto never shrink-wraps an absolute element
+    // (quirk: it resolves degenerate or full-parent). 28px content fits
+    // "99+" at 12px/900; shorter counts center in the fixed pill.
     .pl-badge {
         position: absolute;
         top: -6px;
@@ -296,9 +360,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        min-width: 14px;
+        width: 28px;
         height: 20px;
-        padding: 0 6px;
         border: 3px solid #100d18;
         border-radius: 999px;
         font-family: Exo2;
@@ -313,10 +376,14 @@
     }
 
     // Bag NEW stamp — BbStamp tilted over the icon's top-right corner.
+    // Fixed-width absolute box (same quirk as .pl-badge); the pill
+    // shrink-fits IN-FLOW inside it and flex-end pins it to the corner.
     .pl-new-stamp {
         position: absolute;
         top: -8px;
         right: -10px;
+        width: 52px;
+        justify-content: flex-end;
 
         .bb-stamp-body {
             padding: 1px 6px;
@@ -360,6 +427,11 @@
         left: 0;
         width: 100px;
         height: 100px;
+        // Explicit stack insurance: above the backdrop + device (DOM order
+        // already paints it last, but the wrap carries 3D transforms — be
+        // explicit rather than trust transform stacking-context behavior).
+        // The root's z-index: 9500 handles everything OUTSIDE the phone.
+        z-index: 60;
         opacity: 0;
         pointer-events: none;
     }

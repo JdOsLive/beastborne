@@ -9,10 +9,32 @@
 @inherits Panel
 
 @*
-    PhoneLauncher v2 — the phone-shaped navigation launcher (Fable 5 sweep,
-    guiding-star §Navigation). Summoned by the MENU button / Slot8; the
-    persistent bottom bar stays mounted for now (A/B trial — retirement
-    comes after the user blesses the phone).
+    PhoneLauncher v3 — the PawPad, running TamerLink OS (player-facing
+    branding only; code identity stays PhoneLauncher). The phone-shaped
+    navigation launcher (Fable 5 sweep, guiding-star §Navigation).
+    Summoned by the MENU button / Slot8; the persistent bottom bar stays
+    mounted for now (A/B trial — retirement comes after the user blesses
+    the phone).
+
+    v3 (live-test feedback):
+    - THE LIVING RING — the per-tile static rings are dead; ONE violet
+      cursor ring (the main menu's signature) glides between focused
+      icons on the 0.27s signature ease, with the ink-lean wave running
+      per-frame (menu's multi-sine at 60% amplitude). It lives INSIDE
+      .pl-grid, so it shares the device's 3D lean with the icons —
+      flat Box.Rect delta math positions it, no perspective compensation
+      needed (unlike MainMenu's tilted-panel cursor). Snaps on open
+      (warmup frames), glides thereafter.
+    - ALIGNMENT HARDENED — v2 drifted right in-engine: auto-width flex
+      children placed by align-items/space-between landed as if their
+      width were zero (labels started at the icon's center and ran right;
+      the stamp/LV line ran off the body edge). Fix: every centered or
+      right-anchored box now has an EXPLICIT width; centering is done by
+      justify-content inside fixed boxes or hard margins, never by
+      cross-axis auto placement. Absolute badges get explicit widths
+      (width:auto never shrink-wraps an absolute element — quirk).
+    - SWEEP_DEBUG — temp per-phase Log.Info proving the accent swipe
+      runs (SWAP_DEBUG precedent). Flip false once verified live.
 
     The phone is a ROUTER, not content: a 3×4 grid of "app" icons, one per
     destination. v2 (live feedback): apps look like APPS — each is an 88px
@@ -61,11 +83,11 @@
                 </div>
 
                 <div class="pl-head">
-                    <BbSectionHeader Kicker="TAMER-LINK" Title="Launcher" Size=@(28) AccentColor="#9b6cff" AccentWidthIdle=@(52) AccentWidthFlare=@(104) />
+                    <BbSectionHeader Kicker="TAMERLINK OS" Title="PawPad" Size=@(28) AccentColor="#9b6cff" AccentWidthIdle=@(52) AccentWidthFlare=@(104) />
                     <BbStamp Text="PROTOTYPE" Tone="violet" Tilt=@(3) Class="pl-proto-stamp" />
                 </div>
 
-                <div class="pl-grid">
+                <div class="pl-grid" @ref="_gridRef">
                     @for ( int r = 0; r < 4; r++ )
                     {
                         <div class="pl-row">
@@ -81,7 +103,6 @@
                                         <div class="pl-app-icon" style="background-color: @(i == _kb ? Brighten( app.Accent ) : app.Accent);">
                                             <iconify icon="@app.Icon" Size=@(40) Color=@(app.DarkGlyph ? "#2a1605" : "#ffffff") />
                                         </div>
-                                        <div class="pl-app-ring"></div>
                                         @if ( app.Id == "bag" && HasNewItems() )
                                         {
                                             <BbStamp Text="NEW" Tone="gold" Tilt=@(3) Class="pl-new-stamp" />
@@ -99,6 +120,16 @@
                             }
                         </div>
                     }
+
+                    <!-- THE LIVING RING — one violet cursor for the whole grid
+                         (menu signature). Position/size via markup style so the
+                         CSS left/top/width/height transitions do the glide; the
+                         ink-lean wave is an IMPERATIVE per-frame Style.Transform
+                         (a CSS transform transition would lowpass it to mush).
+                         Child of .pl-grid: shares the device's 3D lean with the
+                         icons, so flat Box.Rect deltas land it exactly. -->
+                    <div @ref="_ringRef" class="pl-cursor @(_ringWarmup >= 2 ? "" : "snap")"
+                         style="left: @(_ringL)px; top: @(_ringT)px; width: @(_ringW)px; height: @(_ringH)px;"></div>
                 </div>
 
                 <div class="pl-hints">
@@ -186,6 +217,103 @@
     // ── Keyboard cursor (hover == focus, one violet ring) ───────────────
     private int _kb = 0;
 
+    // ── THE LIVING RING (main-menu signature, scaled to the PawPad) ─────
+    // One absolutely-positioned bordered div inside .pl-grid that GLIDES
+    // between focused icons via CSS left/top/width/height transitions
+    // (0.27s signature ease) and carries the per-frame ink-lean wave.
+    // Position comes from the focused icon's Box.Rect converted to style
+    // px (× ScaleFromScreen) RELATIVE to the grid's rect — both rects are
+    // flat layout space, and the ring lives inside the same 3D-leaned
+    // subtree as the icons, so no perspective compensation is needed
+    // (contrast MainMenu, whose root-level cursor must project tilted
+    // panels manually).
+    private Panel _gridRef;
+    private Panel _ringRef;
+    private int _ringL, _ringT, _ringW = 112, _ringH = 112;
+    private int _ringWarmup;   // 0/1 = snap to position (no glide), 2 = animate — menu warmup pattern
+
+    // Ring geometry: 12px box inset = ~8px VISIBLE gap + the 4px border
+    // (the menu's inset-10 recipe reads as a 6px gap; the PawPad wants the
+    // slightly airier "gap look"). Radius lives in SCSS: icon 22 + gap → 30.
+    private const int RingInset = 12;
+
+    // Ink-lean wave at 60% of the menu's amplitude — the ring is ~4× smaller
+    // than the menu's PLAY ring; full-size skew degrees read as flailing here.
+    private const float RingWaveScale = 0.6f;
+
+    private void UpdateRing()
+    {
+        if ( _gridRef == null ) return;
+        var icon = FocusedIconEl();
+        if ( icon == null ) return;
+
+        var ir = icon.Box.Rect;
+        var gr = _gridRef.Box.Rect;
+        if ( ir.Width < 1f || gr.Width < 1f ) return; // not laid out yet — hold last position
+
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+        int left = (int)( ( ir.Left - gr.Left ) * sc ) - RingInset;
+        int top = (int)( ( ir.Top - gr.Top ) * sc ) - RingInset;
+        int w = (int)( ir.Width * sc ) + RingInset * 2;
+        int h = (int)( ir.Height * sc ) + RingInset * 2;
+
+        bool changed = false;
+        if ( left != _ringL || top != _ringT || w != _ringW || h != _ringH )
+        { _ringL = left; _ringT = top; _ringW = w; _ringH = h; changed = true; }
+        if ( _ringWarmup < 2 ) { _ringWarmup++; changed = true; } // snap first 1-2 frames, then glide
+
+        if ( changed ) StateHasChanged(); // markup position — rare (focus changes), not per-frame
+        ApplyRingWave();                   // transform — imperative EVERY frame, no re-render
+    }
+
+    // The focused tile's ICON square, walked from the grid ref each call
+    // (row/tile/iconwrap/icon by class — survives re-renders; no per-tile
+    // @ref array needed).
+    private Panel FocusedIconEl()
+    {
+        int row = _kb / Cols, col = _kb % Cols;
+        int ri = 0;
+        foreach ( var child in _gridRef.Children )
+        {
+            if ( !child.HasClass( "pl-row" ) ) continue;
+            if ( ri++ != row ) continue;
+            int ci = 0;
+            foreach ( var tile in child.Children )
+            {
+                if ( !tile.HasClass( "pl-app" ) ) continue;
+                if ( ci++ != col ) continue;
+                foreach ( var wrap in tile.Children )
+                {
+                    if ( !wrap.HasClass( "pl-app-iconwrap" ) ) continue;
+                    foreach ( var ic in wrap.Children )
+                        if ( ic.HasClass( "pl-app-icon" ) ) return ic;
+                }
+                return null;
+            }
+            return null;
+        }
+        return null;
+    }
+
+    // The menu's ApplyCursorTransform wave, scaled: two slow non-harmonic
+    // sines per axis (organic, non-repeating) + a slow rotateZ drift.
+    // Driven by sin(clock) — seamless, center-symmetric. No 3D/stretch
+    // terms here: the device's lean is inherited, jumps are one grid cell.
+    private void ApplyRingWave()
+    {
+        if ( _ringRef == null ) return;
+        float wt = Time.Now;
+        float skewX = RingWaveScale * ( 4.5f * MathF.Sin( wt * 2.2f ) + 1.4f * MathF.Sin( wt * 3.5f + 1.1f ) );
+        float skewY = RingWaveScale * ( 1.6f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.7f * MathF.Sin( wt * 2.9f ) );
+        float rotZ = RingWaveScale * ( 0.8f * MathF.Sin( wt * 1.0f ) + 0.35f * MathF.Sin( wt * 2.4f + 0.5f ) );
+        var t = new PanelTransform();
+        t.AddRotation( 0f, 0f, rotZ );       // the lean
+        t.AddSkew( skewX, skewY, 0f );       // the liquid wobble
+        _ringRef.Style.Transform = t;
+    }
+
     // ── Focus brighten — the focused app's fill lifts toward white.
     // Inline C# swap (instant SNAP), not a CSS overlay: absolute full-cover
     // overlay children paint BEHIND a parent's background-color (engine
@@ -220,6 +348,13 @@
     // → Idle. 450ms total input → settled. Interrupt-safe: a new launch
     // re-seeds the slab off-right; a lost @ref kills the phase cleanly.
     private enum FxPhase { Idle, SweepIn, Covered, SweepOut }
+
+    // TEMP diagnostics — user reported "I don't see the color sweep" on the
+    // v2 live test (possibly a pre-restart binary, possibly a widget tap —
+    // widgets don't sweep BY DESIGN). One line per phase transition proves
+    // in the next session's log whether the sweep runs and with what
+    // geometry. Flip false once verified live (SWAP_DEBUG precedent).
+    private const bool SWEEP_DEBUG = true;
 
     private const float SweepInSeconds = 0.22f;
     private const float CoverHoldSeconds = 0.03f;
@@ -272,6 +407,7 @@
         // in NavManager order) so Enter re-launches where you are.
         var idx = NavManager.IndexOf( NavManager.CurrentTab );
         _kb = idx >= 0 ? idx : 0;
+        _ringWarmup = 0; // ring SNAPS to its first position on open, glides thereafter
     }
 
     private void OnBackdropClicked()
@@ -302,6 +438,7 @@
         {
             // Widget apps: no sweep — close the phone (Close plays its own
             // popdown), toggle the popup (which plays its own open sound).
+            if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] widget launch '{app.Id}' — NO sweep by design (Tier-1 popup toggle) t={Time.Now:F3}" );
             Close();
             RouteApp( i );
         }
@@ -348,6 +485,7 @@
 
         // Seed the first frame immediately so there's no 1-frame pop.
         if ( _swipe != null ) ApplySwipe( _swipe, _swXOff );
+        if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] SWEEP-IN '{app.Id}' accent={app.Accent} slab={_swW:F0}x{_swH:F0} at=({_swLeft:F0},{_swTop:F0}) xoff={_swXOff:F0} sc={sc:F2} refBound={_swipe != null} t={Time.Now:F3}" );
         StateHasChanged();
     }
 
@@ -380,6 +518,7 @@
                     // the modal releases so the destination owns input.
                     IsVisible = false;
                     _closingUntil = 0f;
+                    if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] ROUTE '{Apps[_fxAppIndex].Id}' at full cover t={Time.Now:F3}" );
                     RouteApp( _fxAppIndex );
                 }
                 _fx = FxPhase.Covered;
@@ -393,6 +532,7 @@
             ApplySwipe( el, 0f );
             if ( Time.Now - _fxT0 >= CoverHoldSeconds )
             {
+                if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] SWEEP-OUT begins t={Time.Now:F3}" );
                 _fx = FxPhase.SweepOut;
                 _fxT0 = Time.Now;
             }
@@ -405,6 +545,7 @@
 
             if ( v >= 1f )
             {
+                if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] DONE — slab cleared, back to Idle t={Time.Now:F3}" );
                 _fx = FxPhase.Idle;
                 _fxAppIndex = -1;
                 ClearSwipeStyles( el );
@@ -456,6 +597,7 @@
             {
                 // Abandon the flight AND clear the slab's inline styles —
                 // a stale opacity-1 cover would otherwise flash on next open.
+                if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] ABANDONED — left game mid-sweep t={Time.Now:F3}" );
                 _fx = FxPhase.Idle;
                 _fxAppIndex = -1;
                 if ( _swipe != null ) ClearSwipeStyles( _swipe );
@@ -466,6 +608,12 @@
         StepFx();
 
         if ( !IsVisible ) return;
+
+        // The living ring — positioned every visible frame (cheap: rect math
+        // + one imperative transform; StateHasChanged only on focus moves).
+        // Runs even when a stacked modal owns input, so the ring never
+        // strands while the phone is visibly open underneath.
+        UpdateRing();
         if ( !UIModalState.IsTopModal( "PhoneLauncher" ) ) return;
         if ( ChatPanel.IsChatFocused ) return;
 
@@ -535,6 +683,9 @@
                 GetBadgeCount( "effects" ),
                 GetBadgeCount( "alerts" ),
                 HasNewItems(),
-                ClockText ) );
+                ClockText ),
+            // The living ring's markup-driven geometry — without these the
+            // panel never repaints a focus glide (missing-BuildHash trap).
+            HashCode.Combine( _ringL, _ringT, _ringW, _ringH, _ringWarmup ) );
     }
 }
