@@ -162,14 +162,6 @@
 
     <div class="pl-wrap">
         <div class="pl-device" @ref="_deviceRef">
-            <!-- Side-button nubs — LEFT edge (the far/receding side under
-                 the rotateY(-13deg) lean). Absolute children of the
-                 UN-painted lean holder (the behind-parent-bg quirk only
-                 bites when the parent paints its own fill). DOM-before
-                 the shell so the shell's rounded edge covers their 1px
-                 tuck-under. Explicit boxes throughout. -->
-            <div class="pl-nub nub-a"></div>
-            <div class="pl-nub nub-b"></div>
 
             <!-- THE SHELL — the physical device: near-black bezel frame,
                  r-38 outer. Speaker slit + camera lens live in the top
@@ -183,12 +175,14 @@
                     <div class="pl-camera"><div class="pl-camera-lens"></div></div>
                 </div>
 
-                <div class="pl-surface">
+                <div class="pl-surface" @ref="_surfaceRef">
                 <!-- v7.2: the LOOPING wallpaper (spec animations, retimed to
                      a seamless 16s master loop, baked to animated WebP) —
                      an absolute img so the texture animates; the surface
-                     paints no fill of its own. -->
-                <img class="pl-wall" src="ui/pawpad/wallpaper.webp" />
+                     paints no fill of its own. SIZE is measured from the
+                     live surface rect (one-shot in Tick) — the hardcoded
+                     guess was visibly wrong (user report). -->
+                <img class="pl-wall" style="width: @(_wallW)px; height: @(_wallH)px;" src="ui/pawpad/wallpaper.webp" />
                 <!-- v7 "3a Graphite" status row (design handoff spec): clock
                      left; right group = GOLD signal bars · battery · divider
                      · name · gold-ringed avatar. NO title header anymore —
@@ -327,6 +321,13 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Side-button nubs — RIGHT edge, DOM-AFTER the shell (v7.2:
+                 painted OVER the trim; DOM-before let the opaque shell
+                 cover their overlap and only a detached sliver showed,
+                 user-reported twice). Explicit boxes throughout. -->
+            <div class="pl-nub nub-a"></div>
+            <div class="pl-nub nub-b"></div>
 
             <!-- Receding-side shade — a SIBLING of the shell (absolute
                  children paint BEHIND a panel's own background fill —
@@ -470,7 +471,16 @@
     private Panel _gridRef;
     private Panel _dockRef;
     private Panel _deviceRef;
+    private Panel _surfaceRef;
     private Panel _ringRef;
+
+    // v7.2 wallpaper sizing — measured from the live surface rect once
+    // per session (the hardcoded 538×694 guess was visibly wrong).
+    private int _wallW = 538, _wallH = 694;
+    private bool _wallSized;
+
+    // Last-input-wins hover tracking (mouse must move to reassert).
+    private Vector2 _lastMousePos;
 
     // ── Lean projection (v5, log-proven) — Box.Rect is LAYOUT space
     // (pre-transform): the walkdbg rect log showed pure layout deltas
@@ -500,6 +510,70 @@
         float dx = x - x0;
         float s = LeanPerspective / ( LeanPerspective - LeanSin * dx );
         return new Vector2( x0 + LeanCos * dx * s, y0 + ( y - y0 ) * s );
+    }
+
+    // The EXACT inverse — painted (screen) point → layout-space point.
+    // Solves x' = x0 + cos·dx·p/(p − sin·dx) for dx (linear after
+    // rearranging), then unscales y by the same depth factor. This is how
+    // the MOUSE reaches the leaned device (v7.2): the engine hit-tests
+    // LAYOUT rects, which sit ~30-50px off the paint under the lean, so
+    // clicks aimed at what the player SEES never landed (live-proven —
+    // dead-center clicks on painted tiles did nothing). The device
+    // subtree is pointer-transparent now; the backdrop catches every
+    // click and this maps it back into the space the tiles live in.
+    private static Vector2 InverseLean( Vector2 p, float x0, float y0 )
+    {
+        float dx = LeanPerspective * ( p.x - x0 ) / ( LeanCos * LeanPerspective + LeanSin * ( p.x - x0 ) );
+        float s = LeanPerspective / ( LeanPerspective - LeanSin * dx );
+        return new Vector2( x0 + dx, y0 + ( p.y - y0 ) / s );
+    }
+
+    // Which tile (grid 0..11, dock 12..15) sits under a SCREEN-px point,
+    // or -1. Walks the live panel tree (refs die on hotload) and compares
+    // in layout space against the inverse-projected point.
+    private int TileAtScreen( Vector2 screenPx )
+    {
+        if ( _gridRef == null || _deviceRef == null ) return -1;
+        var rr = Box.Rect;
+        var dr = _deviceRef.Box.Rect;
+        if ( rr.Width < 1f || dr.Width < 1f ) return -1;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+        float x0 = ( dr.Right - rr.Left ) * sc;
+        float y0 = ( dr.Top + dr.Height / 2f - rr.Top ) * sc;
+        var pt = new Vector2( ( screenPx.x - rr.Left ) * sc, ( screenPx.y - rr.Top ) * sc );
+        var lp = InverseLean( pt, x0, y0 );
+
+        int idx = 0;
+        foreach ( var row in _gridRef.Children )
+        {
+            if ( !row.HasClass( "pl-row" ) ) continue;
+            foreach ( var tile in row.Children )
+            {
+                if ( !tile.HasClass( "pl-app" ) ) continue;
+                if ( LayoutContains( tile.Box.Rect, rr, sc, lp, 2f ) ) return idx;
+                idx++;
+            }
+        }
+        if ( _dockRef != null )
+        {
+            int d = 0;
+            foreach ( var tile in _dockRef.Children )
+            {
+                if ( !tile.HasClass( "pl-dock-app" ) ) continue;
+                if ( LayoutContains( tile.Box.Rect, rr, sc, lp, 8f ) ) return GridCount + d;
+                d++;
+            }
+        }
+        return -1;
+    }
+
+    private static bool LayoutContains( Rect tr, Rect rr, float sc, Vector2 lp, float pad )
+    {
+        float l = ( tr.Left - rr.Left ) * sc - pad, t = ( tr.Top - rr.Top ) * sc - pad;
+        float r = ( tr.Right - rr.Left ) * sc + pad, b = ( tr.Bottom - rr.Top ) * sc + pad;
+        return lp.x >= l && lp.x <= r && lp.y >= t && lp.y <= b;
     }
     private int _ringL, _ringT, _ringW = 112, _ringH = 112;
     private int _ringWarmup;   // 0/1 = snap to position (no glide), 2 = animate — menu warmup pattern
@@ -822,11 +896,13 @@
     // A METHOD, not a $-interpolation in the markup: s&box's razor
     // generator breaks on interpolation braces inside attribute
     // expressions (brace-expected error — live-discovered v6).
-    // v7.1: statics are BAKED 176px PNGs — the engine rasterized the
-    // 48-box SVGs at 48px and upscaled to 88 (visibly soft, user report).
+    // v7.2: BOTH states are WebP — the engine's PNG decode path renders
+    // the semi-transparent-derived colors dull (statics looked washed
+    // out vs the identical animated frames, user report), so statics are
+    // the same baked art re-encoded as single-frame lossless WebP.
     private string GlyphSrc( int idx, string id ) =>
         idx == _kb ? "ui/icons/pawpad/anim/" + id + ".webp"
-                   : "ui/icons/pawpad/png/" + id + ".png";
+                   : "ui/icons/pawpad/static/" + id + ".webp";
 
     private string FormatBadge( int n ) => n > 99 ? "99+" : n.ToString();
 
@@ -846,8 +922,17 @@
         _ringHoldUntil = Time.Now + 0.4f;
     }
 
+    // v7.2 MOUSE ROUTER — the backdrop catches EVERY click while the phone
+    // is open (the device subtree never receives pointer events: the
+    // engine hit-tests layout rects, ~30-50px off the paint under the
+    // lean, and a pointer-events:none ancestor blocks children's auto —
+    // clicks were landing on the GAME behind the phone, user-reported).
+    // Inverse-project the cursor into layout space and route.
     private void OnBackdropClicked()
     {
+        int idx = TileAtScreen( Mouse.Position );
+        if ( WALK_DEBUG ) Log.Info( $"[walkdbg] backdrop click at {Mouse.Position} -> tile {idx}" );
+        if ( idx >= 0 ) { LaunchIndex( idx ); return; }
         Close();
     }
 
@@ -1120,20 +1205,53 @@
         else if ( holdDt > 0f ) _ringDirty = true;         // entrance slide still moving the icons
         if ( _ringDirty ) UpdateRing();
         ApplyRingWave();
+
+        // One-shot wallpaper sizing from the live surface rect (retries
+        // until layout yields real numbers).
+        if ( !_wallSized && _surfaceRef != null )
+        {
+            var sr = _surfaceRef.Box.Rect;
+            if ( sr.Width > 1f )
+            {
+                float wsc = ScaleFromScreen;
+                if ( wsc <= 0.01f || float.IsNaN( wsc ) || float.IsInfinity( wsc ) ) wsc = 1f;
+                int ww = (int)( sr.Width * wsc ) - 2;   // minus the 1px borders
+                int wh = (int)( sr.Height * wsc ) - 2;
+                if ( ww != _wallW || wh != _wallH ) { _wallW = ww; _wallH = wh; StateHasChanged(); }
+                _wallSized = true;
+            }
+        }
         if ( WALK_DEBUG && ( Input.Pressed( "Backward" ) || Input.Pressed( "Forward" ) ) )
             Log.Info( $"[walkdbg] tick gate: top={UIModalState.IsTopModal( "PhoneLauncher" )} chatfocus={ChatPanel.IsChatFocused}" );
         if ( !UIModalState.IsTopModal( "PhoneLauncher" ) ) return;
         if ( ChatPanel.IsChatFocused ) return;
 
+        // v7.2 mouse hover — per-frame poll + inverse projection (pure
+        // math + rect walks; NO style writes, so the 7fps law is safe).
+        // Replaces the tiles' own onmouseover, which never fired (layout
+        // hit rects sit off the paint under the lean).
+        // LAST-INPUT-WINS (the Beasts-tab house pattern, user call):
+        // hover only reasserts when the mouse actually MOVES, so keyboard
+        // navigation isn't snapped back to the hovered tile every frame.
+        var mp = Mouse.Position;
+        if ( ( mp - _lastMousePos ).Length > 2f )
+        {
+            _lastMousePos = mp;
+            int hover = TileAtScreen( mp );
+            if ( hover >= 0 && hover != _kb )
+            {
+                _kb = hover;
+                _ringDirty = true;
+                SoundManager.PlayHover();
+            }
+        }
+
         HandleKeyboard();
     }
 
-    // Diagnostics (v5) — root-caused and VERIFIED 2026-07-02: the "dead
-    // vertical walk" was a partial hotload wedge (markup swapped, old
-    // method body kept running — the "worker threads" stall); the ring
-    // drift was Box.Rect being LAYOUT space (fixed via ProjectLean).
-    // Flip true if the walk or ring regresses.
-    private const bool WALK_DEBUG = false;
+    // Diagnostics — ON for the v7.2 mouse-router verification (backdrop
+    // click routing). Flip false once the user blesses the mouse.
+    private const bool WALK_DEBUG = true;
 
     private void HandleKeyboard()
     {
