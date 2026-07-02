@@ -9,34 +9,39 @@
 @inherits Panel
 
 @*
-    PhoneLauncher — the phone-shaped navigation launcher (Fable 5 sweep,
+    PhoneLauncher v2 — the phone-shaped navigation launcher (Fable 5 sweep,
     guiding-star §Navigation). Summoned by the MENU button / Slot8; the
     persistent bottom bar stays mounted for now (A/B trial — retirement
     comes after the user blesses the phone).
 
-    The phone is a ROUTER, not content: a 3×4 grid of "app" tiles, one per
-    destination, each owning a single accent color. Tapping an app plays
-    THE LIQUID EXPANSION (the locked signature): a solid circle in the
-    app's accent scales from the tile to cover the screen via IMPERATIVE
-    per-frame transforms (class-toggle transforms snap; radial-gradient is
-    engine-rejected), NavManager routes mid-cover, the circle fades out.
+    The phone is a ROUTER, not content: a 3×4 grid of "app" icons, one per
+    destination. v2 (live feedback): apps look like APPS — each is an 88px
+    rounded square FILLED SOLID with its accent color (the color IS the
+    icon; the launcher grid is the one sanctioned full-rainbow surface),
+    glyph centered, label below. Tapping an app plays THE ACCENT SWIPE:
+    a full-screen angled slab in the app's accent sweeps across the screen
+    (the menu→game Persona-wipe vocabulary, single accent, phone-speed),
+    NavManager routes at full cover, the slab sweeps off the far side.
 
-    Juice-tier discipline: the liquid plays for DESTINATIONS (the 6 tabs +
-    Quests + Bag — full-screen contexts the circle "becomes"). The four
-    widget apps (Chat/Radio/Effects/Notifications) just close the phone
-    and toggle their popup — a fullscreen accent flood to open a chat
-    widget would be Tier-4 juice on a Tier-1 action.
+    Juice-tier discipline: the swipe plays for DESTINATIONS (the 6 tabs +
+    Quests + Bag — full-screen contexts). The four widget apps
+    (Chat/Radio/Effects/Notifications) just close the phone and toggle
+    their popup — a fullscreen accent sweep to open a chat widget would
+    be Tier-4 juice on a Tier-1 action.
 
     Engine rules honored (css-quirks.md):
     - Root PARKS OFFSCREEN when closed (left -10000px, never display-flip).
+    - Backdrop uses top/left + width/height 100% — all-edge absolute
+      stretching resolves to ZERO SIZE on an empty element.
     - 3D lean holder (.pl-device) carries NO bg/border — the surface lives
       on a direct child (.pl-surface).
-    - Circle = solid scaling div, border-radius 50%, per-frame
-      Style.Transform (PanelTransform.AddScale) — re-asserted every frame
-      so re-renders can never strand it.
-    - Tile children are pointer-events: none (hover-flicker rule).
-    - Coordinates: against a fullscreen root at (0,0), Box.Rect screen px
-      ARE the local style px (the MainMenu cursor precedent).
+    - Swipe slab = solid div; position/size/translate/skew are IMPERATIVE
+      per-frame Style writes (class-toggle transforms snap; per-frame
+      re-assert survives any mid-cover rebuild — the held-tween lesson).
+    - Slab geometry converts Box.Rect screen px → style px via
+      ScaleFromScreen (+30% oversize) so cover is guaranteed at any
+      window scale (the liquid circle under-covered without this).
+    - Icon children are pointer-events: none (hover-flicker rule).
 
     Keyboard (registered with UIModalState as "PhoneLauncher"):
     WASD walk the grid · Enter/Space launch · number keys + T/R/C/N route
@@ -56,7 +61,7 @@
                 </div>
 
                 <div class="pl-head">
-                    <BbSectionHeader Kicker="TAMER-LINK" Title="Launcher" Size=@(24) AccentColor="#9b6cff" AccentWidthIdle=@(44) AccentWidthFlare=@(88) />
+                    <BbSectionHeader Kicker="TAMER-LINK" Title="Launcher" Size=@(28) AccentColor="#9b6cff" AccentWidthIdle=@(52) AccentWidthFlare=@(104) />
                     <BbStamp Text="PROTOTYPE" Tone="violet" Tilt=@(3) Class="pl-proto-stamp" />
                 </div>
 
@@ -72,20 +77,24 @@
                                 <div class="pl-app @(i == _kb ? "focused" : "")"
                                      onclick=@(() => LaunchIndex( i ))
                                      onmouseover=@(() => HoverTile( i ))>
-                                    <div class="pl-app-ring"></div>
-                                    <BbDiamond Icon=@app.Icon Size=@(30) Tint=@app.Accent DarkGlyph=@app.DarkGlyph HoverSound=@false />
-                                    <div class="pl-app-labelrow">
-                                        <div class="pl-key"><span>@app.Key</span></div>
-                                        <span class="pl-app-label">@app.Label</span>
+                                    <div class="pl-app-iconwrap">
+                                        <div class="pl-app-icon" style="background-color: @(i == _kb ? Brighten( app.Accent ) : app.Accent);">
+                                            <iconify icon="@app.Icon" Size=@(40) Color=@(app.DarkGlyph ? "#2a1605" : "#ffffff") />
+                                        </div>
+                                        <div class="pl-app-ring"></div>
+                                        @if ( app.Id == "bag" && HasNewItems() )
+                                        {
+                                            <BbStamp Text="NEW" Tone="gold" Tilt=@(3) Class="pl-new-stamp" />
+                                        }
+                                        else if ( badge > 0 )
+                                        {
+                                            <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
+                                        }
                                     </div>
-                                    @if ( app.Id == "bag" && HasNewItems() )
-                                    {
-                                        <BbStamp Text="NEW" Tone="gold" Tilt=@(3) Class="pl-new-stamp" />
-                                    }
-                                    else if ( badge > 0 )
-                                    {
-                                        <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
-                                    }
+                                    <div class="pl-app-labelrow">
+                                        <span class="pl-app-label">@app.Label</span>
+                                        <div class="pl-key"><span>@app.Key</span></div>
+                                    </div>
                                 </div>
                             }
                         </div>
@@ -104,10 +113,10 @@
         </div>
     </div>
 
-    <!-- THE LIQUID EXPANSION circle — solid accent fill, driven entirely
+    <!-- THE ACCENT SWIPE slab — solid accent fill, driven entirely
          imperatively from StepFx(). Sits AFTER .pl-wrap so it paints over
          the phone. pointer-events: none — input outruns animation. -->
-    <div class="pl-circle" @ref="_circle" style="background-color: @_fxAccent;"></div>
+    <div class="pl-swipe" @ref="_swipe" style="background-color: @_fxAccent;"></div>
 </root>
 
 @code {
@@ -147,9 +156,9 @@
 
     // ── App registry — grid order (3 cols × 4 rows) ─────────────────────
     // Each destination owns ONE accent (guiding-star three-color identity:
-    // that token drives the tile gem, the badge, and the liquid expansion).
-    // Liquid = full-screen destinations only (juice-tier discipline).
-    private record PhoneApp( string Id, string Label, string Icon, string Accent, string Key, bool IsTab, string RouteId, bool Liquid, bool DarkGlyph );
+    // that token drives the icon fill, the badge, and the accent swipe).
+    // Swipe = full-screen destinations only (juice-tier discipline).
+    private record PhoneApp( string Id, string Label, string Icon, string Accent, string Key, bool IsTab, string RouteId, bool Sweep, bool DarkGlyph );
 
     private static readonly PhoneApp[] Apps =
     {
@@ -177,28 +186,57 @@
     // ── Keyboard cursor (hover == focus, one violet ring) ───────────────
     private int _kb = 0;
 
-    // ── Liquid expansion state machine ──────────────────────────────────
-    // Idle → Expanding (240ms, eased scale-up from the tile; ROUTE fires at
-    // the 120ms mid-cover point, phone body hides behind the circle) →
-    // Fading (180ms opacity 1→0 at full cover) → Idle. 420ms total input →
-    // settled — under the 450ms hard bar. Interrupt-safe: a new launch
-    // re-seeds the circle in place; a lost @ref kills the phase cleanly.
-    private enum FxPhase { Idle, Expanding, Fading }
+    // ── Focus brighten — the focused app's fill lifts toward white.
+    // Inline C# swap (instant SNAP), not a CSS overlay: absolute full-cover
+    // overlay children paint BEHIND a parent's background-color (engine
+    // quirk), so "brighten via white wash div" is a trap here.
+    private static readonly Dictionary<string, string> _brightCache = new();
 
-    private const float ExpandSeconds = 0.24f;
-    private const float FadeSeconds = 0.18f;
-    private const float RouteAtFrac = 0.5f;    // eased coverage ≈ 87% here — the swap hides behind the flood
-    private const float CircleHalf = 50f;      // circle base is 100×100 (scss)
+    private static string Brighten( string hex )
+    {
+        if ( _brightCache.TryGetValue( hex, out var cached ) ) return cached;
+        // All accents are "#rrggbb" literals from the registry — parse by hand
+        // (no engine API dependency) and lift 18% toward white.
+        var result = hex;
+        if ( hex != null && hex.Length == 7 && hex[0] == '#' )
+        {
+            int r = Convert.ToInt32( hex.Substring( 1, 2 ), 16 );
+            int g = Convert.ToInt32( hex.Substring( 3, 2 ), 16 );
+            int b = Convert.ToInt32( hex.Substring( 5, 2 ), 16 );
+            r += (int)( ( 255 - r ) * 0.18f );
+            g += (int)( ( 255 - g ) * 0.18f );
+            b += (int)( ( 255 - b ) * 0.18f );
+            result = $"#{r:x2}{g:x2}{b:x2}";
+        }
+        _brightCache[hex] = result;
+        return result;
+    }
+
+    // ── The accent swipe state machine ───────────────────────────────────
+    // Idle → SweepIn (220ms, eased translateX from off-right to full cover;
+    // ROUTE fires at cover, phone body hides behind the slab) → Covered
+    // (30ms hold — the destination's mount frame lands under the slab) →
+    // SweepOut (200ms ease-in off the LEFT side, revealing the destination)
+    // → Idle. 450ms total input → settled. Interrupt-safe: a new launch
+    // re-seeds the slab off-right; a lost @ref kills the phase cleanly.
+    private enum FxPhase { Idle, SweepIn, Covered, SweepOut }
+
+    private const float SweepInSeconds = 0.22f;
+    private const float CoverHoldSeconds = 0.03f;
+    private const float SweepOutSeconds = 0.20f;
+    private const float SwipeSkewDeg = -12f;   // the diagonal leading edge (P5 seam dialect)
 
     private FxPhase _fx = FxPhase.Idle;
     private float _fxT0;
-    private float _fxX, _fxY;                  // bloom center, root-local px
-    private float _fxCover;                    // scale factor that covers the farthest corner
     private string _fxAccent = "#9b6cff";
     private bool _fxRouted;
     private int _fxAppIndex = -1;
 
-    private Panel _circle;
+    // Slab geometry in STYLE px, computed at launch (Box.Rect screen px ×
+    // ScaleFromScreen, +30%/+24% oversize + skew reach — full-screen-guaranteed).
+    private float _swW, _swH, _swLeft, _swTop, _swXOff;
+
+    private Panel _swipe;
 
     private bool Shown => IsVisible || _fx != FxPhase.Idle || Time.Now < _closingUntil;
 
@@ -255,14 +293,14 @@
         var app = Apps[i];
         _kb = i;
 
-        if ( app.Liquid )
+        if ( app.Sweep )
         {
             SoundManager.PlayForward();
-            StartLiquid( i, app );
+            StartSwipe( i, app );
         }
         else
         {
-            // Widget apps: no flood — close the phone (Close plays its own
+            // Widget apps: no sweep — close the phone (Close plays its own
             // popdown), toggle the popup (which plays its own open sound).
             Close();
             RouteApp( i );
@@ -277,124 +315,129 @@
         else NavManager.OpenOverlay( app.RouteId );
     }
 
-    // ── The liquid expansion ─────────────────────────────────────────────
-    private void StartLiquid( int i, PhoneApp app )
+    // ── The accent swipe ─────────────────────────────────────────────────
+    private void StartSwipe( int i, PhoneApp app )
     {
-        // Bloom origin = the tile's visual center. Against this fullscreen
-        // root at (0,0), Box.Rect screen px are the local style px (the
-        // MainMenu cursor precedent). Fallback: screen center.
-        var rootRect = Box.Rect;
-        var tile = FindTilePanel( i );
-        if ( tile != null && tile.Box.Rect.Width >= 1f )
-        {
-            _fxX = tile.Box.Rect.Center.x - rootRect.Left;
-            _fxY = tile.Box.Rect.Center.y - rootRect.Top;
-        }
-        else
-        {
-            _fxX = rootRect.Width / 2f;
-            _fxY = rootRect.Height / 2f;
-        }
+        // Screen size in STYLE px. Box.Rect is screen space; ScaleFromScreen
+        // converts to local style units (at 1080p scale-1 they're identical
+        // — the MainMenu precedent — but the liquid circle under-covered on
+        // scaled windows, so v2 converts properly and oversizes on top).
+        var r = Box.Rect;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+        float w = MathF.Max( r.Width * sc, 320f );
+        float h = MathF.Max( r.Height * sc, 180f );
 
-        // Cover scale: farthest corner distance / base radius, + margin.
-        float dx = MathF.Max( _fxX, rootRect.Width - _fxX );
-        float dy = MathF.Max( _fxY, rootRect.Height - _fxY );
-        float dist = MathF.Sqrt( dx * dx + dy * dy );
-        _fxCover = ( dist / CircleHalf ) * 1.08f;
+        // Oversized slab, centered on the screen: +30% wide / +24% tall, so
+        // the skewed leading edge can never expose a corner at full cover.
+        _swW = w * 1.30f;
+        _swH = h * 1.24f;
+        _swLeft = -( _swW - w ) / 2f;
+        _swTop = -( _swH - h ) / 2f;
+
+        // Travel offset: fully off the right edge including the skew reach
+        // (skewX shifts the vertical edges by tan(deg) × half-height).
+        float skewReach = MathF.Tan( MathF.Abs( SwipeSkewDeg ) * MathF.PI / 180f ) * _swH / 2f;
+        _swXOff = ( w - _swLeft ) + skewReach + 24f;
 
         _fxAccent = app.Accent;
         _fxAppIndex = i;
         _fxRouted = false;
         _fxT0 = Time.Now;
-        _fx = FxPhase.Expanding;   // re-seeding mid-flight IS the interrupt path
+        _fx = FxPhase.SweepIn;   // re-seeding mid-flight IS the interrupt path
 
         // Seed the first frame immediately so there's no 1-frame pop.
-        if ( _circle != null ) ApplyCircle( _circle, 0f, 1f );
+        if ( _swipe != null ) ApplySwipe( _swipe, _swXOff );
         StateHasChanged();
     }
 
     /// <summary>
-    /// Per-frame liquid step. Everything is TIME-based (not per-frame lerp)
-    /// so the mount-stall a tab swap can cause mid-cover only skips frames,
-    /// never changes the total duration — and the freeze lands while the
-    /// screen is a solid accent flood, which is the whole point of routing
-    /// mid-cover.
+    /// Per-frame swipe step. Everything is TIME-based (not per-frame lerp)
+    /// so the mount-stall a tab swap can cause under cover only skips
+    /// frames, never changes the total duration — and the freeze lands
+    /// while the screen is a solid accent slab, which is the whole point
+    /// of routing at full cover.
     /// </summary>
     private void StepFx()
     {
         if ( _fx == FxPhase.Idle ) return;
-        var el = _circle;
+        var el = _swipe;
         if ( el == null ) { _fx = FxPhase.Idle; return; }
 
-        if ( _fx == FxPhase.Expanding )
+        if ( _fx == FxPhase.SweepIn )
         {
-            float u = Math.Clamp( ( Time.Now - _fxT0 ) / ExpandSeconds, 0f, 1f );
-            float s = 1f - MathF.Pow( 1f - u, 3f );   // ease-out cubic — fast early coverage
-            ApplyCircle( el, s, 1f );
-
-            if ( !_fxRouted && u >= RouteAtFrac )
-            {
-                _fxRouted = true;
-                // Hide the phone body instantly behind the flood — no close
-                // animation (it would never be seen) and the modal releases
-                // so the destination owns input immediately.
-                IsVisible = false;
-                _closingUntil = 0f;
-                RouteApp( _fxAppIndex );
-            }
+            float u = Math.Clamp( ( Time.Now - _fxT0 ) / SweepInSeconds, 0f, 1f );
+            float e = 1f - MathF.Pow( 1f - u, 3f );   // ease-out cubic — fast attack, soft landing
+            ApplySwipe( el, _swXOff * ( 1f - e ) );
 
             if ( u >= 1f )
             {
-                _fx = FxPhase.Fading;
+                if ( !_fxRouted )
+                {
+                    _fxRouted = true;
+                    // Full cover: hide the phone body instantly behind the
+                    // slab — no close animation (it would never be seen) and
+                    // the modal releases so the destination owns input.
+                    IsVisible = false;
+                    _closingUntil = 0f;
+                    RouteApp( _fxAppIndex );
+                }
+                _fx = FxPhase.Covered;
                 _fxT0 = Time.Now;
             }
         }
-        else if ( _fx == FxPhase.Fading )
+        else if ( _fx == FxPhase.Covered )
         {
-            float v = Math.Clamp( ( Time.Now - _fxT0 ) / FadeSeconds, 0f, 1f );
-            ApplyCircle( el, 1f, 1f - v );
+            // Held at full cover for a beat — the destination's first-layout
+            // frame lands here, invisible behind the slab.
+            ApplySwipe( el, 0f );
+            if ( Time.Now - _fxT0 >= CoverHoldSeconds )
+            {
+                _fx = FxPhase.SweepOut;
+                _fxT0 = Time.Now;
+            }
+        }
+        else if ( _fx == FxPhase.SweepOut )
+        {
+            float v = Math.Clamp( ( Time.Now - _fxT0 ) / SweepOutSeconds, 0f, 1f );
+            float e = v * v * v;   // ease-in cubic — the slab accelerates off
+            ApplySwipe( el, -_swXOff * e );
 
             if ( v >= 1f )
             {
                 _fx = FxPhase.Idle;
                 _fxAppIndex = -1;
-                // Return the circle to its CSS rest state (opacity 0).
-                el.Style.Opacity = null;
-                el.Style.Transform = null;
+                ClearSwipeStyles( el );
                 StateHasChanged();
             }
         }
     }
 
-    // Re-asserts position + transform + opacity EVERY frame (rebuild-proof —
-    // the PlaneTween HoldUntil lesson: one-shot style writes get wiped by
-    // re-renders; per-frame writes survive anything).
-    private void ApplyCircle( Panel el, float progress, float opacity )
+    // Re-asserts position + size + transform + opacity EVERY frame
+    // (rebuild-proof — the PlaneTween HoldUntil lesson: one-shot style
+    // writes get wiped by re-renders; per-frame writes survive anything).
+    private void ApplySwipe( Panel el, float x )
     {
-        el.Style.Left = Length.Pixels( _fxX - CircleHalf );
-        el.Style.Top = Length.Pixels( _fxY - CircleHalf );
+        el.Style.Left = Length.Pixels( _swLeft );
+        el.Style.Top = Length.Pixels( _swTop );
+        el.Style.Width = Length.Pixels( _swW );
+        el.Style.Height = Length.Pixels( _swH );
         var t = new PanelTransform();
-        float s = MathF.Max( 0.02f, progress * _fxCover );
-        t.AddScale( new Vector2( s, s ) );
+        t.AddTranslate( Length.Pixels( x ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+        t.AddSkew( SwipeSkewDeg, 0f, 0f );
         el.Style.Transform = t;
-        el.Style.Opacity = opacity;
+        el.Style.Opacity = 1f;
     }
 
-    // ── Tile lookup — fresh traversal each call (hotload-safe; no stored refs) ──
-    private Panel FindTilePanel( int idx )
+    // Return the slab to its CSS rest state (parked 100×100, opacity 0).
+    private void ClearSwipeStyles( Panel el )
     {
-        var tiles = new List<Panel>();
-        CollectTiles( this, tiles );
-        return idx >= 0 && idx < tiles.Count ? tiles[idx] : null;
-    }
-
-    private static void CollectTiles( Panel p, List<Panel> outList )
-    {
-        foreach ( var c in p.Children )
-        {
-            if ( c.HasClass( "pl-app" ) ) outList.Add( c );
-            else CollectTiles( c, outList );
-        }
+        el.Style.Left = null;
+        el.Style.Top = null;
+        el.Style.Width = null;
+        el.Style.Height = null;
+        el.Style.Transform = null;
+        el.Style.Opacity = null;
     }
 
     // ── Per-frame — s&box auto-ticks Panel-derived razor components ──────
@@ -411,15 +454,11 @@
             if ( IsVisible ) { IsVisible = false; _closingUntil = 0f; }
             if ( _fx != FxPhase.Idle )
             {
-                // Abandon the flight AND clear the circle's inline styles —
+                // Abandon the flight AND clear the slab's inline styles —
                 // a stale opacity-1 cover would otherwise flash on next open.
                 _fx = FxPhase.Idle;
                 _fxAppIndex = -1;
-                if ( _circle != null )
-                {
-                    _circle.Style.Opacity = null;
-                    _circle.Style.Transform = null;
-                }
+                if ( _swipe != null ) ClearSwipeStyles( _swipe );
             }
             return;
         }
