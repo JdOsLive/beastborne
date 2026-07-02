@@ -14,7 +14,7 @@ from playwright.sync_api import sync_playwright
 SRC = Path(r"C:\Users\jscho\AppData\Local\Temp\claude\c--Users-jscho-OneDrive-Documents-s-box-projects-beastborne\d199b3ba-a286-42bc-aea4-5d0540e2de3d\scratchpad\pawpad-mockup\icons\v2")
 OUT = Path(r"C:\Users\jscho\OneDrive\Documents\s&box projects\beastborne\Assets\ui\icons\pawpad\anim")
 FRAMES_DIR = Path(r"C:\Users\jscho\AppData\Local\Temp\claude\c--Users-jscho-OneDrive-Documents-s-box-projects-beastborne\d199b3ba-a286-42bc-aea4-5d0540e2de3d\scratchpad\frames")
-FRAME_MS = 50
+FRAME_MS = 16  # ~60fps (user call after seeing 20fps live)
 
 OUT.mkdir(parents=True, exist_ok=True)
 FRAMES_DIR.mkdir(parents=True, exist_ok=True)
