@@ -5,86 +5,106 @@
 @using Beastborne.Data;
 @using Beastborne.Systems;
 @using Beastborne.UI;
+@using Beastborne.UI.Primitives;
 @inherits Panel
 
+@*
+	QUESTS — the notice board, efficiency-first.
+	One chrome rail (identity + tabs + timer), then the whole screen is a
+	two-column board of quest slips. Sort order = claimable first, then
+	in-progress, then claimed — the common action (claim) is always the
+	first thing under the cursor. Claimable slips sit FLAT and gold-lit;
+	in-progress slips rest at a whisper tilt (board identity); claimed
+	slips settle flat, dim, and wear a green DONE stamp. The daily streak
+	is its own pinned calendar card at the top of the Daily board.
+
+	Engine notes (learned laws honored here):
+	- Tilted slip = 2D transform ancestor, so DERIVED widths inside are
+	  untrustworthy: every text/bar row inside a slip is a ROW-flex wrapper
+	  whose child carries an EXPLICIT px width; progress fill widths are
+	  computed in C# as px (never % under a transform).
+	- Board rows chunk slips in pairs in code — flex-wrap miscalculates
+	  height in s&box.
+	- Hover never transforms (slips live in a scroll container) — hover =
+	  brighten + the violet ring (inset absolute child).
+	- Gem tags hang off the slip's bottom edge via a negative bottom
+	  margin (engine-proven negative-margin overlay pattern).
+*@
+
 <root class="quest-panel-root @_rootVisibleClass">
-	<div class="quest-overlay" onclick=@Close></div>
+	<div class="quest-page">
 
-	<div class="quest-modal">
-		<div class="bg-scroll"><img src="ui/bg-patterns/bg-missions.svg" /></div>
-
-		<!-- ═══ HEADER ═══ -->
-		<div class="quest-header">
-			<div class="header-left">
-				<iconify class="quest-title-icon" icon="lucide:scroll-text" Size=@(24) Color="#ffffff" />
-				<div class="header-title-stack">
-					<span class="quest-title">QUEST LOG</span>
-					<span class="quest-subtitle">Your tamer's journey</span>
-				</div>
+		<!-- THE RAIL — identity, tabs, timer, close: one chrome band -->
+		<div class="qp-header">
+			<div class="qp-head-left">
+				<BbSectionHeader Kicker="@GetTabKicker()" Title="Quests" Size=@(52) AccentColor="#3fb45e" />
 			</div>
-			<div class="header-right">
+			<div class="peg-tabs">
+				@foreach ( var tab in Tabs )
+				{
+					var badge = GetBadgeCount( tab.Id );
+					var isActive = _currentTab == tab.Id;
+					var tabIconColor = isActive ? "#ffffff" : "#6fd08c";
+					var tabActiveClass = isActive ? "active" : "";
+					<div class="qtab @tabActiveClass"
+						 onclick=@(() => SelectTab(tab.Id))
+						 onmouseover=@(() => OnHover("tab-" + tab.Id))>
+						<div class="qtab-inner">
+							<iconify class="qtab-icon" icon="@tab.Icon" Size=@(16) Color="@tabIconColor" />
+							<span class="qtab-label">@tab.Name</span>
+							@if ( badge > 0 )
+							{
+								<div class="qtab-badge">@badge</div>
+							}
+						</div>
+					</div>
+				}
+			</div>
+			<div class="qp-head-right">
+				@if ( GetActiveTimerLabel() != null )
+				{
+					<span class="peg-meta-lbl">RESETS IN</span>
+					<span class="timer-pill">@GetActiveTimerLabel()</span>
+				}
+				@if ( GetTotalUnclaimedCount() > 0 )
+				{
+					<BbStamp Text="@ReadyStampText" Tone="gold" Tilt=@(3) Class="qp-ready-stamp" />
+				}
 				<button class="close-btn" onclick=@Close>
 					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
 				</button>
 			</div>
 		</div>
 
-		<!-- ═══ BODY: SIDEBAR + CONTENT ═══ -->
-		<div class="quest-body">
+		<!-- angled seam under the rail -->
+		<div class="qp-seam">
+			<div class="qp-seam-a"></div>
+			<div class="qp-seam-b"></div>
+		</div>
 
-			<!-- Sidebar (Zelda-style vertical tabs) -->
-			<div class="quest-sidebar">
-				@foreach ( var tab in Tabs )
-				{
-					var badge = GetBadgeCount( tab.Id );
-					var isActive = _currentTab == tab.Id;
-					var tabIconColor = isActive ? "#ffffff" : "#a78bfa";
-					var tabActiveClass = isActive ? "active" : "";
-					var tabIdClass = "tab-" + tab.Id;
-					<div class="sidebar-btn @tabActiveClass @tabIdClass"
-						 onclick=@(() => SelectTab(tab.Id))
-						 onmouseover=@(() => OnHover("tab-" + tab.Id))>
-						<div class="sidebar-icon">
-							<iconify icon="@tab.Icon" Size=@(18) Color="@tabIconColor" />
-						</div>
-						<div class="sidebar-text">
-							<span class="sidebar-label">@tab.Name</span>
-							<span class="sidebar-sub">@tab.Sub</span>
-						</div>
-						@if ( badge > 0 )
-						{
-							<div class="sidebar-badge">@badge</div>
-						}
-					</div>
-				}
-			</div>
-
-			<!-- Content -->
-			<div class="quest-content">
-				<div class="content-inner" @ref="ContentInner">
-					@switch ( _currentTab )
-					{
-						case "main":
-							@RenderMain()
-							break;
-						case "side":
-							@RenderSide()
-							break;
-						case "daily":
-							@RenderDaily()
-							break;
-						case "weekly":
-							@RenderWeekly()
-							break;
-						case "monthly":
-							@RenderMonthly()
-							break;
-						case "guild":
-							@RenderGuild()
-							break;
-					}
-				</div>
-			</div>
+		<!-- THE BOARD — scrolling field of pinned slips -->
+		<div class="board" @ref="ContentInner">
+			@switch ( _currentTab )
+			{
+				case "main":
+					@RenderMain()
+					break;
+				case "side":
+					@RenderSide()
+					break;
+				case "daily":
+					@RenderDaily()
+					break;
+				case "weekly":
+					@RenderWeekly()
+					break;
+				case "monthly":
+					@RenderMonthly()
+					break;
+				case "guild":
+					@RenderGuild()
+					break;
+			}
 		</div>
 	</div>
 </root>
@@ -98,6 +118,9 @@
 	// Pre-computed class names used in attribute values — s&box Razor chokes on
 	// nested double-quotes like class="@(IsVisible ? "visible" : "")".
 	private string _rootVisibleClass => IsVisible ? "visible" : "";
+
+	// Header stamp copy — computed in C# (never interpolate in attributes).
+	private string ReadyStampText => GetTotalUnclaimedCount() + " READY";
 
 	// Hover-sound state guard. s&box has no onmouseenter, so onmouseover bubbles
 	// from every child mousemove — naive PlayHover() fires repeatedly. Track the
@@ -117,13 +140,52 @@
 
 	private static readonly QuestTab[] Tabs = new[]
 	{
-		new QuestTab("main",    "lucide:book-open-text", "Main Quest",  "Story chapters"),
-		new QuestTab("side",    "lucide:map-pin",        "Side Quests", "Optional tales"),
-		new QuestTab("daily",   "lucide:sun",            "Daily",       "Resets in 24h"),
-		new QuestTab("weekly",  "lucide:calendar-days",  "Weekly",      "Resets Monday"),
-		new QuestTab("monthly", "lucide:trophy",         "Monthly",     "Big challenge"),
-		new QuestTab("guild",   "lucide:shield",         "Guild",       "Community goals"),
+		new QuestTab("main",    "lucide:book-open-text", "Main",    "Story chapters"),
+		new QuestTab("side",    "lucide:map-pin",        "Side",    "Optional tales"),
+		new QuestTab("daily",   "lucide:sun",            "Daily",   "Resets in 24h"),
+		new QuestTab("weekly",  "lucide:calendar-days",  "Weekly",  "Resets Monday"),
+		new QuestTab("monthly", "lucide:trophy",         "Monthly", "Big challenge"),
+		new QuestTab("guild",   "lucide:shield",         "Guild",   "Community goals"),
 	};
+
+	// Board-slip geometry constants — content-box inner widths used for the
+	// explicit-px rows inside rotated slips (see doc comment up top).
+	private const int SlipBarW = 802;   // standard slip inner width (850 - 2*24 padding)
+	private const int WideBarW = 1052;  // monthly hero slip inner width (1100 - 2*24)
+
+	private string GetTabKicker() => _currentTab switch
+	{
+		"main" => "THE TAMER'S ROAD",
+		"side" => "BOUNTY BOARD",
+		"daily" => "FIELD JOURNAL",
+		"weekly" => "STANDING CONTRACTS",
+		"monthly" => "THE BIG GAME",
+		"guild" => "COMMUNITY LEDGER",
+		_ => "FIELD JOURNAL",
+	};
+
+	private string GetActiveTimerLabel() => _currentTab switch
+	{
+		"daily" => GetDailyTimer(),
+		"weekly" => GetWeeklyTimer(),
+		"monthly" => GetMonthlyTimer(),
+		"guild" => (GuildManager.Instance?.IsInGuild ?? false) ? GetGuildGoalsTimer() : null,
+		_ => null,
+	};
+
+	// Rest rotation for a slip — in-progress slips alternate a whisper tilt
+	// (the board identity); SETTLED slips (claimable or claimed) sit FLAT
+	// so the actionable/done states scan instantly. The transform transition
+	// on .slip animates the settle when a quest completes or is claimed.
+	private string GetSlipRot( int idx, bool settled )
+	{
+		if ( settled ) return "rot-flat";
+		return idx % 2 == 0 ? "rot-a" : "rot-b";
+	}
+
+	// Board sort — the common action first: claimable → in-progress → claimed.
+	private static int ClaimSortKey( MissionState s )
+		=> (s.Completed && !s.Claimed) ? 0 : s.Claimed ? 2 : 1;
 
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
@@ -225,6 +287,8 @@
 		h.Add( GetBadgeCount( "weekly" ) );
 		h.Add( GetBadgeCount( "monthly" ) );
 		h.Add( GetBadgeCount( "side" ) );
+		h.Add( GetTotalUnclaimedCount() );
+		h.Add( GetActiveTimerLabel() );
 		h.Add( MissionManager.Instance?.GetUnclaimedCount() ?? 0 );
 		h.Add( MissionManager.Instance?.DailyBonusClaimed ?? false );
 		h.Add( MissionManager.Instance?.WeeklyBonusClaimed ?? false );
@@ -270,6 +334,14 @@
 		if ( t <= 0 ) return 100f;
 		return Math.Min( 100f, (float)s.Progress / t * 100f );
 	}
+
+	// Progress fill width in PX — computed in code because %-derived widths
+	// are untrustworthy inside a rotated (transformed) slip.
+	private int GetMissionFillPx( MissionState s, bool large = false )
+		=> (int)(GetMissionPercent( s ) / 100f * (large ? WideBarW : SlipBarW));
+	private int GetPctFillPx( float pct )
+		=> (int)(Math.Min( 100f, Math.Max( 0f, pct ) ) / 100f * SlipBarW);
+
 	private string GetMissionIconify( MissionState s )
 	{
 		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
@@ -352,17 +424,15 @@
 	private RenderFragment RenderMain() => __builder =>
 	{
 		<div class="tab-content">
-			<div class="tab-header">
-				<span class="tab-title">Main Quest</span>
-				<span class="tab-sub">Follow the tamer's journey through the three lands.</span>
-			</div>
-
-			<div class="empty-state">
-				<div class="empty-illus">
-					<iconify icon="lucide:book-open-text" Size=@(68) Color="#6d28d9" />
+			<div class="board-row single">
+				<div class="slip empty-note rot-a">
+					<div class="pin"></div>
+					<div class="empty-illus">
+						<iconify icon="lucide:book-open-text" Size=@(64) Color="#2e7d46" />
+					</div>
+					<div class="note-row"><span class="empty-title">Chapter 1 — Coming Soon</span></div>
+					<div class="note-row"><span class="empty-body">The main storyline arrives after launch. For now, explore the three expeditions, complete side quests, and build a team worthy of what lies ahead.</span></div>
 				</div>
-				<span class="empty-title">Chapter 1 — Coming Soon</span>
-				<span class="empty-body">The main storyline arrives after launch. For now, explore the three expeditions, complete side quests, and build a team worthy of what lies ahead.</span>
 			</div>
 		</div>
 	};
@@ -371,24 +441,23 @@
 	{
 		var mgr = SideQuestManager.Instance;
 		var allDefs = mgr?.AllDefinitions ?? new List<SideQuest>();
-		var active = mgr?.ActiveQuests?.ToList() ?? new List<SideQuestState>();
+		var active = (mgr?.ActiveQuests?.ToList() ?? new List<SideQuestState>())
+			.OrderBy( s => s.Completed ? 0 : 1 ).ToList();
 		var available = allDefs.Where( d => mgr != null && mgr.IsAvailable( d.Id ) ).ToList();
 		var completed = allDefs.Where( d => mgr != null && mgr.IsCompletedOneShot( d.Id ) ).ToList();
 
 		<div class="tab-content">
-			<div class="tab-header">
-				<span class="tab-title">Side Quests</span>
-				<span class="tab-sub">Optional requests from the villages, fields, and wilds.</span>
-			</div>
-
 			@if ( active.Count == 0 && available.Count == 0 && completed.Count == 0 )
 			{
-				<div class="empty-state">
-					<div class="empty-illus">
-						<iconify icon="lucide:map-pin" Size=@(68) Color="#6d28d9" />
+				<div class="board-row single">
+					<div class="slip empty-note rot-b">
+						<div class="pin"></div>
+						<div class="empty-illus">
+							<iconify icon="lucide:map-pin" Size=@(64) Color="#2e7d46" />
+						</div>
+						<div class="note-row"><span class="empty-title">No side quests yet</span></div>
+						<div class="note-row"><span class="empty-body">Visit the world map and accept requests posted by the locals.</span></div>
 					</div>
-					<span class="empty-title">No side quests yet</span>
-					<span class="empty-body">Visit the world map and accept requests posted by the locals.</span>
 				</div>
 			}
 
@@ -396,78 +465,108 @@
 			{
 				<div class="section-label-row">
 					<div class="section-label-left">
-						<span class="section-label">IN PROGRESS</span>
+						<div class="section-chip"><span>IN PROGRESS</span></div>
 					</div>
 					<span class="section-count">@active.Count active</span>
 				</div>
-				@foreach ( var state in active )
-				{
-					@SideQuestCard( state )
-				}
+				<div class="rowset">
+					@for ( int i = 0; i < active.Count; i += 2 )
+					{
+						var i0 = i;
+						var i1 = i + 1;
+						<div class="board-row">
+							@SideQuestCard( active[i0], i0 )
+							@if ( i1 < active.Count )
+							{
+								@SideQuestCard( active[i1], i1 )
+							}
+						</div>
+					}
+				</div>
 			}
 
 			@if ( available.Count > 0 )
 			{
 				<div class="section-label-row">
 					<div class="section-label-left">
-						<span class="section-label">AVAILABLE</span>
+						<div class="section-chip"><span>AVAILABLE</span></div>
 					</div>
 					<span class="section-count">@available.Count open</span>
 				</div>
-				@foreach ( var def in available )
-				{
-					@AvailableSideQuestCard( def )
-				}
+				<div class="rowset">
+					@for ( int i = 0; i < available.Count; i += 2 )
+					{
+						var i0 = i;
+						var i1 = i + 1;
+						<div class="board-row">
+							@AvailableSideQuestCard( available[i0], i0 + 1 )
+							@if ( i1 < available.Count )
+							{
+								@AvailableSideQuestCard( available[i1], i1 + 1 )
+							}
+						</div>
+					}
+				</div>
 			}
 
 			@if ( completed.Count > 0 )
 			{
 				<div class="section-label-row">
 					<div class="section-label-left">
-						<span class="section-label">COMPLETED</span>
+						<div class="section-chip"><span>COMPLETED</span></div>
 					</div>
 					<span class="section-count">@completed.Count done</span>
 				</div>
-				@foreach ( var def in completed )
-				{
-					@CompletedSideQuestCard( def )
-				}
+				<div class="rowset">
+					@for ( int i = 0; i < completed.Count; i += 2 )
+					{
+						var i0 = i;
+						var i1 = i + 1;
+						<div class="board-row">
+							@CompletedSideQuestCard( completed[i0] )
+							@if ( i1 < completed.Count )
+							{
+								@CompletedSideQuestCard( completed[i1] )
+							}
+						</div>
+					}
+				</div>
 			}
 		</div>
 	};
 
-	private RenderFragment SideQuestCard( SideQuestState state ) => __builder =>
+	private RenderFragment SideQuestCard( SideQuestState state, int idx ) => __builder =>
 	{
 		var def = SideQuestManager.Instance?.GetDefinition( state.Id );
 		if ( def == null ) return;
 
 		var pct = def.Target > 0 ? (state.Progress * 100f / def.Target) : 0f;
-		var cardClass = (state.Completed ? "completed" : "")
-			+ (!state.Completed && pct >= 75f ? " near" : "");
+		var claimable = state.Completed;
+		var cardClass = (claimable ? "completed" : "") + " " + GetSlipRot( idx, claimable );
+		var pinClass = claimable ? "gold" : "";
 
-		<div class="mission-card @cardClass"
-			 onmouseover=@(() => OnHover("sq-" + state.Id))>
-			<div class="mission-left">
+		<div class="slip @cardClass" onmouseover=@(() => OnHover("sq-" + state.Id))>
+			<div class="pin @pinClass"></div>
+			<div class="slip-head">
 				<div class="mission-icon-wrap">
-					<iconify icon="lucide:scroll-text" Size=@(22) Color="#c4b5fd" />
+					<iconify icon="lucide:scroll-text" Size=@(22) Color="#7fd99a" />
 				</div>
-				<div class="mission-info">
-					<div class="mission-name-row">
-						<span class="mission-name">@def.Title</span>
-						@if ( !string.IsNullOrEmpty( def.NpcName ) )
-						{
-							<span class="mission-cat-chip">@def.NpcName</span>
-						}
-					</div>
-					<span class="mission-desc">@def.Description</span>
-					<div class="mission-progress-bar">
-						<div class="mission-progress-fill" style="width: @pct%"></div>
-					</div>
+				<div class="mission-name-row">
+					<span class="mission-name">@def.Title</span>
+					@if ( !string.IsNullOrEmpty( def.NpcName ) )
+					{
+						<span class="mission-cat-chip">@def.NpcName</span>
+					}
 				</div>
 			</div>
-
-			<div class="mission-right">
-				@if ( state.Completed )
+			<div class="slip-descrow"><span class="mission-desc">@def.Description</span></div>
+			<div class="slip-barrow">
+				<div class="mission-progress-bar">
+					<div class="mission-progress-fill" style="width: @(GetPctFillPx(pct))px"></div>
+				</div>
+			</div>
+			<div class="slip-foot">
+				@if ( claimable )
 				{
 					<button class="claim-btn" onclick=@(() => ClaimSideQuest(state.Id)) onmouseover=@(() => OnHover("claim-sq-" + state.Id))>
 						<span>CLAIM</span>
@@ -477,85 +576,85 @@
 				{
 					<span class="mission-target">@state.Progress / @def.Target</span>
 				}
-
-				@SideQuestRewardPips( def )
 			</div>
+			<div class="slip-tags">
+				@SideQuestRewardTags( def )
+			</div>
+			<div class="q-ring"></div>
 		</div>
 	};
 
-	private RenderFragment AvailableSideQuestCard( SideQuest def ) => __builder =>
+	private RenderFragment AvailableSideQuestCard( SideQuest def, int idx ) => __builder =>
 	{
-		<div class="mission-card"
-			 onmouseover=@(() => OnHover("sq-avail-" + def.Id))>
-			<div class="mission-left">
+		var rotClass = GetSlipRot( idx, false );
+		<div class="slip @rotClass" onmouseover=@(() => OnHover("sq-avail-" + def.Id))>
+			<div class="pin"></div>
+			<div class="slip-head">
 				<div class="mission-icon-wrap">
-					<iconify icon="lucide:map-pin" Size=@(22) Color="#a78bfa" />
+					<iconify icon="lucide:map-pin" Size=@(22) Color="#7fd99a" />
 				</div>
-				<div class="mission-info">
-					<div class="mission-name-row">
-						<span class="mission-name">@def.Title</span>
-						@if ( !string.IsNullOrEmpty( def.NpcName ) )
-						{
-							<span class="mission-cat-chip">@def.NpcName</span>
-						}
-					</div>
-					<span class="mission-desc">@def.Description</span>
+				<div class="mission-name-row">
+					<span class="mission-name">@def.Title</span>
+					@if ( !string.IsNullOrEmpty( def.NpcName ) )
+					{
+						<span class="mission-cat-chip">@def.NpcName</span>
+					}
 				</div>
 			</div>
-
-			<div class="mission-right">
-				<button class="claim-btn" onclick=@(() => AcceptSideQuest(def.Id)) onmouseover=@(() => OnHover("accept-sq-" + def.Id))>
+			<div class="slip-descrow"><span class="mission-desc">@def.Description</span></div>
+			<div class="slip-foot">
+				<button class="claim-btn accept-btn" onclick=@(() => AcceptSideQuest(def.Id)) onmouseover=@(() => OnHover("accept-sq-" + def.Id))>
 					<span>ACCEPT</span>
 				</button>
-				@SideQuestRewardPips( def )
 			</div>
+			<div class="slip-tags">
+				@SideQuestRewardTags( def )
+			</div>
+			<div class="q-ring"></div>
 		</div>
 	};
 
 	private RenderFragment CompletedSideQuestCard( SideQuest def ) => __builder =>
 	{
-		<div class="mission-card claimed">
-			<div class="mission-left">
+		<div class="slip claimed no-tags rot-flat">
+			<div class="pin done"></div>
+			<div class="slip-head">
 				<div class="mission-icon-wrap">
-					<iconify icon="lucide:check-circle-2" Size=@(22) Color="#4ade80" />
+					<iconify icon="lucide:check-circle-2" Size=@(22) Color="#3fb45e" />
 				</div>
-				<div class="mission-info">
-					<div class="mission-name-row">
-						<span class="mission-name">@def.Title</span>
-					</div>
-					<span class="mission-desc">@def.Description</span>
+				<div class="mission-name-row">
+					<span class="mission-name">@def.Title</span>
 				</div>
 			</div>
-			<div class="mission-right">
-				<div class="mission-status claimed-badge">
-					<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
-				</div>
+			<div class="slip-descrow"><span class="mission-desc">@def.Description</span></div>
+			<div class="slip-foot">
+				<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
 			</div>
 		</div>
 	};
 
-	private RenderFragment SideQuestRewardPips( SideQuest def ) => __builder =>
+	private RenderFragment SideQuestRewardTags( SideQuest def ) => __builder =>
 	{
-		<div class="mission-rewards">
+		<div class="tagrow">
 			@if ( def.GoldReward > 0 )
 			{
-				<div class="reward-pip gold-pip">
-					<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
-					<span class="reward-pip-amount">@($"{def.GoldReward / 1000f:0.#}K")</span>
+				<div class="q-reward gold">
+					<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.svg" /></div></div>
+					<span class="q-amt">@($"{def.GoldReward / 1000f:0.#}K")</span>
 				</div>
 			}
 			@if ( def.XPReward > 0 )
 			{
-				<div class="reward-pip xp-pip">
-					<iconify icon="lucide:arrow-up" Size=@(12) Color="#4ade80" />
-					<span class="reward-pip-amount">@($"{def.XPReward:N0}")</span>
+				<div class="q-reward xp">
+					<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:arrow-up" Size=@(11) Color="#ffffff" /></div></div>
+					<span class="q-amt">@($"{def.XPReward:N0}")</span>
 				</div>
 			}
 			@if ( def.SkillPointReward > 0 )
 			{
-				<div class="reward-pip gem-pip">
-					<iconify icon="lucide:sparkles" Size=@(12) Color="#a78bfa" />
-					<span class="reward-pip-amount">@def.SkillPointReward SP</span>
+				<div class="q-reward ink">
+					<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:sparkles" Size=@(11) Color="#ffffff" /></div></div>
+					<span class="q-amt">@def.SkillPointReward SP</span>
 				</div>
 			}
 		</div>
@@ -584,116 +683,123 @@
 		var totalDays = drm?.TotalLoginDays ?? 0;
 		var todayClaimed = drm?.TodayRewardClaimed ?? true;
 		var dayInCycle = drm?.GetStreakDay() ?? 1;
-		var dailies = GetDailyMissions();
+		var dailies = GetDailyMissions().OrderBy( ClaimSortKey ).ToList();
 		var weekMult = drm?.GetWeekMultiplier() ?? 1f;
 		var weekMultLabel = weekMult.ToString( "0.#" );
+		var streakPinClass = todayClaimed ? "" : "gold";
 
 		<div class="tab-content">
-			<div class="tab-header">
-				<span class="tab-title">Daily</span>
-				<div class="tab-sub-row">
-					<span class="tab-sub">Resets in</span>
-					<span class="timer-pill">@GetDailyTimer()</span>
-				</div>
-			</div>
 
-			<!-- 7-DAY STREAK CALENDAR -->
-			<div class="section-label-row">
-				<div class="section-label-left">
-					<span class="section-label">LOGIN STREAK</span>
-					@if ( weekMult > 1f )
-					{
-						<div class="multiplier-badge">
-							<iconify icon="lucide:zap" Size=@(12) Color="#fde047" />
-							<span>&times;@weekMultLabel GOLD</span>
-						</div>
-					}
-				</div>
-				<span class="section-count">@streak days &middot; @totalDays total</span>
-			</div>
-
-			<div class="cal-strip">
-				@for ( int d = 1; d <= 7; d++ )
-				{
-					var day = d;
-					var isClaimed = day < dayInCycle || (day == dayInCycle && todayClaimed);
-					var isToday = day == dayInCycle && !todayClaimed;
-					var isFuture = day > dayInCycle || (day == dayInCycle && todayClaimed && day != dayInCycle);
-					var reward = drm?.GetDayReward( day ) ?? (0, 0, 0);
-					var isLegendary = day == 7;
-
-					var calDayClass = (isClaimed ? "claimed" : "") + " " + (isToday ? "today" : "") + " " + (isFuture ? "future" : "") + " " + (isLegendary ? "legendary" : "");
-					var calIcon = isLegendary ? "lucide:trophy" : reward.Gems > 0 ? "lucide:gem" : "lucide:coins";
-					var calIconColor = isClaimed
-						? "#6d28d9"
-						: isLegendary
-							? (isToday ? "#fbbf24" : "#fde68a")
-							: reward.Gems > 0 ? "#ec4899" : "#f59e0b";
-					<div class="cal-day @calDayClass">
-						<span class="cal-day-lbl">DAY @day</span>
-						<div class="cal-day-icon">
-							<iconify icon="@calIcon" Size=@(isLegendary ? 26 : 24) Color="@calIconColor" />
-						</div>
-						<div class="cal-day-rewards">
-							@if ( reward.Gold > 0 )
-							{
-								<span class="cal-day-amt gold">@($"{reward.Gold / 1000f:0.#}K")</span>
-							}
-							@if ( reward.Gems > 0 )
-							{
-								<span class="cal-day-amt gem">@reward.Gems&nbsp;&#9672;</span>
-							}
-						</div>
-						@if ( isLegendary )
+			<!-- THE PINNED CALENDAR CARD — login streak -->
+			<div class="board-row single">
+				<div class="slip streak-card rot-s">
+					<div class="pin @streakPinClass"></div>
+					<div class="streak-head">
+						<span class="streak-title">LOGIN STREAK</span>
+						@if ( weekMult > 1f )
 						{
-							<div class="cal-day-legendary-tag">
-								<span>&#9733; MASTER INK</span>
+							<div class="multiplier-badge">
+								<iconify icon="lucide:zap" Size=@(12) Color="#ffce3a" />
+								<span>&times;@weekMultLabel GOLD</span>
 							</div>
 						}
-						@if ( isClaimed )
+						<span class="streak-count">@streak days &middot; @totalDays total</span>
+					</div>
+
+					<div class="cal-strip">
+						@for ( int d = 1; d <= 7; d++ )
 						{
-							<div class="cal-day-check">
-								<iconify icon="lucide:check" Size=@(14) Color="#4ade80" />
+							var day = d;
+							var isClaimed = day < dayInCycle || (day == dayInCycle && todayClaimed);
+							var isToday = day == dayInCycle && !todayClaimed;
+							var isFuture = day > dayInCycle || (day == dayInCycle && todayClaimed && day != dayInCycle);
+							var reward = drm?.GetDayReward( day ) ?? (0, 0, 0);
+							var isLegendary = day == 7;
+
+							var calDayClass = (isClaimed ? "claimed" : "") + " " + (isToday ? "today" : "") + " " + (isFuture ? "future" : "") + " " + (isLegendary ? "legendary" : "");
+							var calIcon = isLegendary ? "lucide:trophy" : reward.Gems > 0 ? "lucide:gem" : "lucide:coins";
+							var calIconColor = isClaimed
+								? "#4d8f63"
+								: isLegendary
+									? (isToday ? "#ffce3a" : "#ffe9a3")
+									: reward.Gems > 0 ? "#6ee7b7" : "#ffce3a";
+							<div class="cal-day @calDayClass">
+								<span class="cal-day-lbl">DAY @day</span>
+								<div class="cal-day-icon">
+									<iconify icon="@calIcon" Size=@(isLegendary ? 26 : 24) Color="@calIconColor" />
+								</div>
+								<div class="cal-day-rewards">
+									@if ( reward.Gold > 0 )
+									{
+										<span class="cal-day-amt gold">@($"{reward.Gold / 1000f:0.#}K")</span>
+									}
+									@if ( reward.Gems > 0 )
+									{
+										<span class="cal-day-amt gem">@reward.Gems&nbsp;&#9672;</span>
+									}
+								</div>
+								@if ( isLegendary )
+								{
+									<div class="cal-day-legendary-tag">
+										<span>&#9733; MASTER INK</span>
+									</div>
+								}
+								@if ( isClaimed )
+								{
+									<div class="cal-day-check">
+										<iconify icon="lucide:check" Size=@(14) Color="#7fd99a" />
+									</div>
+								}
 							</div>
 						}
 					</div>
-				}
+
+					@if ( !todayClaimed )
+					{
+						<button class="claim-streak-btn" onclick=@ClaimStreak onmouseover=@(() => OnHover("claim-streak"))>
+							<iconify icon="lucide:gift" Size=@(18) Color="#2a1605" />
+							<span>CLAIM DAY @dayInCycle REWARD</span>
+						</button>
+					}
+					else
+					{
+						<div class="claim-streak-done">
+							<iconify icon="lucide:check-circle" Size=@(16) Color="#7fd99a" />
+							<span>Today's reward claimed &mdash; come back tomorrow!</span>
+						</div>
+					}
+				</div>
 			</div>
 
-			@if ( !todayClaimed )
-			{
-				<button class="claim-streak-btn" onclick=@ClaimStreak onmouseover=@(() => OnHover("claim-streak"))>
-					<iconify icon="lucide:gift" Size=@(18) Color="#ffffff" />
-					<span>CLAIM DAY @dayInCycle REWARD</span>
-				</button>
-			}
-			else
-			{
-				<div class="claim-streak-done">
-					<iconify icon="lucide:check-circle" Size=@(16) Color="#4ade80" />
-					<span>Today's reward claimed &mdash; come back tomorrow!</span>
+			<!-- Daily mission slips -->
+			<div class="section-label-row">
+				<div class="section-label-left">
+					<div class="section-chip"><span>MISSIONS</span></div>
 				</div>
-			}
-
-			<!-- Daily Missions -->
-			<div class="section-label-row missions-header">
-				<span class="section-label">MISSIONS</span>
 				<span class="section-count">@dailies.Count( m => m.Completed && m.Claimed ) / @dailies.Count</span>
 			</div>
 
 			@if ( dailies.Count == 0 )
 			{
 				<div class="empty-state small">
-					<iconify icon="lucide:loader" Size=@(32) Color="#6d28d9" />
+					<iconify icon="lucide:loader" Size=@(32) Color="#2e7d46" />
 					<span class="empty-title">No daily missions</span>
 				</div>
 			}
 			else
 			{
-				<div class="mission-list">
-					@foreach ( var m in dailies )
+				<div class="rowset">
+					@for ( int i = 0; i < dailies.Count; i += 2 )
 					{
-						@MissionCard( m )
+						var i0 = i;
+						var i1 = i + 1;
+						<div class="board-row">
+							@MissionCard( dailies[i0], i0 )
+							@if ( i1 < dailies.Count )
+							{
+								@MissionCard( dailies[i1], i1 )
+							}
+						</div>
 					}
 				</div>
 
@@ -702,56 +808,58 @@
 				var allDone = MissionManager.Instance?.AreAllDailiesComplete() ?? false;
 				var bonusClaimed = MissionManager.Instance?.DailyBonusClaimed ?? false;
 				var bonusIcon = bonusClaimed ? "lucide:check-circle" : "lucide:gift";
-				var bonusColor = bonusClaimed ? "#4ade80" : allDone ? "#fde047" : "#a78bfa";
+				var bonusColor = bonusClaimed ? "#7fd99a" : allDone ? "#ffce3a" : "#6fd08c";
 				var bonusCardClass = (allDone && !bonusClaimed ? "ready" : "") + " " + (bonusClaimed ? "claimed" : "");
-				<div class="bonus-card @bonusCardClass">
-					<div class="bonus-left">
-						<div class="bonus-icon-wrap">
-							<iconify icon="@bonusIcon" Size=@(30) Color="@bonusColor" />
-						</div>
-						<div class="bonus-info">
-							<span class="bonus-title">DAILY BONUS</span>
-							<span class="bonus-sub">Complete all @totalCount missions &middot; @claimedCount / @totalCount</span>
-							<div class="bonus-dots">
-								@for ( int i = 0; i < totalCount; i++ )
+				var bonusPinClass = bonusClaimed ? "done" : allDone ? "gold" : "";
+				<div class="board-row single">
+					<div class="slip bonus-card @bonusCardClass">
+						<div class="pin @bonusPinClass"></div>
+						<div class="bonus-row">
+							<div class="bonus-icon-wrap">
+								<iconify icon="@bonusIcon" Size=@(30) Color="@bonusColor" />
+							</div>
+							<div class="bonus-info">
+								<span class="bonus-title">DAILY BONUS</span>
+								<span class="bonus-sub">Complete all @totalCount missions &middot; @claimedCount / @totalCount</span>
+								<div class="bonus-dots">
+									@for ( int i = 0; i < totalCount; i++ )
+									{
+										var dotFill = i < claimedCount ? "filled" : "";
+										<div class="bonus-dot @dotFill"></div>
+									}
+								</div>
+							</div>
+							<div class="bonus-rewards">
+								<div class="q-reward gold">
+									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.svg" /></div></div>
+									<span class="q-amt">10K</span>
+								</div>
+								<div class="q-reward tokens">
+									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/token.svg" /></div></div>
+									<span class="q-amt">5</span>
+								</div>
+								<div class="q-reward xp">
+									<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:arrow-up" Size=@(11) Color="#ffffff" /></div></div>
+									<span class="q-amt">1,000</span>
+								</div>
+							</div>
+							<div class="bonus-state">
+								@if ( bonusClaimed )
 								{
-									var dotFill = i < claimedCount ? "filled" : "";
-									<div class="bonus-dot @dotFill"></div>
+									<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
+								}
+								else if ( allDone )
+								{
+									<button class="claim-btn bonus-claim-btn" onclick=@ClaimDailyBonus onmouseover=@(() => OnHover("claim-daily-bonus"))>
+										<span>CLAIM ALL</span>
+									</button>
+								}
+								else
+								{
+									<span class="bonus-locked">LOCKED</span>
 								}
 							</div>
 						</div>
-					</div>
-					<div class="bonus-right">
-						<div class="bonus-rewards">
-							<div class="reward-pip gold-pip">
-								<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
-								<span class="reward-pip-amount">10K</span>
-							</div>
-							<div class="reward-pip gem-pip">
-								<img class="reward-pip-icon" src="ui/icons/currency/token.svg" />
-								<span class="reward-pip-amount">5</span>
-							</div>
-							<div class="reward-pip xp-pip">
-								<iconify icon="lucide:arrow-up" Size=@(12) Color="#4ade80" />
-								<span class="reward-pip-amount">1,000</span>
-							</div>
-						</div>
-						@if ( bonusClaimed )
-						{
-							<div class="mission-status claimed-badge">
-								<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
-							</div>
-						}
-						else if ( allDone )
-						{
-							<button class="claim-btn bonus-claim-btn" onclick=@ClaimDailyBonus onmouseover=@(() => OnHover("claim-daily-bonus"))>
-								<span>CLAIM ALL</span>
-							</button>
-						}
-						else
-						{
-							<span class="bonus-locked">LOCKED</span>
-						}
 					</div>
 				</div>
 			}
@@ -778,34 +886,41 @@
 
 	private RenderFragment RenderWeekly() => __builder =>
 	{
-		var weeklies = GetWeeklyMissions();
+		var weeklies = GetWeeklyMissions().OrderBy( ClaimSortKey ).ToList();
 
 		<div class="tab-content">
-			<div class="tab-header">
-				<span class="tab-title">Weekly</span>
-				<div class="tab-sub-row">
-					<span class="tab-sub">Resets in</span>
-					<span class="timer-pill">@GetWeeklyTimer()</span>
-				</div>
-			</div>
-
 			@if ( weeklies.Count == 0 )
 			{
-				<div class="empty-state">
-					<iconify icon="lucide:calendar-days" Size=@(64) Color="#6d28d9" />
-					<span class="empty-title">No weekly missions</span>
+				<div class="board-row single">
+					<div class="slip empty-note rot-a">
+						<div class="pin"></div>
+						<div class="empty-illus">
+							<iconify icon="lucide:calendar-days" Size=@(64) Color="#2e7d46" />
+						</div>
+						<div class="note-row"><span class="empty-title">No weekly missions</span></div>
+					</div>
 				</div>
 			}
 			else
 			{
 				<div class="section-label-row">
-					<span class="section-label">CHALLENGES</span>
+					<div class="section-label-left">
+						<div class="section-chip"><span>CHALLENGES</span></div>
+					</div>
 					<span class="section-count">@weeklies.Count( m => m.Completed && m.Claimed ) / @weeklies.Count</span>
 				</div>
-				<div class="mission-list">
-					@foreach ( var m in weeklies )
+				<div class="rowset">
+					@for ( int i = 0; i < weeklies.Count; i += 2 )
 					{
-						@MissionCard( m )
+						var i0 = i;
+						var i1 = i + 1;
+						<div class="board-row">
+							@MissionCard( weeklies[i0], i0 )
+							@if ( i1 < weeklies.Count )
+							{
+								@MissionCard( weeklies[i1], i1 )
+							}
+						</div>
 					}
 				</div>
 
@@ -814,52 +929,54 @@
 				var wAllDone = MissionManager.Instance?.AreAllWeekliesComplete() ?? false;
 				var wBonusClaimed = MissionManager.Instance?.WeeklyBonusClaimed ?? false;
 				var wBonusIcon = wBonusClaimed ? "lucide:check-circle" : "lucide:gift";
-				var wBonusColor = wBonusClaimed ? "#4ade80" : wAllDone ? "#fde047" : "#a78bfa";
+				var wBonusColor = wBonusClaimed ? "#7fd99a" : wAllDone ? "#ffce3a" : "#6fd08c";
 				var wBonusCardClass = (wAllDone && !wBonusClaimed ? "ready" : "") + " " + (wBonusClaimed ? "claimed" : "");
-				<div class="bonus-card @wBonusCardClass">
-					<div class="bonus-left">
-						<div class="bonus-icon-wrap">
-							<iconify icon="@wBonusIcon" Size=@(30) Color="@wBonusColor" />
-						</div>
-						<div class="bonus-info">
-							<span class="bonus-title">WEEKLY BONUS</span>
-							<span class="bonus-sub">Complete all @wTotal challenges &middot; @wClaimed / @wTotal</span>
-							<div class="bonus-dots">
-								@for ( int i = 0; i < wTotal; i++ )
+				var wBonusPinClass = wBonusClaimed ? "done" : wAllDone ? "gold" : "";
+				<div class="board-row single">
+					<div class="slip bonus-card @wBonusCardClass">
+						<div class="pin @wBonusPinClass"></div>
+						<div class="bonus-row">
+							<div class="bonus-icon-wrap">
+								<iconify icon="@wBonusIcon" Size=@(30) Color="@wBonusColor" />
+							</div>
+							<div class="bonus-info">
+								<span class="bonus-title">WEEKLY BONUS</span>
+								<span class="bonus-sub">Complete all @wTotal challenges &middot; @wClaimed / @wTotal</span>
+								<div class="bonus-dots">
+									@for ( int i = 0; i < wTotal; i++ )
+									{
+										var wDotFill = i < wClaimed ? "filled" : "";
+										<div class="bonus-dot @wDotFill"></div>
+									}
+								</div>
+							</div>
+							<div class="bonus-rewards">
+								<div class="q-reward gold">
+									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.svg" /></div></div>
+									<span class="q-amt">50K</span>
+								</div>
+								<div class="q-reward tokens">
+									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/token.svg" /></div></div>
+									<span class="q-amt">10</span>
+								</div>
+							</div>
+							<div class="bonus-state">
+								@if ( wBonusClaimed )
 								{
-									var wDotFill = i < wClaimed ? "filled" : "";
-									<div class="bonus-dot @wDotFill"></div>
+									<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
+								}
+								else if ( wAllDone )
+								{
+									<button class="claim-btn bonus-claim-btn" onclick=@ClaimWeeklyBonus onmouseover=@(() => OnHover("claim-weekly-bonus"))>
+										<span>CLAIM ALL</span>
+									</button>
+								}
+								else
+								{
+									<span class="bonus-locked">LOCKED</span>
 								}
 							</div>
 						</div>
-					</div>
-					<div class="bonus-right">
-						<div class="bonus-rewards">
-							<div class="reward-pip gold-pip">
-								<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
-								<span class="reward-pip-amount">50K</span>
-							</div>
-							<div class="reward-pip gem-pip">
-								<img class="reward-pip-icon" src="ui/icons/currency/token.svg" />
-								<span class="reward-pip-amount">10</span>
-							</div>
-						</div>
-						@if ( wBonusClaimed )
-						{
-							<div class="mission-status claimed-badge">
-								<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
-							</div>
-						}
-						else if ( wAllDone )
-						{
-							<button class="claim-btn bonus-claim-btn" onclick=@ClaimWeeklyBonus onmouseover=@(() => OnHover("claim-weekly-bonus"))>
-								<span>CLAIM ALL</span>
-							</button>
-						}
-						else
-						{
-							<span class="bonus-locked">LOCKED</span>
-						}
 					</div>
 				</div>
 			}
@@ -871,25 +988,22 @@
 		var monthly = GetMonthlyMission();
 
 		<div class="tab-content">
-			<div class="tab-header">
-				<span class="tab-title">Monthly Challenge</span>
-				<div class="tab-sub-row">
-					<span class="tab-sub">Resets in</span>
-					<span class="timer-pill">@GetMonthlyTimer()</span>
-				</div>
-			</div>
-
 			@if ( monthly == null )
 			{
-				<div class="empty-state">
-					<iconify icon="lucide:trophy" Size=@(64) Color="#6d28d9" />
-					<span class="empty-title">No monthly challenge</span>
+				<div class="board-row single">
+					<div class="slip empty-note rot-b">
+						<div class="pin"></div>
+						<div class="empty-illus">
+							<iconify icon="lucide:trophy" Size=@(64) Color="#2e7d46" />
+						</div>
+						<div class="note-row"><span class="empty-title">No monthly challenge</span></div>
+					</div>
 				</div>
 			}
 			else
 			{
-				<div class="mission-list">
-					@MissionCard( monthly, true )
+				<div class="board-row single">
+					@MissionCard( monthly, 0, true )
 				</div>
 			}
 		</div>
@@ -901,52 +1015,51 @@
 		var inGuild = gm?.IsInGuild ?? false;
 
 		<div class="tab-content">
-			<div class="tab-header">
-				<span class="tab-title">Guild Goals</span>
-				<div class="tab-sub-row">
-					@if ( inGuild )
-					{
-						<span class="tab-sub">Resets in</span>
-						<span class="timer-pill">@GetGuildGoalsTimer()</span>
-					}
-					else
-					{
-						<span class="tab-sub">Join a guild to contribute to community goals.</span>
-					}
-				</div>
-			</div>
-
 			@if ( !inGuild )
 			{
-				<div class="empty-state">
-					<div class="empty-illus">
-						<iconify icon="lucide:shield" Size=@(68) Color="#6d28d9" />
+				<div class="board-row single">
+					<div class="slip empty-note rot-a">
+						<div class="pin"></div>
+						<div class="empty-illus">
+							<iconify icon="lucide:shield" Size=@(64) Color="#2e7d46" />
+						</div>
+						<div class="note-row"><span class="empty-title">No guild yet</span></div>
+						<div class="note-row"><span class="empty-body">Open the Guild panel to join one — every member contributes to weekly community goals that pour XP into your guild's level.</span></div>
 					</div>
-					<span class="empty-title">No guild yet</span>
-					<span class="empty-body">Open the Guild panel to join one — every member contributes to weekly community goals that pour XP into your guild's level.</span>
 				</div>
 			}
 			else
 			{
-				var goals = gm.WeeklyGoals;
+				var goals = gm.WeeklyGoals
+					.OrderBy( g => (g.Completed && !g.Claimed) ? 0 : g.Claimed ? 2 : 1 ).ToList();
 				<div class="section-label-row">
-					<span class="section-label">COMMUNITY GOALS</span>
+					<div class="section-label-left">
+						<div class="section-chip"><span>COMMUNITY GOALS</span></div>
+					</div>
 					<span class="section-count">@goals.Count( g => g.Claimed ) / @goals.Count</span>
 				</div>
 
 				@if ( goals.Count == 0 )
 				{
 					<div class="empty-state small">
-						<iconify icon="lucide:loader" Size=@(32) Color="#6d28d9" />
+						<iconify icon="lucide:loader" Size=@(32) Color="#2e7d46" />
 						<span class="empty-title">Loading goals…</span>
 					</div>
 				}
 				else
 				{
-					<div class="mission-list">
-						@foreach ( var g in goals )
+					<div class="rowset">
+						@for ( int i = 0; i < goals.Count; i += 2 )
 						{
-							@GuildGoalCard( g )
+							var i0 = i;
+							var i1 = i + 1;
+							<div class="board-row">
+								@GuildGoalCard( goals[i0], i0 )
+								@if ( i1 < goals.Count )
+								{
+									@GuildGoalCard( goals[i1], i1 )
+								}
+							</div>
 						}
 					</div>
 				}
@@ -954,39 +1067,37 @@
 		</div>
 	};
 
-	private RenderFragment GuildGoalCard( GuildWeeklyGoal g ) => __builder =>
+	private RenderFragment GuildGoalCard( GuildWeeklyGoal g, int idx ) => __builder =>
 	{
 		var pct = g.PercentComplete;
-		var near = !g.Claimed && !g.Completed && pct >= 75f;
+		var claimable = g.Completed && !g.Claimed;
 		var cardClass = "cat-guild"
 			+ (g.Claimed ? " claimed" : "")
-			+ (g.Completed ? " completed" : "")
-			+ (near ? " near" : "");
+			+ (claimable ? " completed" : "")
+			+ " " + GetSlipRot( idx, g.Claimed || claimable );
+		var pinClass = g.Claimed ? "done" : claimable ? "gold" : "";
 
-		<div class="mission-card @cardClass"
-			 onmouseover=@(() => OnHover("guildgoal-" + g.Id))>
-			<div class="mission-left">
+		<div class="slip @cardClass" onmouseover=@(() => OnHover("guildgoal-" + g.Id))>
+			<div class="pin @pinClass"></div>
+			<div class="slip-head">
 				<div class="mission-icon-wrap">
 					<iconify icon="@GetGuildGoalIcon(g.Type)" Size=@(22) Color="@GetGuildGoalColor(g.Type)" />
 				</div>
-				<div class="mission-info">
-					<div class="mission-name-row">
-						<span class="mission-name">@g.Title</span>
-						<span class="mission-cat-chip">GUILD</span>
-					</div>
-					<span class="mission-desc">@g.Description</span>
-					<div class="mission-progress-bar">
-						<div class="mission-progress-fill" style="width: @pct%"></div>
-					</div>
+				<div class="mission-name-row">
+					<span class="mission-name">@g.Title</span>
+					<span class="mission-cat-chip">GUILD</span>
 				</div>
 			</div>
-
-			<div class="mission-right">
+			<div class="slip-descrow"><span class="mission-desc">@g.Description</span></div>
+			<div class="slip-barrow">
+				<div class="mission-progress-bar">
+					<div class="mission-progress-fill" style="width: @(GetPctFillPx(pct))px"></div>
+				</div>
+			</div>
+			<div class="slip-foot">
 				@if ( g.Claimed )
 				{
-					<div class="mission-status claimed-badge">
-						<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
-					</div>
+					<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
 				}
 				else if ( g.Completed )
 				{
@@ -998,14 +1109,14 @@
 				{
 					<span class="mission-target">@($"{g.Progress:N0}") / @($"{g.Target:N0}")</span>
 				}
-
-				<div class="mission-rewards">
-					<div class="reward-pip xp-pip">
-						<iconify icon="lucide:shield" Size=@(12) Color="#a78bfa" />
-						<span class="reward-pip-amount">@($"{g.XpReward:N0} XP")</span>
-					</div>
+			</div>
+			<div class="slip-tags">
+				<div class="q-reward xp">
+					<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:shield" Size=@(11) Color="#ffffff" /></div></div>
+					<span class="q-amt">@($"{g.XpReward:N0} XP")</span>
 				</div>
 			</div>
+			<div class="q-ring"></div>
 		</div>
 	};
 
@@ -1047,45 +1158,45 @@
 	};
 
 	// ══════════════════════════════════════════════
-	// MISSION CARD (shared)
+	// MISSION SLIP (shared)
 	// ══════════════════════════════════════════════
 
-	private RenderFragment MissionCard( MissionState m, bool large = false ) => __builder =>
+	private RenderFragment MissionCard( MissionState m, int idx, bool large = false ) => __builder =>
 	{
 		var def = MissionManager.Instance?.GetDefinition( m.MissionId );
-		var pct = GetMissionPercent( m );
-		var near = !m.Claimed && !m.Completed && pct >= 75f;
+		var claimable = m.Completed && !m.Claimed;
 		var missionCardClass = GetCategoryClass(m)
 			+ (m.Claimed ? " claimed" : "")
-			+ (m.Completed ? " completed" : "")
-			+ (near ? " near" : "")
-			+ (large ? " large" : "");
+			+ (claimable ? " completed" : "")
+			+ (large ? " wide" : "")
+			+ " " + GetSlipRot( idx, m.Claimed || claimable );
+		var pinClass = m.Claimed ? "done" : claimable ? "gold" : "";
 
-		<div class="mission-card @missionCardClass"
-			 onmouseover=@(() => OnHover("mission-" + m.MissionId))>
+		<div class="slip @missionCardClass" onmouseover=@(() => OnHover("mission-" + m.MissionId))>
+			<div class="pin @pinClass"></div>
 
-			<div class="mission-left">
+			<div class="slip-head">
 				<div class="mission-icon-wrap">
 					<iconify icon="@GetMissionIconify(m)" Size=@(large ? 30 : 22) Color="@(GetCategoryIconColor(m))" />
 				</div>
-				<div class="mission-info">
-					<div class="mission-name-row">
-						<span class="mission-name">@GetMissionName( m )</span>
-						<span class="mission-cat-chip">@(GetCategoryLabel(m))</span>
-					</div>
-					<span class="mission-desc">@GetMissionDesc( m )</span>
-					<div class="mission-progress-bar">
-						<div class="mission-progress-fill" style="width: @pct%"></div>
-					</div>
+				<div class="mission-name-row">
+					<span class="mission-name">@GetMissionName( m )</span>
+					<span class="mission-cat-chip">@(GetCategoryLabel(m))</span>
 				</div>
 			</div>
 
-			<div class="mission-right">
+			<div class="slip-descrow"><span class="mission-desc">@GetMissionDesc( m )</span></div>
+
+			<div class="slip-barrow">
+				<div class="mission-progress-bar">
+					<div class="mission-progress-fill" style="width: @(GetMissionFillPx(m, large))px"></div>
+				</div>
+			</div>
+
+			<div class="slip-foot">
 				@if ( m.Claimed )
 				{
-					<div class="mission-status claimed-badge">
-						<iconify icon="lucide:check" Size=@(16) Color="#4ade80" />
-					</div>
+					<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
 				}
 				else if ( m.Completed )
 				{
@@ -1097,38 +1208,39 @@
 				{
 					<span class="mission-target">@m.Progress / @GetMissionTarget( m )</span>
 				}
-
-				<div class="mission-rewards">
-					@if ( def?.GoldReward > 0 )
-					{
-						<div class="reward-pip gold-pip">
-							<img class="reward-pip-icon" src="ui/icons/currency/money.svg" />
-							<span class="reward-pip-amount">@($"{def.GoldReward / 1000f:0.#}K")</span>
-						</div>
-					}
-					@if ( def?.GemReward > 0 )
-					{
-						<div class="reward-pip gem-pip">
-							<img class="reward-pip-icon" src="ui/icons/currency/token.svg" />
-							<span class="reward-pip-amount">@def.GemReward</span>
-						</div>
-					}
-					@if ( def?.InkReward > 0 )
-					{
-						<div class="reward-pip ink-pip">
-							<img class="reward-pip-icon" src="ui/icons/currency/ink.svg" />
-							<span class="reward-pip-amount">@def.InkReward</span>
-						</div>
-					}
-					@if ( def?.XPReward > 0 )
-					{
-						<div class="reward-pip xp-pip">
-							<iconify icon="lucide:arrow-up" Size=@(12) Color="#4ade80" />
-							<span class="reward-pip-amount">@($"{def.XPReward:N0}")</span>
-						</div>
-					}
-				</div>
 			</div>
+
+			<div class="slip-tags">
+				@if ( def?.GoldReward > 0 )
+				{
+					<div class="q-reward gold">
+						<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.svg" /></div></div>
+						<span class="q-amt">@($"{def.GoldReward / 1000f:0.#}K")</span>
+					</div>
+				}
+				@if ( def?.GemReward > 0 )
+				{
+					<div class="q-reward tokens">
+						<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/token.svg" /></div></div>
+						<span class="q-amt">@def.GemReward</span>
+					</div>
+				}
+				@if ( def?.InkReward > 0 )
+				{
+					<div class="q-reward ink">
+						<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/ink.svg" /></div></div>
+						<span class="q-amt">@def.InkReward</span>
+					</div>
+				}
+				@if ( def?.XPReward > 0 )
+				{
+					<div class="q-reward xp">
+						<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:arrow-up" Size=@(11) Color="#ffffff" /></div></div>
+						<span class="q-amt">@($"{def.XPReward:N0}")</span>
+					</div>
+				}
+			</div>
+			<div class="q-ring"></div>
 		</div>
 	};
 }

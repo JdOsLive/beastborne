@@ -121,6 +121,22 @@ be discoverable (on-screen cap) and must not collide with: 1-6 tabs,
 7/9 quests/bag, 8 phone, 0 profile, T/R/C/N widgets, Q/Esc close,
 WASD/arrows nav, Space/Enter confirm.
 
+## EFFICIENCY-FIRST LAYOUT — USER MANDATE (refined after wave 1)
+Wave 1 read as "the same panels with a little tweak"; the correction is
+NOT novelty for its own sake — it is THE MOST EFFICIENT LAYOUT:
+- Start from the panel's JOB: what does the player do here most often?
+  The layout that makes that fastest and clearest WINS. Fewer moves to
+  the common action, the most important content biggest (usually the
+  pixel art), less chrome, less dead space.
+- Rebuild the macro-layout ONLY where the old one is inefficient —
+  wrong hierarchy, cramped hero content, buried actions. Where the old
+  arrangement already IS the efficient one, keep it and perfect it.
+- Do NOT redo something just to make it look different. No themed
+  gimmicks that cost usability. Litmus: a returning player should find
+  everything faster than before AND the panel should look brand-new in
+  its craft (type, accents, ring, spacing) even where the structure
+  stayed.
+
 ## WHAT "REDONE" MEANS (the bar)
 A stranger comparing before/after should say "this is a different,
 better game" — new composition (not the same boxes recolored), a clear

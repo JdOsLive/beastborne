@@ -1,9 +1,28 @@
 // ═══════════════════════════════════════════════════════════════
-// QUEST PANEL — Zelda-style vertical left tabs
-// Shell layout mirrors HelpPanel; mission-card vocab mirrors DailyPanel
+// QUEST PANEL — the notice board (efficiency-first sweep, 2026-07)
+//
+// Accent: QUEST GREEN #3fb45e (the panel's PawPad tile color).
+// Gold #ffce3a stays the universal "claim/GO".
+//
+// Composition: ONE chrome rail (identity header + tab pegs + timer),
+// angled green seam, then a full-bleed two-column board of quest
+// slips. In-progress slips rest at a whisper tilt (±~1°); claimable
+// and claimed slips sit FLAT (actionable/done states scan instantly).
+// Claiming animates the settle via the transform transition.
+//
+// Engine laws honored:
+// - Tilted slips are 2D-transform ancestors → every text/bar row
+//   inside carries EXPLICIT px width (see SlipBarW consts in razor);
+//   progress fills arrive as computed px, never %.
+// - Slips live in a scroll container → hover is brighten + inset
+//   violet ring, NEVER a transform; rings/badges sit INSIDE bounds.
+// - No hairline outlines (vector rule) — separation by fill contrast.
+//   Permitted lines: violet ring, gold left accent on ready bonus,
+//   pin edges (physical object), keycap-style timer slab.
 // ═══════════════════════════════════════════════════════════════
 
-// Infinite-loop animations (play every time, safe in s&box)
+// ─── Keyframes (infinite ambient loops + first-mount pops) ─────
+
 @keyframes questBadgePulse {
 	0%, 100% { transform: scale(1); }
 	50% { transform: scale(1.14); }
@@ -11,22 +30,17 @@
 
 @keyframes questClaimBreath {
 	0%, 100% { transform: scale(1); }
-	50% { transform: scale(1.035); }
-}
-
-@keyframes questBonusShimmer {
-	0%, 100% { border-color: rgba(253, 224, 71, 0.8); }
-	50% { border-color: rgba(253, 224, 71, 1); }
+	50% { transform: scale(1.03); }
 }
 
 @keyframes questTodayPulse {
-	0%, 100% { border-color: rgba(252, 211, 77, 0.9); }
-	50% { border-color: rgba(253, 230, 138, 1); }
+	0%, 100% { border-color: rgba(255, 206, 58, 0.9); }
+	50% { border-color: rgba(255, 233, 140, 1); }
 }
 
-@keyframes questTabFadeIn {
-	from { opacity: 0; transform: translateY(8px); }
-	to { opacity: 1; transform: translateY(0); }
+@keyframes questBonusShimmer {
+	0%, 100% { border-color: rgba(255, 206, 58, 0.75); }
+	50% { border-color: rgba(255, 229, 138, 1); }
 }
 
 @keyframes questCheckPop {
@@ -35,14 +49,23 @@
 	100% { transform: scale(1); }
 }
 
-// Header entrance — matches OnlineHub family.
-@keyframes headerSlideIn {
-	0% { opacity: 0; transform: translateY(-6px); }
-	100% { opacity: 1; transform: translateY(0); }
+// Opacity-only tab entrance — a transform here would poison derived
+// widths in every descendant for the duration of the animation.
+@keyframes questTabFadeIn {
+	from { opacity: 0; }
+	to { opacity: 1; }
 }
 
-// CSS transition-based entrance (re-fires on each re-open)
-// because @keyframes only play on first mount in s&box.
+// The ring's quiet life — tiny skew/rotate breathe, safely inside
+// the slip's inset bounds.
+@keyframes qRingBreathe {
+	0%, 100% { transform: skewX(0deg) rotate(0deg); }
+	33% { transform: skewX(0.4deg) rotate(0.2deg); }
+	66% { transform: skewX(-0.4deg) rotate(-0.2deg); }
+}
+
+// ─── Root + entrance (opacity only — transitions re-fire on open) ─
+
 QuestPanel {
 	position: absolute;
 	top: 0;
@@ -54,292 +77,219 @@ QuestPanel {
 	opacity: 0;
 	transition: opacity 0.15s ease-out;
 
-	.quest-overlay {
+	.quest-page {
 		opacity: 0;
-		transition: opacity 0.18s ease-out;
-	}
-
-	.quest-modal {
-		opacity: 0;
-		transform: scale(0.96) translateY(10px);
-		transition: opacity 0.22s ease-out, transform 0.22s ease-out;
+		transition: opacity 0.22s ease-out;
 	}
 
 	&.visible {
 		opacity: 1;
 		pointer-events: all;
 
-		.quest-overlay { opacity: 1; }
-		.quest-modal {
+		.quest-page {
 			opacity: 1;
-			transform: scale(1) translateY(0);
 		}
 	}
 }
 
-.quest-overlay {
+.quest-page {
 	position: absolute;
 	top: 0;
 	left: 0;
 	width: 100%;
 	height: 100%;
-	background-color: rgba(0, 0, 0, 0.8);
-}
-
-.quest-modal {
-	position: absolute;
-	left: 5%;
-	top: 5%;
-	width: 90%;
-	height: 90%;
-	background-color: rgba(15, 15, 25, 0.98);
-	border: 2px solid rgba(139, 92, 246, 0.4);
-	border-radius: 16px;
+	background-color: #0a0912;
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
-	z-index: 1;
-}
-
-.bg-scroll {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	pointer-events: none;
-	opacity: 0.08;
-
-	img {
-		width: 100%;
-		height: 100%;
-	}
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HEADER
+// THE RAIL — identity + tab pegs + timer + close, one chrome band
 // ═══════════════════════════════════════════════════════════════
 
-.quest-header {
+.qp-header {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	justify-content: space-between;
-	padding: 14px 20px;
-	// Aligned with OnlineHub/Inventory/Daily header family — semi-opaque
-	// blue-black with faint purple bottom rule + soft drop shadow.
-	background-color: rgba(8, 6, 18, 0.5);
-	border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+	padding: 20px 40px 12px 40px;
+	background-color: #0a0912; // opaque — covers slip-tilt leaks from the scroll below
 	flex-shrink: 0;
-	z-index: 10;
-	animation: headerSlideIn 0.3s ease-out;
+	z-index: 50;
 }
 
-.header-left {
+.qp-head-left {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 10px;
+	flex: 0 0 auto;
 }
 
-// Flat 24px icon — matches OnlineHub `.hub-title-icon`. The previous
-// 42px purple-square wrap read as a "category badge" and clashed with
-// the lighter chrome treatment used across the rest of the game's
-// top-level panels (Roster / Beastbook / Inventory / Daily / Online).
-.quest-title-icon {
-	width: 24px;
-	height: 24px;
-	opacity: 0.8;
-	flex-shrink: 0;
-}
-
-.header-title-stack {
-	display: flex;
-	flex-direction: column;
-}
-
-// Panel title — italic-display dialect, single instance.
-// Mirrors ExpeditionPanel `.panel-title` recipe.
-.quest-title {
-	font-size: 24px;
-	font-weight: 900;
-	color: white;
-	letter-spacing: 2;
-	text-transform: uppercase;
-	font-style: italic;
-	transform: skewX(-8deg);
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-	line-height: 26px;
-}
-
-.quest-subtitle {
-	font-size: 11px;
-	font-weight: 500;
-	color: rgba(196, 181, 253, 0.7);
-	line-height: 13px;
-	letter-spacing: 1px;
-}
-
-.header-right {
+.peg-tabs {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
+	flex: 1 1 0;
+	min-width: 0;
+	margin-left: 48px;
 }
 
-// Close button — uses universal .close-btn from GameHUD (canonical iconify-spin pattern)
-
-// ═══════════════════════════════════════════════════════════════
-// BODY
-// ═══════════════════════════════════════════════════════════════
-
-.quest-body {
-	display: flex;
-	flex-direction: row;
-	align-items: stretch;
-	flex-grow: 1;
-	flex-shrink: 1;
-	min-height: 0;
-	width: 100%;
-	overflow: hidden;
-	position: relative;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// SIDEBAR (Zelda-style vertical tabs)
-// ═══════════════════════════════════════════════════════════════
-
-.quest-sidebar {
-	position: absolute;
-	left: 0;
-	top: 0;
-	bottom: 0;
-	width: 240px;
-	display: flex;
-	flex-direction: column;
-	padding: 14px 10px;
-	background-color: rgba(12, 12, 20, 0.95);
-	border-right: 1px solid rgba(139, 92, 246, 0.25);
-	overflow-y: scroll;
-	z-index: 10;
-}
-
-.sidebar-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	width: 100%;
-	height: 62px;
-	min-height: 62px;
-	padding: 0 12px;
-	margin-bottom: 6px;
-	background-color: rgba(0, 0, 0, 0.25);
-	border: 1px solid rgba(139, 92, 246, 0.15);
+// Tab peg — skewed slab chip (ChatPanel .ch-tab dialect): bg + ring
+// border live ON the skew holder, content counter-skewed inside.
+.qtab {
+	height: 44px;
+	margin-right: 10px;
+	background-color: #15121f;
+	border: 2px solid rgba(0, 0, 0, 0);
 	border-radius: 10px;
+	transform: skewX(-8deg);
 	cursor: pointer;
 	flex-shrink: 0;
-	position: relative;
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
+
+	// hover-flicker rule: the inner passes the cursor through
+	> * {
+		pointer-events: none;
+	}
 
 	&:hover {
-		background-color: rgba(139, 92, 246, 0.18);
-		border-color: rgba(139, 92, 246, 0.45);
+		background-color: #1c1830;
+		border-color: #9b6cff; // the living ring, hugging the parallelogram
 	}
 
 	&.active {
-		background-color: rgba(46, 16, 101, 0.85);
-		border-color: rgba(167, 139, 250, 0.9);
-		// left-accent strip (per-side border shorthand with style word fails in s&box)
-		box-shadow: -3px 0 0 rgba(196, 181, 253, 1);
+		background-color: #3fb45e;
+	}
+
+	&.active:hover {
+		background-color: #4cc46c;
 	}
 }
 
-.sidebar-icon {
+.qtab-inner {
 	display: flex;
+	flex-direction: row;
 	align-items: center;
-	justify-content: center;
-	width: 32px;
-	height: 32px;
-	min-width: 32px;
-	min-height: 32px;
-	margin-right: 10px;
-	background-color: rgba(139, 92, 246, 0.2);
-	border: 1px solid rgba(139, 92, 246, 0.3);
-	border-radius: 7px;
+	height: 100%;
+	padding: 0 16px;
+	transform: skewX(8deg);
+}
+
+.qtab-icon {
 	flex-shrink: 0;
 }
 
-.sidebar-btn.active .sidebar-icon {
-	background-color: rgba(167, 139, 250, 0.35);
-	border-color: rgba(196, 181, 253, 0.55);
-}
-
-.sidebar-text {
-	display: flex;
-	flex-direction: column;
-	flex: 1 1 0;
-	min-width: 0;
-}
-
-.sidebar-label {
-	font-size: 14px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.82);
+.qtab-label {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 13px;
+	font-weight: 800;
 	line-height: 16px;
-	letter-spacing: 0.3px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: rgba(214, 206, 236, 0.75);
+	margin-left: 8px;
+	white-space: nowrap;
 }
 
-.sidebar-btn.active .sidebar-label,
-.sidebar-btn:hover .sidebar-label {
-	color: white;
+.qtab.active .qtab-label,
+.qtab:hover .qtab-label {
+	color: #ffffff;
 }
 
-.sidebar-sub {
-	font-size: 11px;
-	font-weight: 500;
-	color: rgba(196, 181, 253, 0.6);
-	line-height: 13px;
-	letter-spacing: 0.3px;
-	margin-top: 2px;
-}
-
-.sidebar-btn.active .sidebar-sub {
-	color: rgba(235, 225, 255, 1);
-	font-weight: 700;
-}
-
-.sidebar-badge {
+.qtab-badge {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 22px;
-	height: 22px;
-	min-width: 22px;
-	background-color: rgb(239, 68, 68);
-	border: 1px solid rgba(255, 255, 255, 0.3);
-	border-radius: 11px;
+	width: 20px;
+	height: 20px;
+	min-width: 20px;
+	margin-left: 8px;
+	background-color: #e0414a;
+	border-radius: 999px;
 	font-size: 11px;
-	font-weight: 700;
+	font-weight: 800;
 	color: white;
 	flex-shrink: 0;
 	animation: questBadgePulse 1.6s ease-in-out infinite;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// CONTENT AREA
-// ═══════════════════════════════════════════════════════════════
-
-.quest-content {
+.qp-head-right {
 	display: flex;
-	flex-direction: column;
-	min-width: 0;
-	margin-left: 240px;
-	overflow: hidden;
-	flex: 1 1 0;
-	min-height: 0;
-	background-color: rgba(15, 15, 25, 0.6);
+	flex-direction: row;
+	align-items: center;
+	flex: 0 0 auto;
 }
 
-.content-inner {
+.peg-meta-lbl {
+	font-family: Exo2;
+	font-size: 10px;
+	font-weight: 800;
+	line-height: 12px;
+	letter-spacing: 1.5px;
+	color: rgba(214, 206, 236, 0.55);
+	margin-right: 8px;
+	white-space: nowrap;
+}
+
+// Reset timer — keycap-style slab (its dark border is a physical cap
+// edge, not a decorative hairline — allowed).
+.timer-pill {
+	padding: 6px 12px;
+	margin-right: 16px;
+	background-color: rgba(8, 6, 16, 0.9);
+	border: 2px solid rgba(0, 0, 0, 0.85);
+	border-radius: 6px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 13px;
+	font-weight: 800;
+	color: #7fd99a;
+	letter-spacing: 1.2px;
+	text-transform: uppercase;
+	line-height: 14px;
+	white-space: nowrap;
+}
+
+BbStamp.qp-ready-stamp {
+	margin-right: 16px;
+}
+
+// .close-btn — universal recipe from GameHUD (canonical iconify-spin)
+
+// ─── Angled seam under the rail ────────────────────────────────
+
+.qp-seam {
+	display: flex;
+	flex-direction: row;
+	height: 6px;
+	margin: 0 40px;
+	flex-shrink: 0;
+	z-index: 50;
+}
+
+.qp-seam-a {
+	width: 240px;
+	height: 6px;
+	background-color: #3fb45e;
+	border-radius: 2px;
+	transform: skewX(-30deg);
+	flex-shrink: 0;
+}
+
+.qp-seam-b {
+	flex: 1 1 0;
+	height: 6px;
+	background-color: #15121f;
+	border-radius: 2px;
+	margin-left: 14px;
+	transform: skewX(-30deg);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THE BOARD — scrolling field of slips
+// ═══════════════════════════════════════════════════════════════
+
+.board {
 	flex: 1 1 0;
 	min-height: 0;
 	overflow-y: scroll;
@@ -347,232 +297,660 @@ QuestPanel {
 	pointer-events: all;
 	display: flex;
 	flex-direction: column;
-	padding: 18px 24px 80px 24px;
+	padding: 26px 0 140px 94px; // 94 = (1920 - 1732) / 2 — board content centered at design width
+	z-index: 1;
 }
 
 .tab-content {
 	display: flex;
 	flex-direction: column;
-	width: 100%;
+	width: 1732px;
 	flex-shrink: 0;
+	animation: questTabFadeIn 0.22s ease-out;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// TAB HEADER
-// ═══════════════════════════════════════════════════════════════
-
-.tab-header {
+// Row-loop container — keeps the @for loops inside a markup element
+// (generator dialect) and groups a section's rows.
+.rowset {
 	display: flex;
 	flex-direction: column;
-	margin-bottom: 16px;
+	width: 1732px;
 	flex-shrink: 0;
 }
 
-// Tab heading — italic-display dialect, single instance per visible tab.
-// Mirrors ExpeditionPanel `.panel-title` recipe.
-.tab-title {
-	font-size: 26px;
-	font-weight: 900;
-	color: white;
-	letter-spacing: 2;
-	text-transform: uppercase;
-	font-style: italic;
-	transform: skewX(-8deg);
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-	line-height: 30px;
-}
-
-.tab-sub {
-	font-size: 13px;
-	font-weight: 500;
-	color: rgba(196, 181, 253, 0.85);
-	line-height: 15px;
-}
-
-.tab-sub-row {
+.board-row {
 	display: flex;
 	flex-direction: row;
-	align-items: center;
-	margin-top: 4px;
+	align-items: flex-start;
+	width: 1732px;
+	margin-bottom: 30px;
+	flex-shrink: 0;
+
+	.slip {
+		margin-right: 32px;
+	}
+
+	.slip:last-child {
+		margin-right: 0;
+	}
 }
 
-// Reset timer — slab-pill stamp. One per tab, sits next to the "Resets in"
-// label. Persona stamp recipe (slab-rect, hard 2px black border, hard
-// offset shadow, italic skewed monospace-feel digits).
-.timer-pill {
-	margin-left: 8px;
-	padding: 6px 12px;
-	background-color: rgba(20, 14, 32, 0.92);
-	border: 2px solid rgba(0, 0, 0, 0.55);
-	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
-	border-radius: 4px;
-	font-size: 12px;
-	font-weight: 800;
-	color: rgb(196, 181, 253);
-	letter-spacing: 1.2;
-	text-transform: uppercase;
-	font-style: italic;
-	transform: skewX(-8deg);
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-	line-height: 12px;
+// centered single-slip rows
+.board-row.single .slip.wide {
+	margin-left: 316px; // (1732 - 1100) / 2
+	margin-right: 0;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// SECTION LABEL
-// ═══════════════════════════════════════════════════════════════
+// ─── Section chips — skewed green slabs (the board's labels) ───
 
 .section-label-row {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: space-between;
-	width: 100%;
-	margin-bottom: 10px;
-	margin-top: 6px;
+	width: 1732px;
+	margin: 4px 0 18px 0;
 	flex-shrink: 0;
 }
 
-.section-label {
-	font-size: 12px;
-	font-weight: 800;
-	color: rgba(216, 204, 255, 1);
-	line-height: 14px;
-	letter-spacing: 1.5px;
+.section-label-left {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.section-chip {
+	display: flex;
+	align-items: center;
+	padding: 6px 16px;
+	background-color: #3fb45e;
+	border-radius: 6px;
+	transform: skewX(-8deg);
+	flex-shrink: 0;
+
+	span {
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 900;
+		line-height: 13px;
+		letter-spacing: 1.5px;
+		text-transform: uppercase;
+		color: #08240f;
+		transform: skewX(8deg);
+		white-space: nowrap;
+	}
 }
 
 .section-count {
-	font-size: 12px;
+	font-size: 13px;
 	font-weight: 700;
-	color: rgba(255, 255, 255, 0.7);
-	line-height: 14px;
+	color: rgba(214, 206, 236, 0.6);
+	line-height: 15px;
 	letter-spacing: 0.5px;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 7-DAY CALENDAR STRIP (daily tab)
+// THE SLIP — a pinned quest notice
+// Geometry (content-box): declared width 802 + 2×24 padding = 850
+// outer; two slips + 32 gap = 1732 = board width.
 // ═══════════════════════════════════════════════════════════════
+
+.slip {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 802px;
+	padding: 30px 24px 0 24px; // top clears the pin; bottom 0 so gem tags hang
+	background-color: #16131f;
+	border-radius: 14px;
+	flex-shrink: 0;
+	transition: transform 0.4s ease-out, background-color 0.15s ease-out, opacity 0.2s ease-out;
+
+	&:hover {
+		background-color: #1d1930;
+	}
+
+	// Rest tilts — in-progress slips only (pre-rotated rest states;
+	// hover never transforms inside the scroller).
+	&.rot-a {
+		transform: rotate(-1.2deg);
+	}
+
+	&.rot-b {
+		transform: rotate(0.9deg);
+	}
+
+	&.rot-flat {
+		transform: rotate(0deg);
+	}
+
+	// CLAIMABLE — flat, lit: brighter paper + the gold moment.
+	&.completed {
+		background-color: #221c2a;
+	}
+
+	&.completed:hover {
+		background-color: #292234;
+	}
+
+	// CLAIMED — settled flat, quiet.
+	&.claimed {
+		background-color: #110f18;
+		opacity: 0.62;
+	}
+
+	// Monthly hero slip: declared 1052 + 48 = 1100 outer.
+	&.wide {
+		width: 1052px;
+	}
+
+	// Slips without hanging gem tags need their own floor.
+	&.no-tags {
+		padding-bottom: 18px;
+	}
+}
+
+// ─── The pin ───────────────────────────────────────────────────
+
+.pin {
+	position: absolute;
+	top: 9px;
+	left: 50%;
+	margin-left: -8px;
+	width: 12px;
+	height: 12px;
+	border: 2px solid #14161c;
+	border-radius: 999px;
+	background-color: #3a3e48;
+	transition: background-color 0.2s ease-out;
+
+	&.gold {
+		background-color: #ffce3a;
+		border-color: #7a5a10;
+	}
+
+	&.done {
+		background-color: #3fb45e;
+		border-color: #1c5b30;
+	}
+}
+
+// ─── Slip anatomy ──────────────────────────────────────────────
+
+.slip-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 8px;
+}
+
+.mission-icon-wrap {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	min-width: 40px;
+	margin-right: 12px;
+	background-color: rgba(63, 180, 94, 0.14);
+	border-radius: 10px;
+	flex-shrink: 0;
+}
+
+// Per-category identity tints (color carries meaning)
+.slip.cat-battle .mission-icon-wrap { background-color: rgba(239, 68, 68, 0.18); }
+.slip.cat-expedition .mission-icon-wrap { background-color: rgba(245, 158, 11, 0.18); }
+.slip.cat-collection .mission-icon-wrap { background-color: rgba(14, 165, 233, 0.18); }
+.slip.cat-economy .mission-icon-wrap { background-color: rgba(234, 179, 8, 0.18); }
+.slip.cat-social .mission-icon-wrap { background-color: rgba(217, 70, 239, 0.18); }
+
+.mission-name-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.mission-name {
+	font-family: Exo2;
+	font-size: 15px;
+	font-weight: 800;
+	color: #f4f1ea;
+	line-height: 18px;
+	letter-spacing: 0.3px;
+	margin-right: 10px;
+}
+
+.mission-cat-chip {
+	font-family: Exo2;
+	font-size: 9px;
+	font-weight: 800;
+	color: rgba(226, 214, 255, 0.85);
+	line-height: 11px;
+	letter-spacing: 0.8px;
+	padding: 3px 7px;
+	background-color: rgba(155, 108, 255, 0.16);
+	border-radius: 4px;
+	white-space: nowrap;
+}
+
+.slip.cat-battle .mission-cat-chip { color: #fca5a5; background-color: rgba(239, 68, 68, 0.14); }
+.slip.cat-expedition .mission-cat-chip { color: #fcd34d; background-color: rgba(245, 158, 11, 0.14); }
+.slip.cat-collection .mission-cat-chip { color: #7dd3fc; background-color: rgba(14, 165, 233, 0.14); }
+.slip.cat-economy .mission-cat-chip { color: #fde047; background-color: rgba(234, 179, 8, 0.14); }
+.slip.cat-social .mission-cat-chip { color: #f0abfc; background-color: rgba(217, 70, 239, 0.14); }
+
+// Row wrappers with EXPLICIT-width children — a tilted slip is a
+// transform ancestor, so derived widths inside are untrustworthy.
+.slip-descrow {
+	display: flex;
+	flex-direction: row;
+	margin-bottom: 12px;
+}
+
+.mission-desc {
+	width: 802px;
+	font-size: 12px;
+	font-weight: 500;
+	color: rgba(214, 206, 236, 0.7);
+	line-height: 16px;
+	white-space: normal;
+}
+
+.slip.wide .mission-desc {
+	width: 1052px;
+}
+
+// ─── Progress — the bold green strip across the slip ──────────
+
+.slip-barrow {
+	display: flex;
+	flex-direction: row;
+	margin-bottom: 4px;
+}
+
+.mission-progress-bar {
+	width: 802px;
+	height: 10px;
+	background-color: rgba(0, 0, 0, 0.55);
+	border-radius: 5px;
+}
+
+.slip.wide .mission-progress-bar {
+	width: 1052px;
+}
+
+.mission-progress-fill {
+	height: 10px;
+	background-color: #3fb45e; // SOLID, no glow
+	border-radius: 5px;
+	transition: width 0.35s ease-out;
+}
+
+.slip.claimed .mission-progress-fill {
+	background-color: rgba(63, 180, 94, 0.35);
+}
+
+// ─── Foot — the state slot ─────────────────────────────────────
+
+.slip-foot {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	min-height: 44px;
+	margin-bottom: 4px;
+}
+
+.mission-target {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 18px;
+	font-weight: 900;
+	color: #7fd99a;
+	line-height: 22px;
+	letter-spacing: 0.5px;
+	white-space: nowrap;
+}
+
+// CLAIM — the gold moment. Subtle breath pulse; hover brightens,
+// press dims. No transforms beyond the breath (scroll container).
+.claim-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 40px;
+	padding: 0 26px;
+	background: linear-gradient(to bottom, #ffd95a 0%, #ffb330 55%, #f59312 100%);
+	border-radius: 12px;
+	cursor: pointer;
+	flex-shrink: 0;
+	animation: questClaimBreath 1.6s ease-in-out infinite;
+
+	&:hover {
+		background: linear-gradient(to bottom, #ffe98c 0%, #ffc453 55%, #ffa42e 100%);
+	}
+
+	&:active {
+		background: linear-gradient(to bottom, #f3c94a 0%, #eda226 55%, #d97f0c 100%);
+	}
+
+	span {
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 14px;
+		font-weight: 900;
+		color: #2a1605;
+		line-height: 17px;
+		letter-spacing: 1.2px;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+}
+
+// ACCEPT — the panel's own green (not a claim; gold stays "claim").
+.claim-btn.accept-btn {
+	background: linear-gradient(to bottom, #4cc46c 0%, #3fb45e 60%, #339950 100%);
+	animation: none;
+
+	&:hover {
+		background: linear-gradient(to bottom, #5fd37e 0%, #4cc46c 60%, #3fb45e 100%);
+	}
+
+	&:active {
+		background: linear-gradient(to bottom, #3fa95a 0%, #349450 60%, #2a7f43 100%);
+	}
+
+	span {
+		color: #08240f;
+	}
+}
+
+BbStamp.q-done {
+	margin: 2px 0;
+}
+
+// ─── Gem tags — hanging off the slip's bottom edge ─────────────
+// Negative bottom margin (engine-proven overlay pattern) lets the
+// solid chips break past the paper edge onto the board.
+
+.slip-tags {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-top: 10px;
+	margin-bottom: -14px;
+	margin-left: 4px;
+}
+
+// transparent row inside the tags fragment (markup-context wrapper)
+.tagrow {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+}
+
+.q-reward {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 5px 12px 5px 8px;
+	margin-right: 10px;
+	background-color: #0d0b14;
+	border-radius: 8px;
+	flex-shrink: 0;
+}
+
+.q-gem {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	min-width: 18px;
+	border-radius: 4px;
+	transform: rotate(45deg);
+	background-color: rgba(155, 108, 255, 0.2);
+	flex-shrink: 0;
+}
+
+.q-gem-in {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 18px;
+	height: 18px;
+	transform: rotate(-45deg);
+}
+
+.q-gem-img {
+	width: 12px;
+	height: 12px;
+	background-repeat: no-repeat;
+}
+
+.q-amt {
+	font-family: Exo2;
+	font-size: 12px;
+	font-weight: 800;
+	line-height: 14px;
+	color: rgba(244, 241, 234, 0.92);
+	margin-left: 8px;
+	white-space: nowrap;
+}
+
+.q-reward.gold .q-gem { background-color: rgba(255, 206, 58, 0.22); }
+.q-reward.gold .q-amt { color: #ffd95a; }
+.q-reward.tokens .q-gem { background-color: rgba(110, 231, 183, 0.2); }
+.q-reward.tokens .q-amt { color: #6ee7b7; }
+.q-reward.ink .q-gem { background-color: rgba(155, 108, 255, 0.22); }
+.q-reward.ink .q-amt { color: #c4b5fd; }
+.q-reward.xp .q-gem { background-color: rgba(63, 180, 94, 0.22); }
+.q-reward.xp .q-amt { color: #7fd99a; }
+
+// ─── The living violet ring — hover cursor, inset (scroller law) ─
+
+.q-ring {
+	position: absolute;
+	top: 4px;
+	left: 4px;
+	right: 4px;
+	bottom: 4px;
+	border: 3px solid #9b6cff;
+	border-radius: 10px;
+	background-color: rgba(0, 0, 0, 0);
+	opacity: 0;
+	transition: opacity 0.16s ease-out;
+	pointer-events: none;
+	animation: qRingBreathe 2.6s ease-in-out infinite;
+	z-index: 5;
+}
+
+.slip:hover .q-ring {
+	opacity: 1;
+}
+
+.slip.claimed:hover .q-ring {
+	opacity: 0.3;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THE PINNED CALENDAR CARD — daily login streak
+// Declared 1312 + 48 padding = 1360 outer, centered in the 1732 row.
+// ═══════════════════════════════════════════════════════════════
+
+.slip.streak-card {
+	width: 1312px;
+	margin-left: 186px;
+	margin-right: 0;
+	padding: 32px 24px 26px 24px;
+
+	&.rot-s {
+		transform: rotate(-0.5deg);
+	}
+
+	&:hover {
+		background-color: #16131f; // not an interactive card — no hover lift
+	}
+}
+
+.streak-head {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+.streak-title {
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 900;
+	line-height: 16px;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: #7fd99a;
+	white-space: nowrap;
+}
+
+.streak-count {
+	font-size: 12px;
+	font-weight: 700;
+	color: rgba(214, 206, 236, 0.55);
+	line-height: 14px;
+	margin-left: 18px;
+	white-space: nowrap;
+}
+
+// Week multiplier — keycap slab, gold digits (earned bonus)
+.multiplier-badge {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	margin-left: 14px;
+	padding: 5px 10px 5px 8px;
+	background-color: rgba(8, 6, 16, 0.9);
+	border: 2px solid rgba(0, 0, 0, 0.85);
+	border-radius: 6px;
+	animation: questBadgePulse 2s ease-in-out infinite;
+
+	span {
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 11px;
+		font-weight: 900;
+		color: #ffd95a;
+		line-height: 13px;
+		letter-spacing: 1.2px;
+		text-transform: uppercase;
+		margin-left: 4px;
+		white-space: nowrap;
+	}
+}
+
+// ─── 7-day strip (explicit widths — tilted ancestor) ───────────
+// 7 × (160 + 12 padding + 4 border = 176) + 6 × 12 gap ≈ 1304.
 
 .cal-strip {
 	display: flex;
 	flex-direction: row;
-	width: 100%;
-	margin-bottom: 14px;
+	margin-bottom: 18px;
 	flex-shrink: 0;
 }
 
 .cal-day {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	justify-content: flex-start;
-	flex: 1 1 0;
-	min-width: 0;
-	padding: 14px 6px 12px 6px;
-	margin-right: 8px;
-	background-color: rgba(139, 92, 246, 0.08);
-	border: 1px solid rgba(139, 92, 246, 0.28);
-	border-radius: 10px;
-	position: relative;
+	width: 160px;
+	min-width: 160px;
+	padding: 12px 6px;
+	margin-right: 12px;
+	background-color: #1c1830;
+	border: 2px solid rgba(0, 0, 0, 0); // constant border — today swaps color, no layout shift
+	border-radius: 12px;
+	flex-shrink: 0;
+	transition: background-color 0.18s ease-out, border-color 0.18s ease-out;
 
 	&:last-child {
 		margin-right: 0;
 	}
 
-	// dim bg/border on claimed but keep text readable
 	&.claimed {
-		background-color: rgba(74, 222, 128, 0.12);
-		border-color: rgba(74, 222, 128, 0.45);
+		background-color: rgba(63, 180, 94, 0.1);
 	}
 
 	&.today {
-		background-color: rgba(245, 158, 11, 0.28);
-		border: 2px solid rgba(252, 211, 77, 1);
+		background-color: rgba(255, 206, 58, 0.1);
+		border-color: #ffce3a;
+		animation: questTodayPulse 1.8s ease-in-out infinite;
 	}
 
-	// dim bg/border on future, keep text bright
 	&.future {
-		background-color: rgba(139, 92, 246, 0.04);
-		border-color: rgba(139, 92, 246, 0.18);
+		background-color: #131019;
 	}
 
 	&.legendary {
-		background-color: rgba(168, 85, 247, 0.22);
-		border-color: rgba(196, 181, 253, 0.7);
+		background-color: rgba(255, 206, 58, 0.07);
 	}
 
 	&.legendary.today {
-		background-color: rgba(245, 158, 11, 0.35);
-		border: 2px solid rgba(252, 211, 77, 1);
+		background-color: rgba(255, 206, 58, 0.16);
 	}
 }
 
 .cal-day-lbl {
+	font-family: Exo2;
 	font-size: 11px;
 	font-weight: 800;
-	color: rgba(235, 225, 255, 1);
+	color: rgba(244, 241, 234, 0.85);
 	line-height: 13px;
 	letter-spacing: 1.2px;
-	margin-bottom: 10px;
+	margin-bottom: 8px;
 }
 
 .cal-day.today .cal-day-lbl {
-	color: rgb(253, 224, 71);
+	color: #ffd95a;
 }
 
 .cal-day.claimed .cal-day-lbl {
-	color: rgba(134, 239, 172, 1);
+	color: #7fd99a;
 }
 
 .cal-day.future .cal-day-lbl {
-	color: rgba(196, 181, 253, 0.85);
-}
-
-.cal-day.legendary .cal-day-lbl {
-	color: rgb(216, 180, 254);
+	color: rgba(214, 206, 236, 0.5);
 }
 
 .cal-day-icon {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 46px;
-	height: 46px;
-	min-width: 46px;
+	width: 44px;
+	height: 44px;
+	min-width: 44px;
 	margin-bottom: 8px;
 	background-color: rgba(0, 0, 0, 0.4);
-	border: 1px solid rgba(255, 255, 255, 0.06);
-	border-radius: 9px;
-}
-
-.cal-day.today .cal-day-icon {
-	background-color: rgba(0, 0, 0, 0.5);
-	border-color: rgba(252, 211, 77, 0.5);
-}
-
-.cal-day.legendary .cal-day-icon {
-	background-color: rgba(76, 29, 149, 0.35);
-	border-color: rgba(196, 181, 253, 0.4);
+	border-radius: 10px;
 }
 
 .cal-day-rewards {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	width: 100%;
 }
 
 .cal-day-amt {
+	font-family: Exo2;
 	font-size: 12px;
 	font-weight: 800;
 	line-height: 14px;
 	letter-spacing: 0.3px;
 
-	&.gold { color: rgb(253, 224, 71); }
-	&.gem { color: rgb(249, 168, 212); margin-top: 3px; }
+	&.gold { color: #ffd95a; }
+	&.gem { color: #6ee7b7; margin-top: 3px; }
 }
 
-.cal-day.claimed .cal-day-amt {
-	color: rgba(255, 255, 255, 0.55);
+.cal-day.claimed .cal-day-amt,
+.cal-day.future .cal-day-amt {
+	color: rgba(244, 241, 234, 0.45);
 }
 
 .cal-day-check {
@@ -584,83 +962,65 @@ QuestPanel {
 	justify-content: center;
 	width: 20px;
 	height: 20px;
-	background-color: rgba(74, 222, 128, 0.25);
-	border: 1px solid rgba(74, 222, 128, 0.6);
-	border-radius: 10px;
+	background-color: rgba(63, 180, 94, 0.25);
+	border-radius: 999px;
+	animation: questCheckPop 0.32s ease-out;
 }
 
-// "LEGENDARY BEAST" tag — ribbon at bottom of Day 7 card
+// Day 7 — the Master Ink tag, solid gold stamp language
 .cal-day-legendary-tag {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 100%;
 	margin-top: 8px;
-	padding: 3px 4px;
-	background-color: rgba(168, 85, 247, 0.35);
-	border: 1px solid rgba(196, 181, 253, 0.55);
-	border-radius: 5px;
+	padding: 3px 8px;
+	background-color: #ffce3a;
+	border-radius: 4px;
 
 	span {
+		font-family: Exo2;
 		font-size: 9px;
-		font-weight: 800;
-		color: rgb(233, 213, 255);
+		font-weight: 900;
+		color: #2a1605;
 		line-height: 11px;
 		letter-spacing: 0.8px;
+		white-space: nowrap;
 	}
 }
 
-.cal-day.legendary.today .cal-day-legendary-tag {
-	background-color: rgba(252, 211, 77, 0.3);
-	border-color: rgba(252, 211, 77, 0.7);
+// ─── Streak claim CTA — the daily gold hero ────────────────────
 
-	span { color: rgb(253, 230, 138); }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// CLAIM STREAK BUTTON (big inline CTA below calendar)
-// ═══════════════════════════════════════════════════════════════
-
-// Hero CTA — daily streak claim button. Single instance under the 7-day
-// strip. Full Persona-stamp recipe with colored hard-offset shadow.
 .claim-streak-btn {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	justify-content: center;
-	width: 100%;
-	height: 50px;
-	margin-bottom: 22px;
-	background-color: rgba(245, 158, 11, 0.95);
-	border: 2px solid rgba(0, 0, 0, 0.6);
-	border-radius: 4px;
-	box-shadow: 4px 4px 0 rgba(217, 119, 6, 0.55);
+	height: 52px;
+	padding: 0 36px;
+	background: linear-gradient(to bottom, #ffd95a 0%, #ffb330 55%, #f59312 100%);
+	border-radius: 16px;
 	cursor: pointer;
 	flex-shrink: 0;
-	transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.1s ease;
+	animation: questClaimBreath 1.6s ease-in-out infinite;
 
 	&:hover {
-		background-color: rgba(251, 191, 36, 1);
-		transform: translateY(-1px);
-		box-shadow: 5px 5px 0 rgba(252, 211, 77, 0.65);
+		background: linear-gradient(to bottom, #ffe98c 0%, #ffc453 55%, #ffa42e 100%);
 	}
 
 	&:active {
-		transform: translateY(1px);
-		box-shadow: 2px 2px 0 rgba(217, 119, 6, 0.55);
+		background: linear-gradient(to bottom, #f3c94a 0%, #eda226 55%, #d97f0c 100%);
 	}
 
 	span {
-		font-size: 15px;
-		font-weight: 900;
-		color: white;
-		line-height: 16px;
-		letter-spacing: 2;
-		text-transform: uppercase;
+		font-family: Exo2Italic;
 		font-style: italic;
-		transform: skewX(-8deg);
-		text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-		margin-left: 8px;
+		font-size: 16px;
+		font-weight: 900;
+		color: #2a1605;
+		line-height: 20px;
+		letter-spacing: 1.5px;
+		text-transform: uppercase;
+		margin-left: 10px;
+		white-space: nowrap;
 	}
 }
 
@@ -668,100 +1028,62 @@ QuestPanel {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	justify-content: center;
-	width: 100%;
-	height: 40px;
-	margin-bottom: 22px;
-	background-color: rgba(74, 222, 128, 0.1);
-	border: 1px solid rgba(74, 222, 128, 0.35);
-	border-radius: 10px;
+	height: 44px;
+	padding: 0 24px;
+	background-color: rgba(63, 180, 94, 0.1);
+	border-radius: 12px;
 	flex-shrink: 0;
 
 	span {
-		font-size: 12px;
+		font-size: 13px;
 		font-weight: 600;
-		color: rgba(74, 222, 128, 0.9);
-		line-height: 14px;
+		color: #7fd99a;
+		line-height: 16px;
 		margin-left: 8px;
-	}
-}
-
-.section-label-row.missions-header {
-	margin-top: 4px;
-}
-
-.section-label-left {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// WEEK MULTIPLIER BADGE (inline with LOGIN STREAK label)
-// ═══════════════════════════════════════════════════════════════
-
-// Week multiplier — slab-pill stamp. Single instance in the daily tab
-// next to LOGIN STREAK. Only shown when the multiplier kicks in, so it
-// reads as a dedicated badge (not a routine UI chip).
-.multiplier-badge {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-left: 10px;
-	padding: 5px 10px 5px 8px;
-	background-color: rgba(20, 14, 32, 0.92);
-	border: 2px solid rgba(0, 0, 0, 0.55);
-	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
-	border-radius: 4px;
-
-	span {
-		font-size: 11px;
-		font-weight: 900;
-		color: rgb(253, 224, 71);
-		line-height: 12px;
-		letter-spacing: 1.2;
-		text-transform: uppercase;
-		font-style: italic;
-		transform: skewX(-8deg);
-		text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-		margin-left: 4px;
+		white-space: nowrap;
 	}
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DAILY / WEEKLY BONUS CARD
+// BONUS SLAB — daily/weekly "complete everything" payoff (Claim All)
+// FLAT (functional bar), full board width: 1680 + 48 + 4 = 1732.
+// The left accent bar is a permitted line; gold = ready.
 // ═══════════════════════════════════════════════════════════════
 
-.bonus-card {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: space-between;
-	width: 100%;
-	padding: 14px 16px;
-	margin-top: 14px;
-	background-color: rgba(139, 92, 246, 0.08);
-	border: 1px solid rgba(139, 92, 246, 0.25);
-	border-radius: 11px;
-	flex-shrink: 0;
+.slip.bonus-card {
+	width: 1680px;
+	margin-left: 0;
+	margin-right: 0;
+	padding: 26px 24px 24px 24px;
+	background-color: #1c1830;
+	border-left: 4px solid rgba(0, 0, 0, 0);
+	border-radius: 18px;
+
+	&:hover {
+		background-color: #1c1830;
+	}
 
 	&.ready {
-		background-color: rgba(253, 224, 71, 0.15);
-		border: 2px solid rgba(253, 224, 71, 0.8);
+		background-color: rgba(255, 206, 58, 0.08);
+		border-left: 4px solid rgba(255, 206, 58, 0.9);
+		animation: questBonusShimmer 1.4s ease-in-out infinite;
+	}
+
+	&.ready:hover {
+		background-color: rgba(255, 206, 58, 0.12);
 	}
 
 	&.claimed {
-		background-color: rgba(74, 222, 128, 0.08);
-		border-color: rgba(74, 222, 128, 0.35);
+		background-color: #14111d;
+		border-left: 4px solid rgba(63, 180, 94, 0.5);
+		opacity: 0.75;
 	}
 }
 
-.bonus-left {
+.bonus-row {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	flex: 1 1 0;
-	min-width: 0;
 }
 
 .bonus-icon-wrap {
@@ -771,435 +1093,126 @@ QuestPanel {
 	width: 52px;
 	height: 52px;
 	min-width: 52px;
-	margin-right: 14px;
+	margin-right: 16px;
 	background-color: rgba(0, 0, 0, 0.35);
-	border: 1px solid rgba(139, 92, 246, 0.35);
-	border-radius: 10px;
-}
-
-.bonus-card.ready .bonus-icon-wrap {
-	background-color: rgba(253, 224, 71, 0.15);
-	border-color: rgba(253, 224, 71, 0.5);
-}
-
-.bonus-card.claimed .bonus-icon-wrap {
-	background-color: rgba(74, 222, 128, 0.1);
-	border-color: rgba(74, 222, 128, 0.4);
+	border-radius: 12px;
+	flex-shrink: 0;
 }
 
 .bonus-info {
 	display: flex;
 	flex-direction: column;
-	flex: 1 1 0;
-	min-width: 0;
+	width: 600px;
+	flex-shrink: 0;
 }
 
 .bonus-title {
-	font-size: 15px;
-	font-weight: 800;
-	color: white;
-	line-height: 17px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 17px;
+	font-weight: 900;
+	color: #f4f1ea;
+	line-height: 21px;
 	letter-spacing: 1px;
+	text-transform: uppercase;
 }
 
 .bonus-sub {
 	font-size: 12px;
 	font-weight: 500;
-	color: rgba(226, 214, 255, 0.75);
-	line-height: 14px;
-	margin-top: 2px;
+	color: rgba(214, 206, 236, 0.7);
+	line-height: 15px;
+	margin-top: 3px;
 }
 
 .bonus-dots {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	margin-top: 7px;
+	margin-top: 8px;
 }
 
 .bonus-dot {
-	width: 18px;
+	width: 20px;
 	height: 6px;
-	margin-right: 4px;
-	background-color: rgba(255, 255, 255, 0.12);
+	margin-right: 5px;
+	background-color: rgba(255, 255, 255, 0.1);
 	border-radius: 3px;
+	transition: background-color 0.25s ease-out;
 
 	&.filled {
-		background-color: rgb(167, 139, 250);
+		background-color: #3fb45e;
 	}
 }
 
-.bonus-card.ready .bonus-dot.filled {
-	background-color: rgb(253, 224, 71);
+.slip.bonus-card.ready .bonus-dot.filled {
+	background-color: #ffce3a;
 }
 
-.bonus-card.claimed .bonus-dot.filled {
-	background-color: rgb(74, 222, 128);
-}
-
-.bonus-right {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	justify-content: center;
-	flex-shrink: 0;
-	margin-left: 14px;
-}
-
+// bonus rewards ride inline (no hang — the slab is a flat bar)
 .bonus-rewards {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	margin-bottom: 8px;
+	justify-content: flex-end;
+	flex: 1 1 0;
+	min-width: 0;
+	margin-right: 24px;
 }
 
-// Bonus claim CTA — promotes the routine .claim-btn to the full Persona
-// stamp because the bonus card is single-instance per tab and serves as
-// the "complete-everything" payoff. Stamping it lifts the bigger reward
-// moment above the per-mission row claim buttons (which intentionally
-// stay restrained to avoid stamp compounding across mission lists).
-// Inherits the breath animation from .claim-btn so the CTA still pulses
-// — the stamp surface (hard 2px black border + offset shadow + italic
-// label) reads through the breathing scale just fine.
-.bonus-claim-btn {
-	height: 40px;
-	padding: 0 22px;
-	background-color: rgba(245, 158, 11, 0.95);
-	border: 2px solid rgba(0, 0, 0, 0.6);
-	border-radius: 4px;
-	box-shadow: 3px 3px 0 rgba(217, 119, 6, 0.55);
+.bonus-state {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	flex-shrink: 0;
+}
 
-	&:hover {
-		background-color: rgba(251, 191, 36, 1);
-		box-shadow: 4px 4px 0 rgba(252, 211, 77, 0.65);
-	}
+.claim-btn.bonus-claim-btn {
+	height: 48px;
+	padding: 0 32px;
+	border-radius: 14px;
 
 	span {
-		font-size: 13px;
-		font-weight: 900;
-		letter-spacing: 1.5;
-		text-transform: uppercase;
-		font-style: italic;
-		transform: skewX(-8deg);
-		text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-		line-height: 14px;
+		font-size: 15px;
+		line-height: 19px;
 	}
 }
 
 .bonus-locked {
+	font-family: Exo2;
 	font-size: 11px;
 	font-weight: 800;
-	color: rgba(196, 181, 253, 0.55);
+	color: rgba(214, 206, 236, 0.45);
 	line-height: 13px;
-	letter-spacing: 1px;
-	padding: 6px 12px;
+	letter-spacing: 1.5px;
+	padding: 9px 16px;
 	background-color: rgba(0, 0, 0, 0.3);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 6px;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MISSION CARD
-// ═══════════════════════════════════════════════════════════════
-
-.mission-list {
-	display: flex;
-	flex-direction: column;
-	width: 100%;
-	flex-shrink: 0;
-}
-
-.mission-card {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	width: 100%;
-	padding: 12px 14px;
-	margin-bottom: 8px;
-	background-color: rgba(255, 255, 255, 0.04);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 10px;
-	flex-shrink: 0;
-
-	&:hover {
-		background-color: rgba(139, 92, 246, 0.1);
-		border-color: rgba(139, 92, 246, 0.3);
-	}
-
-	&.near {
-		background-color: rgba(245, 158, 11, 0.08);
-		border-color: rgba(245, 158, 11, 0.35);
-	}
-
-	&.completed {
-		background-color: rgba(74, 222, 128, 0.1);
-		border-color: rgba(74, 222, 128, 0.5);
-	}
-
-	&.claimed {
-		background-color: rgba(255, 255, 255, 0.02);
-		border-color: rgba(255, 255, 255, 0.06);
-		opacity: 0.6;
-	}
-
-	&.large {
-		padding: 18px 20px;
-		background-color: rgba(217, 119, 6, 0.1);
-		border-color: rgba(245, 158, 11, 0.4);
-	}
-}
-
-.mission-left {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	flex: 1 1 0;
-	min-width: 0;
-}
-
-.mission-icon-wrap {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 40px;
-	height: 40px;
-	min-width: 40px;
-	margin-right: 12px;
-	background-color: rgba(139, 92, 246, 0.18);
-	border: 1px solid rgba(139, 92, 246, 0.3);
 	border-radius: 8px;
-	flex-shrink: 0;
+	white-space: nowrap;
 }
 
-// Per-category tinting on mission icon wraps
-.mission-card.cat-battle .mission-icon-wrap {
-	background-color: rgba(239, 68, 68, 0.18);
-	border-color: rgba(239, 68, 68, 0.4);
-}
-.mission-card.cat-expedition .mission-icon-wrap {
-	background-color: rgba(245, 158, 11, 0.18);
-	border-color: rgba(245, 158, 11, 0.4);
-}
-.mission-card.cat-collection .mission-icon-wrap {
-	background-color: rgba(14, 165, 233, 0.18);
-	border-color: rgba(14, 165, 233, 0.4);
-}
-.mission-card.cat-economy .mission-icon-wrap {
-	background-color: rgba(234, 179, 8, 0.18);
-	border-color: rgba(234, 179, 8, 0.4);
-}
-.mission-card.cat-social .mission-icon-wrap {
-	background-color: rgba(217, 70, 239, 0.18);
-	border-color: rgba(217, 70, 239, 0.4);
-}
+// ═══════════════════════════════════════════════════════════════
+// EMPTY STATES — a pinned note on the board
+// Declared 752 + 48 = 800 outer, centered: margin-left 466.
+// ═══════════════════════════════════════════════════════════════
 
-.mission-card.large .mission-icon-wrap {
-	width: 54px;
-	height: 54px;
-	min-width: 54px;
-	background-color: rgba(245, 158, 11, 0.2);
-	border-color: rgba(245, 158, 11, 0.4);
-}
-
-.mission-info {
-	display: flex;
-	flex-direction: column;
-	flex: 1 1 0;
-	min-width: 0;
-}
-
-.mission-name-row {
-	display: flex;
-	flex-direction: row;
+.slip.empty-note {
+	width: 752px;
+	margin-left: 466px;
+	margin-right: 0;
+	padding: 40px 24px 34px 24px;
 	align-items: center;
-}
-
-.mission-name {
-	font-size: 14px;
-	font-weight: 700;
-	color: white;
-	line-height: 16px;
-	letter-spacing: 0.3px;
-	margin-right: 8px;
-}
-
-.mission-cat-chip {
-	font-size: 9px;
-	font-weight: 800;
-	color: rgba(226, 214, 255, 0.85);
-	line-height: 11px;
-	letter-spacing: 0.8px;
-	padding: 2px 6px;
-	background-color: rgba(139, 92, 246, 0.22);
-	border: 1px solid rgba(139, 92, 246, 0.4);
-	border-radius: 4px;
-}
-
-.mission-card.cat-battle .mission-cat-chip {
-	color: rgb(252, 165, 165);
-	background-color: rgba(239, 68, 68, 0.18);
-	border-color: rgba(239, 68, 68, 0.4);
-}
-.mission-card.cat-expedition .mission-cat-chip {
-	color: rgb(252, 211, 77);
-	background-color: rgba(245, 158, 11, 0.18);
-	border-color: rgba(245, 158, 11, 0.4);
-}
-.mission-card.cat-collection .mission-cat-chip {
-	color: rgb(125, 211, 252);
-	background-color: rgba(14, 165, 233, 0.18);
-	border-color: rgba(14, 165, 233, 0.4);
-}
-.mission-card.cat-economy .mission-cat-chip {
-	color: rgb(253, 224, 71);
-	background-color: rgba(234, 179, 8, 0.18);
-	border-color: rgba(234, 179, 8, 0.4);
-}
-.mission-card.cat-social .mission-cat-chip {
-	color: rgb(240, 171, 252);
-	background-color: rgba(217, 70, 239, 0.18);
-	border-color: rgba(217, 70, 239, 0.4);
-}
-
-.mission-desc {
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(226, 214, 255, 0.75);
-	line-height: 14px;
-	margin-top: 2px;
-}
-
-.mission-progress-bar {
-	width: 100%;
-	height: 4px;
-	margin-top: 6px;
-	background-color: rgba(0, 0, 0, 0.4);
-	border-radius: 2px;
-	overflow: hidden;
-}
-
-.mission-progress-fill {
-	height: 100%;
-	background-color: rgb(139, 92, 246);
-	border-radius: 2px;
-}
-
-.mission-card.completed .mission-progress-fill {
-	background-color: rgb(74, 222, 128);
-}
-
-.mission-card.near .mission-progress-fill {
-	background-color: rgb(245, 158, 11);
-}
-
-.mission-right {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	justify-content: center;
-	margin-left: 14px;
-	flex-shrink: 0;
-}
-
-.mission-target {
-	font-size: 13px;
-	font-weight: 800;
-	color: rgba(226, 214, 255, 1);
-	line-height: 15px;
-	margin-bottom: 6px;
-	letter-spacing: 0.2px;
-}
-
-.mission-status {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	height: 28px;
-	background-color: rgba(74, 222, 128, 0.15);
-	border: 1px solid rgba(74, 222, 128, 0.4);
-	border-radius: 6px;
-	margin-bottom: 6px;
-}
-
-.claim-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	height: 32px;
-	padding: 0 14px;
-	background-color: rgb(245, 158, 11);
-	border: 1px solid rgba(252, 211, 77, 1);
-	border-radius: 7px;
-	cursor: pointer;
-	margin-bottom: 6px;
 
 	&:hover {
-		background-color: rgb(251, 191, 36);
-	}
-
-	span {
-		font-size: 12px;
-		font-weight: 800;
-		color: white;
-		line-height: 10px;
-		letter-spacing: 0.8px;
+		background-color: #16131f;
 	}
 }
 
-.mission-rewards {
+.note-row {
 	display: flex;
 	flex-direction: row;
-	align-items: center;
-	flex-shrink: 0;
-}
-
-.reward-pip {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	padding: 2px 6px;
-	margin-left: 4px;
-	background-color: rgba(0, 0, 0, 0.35);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 5px;
-	flex-shrink: 0;
-
-	&.gold-pip { border-color: rgba(245, 158, 11, 0.35); }
-	&.gem-pip { border-color: rgba(236, 72, 153, 0.35); }
-	&.ink-pip { border-color: rgba(96, 165, 250, 0.35); }
-	&.xp-pip { border-color: rgba(74, 222, 128, 0.35); }
-
-	.reward-pip-icon {
-		width: 14px;
-		height: 14px;
-		margin-right: 4px;
-	}
-
-	.reward-pip-amount {
-		font-size: 11px;
-		font-weight: 800;
-		color: rgba(255, 255, 255, 0.95);
-		line-height: 13px;
-	}
-}
-
-// ═══════════════════════════════════════════════════════════════
-// EMPTY STATE
-// ═══════════════════════════════════════════════════════════════
-
-.empty-state {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
 	justify-content: center;
-	width: 100%;
-	padding: 50px 30px;
-	flex-shrink: 0;
-
-	&.small {
-		padding: 24px 16px;
-	}
+	margin-top: 6px;
 }
 
 .empty-illus {
@@ -1208,209 +1221,52 @@ QuestPanel {
 	justify-content: center;
 	width: 110px;
 	height: 110px;
-	margin-bottom: 20px;
-	background-color: rgba(139, 92, 246, 0.08);
-	border: 1px solid rgba(139, 92, 246, 0.18);
-	border-radius: 22px;
+	min-width: 110px;
+	margin-bottom: 16px;
+	background-color: rgba(63, 180, 94, 0.08);
+	border-radius: 26px;
+	flex-shrink: 0;
 }
 
 .empty-title {
-	font-size: 18px;
-	font-weight: 700;
-	color: rgba(216, 204, 255, 0.95);
-	line-height: 22px;
-	margin-bottom: 8px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 19px;
+	font-weight: 800;
+	color: rgba(244, 241, 234, 0.95);
+	line-height: 24px;
 	text-align: center;
+}
+
+.note-row .empty-body {
+	width: 640px;
 }
 
 .empty-body {
 	font-size: 13px;
 	font-weight: 500;
-	color: rgba(226, 214, 255, 0.7);
+	color: rgba(214, 206, 236, 0.65);
 	line-height: 18px;
 	text-align: center;
-	max-width: 460px;
+	white-space: normal;
+	margin-top: 4px;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// MOTION LAYER — transitions, hovers, ambient pulses
-// ═══════════════════════════════════════════════════════════════
+// small inline loader state (unrotated, quiet)
+.empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 1732px;
+	padding: 40px 0;
+	flex-shrink: 0;
 
-// Tab content plays a small fade-up on every switch (each @switch case
-// mounts a fresh .tab-content, so keyframe replays naturally).
-.tab-content {
-	animation: questTabFadeIn 0.22s ease-out;
-}
-
-// Sidebar tab: hover nudges right, icon brightens. Use transitions so
-// the effect re-fires each interaction.
-.sidebar-btn {
-	transition: background-color 0.14s ease-out,
-				border-color 0.14s ease-out,
-				transform 0.14s ease-out;
-
-	&:hover {
-		transform: translateX(2px);
-	}
-}
-
-.sidebar-icon {
-	transition: background-color 0.14s ease-out,
-				border-color 0.14s ease-out;
-}
-
-// Sidebar badge: subtle looping pulse to draw the eye
-.sidebar-badge {
-	// (keeps the existing questBadgePulse animation; transition for in/out)
-	transition: transform 0.2s ease-out;
-}
-
-// Header icon: gentle hover rock — chrome upgrade swapped the 42×42
-// purple-square wrap for a flat 24px iconify, so the selector targets
-// the new `.quest-title-icon` class. Rocks the icon when the user
-// hovers anywhere in the header bar.
-.quest-title-icon {
-	transition: transform 0.2s ease-out;
-}
-
-.quest-header:hover .quest-title-icon {
-	transform: rotate(-3deg) scale(1.05);
-}
-
-// ─── CALENDAR ────────────────────────────────────────────────
-// Each cal-day card gets a transition. Today uses the loop pulse.
-.cal-day {
-	transition: background-color 0.18s ease-out,
-				border-color 0.18s ease-out,
-				transform 0.14s ease-out;
-
-	&:hover {
-		transform: translateY(-2px);
+	&.small {
+		padding: 24px 0;
 	}
 
-	&.today {
-		animation: questTodayPulse 1.8s ease-in-out infinite;
+	.empty-title {
+		margin-top: 10px;
 	}
-}
-
-.cal-day-icon {
-	transition: background-color 0.18s ease-out,
-				border-color 0.18s ease-out,
-				transform 0.18s ease-out;
-}
-
-.cal-day:hover .cal-day-icon {
-	transform: scale(1.08);
-}
-
-// Check mark pops in when it first mounts on a claimed day
-.cal-day-check {
-	animation: questCheckPop 0.32s ease-out;
-}
-
-// ─── MISSION CARD ────────────────────────────────────────────
-.mission-card {
-	transition: background-color 0.15s ease-out,
-				border-color 0.15s ease-out,
-				transform 0.14s ease-out;
-
-	&:hover {
-		transform: translateX(2px);
-	}
-}
-
-.mission-icon-wrap {
-	transition: background-color 0.18s ease-out,
-				border-color 0.18s ease-out,
-				transform 0.18s ease-out;
-}
-
-.mission-card:hover .mission-icon-wrap {
-	transform: scale(1.06) rotate(-4deg);
-}
-
-.mission-cat-chip {
-	transition: background-color 0.14s ease-out,
-				border-color 0.14s ease-out;
-}
-
-// Progress bar width eases in whenever it updates
-.mission-progress-fill {
-	transition: width 0.35s ease-out;
-}
-
-// Claim button — the breathing pulse draws attention
-.claim-btn {
-	transition: background-color 0.12s ease-out,
-				transform 0.08s ease-out;
-	animation: questClaimBreath 1.5s ease-in-out infinite;
-
-	&:hover {
-		animation-play-state: paused;
-		transform: scale(1.06);
-	}
-}
-
-.reward-pip {
-	transition: transform 0.14s ease-out;
-}
-
-.mission-card:hover .reward-pip {
-	transform: translateY(-1px);
-}
-
-// ─── STREAK CLAIM & DONE ─────────────────────────────────────
-.claim-streak-btn {
-	transition: background-color 0.12s ease-out,
-				transform 0.1s ease-out;
-	animation: questClaimBreath 1.5s ease-in-out infinite;
-
-	&:hover {
-		animation-play-state: paused;
-		transform: scale(1.01);
-	}
-}
-
-.claim-streak-done {
-	transition: background-color 0.15s ease-out;
-}
-
-// ─── BONUS CARD ──────────────────────────────────────────────
-.bonus-card {
-	transition: background-color 0.2s ease-out,
-				border-color 0.2s ease-out,
-				transform 0.16s ease-out;
-
-	&.ready {
-		animation: questBonusShimmer 1.4s ease-in-out infinite;
-	}
-
-	&:hover {
-		transform: translateX(2px);
-	}
-}
-
-.bonus-icon-wrap {
-	transition: background-color 0.2s ease-out,
-				border-color 0.2s ease-out,
-				transform 0.2s ease-out;
-}
-
-.bonus-card:hover .bonus-icon-wrap {
-	transform: scale(1.05) rotate(-3deg);
-}
-
-.bonus-dot {
-	transition: background-color 0.25s ease-out;
-}
-
-.bonus-claim-btn {
-	// inherits .claim-btn breath animation via cascade
-}
-
-// ─── MULTIPLIER BADGE ────────────────────────────────────────
-// Zap icon multiplier badge does a subtle ambient pulse so the bonus
-// reads as "alive" once earned.
-.multiplier-badge {
-	animation: questBadgePulse 2s ease-in-out infinite;
 }

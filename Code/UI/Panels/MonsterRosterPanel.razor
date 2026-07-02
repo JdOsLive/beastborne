@@ -164,106 +164,6 @@
 	<!-- Collection View — fusion is now an in-place mode toggle, not a separate view -->
 	<div class="view-container">
 		<div class="collection-layout with-detail">
-			<div class="collection-main">
-				<div @ref="rosterGridRef" class="roster-grid" onmouseup=@OnDragSelectEnd>
-				@{
-					// In fusion mode, use the breeding filter state (separate from the
-					// collection filter state) so swapping in/out of fusion mode doesn't
-					// disturb the player's primary collection sort/filter setup.
-					var collectionMonsters = isFusionMode ? GetAvailableBreedingMonsters() : GetFilteredMonsters();
-					var keyboardIdx = Math.Clamp(selectedMonsterIndex, 0, Math.Max(0, collectionMonsters.Count - 1));
-				}
-				@for (int i = 0; i < collectionMonsters.Count; i++)
-				{
-					var monster = collectionMonsters[i];
-					var idx = i;
-					var isKeyboardSelected = isKeyboardNavigationActive && i == keyboardIdx;
-					var isSelectedForRelease = selectedForRelease.Contains(monster.Id);
-					var isFusionParent1 = isFusionMode && Parent1?.Id == monster.Id;
-					var isFusionParent2 = isFusionMode && Parent2?.Id == monster.Id;
-					var isFusionParent = isFusionParent1 || isFusionParent2;
-					var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && monster.SpeciesId != Parent1.SpeciesId;
-					// Beast-art editor is only active in "card" mode, when the
-					// editor toolbar is enabled, and when no other interaction
-					// mode (fusion / multi-select) is competing for clicks.
-					var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
-					<div @ref="cardSizeRef" class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
-						 onclick=@(() => OnMonsterCardClicked(monster, idx))
-						 onmousedown=@(() => { OnCardMouseDown(monster, idx); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
-						 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
-						 onmouseout=@(() => { if (_mybCardEditing) OnMyBeastsArtLeave(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
-						 onmouseup=@OnDragSelectEnd>
-						@if (justSelectedMonsterId.HasValue && justSelectedMonsterId.Value == monster.Id)
-						{
-							<!-- One-shot select pulse. Keyed on selectPulseVersion so
-							     each click remounts the overlay and @keyframes fire
-							     fresh (s&box quirk: keyframes only run on first mount).
-							     Removes itself visually via SCSS opacity: 0 end-state. -->
-							<div class="select-pulse pulse-@selectPulseVersion"></div>
-						}
-						@if (isMultiSelectMode)
-						{
-							<div class="select-checkbox @(isSelectedForRelease ? "checked" : "")">
-								@(isSelectedForRelease ? "✓" : "")
-							</div>
-						}
-						@if (isFusionParent1)
-						{
-							<div class="parent-indicator p1">B1</div>
-						}
-						@if (isFusionParent2)
-						{
-							<div class="parent-indicator p2">B2</div>
-						}
-@{
-							// Card is hovered if it matches the hoveredMonsterId
-							var isThisCardHovered = hoveredMonsterId.HasValue && hoveredMonsterId.Value == monster.Id;
-							// Card is selected if it's the SelectedMonster, keyboard selected, or hovered (for visual styling - purple glow)
-							var isThisCardSelected = (SelectedMonster?.Id == monster.Id || isKeyboardSelected || isThisCardHovered);
-							// Should animate if: hovered, OR (selected AND no other card is hovered)
-							var shouldAnimate = isThisCardHovered || (isThisCardSelected && !hoveredMonsterId.HasValue);
-						}
-						<MonsterCard Monster=@monster
-									 IsSelected=@isThisCardSelected
-									 ShouldAnimate=@shouldAnimate
-									 IsMini=@true
-									 ShowGenes=@isFusionMode
-									 AnimateOnHover=@true
-									 AnimationFrame=@SpriteAnimator.GlobalFrame
-									 OverrideArtSpeciesId=@(_mybCardEditing ? _myBeastsTestSpeciesId : null)
-									 ArtVersion=@_myBeastsArtVersion
-									 ClickAction=@(() => {})
-									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
-									 LeaveAction=@OnMouseLeaveCard />
-						@* Hover-preview ring — the cheap flat-panel recipe (absolute
-						   bordered div, opacity swap on :hover). The SELECTED beast
-						   gets the one waving imperative ring instead (root level). *@
-						<div class="card-ring"></div>
-					</div>
-				}
-
-				@if (currentFilter == "all")
-				{
-					var totalMonsters = GetMonsterCount();
-					var emptySlots = GetEmptySlotCount(totalMonsters);
-					@for (int i = 0; i < emptySlots; i++)
-					{
-						<div class="empty-slot mini" onmouseover=@OnMouseLeaveCard>
-							<div class="empty-slot-border"></div>
-						</div>
-					}
-				}
-
-				@if (GetFilteredMonsters().Count == 0 && currentFilter != "all")
-				{
-					<div class="empty-roster">
-						<div class="empty-icon">?</div>
-						<div class="empty-text">@L("ui.roster.no_monsters")</div>
-						<div class="empty-hint">@L("ui.roster.no_filter_match")</div>
-					</div>
-				}
-				</div>
-			</div>
 
 			@if (isFusionMode || SelectedMonster != null)
 			{
@@ -661,9 +561,19 @@
 				}
 				else
 				{
+					<!-- Zone hint strip — tells the keyboard player how to hand
+					     focus to the stage (TAB) and back to the grid (Q). Reads
+					     from kbFocusZone (in BuildHash) so it live-swaps. -->
+					<div class="stage-zone-hint">
+						<span class="kb-key">@(kbFocusZone == "detail" ? "Q" : "TAB")</span>
+						<span class="szh-label">@(kbFocusZone == "detail" ? "Back to collection" : "Inspect beast")</span>
+					</div>
 					<div @ref="detailScrollRef" class="detail-scroll">
-						<!-- Monster Portrait (always visible) -->
-						<div class="portrait-section">
+						<!-- BEAST STAGE HERO (2026-07 recomposition) — the selected
+						     beast is the panel's primary zone now: sprite at 2× on
+						     an open stage with a rarity pedestal, name block beside
+						     it, diamond actions on the stage's right edge. -->
+						<div class="stage-hero">
 							<div class="portrait-wrapper">
 								@{
 									// Inline transform pulls per-species DetailIconScale/OffsetX/OffsetY
@@ -681,8 +591,11 @@
 										: GetSelectedIconPath();
 									var _diCi = System.Globalization.CultureInfo.InvariantCulture;
 									var _diScale = (_diSp?.DetailIconScale ?? 1f).ToString("F3", _diCi);
-									var _diOffX = (_diSp?.DetailIconOffsetX ?? 0f).ToString("F2", _diCi);
-									var _diOffY = (_diSp?.DetailIconOffsetY ?? 0f).ToString("F2", _diCi);
+									// Stage geometry is DetailArtK× the geometry the per-species
+									// offsets were tuned at (120px container / 180px sprite), so
+									// the px offsets scale by K to keep the tuned framing exact.
+									var _diOffX = ((_diSp?.DetailIconOffsetX ?? 0f) * DetailArtK).ToString("F2", _diCi);
+									var _diOffY = ((_diSp?.DetailIconOffsetY ?? 0f) * DetailArtK).ToString("F2", _diCi);
 									var _diTransform = $"transform: translate({_diOffX}px, {_diOffY}px) scale({_diScale}); transform-origin: center center;";
 								}
 								<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass() @(_diEditing ? "myb-art-edit" : "")"
@@ -706,6 +619,10 @@
 										<div class="monster-portrait evolved-portrait" style="background-image: url(@evolvedIconPath); @_diTransform"></div>
 									}
 								</div>
+								<!-- Rarity pedestal — the beast's floor. Carries the rarity
+								     color as the sanctioned bottom strip (no card-wide
+								     rarity border), skewed into the angled dialect. -->
+								<div class="stage-pedestal @GetSelectedRarityClass()"></div>
 								<div class="element-tags-row @(HasSelectedSecondaryElement() ? "dual" : "")">
 								<div class="element-tag @GetSelectedElementClass()">
 									<img class="element-tag-icon" src="ui/icons/elements/element_white/@(GetSelectedElementClass()).svg" />
@@ -721,6 +638,7 @@
 							</div>
 							</div>
 							<div class="monster-name-section">
+								<div class="species-name">@GetSelectedSpeciesName()</div>
 								<div class="nickname-row">
 									@if (isEditingNickname)
 									{
@@ -753,7 +671,6 @@
 										</div>
 									</div>
 								}
-								<div class="species-name">@GetSelectedSpeciesName()</div>
 								<div class="level-power-row">
 									<div class="level-badge">LV @SelectedMonster.Level</div>
 									<div class="power-badge">
@@ -1306,8 +1223,110 @@
 					}
 				</div>
 				}
-				</div>
 			}
+
+			<div class="collection-main">
+				<div @ref="rosterGridRef" class="roster-grid" onmouseup=@OnDragSelectEnd>
+				@{
+					// In fusion mode, use the breeding filter state (separate from the
+					// collection filter state) so swapping in/out of fusion mode doesn't
+					// disturb the player's primary collection sort/filter setup.
+					var collectionMonsters = isFusionMode ? GetAvailableBreedingMonsters() : GetFilteredMonsters();
+					var keyboardIdx = Math.Clamp(selectedMonsterIndex, 0, Math.Max(0, collectionMonsters.Count - 1));
+				}
+				@for (int i = 0; i < collectionMonsters.Count; i++)
+				{
+					var monster = collectionMonsters[i];
+					var idx = i;
+					var isKeyboardSelected = isKeyboardNavigationActive && i == keyboardIdx;
+					var isSelectedForRelease = selectedForRelease.Contains(monster.Id);
+					var isFusionParent1 = isFusionMode && Parent1?.Id == monster.Id;
+					var isFusionParent2 = isFusionMode && Parent2?.Id == monster.Id;
+					var isFusionParent = isFusionParent1 || isFusionParent2;
+					var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && monster.SpeciesId != Parent1.SpeciesId;
+					// Beast-art editor is only active in "card" mode, when the
+					// editor toolbar is enabled, and when no other interaction
+					// mode (fusion / multi-select) is competing for clicks.
+					var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
+					<div @ref="cardSizeRef" class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
+						 onclick=@(() => OnMonsterCardClicked(monster, idx))
+						 onmousedown=@(() => { OnCardMouseDown(monster, idx); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+						 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+						 onmouseout=@(() => { if (_mybCardEditing) OnMyBeastsArtLeave(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+						 onmouseup=@OnDragSelectEnd>
+						@if (justSelectedMonsterId.HasValue && justSelectedMonsterId.Value == monster.Id)
+						{
+							<!-- One-shot select pulse. Keyed on selectPulseVersion so
+							     each click remounts the overlay and css-keyframes fire
+							     fresh (s&box quirk: keyframes only run on first mount).
+							     Removes itself visually via SCSS opacity: 0 end-state. -->
+							<div class="select-pulse pulse-@selectPulseVersion"></div>
+						}
+						@if (isMultiSelectMode)
+						{
+							<div class="select-checkbox @(isSelectedForRelease ? "checked" : "")">
+								@(isSelectedForRelease ? "✓" : "")
+							</div>
+						}
+						@if (isFusionParent1)
+						{
+							<div class="parent-indicator p1">B1</div>
+						}
+						@if (isFusionParent2)
+						{
+							<div class="parent-indicator p2">B2</div>
+						}
+@{
+							// Card is hovered if it matches the hoveredMonsterId
+							var isThisCardHovered = hoveredMonsterId.HasValue && hoveredMonsterId.Value == monster.Id;
+							// Card is selected if it's the SelectedMonster, keyboard selected, or hovered (for visual styling - purple glow)
+							var isThisCardSelected = (SelectedMonster?.Id == monster.Id || isKeyboardSelected || isThisCardHovered);
+							// Should animate if: hovered, OR (selected AND no other card is hovered)
+							var shouldAnimate = isThisCardHovered || (isThisCardSelected && !hoveredMonsterId.HasValue);
+						}
+						<MonsterCard Monster=@monster
+									 IsSelected=@isThisCardSelected
+									 ShouldAnimate=@shouldAnimate
+									 IsMini=@true
+									 ShowGenes=@isFusionMode
+									 AnimateOnHover=@true
+									 AnimationFrame=@SpriteAnimator.GlobalFrame
+									 OverrideArtSpeciesId=@(_mybCardEditing ? _myBeastsTestSpeciesId : null)
+									 ArtVersion=@_myBeastsArtVersion
+									 ClickAction=@(() => {})
+									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
+									 LeaveAction=@OnMouseLeaveCard />
+						@* Hover-preview ring — the cheap flat-panel recipe (absolute
+						   bordered div, opacity swap on :hover). The SELECTED beast
+						   gets the one waving imperative ring instead (root level). *@
+						<div class="card-ring"></div>
+					</div>
+				}
+
+				@if (currentFilter == "all")
+				{
+					var totalMonsters = GetMonsterCount();
+					var emptySlots = GetEmptySlotCount(totalMonsters);
+					@for (int i = 0; i < emptySlots; i++)
+					{
+						<div class="empty-slot mini" onmouseover=@OnMouseLeaveCard>
+							<div class="empty-slot-border"></div>
+						</div>
+					}
+				}
+
+				@if (GetFilteredMonsters().Count == 0 && currentFilter != "all")
+				{
+					<div class="empty-roster">
+						<div class="empty-icon">?</div>
+						<div class="empty-text">@L("ui.roster.no_monsters")</div>
+						<div class="empty-hint">@L("ui.roster.no_filter_match")</div>
+					</div>
+				}
+				</div>
+			</div>
+		</div>
+
 
 			<!-- Release Confirmation Modal -->
 			@if (showReleaseConfirm && monsterToRelease != null)
@@ -1428,7 +1447,7 @@
 
 	<!-- Fusion confirmation popup REMOVED — replaced with the
 	     two-stage in-button confirm on the FUSE CTA. See
-	     pendingFusionConfirm + RunFusionConfirmTimeout in @code. -->
+	     pendingFusionConfirm + RunFusionConfirmTimeout in the code-behind. -->
 
 	<!-- Fusion Result Modal — REVERTED to original simple structure
 	     after multiple failed attempts at the v2 redesign. Keeping the
@@ -4121,6 +4140,15 @@
 	// on first mount regardless of editor state — flipping the toolbar
 	// off doesn't revert your work.
 	private const bool ShowMyBeastsArtEditor = false;
+
+	// Stage portrait geometry multiplier — the beast-stage hero renders the
+	// detail portrait at K× the geometry the per-species DetailIconScale/
+	// OffsetX/OffsetY values were tuned at (120px container, 180px sprite).
+	// Markup multiplies the tuned px offsets by K; the art editor's drag
+	// divides mouse deltas by K so a saved offset stays in TUNED-space px.
+	// Keep in lockstep with .portrait-container / .monster-portrait sizes
+	// in the SCSS (240px container, 360px sprite = K 2).
+	private const float DetailArtK = 2f;
 	private string _myBeastsEditMode = "card";
 	private string _myBeastsDraggingId;
 	private string _myBeastsHoveredId;
@@ -4330,6 +4358,14 @@
 		}
 		float dx = MousePosition.x - _myBeastsDragStartMouseX;
 		float dy = MousePosition.y - _myBeastsDragStartMouseY;
+		// DETAIL mode renders at DetailArtK× the tuned geometry — divide the
+		// screen-space drag back into tuned-space px so saved offsets stay
+		// compatible with every other surface that reads them.
+		if ( _myBeastsEditMode == "detail" && DetailArtK > 0f )
+		{
+			dx /= DetailArtK;
+			dy /= DetailArtK;
+		}
 		var art = GetActiveModeArt( _myBeastsDraggingId );
 		ApplyMyBeastsArtOverride( _myBeastsDraggingId, art.Scale, _myBeastsDragStartOffX + dx, _myBeastsDragStartOffY + dy );
 		PersistActiveModeToDisk();
@@ -5238,3 +5274,4 @@
 		return string.Join(", ", parts);
 	}
 }
+

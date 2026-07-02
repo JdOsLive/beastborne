@@ -1,22 +1,28 @@
 // ============================================================
-// Shop panel — full rework 2026-04-17
+// SHOP — the market counter (full-UI sweep, 2026-07-02)
 //
-// Layout: 2-row header (title / store toggle / currency on row 1,
-// active-boost rail + filter controls on row 2), two-pane body
-// (grid left, detail right). Grid is grouped into shop-section-title
-// strips (roster `.section-title` pattern ported in). Featured card
-// spans full width at the top of "all" view.
+// THE gold panel (#ffce3a accent, ink #2a1605 on gold; violet
+// #9b6cff demoted to selection/secondary). Composition:
 //
-// Purchase flow uses the DailyPanel claim recipe: particle burst +
-// reward flyer from detail pane center toward top-right GameHUD
-// currency pill, timed so the HUD roll-up fires when the flyer
-// "lands" (~350ms flight + 150ms overshoot).
+//   SIGNBOARD HEADER  kicker + huge italic store title, skewed
+//                     gold seam, two big skewed store signboards,
+//                     filters, pouch gem chip.
+//   THE COUNTER       (left, flex 1) goods stand on shelf plinths
+//                     in section rows; price gems hang under them
+//                     as tags. No card boxes — big art, less chrome.
+//   THE DISPLAY CASE  (right, 400px) gold-trimmed graphite showcase
+//                     (PawPad hardware treatment). Shows the Daily
+//                     Spotlight by default, the selected good on
+//                     demand. Qty + price seam + the ONE gold CTA
+//                     live here, always in the same spot.
 //
-// Canonical references:
-//   - MonsterRosterPanel.razor.scss (.section-title, .action-v2)
-//   - BeastiaryPanel.razor.scss (.bb-section-title, .bb-pill)
-//   - DailyPanel.razor.scss (.claim-particle-layer, .claim-reward-flyer)
-//   - style-guide.md (solid pill spec, spacing rhythm, shadows)
+// Engine laws honored: scroll children flat + explicit sizes; no
+// transform/box-shadow states on scroll-grid goods (inset rings
+// only); absolutes get explicit sizes (all-edge stretch = zero on
+// empty divs); 2D-transform holders may carry bg; line-height px;
+// no hairline borders (vector rule) — slabs separate by contrast.
+// z-ladder: goods auto < fade 20 < living ring 60 < case 80 <
+// header 500 < dropdown 600 < burst 1000.
 // ============================================================
 
 ShopPanelContent {
@@ -32,28 +38,34 @@ ShopPanelContent {
 	height: 100%;
 	padding: 0;
 	position: relative;
-
-	background-image: url(ui/menus/animated-bg.webp);
-	background-size: cover;
-	background-position: center;
-
-	// Panel entrance — fires once on the fresh mount when the shop tab opens
-	// (ShopPanelContent is rendered via a switch in GameHUD.razor, so the
-	// component remounts each time the shop tab is selected). One-shot fade
-	// + subtle lift so the shop "arrives" instead of popping on screen. The
-	// header + body each have their own staggered keyframes below.
+	background-color: #0a0912;
+	// Faint warm wash so the gold identity reads even on an empty screen.
+	// radial-gradient: bare percent stops only (engine law).
+	background-image: radial-gradient(rgba(255, 206, 58, 0.045) 0%, rgba(0, 0, 0, 0) 62%);
 	animation: shopPanelEntrance 0.35s ease-out both;
 }
 
 @keyframes shopPanelEntrance {
-	0%   { opacity: 0; transform: translateY(4px); }
-	100% { opacity: 1; transform: translateY(0); }
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
 }
 
-// Header slides down slightly ahead of the grid so the whole panel doesn't
-// translate as one block — gives the shop a "stocked in" reveal. 180ms,
-// minus the 80ms delay on the grid below.
-.shop-panel-content .shop-header {
+// ============================================================
+// SIGNBOARD HEADER
+// ============================================================
+.shop-header {
+	position: relative;
+	z-index: 500;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 22px;
+	padding: 18px 36px 16px 36px;
+	flex-shrink: 0;
+	// Opaque — covers scroll-grid leaks from below (engine law).
+	background-color: rgba(10, 9, 18, 0.97);
+	// The ONE sanctioned panel-signature strip — solid gold.
+	border-bottom: 2px solid rgba(255, 206, 58, 0.55);
 	animation: shopHeaderEntrance 0.32s ease-out both;
 }
 
@@ -62,623 +74,321 @@ ShopPanelContent {
 	100% { opacity: 1; transform: translateY(0); }
 }
 
-.shop-panel-content > * {
-	position: relative;
-	z-index: 1;
-}
-
-// ============================================================
-// Single-row header — title / store switch / filters / currency
-// Height mirrors roster + beastbook (~60px) so the shop reads as
-// a sibling tab panel. Active-boost rail moved out of the header
-// into `.shop-left` above the grid (contextual status, not chrome).
-// ============================================================
-.shop-header {
-	position: relative;
-	z-index: 500;
+.sh-identity {
 	display: flex;
-	flex-direction: row;
-	align-items: center;
-	padding: 14px 24px 14px 24px;
-	flex-shrink: 0;
-	gap: 14px;
-	background-color: transparent;
-	border-bottom: 1px solid rgba(139, 92, 246, 0.18);
+	flex-direction: column;
+	flex: 0 0 auto;
+	gap: 2px;
 }
 
-.header-left {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 10px;
-	flex-shrink: 0;
-}
-
-.panel-title-icon {
-	width: 22px;
-	height: 22px;
-	flex-shrink: 0;
-}
-
-.shop-title {
-	font-size: 22px;
+.sh-kicker {
+	font-family: Exo2;
+	font-size: 12px;
 	font-weight: 900;
-	color: #ffffff;
-	letter-spacing: 2px;
+	line-height: 14px;
+	letter-spacing: 3px;
 	text-transform: uppercase;
-	font-style: italic;
-	transform: skewX(-8deg);
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
+	color: #ffce3a;
 }
 
-// Store-type switch (gold vs boss) — centered toggle. Takes the
-// middle of the header row; the filter-controls + currency sit to
-// its right so everything fits on one line.
+.sh-title {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 38px;
+	font-weight: 900;
+	line-height: 42px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: #f4f1ea;
+}
+
+// Skewed gold blade between the identity and the signboards —
+// the header's angled-dialect beat. 2D skew holder w/ bg = safe.
+.sh-seam {
+	width: 7px;
+	height: 52px;
+	flex: 0 0 auto;
+	background-color: #ffce3a;
+	transform: skewX(-14deg);
+	border-radius: 2px;
+}
+
+// ── Store signboards — big skewed slabs (the signboard moment) ──
 .shop-type-switch {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 6px;
-	padding: 3px 6px;
-	background-color: rgba(15, 12, 28, 0.85);
-	background-image: url(ui/icons/animated/tab-bg.webp);
-	background-size: cover;
-	background-position: center;
-	border-radius: 10px;
-	border: 1px solid rgba(139, 92, 246, 0.15);
-	flex-shrink: 0;
+	gap: 14px;
+	flex: 0 0 auto;
 }
 
-.hub-pill {
+.sh-store-chip {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 6px;
-	padding: 8px 18px;
-	border-radius: 8px;
+	justify-content: center;
+	height: 50px;
+	padding: 0 26px;
+	flex: 0 0 auto;
+	border-radius: 12px;
 	cursor: pointer;
 	pointer-events: all;
-	background-color: rgba(40, 35, 55, 0.9);
-	border: 1px solid rgba(255, 255, 255, 0.18);
-	transition: background-color 0.18s ease-out, border-color 0.18s ease-out, transform 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.2);
+	background: linear-gradient(to bottom, #2b2e37 0%, #1a1c22 100%);
+	border: 2px solid rgba(0, 0, 0, 0);
+	transform: skewX(-8deg);
+	transition: border-color 0.12s ease-out, background-color 0.12s ease-out, transform 0.12s ease-out;
 
-	.pill-icon {
-		width: 15px;
-		height: 15px;
-		opacity: 0.6;
-		transition: opacity 0.2s ease;
-	}
+	> * { pointer-events: none; }
 
-	.pill-label {
-		font-size: 13px;
-		font-weight: 600;
-		color: rgba(255, 255, 255, 0.8);
-	}
-
-	// Hover — the biggest "mode change" in the panel, so the affordance is
-	// louder than a standard pill hover. Purple tint + subtle lift + icon
-	// brightens to full. Anti-AI-tell note: lift + tint only, no glow halo.
+	// Ring-on-a-skewed-chip = border-color swap ON the skew holder
+	// (hud-player-tag pattern) — a detached ring child would paint
+	// outside the transform.
 	&:hover {
-		background-color: rgba(70, 55, 95, 0.95);
-		border-color: rgba(167, 139, 250, 0.55);
-		transform: translateY(-1px);
-
-		.pill-label { color: #e7dcff; }
-		.pill-icon { opacity: 1; }
+		border-color: #9b6cff;
 	}
 
-	// Press feedback — compression spring under hover, gives the store
-	// switch physical weight when clicked.
 	&:active {
-		transform: translateY(0) scale(0.96);
+		transform: skewX(-8deg) scale(0.97);
 	}
 
 	&.active {
-		background-color: rgba(88, 48, 150, 0.5);
-		border-color: rgba(139, 92, 246, 0.55);
-		.pill-label { color: #d4bfff; font-weight: 700; }
-		.pill-icon { opacity: 1; }
+		background: linear-gradient(to bottom, #ffd95a 0%, #f5a623 100%);
+		border-color: rgba(255, 206, 58, 0.9);
 
-		// Active + hover stays distinct — slightly brighter border
-		&:hover {
-			border-color: rgba(167, 139, 250, 0.85);
-			transform: translateY(-1px);
-		}
+		.sh-chip-label { color: #2a1605; }
+		.sh-chip-icon { opacity: 1; }
+
+		&:hover { border-color: #9b6cff; }
 	}
 }
 
-// Currency readout — stays in the top-right. Purchase flash fires
-// a one-shot pulse on actual currency change. `margin-left: auto`
-// absorbs the remaining header-row space so the readout sticks to
-// the far right, roster-style.
-.currency-display {
+.sh-chip-inner {
 	display: flex;
+	flex-direction: row;
 	align-items: center;
-	gap: 8px;
+	gap: 10px;
+	transform: skewX(8deg);
+}
+
+.sh-chip-icon {
+	width: 18px;
+	height: 18px;
+	flex: 0 0 auto;
+	opacity: 0.75;
+}
+
+.sh-chip-label {
+	font-family: Exo2Italic;
+	font-style: italic;
 	font-size: 15px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.7);
-	background-color: rgba(0, 0, 0, 0.3);
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	padding: 8px 16px;
-	border-radius: 8px;
-	letter-spacing: 0.5px;
-	flex-shrink: 0;
-	margin-left: auto;
-
-	.gold-icon-svg {
-		width: 15px;
-		height: 15px;
-	}
-
-	.gold-value, .token-value {
-		font-size: 15px;
-		font-weight: 700;
-		color: #fbbf24;
-	}
-
-	.token-icon {
-		img { width: 15px; height: 15px; }
-	}
-}
-
-.currency-display.boss-currency {
-	border-color: rgba(139, 92, 246, 0.25);
-	.token-value { color: #c4b5fd; }
-}
-
-// ============================================================
-// Active-boost rail — contextual status strip above the grid,
-// inside `.shop-left`. NOT part of the header chrome (so it doesn't
-// fight the panel-header height). Full-width, low-contrast so it
-// reads as "always-on status" not a second header.
-// ============================================================
-.active-boosts-rail {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	padding: 6px 12px;
-	margin: 0 0 10px 0;
-	background-color: rgba(15, 12, 28, 0.5);
-	border: 1px solid rgba(139, 92, 246, 0.12);
-	border-radius: 8px;
-	height: 36px;
-	flex-shrink: 0;
-}
-
-.active-boosts-label {
-	font-size: 9px;
 	font-weight: 800;
-	letter-spacing: 1.6px;
+	line-height: 18px;
+	letter-spacing: 1.5px;
 	text-transform: uppercase;
-	color: rgba(196, 181, 253, 0.7);
-	padding-right: 4px;
-	flex-shrink: 0;
+	color: rgba(244, 241, 234, 0.85);
+	white-space: nowrap;
 }
 
-.active-boosts-empty {
+// < > cycle caps — on-screen discoverability for CyclePrev/CycleNext.
+.sh-kb-hint {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 8px;
-	font-size: 11px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.3);
-	letter-spacing: 0.5px;
-
-	.active-boosts-empty-text {
-		font-size: 11px;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.35);
-	}
+	gap: 4px;
+	flex: 0 0 auto;
 }
 
-// Empty-state nudge — a pointer + hint that lives inline with "No active boosts."
-// Shop is sell-driven; this gives the empty rail a purposeful CTA without being
-// shouty. Lives just to the right of the empty label, separator bar in between.
-// Purple tint (not gold) so it doesn't compete with the gold reward language
-// of the boost pills themselves.
-.active-boosts-nudge {
+.sh-cap {
 	display: flex;
-	flex-direction: row;
 	align-items: center;
-	gap: 5px;
-	padding-left: 10px;
-	margin-left: 4px;
-	border-left: 1px solid rgba(139, 92, 246, 0.25);
+	justify-content: center;
+	width: 20px;
+	height: 20px;
+	flex: 0 0 auto;
+	border-radius: 6px;
+	background-color: #1c1830;
 
 	span {
-		font-size: 11px;
-		font-weight: 600;
-		color: rgba(196, 181, 253, 0.8);
-		letter-spacing: 0.3px;
-	}
-
-	iconify {
-		// Gentle "look down" nudge — 1.8s bounce, small amplitude so it's not
-		// twitchy. Tier 1 ambient — keeps the empty rail alive.
-		animation: nudgeArrowBounce 1.8s ease-in-out infinite;
-	}
-}
-
-@keyframes nudgeArrowBounce {
-	0%   { transform: translateY(0); }
-	40%  { transform: translateY(3px); }
-	60%  { transform: translateY(3px); }
-	100% { transform: translateY(0); }
-}
-
-// Active boost pill — sized for readability over brand spec. This is
-// a live status readout, not a brand pill: we break the 10px/uppercase
-// rule in favor of a 12px mixed-case label so the player can read the
-// multiplier + boost name at a glance ("2× Tamer XP · 23m").
-.active-boost-pill {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 7px;
-	height: 26px;
-	padding: 0 12px;
-	background-color: rgba(139, 92, 246, 0.22);
-	border: 1px solid rgba(139, 92, 246, 0.45);
-	border-radius: 6px;
-	flex-shrink: 0;
-	// Entry animation — when a new boost kicks in, its pill gets a fresh
-	// DOM mount so this @keyframes fires. Reads as "your boost arrived."
-	// Panel re-mount on tab open also replays these — acceptable, serves
-	// as a gentle reminder of what's running.
-	animation: boostPillEnter 0.32s cubic-bezier(0.2, 0.8, 0.3, 1.3) both;
-
-	.ab-icon {
-		width: 13px;
-		height: 13px;
-		flex-shrink: 0;
-	}
-
-	.ab-label {
+		font-family: Exo2;
 		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: 0.2px;
-		color: #ffffff;
-	}
-
-	.ab-sep {
-		font-size: 11px;
-		color: rgba(255, 255, 255, 0.35);
-	}
-
-	.ab-time {
-		font-size: 11px;
-		font-weight: 700;
-		color: #c4b5fd;
-		letter-spacing: 0.2px;
-	}
-
-	.ab-server-tag {
-		font-size: 8px;
-		font-weight: 800;
-		letter-spacing: 1px;
-		padding: 2px 5px;
-		border-radius: 3px;
-		background-color: rgba(251, 191, 36, 0.85);
-		color: #1a1208;
-		margin-left: 2px;
-	}
-
-	// Server-activated boost gets a gold edge to distinguish from personal
-	&.server {
-		background-color: rgba(251, 191, 36, 0.2);
-		border-color: rgba(0, 0, 0, 0.45);
-
-		.ab-label { color: #fde68a; }
-		.ab-time { color: #fbbf24; }
-	}
-
-	// Expiring soon (<60s) — amber pulsing border
-	&.expiring {
-		border-color: rgba(251, 191, 36, 0.75);
-		animation: boostExpiringPulse 1.2s ease-in-out infinite;
+		font-weight: 900;
+		line-height: 14px;
+		color: rgba(255, 206, 58, 0.8);
 	}
 }
 
-@keyframes boostExpiringPulse {
-	0%   { border-color: rgba(251, 191, 36, 0.4); }
-	50%  { border-color: rgba(251, 191, 36, 0.9); }
-	100% { border-color: rgba(251, 191, 36, 0.4); }
-}
-
-@keyframes boostPillEnter {
-	0%   { opacity: 0; transform: translateY(-4px) scale(0.85); }
-	60%  { opacity: 1; transform: translateY(0) scale(1.04); }
-	100% { opacity: 1; transform: translateY(0) scale(1.0); }
-}
-
+// ── Filters (category dropdown + sort) — quiet slab chips ──
 .filter-controls {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 8px;
-	flex-shrink: 0;
+	flex: 0 0 auto;
 }
 
 .dropdown-container {
 	position: relative;
-	pointer-events: all;
-	z-index: 100;
+	flex: 0 0 auto;
 }
 
-// Shop category dropdown — secondary P5-stamp slab matching the
-// FilterBar .dropdown-btn family. 8/14 padding + 13px uppercase label
-// + 2px offset shadow. Active state goes solid purple.
-.dropdown-btn {
+.dropdown-btn, .sort-btn {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 7px;
-	padding: 8px 14px;
-	border-radius: 4px;
+	gap: 8px;
+	height: 38px;
+	padding: 0 14px;
+	flex: 0 0 auto;
+	border-radius: 10px;
+	background-color: #1c1830;
 	cursor: pointer;
-	background-color: rgba(20, 14, 32, 0.92);
-	border: 2px solid rgba(0, 0, 0, 0.55);
-	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
-	transition: background-color 0.18s ease-out, border-color 0.18s ease-out, box-shadow 0.18s ease-out, transform 0.12s cubic-bezier(0.2, 0.8, 0.3, 1.3);
-	font-size: 13px;
-	font-weight: 800;
-	color: rgba(255, 255, 255, 0.85);
 	pointer-events: all;
+	transition: background-color 0.12s ease-out;
 
-	&:hover {
-		background-color: rgba(40, 28, 60, 0.95);
-	}
-
-	&:active {
-		transform: scale(0.96);
-	}
+	&:hover { background-color: #2a2344; }
+	&:active { background-color: #171226; }
 
 	&.active {
-		background-color: rgba(88, 48, 150, 0.85);
-		border-color: rgba(139, 92, 246, 0.85);
-		box-shadow: 3px 3px 0 rgba(124, 58, 237, 0.4);
-		color: #ffffff;
+		background-color: rgba(255, 206, 58, 0.16);
+		.dropdown-label, .sort-label { color: #ffce3a; }
 	}
+}
 
-	.dropdown-icon {
-		font-size: 14px;
-	}
+.dropdown-label, .sort-label {
+	font-family: Exo2;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 14px;
+	letter-spacing: 0.5px;
+	color: rgba(244, 241, 234, 0.8);
+	white-space: nowrap;
+}
 
-	.dropdown-label {
-		font-size: 13px;
-		font-weight: 800;
-		letter-spacing: 1.2;
-		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.85);
-		line-height: 14px;
-	}
-
-	.dropdown-arrow {
-		font-size: 10px;
-		color: rgba(255, 255, 255, 0.6);
-		transition: transform 0.2s ease;
-
-		&.open {
-			transform: rotate(180deg);
-		}
-	}
+.dropdown-arrow {
+	transition: transform 0.15s ease-out;
+	&.open { transform: rotate(180deg); }
 }
 
 .dropdown-menu {
 	position: absolute;
-	top: 40px;
+	top: 44px;
 	left: 0;
+	width: 190px;
+	z-index: 600;
 	display: flex;
 	flex-direction: column;
-	max-height: 400px;
-	overflow-y: scroll;
-	background-color: rgba(15, 10, 30, 0.98);
-	border: 1px solid rgba(139, 92, 246, 0.3);
-	border-radius: 10px;
+	gap: 2px;
 	padding: 6px;
-	z-index: 9999;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-	// Menu re-mounts each open (conditional render) so @keyframes fire
-	// fresh every time. Unfolds from the top with a scaleY spring — reads
-	// as "dropdown unfolding" instead of "appearing."
-	transform-origin: top;
-	animation: dropdownUnfold 0.18s cubic-bezier(0.2, 0.8, 0.3, 1.15) both;
+	border-radius: 14px;
+	background-color: #15121f;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+	animation: dropdownUnfold 0.14s ease-out both;
 }
 
 @keyframes dropdownUnfold {
-	0%   { opacity: 0; transform: scaleY(0.85) translateY(-4px); }
-	100% { opacity: 1; transform: scaleY(1) translateY(0); }
+	0%   { opacity: 0; transform: translateY(-4px); }
+	100% { opacity: 1; transform: translateY(0); }
 }
 
 .dropdown-item {
 	display: flex;
 	flex-direction: row;
-	flex-wrap: nowrap;
 	align-items: center;
-	gap: 8px;
-	padding: 6px 12px;
-	font-size: 13px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.7);
-	border-radius: 6px;
+	gap: 10px;
+	height: 34px;
+	padding: 0 10px;
+	border-radius: 9px;
 	cursor: pointer;
-	// Per-property transitions so the hover tint + press scale don't fight.
-	transition: background-color 0.15s ease-out, color 0.15s ease-out, transform 0.1s ease-out;
 	pointer-events: all;
+	transition: background-color 0.1s ease-out;
 
-	// Each item fades + shifts in as the menu unfolds. They animate
-	// together (no per-item stagger — s&box `:nth-child` selectors are
-	// unreliable, and adding explicit stagger classes for each menu
-	// position would require touching Razor). Layered on top of the
-	// parent `dropdownUnfold` scaleY, the result still reads as "list
-	// dropping into place" because the parent scale makes items appear
-	// to stack as they reveal. 80ms delay so the items arrive just after
-	// the scaleY begins, not competing with it.
-	animation: dropdownItemEnter 0.22s ease-out 0.08s both;
-
-	&:hover {
-		background-color: rgba(139, 92, 246, 0.2);
-		color: #ffffff;
-		// Small push-in on hover adds physical feedback without lifting.
-		transform: translateX(2px);
-	}
-
-	&:active {
-		transform: translateX(2px) scale(0.97);
-	}
+	&:hover { background-color: #2a2344; }
 
 	&.active {
-		background-color: rgba(139, 92, 246, 0.35);
-		color: #ffffff;
-
-		.dd-icon {
-			color: #a78bfa;
-		}
-	}
-
-	.dd-icon {
-		font-size: 14px;
-		width: 20px;
-		flex-shrink: 0;
-		text-align: center;
-	}
-
-	.dd-label {
-		flex: 1;
-		flex-shrink: 0;
+		background-color: rgba(255, 206, 58, 0.14);
+		.dd-label { color: #ffce3a; }
 	}
 }
 
-@keyframes dropdownItemEnter {
-	0%   { opacity: 0; transform: translateY(-3px); }
-	100% { opacity: 1; transform: translateY(0); }
+.dd-label {
+	font-family: Exo2;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 14px;
+	color: rgba(244, 241, 234, 0.85);
 }
 
-// Shop cycle-sort button — secondary P5-stamp slab matching the
-// FilterBar dropdown-btn family. Cycles sort modes on click; the
-// subtle icon rotation on hover teases the cycle without committing.
-.sort-btn {
+// ── Pouch readout — the gold gem chip (hudc-gem dialect) ──
+.currency-display {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 7px;
-	padding: 8px 14px;
-	background-color: rgba(20, 14, 32, 0.92);
-	border: 2px solid rgba(0, 0, 0, 0.55);
-	box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.4);
-	border-radius: 4px;
-	cursor: pointer;
-	pointer-events: all;
-	// Per-property so the hover spring on .sort-icon doesn't get clobbered
-	// by an `all` transition on the parent.
-	transition: background-color 0.18s ease-out, border-color 0.18s ease-out, box-shadow 0.18s ease-out, transform 0.12s cubic-bezier(0.2, 0.8, 0.3, 1.3);
-	font-size: 13px;
-	font-weight: 800;
-	color: rgba(255, 255, 255, 0.85);
+	gap: 12px;
+	flex: 0 0 auto;
+	margin-left: auto;
+	padding: 0 6px;
+	transition: transform 0.15s ease-out;
 
-	.sort-icon {
-		width: 14px;
-		height: 14px;
-		flex-shrink: 0;
-		transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.3, 1.3);
-	}
-
-	.sort-label {
-		font-size: 13px;
-		font-weight: 800;
-		letter-spacing: 1.2;
-		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.85);
-		line-height: 14px;
-	}
-
-	&:hover {
-		background-color: rgba(40, 28, 60, 0.95);
-
-		// Subtle icon rotation teases that this button cycles — doesn't spin
-		// all the way, just nods toward the next state.
-		.sort-icon { transform: rotate(-15deg); }
-	}
-
-	// Press compression. Same pattern as .shop-item:active.
-	&:active {
-		transform: scale(0.95);
-	}
-
-	&.active {
-		background-color: rgba(88, 48, 150, 0.85);
-		border-color: rgba(139, 92, 246, 0.85);
-		box-shadow: 3px 3px 0 rgba(124, 58, 237, 0.4);
-		.sort-label { color: #ffffff; }
+	&.currency-flash {
+		transform: scale(1.08);
 	}
 }
 
+.cur-gem {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	flex: 0 0 auto;
+	border-radius: 6px;
+	transform: rotate(45deg);
+	background-color: rgba(255, 206, 58, 0.22);
+
+	&.tokens { background-color: rgba(110, 231, 183, 0.2); }
+}
+
+.cur-gem-icon {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 auto;
+	transform: rotate(-45deg);
+	background-repeat: no-repeat;
+}
+
+.cur-value {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 19px;
+	font-weight: 800;
+	line-height: 22px;
+	letter-spacing: 0.5px;
+	white-space: nowrap;
+	color: #ffd95a;
+
+	&.token-value { color: #6ee7b7; }
+}
+
 // ============================================================
-// Main 2-pane layout (grid left, detail right)
-//
-// Entrance handling:
-// - Default (first mount, no direction): 80ms delay + opacity fade-in.
-// - Forward (gold→boss): slides in from the right.
-// - Back (boss→gold): slides in from the left.
-// The `layout-N` render-key (N = swapVersion) remounts this div whenever
-// the store switches, so the @keyframes re-fires fresh each toggle.
+// LAYOUT — counter left, display case right
 // ============================================================
 .shop-layout {
 	flex: 1;
 	display: flex;
-	gap: 20px;
+	flex-direction: row;
+	gap: 22px;
 	overflow: hidden;
 	width: 100%;
-	padding: 16px 20px 20px 20px;
+	padding: 18px 28px 20px 28px;
+	animation: shopLayoutEntrance 0.32s ease-out 0.06s both;
 
-	// Default entrance is now opacity-only — the real motion comes from
-	// the left + right children sliding in from their sides (see
-	// `.shop-layout.dir-none .shop-left / .shop-right` below). Keeps
-	// the layout container still while its contents spread apart.
-	animation: shopLayoutEntrance 0.35s ease-out 0.08s both;
-
-	// Forward direction (gold → boss): new content slides in from the right,
-	// as if the "right tab" (boss) is pulling its content in from its side.
-	&.dir-forward {
-		animation: shopLayoutSlideForward 0.34s cubic-bezier(0.2, 0.8, 0.3, 1.0) both;
-	}
-
-	// Back direction (boss → gold): content slides in from the left.
-	&.dir-back {
-		animation: shopLayoutSlideBack 0.34s cubic-bezier(0.2, 0.8, 0.3, 1.0) both;
-	}
+	&.dir-forward { animation: shopLayoutSlideForward 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.0) both; }
+	&.dir-back { animation: shopLayoutSlideBack 0.3s cubic-bezier(0.2, 0.8, 0.3, 1.0) both; }
 }
 
 @keyframes shopLayoutEntrance {
 	0%   { opacity: 0; }
 	100% { opacity: 1; }
-}
-
-// Child panels slide in from their respective sides on initial mount or
-// on re-render without a store-switch direction. On direction changes the
-// parent `.shop-layout` does the sliding and these stay still (they'd
-// otherwise double-animate). Delays stagger behind the header entrance
-// (header: 0.32s, layout fade: 0.08s offset, left: 0.12s, right: 0.18s)
-// so the panel opens like a shelf spreading apart.
-.shop-layout.dir-none .shop-left {
-	animation: shopLeftSlideIn 0.42s cubic-bezier(0.2, 0.8, 0.3, 1.0) 0.12s both;
-}
-
-.shop-layout.dir-none .shop-right {
-	animation: shopRightSlideIn 0.42s cubic-bezier(0.2, 0.8, 0.3, 1.0) 0.18s both;
-}
-
-@keyframes shopLeftSlideIn {
-	0%   { opacity: 0; transform: translateX(-24px); }
-	100% { opacity: 1; transform: translateX(0); }
-}
-
-@keyframes shopRightSlideIn {
-	0%   { opacity: 0; transform: translateX(24px); }
-	100% { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes shopLayoutSlideForward {
@@ -693,35 +403,136 @@ ShopPanelContent {
 	100% { opacity: 1; transform: translateX(0); }
 }
 
-// Left: scrollable item area. Matches roster/beastbook collection-main
-// chrome (deep ink bg, hairline border, 16px radius, soft drop shadow).
+// ── The counter (left) ──
 .shop-left {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	background-color: rgba(5, 5, 12, 0.85);
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 16px;
-	padding: 14px 14px 14px 14px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-	// Host for the absolute-positioned scroll-fade overlays
 	position: relative;
+	background-color: #0f0d1a;
+	border-radius: 22px;
+	padding: 14px 14px 0 14px;
 }
 
-// Boss store chrome gets a subtle purple edge to differentiate from gold
-.shop-left.boss-left {
-	border-color: rgba(139, 92, 246, 0.2);
+// ── Active-boost rail — slim status strip above the shelves ──
+.active-boosts-rail {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	flex-shrink: 0;
+	padding: 4px 6px 10px 6px;
 }
 
-// Scroll-fade — subtle vertical gradient at the bottom of the item area that
-// hints "more content below." Sits above the scroll, below any popups.
-// Pure visual overlay, `pointer-events: none` so the scroll area stays
-// interactive right under it. Top fade isn't added — the section-title at
-// the top already reads as a boundary. The parent `.shop-left` has
-// `overflow: hidden` + `border-radius: 16px`, which clips this fade to the
-// rounded corners automatically.
+.active-boosts-label {
+	font-family: Exo2;
+	font-size: 10px;
+	font-weight: 900;
+	line-height: 12px;
+	letter-spacing: 2px;
+	color: #ffce3a;
+	flex: 0 0 auto;
+}
+
+.active-boosts-empty {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	flex: 0 0 auto;
+}
+
+.active-boosts-empty-text {
+	font-family: Exo2;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 13px;
+	color: rgba(255, 255, 255, 0.35);
+}
+
+.active-boosts-nudge {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+	margin-left: 6px;
+
+	span {
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 13px;
+		color: rgba(255, 206, 58, 0.6);
+	}
+}
+
+.active-boost-pill {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 12px;
+	flex: 0 0 auto;
+	border-radius: 999px;
+	background-color: #1c1830;
+	animation: boostPillEnter 0.25s ease-out both;
+
+	&.server { background-color: rgba(155, 108, 255, 0.16); }
+	&.expiring { animation: boostExpiringPulse 1s ease-in-out infinite; }
+}
+
+@keyframes boostPillEnter {
+	0%   { opacity: 0; transform: translateX(-8px); }
+	100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes boostExpiringPulse {
+	0%   { background-color: #1c1830; }
+	50%  { background-color: rgba(224, 65, 74, 0.28); }
+	100% { background-color: #1c1830; }
+}
+
+.ab-label {
+	font-family: Exo2;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 13px;
+	color: rgba(244, 241, 234, 0.85);
+	white-space: nowrap;
+}
+
+.ab-sep {
+	font-size: 11px;
+	line-height: 13px;
+	color: rgba(255, 255, 255, 0.3);
+}
+
+.ab-time {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 11px;
+	font-weight: 800;
+	line-height: 13px;
+	color: #ffce3a;
+	white-space: nowrap;
+}
+
+.ab-server-tag {
+	font-family: Exo2;
+	font-size: 8px;
+	font-weight: 900;
+	line-height: 10px;
+	letter-spacing: 1px;
+	padding: 2px 6px;
+	border-radius: 6px;
+	background-color: rgba(155, 108, 255, 0.3);
+	color: #d4bfff;
+}
+
+// ── Scroll fade ──
 .scroll-fade {
 	position: absolute;
 	left: 0;
@@ -733,31 +544,22 @@ ShopPanelContent {
 
 .scroll-fade-bottom {
 	bottom: 0;
-	// `transparent` keyword fails inside gradients in s&box — use rgba 0-alpha.
-	// Using the `to bottom` keyword form rather than `180deg` — s&box was
-	// rendering the deg-form gradient as a left→right sweep (bug seen
-	// 2026-04-17). Keyword form resolves it reliably.
-	background: linear-gradient(to bottom, rgba(5, 5, 12, 0) 0%, rgba(5, 5, 12, 0.98) 100%);
+	background: linear-gradient(to bottom, rgba(15, 13, 26, 0) 0%, rgba(15, 13, 26, 0.98) 100%);
 }
 
-// Scroll container — items grouped into section-title + cards as FLAT
-// direct children of a single flex-wrap scroll. Section titles force a
-// new row via `width: 100%; flex-basis: 100%`. This matches the roster
-// pattern (flex-wrap directly on the scroll, items as direct children)
-// and avoids the nested-flex-inside-scroll collapse quirk.
+// ── The shelf scroll — flat direct children (engine law) ──
 .items-scroll {
 	flex: 1 1 0;
 	min-width: 0;
 	min-height: 0;
 	display: flex;
 	flex-wrap: wrap;
-	gap: 14px;
-	padding: 4px 6px 120px 6px;
+	gap: 16px;
+	padding: 6px 8px 120px 8px;
 	overflow-y: scroll;
 	overflow-x: hidden;
 	align-content: flex-start;
 	justify-content: flex-start;
-	// Fade-in re-triggers when .swap-N class changes (category/sort swap)
 	animation: gridFadeIn 0.22s ease-out both;
 }
 
@@ -766,38 +568,21 @@ ShopPanelContent {
 	100% { opacity: 1; }
 }
 
-// Section title — roster canonical pattern (MonsterRosterPanel.razor.scss:4290).
-// 3px purple left bar + bottom hairline. Used for all grid sections and
-// detail-pane sub-headers. Lives as DIRECT child of items-scroll (which is
-// flex-wrap), with `flex-basis: 100%` to force items onto a new row below.
+// ── Section shelf tags — skewed gold tab + label + count + rule ──
 .shop-section-title {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 10px;
-	padding: 6px 10px 8px 10px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-	border-left: 3px solid rgba(139, 92, 246, 0.5);
+	padding: 6px 4px 8px 4px;
 	width: 100%;
 	flex-basis: 100%;
 	flex-shrink: 0;
 	flex-grow: 0;
-	// Bumped from 4px → 16px (style-guide `lg` token) to give sections
-	// breathing room. Dense grids (supplies + boosts + storage in one
-	// scroll) were reading as one undifferentiated wall; the extra space
-	// sells "new section starts here" at a glance.
-	margin-top: 16px;
-	// First section title rides tight to the top of the scroll (or the
-	// featured card).
-	&:first-child { margin-top: 0; }
-
-	// Staggered entrance — each section reveals slightly after the one
-	// above it, giving the grid a "shelves are being stocked" feel instead
-	// of one flat fade. Keyframes fire fresh when the items-scroll
-	// re-mounts via .swap-@swapVersion (on open / category / sort change).
-	// 60ms stagger × 4 sections max = 240ms spread, stays under half a sec.
+	margin-top: 20px;
 	animation: sectionEntrance 0.28s ease-out both;
 
+	&:first-child { margin-top: 0; }
 	&.stagger-0 { animation-delay: 0.00s; }
 	&.stagger-1 { animation-delay: 0.06s; }
 	&.stagger-2 { animation-delay: 0.12s; }
@@ -811,1101 +596,405 @@ ShopPanelContent {
 }
 
 .section-accent {
-	display: none; // accent lives on border-left; this span reserved for future glyph
+	display: flex;
+	width: 12px;
+	height: 12px;
+	flex: 0 0 auto;
+	background-color: #ffce3a;
+	transform: skewX(-14deg);
+	border-radius: 3px;
 }
 
 .shop-section-title .section-label {
-	font-size: 11px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.55);
-	letter-spacing: 1.5px;
-	text-transform: uppercase;
-	line-height: 12px;
-	flex: 0 0 auto;
-}
-
-// Count pill sits inline right after the label (small gap), not flushed
-// to the right edge — same information unit reads as one chunk instead
-// of two. The remaining row space goes to a stretching spacer below.
-.shop-section-title .section-count {
-	font-size: 9px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 13px;
 	font-weight: 800;
-	color: #a78bfa;
-	background-color: rgba(139, 92, 246, 0.15);
-	padding: 3px 8px;
-	border-radius: 8px;
-	letter-spacing: 0.5px;
-	line-height: 10px;
+	line-height: 15px;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: rgba(244, 241, 234, 0.75);
 	flex: 0 0 auto;
 }
 
-// Trailing spacer absorbs the remaining row width so the section title
-// keeps its full-row presence for flex-wrap layout, but label + count stay
-// glued together on the left.
+.shop-section-title .section-count {
+	font-family: Exo2;
+	font-size: 10px;
+	font-weight: 800;
+	line-height: 12px;
+	letter-spacing: 0.5px;
+	color: #ffce3a;
+	background-color: rgba(255, 206, 58, 0.14);
+	padding: 3px 9px;
+	border-radius: 8px;
+	flex: 0 0 auto;
+}
+
+// The shelf line — dim rule absorbing the row (section boundary read).
 .shop-section-title .section-spacer {
 	flex: 1 1 0;
 	min-width: 0;
+	height: 2px;
+	background: linear-gradient(to right, rgba(255, 206, 58, 0.22) 0%, rgba(255, 206, 58, 0) 90%);
 }
 
 // ============================================================
-// Shop item card
-// ------------------------------------------------------------
-// Lives as a direct child of `.items-scroll` (which is flex-wrap).
-// Explicit width + `flex: 0 0 Npx` per s&box quirk to prevent
-// collapse in dense grids.
+// THE GOODS — no card boxes. Big art standing on a shelf plinth,
+// name below, price gem hanging as a tag. Hover = inset violet
+// ring + icon perk. Selected = THE living ring (root level).
+// NO transform/box-shadow on the unit itself (scroll-clip law).
 // ============================================================
 .shop-item {
-	width: 160px;
-	min-width: 160px;
-	max-width: 160px;
-	flex: 0 0 160px;
+	width: 144px;
+	min-width: 144px;
+	max-width: 144px;
+	height: 196px;
+	flex: 0 0 144px;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 10px;
-	padding: 16px 14px 14px 14px;
-	padding-top: 22px;
-	background-color: rgba(20, 20, 35, 0.95);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 12px;
+	position: relative;
 	cursor: pointer;
 	pointer-events: all;
-	// Added transform + border + shadow transitions with slightly different
-	// durations so the hover "blooms" instead of snapping. Border is the
-	// fastest (instant affordance), transform and shadow catch up just
-	// behind for a subtle weight shift.
-	transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1.1), border-color 0.14s ease-out, box-shadow 0.2s ease-out;
-	position: relative;
-	overflow: visible;
+	border-radius: 16px;
+	background-color: rgba(255, 255, 255, 0);
+	transition: background-color 0.14s ease-out;
 
 	> * { pointer-events: none; }
 
-	// Child-item icon hover scale — small 1.06× lift on the icon when the
-	// card is hovered. Lives in the card's hover selector so it re-fires
-	// on pointer enter/leave. Tier 1 micro-feedback; keeps the card from
-	// feeling like a static rectangle when pointed at.
-	.item-icon {
-		transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.3, 1.2);
-	}
-
 	&:hover {
-		transform: translateY(-2px);
-		border-color: rgba(139, 92, 246, 0.45);
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-		z-index: 50;
+		background-color: rgba(155, 108, 255, 0.06);
 
-		.item-name { color: #ffffff; }
-		.item-icon { transform: scale(1.06); }
+		.good-ring { opacity: 1; }
+		.good-icon { transform: scale(1.06); }
+		.good-name span { color: #ffffff; }
 	}
 
-	// Press feedback — brief compression on click. Gives the card physical
-	// weight. `:active` in s&box fires while the mouse button is held.
-	&:active {
-		transform: translateY(0) scale(0.98);
-	}
-
-	// Category-themed hover border tint
-	&.type-supply:hover  { border-color: rgba(59, 130, 246, 0.55); }
-	&.type-boost:hover   { border-color: rgba(251, 191, 36, 0.55); }
-	&.type-storage:hover { border-color: rgba(74, 222, 128, 0.55); }
-
-	// Premium (expensive) items get slightly wider footprint — 180px
-	&.premium {
-		width: 180px;
-		min-width: 180px;
-		max-width: 180px;
-		flex: 0 0 180px;
-		padding-top: 24px;
-		background-color: rgba(28, 22, 45, 0.95);
-	}
-
-	// Selected — border + bg tint only. NO outer halo glow: s&box does not
-	// clip scroll-grid descendants to the scroll viewport, so any large
-	// box-shadow radius on a card inside the scroll will leak a purple blob
-	// onto the page. Same bug Beastbook hit. Clean drop shadow only.
 	&.selected {
-		border-color: #8b5cf6;
-		background-color: rgba(139, 92, 246, 0.12);
-		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-		transform: translateY(-2px);
+		background-color: rgba(155, 108, 255, 0.09);
+		.good-ring { opacity: 0; }
+		.good-shelf { background: linear-gradient(to bottom, #ffce3a 0%, #6b5210 100%); }
 	}
 
-	// Can't afford — dim with amber price signal
 	&.cant-afford {
-		opacity: 0.55;
-
-		&:hover {
-			transform: none;
-			box-shadow: none;
-		}
-
-		.item-price span:not(.deficit) {
-			color: #fca5a5;
-		}
+		.good-icon { opacity: 0.55; }
 	}
 
-	// Boost already active — stronger warm-tint + checkmark overlay so the
-	// running state reads at a glance, not just from a corner pill. The
-	// price line is replaced inline with a live time-remaining readout
-	// (see `.item-time-remaining`) so the player sees their meter without
-	// opening the detail pane. A gentle border pulse (3s loop) sells the
-	// "live / running" state without the twitchy infinite-glow feel.
-	&.boost-active {
-		border-color: rgba(251, 191, 36, 0.6);
-		background-color: rgba(56, 42, 18, 0.95);
-		animation: boostActiveBreath 3.2s ease-in-out infinite;
-
-		&:hover {
-			border-color: rgba(251, 191, 36, 0.85);
-			transform: translateY(-2px);
-			// Pause the pulse on hover so the hover border reads cleanly
-			animation: none;
-		}
-
-		// Lift name color slightly so the warm-tint card doesn't feel "muddy"
-		.item-name { color: #fde68a; }
+	&.maxed {
+		.good-icon { opacity: 0.7; }
 	}
 }
 
-// Slow warm border breath — Tier 1 ambient, tells the player the boost
-// is alive without demanding attention. Deliberately low-amplitude (0.45-0.75
-// alpha) so it reads as "background liveness," not "this card is flashing."
-@keyframes boostActiveBreath {
-	0%   { border-color: rgba(251, 191, 36, 0.45); }
-	50%  { border-color: rgba(251, 191, 36, 0.75); }
-	100% { border-color: rgba(251, 191, 36, 0.45); }
-}
-
-// ============================================================
-// Select pulse — one-shot border flash on card click
-// ------------------------------------------------------------
-// An absolutely-positioned overlay that matches the card's shape and
-// expands slightly while fading out. Mounted only while `justSelectedItemId`
-// equals the card's id AND keyed on `pulse-@selectPulseVersion` so each
-// click is a fresh DOM node — @keyframes fire once per mount, so this
-// reliably plays on every click.
-//
-// Pairs with the detail-fade that fires on the right pane: the card
-// "confirms" the click (300ms), then the detail pane fades in (220ms)
-// slightly delayed, giving a handshake feeling instead of one flat swap.
-// ============================================================
-.select-pulse {
+// Hover-preview ring — cheap per-good recipe, INSET inside bounds
+// (scroll containers never clip overhanging absolutes). Explicit
+// size: 144 − 2×2 offset − 2×3 border = 134; 196 − 4 − 6 = 186.
+.good-ring {
 	position: absolute;
-	top: -2px;
-	left: -2px;
-	right: -2px;
-	bottom: -2px;
-	border: 2px solid rgba(139, 92, 246, 0.85);
+	left: 2px;
+	top: 2px;
+	width: 134px;
+	height: 186px;
+	border: 3px solid #9b6cff;
 	border-radius: 14px;
-	pointer-events: none;
+	background-color: rgba(0, 0, 0, 0);
 	opacity: 0;
-	animation: cardSelectPulse 0.4s ease-out forwards;
-	z-index: 60;
+	transition: opacity 0.12s ease-out;
 }
 
-.select-pulse.featured-pulse {
-	border-color: rgba(251, 191, 36, 0.9);
-	border-radius: 16px;
+.good-art {
+	display: flex;
+	align-items: flex-end;
+	justify-content: center;
+	width: 144px;
+	height: 96px;
+	flex: 0 0 auto;
+	position: relative;
+	margin-top: 8px;
 }
 
-@keyframes cardSelectPulse {
-	0%   { opacity: 0; transform: scale(0.94); }
-	40%  { opacity: 1; transform: scale(1.03); }
-	100% { opacity: 0; transform: scale(1.08); }
+.good-icon {
+	width: 84px;
+	height: 84px;
+	flex: 0 0 auto;
+	background-repeat: no-repeat;
+	transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1.2), opacity 0.15s ease-out;
 }
 
-// ============================================================
-// Purchase confirmation overlay — green "got it" tick on the
-// purchased card. Mounted for ~900ms after a successful purchase,
-// then removed via the C# `purchasedItemId = null` clear.
-// ------------------------------------------------------------
-// Scales in with a spring, holds briefly, fades out. One-shot — the
-// @keyframes fires once on mount, and the parent unmounts the overlay
-// automatically when the timer clears.
-// ============================================================
-.purchase-confirm {
+// Gold "running" check disc over an active boost's art.
+.good-active-check {
 	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
+	left: 50%;
+	top: 50%;
+	width: 44px;
+	height: 44px;
+	margin-left: -22px;
+	margin-top: -22px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background-color: rgba(34, 197, 94, 0.55);
-	border-radius: 12px;
-	pointer-events: none;
-	z-index: 70;
-	animation: purchaseConfirm 0.9s ease-out forwards;
+	border-radius: 50%;
+	background-color: rgba(255, 206, 58, 0.92);
 }
 
-.purchase-confirm.featured-confirm {
-	border-radius: 14px;
-}
-
-@keyframes purchaseConfirm {
-	0%   { opacity: 0; transform: scale(0.8); }
-	20%  { opacity: 1; transform: scale(1.05); }
-	35%  { opacity: 1; transform: scale(1.0); }
-	75%  { opacity: 1; transform: scale(1.0); }
-	100% { opacity: 0; transform: scale(1.08); }
-}
-
-// When a card is in its brief "just-purchased" state, soften the base
-// border so the green overlay reads cleanly without fighting the card's
-// selection border. Small touch — 900ms only.
-// Hover variant overrides the category-specific hover tints that would
-// otherwise win on specificity (since `.type-supply:hover` is class+class+:hover).
-.shop-item.just-purchased,
-.featured-card.just-purchased,
-.shop-item.just-purchased:hover,
-.featured-card.just-purchased:hover {
-	border-color: rgba(34, 197, 94, 0.65);
-}
-
-// Active-boost icon-container variant: warm border + dim icon under check overlay
-.item-icon-container.active-boost {
-	border: 1px solid rgba(251, 191, 36, 0.5);
-	background-color: rgba(40, 30, 12, 0.6);
-
-	.item-icon { opacity: 0.55; }
-}
-
-// ============================================================
-// "More coming soon" trailing card — turns the final-row dead space
-// on the right into a soft tease. Same footprint as a real item card
-// so it slots cleanly into the flex-wrap row. Neutral + low-contrast
-// so it reads as structure, not a broken / loading state. No hover —
-// it's not clickable, it just fills the visual hole.
-// ============================================================
-.shop-item.shop-item-coming-soon {
-	width: 160px;
-	min-width: 160px;
-	max-width: 160px;
-	flex: 0 0 160px;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 6px;
-	padding: 20px 14px;
-	height: 180px;
-	background-color: rgba(20, 20, 35, 0.4);
-	border: 1px solid rgba(196, 181, 253, 0.15);
-	border-radius: 12px;
-	cursor: default;
-	pointer-events: none;
-	opacity: 0.65;
-	transition: none;
-
-	// Strip shop-item hover/boost/active rules
-	&:hover {
-		transform: none;
-		border-color: rgba(196, 181, 253, 0.15);
-		box-shadow: none;
-	}
-
-	.coming-soon-label {
-		font-size: 11px;
-		font-weight: 800;
-		letter-spacing: 1.2px;
-		text-transform: uppercase;
-		color: rgba(196, 181, 253, 0.55);
-		margin-top: 2px;
-	}
-
-	.coming-soon-hint {
-		font-size: 10px;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.25);
-		letter-spacing: 0.3px;
-	}
-}
-
-// Check overlay drops in over the icon to call out "this is RUNNING" — the
-// icon itself dims behind (via `.item-icon-container.active-boost .item-icon`
-// opacity 0.55) so this check reads as the primary glyph, not a sticker.
-.item-active-check {
+.good-qty {
 	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background-color: rgba(251, 191, 36, 0.3);
-	border-radius: 8px;
-	pointer-events: none;
+	right: 14px;
+	bottom: 2px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 13px;
+	font-weight: 900;
+	line-height: 15px;
+	color: #ffce3a;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.9);
 }
 
-// Live time-remaining readout that replaces the price line on active cards.
-// Same pill rhythm as `.active-boost-pill .ab-time` so the readout reads
-// as part of the same "active boost" family across rail and grid card.
-.item-time-remaining {
+.good-duration {
+	position: absolute;
+	left: 14px;
+	bottom: 2px;
+	font-family: Exo2;
+	font-size: 10px;
+	font-weight: 800;
+	line-height: 12px;
+	padding: 2px 7px;
+	border-radius: 7px;
+	background-color: rgba(28, 24, 48, 0.95);
+	color: rgba(244, 241, 234, 0.8);
+}
+
+// The shelf plinth — a graphite run with a lit gold top edge. Side
+// by side across a row these read as one continuous counter.
+.good-shelf {
+	width: 128px;
+	height: 9px;
+	flex: 0 0 auto;
+	border-radius: 3px;
+	background: linear-gradient(to bottom, #4a4030 0%, #1f1c26 100%);
+	transition: background-color 0.15s ease-out;
+}
+
+.good-name {
 	display: flex;
-	align-items: center;
-	gap: 5px;
-	margin-top: 2px;
-	padding: 3px 8px;
-	background-color: rgba(251, 191, 36, 0.18);
-	border: 1px solid rgba(251, 191, 36, 0.4);
-	border-radius: 6px;
+	justify-content: center;
+	width: 140px;
+	height: 32px;
+	flex: 0 0 auto;
+	margin-top: 7px;
 
 	span {
+		width: 140px;
+		font-family: Exo2;
+		font-size: 12px;
+		font-weight: 700;
+		line-height: 15px;
+		text-align: center;
+		color: rgba(244, 241, 234, 0.82);
+		white-space: normal;
+		transition: color 0.12s ease-out;
+	}
+}
+
+// The hanging tag zone under the shelf.
+.good-tag-zone {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	width: 144px;
+	height: 30px;
+	flex: 0 0 auto;
+}
+
+// Price tag — small skewed slab hanging under the good; gem + value.
+.good-tag {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 7px;
+	height: 24px;
+	padding: 0 11px;
+	flex: 0 0 auto;
+	border-radius: 8px;
+	background-color: #1c1830;
+	transform: skewX(-8deg);
+
+	.price-gem { transform: skewX(8deg) rotate(45deg); }
+
+	.good-tag-val {
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 13px;
+		font-weight: 800;
+		line-height: 15px;
+		color: #ffd95a;
+		white-space: nowrap;
+		transform: skewX(8deg);
+	}
+
+	&.short .good-tag-val { color: #f87171; }
+}
+
+.good-timer {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 11px;
+	flex: 0 0 auto;
+	border-radius: 8px;
+	background-color: rgba(255, 206, 58, 0.14);
+
+	span {
+		font-family: Exo2Italic;
+		font-style: italic;
 		font-size: 12px;
 		font-weight: 800;
-		color: #fbbf24;
-		letter-spacing: 0.3px;
+		line-height: 14px;
+		color: #ffce3a;
+		white-space: nowrap;
 	}
 }
 
-.item-icon-container {
-	width: 72px;
-	height: 72px;
+.good-maxed {
 	display: flex;
+	align-items: center;
 	justify-content: center;
-	align-items: center;
-	background-color: rgba(0, 0, 0, 0.3);
+	height: 24px;
+	padding: 0 12px;
+	flex: 0 0 auto;
 	border-radius: 8px;
-	position: relative;
-}
-
-.item-icon {
-	width: 56px;
-	height: 56px;
-	image-rendering: pixelated;
-}
-
-.item-quantity,
-.item-boost-badge {
-	position: absolute;
-	bottom: -6px;
-	right: -6px;
-	background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-	color: #ffffff;
-	font-size: 12px;
-	font-weight: 700;
-	padding: 3px 8px;
-	border-radius: 8px;
-	line-height: 14px;
-}
-
-.item-info {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 4px;
-}
-
-.item-name {
-	font-size: 13px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.85);
-	text-align: center;
-	line-height: 15px;
-}
-
-.item-name-sub {
-	font-size: 11px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.45);
-	text-align: center;
-	margin-top: -2px;
-	line-height: 13px;
-}
-
-.item-price {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 2px;
-
-	.gold-icon-svg {
-		width: 14px;
-		height: 14px;
-	}
-
-	.token-icon {
-		img { width: 13px; height: 13px; }
-	}
+	background-color: rgba(63, 180, 94, 0.16);
 
 	span {
-		font-size: 14px;
-		font-weight: 700;
-	}
-
-	&.gold span { color: #fbbf24; }
-	&.boss span { color: #fbbf24; }
-}
-
-.item-deficit,
-.item-price .deficit {
-	font-size: 9px;
-	font-weight: 700;
-	color: #fca5a5;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	padding: 2px 6px;
-	background-color: rgba(239, 68, 68, 0.15);
-	border-radius: 4px;
-	margin-top: 2px;
-	line-height: 11px;
-}
-
-// Level-req pill — always painted when an item has a RequiredLevel > 1, in
-// two visual states. Met = quiet green check (so high-level players still
-// see the gate exists, useful for "I bought this at lv X" recall and so
-// the layout isn't shuffling per-player). Locked = amber-red lock pill.
-.level-lock {
-	position: absolute;
-	top: 8px;
-	right: 8px;
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	font-size: 10px;
-	font-weight: 700;
-	padding: 4px 7px;
-	border-radius: 6px;
-	line-height: 11px;
-	border: 1px solid rgba(0, 0, 0, 0.3);
-
-	span {
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.4px;
-	}
-
-	&.met {
-		background-color: rgba(74, 222, 128, 0.14);
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 900;
+		line-height: 13px;
+		letter-spacing: 1px;
 		color: #86efac;
-		border-color: rgba(74, 222, 128, 0.3);
-
-		span { color: #86efac; }
-	}
-
-	&.locked {
-		background-color: rgba(239, 68, 68, 0.3);
-		color: #f87171;
-		border-color: rgba(239, 68, 68, 0.4);
-
-		span { color: #f87171; }
 	}
 }
 
-// Item-type badge (top-left) — canonical 22px solid pill spec, compacted
-// to 18px for the card corner. Colors per category.
-.item-type-badge {
+// Corner chips — INSIDE unit bounds (scroll-clip law).
+.good-active-tag {
 	position: absolute;
-	top: 6px;
 	left: 6px;
+	top: 4px;
+	display: flex;
+	align-items: center;
 	height: 18px;
 	padding: 0 8px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 9px;
-	font-weight: 800;
-	letter-spacing: 1px;
-	line-height: 10px;
-	border-radius: 5px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
-	text-transform: uppercase;
+	border-radius: 6px;
+	background-color: #ffce3a;
+	transform: rotate(-3deg);
 
-	&.type-supply    { background-color: rgba(59, 130, 246, 0.9);  color: #ffffff; }
-	&.type-boost     { background-color: rgba(251, 191, 36, 0.9);  color: #1a1a1a; }
-	&.type-storage   { background-color: rgba(74, 222, 128, 0.9);  color: #1a1a1a; }
-	&.type-misc      { background-color: rgba(139, 92, 246, 0.9);  color: #ffffff; }
-	&.boss-type-consumable { background-color: rgba(236, 72, 153, 0.9); color: #ffffff; }
+	span {
+		font-family: Exo2;
+		font-size: 9px;
+		font-weight: 900;
+		line-height: 11px;
+		letter-spacing: 1px;
+		color: #2a1605;
+	}
 }
 
-// Active-boost corner chip (top-right)
-.item-active-badge {
+.good-lock {
 	position: absolute;
-	top: 6px;
 	right: 6px;
+	top: 4px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
 	height: 18px;
 	padding: 0 7px;
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	font-size: 9px;
-	font-weight: 800;
-	letter-spacing: 1px;
-	line-height: 10px;
-	border-radius: 5px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
-	text-transform: uppercase;
-	background-color: rgba(251, 191, 36, 0.9);
-	color: #1a1208;
-
-	// EQUIPPED badge — gold (matches canonical "active/current" signal
-	// elsewhere in the game). Separate from the green OWNED chip so a
-	// player scanning a grid of owned items can pick out the one in use
-	// by color alone, without having to read chip text.
-	&.equipped-badge {
-		background-color: rgba(251, 191, 36, 0.95);
-		color: #1a1208;
-	}
-}
-
-// Owned-counter pill on consumable cards (top-right corner)
-.owned-counter {
-	position: absolute;
-	top: 6px;
-	right: 6px;
-	min-width: 22px;
-	height: 18px;
-	padding: 0 6px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 0.5px;
-	line-height: 10px;
-	border-radius: 5px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
-	background-color: rgba(74, 222, 128, 0.9);
-	color: #1a1208;
-}
-
-// ============================================================
-// Featured card — full-width hero at top of "all" grid
-// ------------------------------------------------------------
-// IMPORTANT s&box quirk: flex children with `overflow: hidden` can
-// collapse to zero width/height. This card previously used
-// `overflow: hidden` to clip the sheen/ribbon/sparkle children — and
-// that was making the entire card vanish in the flex-wrap scroll
-// container. Switched to `overflow: visible`. The ribbon has its
-// own explicit border-radius matching the card corners, and the
-// sheen / sparkle layers are sized to fit inside the card's
-// rectangle so they don't need parent clipping.
-// ============================================================
-.featured-card {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 20px;
-	padding: 18px 22px;
-	width: 100%;
-	flex-basis: 100%;
-	min-height: 132px;
-	background-color: rgba(30, 22, 8, 0.9);
-	border: 1px solid rgba(251, 191, 36, 0.45);
-	border-radius: 14px;
-	cursor: pointer;
-	pointer-events: all;
-	position: relative;
-	overflow: visible;
-	// Slightly slower easing than a regular card — this is the hero element,
-	// a bit more weight feels appropriate. 0.25s transform vs 0.18s for grid.
-	transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.3, 1.1), border-color 0.2s ease-out, box-shadow 0.25s ease-out;
-	flex-shrink: 0;
-	flex-grow: 0;
-
-	> * { pointer-events: none; }
-
-	&:hover {
-		transform: translateY(-3px);
-		border-color: rgba(251, 191, 36, 0.9);
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-
-		// Cascading child animations give the hero card a richer "activation"
-		// feel without chaining glows: icon lifts + scales, sheen fades in,
-		// divider brightens. All via transitions so they mirror on un-hover.
-		.featured-icon { transform: translateY(-2px) scale(1.05); }
-		.featured-divider { opacity: 1; }
-		// Pause the breathing so the bright hover border holds — the keyframe
-		// animation would otherwise keep pulsing the color back down.
-		.featured-icon-bg {
-			animation: none;
-			border-color: rgba(251, 191, 36, 0.7);
-		}
-	}
-
-	// Press weight — the hero card uses a softer compression so it keeps
-	// feeling premium, not snappy like the grid cards.
-	&:active {
-		transform: translateY(-1px) scale(0.995);
-	}
-
-	// No gold halo here either (see `.shop-item.selected` note on scroll leak).
-	&.selected {
-		border-color: #fbbf24;
-		background-color: rgba(60, 42, 12, 0.92);
-		box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
-	}
-
-	&.cant-afford {
-		opacity: 0.65;
-		.featured-price span:not(.deficit) { color: #fca5a5; }
-	}
-
-	// `.on-sale` — subtle warm-red edge that reinforces the sale signal
-	// without stealing focus from the ribbon + struck-through price. The
-	// existing gold border still dominates the visual identity; this is
-	// just enough to say "this card has a real deal on it" at a glance.
-	&.on-sale {
-		border-color: rgba(251, 146, 60, 0.55);
-
-		&:hover {
-			border-color: rgba(251, 146, 60, 0.8);
-		}
-	}
-}
-
-.featured-ribbon {
-	position: absolute;
-	top: 0;
-	right: 0;
-	display: flex;
-	align-items: center;
-	gap: 5px;
-	padding: 5px 12px;
-	background-color: rgba(251, 191, 36, 0.95);
-	color: #1a1208;
-	font-size: 9px;
-	font-weight: 800;
-	letter-spacing: 1.5px;
-	text-transform: uppercase;
-	border-radius: 0 14px 0 10px;
-	line-height: 10px;
+	border-radius: 6px;
+	background-color: rgba(15, 13, 26, 0.92);
 
 	span {
+		font-family: Exo2;
 		font-size: 9px;
 		font-weight: 800;
-		color: #1a1208;
+		line-height: 11px;
+		letter-spacing: 0.5px;
+	}
+
+	&.met span { color: #86efac; }
+	&.locked span { color: #fca5a5; }
+	&.locked { background-color: rgba(80, 20, 24, 0.85); }
+}
+
+.good-owned {
+	position: absolute;
+	right: 8px;
+	top: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 14px;
+	height: 20px;
+	padding: 0 6px;
+	border-radius: 7px;
+	background-color: rgba(255, 206, 58, 0.9);
+
+	span {
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 900;
+		line-height: 13px;
+		color: #2a1605;
 	}
 }
 
-// ============================================================
-// Ambient animated layer behind the spotlight card content.
-// ------------------------------------------------------------
-// One-layer motion: a soft radial warm-gold gradient centered on
-// the icon-frame side, breathing 0.5 → 1.0 alpha over 4.5s. Sells
-// "this spot is special" without a pulse-y UI loop — just gentle
-// life under the existing ambient sparkles + hover sheen.
-//
-// Why @keyframes is safe here: the featured card is remounted via
-// `.items-scroll.swap-@swapVersion` on category/sort change, so the
-// breathing animation re-fires fresh every time the spotlight
-// returns to view. The `swapVersion` key change re-creates the DOM
-// node.
-//
-// Why only one layer: the card already has (a) the hover sheen,
-// (b) the three staggered ambient sparkles, (c) the icon hover
-// lift. Adding a shimmer sweep on top would pile too many ambient
-// loops on a routine-visibility element. Tier 1 restraint — one
-// ambient signal, not four.
-// (Spotlight slide animation removed 2026-04-17 at user request — the
-// warm-gold sweeping band was pulling focus from the static hero layout
-// without adding enough life to justify the motion. Sparkles + gold-dust
-// drift + hover sheen remain.)
+// Trailing "more stock" spot — dim empty shelf position.
+.shop-item-coming-soon {
+	justify-content: center;
+	gap: 8px;
+	background-color: rgba(255, 255, 255, 0.02);
+	cursor: default;
 
-// (Diagonal sheen removed 2026-04-17 at user's request — read as
-// "AI-added shimmer" rather than earned ambient juice. The featured card
-// carries enough weight via its warm gradient + category chrome.)
-
-// Ambient sparkle dots — three positions over the icon-frame area, slow
-// staggered fade-in / out loop. Lives the right-of-icon dead space the
-// user flagged. Tier 1 — never twitchy, never demands attention, just
-// keeps the warm rectangle alive when the card is at rest.
-.featured-sparkles {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 140px;
-	height: 100%;
-	pointer-events: none;
-}
-
-.fs {
-	position: absolute;
-	width: 5px;
-	height: 5px;
-	border-radius: 50%;
-	background-color: rgba(253, 230, 138, 0.95);
-	box-shadow: 0 0 8px rgba(251, 191, 36, 0.85);
-	opacity: 0;
-
-	&.fs0 { left: 22px; top: 18px; animation: featuredSparkle 3.6s ease-in-out 0s infinite; }
-	&.fs1 { left: 100px; top: 36px; animation: featuredSparkle 3.6s ease-in-out 1.2s infinite; }
-	&.fs2 { left: 60px; top: 92px; animation: featuredSparkle 3.6s ease-in-out 2.4s infinite; }
-}
-
-@keyframes featuredSparkle {
-	0%   { opacity: 0; transform: scale(0.4); }
-	30%  { opacity: 0.95; transform: scale(1.0); }
-	60%  { opacity: 0; transform: scale(0.6); }
-	100% { opacity: 0; transform: scale(0.4); }
-}
-
-// Right-half gold dust — three motes drifting upward through the body.
-// User flagged the right side of the featured card felt dead next to the
-// left icon frame. These sit over the body/footer area with low alpha and
-// slow upward drift, so they feel like warm treasure-room air rather than
-// particles demanding attention. Different period (5.4s) from the icon
-// sparkles (3.6s) + the spotlight slide (7s) so the three motion loops
-// don't beat in sync.
-.featured-dust {
-	position: absolute;
-	top: 0;
-	right: 0;
-	width: 55%;
-	height: 100%;
-	pointer-events: none;
-	overflow: hidden;
-	border-radius: 14px;
-}
-
-.fd {
-	position: absolute;
-	width: 3px;
-	height: 3px;
-	border-radius: 50%;
-	background-color: rgba(253, 224, 138, 0.7);
-	box-shadow: 0 0 5px rgba(251, 191, 36, 0.6);
-	opacity: 0;
-
-	&.fd0 { left: 18%; bottom: 20%; animation: featuredDust 5.4s ease-in-out 0s infinite; }
-	&.fd1 { left: 52%; bottom: 12%; animation: featuredDust 5.4s ease-in-out 1.8s infinite; }
-	&.fd2 { left: 78%; bottom: 18%; animation: featuredDust 5.4s ease-in-out 3.6s infinite; }
-}
-
-@keyframes featuredDust {
-	0%   { opacity: 0; transform: translateY(0) scale(0.6); }
-	20%  { opacity: 0.9; transform: translateY(-12px) scale(1); }
-	70%  { opacity: 0.5; transform: translateY(-50px) scale(0.8); }
-	100% { opacity: 0; transform: translateY(-72px) scale(0.4); }
-}
-
-// Vertical divider between the icon frame and the body — gives the card
-// two distinct "compartments" instead of one washed gradient. Subtle gold
-// hairline that fades top + bottom; bumped alpha from 0.45 to 0.6 so the
-// divide actually reads (was invisible against the warm card bg).
-.featured-divider {
-	width: 1px;
-	height: 88px;
-	// `to bottom` keyword form — the `180deg` degree form can misparse as a
-	// horizontal sweep on narrow-vertical geometry (1px-wide element), which
-	// collapsed this hairline to an invisible 1px of compressed stops.
-	background: linear-gradient(to bottom, rgba(251, 191, 36, 0) 0%, rgba(251, 191, 36, 0.6) 50%, rgba(251, 191, 36, 0) 100%);
-	flex-shrink: 0;
-	opacity: 0.7;
-	transition: opacity 0.25s ease-out;
-}
-
-// "Why is this featured" sub-hook line. Sits between description and
-// footer (badge + price). Small italic gold text — reads as flavor, not
-// a value claim, which keeps the anti-gacha tone (no rate-up energy).
-.featured-hook {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-top: 2px;
-	padding: 4px 8px;
-	background-color: rgba(251, 191, 36, 0.1);
-	border: 1px solid rgba(251, 191, 36, 0.25);
-	border-radius: 6px;
-	align-self: flex-start;
-
-	span {
+	.coming-soon-label {
+		font-family: Exo2;
 		font-size: 11px;
 		font-weight: 700;
-		color: #fde68a;
-		letter-spacing: 0.4px;
-		text-transform: uppercase;
+		line-height: 13px;
+		color: rgba(255, 206, 58, 0.4);
+	}
+
+	&:hover {
+		background-color: rgba(255, 255, 255, 0.03);
+		.good-ring { opacity: 0; }
 	}
 }
 
-.featured-icon-wrap {
-	position: relative;
-	width: 96px;
-	height: 96px;
+// ── Shared price gem (hudc-gem dialect) ──
+.price-gem {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	flex: 0 0 auto;
+	border-radius: 5px;
+	transform: rotate(45deg);
+	background-color: rgba(255, 206, 58, 0.22);
+
+	&.tokens { background-color: rgba(110, 231, 183, 0.2); }
 }
 
-.featured-icon-bg {
-	position: absolute;
-	top: 0;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	background: linear-gradient(135deg, rgba(251, 191, 36, 0.25), rgba(217, 119, 6, 0.1));
-	border: 1px solid rgba(251, 191, 36, 0.35);
-	border-radius: 14px;
-	// Gentle border breathing — the icon frame feels alive without
-	// adding another moving element. 4.2s period keeps it well clear of
-	// the 3.6s sparkle loop so the two don't beat against each other.
-	animation: featuredIconBgBreath 4.2s ease-in-out infinite;
+.price-gem-icon {
+	width: 13px;
+	height: 13px;
+	flex: 0 0 auto;
+	transform: rotate(-45deg);
+	background-repeat: no-repeat;
 }
-
-@keyframes featuredIconBgBreath {
-	0%   { border-color: rgba(251, 191, 36, 0.28); }
-	50%  { border-color: rgba(251, 191, 36, 0.55); }
-	100% { border-color: rgba(251, 191, 36, 0.28); }
-}
-
-.featured-icon {
-	position: relative;
-	width: 72px;
-	height: 72px;
-	image-rendering: pixelated;
-	transition: transform 0.22s ease-out;
-}
-
-.featured-body {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-}
-
-// Title row with optional value-callout pill pinned to the right. Keeps the
-// name + sub on the left, value on the right — fills the "dead right half"
-// the user flagged by giving the row a purposeful terminus.
-.featured-top-row {
-	display: flex;
-	flex-direction: row;
-	align-items: flex-start;
-	gap: 12px;
-}
-
-.featured-name-stack {
-	flex: 1 1 0;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-
-.featured-name {
-	font-size: 20px;
-	font-weight: 800;
-	color: #ffffff;
-	letter-spacing: 0.3px;
-	line-height: 22px;
-}
-
-.featured-name-sub {
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.55);
-}
-
-// Value callout — gold solid pill, dark text. Canonical 22px solid-pill spec.
-// Appears only for real bundle savings (>=5%); copy reads "SAVE 15%" or
-// "BEST VALUE · 40% OFF." Deliberately price-per-unit math — no RNG framing.
-//
-// Sale variant (`.sale`) is the real Daily Spotlight discount — redder tint
-// to distinguish from the amber "bundle math" chip (so if a player sees both
-// variants across different cards they read as different things). Same
-// dimensions so the layout doesn't shift.
-.featured-value-callout {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 5px;
-	height: 22px;
-	padding: 0 10px;
-	background-color: rgba(251, 191, 36, 0.95);
-	border: 1px solid rgba(0, 0, 0, 0.4);
-	border-radius: 6px;
-	flex-shrink: 0;
-
-	span {
-		font-size: 10px;
-		font-weight: 800;
-		color: #1a1208;
-		letter-spacing: 1.2px;
-		line-height: 10px;
-		text-transform: uppercase;
-	}
-
-	&.sale {
-		background-color: rgba(248, 113, 113, 0.95);
-		border-color: rgba(153, 27, 27, 0.55);
-
-		span { color: #1a0808; }
-	}
-}
-
-// Header badge stack — vertical cluster pinned to the right of the name
-// stack. Discount/value callout on top, level-req lock directly underneath.
-// `align-items: flex-end` right-aligns both pills so their right edges line
-// up cleanly; `gap: 6px` (style-guide sm-ish) gives them deliberate spacing
-// so the lock reads as "below the badge," never floating or overlapping.
-.featured-callout-stack {
-	display: flex;
-	flex-direction: column;
-	align-items: flex-end;
-	gap: 6px;
-	flex-shrink: 0;
-	align-self: center;
-}
-
-// In-flow level-req lock for the featured card. Same visual language as the
-// grid `.level-lock` (22px solid-pill spec, met = green / locked = amber-red)
-// but NOT absolutely positioned — it sits inside `.featured-callout-row` so
-// it can never collide with the `.featured-ribbon` in the top-right corner.
-.featured-level-lock {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 4px;
-	height: 22px;
-	padding: 0 9px;
-	border-radius: 6px;
-	border: 1px solid rgba(0, 0, 0, 0.3);
-	flex-shrink: 0;
-
-	span {
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 0.8px;
-		line-height: 10px;
-		text-transform: uppercase;
-	}
-
-	&.met {
-		background-color: rgba(74, 222, 128, 0.16);
-		border-color: rgba(74, 222, 128, 0.3);
-		span { color: #86efac; }
-	}
-
-	&.locked {
-		background-color: rgba(239, 68, 68, 0.3);
-		border-color: rgba(239, 68, 68, 0.4);
-		span { color: #f87171; }
-	}
-}
-
-.featured-desc {
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.65);
-	line-height: 15px;
-	font-style: italic;
-}
-
-.featured-footer {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 12px;
-	margin-top: 4px;
-}
-
-// Featured item category badge — slightly larger than the card-corner version
-.featured-badge {
-	height: 22px;
-	padding: 0 10px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 1.2px;
-	line-height: 10px;
-	border-radius: 6px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
-	text-transform: uppercase;
-
-	&.type-supply    { background-color: rgba(59, 130, 246, 0.95); color: #ffffff; }
-	&.type-boost     { background-color: rgba(251, 191, 36, 0.95); color: #1a1a1a; }
-	&.type-storage   { background-color: rgba(74, 222, 128, 0.95); color: #1a1a1a; }
-	&.type-misc      { background-color: rgba(139, 92, 246, 0.95); color: #ffffff; }
-}
-
-.featured-price {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-
-	.gold-icon-svg {
-		width: 18px;
-		height: 18px;
-	}
-
-	span {
-		font-size: 18px;
-		font-weight: 800;
-		color: #fbbf24;
-		letter-spacing: 0.2px;
-	}
-
-	// Sale variant — struck-through original + prominent discounted.
-	// s&box doesn't reliably support CSS `text-decoration: line-through`,
-	// so we draw the strike manually: .price-struck-wrap is a relative
-	// inline container; .price-struck holds the text, .price-struck-line
-	// is an absolutely-positioned 2px horizontal bar across the middle.
-	// Readable and robust.
-	&.discounted {
-		.price-struck-wrap {
-			position: relative;
-			display: flex;
-			align-items: center;
-			padding: 0 2px;
-		}
-		.price-struck {
-			font-size: 13px;
-			font-weight: 700;
-			color: rgba(252, 165, 165, 0.7);
-			letter-spacing: 0.2px;
-		}
-		.price-struck-line {
-			position: absolute;
-			left: 0;
-			right: 0;
-			top: 7px;
-			height: 2px;
-			background-color: rgba(252, 165, 165, 0.8);
-			pointer-events: none;
-		}
-		.price-arrow {
-			margin: 0 2px;
-		}
-		.price-now {
-			font-size: 20px;
-			font-weight: 800;
-			color: #fbbf24;
-			letter-spacing: 0.2px;
-		}
-	}
-}
-
-.featured-price .deficit,
-.detail-price .deficit,
-.detail-price.short .deficit {
-	font-size: 10px;
-	font-weight: 700;
-	color: #fca5a5;
-	background-color: rgba(239, 68, 68, 0.15);
-	padding: 3px 8px;
-	border-radius: 4px;
-	letter-spacing: 0.5px;
-	text-transform: uppercase;
-	line-height: 11px;
-	margin-left: 4px;
-}
-
-// Filter-empty state — uses shared <EmptyState> component (Code/UI/Components/EmptyState.razor)
 
 // ============================================================
-// Right pane: detail panel
-// ------------------------------------------------------------
-// `overflow: hidden` + `height: 100%` on the child was clipping
-// detail content (description/palette/footer vanished below the
-// first ~100px). Switched to `overflow-y: scroll` here and let
-// `.item-detail` flow at its natural height — if it overflows, the
-// sidebar scrolls. In practice all content fits; the scroll is a
-// safety net.
+// THE DISPLAY CASE (right, 400px) — gold-trim graphite hardware
+// (the PawPad's collectible treatment). Spotlight default,
+// selection on demand, the transaction till at the bottom.
 // ============================================================
 .shop-right {
 	width: 400px;
@@ -1913,816 +1002,561 @@ ShopPanelContent {
 	flex: 0 0 400px;
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	padding: 20px;
-	background-color: rgba(5, 5, 12, 0.85);
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 16px;
-	overflow-y: scroll;
-	overflow-x: hidden;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-}
-
-.shop-right.boss-right {
-	border-color: rgba(139, 92, 246, 0.25);
-}
-
-.item-detail {
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	// Fade re-triggers on selection change via detail-N class
-	animation: detailFadeIn 0.22s ease-out both;
-}
-
-@keyframes detailFadeIn {
-	0%   { opacity: 0; }
-	100% { opacity: 1; }
-}
-
-// Colored accent stripe above detail header
-.detail-accent {
-	height: 3px;
-	border-radius: 2px;
-	margin-bottom: 4px;
-
-	&.type-supply { background-color: rgba(59, 130, 246, 0.8); }
-	&.type-boost { background-color: rgba(251, 191, 36, 0.8); }
-	&.type-storage { background-color: rgba(74, 222, 128, 0.8); }
-	&.type-misc { background-color: rgba(139, 92, 246, 0.8); }
-	&.boss-type-consumable { background-color: rgba(236, 72, 153, 0.8); }
-}
-
-.detail-header {
-	display: flex;
-	flex-direction: row;
-	gap: 16px;
-	align-items: center;
-	padding-bottom: 4px;
-}
-
-.detail-icon-wrap {
 	position: relative;
-	width: 88px;
-	height: 88px;
-	// s&box quirk: flex children in a row container need explicit `flex: 0 0 Npx`
-	// to hold their width. `flex-shrink: 0` alone can still let a sibling stretch
-	// this element to fill the row, collapsing `.detail-info` out of view.
-	flex: 0 0 88px;
-	background-color: rgba(0, 0, 0, 0.35);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 12px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
+	z-index: 80;
 }
 
-.detail-icon {
-	width: 72px;
-	height: 72px;
-	image-rendering: pixelated;
-}
-
-.detail-icon-qty {
-	position: absolute;
-	bottom: -6px;
-	right: -6px;
-	background: linear-gradient(135deg, #8b5cf6, #6d28d9);
-	color: #ffffff;
-	font-size: 11px;
-	font-weight: 700;
-	padding: 3px 8px;
-	border-radius: 8px;
-	line-height: 13px;
-}
-
-// Info column. Explicit `flex: 1 1 0` + `min-width: 0` so the column
-// takes the remainder of the detail-header row after the preview's
-// `flex: 0 0 Npx` reservation. Without `min-width: 0`, text can force
-// the column wider than its share, breaking side-by-side layout.
-.detail-info {
-	flex: 1 1 0;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.detail-name {
-	font-size: 22px;
-	font-weight: 800;
-	color: #ffffff;
-	line-height: 24px;
-	letter-spacing: 0.2px;
-}
-
-.detail-name-sub {
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.55);
-}
-
-.detail-pill-row {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 6px;
-	margin-top: 4px;
-}
-
-// Category tag — canonical solid-pill spec, 22px tall
-.detail-category-tag {
-	height: 22px;
-	padding: 0 10px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 1.2px;
-	line-height: 10px;
-	border-radius: 6px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
-	text-transform: uppercase;
-	align-self: flex-start;
-
-	&.type-supply    { background-color: rgba(59, 130, 246, 0.95); color: #ffffff; }
-	&.type-boost     { background-color: rgba(251, 191, 36, 0.95); color: #1a1a1a; }
-	&.type-storage   { background-color: rgba(74, 222, 128, 0.95); color: #1a1a1a; }
-	&.type-misc      { background-color: rgba(139, 92, 246, 0.95); color: #ffffff; }
-	&.boss-type-consumable { background-color: rgba(236, 72, 153, 0.95); color: #ffffff; }
-}
-
-.detail-pill-status,
-.detail-pill-server,
-.detail-pill-owned {
-	height: 22px;
-	padding: 0 10px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 5px;
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 1px;
-	line-height: 10px;
-	border-radius: 6px;
-	border: 1px solid rgba(0, 0, 0, 0.35);
-	text-transform: uppercase;
-
-	span { line-height: 10px; }
-}
-
-.detail-pill-status {
-	background-color: rgba(251, 191, 36, 0.9);
-	color: #1a1208;
-
-	// Detail-pane matches grid: equipped = gold (active), owned = slate (dormant).
-	&.equipped { background-color: rgba(251, 191, 36, 0.95); color: #1a1208; }
-	&.owned { background-color: rgba(148, 163, 184, 0.85); color: #1a1208; }
-}
-
-.detail-pill-server {
-	background-color: rgba(139, 92, 246, 0.85);
-	color: #ffffff;
-}
-
-// Daily Spotlight sale pill — red/warm tint to call attention as a price
-// action, not a category. Matches the .featured-value-callout.sale hue
-// so the spotlight reads as one unified "deal" signal across the grid
-// card and the detail pane.
-.detail-pill-sale {
-	height: 22px;
-	padding: 0 10px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 1px;
-	line-height: 10px;
-	border-radius: 6px;
-	border: 1px solid rgba(153, 27, 27, 0.55);
-	text-transform: uppercase;
-	background-color: rgba(248, 113, 113, 0.95);
-	color: #1a0808;
-}
-
-.detail-pill-owned {
-	background-color: rgba(40, 30, 60, 0.9);
-	color: #c4b5fd;
-}
-
-.detail-description {
-	padding: 12px 14px;
-	background-color: rgba(20, 18, 35, 0.8);
-	border: 1px solid rgba(255, 255, 255, 0.05);
-	border-radius: 8px;
-	flex-shrink: 0;
-}
-
-.description-text {
-	font-size: 13px;
-	color: rgba(255, 255, 255, 0.75);
-	font-style: italic;
-	line-height: 16px;
-}
-
-// Detail meta grid — icon + label + value rows
-.detail-meta-grid {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	padding: 4px 0;
-	flex-shrink: 0;
-}
-
-.meta-row {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 10px;
-	padding: 8px 12px;
-	background-color: rgba(20, 18, 35, 0.6);
-	border: 1px solid rgba(255, 255, 255, 0.05);
-	border-radius: 8px;
-}
-
-.meta-icon {
-	width: 14px;
-	height: 14px;
-	flex-shrink: 0;
-}
-
-.meta-label {
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 1px;
-	text-transform: uppercase;
-	color: rgba(255, 255, 255, 0.55);
-	width: 80px;
-	flex-shrink: 0;
-}
-
-.meta-value {
-	font-size: 13px;
-	font-weight: 600;
-	color: #e2d9ff;
+.display-case {
 	flex: 1;
-}
-
-.meta-row.met { border-color: rgba(74, 222, 128, 0.25); }
-.meta-row.unmet {
-	border-color: rgba(239, 68, 68, 0.25);
-	.meta-value { color: #fca5a5; }
-}
-
-.detail-footer {
-	margin-top: auto;
-	padding-top: 14px;
-	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
-	flex-shrink: 0;
+	position: relative;
+	animation: caseFadeIn 0.22s ease-out both;
 }
 
-.detail-price {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-
-	.gold-icon-svg {
-		width: 22px;
-		height: 22px;
-	}
-
-	.token-icon {
-		img { width: 20px; height: 20px; }
-	}
-
-	span {
-		font-size: 22px;
-		font-weight: 800;
-		letter-spacing: 0.2px;
-	}
-
-	&.gold span { color: #fbbf24; }
-	&.boss span { color: #fbbf24; }
-
-	&.short span:not(.deficit) { color: #fca5a5; }
-
-	// Spotlight sale — struck "was" price + arrow + "now" price.
-	// Mirrors .featured-price.discounted but scaled up to match the
-	// detail pane's larger price font (22px now vs 20px on the card).
-	&.discounted {
-		.price-struck-wrap {
-			position: relative;
-			display: flex;
-			align-items: center;
-			padding: 0 2px;
-		}
-		.price-struck {
-			font-size: 15px;
-			font-weight: 700;
-			color: rgba(252, 165, 165, 0.7);
-			letter-spacing: 0.2px;
-		}
-		.price-struck-line {
-			position: absolute;
-			left: 0;
-			right: 0;
-			top: 8px;
-			height: 2px;
-			background-color: rgba(252, 165, 165, 0.8);
-			pointer-events: none;
-		}
-		.price-arrow {
-			margin: 0 2px;
-		}
-		.price-now {
-			font-size: 24px;
-			font-weight: 800;
-			color: #fbbf24;
-			letter-spacing: 0.2px;
-		}
-
-		// When the player can't afford, the struck/now colors shouldn't
-		// both switch to red-gray (would erase the sale framing). Only
-		// override the "now" price — keep struck muted, deficit pill owns
-		// the "can't afford" message.
-		&.short .price-now { color: #fca5a5; }
-	}
+@keyframes caseFadeIn {
+	0%   { opacity: 0; transform: translateX(14px); }
+	100% { opacity: 1; transform: translateX(0); }
 }
 
-// ============================================================
-// Purchase button — with button overshoot spring on press
-// ------------------------------------------------------------
-// Hover gets three stacked signals: (1) brighter gradient so the button
-// feels "warm," (2) icon nudges right 3px so the press target feels alive,
-// (3) 1px subtle lift via `translateY(-1px)`. Not adding a glow halo
-// (avoids the AI-tell look + keeps the buy-btn readable against the dark
-// panel bg). The existing overshoot + purchased flash handle the reward
-// payoff; hover handles the "I can press this" affordance.
-// ============================================================
-.buy-btn {
-	width: 100%;
-	padding: 14px 24px;
-	background-color: rgba(20, 14, 32, 0.96);
-	border: 2px solid rgba(0, 0, 0, 0.65);
-	border-radius: 4px;
-	font-size: 15px;
-	font-weight: 900;
-	letter-spacing: 2px;
-	text-transform: uppercase;
-	font-style: italic;
-	transform: skewX(-8deg);
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-	color: #c4b5fd;
-	box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55),
-				0 0 0 1px rgba(139, 92, 246, 0.35);
-	cursor: pointer;
-	transition: background-color 0.14s ease-out,
-				box-shadow 0.14s ease-out;
+// Angled underplate — a skewed gold-tinted slab offset behind the
+// case so it reads as a physical object set into the scene.
+// (2D transform holder w/ bg = safe.)
+.case-underplate {
+	position: absolute;
+	left: -8px;
+	top: 14px;
+	width: 396px;
+	height: 96%;
+	border-radius: 28px;
+	background-color: rgba(255, 206, 58, 0.13);
+	transform: skewY(-1.6deg);
+}
+
+.case-body {
+	flex: 1;
+	min-height: 0;
 	display: flex;
-	flex-direction: row;
+	flex-direction: column;
+	position: relative;
+	padding: 18px 18px 18px 18px;
+	border-radius: 26px;
+	background: linear-gradient(to bottom, #363a44 0%, #1f2127 100%);
+	border: 2px solid #ffce3a;
+}
+
+// Stamp slots — absolutes get explicit widths (engine law).
+.case-stamp-slot {
+	position: absolute;
+	left: 14px;
+	top: -12px;
+	width: 200px;
+	display: flex;
+	justify-content: flex-start;
+	z-index: 6;
+}
+
+.case-sale-slot {
+	position: absolute;
+	right: 10px;
+	top: -12px;
+	width: 190px;
+	display: flex;
+	justify-content: flex-end;
+	z-index: 6;
+}
+
+// The glass — dark recess where the good sits, warm gold wash.
+.case-glass {
+	display: flex;
 	align-items: center;
 	justify-content: center;
-	gap: 10px;
+	width: 100%;
+	height: 188px;
+	flex: 0 0 auto;
+	position: relative;
+	margin-top: 12px;
+	border-radius: 18px;
+	background-color: rgba(10, 9, 18, 0.72);
+	background-image: radial-gradient(rgba(255, 206, 58, 0.1) 0%, rgba(0, 0, 0, 0) 68%);
+	cursor: pointer;
 	pointer-events: all;
 
-	iconify {
-		transform: skewX(8deg);
-		flex-shrink: 0;
-	}
+	> * { pointer-events: none; }
+
+	&.empty { cursor: default; }
+}
+
+.case-icon {
+	width: 132px;
+	height: 132px;
+	flex: 0 0 auto;
+	background-repeat: no-repeat;
+}
+
+.case-qty {
+	position: absolute;
+	right: 14px;
+	bottom: 10px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 17px;
+	font-weight: 900;
+	line-height: 20px;
+	color: #ffce3a;
+	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.9);
+}
+
+// Ambient gold dust — three drifting motes (Tier 1, infinite loops
+// are mount-safe). Explicit sizes; staggered so they never sync.
+.case-dust {
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.fd {
+	position: absolute;
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background-color: rgba(255, 217, 90, 0.75);
+	opacity: 0;
+}
+
+.fd0 { left: 22%; top: 62%; animation: caseDust 4.2s ease-in-out 0.0s infinite; }
+.fd1 { left: 70%; top: 70%; animation: caseDust 5.1s ease-in-out 1.6s infinite; }
+.fd2 { left: 48%; top: 78%; animation: caseDust 4.7s ease-in-out 3.1s infinite; }
+
+@keyframes caseDust {
+	0%   { opacity: 0; transform: translateY(0); }
+	25%  { opacity: 0.9; }
+	60%  { opacity: 0.35; }
+	100% { opacity: 0; transform: translateY(-46px); }
+}
+
+// ── Case info ──
+.case-info {
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	padding: 14px 4px 8px 4px;
+}
+
+.case-name {
+	display: flex;
 
 	span {
-		display: flex;
-		transform: skewX(0deg);
-	}
-
-	&:hover {
-		background-color: rgba(35, 22, 55, 0.98);
-		box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.6),
-					0 0 0 1px rgba(167, 139, 250, 0.6);
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 25px;
+		font-weight: 900;
+		line-height: 28px;
+		letter-spacing: 0.5px;
+		text-transform: uppercase;
 		color: #ffffff;
-	}
-
-	&:active {
-		transform: skewX(-8deg) scale(0.97);
-	}
-
-	// Press overshoot — snappy spring + scale up briefly
-	&.overshoot {
-		transform: skewX(-8deg) scale(1.05);
-	}
-
-	&.purchased {
-		background-color: rgba(14, 32, 20, 0.96);
-		color: #4ade80;
-		box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55),
-					0 0 0 1px rgba(74, 222, 128, 0.45);
-	}
-
-	&.is-flashing {
-		pointer-events: none;
-
-		&:hover {
-			transform: skewX(-8deg);
-			iconify { transform: skewX(8deg); }
-		}
-	}
-
-	&.disabled {
-		background-color: rgba(255, 255, 255, 0.04);
-		color: rgba(255, 255, 255, 0.28);
-		box-shadow: none;
-		border-color: rgba(255, 255, 255, 0.08);
-		cursor: not-allowed;
-
-		&:hover {
-			transform: skewX(-8deg);
-			background-color: rgba(255, 255, 255, 0.04);
-			box-shadow: none;
-		}
-	}
-
-	&.equip-btn {
-		background-color: rgba(14, 32, 20, 0.96);
-		color: #4ade80;
-		box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.55),
-					0 0 0 1px rgba(74, 222, 128, 0.35);
-
-		&:hover {
-			background-color: rgba(20, 45, 28, 0.98);
-			box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.6),
-						0 0 0 1px rgba(74, 222, 128, 0.6);
-		}
-	}
-
-	&.active-btn {
-		background-color: rgba(14, 32, 20, 0.85);
-		color: #4ade80;
-		border-color: rgba(74, 222, 128, 0.4);
-		box-shadow: none;
-		cursor: default;
-
-		&:hover {
-			transform: skewX(-8deg);
-			background-color: rgba(14, 32, 20, 0.85);
-			box-shadow: none;
-		}
 	}
 }
 
-// ============================================================
-// Multi-buy quantity picker — only shown for stackable items
-// (ContractInk in the gold store, and every boss consumable).
-// ------------------------------------------------------------
-// Sits directly above .detail-footer and mirrors its rhythm
-// (12px vertical gap, same top border). [-] [qty "5 units"] [+]
-// laid out in a flex row with [MAX] pill pushed to the right.
-// Follows the roster .bb-pill spec: 22px height, 6px radius,
-// 10-11px/800 uppercase text, solid filled background.
-// ============================================================
+.case-name-sub {
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 15px;
+	color: rgba(255, 206, 58, 0.85);
+}
+
+.case-desc {
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 18px;
+	color: rgba(244, 241, 234, 0.75);
+	white-space: normal;
+}
+
+.case-hook {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+
+	span {
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 12px;
+		font-weight: 800;
+		line-height: 14px;
+		color: #ffd95a;
+	}
+}
+
+.case-save {
+	display: flex;
+	align-items: center;
+	height: 22px;
+	padding: 0 10px;
+	flex: 0 0 auto;
+	align-self: flex-start;
+	border-radius: 7px;
+	background-color: #ffce3a;
+	transform: rotate(-2deg);
+
+	span {
+		font-family: Exo2;
+		font-size: 10px;
+		font-weight: 900;
+		line-height: 12px;
+		letter-spacing: 1px;
+		color: #2a1605;
+	}
+}
+
+.case-meta-row {
+	display: flex;
+	flex-direction: row;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 2px;
+}
+
+.case-meta-chip {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	padding: 0 10px;
+	flex: 0 0 auto;
+	border-radius: 8px;
+	background-color: rgba(10, 9, 18, 0.55);
+
+	span {
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 800;
+		line-height: 13px;
+		letter-spacing: 0.5px;
+		color: rgba(244, 241, 234, 0.85);
+		white-space: nowrap;
+	}
+
+	&.server span { color: #d4bfff; }
+	&.met span { color: #86efac; }
+	&.unmet {
+		background-color: rgba(80, 20, 24, 0.6);
+		span { color: #fca5a5; }
+	}
+}
+
+// ── The till — qty, price seam, THE gold CTA ──
+.case-till {
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
 .qty-picker {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 8px;
-	padding: 10px 12px;
-	background-color: rgba(139, 92, 246, 0.06);
-	border: 1px solid rgba(139, 92, 246, 0.18);
-	border-radius: 10px;
-	margin-bottom: 10px;
-	flex-shrink: 0;
 }
 
 .qty-btn {
-	width: 32px;
-	height: 32px;
-	border-radius: 8px;
-	background-color: rgba(139, 92, 246, 0.18);
-	border: 1px solid rgba(139, 92, 246, 0.35);
 	display: flex;
 	align-items: center;
 	justify-content: center;
+	width: 38px;
+	height: 38px;
+	flex: 0 0 auto;
+	border-radius: 12px;
+	background-color: rgba(10, 9, 18, 0.6);
 	cursor: pointer;
-	transition: background-color 0.15s ease-out, transform 0.12s cubic-bezier(0.2, 0.8, 0.3, 1.3);
-	flex: 0 0 32px;
+	pointer-events: all;
+	transition: background-color 0.1s ease-out;
 
-	&:hover {
-		background-color: rgba(139, 92, 246, 0.3);
-		transform: scale(1.06);
-	}
-
-	&:active {
-		transform: scale(0.92);
-	}
+	&:hover { background-color: rgba(155, 108, 255, 0.25); }
+	&:active { background-color: rgba(10, 9, 18, 0.85); }
 
 	&.disabled {
-		background-color: rgba(255, 255, 255, 0.04);
-		border-color: rgba(255, 255, 255, 0.08);
-		cursor: not-allowed;
-
-		&:hover {
-			transform: none;
-			background-color: rgba(255, 255, 255, 0.04);
-		}
+		opacity: 0.35;
+		cursor: default;
+		&:hover { background-color: rgba(10, 9, 18, 0.6); }
 	}
 }
 
 .qty-display {
-	flex: 1 1 0;
 	display: flex;
 	flex-direction: row;
-	align-items: baseline;
+	align-items: center;
 	justify-content: center;
 	gap: 6px;
+	height: 38px;
+	flex: 1 1 0;
+	min-width: 0;
+	border-radius: 12px;
+	background-color: rgba(10, 9, 18, 0.6);
+}
 
-	.qty-val {
-		font-size: 22px;
-		font-weight: 800;
-		color: #fbbf24;
-		letter-spacing: 0.2px;
-	}
+.qty-val {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 18px;
+	font-weight: 900;
+	line-height: 21px;
+	color: #ffffff;
+}
 
-	.qty-unit {
-		font-size: 11px;
-		font-weight: 700;
-		color: rgba(255, 255, 255, 0.5);
-		text-transform: uppercase;
-		letter-spacing: 1px;
-	}
+.qty-unit {
+	font-family: Exo2;
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 12px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: rgba(244, 241, 234, 0.5);
 }
 
 .qty-max {
-	height: 28px;
-	padding: 0 12px;
-	border-radius: 6px;
-	background-color: rgba(139, 92, 246, 0.25);
-	border: 1px solid rgba(139, 92, 246, 0.5);
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	cursor: pointer;
+	height: 38px;
+	padding: 0 14px;
 	flex: 0 0 auto;
-	transition: background-color 0.15s ease-out, transform 0.12s cubic-bezier(0.2, 0.8, 0.3, 1.3);
+	border-radius: 12px;
+	background-color: rgba(10, 9, 18, 0.6);
+	cursor: pointer;
+	pointer-events: all;
+	transition: background-color 0.1s ease-out;
 
 	span {
-		font-size: 10px;
-		font-weight: 800;
-		color: #c4b5fd;
-		text-transform: uppercase;
-		letter-spacing: 1.2px;
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 900;
+		line-height: 13px;
+		letter-spacing: 1.5px;
+		color: rgba(255, 206, 58, 0.85);
 	}
 
-	&:hover {
-		background-color: rgba(139, 92, 246, 0.4);
-		transform: scale(1.05);
+	&:hover { background-color: rgba(255, 206, 58, 0.18); }
 
+	&.active {
+		background-color: rgba(255, 206, 58, 0.22);
+		span { color: #ffce3a; }
+	}
+}
+
+// The skewed price seam — dark slab cutting across the case.
+.price-seam {
+	display: flex;
+	align-items: center;
+	height: 40px;
+	padding: 0 16px;
+	flex: 0 0 auto;
+	border-radius: 10px;
+	background-color: rgba(10, 9, 18, 0.8);
+	transform: skewX(-8deg);
+}
+
+.price-seam-inner {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 9px;
+	transform: skewX(8deg);
+}
+
+.price-now {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 21px;
+	font-weight: 900;
+	line-height: 24px;
+	color: #ffd95a;
+	white-space: nowrap;
+}
+
+.price-seam.boss-seam .price-now { color: #6ee7b7; }
+
+.price-seam.short .price-now { color: #f87171; }
+
+.price-struck-wrap {
+	display: flex;
+	position: relative;
+	flex: 0 0 auto;
+}
+
+.price-struck {
+	font-family: Exo2;
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 17px;
+	color: rgba(244, 241, 234, 0.45);
+	white-space: nowrap;
+}
+
+.price-struck-line {
+	position: absolute;
+	left: -2px;
+	top: 8px;
+	width: 100%;
+	height: 2px;
+	background-color: rgba(224, 65, 74, 0.8);
+	transform: rotate(-6deg);
+}
+
+.deficit {
+	font-family: Exo2;
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 13px;
+	color: #f87171;
+	white-space: nowrap;
+}
+
+// ── THE BUY CTA — the one gold-tier primary, ink text ──
+.buy-btn {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	height: 56px;
+	width: 100%;
+	flex: 0 0 auto;
+	border-radius: 16px;
+	background: linear-gradient(to bottom, #ffd95a 0%, #f59312 100%);
+	cursor: pointer;
+	pointer-events: all;
+	transition: background-color 0.12s ease-out, transform 0.1s ease-out;
+
+	> * { pointer-events: none; }
+
+	span {
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 19px;
+		font-weight: 900;
+		line-height: 22px;
+		letter-spacing: 1.5px;
+		text-transform: uppercase;
+		color: #2a1605;
+	}
+
+	// Hover brighten / press dim — hue never changes.
+	&:hover { background: linear-gradient(to bottom, #ffe482 0%, #ffa62b 100%); }
+	&:active { transform: scale(0.98); }
+
+	// One-shot press overshoot (class toggled ~120ms in code —
+	// transitions re-fire on class swap).
+	&.overshoot { transform: scale(1.04); }
+
+	&.purchased {
+		background: linear-gradient(to bottom, #4ade80 0%, #16a34a 100%);
 		span { color: #ffffff; }
 	}
 
-	&.active {
-		background-color: rgba(251, 191, 36, 0.2);
-		border-color: rgba(251, 191, 36, 0.55);
-
-		span { color: #fbbf24; }
+	&.disabled {
+		background: linear-gradient(to bottom, #221e33 0%, #16131f 100%);
+		cursor: default;
+		span { color: rgba(244, 241, 234, 0.4); }
+		&:hover { background: linear-gradient(to bottom, #221e33 0%, #16131f 100%); }
+		&:active { transform: scale(1); }
 	}
 }
 
 // ============================================================
-// Currency flash (one-shot on actual value change)
+// One-shot overlays (remount-keyed — @keyframes fire per mount).
+// Explicit sizes: all-edge absolute stretch = zero on empty divs.
 // ============================================================
-.currency-flash {
-	animation: currencyFlash 0.4s ease-out;
-
-	.gold-value, .token-value {
-		color: #ffffff;
-	}
-}
-
-@keyframes currencyFlash {
-	0%   { transform: scale(1.08); }
-	100% { transform: scale(1); }
-}
-
-// ============================================================
-// Empty-state (no selection)
-// ============================================================
-.no-selection {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	flex: 1;
-	gap: 12px;
-	text-align: center;
-	padding: 40px 20px;
-}
-
-.no-selection-icon {
-	flex-shrink: 0;
-}
-
-.no-selection-text {
-	font-size: 18px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.4);
-}
-
-.no-selection-hint {
-	font-size: 13px;
-	color: rgba(255, 255, 255, 0.28);
-	line-height: 16px;
-}
-
-// Stock rundown under the empty-state hint. Gives the empty sidebar a
-// little weight (and scans as useful ambient info — "this store has 31
-// things") without competing with the Select an item hero line.
-.no-selection-summary {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 14px;
-	margin-top: 14px;
-	padding: 10px 16px;
-	background-color: rgba(20, 18, 35, 0.55);
-	border: 1px solid rgba(139, 92, 246, 0.15);
-	border-radius: 10px;
-}
-
-.ns-stat {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 1px;
-}
-
-.ns-stat-val {
-	font-size: 15px;
-	font-weight: 800;
-	color: #c4b5fd;
-	letter-spacing: 0.3px;
-}
-
-.ns-stat-label {
-	font-size: 9px;
-	font-weight: 700;
-	letter-spacing: 1.2px;
-	text-transform: uppercase;
-	color: rgba(255, 255, 255, 0.35);
-}
-
-.ns-stat-sep {
-	width: 1px;
-	height: 24px;
-	background-color: rgba(139, 92, 246, 0.2);
-}
-
-// ============================================================
-// Boss-specific grid card variants
-// ============================================================
-.shop-item.boss-item {
-	padding-top: 24px;
-
-	&.boss-type-consumable:hover { border-color: rgba(236, 72, 153, 0.55); }
-
-	// OWNED — collected but dormant. Subdued slate tint, no color bloom.
-	// Reads as "in your bag, not in use" at a glance. The separate
-	// `.owned-badge` inside the card carries the text label.
-	&.owned {
-		border-color: rgba(148, 163, 184, 0.35);
-		background-color: rgba(18, 22, 30, 0.92);
-
-		&:hover {
-			border-color: rgba(148, 163, 184, 0.55);
-		}
-	}
-
-	// EQUIPPED — the one currently in use. Deliberately louder than owned:
-	// gold border (canonical "currently active" signal across the game),
-	// warm bg tint, and a thin gold top-bar via `::before` so the card has
-	// a chrome difference, not just a chip difference. Separates at a
-	// glance from the 7 slate "OWNED" cards in the same grid.
-	//
-	// .equipped wins over .owned via source order (declared below it).
-	&.equipped {
-		border-color: rgba(251, 191, 36, 0.75);
-		background-color: rgba(32, 24, 8, 0.92);
-		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
-
-		&:hover {
-			border-color: rgba(251, 191, 36, 0.95);
-		}
-	}
-
-	&.maxed {
-		opacity: 0.75;
-	}
-}
-
-// (Equipped top-hairline chrome removed 2026-04-17 at user request —
-// was clipping visually above the card's rounded corner. The gold border
-// + warm-bg + corner EQUIPPED chip already signal active state clearly.)
-
-// Consumable icon in grid card
-.consumable-icon {
-	width: 72px;
-	height: 72px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	background-color: rgba(0, 0, 0, 0.3);
-	border-radius: 8px;
-
-	img {
-		width: 56px;
-		height: 56px;
-		image-rendering: pixelated;
-	}
-}
-
-// OWNED label inside the card body — slate-neutral, border-only.
-// Deliberately dormant so it doesn't compete with EQUIPPED (gold) or
-// the token-cost pill (yellow) for attention. The card's slate border
-// carries most of the "owned" signal; this chip just confirms the text.
-.owned-badge {
-	font-size: 10px;
-	font-weight: 800;
-	color: #94a3b8;
-	text-transform: uppercase;
-	letter-spacing: 1.2px;
-	padding: 3px 8px;
-	background-color: rgba(148, 163, 184, 0.08);
-	border: 1px solid rgba(148, 163, 184, 0.25);
-	border-radius: 5px;
-	line-height: 10px;
-}
-
-.boss-lock {
+.select-pulse {
 	position: absolute;
-	top: 6px;
-	right: 6px;
-	background-color: rgba(239, 68, 68, 0.3);
-	color: #f87171;
-	font-size: 9px;
-	font-weight: 700;
-	padding: 4px 8px;
-	border-radius: 6px;
-	letter-spacing: 0.5px;
-	line-height: 10px;
+	left: 0;
+	top: 0;
+	width: 138px;
+	height: 190px;
+	border: 3px solid #9b6cff;
+	border-radius: 16px;
+	background-color: rgba(0, 0, 0, 0);
+	z-index: 5;
+	animation: cardSelectPulse 0.4s ease-out both;
 }
 
-// ============================================================
-// Boss detail pane elements
-// ============================================================
-.consumable-icon-large {
-	width: 88px;
-	height: 88px;
-	flex: 0 0 88px;
+@keyframes cardSelectPulse {
+	0%   { opacity: 0.9; transform: scale(0.97); }
+	60%  { opacity: 0.5; transform: scale(1.02); }
+	100% { opacity: 0; transform: scale(1.03); }
+}
+
+// Post-purchase "got it" — green disc over the art.
+.purchase-confirm {
+	position: absolute;
+	left: 50%;
+	top: 44px;
+	width: 56px;
+	height: 56px;
+	margin-left: -28px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background-color: rgba(0, 0, 0, 0.3);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 12px;
-
-	img {
-		width: 68px;
-		height: 68px;
-		image-rendering: pixelated;
-	}
+	border-radius: 50%;
+	background-color: rgba(34, 160, 76, 0.95);
+	z-index: 7;
+	animation: purchaseConfirm 0.9s ease-out both;
 }
 
-// Boss item requirement box (Boss Required)
-.detail-requirement {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	font-size: 12px;
-	font-weight: 600;
-	padding: 8px 12px;
-	border-radius: 8px;
-	flex-shrink: 0;
+.purchase-confirm.case-confirm {
+	left: 50%;
+	top: 80px;
+	width: 76px;
+	height: 76px;
+	margin-left: -38px;
+	z-index: 12;
+}
 
-	&.met {
-		background-color: rgba(74, 222, 128, 0.12);
-		color: #4ade80;
-		border: 1px solid rgba(74, 222, 128, 0.3);
-	}
-
-	&.unmet {
-		background-color: rgba(239, 68, 68, 0.12);
-		color: #f87171;
-		border: 1px solid rgba(239, 68, 68, 0.3);
-	}
+@keyframes purchaseConfirm {
+	0%   { opacity: 0; transform: scale(0.4); }
+	18%  { opacity: 1; transform: scale(1.12); }
+	32%  { opacity: 1; transform: scale(1); }
+	78%  { opacity: 1; transform: scale(1); }
+	100% { opacity: 0; transform: scale(0.92); }
 }
 
 // ============================================================
-// Purchase burst layer — DailyPanel claim recipe ported in
+// THE LIVING VIOLET RING — root-level waving selection cursor.
+// Position bound per-tick from code; wave via imperative
+// Style.Transform. Radius = good 16 + 8 inset = 24 concentric.
+// ============================================================
+.shop-ring {
+	position: absolute;
+	top: 0;
+	left: 0;
+	border: 4px solid #9b6cff;
+	border-radius: 24px;
+	background-color: rgba(0, 0, 0, 0);
+	pointer-events: none;
+	opacity: 0;
+	z-index: 60;
+	transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1), top 0.27s cubic-bezier(0.22, 1, 0.36, 1), width 0.27s cubic-bezier(0.22, 1, 0.36, 1), height 0.27s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease-out;
+
+	&.on { opacity: 1; }
+
+	// Warmup / re-appear: land instantly, glide thereafter.
+	&.snap { transition: opacity 0.15s ease-out; }
+}
+
+// ============================================================
+// Purchase burst — particles fan from the till; the flyer arcs
+// toward the HUD currency corner (bottom-left since the v8 HUD),
+// timed so the HUD roll-up fires as it lands.
 // ============================================================
 .purchase-burst-layer {
 	position: absolute;
@@ -2734,26 +1568,21 @@ ShopPanelContent {
 	z-index: 1000;
 }
 
-// Burst particles spawn near the detail-pane buy button position
-// (~80% right, ~85% vertical) and fan outward radially.
 .purchase-burst-particle {
 	position: absolute;
-	top: 85%;
-	left: 80%;
+	top: 78%;
+	left: 84%;
 	width: 9px;
 	height: 9px;
 	border-radius: 50%;
-	background: linear-gradient(135deg, #fbbf24, #f59e0b);
-	box-shadow: 0 0 12px rgba(251, 191, 36, 0.9);
+	background: linear-gradient(135deg, #ffd95a, #f59312);
 	opacity: 1;
 	margin-left: -4px;
 	margin-top: -4px;
 }
 
-// Boss burst uses purple-tinted particles
 .purchase-burst-layer.boss-burst .purchase-burst-particle {
-	background: linear-gradient(135deg, #a78bfa, #c4b5fd);
-	box-shadow: 0 0 12px rgba(167, 139, 250, 0.9);
+	background: linear-gradient(135deg, #a7f3d0, #34d399);
 }
 
 .purchase-burst-particle.pp0  { animation: pBurst0  0.7s ease-out 0.00s forwards; }
@@ -2778,49 +1607,36 @@ ShopPanelContent {
 @keyframes pBurst8 { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 40% { opacity: 1; transform: translate(8px, -60px) scale(1.05); } 100% { opacity: 0; transform: translate(16px, -110px) scale(0.3); } }
 @keyframes pBurst9 { 0% { opacity: 1; transform: translate(0, 0) scale(0.5); } 40% { opacity: 1; transform: translate(-8px, -55px) scale(1.05); } 100% { opacity: 0; transform: translate(-16px, -100px) scale(0.3); } }
 
-// Reward flyer — icon that flies toward top-right (GameHUD currency pill)
 .purchase-reward-flyer {
 	position: absolute;
-	top: 85%;
-	left: 80%;
+	top: 78%;
+	left: 84%;
 	width: 26px;
 	height: 26px;
 	border-radius: 50%;
 	margin-left: -13px;
 	margin-top: -13px;
-	box-shadow: 0 0 22px rgba(251, 191, 36, 0.85);
 	opacity: 1;
 
 	&.fly-gold {
 		background: linear-gradient(135deg, #ffe08a, #d4a030);
-		animation: pFlyGold 0.5s ease-in forwards;
+		animation: pFlyCurrency 0.5s ease-in forwards;
 	}
 
 	&.fly-token {
-		background: linear-gradient(135deg, #e0cfff, #8b5cf6);
-		box-shadow: 0 0 22px rgba(196, 181, 253, 0.85);
-		animation: pFlyToken 0.5s ease-in forwards;
+		background: linear-gradient(135deg, #a7f3d0, #34d399);
+		animation: pFlyCurrency 0.5s ease-in forwards;
 	}
 
-	// Multi-buy flyer scales. `.flyer-lg` fires at qty >= 10, `.flyer-xl`
-	// at qty >= 50. The bigger flyer signals the bigger purchase without
-	// a second sound layer — visual weight does the work.
 	&.flyer-lg { width: 34px; height: 34px; margin-left: -17px; margin-top: -17px; }
-	&.flyer-xl { width: 42px; height: 42px; margin-left: -21px; margin-top: -21px; box-shadow: 0 0 30px rgba(251, 191, 36, 0.95); }
+	&.flyer-xl { width: 42px; height: 42px; margin-left: -21px; margin-top: -21px; }
 }
 
-// Flyer arcs from the buy-button area toward the top-right corner.
-// Hardcoded translate — matches DailyPanel pattern; doesn't pixel-measure
-// the GameHUD currency pill but lands in the same region, and the HUD's
-// own .pulse-up fires on currency change, stitching cause-effect.
-@keyframes pFlyGold {
+// Arcs toward the HUD player tag / currency corner (bottom-LEFT in
+// the v8 floating HUD). Hardcoded translate — lands in the region;
+// the HUD's own pulse fires on the actual currency change.
+@keyframes pFlyCurrency {
 	0%   { opacity: 0; transform: translate(0, 0) scale(0.6); }
-	15%  { opacity: 1; transform: translate(0, -15px) scale(1.15); }
-	100% { opacity: 0; transform: translate(200px, -380px) scale(0.45); }
-}
-
-@keyframes pFlyToken {
-	0%   { opacity: 0; transform: translate(0, 0) scale(0.6); }
-	15%  { opacity: 1; transform: translate(0, -15px) scale(1.15); }
-	100% { opacity: 0; transform: translate(200px, -380px) scale(0.45); }
+	15%  { opacity: 1; transform: translate(0, -18px) scale(1.15); }
+	100% { opacity: 0; transform: translate(-1250px, 140px) scale(0.45); }
 }
