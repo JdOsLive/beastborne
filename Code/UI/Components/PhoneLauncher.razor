@@ -220,6 +220,89 @@
                     </div>
                 </div>
 
+                @if ( _appView != null )
+                {
+                    <!-- ═══ IN-PHONE APP (TamerLink OS, v9 — user call: chat/
+                         radio/effects/alerts LIVE ON the phone, not popups).
+                         Mouse goes through the backdrop router: every
+                         clickable carries `pl-hit hit-<action>` and
+                         ActionAtScreen inverse-projects the cursor onto it.
+                         Q backs out to the home grid. -->
+                    <div class="pl-appview" @ref="_appviewRef">
+                        <div class="pl-av-head">
+                            <div class="pl-av-back pl-hit hit-back"><span>&lt;</span></div>
+                            <span class="pl-av-title" style="color: @AppViewAccent();">@AppViewTitle()</span>
+                        </div>
+
+                        @if ( _appView == "chat" )
+                        {
+                            <div class="pl-chan-row">
+                                <div class="pl-chan pl-hit hit-chan-global @(_phoneChan == "global" ? "on" : "")"><span>GLOBAL</span></div>
+                                <div class="pl-chan pl-hit hit-chan-guild @(_phoneChan == "guild" ? "on" : "")"><span>GUILD</span></div>
+                                <div class="pl-chan pl-hit hit-chan-trade @(_phoneChan == "trade" ? "on" : "")"><span>TRADE</span></div>
+                            </div>
+                            <div class="pl-chat-scroll" @ref="_chatScrollRef">
+                                @foreach ( var m in PhoneMessages() )
+                                {
+                                    <div class="pl-msg @(IsOwnPhoneMsg( m ) ? "own" : "")">
+                                        <span class="pl-msg-author">@m.PlayerName</span>
+                                        <span class="pl-msg-text">@m.Content</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="pl-chat-inputrow pl-hit hit-input">
+                                <ChatInputBox @ref="_phoneChatBox" OnSubmit=@OnPhoneChatSend />
+                                <div class="pl-send pl-hit hit-send"><span>SEND</span></div>
+                            </div>
+                        }
+                        else if ( _appView == "radio" )
+                        {
+                            <div class="pl-radio-now">
+                                <span class="pl-radio-station">@(Beastborne.Systems.RadioManager.CurrentStation?.Name ?? "RADIO")</span>
+                                <span class="pl-radio-track">@(Beastborne.Systems.RadioManager.CurrentTrack?.Name ?? "No track")</span>
+                            </div>
+                            <div class="pl-radio-ctls">
+                                <div class="pl-rctl pl-hit hit-radio-prev"><iconify icon="lucide:skip-back" Size=@(22) Color="#f4f1ea" /></div>
+                                <div class="pl-rctl big pl-hit hit-radio-play"><iconify icon="@(Beastborne.Systems.RadioManager.IsPlaying ? "lucide:pause" : "lucide:play")" Size=@(28) Color="#2a1605" /></div>
+                                <div class="pl-rctl pl-hit hit-radio-next"><iconify icon="lucide:skip-forward" Size=@(22) Color="#f4f1ea" /></div>
+                            </div>
+                        }
+                        else if ( _appView == "effects" )
+                        {
+                            <div class="pl-list-scroll">
+                                @foreach ( var row in ActiveEffectsPanel.GetPhoneRows() )
+                                {
+                                    <div class="pl-fx-row">
+                                        <span class="pl-fx-name">@row.Label</span>
+                                        <span class="pl-fx-val">@row.Value</span>
+                                    </div>
+                                }
+                                @if ( ActiveEffectsPanel.GetPhoneRows().Count == 0 )
+                                {
+                                    <span class="pl-empty">NO ACTIVE EFFECTS</span>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="pl-list-scroll">
+                                @foreach ( var n in PhoneNotifications() )
+                                {
+                                    <div class="pl-alert-row">
+                                        <span class="pl-alert-title">@n.Title</span>
+                                        <span class="pl-alert-msg">@n.Message</span>
+                                    </div>
+                                }
+                                @if ( PhoneNotifications().Count == 0 )
+                                {
+                                    <span class="pl-empty">ALL CAUGHT UP</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
                 <div class="pl-grid" @ref="_gridRef">
                     @for ( int r = 0; r < 4; r++ )
                     {
@@ -310,6 +393,7 @@
                         </div>
                     }
                 </div>
+                }
                 </div>
 
                 <!-- v7 chin — the spec's DEBOSSED paw: highlight copy offset
@@ -351,7 +435,7 @@
          drifted sideways on left/middle columns, user-reported).
          left/top/w/h via markup style (CSS transitions glide), wave via
          imperative Style.Transform per frame (never re-renders). -->
-    <div @ref="_ringRef" class="pl-cursor @(_ringWarmup >= 2 ? "" : "snap")"
+    <div @ref="_ringRef" class="pl-cursor @(_ringWarmup >= 2 ? "" : "snap") @(_appView != null ? "hidden" : "")"
          style="left: @(_ringL)px; top: @(_ringT)px; width: @(_ringW)px; height: @(_ringH)px;"></div>
 
     <!-- THE ACCENT SWIPE slab — solid accent fill, driven entirely
@@ -493,9 +577,14 @@
     // LeanSin ≈ 0.200 — the engine's EFFECTIVE lean is ~11.5°, SHALLOWER
     // than the authored 13°. Re-fit if the scss angle/perspective changes:
     // measure ring-vs-tile gaps at two columns, adjust by measured slope.
+    // v9 FLAT (user call — you read chat and type on the device now, so
+    // the 13° lean is retired). Zeroed constants make ProjectLean and
+    // InverseLean exact identities: the ring and the mouse router are
+    // geometrically perfect with no compensation. If the lean ever
+    // returns, re-fit these by capture measurement (see learnings).
     private const float LeanPerspective = 1600f;
-    private const float LeanCos = 0.97980f;  // cos ~11.5° (fitted)
-    private const float LeanSin = 0.20000f;  // sin ~11.5° (fitted)
+    private const float LeanCos = 1.0f;
+    private const float LeanSin = 0.0f;
 
     // Project a layout-space point (style px, root-local) through the lean.
     // rotateY(-13°): a point dx left of the origin recedes (z = -sin·|dx|),
@@ -594,6 +683,7 @@
         // Runs ONLY while _ringDirty (open / focus move pending) — never
         // per-frame. Early returns leave the latch set so the next frame
         // retries until layout yields real rects.
+        if ( _appView != null ) { _ringDirty = false; return; } // no ring in app views
         if ( _gridRef == null ) return;
         var icon = FocusedIconEl();
         if ( icon == null ) return;
@@ -926,6 +1016,16 @@
     // Inverse-project the cursor into layout space and route.
     private void OnBackdropClicked()
     {
+        // v9: in an app view, hit-test the app controls instead of tiles.
+        if ( _appView != null )
+        {
+            var act = ActionAtScreen( Mouse.Position );
+            if ( WALK_DEBUG ) Log.Info( $"[walkdbg] appview click -> {act ?? "none"}" );
+            if ( act != null ) { RunAppAction( act ); return; }
+            Close(); // clicked outside the phone = close entirely
+            _appView = null;
+            return;
+        }
         int idx = TileAtScreen( Mouse.Position );
         if ( WALK_DEBUG ) Log.Info( $"[walkdbg] backdrop click at {Mouse.Position} -> tile {idx}" );
         if ( idx >= 0 ) { LaunchIndex( idx ); return; }
@@ -956,12 +1056,123 @@
         }
         else
         {
-            // Widget apps: no sweep — close the phone (Close plays its own
-            // popdown), toggle the popup (which plays its own open sound).
-            if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] widget launch '{app.Id}' — NO sweep by design (Tier-1 popup toggle) t={Time.Now:F3}" );
-            Close();
-            RouteApp( i );
+            // v9: widget apps open ON the phone (TamerLink OS apps — user
+            // call: "the chat lives in the phone"), no popup, no sweep.
+            if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] widget launch '{app.Id}' — opens IN-PHONE t={Time.Now:F3}" );
+            OpenApp( app.Id );
         }
+    }
+
+    // ═══ IN-PHONE APPS (TamerLink OS v9) ═══════════════════════════════
+    // chat / radio / effects / alerts open ON the phone screen (user
+    // call — "the chat lives in the phone"). State + routing in code.
+    private string _appView;             // null = home grid
+    private string _phoneChan = "global";
+    private Panel _appviewRef;
+    private Panel _chatScrollRef;
+    private ChatInputBox _phoneChatBox;
+
+    private string AppViewTitle() => _appView switch
+    {
+        "chat" => "CHAT", "radio" => "RADIO", "effects" => "EFFECTS", _ => "ALERTS",
+    };
+
+    private string AppViewAccent() => _appView switch
+    {
+        "chat" => "#4aa8ff", "radio" => "#c26bff", "effects" => "#f7e024", _ => "#e0414a",
+    };
+
+    private void OpenApp( string id )
+    {
+        _appView = id;
+        SoundManager.PlayForward();
+        StateHasChanged();
+    }
+
+    private void CloseApp()
+    {
+        _appView = null;
+        _ringWarmup = 0;
+        _ringDirty = true; // the home grid's ring re-locks
+        SoundManager.PlayBack();
+        StateHasChanged();
+    }
+
+    private List<Beastborne.Data.ChatMessage> PhoneMessages() =>
+        Beastborne.Core.ChatManager.Instance?.GetRecentMessages( 60 ) ?? new List<Beastborne.Data.ChatMessage>();
+
+    private bool IsOwnPhoneMsg( Beastborne.Data.ChatMessage m ) =>
+        m.SteamId == ( Beastborne.Core.ChatManager.Instance?.LocalSteamId ?? 0 );
+
+    private List<Beastborne.Core.Notification> PhoneNotifications() =>
+        Beastborne.Core.NotificationManager.Instance?.ActiveNotifications?.ToList() ?? new List<Beastborne.Core.Notification>();
+
+    private void OnPhoneChatSend()
+    {
+        var text = _phoneChatBox?.GetText()?.Trim();
+        if ( string.IsNullOrEmpty( text ) ) return;
+        switch ( _phoneChan )
+        {
+            case "guild": Beastborne.Core.ChatManager.Instance?.SendGuildMessage( text ); break;
+            case "trade": Beastborne.Core.ChatManager.Instance?.SendTradeMessage( text ); break;
+            default: Beastborne.Core.ChatManager.Instance?.SendMessage( text ); break;
+        }
+        _phoneChatBox?.ClearText();
+    }
+
+    // The app-view mouse router: same inverse projection as the tiles,
+    // but hit-testing `pl-hit` controls walked from the app view.
+    private static readonly string[] HitActions =
+    {
+        "hit-back", "hit-chan-global", "hit-chan-guild", "hit-chan-trade",
+        "hit-send", "hit-input", "hit-radio-prev", "hit-radio-play", "hit-radio-next",
+    };
+
+    private string ActionAtScreen( Vector2 screenPx )
+    {
+        if ( _appviewRef == null || _deviceRef == null ) return null;
+        var rr = Box.Rect;
+        var dr = _deviceRef.Box.Rect;
+        if ( rr.Width < 1f || dr.Width < 1f ) return null;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+        float x0 = ( dr.Right - rr.Left ) * sc;
+        float y0 = ( dr.Top + dr.Height / 2f - rr.Top ) * sc;
+        var pt = new Vector2( ( screenPx.x - rr.Left ) * sc, ( screenPx.y - rr.Top ) * sc );
+        var lp = InverseLean( pt, x0, y0 );
+
+        string found = null;
+        WalkHits( _appviewRef, rr, sc, lp, ref found );
+        return found;
+    }
+
+    private static void WalkHits( Panel p, Rect rr, float sc, Vector2 lp, ref string found )
+    {
+        if ( found != null || p == null ) return;
+        if ( p.HasClass( "pl-hit" ) && LayoutContains( p.Box.Rect, rr, sc, lp, 4f ) )
+        {
+            foreach ( var act in HitActions )
+                if ( p.HasClass( act ) ) { found = act; return; }
+        }
+        foreach ( var child in p.Children )
+            WalkHits( child, rr, sc, lp, ref found );
+    }
+
+    private void RunAppAction( string act )
+    {
+        switch ( act )
+        {
+            case "hit-back": CloseApp(); break;
+            case "hit-chan-global": _phoneChan = "global"; SoundManager.PlayClick(); break;
+            case "hit-chan-guild": _phoneChan = "guild"; SoundManager.PlayClick(); break;
+            case "hit-chan-trade": _phoneChan = "trade"; SoundManager.PlayClick(); break;
+            case "hit-send": OnPhoneChatSend(); break;
+            case "hit-input": _phoneChatBox?.FocusInput(); break;
+            case "hit-radio-prev": Beastborne.Systems.RadioManager.PreviousTrack(); SoundManager.PlayClick(); break;
+            case "hit-radio-play": Beastborne.Systems.RadioManager.TogglePlay(); SoundManager.PlayClick(); break;
+            case "hit-radio-next": Beastborne.Systems.RadioManager.NextTrack(); SoundManager.PlayClick(); break;
+        }
+        StateHasChanged();
     }
 
     // Dock launches are all Tier-1 popups/overlays — no sweep (widget
@@ -1214,7 +1425,7 @@
         // hover only reasserts when the mouse actually MOVES, so keyboard
         // navigation isn't snapped back to the hovered tile every frame.
         var mp = Mouse.Position;
-        if ( ( mp - _lastMousePos ).Length > 2f )
+        if ( _appView == null && ( mp - _lastMousePos ).Length > 2f )
         {
             _lastMousePos = mp;
             int hover = TileAtScreen( mp );
@@ -1242,6 +1453,16 @@
         // OPENED the phone (via GameHUD → NavManager) must not also be read
         // here as "close"; ditto any direct-route key GameHUD handled.
         if ( NavManager.RoutedThisFrame ) return;
+
+        // v9: while typing in an in-phone input, the phone keys stand down
+        // (ChatPanel.IsChatFocused already gates in Tick for the popup;
+        // this covers the phone's own ChatInputBox).
+        if ( _appView != null )
+        {
+            if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) ) { CloseApp(); return; }
+            if ( Input.Pressed( "Slot8" ) ) { Close(); _appView = null; return; }
+            return; // app views own the rest of the keys (input typing etc.)
+        }
 
         // Close — Q ("Menu"), Escape, or Slot8 (the key that opened it: true toggle).
         if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) || Input.Pressed( "Slot8" ) )
@@ -1324,7 +1545,13 @@
     // backdrop catches the wheel, it bubbles here; NOT calling base eats it.
     public override void OnMouseWheel( Vector2 delta )
     {
-        if ( IsVisible || _fx != FxPhase.Idle ) return; // consumed
+        if ( IsVisible || _fx != FxPhase.Idle )
+        {
+            // v9: in-phone scrollables still scroll.
+            if ( _appView != null && _chatScrollRef != null )
+                _chatScrollRef.ScrollOffset += new Vector2( 0f, delta.y * 40f );
+            return; // consumed either way
+        }
         base.OnMouseWheel( delta );
     }
 
@@ -1341,6 +1568,14 @@
                 ClockText ),
             // The living ring's markup-driven geometry — without these the
             // panel never repaints a focus glide (missing-BuildHash trap).
-            HashCode.Combine( _ringL, _ringT, _ringW, _ringH, _ringWarmup ) );
+            HashCode.Combine( _ringL, _ringT, _ringW, _ringH, _ringWarmup ),
+            // v9 in-phone apps: view + channel + live data the views render.
+            HashCode.Combine(
+                _appView,
+                _phoneChan,
+                Beastborne.Core.ChatManager.Instance?.Messages?.Count ?? 0,
+                Beastborne.Systems.RadioManager.IsPlaying,
+                Beastborne.Systems.RadioManager.CurrentTrackIndex,
+                NotificationPanel.UnreadCount ) );
     }
 }

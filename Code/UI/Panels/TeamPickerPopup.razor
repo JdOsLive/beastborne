@@ -93,9 +93,9 @@
 						}
 					</div>
 					<div class="ph-meta-row">
-						<span class="ph-meta-pill">
+						<span class="ph-meta-pill @(_hardMode ? "hard" : "")">
 							<iconify icon="lucide:swords" Size=@(12) Color="#fde68a" />
-							<span>Lv @recommendedLevel</span>
+							<span>Lv @GetDisplayLevel( expedition )</span>
 						</span>
 						<span class="ph-meta-pill">
 							<iconify icon="lucide:layers" Size=@(12) Color="#c4b5fd" />
@@ -128,9 +128,9 @@
 						</div>
 					}
 					<div class="zone-hero-gradient"></div>
-					<div class="zone-hero-stamp">
-						<span class="zhs-kicker">RECOMMENDED</span>
-						<span class="zhs-level">Lv. @recommendedLevel</span>
+					<div class="zone-hero-stamp @(_hardMode ? "hard" : "")">
+						<span class="zhs-kicker">@(_hardMode ? "HARD MODE" : "RECOMMENDED")</span>
+						<span class="zhs-level">Lv. @GetDisplayLevel( expedition )</span>
 					</div>
 				</div>
 
@@ -247,10 +247,10 @@
 										<span class="slot-lv">Lv @(beast?.Level.ToString() ?? "?")</span>
 										@if ( species != null )
 										{
-											<img class="slot-el" src="ui/icons/elements/background/@(species.Element.ToString().ToLower()).svg" />
+											<img class="slot-el el-@(species.Element.ToString().ToLower())" src="ui/icons/elements/background/@(species.Element.ToString().ToLower()).svg" />
 											@if ( species.SecondaryElement.HasValue && species.SecondaryElement.Value != species.Element )
 											{
-												<img class="slot-el" src="ui/icons/elements/background/@(species.SecondaryElement.Value.ToString().ToLower()).svg" />
+												<img class="slot-el el-@(species.SecondaryElement.Value.ToString().ToLower())" src="ui/icons/elements/background/@(species.SecondaryElement.Value.ToString().ToLower()).svg" />
 											}
 										}
 									</div>
@@ -273,6 +273,9 @@
 									<span class="slot-empty-label">EMPTY SLOT</span>
 								</div>
 							}
+							@* Living violet ring — hover/drag-target cursor. Sits
+							   just inside the slot bounds (slot is overflow:hidden). *@
+							<div class="slot-ring"></div>
 						</div>
 					}
 				</div>
@@ -291,6 +294,41 @@
 						<iconify icon="lucide:eraser" Size=@(13) Color="#94a3b8" />
 						<span>Clear</span>
 					</button>
+				</div>
+
+				@* ═══ DIFFICULTY — NORMAL / HARD (restored to the live embark
+				   flow; the toggle previously only existed on the retired
+				   pre-worldmap expedition screen). Hard = red commit tier,
+				   +100% rewards, gated by ExpeditionManager.IsHardModeUnlocked. *@
+				@{
+					var pickerHardUnlocked = ExpeditionManager.Instance?.IsHardModeUnlocked( PendingExpeditionId ) ?? false;
+				}
+				<div class="picker-diff-row">
+					<span class="pd-label">DIFFICULTY</span>
+					<div class="pd-pills">
+						<div class="pd-pill @(!_hardMode ? "active" : "")"
+							 onclick=@(() => SetHardMode(false))
+							 onmouseover=@(() => OnHover("diff-normal"))>
+							<span>NORMAL</span>
+						</div>
+						<div class="pd-pill hard @(_hardMode ? "active" : "") @(pickerHardUnlocked ? "" : "locked")"
+							 onclick=@(() => SetHardMode(true))
+							 onmouseover=@(() => OnHover("diff-hard"))>
+							@if ( !pickerHardUnlocked )
+							{
+								<iconify icon="lucide:lock" Size=@(11) Color="#94a3b8" />
+							}
+							else
+							{
+								<iconify icon="lucide:skull" Size=@(11) Color="@(_hardMode ? "#fca5a5" : "#94a3b8")" />
+							}
+							<span>HARD</span>
+							@if ( pickerHardUnlocked )
+							{
+								<span class="pd-bonus">+100%</span>
+							}
+						</div>
+					</div>
 				</div>
 
 				<div class="ps-presets-row">
@@ -324,12 +362,12 @@
 					@* Compact red Persona-stamp CTA — pinned at the bottom of
 					   the LEFT column so the right roster grid can extend the
 					   full modal height. *@
-					<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled")"
+					<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled") @(_hardMode ? "hard" : "")"
 							onclick=@OnEmbarkClicked
 							onmouseover=@(() => OnHover("embark-cta"))>
 						<div class="cb-key picker-cap picker-cap-embark"><span>R</span></div>
 						<iconify icon="lucide:compass" Size=@(22) Color="#ffffff" />
-						<span class="embark-label">@(CanEmbark() ? "EMBARK" : (filled == 0 ? "PICK A BEAST" : "FILL YOUR TEAM"))</span>
+						<span class="embark-label">@GetEmbarkLabel( filled )</span>
 					</button>
 
 				</div> <!-- /.picker-left -->
@@ -423,6 +461,10 @@
 												 ClickAction=@(() => {})
 												 HoverAction=@(() => {})
 												 LeaveAction=@(() => {}) />
+									@* Living violet ring — keyboard + hover cursor.
+									   Sits INSIDE the card bounds (scroll containers
+									   don't clip overhanging absolutes in s&box). *@
+									<div class="pick-ring"></div>
 									@if ( isFainted )
 									{
 										<div class="card-fainted-overlay">
@@ -671,6 +713,45 @@
 	// Team state — fixed-size 3 to keep slot logic simple. nulls = empty slots.
 	private List<Monster> _team = new() { null, null, null };
 
+	// ─── DIFFICULTY ──────────────────────────────────────────────
+	// Hard mode is panel-local UI state passed to StartExpedition at
+	// embark time (per-expedition Expedition.IsHardMode is the runtime
+	// source of truth — same contract the old expedition screen used).
+	// Resets to NORMAL every time the picker opens.
+	private bool _hardMode = false;
+
+	private bool IsHardUnlocked() =>
+		ExpeditionManager.Instance?.IsHardModeUnlocked( PendingExpeditionId ) ?? false;
+
+	private void SetHardMode( bool hard )
+	{
+		if ( hard && !IsHardUnlocked() )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+		if ( _hardMode == hard ) return;
+		_hardMode = hard;
+		SoundManager.PlaySelect();
+		StateHasChanged();
+	}
+
+	/// <summary>Recommended level shown in the header/hero — boosted when hard mode is armed.</summary>
+	private int GetDisplayLevel( Expedition exp )
+	{
+		if ( exp == null ) return 0;
+		return _hardMode
+			? (int)Math.Floor( exp.BaseEnemyLevel * ExpeditionManager.HARD_MODE_LEVEL_MULT )
+			: exp.BaseEnemyLevel;
+	}
+
+	/// <summary>CTA label — mirrors the old ternary exactly, plus the hard-mode variant.</summary>
+	private string GetEmbarkLabel( int filled )
+	{
+		if ( !CanEmbark() ) return filled == 0 ? "PICK A BEAST" : "FILL YOUR TEAM";
+		return _hardMode ? "EMBARK · HARD" : "EMBARK";
+	}
+
 	// Filter/sort state — mirrors MonsterRosterPanel naming for copy-paste sanity.
 	private string _currentFilter = "all";
 	private string _currentSort = "level";
@@ -769,6 +850,7 @@
 			Instance._hoveredKey = null;
 			Instance._hoveredCardId = null;
 			Instance._kbIndex = 0;
+			Instance._hardMode = false; // difficulty re-arms per open
 			Instance.PreFillTeam( expeditionId );
 			Instance.NotifyTutorialIfTeamPopulated();
 		}
@@ -1123,10 +1205,11 @@
 		// BattleTransition (a persistent GameHUD child) keeps the async chain
 		// alive through the panel swap.
 		var zoneId = PendingExpeditionId;
+		var hardMode = _hardMode; // capture — the picker unmounts during the sequence
 		_ = BattleTransition.PlayEmbarkSequence( () =>
 		{
 			em.SelectTeam( liveTeam );
-			em.StartExpedition( zoneId );
+			em.StartExpedition( zoneId, hardMode );
 		} );
 
 		IsVisible = false;
@@ -1421,6 +1504,8 @@
 		foreach ( var t in _team ) h.Add( t?.Id ?? Guid.Empty );
 		h.Add( _hoveredCardId ?? Guid.Empty );
 		h.Add( _kbIndex );
+		h.Add( _hardMode );
+		h.Add( IsHardUnlocked() );
 		h.Add( _dragSource?.Id ?? Guid.Empty );
 		h.Add( _dragHoverSlot ?? -1 );
 		var mm = MonsterManager.Instance;

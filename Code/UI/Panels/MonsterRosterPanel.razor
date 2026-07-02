@@ -83,12 +83,20 @@
 				 onmouseup=@OnMyBeastsArtDragEnd></div>
 		}
 	}
+	@* ═══ IDENTITY HEADER (2026-07 sweep) — violet kicker + big italic
+	   title + skewed accent seam dashes; storage as a skew-slab chip;
+	   FilterBar + mode toggles right-anchored in the same band. The
+	   header stays OPAQUE with gap 0 to the grid (scroll-leak law). *@
 	<div class="roster-header">
-		<div class="header-left">
-			<img class="panel-title-icon" src="ui/icons/beast.svg" />
-			<div class="roster-title">@(isFusionMode ? L("ui.roster.contract_fusion") : L("ui.roster.my_beasts"))</div>
+		<div class="rh-identity">
+			<span class="rh-kicker">@(isFusionMode ? "GENE FORGE" : "COLLECTION")</span>
+			<div class="rh-title-row">
+				<span class="rh-title">@(isFusionMode ? L("ui.roster.contract_fusion") : L("ui.roster.my_beasts"))</span>
+				<div class="rh-seam"></div>
+				<div class="rh-seam dim"></div>
+			</div>
 		</div>
-		<div class="header-filters">
+		<div class="rh-toolbar">
 			@if (!isMultiSelectMode && !isFusionMode)
 			{
 				<FilterBar @ref="filterBar"
@@ -145,10 +153,10 @@
 				</button>
 			}
 		</div>
-		<div class="header-right">
-			<div class="roster-count">
-				<img class="storage-icon-svg" src="ui/icons/sort/box.svg" />
-				<span class="storage-text">@GetMonsterCount() / @GetMaxMonsters()</span>
+		<div class="rh-storage">
+			<div class="rh-storage-in">
+				<img class="rh-storage-icon" src="ui/icons/sort/box.svg" />
+				<span class="rh-storage-text">@GetMonsterCount() / @GetMaxMonsters()</span>
 			</div>
 		</div>
 	</div>
@@ -227,6 +235,10 @@
 									 ClickAction=@(() => {})
 									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
 									 LeaveAction=@OnMouseLeaveCard />
+						@* Hover-preview ring — the cheap flat-panel recipe (absolute
+						   bordered div, opacity swap on :hover). The SELECTED beast
+						   gets the one waving imperative ring instead (root level). *@
+						<div class="card-ring"></div>
 					</div>
 				}
 
@@ -1402,6 +1414,16 @@
 		</div>
 		</div>
 
+	<!-- THE LIVING VIOLET RING — one waving selection cursor wrapping the
+	     selected beast's card (menu/PawPad signature, flat-panel recipe).
+	     Root-level absolute so it can wave per-frame without dirtying the
+	     grid; position bound from UpdateGridRing each tick, wave via
+	     imperative Style.Transform in ApplyGridRingWave. z 60: above the
+	     grid cards, below the sidebar (80) / journal modal (100) /
+	     header (500) — flat z-index law, no stacking contexts. -->
+	<div @ref="gridRingRef" class="grid-ring @(gridRingVisible ? "on" : "") @(gridRingWarm < 2 ? "snap" : "")"
+		 style="left: @(gridRingL)px; top: @(gridRingT)px; width: @(gridRingW)px; height: @(gridRingH)px;"></div>
+
 	<!-- Move Picker Modal (at root level for full coverage) -->
 
 	<!-- Fusion confirmation popup REMOVED — replaced with the
@@ -1776,6 +1798,95 @@
 	// responsive flex-wrap, so the column count must be measured, not hardcoded.
 	private Panel rosterGridRef;
 	private Panel cardSizeRef;
+
+	// ── THE LIVING VIOLET RING (grid selection cursor) ──────────────────
+	// One waving #9b6cff ring wrapping the selected beast's card — the
+	// menu/PawPad signature on the flat-panel recipe (no 3D lean here, so
+	// no projection: Box.Rect is layout space and flat panels paint at
+	// layout). Position is recomputed every Tick from live rects rather
+	// than event-latched — the grid scrolls and reflows on filter changes,
+	// and this panel already re-renders per frame (SpriteAnimator.
+	// GlobalFrame in BuildHash) so the markup style binding costs nothing
+	// extra. The ink-lean wave is imperative Style.Transform per frame —
+	// repaints the ring alone, never re-renders (PawPad v4.2 law).
+	private Panel gridRingRef;
+	private int gridRingL, gridRingT, gridRingW = 150, gridRingH = 180;
+	private bool gridRingVisible;
+	private int gridRingWarm; // <2 = snap to position (no glide) while first rects land
+
+	// 10px box inset each side; the 4px border lives in SCSS. Declared
+	// width/height are CONTENT-box (s&box has no border-box), so the
+	// update subtracts the 8px of border to keep the ring concentric.
+	private const int GridRingInset = 10;
+
+	private void UpdateGridRing()
+	{
+		bool wasVisible = gridRingVisible;
+		gridRingVisible = false;
+
+		bool want = rosterGridRef != null && !showResult
+			&& (isFusionMode ? isKeyboardNavigationActive : SelectedMonster != null);
+		if ( !want ) return;
+
+		// Find the selectedMonsterIndex-th card wrapper by fresh traversal
+		// (loop @refs don't exist and panel refs die on hotload). Wrappers
+		// are DIRECT children of the scroll grid (scroll-container law).
+		Panel target = null;
+		int n = 0;
+		foreach ( var c in rosterGridRef.Children )
+		{
+			if ( !c.HasClass( "monster-card-wrapper" ) ) continue;
+			if ( n == selectedMonsterIndex ) { target = c; break; }
+			n++;
+		}
+		if ( target == null ) return;
+
+		var rr = Box.Rect;
+		var gr = rosterGridRef.Box.Rect;
+		var cr = target.Box.Rect;
+		if ( rr.Width < 1f || cr.Width < 1f ) return;
+
+		// Scroll-clip discipline: s&box never clips this root-level ring to
+		// the grid viewport, so hide it once the card has scrolled far
+		// enough out that the ring would draw over header/footer chrome.
+		// (Keyboard scroll-follow keeps the cursor card in view, so this
+		// only fires transiently during manual wheel scrolling.)
+		if ( cr.Top < gr.Top - 14f || cr.Bottom > gr.Bottom + 14f ) return;
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		gridRingL = (int)(( cr.Left - rr.Left ) * sc) - GridRingInset;
+		gridRingT = (int)(( cr.Top - rr.Top ) * sc) - GridRingInset;
+		gridRingW = (int)(cr.Width * sc) + GridRingInset * 2 - 8;
+		gridRingH = (int)(cr.Height * sc) + GridRingInset * 2 - 8;
+
+		gridRingVisible = true;
+		if ( !wasVisible ) gridRingWarm = 0;       // re-appearing → snap first, glide after
+		else if ( gridRingWarm < 2 ) gridRingWarm++;
+	}
+
+	// The liquid ink-lean — the menu cursor's multi-sine at the PawPad's
+	// ×0.6 amplitude + out-of-phase breathing (the "reads liquid, not
+	// metronome" rebalance). Imperative transform: no re-render, and this
+	// is a FLAT panel so per-frame writes are cheap (the 7fps law only
+	// bites inside perspective-leaned subtrees).
+	private void ApplyGridRingWave()
+	{
+		if ( gridRingRef == null || !gridRingVisible ) return;
+		float wt = Time.Now;
+		float skX = ( 2.0f * MathF.Sin( wt * 2.2f ) + 0.7f * MathF.Sin( wt * 3.5f + 1.1f ) ) * 0.6f;
+		float skY = ( 2.3f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.9f * MathF.Sin( wt * 2.9f ) ) * 0.6f;
+		float rotZ = ( 1.1f * MathF.Sin( wt * 1.0f ) + 0.5f * MathF.Sin( wt * 2.4f + 0.5f ) ) * 0.6f;
+		float brX = 1f + 0.013f * MathF.Sin( wt * 1.35f + 0.7f ) + 0.006f * MathF.Sin( wt * 2.7f );
+		float brY = 1f + 0.013f * MathF.Sin( wt * 1.15f + 2.6f ) + 0.006f * MathF.Sin( wt * 2.3f + 1.4f );
+
+		var t = new PanelTransform();
+		t.AddRotation( 0f, 0f, rotZ );
+		t.AddSkew( skX, skY, 0f );
+		t.AddScale( new Vector2( brX, brY ) );
+		gridRingRef.Style.Transform = t;
+	}
 
 	// ---- Grid <-> detail-panel keyboard focus switch -------------------
 	// kbFocusZone is the zone the keyboard currently drives:
@@ -4407,6 +4518,12 @@
 			if ( isEditingNickname )
 				nicknameInput?.Focus();
 		}
+
+		// Living-ring upkeep — recompute the target rect (grid scrolls +
+		// reflows, so this is per-tick, not event-latched) and apply the
+		// ink-lean wave imperatively.
+		UpdateGridRing();
+		ApplyGridRingWave();
 	}
 
 	/// <summary>
@@ -4794,6 +4911,13 @@
 		// won't remount. (Shop uses the same pair.)
 		hash.Add(justSelectedMonsterId);
 		hash.Add(selectPulseVersion);
+		// Living violet ring — markup-bound position + visibility class.
+		hash.Add(gridRingL);
+		hash.Add(gridRingT);
+		hash.Add(gridRingW);
+		hash.Add(gridRingH);
+		hash.Add(gridRingVisible);
+		hash.Add(gridRingWarm < 2);
 		// Beast-art editor — re-render when the dev switches modes,
 		// drags a sprite, or the override count changes (so the toolbar's
 		// edit-counter and active-mode chip both stay live).

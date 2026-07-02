@@ -64,8 +64,19 @@
 				<div class="map-clouds"></div>
 			</div>
 
-			@* Top-left intentionally left empty — reserved for the zoom UI
-			   that the next pass will mount here. *@
+			@* ═══ FIELD BRIEFING HEADER — the panel's identity moment ═══
+			   Expedition-orange kicker stamp + big italic display title +
+			   zone-clear progress. Sits top-left over the map art; pointer-
+			   events pass through (the backdrop is already inert). Kept to
+			   ONE stamp + bare type so the pixel-art map stays the hero. *@
+			<div class="map-briefing">
+				<div class="mb-kicker"><span>EXPEDITION</span></div>
+				<div class="mb-title">SERPINGLIN</div>
+				<div class="mb-progress">
+					<span class="mb-prog-num">@GetClearedZoneCount() / @GetTotalZoneCount()</span>
+					<span class="mb-prog-label">ZONES CLEARED</span>
+				</div>
+			</div>
 
 @* Bottom-right hint — let players know landmarks are interactive *@
 			<div class="map-hint-stamp">
@@ -123,6 +134,10 @@
 						{
 							<iconify icon="lucide:swords" Size=@(26) Color="#fef3c7" />
 						}
+						@* Living violet ring — hover/keyboard cursor. Child of the
+						   rotated pin so it inherits the diamond orientation AND
+						   scales in lockstep with the hover/kb pop for free. *@
+						<div class="marker-ring"></div>
 					</div>
 					<div class="marker-pulse"></div>
 
@@ -239,6 +254,7 @@
 						{
 							<iconify icon="lucide:trees" Size=@(14) Color="#fef3c7" />
 						}
+						<div class="marker-ring mini"></div>
 					</div>
 
 					<div class="mini-label">
@@ -462,12 +478,17 @@
 					<div class="zd-hero element-@elClassZone">
 						<img class="zd-hero-img" src="@heroImg" />
 						<div class="zd-hero-veil"></div>
+						@* Recommended-level stamp — tilted −3°, expedition orange.
+						   The level moves OUT of the stat strip and into a stamp so
+						   the briefing's most important number reads first. *@
+						<div class="zd-level-stamp">
+							<span class="zls-kicker">RECOMMENDED</span>
+							<span class="zls-lv">LV @sz.Level</span>
+						</div>
 						<div class="zd-hero-info">
-							<span class="zd-hero-kicker">EXPEDITION</span>
+							<span class="zd-hero-kicker">FIELD BRIEFING</span>
 							<span class="zd-hero-title">@sz.Name</span>
 							<div class="zd-hero-stats">
-								<span class="zd-hero-stat">Lv @sz.Level</span>
-								<span class="zd-hero-dot">·</span>
 								<span class="zd-hero-stat">@(exp?.Waves ?? 0) Waves</span>
 								@if ( exp != null && exp.HasBoss )
 								{
@@ -477,6 +498,13 @@
 										BOSS
 									</span>
 								}
+								<div class="zd-threat">
+									<span class="zd-threat-label">THREAT</span>
+									@for ( int tp = 0; tp < 5; tp++ )
+									{
+										<div class="threat-pip @(tp < GetThreatPips(sz.Level) ? "on" : "")"></div>
+									}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -626,12 +654,14 @@
 					<div class="zd-hero element-@mElClass">
 						<img class="zd-hero-img" src="@mHeroImg" />
 						<div class="zd-hero-veil"></div>
+						<div class="zd-level-stamp">
+							<span class="zls-kicker">RECOMMENDED</span>
+							<span class="zls-lv">LV @mexp.BaseEnemyLevel</span>
+						</div>
 						<div class="zd-hero-info">
 							<span class="zd-hero-kicker">SIDE EXPEDITION</span>
 							<span class="zd-hero-title">@mexp.Name</span>
 							<div class="zd-hero-stats">
-								<span class="zd-hero-stat">Lv @mexp.BaseEnemyLevel</span>
-								<span class="zd-hero-dot">·</span>
 								<span class="zd-hero-stat">@mexp.Waves Waves</span>
 								@if ( mexp.HasBoss )
 								{
@@ -641,6 +671,13 @@
 										BOSS
 									</span>
 								}
+								<div class="zd-threat">
+									<span class="zd-threat-label">THREAT</span>
+									@for ( int tp = 0; tp < 5; tp++ )
+									{
+										<div class="threat-pip @(tp < GetThreatPips(mexp.BaseEnemyLevel) ? "on" : "")"></div>
+									}
+								</div>
 							</div>
 						</div>
 					</div>
@@ -1687,6 +1724,45 @@
 		var effect = drop.GetEffectDescription();
 		return !string.IsNullOrEmpty( effect ) ? effect : drop.Description;
 	}
+
+	// ───────────────────── FIELD BRIEFING HELPERS ─────────────────────
+
+	/// <summary>Zones the player has fully cleared (visible, non-tutorial).</summary>
+	private int GetClearedZoneCount()
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) return 0;
+		int count = 0;
+		foreach ( var z in Zones )
+		{
+			var exp = em.Expeditions.FirstOrDefault( e => e.Id == z.ExpeditionId );
+			if ( exp == null || exp.TutorialOnly ) continue;
+			if ( em.HasClearedExpedition( z.ExpeditionId ) ) count++;
+		}
+		return count;
+	}
+
+	/// <summary>Total playable (non-tutorial) zones on this map.</summary>
+	private int GetTotalZoneCount()
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) return Zones.Length;
+		int count = 0;
+		foreach ( var z in Zones )
+		{
+			var exp = em.Expeditions.FirstOrDefault( e => e.Id == z.ExpeditionId );
+			if ( exp == null || exp.TutorialOnly ) continue;
+			count++;
+		}
+		return count;
+	}
+
+	/// <summary>
+	/// Threat rating (1-5 diamond pips) derived from the zone's recommended
+	/// level — a glanceable danger read for the briefing pane. Lv 1 → 1 pip,
+	/// Lv 10 → 2, Lv 20 → 3, capped at 5.
+	/// </summary>
+	private int GetThreatPips( int level ) => Math.Clamp( 1 + level / 10, 1, 5 );
 
 	private bool IsZoneUnlocked( MapZone zone )
 	{
