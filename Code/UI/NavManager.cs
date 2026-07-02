@@ -83,6 +83,13 @@ public static class NavManager
 		}
 	}
 
+	/// <summary>Stamp the route latch from OUTSIDE NavManager — for launches
+	/// that open panels via their own statics (e.g. the PawPad dock calling
+	/// OptionsPanel.Show()), so the same edge-triggered press can't also fire
+	/// another handler this frame (live symptom: dock Enter leaked to the
+	/// global open-chat bind).</summary>
+	public static void MarkRouted() => _lastRouteAt = Time.Now;
+
 	/// <summary>
 	/// Monotonic nav-change counter. Bumps on every committed tab change and
 	/// every overlay open routed through the router. Panels hash this.

@@ -161,7 +161,7 @@
     <div class="pl-backdrop" onclick=@OnBackdropClicked></div>
 
     <div class="pl-wrap">
-        <div class="pl-device">
+        <div class="pl-device" @ref="_deviceRef">
             <!-- Side-button nubs — LEFT edge (the far/receding side under
                  the rotateY(-13deg) lean). Absolute children of the
                  UN-painted lean holder (the behind-parent-bg quirk only
@@ -252,16 +252,24 @@
                                      onclick=@(() => LaunchIndex( i ))
                                      onmouseover=@(() => HoverTile( i ))>
                                     <div class="pl-app-iconwrap">
-                                        <div class="pl-app-icon" style="background-color: @(i == _kb ? Brighten( app.Accent ) : app.Accent);">
-                                            <iconify icon="@app.Icon" Size=@(40) Color=@(app.DarkGlyph ? "#2a1605" : "#ffffff") />
+                                        <!-- Offset shadow is ALWAYS present (value-swap on focus,
+                                             never add/remove: s&box doesn't clear a REMOVED inline
+                                             style property — a dropped box-shadow ghosts forever;
+                                             live-discovered, and the all-tiles sticker depth reads
+                                             better anyway). Focused = lifted higher = longer throw. -->
+                                        <div class="pl-app-icon" style="background-color: @(i == _kb ? Brighten( app.Accent ) : app.Accent); box-shadow: @(i == _kb ? "10px 15px" : "5px 8px") 0px @(Darken( app.Accent ));">
+                                            <!-- v5: the commissioned icon set (Claude Design,
+                                                 icons/v2) — filled-silhouette SVGs that carry
+                                                 their own fill color (white; dark ink baked in
+                                                 for shop/effects), so DarkGlyph stays data-only.
+                                                 The PhoneApp.Icon lucide id is retired but the
+                                                 FIELD stays: hotload migrates static records BY
+                                                 NAME and shape changes force restarts. -->
+                                            <img class="pl-app-glyph" src="ui/icons/pawpad/@(app.Id).svg" />
                                         </div>
-                                        <!-- Keycap rides the icon's bottom-right corner (fixed
-                                             absolute offsets — the battle diamond's keybind-pill
-                                             precedent). It CANNOT live in the label row: an
-                                             auto-width label + cap pair placed by justify-content
-                                             drifts rightward (placement math reads auto widths as
-                                             zero — the Expedition row clipped the body edge live). -->
-                                        <div class="pl-key pl-key-corner"><span>@app.Key</span></div>
+                                        <!-- v5.1: corner keycaps REMOVED (user: "just in the
+                                             way"). The hotkeys still WORK — they're just not
+                                             printed on every tile anymore. -->
                                         @if ( app.Id == "bag" && HasNewItems() )
                                         {
                                             <BbStamp Text="NEW" Tone="gold" Tilt=@(3) Class="pl-new-stamp" />
@@ -290,6 +298,26 @@
                         </div>
                     }
 
+                </div>
+
+                <!-- THE SYSTEM DOCK (v5) — meta destinations (Profile /
+                     Settings / Guide / Feedback) as a quieter tier below
+                     the grid: smaller dark-violet tiles, violet glyphs
+                     (system chrome, not apps). No labels — dock convention;
+                     the ring + glyphs carry it. Indices 12-15 in the one
+                     cursor space. justify-content: center is LEGAL here:
+                     every child is an explicit 56px box (doctrine rule 2). -->
+                <div class="pl-dock" @ref="_dockRef">
+                    @for ( int d = 0; d < Dock.Length; d++ )
+                    {
+                        var di = GridCount + d;
+                        var dockId = Dock[d];
+                        <div class="pl-dock-app @(di == _kb ? "focused" : "")"
+                             onclick=@(() => LaunchIndex( di ))
+                             onmouseover=@(() => HoverTile( di ))>
+                            <img class="pl-dock-glyph" src="ui/icons/pawpad/@(dockId).svg" />
+                        </div>
+                    }
                 </div>
                 </div>
             </div>
@@ -395,6 +423,14 @@
         new( "alerts",      "ALERTS",     "lucide:bell",           "#e0414a", "N", false, NavManager.OverlayNotifications, false ),
     };
 
+    // ── THE SYSTEM DOCK (v5) — meta destinations below the grid. IDs
+    // double as the icon filenames (ui/icons/pawpad/<id>.svg). Routing is
+    // CODE (LaunchDock's switch), not data — the hotload static-data law.
+    // Cursor space: grid 0..11, dock 12..15.
+    private const int GridCount = 12;
+    private static readonly string[] Dock = { "profile", "settings", "guide", "feedback" };
+    private const int DockCount = 4;
+
     // Widget vs destination classification — CODE, not data (see the
     // hotload law above; method bodies are always fresh after a hotload).
     // Widgets (Tier-1 popup toggles) close-and-toggle with no sweep; every
@@ -426,7 +462,39 @@
     // event-driven (_ringDirty), PLUS a short hold window after open so
     // the ring re-targets while the entrance slide moves the icons.
     private Panel _gridRef;
+    private Panel _dockRef;
+    private Panel _deviceRef;
     private Panel _ringRef;
+
+    // ── Lean projection (v5, log-proven) — Box.Rect is LAYOUT space
+    // (pre-transform): the walkdbg rect log showed pure layout deltas
+    // (140px row steps, zero perspective compression), while the paint is
+    // projected through .pl-device's lean. The root-level ring must apply
+    // the SAME projection or it drifts toward the bottom-left, growing
+    // with distance from the transform origin (right center) — ~50px off
+    // at the dock live. Constants MUST match the .pl-device scss:
+    // perspective(1600px) rotateY(-13deg), origin right center.
+    // CALIBRATED, not derived (v5.1): with the geometric 13° constants the
+    // ring measured 3px right at SKILLS / 4.5px at QUESTS (bias grows with
+    // distance from the origin). A deliberate perturbation (LeanSin +0.030
+    // → bias +3.5px) gave the slope; zeroing the original bias lands at
+    // LeanSin ≈ 0.200 — the engine's EFFECTIVE lean is ~11.5°, SHALLOWER
+    // than the authored 13°. Re-fit if the scss angle/perspective changes:
+    // measure ring-vs-tile gaps at two columns, adjust by measured slope.
+    private const float LeanPerspective = 1600f;
+    private const float LeanCos = 0.97980f;  // cos ~11.5° (fitted)
+    private const float LeanSin = 0.20000f;  // sin ~11.5° (fitted)
+
+    // Project a layout-space point (style px, root-local) through the lean.
+    // rotateY(-13°): a point dx left of the origin recedes (z = -sin·|dx|),
+    // so its projection scale s = p / (p - sin·dx) < 1, pulling it toward
+    // the origin's x AND toward the device's vertical center.
+    private static Vector2 ProjectLean( float x, float y, float x0, float y0 )
+    {
+        float dx = x - x0;
+        float s = LeanPerspective / ( LeanPerspective - LeanSin * dx );
+        return new Vector2( x0 + LeanCos * dx * s, y0 + ( y - y0 ) * s );
+    }
     private int _ringL, _ringT, _ringW = 112, _ringH = 112;
     private int _ringWarmup;   // 0/1 = snap to position (no glide), 2 = animate — menu warmup pattern
     private bool _ringDirty;   // event-driven update latch — the v4 fps fix
@@ -454,35 +522,50 @@
         var icon = FocusedIconEl();
         if ( icon == null ) return;
 
-        // v4.2: project against the ROOT's rect, not the grid's. The ring
-        // sits at root level now, and Box.Rect is the POST-transform
-        // (projected) screen rect — using it directly means the ring wraps
-        // exactly what's painted, on every column. (The old in-lean delta
-        // math assumed one uniform scale, but perspective compresses the
-        // far side more — left/middle columns drifted sideways, user-
-        // reported live.)
+        // v5: Box.Rect is LAYOUT space (log-proven — see the lean-projection
+        // field comment), so the target rect must be pushed through the
+        // device's lean before the root-level ring can wrap the PAINT.
         var ir = icon.Box.Rect;
         var rr = Box.Rect;
-        if ( ir.Width < 1f || rr.Width < 1f ) return; // not laid out yet — stay dirty, retry
+        var dr = _deviceRef?.Box.Rect ?? default;
+        if ( ir.Width < 1f || rr.Width < 1f || dr.Width < 1f ) return; // not laid out yet — stay dirty, retry
 
         float sc = ScaleFromScreen;
         if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
 
+        // Transform origin (right center of the device), root-local style px.
+        float x0 = ( dr.Right - rr.Left ) * sc;
+        float y0 = ( dr.Top + dr.Height / 2f - rr.Top ) * sc;
+
+        // Project all four corners; the painted tile is a trapezoid, the
+        // ring is axis-aligned — take the bounding box.
+        float il = ( ir.Left - rr.Left ) * sc, it = ( ir.Top - rr.Top ) * sc;
+        float irr = ( ir.Right - rr.Left ) * sc, ib = ( ir.Bottom - rr.Top ) * sc;
+        var tl = ProjectLean( il, it, x0, y0 );
+        var tr = ProjectLean( irr, it, x0, y0 );
+        var bl = ProjectLean( il, ib, x0, y0 );
+        var br = ProjectLean( irr, ib, x0, y0 );
+        float pL = MathF.Min( tl.x, bl.x ), pR = MathF.Max( tr.x, br.x );
+        float pT = MathF.Min( tl.y, tr.y ), pB = MathF.Max( bl.y, br.y );
+
         // The focused icon ALWAYS wears the pop (focused == the ring's
         // target), so the pop offsets apply unconditionally: scale grows
         // the box around its center, the lift shifts it up.
-        float iw = ir.Width * sc, ih = ir.Height * sc;
+        float iw = pR - pL, ih = pB - pT;
         float growX = iw * ( FocusPopScale - 1f );
         float growY = ih * ( FocusPopScale - 1f );
 
-        int left = (int)( ( ir.Left - rr.Left ) * sc - growX / 2f ) - RingInset;
-        int top = (int)( ( ir.Top - rr.Top ) * sc - growY / 2f - FocusPopLift ) - RingInset;
+        int left = (int)( pL - growX / 2f ) - RingInset;
+        int top = (int)( pT - growY / 2f - FocusPopLift ) - RingInset;
         int w = (int)( iw + growX ) + RingInset * 2;
         int h = (int)( ih + growY ) + RingInset * 2;
 
         bool changed = false;
         if ( left != _ringL || top != _ringT || w != _ringW || h != _ringH )
-        { _ringL = left; _ringT = top; _ringW = w; _ringH = h; changed = true; }
+        {
+            if ( WALK_DEBUG ) Log.Info( $"[walkdbg] ring kb={_kb} ir=({ir.Left:F0},{ir.Top:F0},{ir.Width:F0}x{ir.Height:F0}) rr=({rr.Left:F0},{rr.Top:F0}) sc={sc:F3} -> ({left},{top},{w}x{h})" );
+            _ringL = left; _ringT = top; _ringW = w; _ringH = h; changed = true;
+        }
         if ( _ringWarmup < 2 ) { _ringWarmup++; changed = true; } // snap first 1-2 frames, then glide
 
         // Sleep the latch once the warmup snaps are done — the CSS
@@ -502,21 +585,41 @@
     {
         if ( _ringRef == null ) return;
         float wt = Time.Now;
-        float skX = ( 4.5f * MathF.Sin( wt * 2.2f ) + 1.4f * MathF.Sin( wt * 3.5f + 1.1f ) ) * 0.6f;
-        float skY = ( 1.6f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.7f * MathF.Sin( wt * 2.9f ) ) * 0.6f;
-        float rotZ = ( 0.8f * MathF.Sin( wt * 1.0f ) + 0.35f * MathF.Sin( wt * 2.4f + 0.5f ) ) * 0.6f;
+        // v5.1 rebalance (user: "too uniform, just shifting left and right"):
+        // the menu mix is skewX-heavy, which on a small square ring reads as
+        // pure lateral wobble. Cut skewX, raise skewY + rotZ, and add a tiny
+        // out-of-phase per-axis breathing (squash/stretch) — the breathing
+        // is what makes it read LIQUID instead of metronome.
+        float skX = ( 2.0f * MathF.Sin( wt * 2.2f ) + 0.7f * MathF.Sin( wt * 3.5f + 1.1f ) ) * 0.6f;
+        float skY = ( 2.3f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.9f * MathF.Sin( wt * 2.9f ) ) * 0.6f;
+        float rotZ = ( 1.1f * MathF.Sin( wt * 1.0f ) + 0.5f * MathF.Sin( wt * 2.4f + 0.5f ) ) * 0.6f;
+        float brX = 1f + 0.013f * MathF.Sin( wt * 1.35f + 0.7f ) + 0.006f * MathF.Sin( wt * 2.7f );
+        float brY = 1f + 0.013f * MathF.Sin( wt * 1.15f + 2.6f ) + 0.006f * MathF.Sin( wt * 2.3f + 1.4f );
 
         var t = new PanelTransform();
         t.AddRotation( 0f, 0f, rotZ );
         t.AddSkew( skX, skY, 0f );
+        t.AddScale( new Vector2( brX, brY ) );
         _ringRef.Style.Transform = t;
     }
 
-    // The focused tile's ICON square, walked from the grid ref each call
-    // (row/tile/iconwrap/icon by class — survives re-renders; no per-tile
-    // @ref array needed).
+    // The focused tile's ICON square, walked from the grid/dock ref each
+    // call (by class — survives re-renders; no per-tile @ref array needed).
+    // Dock focus (12..15) targets the dock tile itself (it IS the visual).
     private Panel FocusedIconEl()
     {
+        if ( _kb >= GridCount )
+        {
+            if ( _dockRef == null ) return null;
+            int want = _kb - GridCount, di = 0;
+            foreach ( var tile in _dockRef.Children )
+            {
+                if ( !tile.HasClass( "pl-dock-app" ) ) continue;
+                if ( di++ == want ) return tile;
+            }
+            return null;
+        }
+
         int row = _kb / Cols, col = _kb % Cols;
         int ri = 0;
         foreach ( var child in _gridRef.Children )
@@ -571,6 +674,29 @@
         return result;
     }
 
+    // ── Focus shadow — a hard-edged accent-DARKENED drop shadow under the
+    // popped tile (v5.1, user call: the pop should read 3D, like the tile
+    // lifts off the glass). Down-left offset matches the shell's own light
+    // (the device leans right, light comes from the right). Zero blur =
+    // the Persona offset-shadow dialect. Grid is NOT a scroll container,
+    // so the colored-shadow-leak rule doesn't apply here.
+    private static readonly Dictionary<string, string> _darkCache = new();
+
+    private static string Darken( string hex )
+    {
+        if ( _darkCache.TryGetValue( hex, out var cached ) ) return cached;
+        var result = hex;
+        if ( hex != null && hex.Length == 7 && hex[0] == '#' )
+        {
+            int r = (int)( Convert.ToInt32( hex.Substring( 1, 2 ), 16 ) * 0.38f );
+            int g = (int)( Convert.ToInt32( hex.Substring( 3, 2 ), 16 ) * 0.38f );
+            int b = (int)( Convert.ToInt32( hex.Substring( 5, 2 ), 16 ) * 0.38f );
+            result = $"#{r:x2}{g:x2}{b:x2}";
+        }
+        _darkCache[hex] = result;
+        return result;
+    }
+
     // ── The accent swipe state machine ───────────────────────────────────
     // Idle → SweepIn (220ms, eased translateX from off-right to full cover;
     // ROUTE fires at cover, phone body hides behind the slab) → Covered
@@ -601,6 +727,7 @@
     private float _swW, _swH, _swLeft, _swTop, _swXOff;
 
     private Panel _swipe;
+    private Panel _fxIcon;   // the launched icon mid shoot-out (SweepIn only)
 
     private bool Shown => IsVisible || _fx != FxPhase.Idle || Time.Now < _closingUntil;
 
@@ -716,7 +843,8 @@
     // ── Launch ───────────────────────────────────────────────────────────
     private void LaunchIndex( int i )
     {
-        if ( i < 0 || i >= Apps.Length ) return;
+        if ( i < 0 || i >= GridCount + DockCount ) return;
+        if ( i >= GridCount ) { LaunchDock( i - GridCount ); return; }
         var app = Apps[i];
         _kb = i;
         _ringDirty = true;
@@ -733,6 +861,28 @@
             if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] widget launch '{app.Id}' — NO sweep by design (Tier-1 popup toggle) t={Time.Now:F3}" );
             Close();
             RouteApp( i );
+        }
+    }
+
+    // Dock launches are all Tier-1 popups/overlays — no sweep (widget
+    // discipline): close the phone, open the destination. Routing lives
+    // in code, not data (hotload law).
+    private void LaunchDock( int d )
+    {
+        if ( d < 0 || d >= Dock.Length ) return;
+        _kb = GridCount + d;
+        Close();
+        // Stamp the route latch — these open via panel statics, not
+        // NavManager, so without this the same edge-triggered Enter also
+        // fires the global open-chat bind (live: chat popped over the
+        // freshly-opened dock destination).
+        NavManager.MarkRouted();
+        switch ( Dock[d] )
+        {
+            case "profile": NavManager.OpenOverlay( NavManager.OverlayProfile ); break;
+            case "settings": OptionsPanel.Show(); break;
+            case "guide": Beastborne.UI.Panels.HelpPanel.Show(); break;
+            case "feedback": Beastborne.UI.Panels.FeedbackPanel.Show(); break;
         }
     }
 
@@ -775,6 +925,13 @@
         _fxT0 = Time.Now;
         _fx = FxPhase.SweepIn;   // re-seeding mid-flight IS the interrupt path
 
+        // v5.1 launch beat (user call): the tapped icon SHOOTS OUT left,
+        // ahead of the incoming slab — grab its panel now (fresh walk;
+        // refs die on hotload and re-renders). Per-frame transform inside
+        // the lean is a knowing, TRANSIENT violation of the 7fps law:
+        // ~13 frames during SweepIn, then the slab covers everything.
+        _fxIcon = FocusedIconEl();
+
         // Seed the first frame immediately so there's no 1-frame pop.
         if ( _swipe != null ) ApplySwipe( _swipe, _swXOff );
         if ( SWEEP_DEBUG ) Log.Info( $"[sweepdbg] SWEEP-IN '{app.Id}' accent={app.Accent} slab={_swW:F0}x{_swH:F0} at=({_swLeft:F0},{_swTop:F0}) xoff={_swXOff:F0} sc={sc:F2} refBound={_swipe != null} t={Time.Now:F3}" );
@@ -800,8 +957,25 @@
             float e = 1f - MathF.Pow( 1f - u, 3f );   // ease-out cubic — fast attack, soft landing
             ApplySwipe( el, _swXOff * ( 1f - e ) );
 
+            // The launched icon rockets left ahead of the slab. EASE-OUT,
+            // not ease-in: the slab sweeps right-to-left and swallows the
+            // phone almost immediately, so the icon only reads if it leaps
+            // in the first ~100ms (live-verified — the ease-in version was
+            // fully covered before it moved).
+            if ( _fxIcon != null )
+            {
+                float li = 1f - ( 1f - u ) * ( 1f - u );
+                var lt = new PanelTransform();
+                lt.AddTranslate( Length.Pixels( -340f * li ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+                lt.AddScale( 1f + 0.12f * li );
+                _fxIcon.Style.Transform = lt;
+            }
+
             if ( u >= 1f )
             {
+                // Under full cover: return the icon to rest (unseen) so the
+                // grid is intact next open, and stop the per-frame writes.
+                if ( _fxIcon != null ) { _fxIcon.Style.Transform = null; _fxIcon = null; }
                 if ( !_fxRouted )
                 {
                     _fxRouted = true;
@@ -900,6 +1074,7 @@
                 _fx = FxPhase.Idle;
                 _fxAppIndex = -1;
                 if ( _swipe != null ) ClearSwipeStyles( _swipe );
+                if ( _fxIcon != null ) { _fxIcon.Style.Transform = null; _fxIcon = null; }
             }
             return;
         }
@@ -926,14 +1101,25 @@
         else if ( holdDt > 0f ) _ringDirty = true;         // entrance slide still moving the icons
         if ( _ringDirty ) UpdateRing();
         ApplyRingWave();
+        if ( WALK_DEBUG && ( Input.Pressed( "Backward" ) || Input.Pressed( "Forward" ) ) )
+            Log.Info( $"[walkdbg] tick gate: top={UIModalState.IsTopModal( "PhoneLauncher" )} chatfocus={ChatPanel.IsChatFocused}" );
         if ( !UIModalState.IsTopModal( "PhoneLauncher" ) ) return;
         if ( ChatPanel.IsChatFocused ) return;
 
         HandleKeyboard();
     }
 
+    // Diagnostics (v5) — root-caused and VERIFIED 2026-07-02: the "dead
+    // vertical walk" was a partial hotload wedge (markup swapped, old
+    // method body kept running — the "worker threads" stall); the ring
+    // drift was Box.Rect being LAYOUT space (fixed via ProjectLean).
+    // Flip true if the walk or ring regresses.
+    private const bool WALK_DEBUG = false;
+
     private void HandleKeyboard()
     {
+        if ( WALK_DEBUG && ( Input.Pressed( "Forward" ) || Input.Pressed( "Backward" ) || Input.Pressed( "Left" ) || Input.Pressed( "Right" ) ) )
+            Log.Info( $"[walkdbg] press F={Input.Pressed( "Forward" )} B={Input.Pressed( "Backward" )} L={Input.Pressed( "Left" )} R={Input.Pressed( "Right" )} kb={_kb} routed={NavManager.RoutedThisFrame}" );
         // Same-frame double-fire guard: Input.Pressed is edge-triggered and
         // reports true to EVERY handler this frame. The Slot8 press that just
         // OPENED the phone (via GameHUD → NavManager) must not also be read
@@ -961,23 +1147,53 @@
         if ( Input.Pressed( "Reload" ) ) { LaunchIndex( 9 ); return; }
         if ( Input.Pressed( "View" ) ) { LaunchIndex( 10 ); return; }
         if ( Input.Pressed( "Notifications" ) ) { LaunchIndex( 11 ); return; }
+        if ( Input.Pressed( "Slot0" ) ) { LaunchIndex( GridCount ); return; } // 0 = Profile (old-bar muscle memory)
 
-        // Grid walk — WASD, wrapping both axes.
-        int col = _kb % Cols;
-        int row = _kb / Cols;
-        bool moved = false;
-        if ( Input.Pressed( "Left" ) ) { col = ( col + Cols - 1 ) % Cols; moved = true; }
-        else if ( Input.Pressed( "Right" ) ) { col = ( col + 1 ) % Cols; moved = true; }
-        else if ( Input.Pressed( "Forward" ) ) { row = ( row + Rows - 1 ) % Rows; moved = true; }
-        else if ( Input.Pressed( "Backward" ) ) { row = ( row + 1 ) % Rows; moved = true; }
-
-        if ( moved )
+        // Grid + dock walk — WASD, wrapping both axes. The dock is a 5th
+        // row with 4 columns; horizontal wraps stay within the row you're
+        // on, vertical crossings map columns proportionally (3-wide grid ↔
+        // 4-wide dock).
+        bool onDock = _kb >= GridCount;
+        int next = -1;
+        if ( Input.Pressed( "Left" ) )
         {
-            _kb = row * Cols + col;
+            next = onDock
+                ? GridCount + ( ( _kb - GridCount + DockCount - 1 ) % DockCount )
+                : ( _kb / Cols ) * Cols + ( ( _kb % Cols + Cols - 1 ) % Cols );
+        }
+        else if ( Input.Pressed( "Right" ) )
+        {
+            next = onDock
+                ? GridCount + ( ( _kb - GridCount + 1 ) % DockCount )
+                : ( _kb / Cols ) * Cols + ( ( _kb % Cols + 1 ) % Cols );
+        }
+        else if ( Input.Pressed( "Forward" ) ) // up
+        {
+            if ( onDock ) next = ( Rows - 1 ) * Cols + DockColToGridCol( _kb - GridCount );
+            else if ( _kb / Cols == 0 ) next = GridCount + GridColToDockCol( _kb % Cols ); // wrap up → dock
+            else next = _kb - Cols;
+        }
+        else if ( Input.Pressed( "Backward" ) ) // down
+        {
+            if ( onDock ) next = GridColToGridIndexRow0( _kb - GridCount ); // wrap down → grid top
+            else if ( _kb / Cols == Rows - 1 ) next = GridCount + GridColToDockCol( _kb % Cols );
+            else next = _kb + Cols;
+        }
+
+        if ( next >= 0 )
+        {
+            if ( WALK_DEBUG ) Log.Info( $"[walkdbg] moved {_kb} -> {next}" );
+            _kb = next;
             _ringDirty = true;
             SoundManager.PlayHover();
             return;
         }
+
+        // Column mapping between the 3-wide grid and 4-wide dock: keep the
+        // crossing feeling straight-down/straight-up (proportional, rounded).
+        static int GridColToDockCol( int c ) => c switch { 0 => 0, 1 => 2, _ => 3 };
+        static int DockColToGridCol( int d ) => d switch { 0 => 0, 1 => 1, 2 => 1, _ => 2 };
+        static int GridColToGridIndexRow0( int d ) => DockColToGridCol( d );
 
         // Launch — Enter or Space (the canonical confirm pair).
         if ( Input.Pressed( "Enter" ) || Input.Pressed( "Jump" ) )
