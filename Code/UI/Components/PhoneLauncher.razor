@@ -16,6 +16,41 @@
     mounted for now (A/B trial — retirement comes after the user blesses
     the phone).
 
+    v3.1 (live-test feedback + "make it actually look good" pass):
+    - SWEEP BUG ROOT-CAUSED — log-proven: every MAIN APP took the widget
+      branch ("[sweepdbg] widget launch 'beasts'"). The record flag was
+      renamed Liquid→Sweep in v2, and s&box hotload migrates STATIC data
+      across recompiles by copying record members BY NAME — no name match,
+      so every migrated PhoneApp got Sweep=default(false), and every later
+      hotload faithfully copied the stale false forward. Fix: destination
+      vs widget is now classified IN CODE (IsWidgetApp — method bodies are
+      always fresh after hotload; only DATA can go stale). The Sweep field
+      is deleted so nothing misleading remains. ⚠ Never rename fields in
+      the PhoneApp record without expecting a full-restart requirement.
+    - RIGHT-SIDE ANCHOR — the phone lives at the right edge (72px in,
+      vertically centered) so the game stays visible; entrance is a
+      slide-in from the right edge, exit mirrors. Backdrop dim lightened
+      to 0.55 — seeing the game behind is now the point.
+    - THE LEAN FLIPPED — perspective(1600px) rotateY(-13deg), origin
+      right center (the PawPad mockup's values): right side toward the
+      camera, left recedes, sold by a left-edge shade overlay + the
+      energy hairline along the top edge (device is "on").
+    - FOCUS POP — the focused icon lifts toward the player
+      (translateY(-4px) scale(1.06), 0.12s) and the living ring RIDES the
+      lift: Box.Rect doesn't move with CSS transforms, so UpdateRing
+      mirrors the pop into the ring's target rect (the menu's SelectedPop
+      lockstep). Press settles back down to scale(0.98) inside the ring.
+    - HEADER v2 — PROTOTYPE stamp deleted; status row gains signal bars;
+      TAMERLINK OS eyebrow in violet over a 34px italic PawPad with the
+      gold accent rule (BbSectionHeader, KickerColor override); Steam
+      avatar (command-bar house pattern) beside the tamer line.
+    - DOCTRINE TIGHTENED (live: EXPEDITION's label row overran its tile
+      and clipped the body edge) — justify-content placement of AUTO-width
+      children drifts too, not just space-between/align-items. Labels are
+      now single full-width text-align: center spans; keycaps ride the
+      icon corner as fixed absolutes; the hints/status rows give every
+      child an explicit width. Full strict doctrine in the SCSS header.
+
     v3 (live-test feedback):
     - THE LIVING RING — the per-tile static rings are dead; ONE violet
       cursor ring (the main menu's signature) glides between focused
@@ -76,15 +111,44 @@
     <div class="pl-wrap">
         <div class="pl-device">
             <div class="pl-surface">
-                <!-- Flavor chrome strip: clock + tamer level. Light — the phone routes, it doesn't inform. -->
+                <!-- Status row: clock · signal bars · tamer line + [avatar].
+                     Light — the phone routes, it doesn't inform. Bars are
+                     four explicit fixed-size divs (ascending, last one dim
+                     — "3 of 4"). The identity pair is drift-proof: the name
+                     is a right-aligned EXPLICIT-width span whose right edge
+                     lands flush against the fixed avatar (children's widths
+                     sum to the container exactly — no justify-content
+                     placement of auto-width boxes anywhere in this row).
+                     Avatar sources exactly like the command bar: Steam
+                     avatar: URL, gendered portrait PNG fallback. -->
                 <div class="pl-top">
                     <span class="pl-clock">@ClockText</span>
-                    <span class="pl-lv">@TamerLine</span>
+                    <div class="pl-sig">
+                        <div class="pl-sig-bar b1"></div>
+                        <div class="pl-sig-bar b2"></div>
+                        <div class="pl-sig-bar b3"></div>
+                        <div class="pl-sig-bar b4"></div>
+                    </div>
+                    <div class="pl-id">
+                        <span class="pl-lv">@TamerLine</span>
+                        <div class="pl-ava">
+                            @if ( GetSteamId() > 0 )
+                            {
+                                <img class="pl-ava-img" src="@($"avatar:{GetSteamId()}")" />
+                            }
+                            else
+                            {
+                                <img class="pl-ava-img" src="@GetAvatarImagePath()" />
+                            }
+                        </div>
+                    </div>
                 </div>
 
+                <!-- Title block: violet TAMERLINK OS eyebrow, 34px italic
+                     PawPad, gold accent rule (KickerColor keeps the eyebrow
+                     violet while the rule goes gold). No more stamp. -->
                 <div class="pl-head">
-                    <BbSectionHeader Kicker="TAMERLINK OS" Title="PawPad" Size=@(28) AccentColor="#9b6cff" AccentWidthIdle=@(52) AccentWidthFlare=@(104) />
-                    <BbStamp Text="PROTOTYPE" Tone="violet" Tilt=@(3) Class="pl-proto-stamp" />
+                    <BbSectionHeader Kicker="TAMERLINK OS" Title="PawPad" Size=@(34) KickerColor="#9b6cff" AccentColor="#ffce3a" AccentWidthIdle=@(44) AccentWidthFlare=@(96) />
                 </div>
 
                 <div class="pl-grid" @ref="_gridRef">
@@ -103,6 +167,13 @@
                                         <div class="pl-app-icon" style="background-color: @(i == _kb ? Brighten( app.Accent ) : app.Accent);">
                                             <iconify icon="@app.Icon" Size=@(40) Color=@(app.DarkGlyph ? "#2a1605" : "#ffffff") />
                                         </div>
+                                        <!-- Keycap rides the icon's bottom-right corner (fixed
+                                             absolute offsets — the battle diamond's keybind-pill
+                                             precedent). It CANNOT live in the label row: an
+                                             auto-width label + cap pair placed by justify-content
+                                             drifts rightward (placement math reads auto widths as
+                                             zero — the Expedition row clipped the body edge live). -->
+                                        <div class="pl-key pl-key-corner"><span>@app.Key</span></div>
                                         @if ( app.Id == "bag" && HasNewItems() )
                                         {
                                             <BbStamp Text="NEW" Tone="gold" Tilt=@(3) Class="pl-new-stamp" />
@@ -112,10 +183,10 @@
                                             <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
                                         }
                                     </div>
-                                    <div class="pl-app-labelrow">
-                                        <span class="pl-app-label">@app.Label</span>
-                                        <div class="pl-key"><span>@app.Key</span></div>
-                                    </div>
+                                    <!-- Full-tile-width span + text-align: center — TEXT alignment
+                                         inside an explicit-width box is drift-proof; flex placement
+                                         of auto-width boxes is not. -->
+                                    <span class="pl-app-label">@app.Label</span>
                                 </div>
                             }
                         </div>
@@ -132,15 +203,26 @@
                          style="left: @(_ringL)px; top: @(_ringT)px; width: @(_ringW)px; height: @(_ringH)px;"></div>
                 </div>
 
+                <!-- Hints — every child carries an EXPLICIT width class so the
+                     row's justify-content centering has real widths to sum
+                     (auto-width children read as zero and the row drifts). -->
                 <div class="pl-hints">
-                    <div class="pl-key"><span>WASD</span></div>
-                    <span class="pl-hint-label">MOVE</span>
-                    <div class="pl-key"><span>ENTER</span></div>
-                    <span class="pl-hint-label">LAUNCH</span>
-                    <div class="pl-key"><span>Q</span></div>
-                    <span class="pl-hint-label">CLOSE</span>
+                    <div class="pl-key w-wasd"><span>WASD</span></div>
+                    <span class="pl-hint-label w-move">MOVE</span>
+                    <div class="pl-key gold w-enter"><span>ENTER</span></div>
+                    <span class="pl-hint-label w-launch">LAUNCH</span>
+                    <div class="pl-key w-q"><span>Q</span></div>
+                    <span class="pl-hint-label w-close">CLOSE</span>
                 </div>
             </div>
+
+            <!-- Receding-side shade + energy hairline — SIBLINGS of the
+                 surface (absolute children of a panel paint BEHIND that
+                 panel's own background fill — engine quirk — so these must
+                 sit beside .pl-surface, not inside it). DOM order paints
+                 them above the surface; both are pointer-events: none. -->
+            <div class="pl-shade"></div>
+            <div class="pl-hairline"></div>
         </div>
     </div>
 
@@ -188,28 +270,44 @@
     // ── App registry — grid order (3 cols × 4 rows) ─────────────────────
     // Each destination owns ONE accent (guiding-star three-color identity:
     // that token drives the icon fill, the badge, and the accent swipe).
-    // Swipe = full-screen destinations only (juice-tier discipline).
-    private record PhoneApp( string Id, string Label, string Icon, string Accent, string Key, bool IsTab, string RouteId, bool Sweep, bool DarkGlyph );
+    //
+    // ⚠ HOTLOAD DATA-STALENESS LAW (learned the hard way): this array is
+    // static, and s&box hotload MIGRATES static data across recompiles by
+    // copying record members BY NAME — the initializer never re-runs. When
+    // v2 renamed the `Liquid` flag to `Sweep`, every live session's
+    // migrated PhoneApp got Sweep=default(false) and EVERY destination
+    // silently took the widget branch (log-proven: "[sweepdbg] widget
+    // launch 'beasts'"). Rules: (1) behavior BRANCHES live in code
+    // (IsWidgetApp below), never in migrated data; (2) never rename a
+    // field in this record without expecting stale values until a full
+    // editor restart.
+    private record PhoneApp( string Id, string Label, string Icon, string Accent, string Key, bool IsTab, string RouteId, bool DarkGlyph );
 
     private static readonly PhoneApp[] Apps =
     {
         // Row 1 — the core loop
-        new( "beasts",      "BEASTS",     "lucide:paw-print",      "#7b4ddb", "1", true,  "monsters",   true,  false ),
-        new( "skills",      "SKILLS",     "lucide:network",        "#ff6bd6", "2", true,  "skills",     true,  false ),
-        new( "expedition",  "EXPEDITION", "lucide:map",            "#ee5421", "3", true,  "expedition", true,  false ),
+        new( "beasts",      "BEASTS",     "lucide:paw-print",      "#7b4ddb", "1", true,  "monsters",   false ),
+        new( "skills",      "SKILLS",     "lucide:network",        "#ff6bd6", "2", true,  "skills",     false ),
+        new( "expedition",  "EXPEDITION", "lucide:map",            "#ee5421", "3", true,  "expedition", false ),
         // Row 2 — the world
-        new( "online",      "ONLINE",     "lucide:globe",          "#3f8fe0", "4", true,  "online",     true,  false ),
-        new( "beastbook",   "BEASTBOOK",  "lucide:book-open",      "#2dd4bf", "5", true,  "beastiary",  true,  false ),
-        new( "shop",        "SHOP",       "lucide:shopping-bag",   "#ffce3a", "6", true,  "shop",       true,  true ),
+        new( "online",      "ONLINE",     "lucide:globe",          "#3f8fe0", "4", true,  "online",     false ),
+        new( "beastbook",   "BEASTBOOK",  "lucide:book-open",      "#2dd4bf", "5", true,  "beastiary",  false ),
+        new( "shop",        "SHOP",       "lucide:shopping-bag",   "#ffce3a", "6", true,  "shop",       true ),
         // Row 3 — your stuff
-        new( "quests",      "QUESTS",     "lucide:scroll-text",    "#3fb45e", "7", false, NavManager.OverlayQuests, true,  false ),
-        new( "bag",         "BAG",        "lucide:backpack",       "#d9a054", "9", false, NavManager.OverlayBag,    true,  false ),
-        new( "chat",        "CHAT",       "lucide:message-circle", "#4aa8ff", "T", false, NavManager.OverlayChat,   false, false ),
+        new( "quests",      "QUESTS",     "lucide:scroll-text",    "#3fb45e", "7", false, NavManager.OverlayQuests, false ),
+        new( "bag",         "BAG",        "lucide:backpack",       "#d9a054", "9", false, NavManager.OverlayBag,    false ),
+        new( "chat",        "CHAT",       "lucide:message-circle", "#4aa8ff", "T", false, NavManager.OverlayChat,   false ),
         // Row 4 — the widgets
-        new( "radio",       "RADIO",      "lucide:radio",          "#c26bff", "R", false, NavManager.OverlayRadio,         false, false ),
-        new( "effects",     "EFFECTS",    "lucide:sparkles",       "#f7e024", "C", false, NavManager.OverlayEffects,       false, true ),
-        new( "alerts",      "ALERTS",     "lucide:bell",           "#e0414a", "N", false, NavManager.OverlayNotifications, false, false ),
+        new( "radio",       "RADIO",      "lucide:radio",          "#c26bff", "R", false, NavManager.OverlayRadio,         false ),
+        new( "effects",     "EFFECTS",    "lucide:sparkles",       "#f7e024", "C", false, NavManager.OverlayEffects,       true ),
+        new( "alerts",      "ALERTS",     "lucide:bell",           "#e0414a", "N", false, NavManager.OverlayNotifications, false ),
     };
+
+    // Widget vs destination classification — CODE, not data (see the
+    // hotload law above; method bodies are always fresh after a hotload).
+    // Widgets (Tier-1 popup toggles) close-and-toggle with no sweep; every
+    // other app is a full-screen destination and gets the accent swipe.
+    private static bool IsWidgetApp( string id ) => id is "chat" or "radio" or "effects" or "alerts";
 
     private const int Cols = 3;
     private const int Rows = 4;
@@ -241,6 +339,14 @@
     // than the menu's PLAY ring; full-size skew degrees read as flailing here.
     private const float RingWaveScale = 0.6f;
 
+    // Focus pop — the focused icon lifts toward the player via CSS
+    // (translateY(-4px) scale(1.06)). Box.Rect does NOT move with CSS
+    // transforms, so the ring must mirror the pop into its target rect
+    // manually — the menu's SelectedPop lockstep. These constants MUST
+    // match the .pl-app.focused .pl-app-icon transform in the SCSS.
+    private const float FocusPopScale = 1.06f;
+    private const float FocusPopLift = 4f;
+
     private void UpdateRing()
     {
         if ( _gridRef == null ) return;
@@ -254,10 +360,17 @@
         float sc = ScaleFromScreen;
         if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
 
-        int left = (int)( ( ir.Left - gr.Left ) * sc ) - RingInset;
-        int top = (int)( ( ir.Top - gr.Top ) * sc ) - RingInset;
-        int w = (int)( ir.Width * sc ) + RingInset * 2;
-        int h = (int)( ir.Height * sc ) + RingInset * 2;
+        // The focused icon ALWAYS wears the pop (focused == the ring's
+        // target), so the pop offsets apply unconditionally: scale grows
+        // the box around its center, the lift shifts it up.
+        float iw = ir.Width * sc, ih = ir.Height * sc;
+        float growX = iw * ( FocusPopScale - 1f );
+        float growY = ih * ( FocusPopScale - 1f );
+
+        int left = (int)( ( ir.Left - gr.Left ) * sc - growX / 2f ) - RingInset;
+        int top = (int)( ( ir.Top - gr.Top ) * sc - growY / 2f - FocusPopLift ) - RingInset;
+        int w = (int)( iw + growX ) + RingInset * 2;
+        int h = (int)( ih + growY ) + RingInset * 2;
 
         bool changed = false;
         if ( left != _ringL || top != _ringT || w != _ringW || h != _ringH )
@@ -386,6 +499,17 @@
         }
     }
 
+    // Avatar — the command bar's exact house pattern (GameHUD): Steam
+    // avatar via the avatar: URL when connected, gendered portrait PNG
+    // fallback for dev playtests without a real SteamId. Method (not a
+    // bare property) — `SteamId` alone collides with the engine TYPE.
+    private long GetSteamId() => Connection.Local?.SteamId ?? 0;
+
+    private string GetAvatarImagePath() =>
+        Beastborne.Core.TamerManager.Instance?.CurrentTamer?.Gender == Beastborne.Data.TamerGender.Female
+            ? "ui/characters/female/female_tamer.png"
+            : "ui/characters/male/male_tamer.png";
+
     // ── Badges (carried over from the command bar's counts) ─────────────
     private int GetBadgeCount( string appId ) => appId switch
     {
@@ -429,7 +553,7 @@
         var app = Apps[i];
         _kb = i;
 
-        if ( app.Sweep )
+        if ( !IsWidgetApp( app.Id ) )
         {
             SoundManager.PlayForward();
             StartSwipe( i, app );
@@ -587,6 +711,13 @@
         base.Tick();
         Instance = this;   // re-asserted every frame — hotload can never strand a stale instance
 
+        // Session-restart sanity (the RoutedThisFrame lesson): statics survive
+        // across editor play sessions while Time.Now resets to ~0, so a stale
+        // FUTURE _closingUntil from the previous session would hold Shown true
+        // (root parked at left: 0) for as long as that session ran. The max
+        // legit window is 0.18s — anything further out is stale; clear it.
+        if ( _closingUntil > Time.Now + 1f ) _closingUntil = 0f;
+
         // Leaving the game (back to main menu) force-closes the phone —
         // otherwise the static IsVisible would hold UIModalState.AnyModalOpen
         // true over the menu forever.
@@ -676,7 +807,7 @@
     protected override int BuildHash()
     {
         return HashCode.Combine(
-            HashCode.Combine( IsVisible, Shown, (int)_fx, _kb, _fxAccent ),
+            HashCode.Combine( IsVisible, Shown, (int)_fx, _kb, _fxAccent, GetSteamId() ),
             HashCode.Combine(
                 GetBadgeCount( "quests" ),
                 GetBadgeCount( "chat" ),

@@ -66,8 +66,22 @@ public static class NavManager
 	private static float _lastRouteAt = -100f;
 
 	/// <summary>True if a route already fired this frame (Time.Now is constant
-	/// within a frame; the small window also absorbs phase boundaries).</summary>
-	public static bool RoutedThisFrame => Time.Now - _lastRouteAt < 0.05f;
+	/// within a frame; the small window also absorbs phase boundaries).
+	/// ⚠ The delta MUST be sign-checked: statics survive across editor play
+	/// sessions while Time.Now resets to ~0 on a new session, so a stale
+	/// _lastRouteAt from late in the previous session makes the delta NEGATIVE
+	/// — an unchecked "&lt; 0.05f" then wedges TRUE for as long as the previous
+	/// session ran, early-returning both keyboard handlers (live symptom:
+	/// every number hotkey dead, mouse clicks fine). Negative delta = time
+	/// went backward = not this frame.</summary>
+	public static bool RoutedThisFrame
+	{
+		get
+		{
+			var dt = Time.Now - _lastRouteAt;
+			return dt >= 0f && dt < 0.05f;
+		}
+	}
 
 	/// <summary>
 	/// Monotonic nav-change counter. Bumps on every committed tab change and
