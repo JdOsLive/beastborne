@@ -28,14 +28,15 @@
       button nubs on the LEFT (receding) edge. Footprint 576px wide incl.
       bezel — every doctrine width recomputed: screen content 512, tiles
       160, gaps 16 (rows sum 512 exactly). Shadow/lean/entrance unchanged.
-    - LABELS RE-CENTERED (screenshot: flush-left) — root cause: in a
-      COLUMN flex under the leaned ancestor, a text span's CROSS-AXIS
-      width declaration collapses to its content width, so text-align:
-      center had nothing to center within (.pl-lv's right-align works
-      because its 392px is a ROW-flex MAIN-axis size). Fix: a row-flex
-      wrapper (.pl-app-labelrow) makes the label's 160px a MAIN-axis
-      width — the proven pattern. Doctrine addendum: explicit widths are
-      only trustworthy on the MAIN axis.
+    - LABELS RE-CENTERED, v4.1 FINAL (v4's main-axis-width theory was
+      DISPROVEN live: the 160px/392px boxes held, yet the text still drew
+      left — text-align is a NO-OP under the leaned ancestor, because the
+      transform poisons derived width resolution and the Label's inner
+      text box collapses to content width; nothing to align within).
+      Fix: centering BY CONSTRUCTION — auto-width spans + razor-computed
+      margin-left (LabelPadPx/NamePadPx, calibrated glyph estimates).
+      Doctrine: inside a transformed subtree, only explicit px layout
+      exists; text-align does not.
     - AVATAR (screenshot: no circle) — the command bar's cb-avatar recipe
       copied VERBATIM (fallback emoji span + absolute 50%+negative-half-
       margin img — cb's comment says flex-centering shifts images), then
@@ -202,7 +203,7 @@
                         <div class="pl-sig-bar b4"></div>
                     </div>
                     <div class="pl-id">
-                        <span class="pl-lv">@TamerLine</span>
+                        <span class="pl-lv" style="margin-left: @(NamePadPx())px;">@TamerLine</span>
                         <!-- cb-avatar's exact working structure (GameHUD
                              identity chip): fallback emoji span BEHIND +
                              the img absolute-centered via 50% + negative
@@ -263,13 +264,19 @@
                                             <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
                                         }
                                     </div>
-                                    <!-- v4: label in a ROW-flex wrapper so its 160px is a
-                                         MAIN-axis width. The v3.1 bare span rendered flush-
-                                         left live: cross-axis width declarations on text
-                                         spans in a column flex collapse to content width,
-                                         so text-align had nothing to center within. -->
+                                    <!-- v4.1: centering BY CONSTRUCTION. Live capture proved
+                                         text-align is a no-op anywhere under the lean: the
+                                         transformed ancestor poisons derived width resolution
+                                         (the documented translate(-50%) flex-poison law), so
+                                         the Label's inner text box collapses to content width
+                                         and there is nothing to center within — even when the
+                                         span's own 160px main-axis box HOLDS (proven by the
+                                         avatar landing flush right of .pl-lv's held 392px).
+                                         Only explicit px survive in here: auto-width span
+                                         (content-collapse now works FOR us) + computed
+                                         margin-left. -->
                                     <div class="pl-app-labelrow">
-                                        <span class="pl-app-label">@app.Label</span>
+                                        <span class="pl-app-label" style="margin-left: @(LabelPadPx( app.Label ))px;">@app.Label</span>
                                     </div>
                                 </div>
                             }
@@ -546,12 +553,10 @@
     // re-seeds the slab off-right; a lost @ref kills the phase cleanly.
     private enum FxPhase { Idle, SweepIn, Covered, SweepOut }
 
-    // TEMP diagnostics — user reported "I don't see the color sweep" on the
-    // v2 live test (possibly a pre-restart binary, possibly a widget tap —
-    // widgets don't sweep BY DESIGN). One line per phase transition proves
-    // in the next session's log whether the sweep runs and with what
-    // geometry. Flip false once verified live (SWAP_DEBUG precedent).
-    private const bool SWEEP_DEBUG = true;
+    // Diagnostics — VERIFIED live 2026-07-01 22:11 (log: SWEEP-IN → ROUTE →
+    // SWEEP-OUT → DONE for all six tabs, correct accents, full-cover slab,
+    // widgets correctly NO-sweep). Flip true again if the sweep regresses.
+    private const bool SWEEP_DEBUG = false;
 
     private const float SweepInSeconds = 0.22f;
     private const float CoverHoldSeconds = 0.03f;
@@ -601,6 +606,25 @@
             return t == null ? "TAMER" : $"{t.Name}  ·  LV {t.Level}";
         }
     }
+
+    // ── px-centering by construction (v4.1) ─────────────────────────────
+    // Under the leaned subtree text-align is dead (transform-poisoned
+    // derived widths — see the labelrow markup comment), so alignment is
+    // computed: auto-width span + margin-left from an estimated glyph
+    // advance. Tunable constants, calibrated against live captures:
+    // Exo2 italic-800 uppercase ≈ 0.72em/char + letter-spacing.
+    private const float LabelCharPx = 10.2f;  // 13px font + 0.8 tracking
+    private const float NameCharPx = 11.0f;   // 14px font + 1.0 tracking
+
+    // Center within the 160px labelrow.
+    private static int LabelPadPx( string label ) =>
+        (int)Math.Max( 0f, (160f - label.Length * LabelCharPx) / 2f );
+
+    // Right-align against the avatar: push the name so its right edge
+    // lands at the .pl-id 392px mark. Deliberately UNDER-estimates (gap
+    // beats overflow — overflow would shove the avatar past the bezel).
+    private int NamePadPx() =>
+        (int)Math.Max( 0f, 392f - TamerLine.Length * NameCharPx );
 
     // Avatar — the command bar's exact house pattern (GameHUD): Steam
     // avatar via the avatar: URL when connected, gendered portrait PNG
