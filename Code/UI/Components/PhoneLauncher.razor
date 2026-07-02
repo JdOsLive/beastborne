@@ -16,6 +16,57 @@
     mounted for now (A/B trial — retirement comes after the user blesses
     the phone).
 
+    v4 (live screenshot feedback — "sell the DEVICE"):
+    - HIGHLIGHT BARS REMOVED (user dislikes) — the gold→violet energy
+      hairline is deleted and the header's gold accent rule is switched
+      off (AccentWidth 0 in markup + display:none in our scss — a 0-width
+      div can still render as an artifact; empty-div quirk). The title
+      breathes on its own.
+    - REAL BEZEL — .pl-shell wraps the screen: near-black frame (r-38
+      outer / screen keeps r-30; 10px sides, 20px top strip, 12px chin),
+      speaker slit + camera lens centered in the top strip, two side-
+      button nubs on the LEFT (receding) edge. Footprint 576px wide incl.
+      bezel — every doctrine width recomputed: screen content 512, tiles
+      160, gaps 16 (rows sum 512 exactly). Shadow/lean/entrance unchanged.
+    - LABELS RE-CENTERED (screenshot: flush-left) — root cause: in a
+      COLUMN flex under the leaned ancestor, a text span's CROSS-AXIS
+      width declaration collapses to its content width, so text-align:
+      center had nothing to center within (.pl-lv's right-align works
+      because its 392px is a ROW-flex MAIN-axis size). Fix: a row-flex
+      wrapper (.pl-app-labelrow) makes the label's 160px a MAIN-axis
+      width — the proven pattern. Doctrine addendum: explicit widths are
+      only trustworthy on the MAIN axis.
+    - AVATAR (screenshot: no circle) — the command bar's cb-avatar recipe
+      copied VERBATIM (fallback emoji span + absolute 50%+negative-half-
+      margin img — cb's comment says flex-centering shifts images), then
+      cosmetics adapted to a 22px circle with a 2px violet rim. One-shot
+      [pawpad] log of the resolved src fires on first visible frame so
+      the next session can diagnose from the log if it's STILL missing.
+    - HINTS REBUILT (screenshot: WASD wrapped to "WA/SD"; ENTER cap an
+      empty gold blob) — the caps were sized under their text (32px for
+      4 chars) with auto-width spans centered by justify-content (zero-
+      width anchor under the lean). Every cap AND its inner span now
+      carry explicit widths + white-space: nowrap; ENTER's dark GoldInk
+      on gold verified in the scss.
+    - FPS FIX (live: 7fps open / 43-87 closed) — the ring's per-frame
+      ink-lean wave (`Style.Transform` write EVERY frame on an element
+      INSIDE the perspective-leaned device) re-dirtied the whole leaned
+      subtree each frame and forced a full 3D re-composite. THE WAVE IS
+      RETIRED on the PawPad (the menu keeps its waving cursor at ROOT
+      level, outside its tilted panels — that's why it's cheap there).
+      Ring rect math is now EVENT-DRIVEN (_ringDirty on open/focus move,
+      not per-frame), and ClockText is cached (refreshed ≤1/s) so
+      BuildHash isn't allocating a DateTime string per frame. Target:
+      zero measurable per-frame work while open and idle.
+    - ANCHOR HARDENED (live: only a ~40px sliver at the right edge) —
+      the root placed the AUTO-width .pl-wrap with justify-content:
+      flex-end — the doctrine's zero-width-anchor pattern at the one
+      scope it hadn't been applied to. .pl-wrap and .pl-device now carry
+      explicit width 576px so flex-end sums a real number. (The sliver
+      was possibly also mid-edit hotload — the shell div briefly existed
+      with no scss — but the explicit widths make the anchor lawful
+      either way.)
+
     v3.1 (live-test feedback + "make it actually look good" pass):
     - SWEEP BUG ROOT-CAUSED — log-proven: every MAIN APP took the widget
       branch ("[sweepdbg] widget launch 'beasts'"). The record flag was
@@ -90,8 +141,8 @@
     - Root PARKS OFFSCREEN when closed (left -10000px, never display-flip).
     - Backdrop uses top/left + width/height 100% — all-edge absolute
       stretching resolves to ZERO SIZE on an empty element.
-    - 3D lean holder (.pl-device) carries NO bg/border — the surface lives
-      on a direct child (.pl-surface).
+    - 3D lean holder (.pl-device) carries NO bg/border — the painted
+      device lives on a direct child (.pl-shell, screen inside it).
     - Swipe slab = solid div; position/size/translate/skew are IMPERATIVE
       per-frame Style writes (class-toggle transforms snap; per-frame
       re-assert survives any mid-cover rebuild — the held-tween lesson).
@@ -110,7 +161,28 @@
 
     <div class="pl-wrap">
         <div class="pl-device">
-            <div class="pl-surface">
+            <!-- Side-button nubs — LEFT edge (the far/receding side under
+                 the rotateY(-13deg) lean). Absolute children of the
+                 UN-painted lean holder (the behind-parent-bg quirk only
+                 bites when the parent paints its own fill). DOM-before
+                 the shell so the shell's rounded edge covers their 1px
+                 tuck-under. Explicit boxes throughout. -->
+            <div class="pl-nub nub-a"></div>
+            <div class="pl-nub nub-b"></div>
+
+            <!-- THE SHELL — the physical device: near-black bezel frame,
+                 r-38 outer. Speaker slit + camera lens live in the top
+                 strip; the old surface becomes the SCREEN inside (r-30).
+                 The shell is a CHILD of the transform holder, so its
+                 bg/shadow project correctly with the 3D lean (only the
+                 holder's OWN fills render flat — quirk). -->
+            <div class="pl-shell">
+                <div class="pl-bezel-top">
+                    <div class="pl-speaker"></div>
+                    <div class="pl-camera"><div class="pl-camera-lens"></div></div>
+                </div>
+
+                <div class="pl-surface">
                 <!-- Status row: clock · signal bars · tamer line + [avatar].
                      Light — the phone routes, it doesn't inform. Bars are
                      four explicit fixed-size divs (ascending, last one dim
@@ -131,10 +203,16 @@
                     </div>
                     <div class="pl-id">
                         <span class="pl-lv">@TamerLine</span>
+                        <!-- cb-avatar's exact working structure (GameHUD
+                             identity chip): fallback emoji span BEHIND +
+                             the img absolute-centered via 50% + negative
+                             half-margins. Only cosmetics differ (22px
+                             circle, 2px violet rim). -->
                         <div class="pl-ava">
+                            <span class="pl-ava-fallback">@GetAvatarEmoji()</span>
                             @if ( GetSteamId() > 0 )
                             {
-                                <img class="pl-ava-img" src="@($"avatar:{GetSteamId()}")" />
+                                <img class="pl-ava-steam" src="@($"avatar:{GetSteamId()}")" />
                             }
                             else
                             {
@@ -144,11 +222,13 @@
                     </div>
                 </div>
 
-                <!-- Title block: violet TAMERLINK OS eyebrow, 34px italic
-                     PawPad, gold accent rule (KickerColor keeps the eyebrow
-                     violet while the rule goes gold). No more stamp. -->
+                <!-- Title block: violet TAMERLINK OS eyebrow + 34px italic
+                     PawPad. v4: the gold accent rule is OFF (user dislikes
+                     the bars) — width 0 here, display:none in our scss
+                     (belt + braces: a 0-width div can still render as an
+                     artifact panel; empty-div quirk). -->
                 <div class="pl-head">
-                    <BbSectionHeader Kicker="TAMERLINK OS" Title="PawPad" Size=@(34) KickerColor="#9b6cff" AccentColor="#ffce3a" AccentWidthIdle=@(44) AccentWidthFlare=@(96) />
+                    <BbSectionHeader Kicker="TAMERLINK OS" Title="PawPad" Size=@(34) KickerColor="#9b6cff" AccentWidthIdle=@(0) AccentWidthFlare=@(0) />
                 </div>
 
                 <div class="pl-grid" @ref="_gridRef">
@@ -183,10 +263,14 @@
                                             <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
                                         }
                                     </div>
-                                    <!-- Full-tile-width span + text-align: center — TEXT alignment
-                                         inside an explicit-width box is drift-proof; flex placement
-                                         of auto-width boxes is not. -->
-                                    <span class="pl-app-label">@app.Label</span>
+                                    <!-- v4: label in a ROW-flex wrapper so its 160px is a
+                                         MAIN-axis width. The v3.1 bare span rendered flush-
+                                         left live: cross-axis width declarations on text
+                                         spans in a column flex collapse to content width,
+                                         so text-align had nothing to center within. -->
+                                    <div class="pl-app-labelrow">
+                                        <span class="pl-app-label">@app.Label</span>
+                                    </div>
                                 </div>
                             }
                         </div>
@@ -194,11 +278,14 @@
 
                     <!-- THE LIVING RING — one violet cursor for the whole grid
                          (menu signature). Position/size via markup style so the
-                         CSS left/top/width/height transitions do the glide; the
-                         ink-lean wave is an IMPERATIVE per-frame Style.Transform
-                         (a CSS transform transition would lowpass it to mush).
-                         Child of .pl-grid: shares the device's 3D lean with the
-                         icons, so flat Box.Rect deltas land it exactly. -->
+                         CSS left/top/width/height transitions do the glide.
+                         v4: NO per-frame wave — an imperative Style.Transform
+                         write inside the leaned subtree re-composites the whole
+                         3D device every frame (the 7fps bug). Rect updates are
+                         event-driven (_ringDirty). Child of .pl-grid: shares the
+                         device's 3D lean, so flat Box.Rect deltas land it. -->
+
+
                     <div @ref="_ringRef" class="pl-cursor @(_ringWarmup >= 2 ? "" : "snap")"
                          style="left: @(_ringL)px; top: @(_ringT)px; width: @(_ringW)px; height: @(_ringH)px;"></div>
                 </div>
@@ -214,15 +301,15 @@
                     <div class="pl-key w-q"><span>Q</span></div>
                     <span class="pl-hint-label w-close">CLOSE</span>
                 </div>
+                </div>
             </div>
 
-            <!-- Receding-side shade + energy hairline — SIBLINGS of the
-                 surface (absolute children of a panel paint BEHIND that
-                 panel's own background fill — engine quirk — so these must
-                 sit beside .pl-surface, not inside it). DOM order paints
-                 them above the surface; both are pointer-events: none. -->
+            <!-- Receding-side shade — a SIBLING of the shell (absolute
+                 children paint BEHIND a panel's own background fill —
+                 engine quirk — so it must sit beside the painted shell,
+                 not inside it). DOM order paints it above; pointer-events
+                 none. The v3.1 energy hairline is DELETED (v4 user call). -->
             <div class="pl-shade"></div>
-            <div class="pl-hairline"></div>
         </div>
     </div>
 
@@ -318,26 +405,30 @@
     // ── THE LIVING RING (main-menu signature, scaled to the PawPad) ─────
     // One absolutely-positioned bordered div inside .pl-grid that GLIDES
     // between focused icons via CSS left/top/width/height transitions
-    // (0.27s signature ease) and carries the per-frame ink-lean wave.
-    // Position comes from the focused icon's Box.Rect converted to style
-    // px (× ScaleFromScreen) RELATIVE to the grid's rect — both rects are
-    // flat layout space, and the ring lives inside the same 3D-leaned
-    // subtree as the icons, so no perspective compensation is needed
-    // (contrast MainMenu, whose root-level cursor must project tilted
-    // panels manually).
+    // (0.27s signature ease). Position comes from the focused icon's
+    // Box.Rect converted to style px (× ScaleFromScreen) RELATIVE to the
+    // grid's rect — both rects are flat layout space, and the ring lives
+    // inside the same 3D-leaned subtree as the icons, so no perspective
+    // compensation is needed (contrast MainMenu, whose root-level cursor
+    // must project tilted panels manually).
+    //
+    // v4 FPS LAW: NOTHING in here runs per-frame anymore. The v3 ink-lean
+    // wave (per-frame Style.Transform on the ring) re-dirtied the whole
+    // perspective-leaned device subtree every frame → full 3D re-composite
+    // → 152ms frames live. The wave is RETIRED on the PawPad (the menu's
+    // waving cursor is cheap because it lives at ROOT level, OUTSIDE its
+    // tilted panels). Rect math runs only while _ringDirty (set on open /
+    // focus moves; holds through invalid-rect frames until it lands).
     private Panel _gridRef;
     private Panel _ringRef;
     private int _ringL, _ringT, _ringW = 112, _ringH = 112;
     private int _ringWarmup;   // 0/1 = snap to position (no glide), 2 = animate — menu warmup pattern
+    private bool _ringDirty;   // event-driven update latch — the v4 fps fix
 
     // Ring geometry: 12px box inset = ~8px VISIBLE gap + the 4px border
     // (the menu's inset-10 recipe reads as a 6px gap; the PawPad wants the
     // slightly airier "gap look"). Radius lives in SCSS: icon 22 + gap → 30.
     private const int RingInset = 12;
-
-    // Ink-lean wave at 60% of the menu's amplitude — the ring is ~4× smaller
-    // than the menu's PLAY ring; full-size skew degrees read as flailing here.
-    private const float RingWaveScale = 0.6f;
 
     // Focus pop — the focused icon lifts toward the player via CSS
     // (translateY(-4px) scale(1.06)). Box.Rect does NOT move with CSS
@@ -349,13 +440,16 @@
 
     private void UpdateRing()
     {
+        // Runs ONLY while _ringDirty (open / focus move pending) — never
+        // per-frame. Early returns leave the latch set so the next frame
+        // retries until layout yields real rects.
         if ( _gridRef == null ) return;
         var icon = FocusedIconEl();
         if ( icon == null ) return;
 
         var ir = icon.Box.Rect;
         var gr = _gridRef.Box.Rect;
-        if ( ir.Width < 1f || gr.Width < 1f ) return; // not laid out yet — hold last position
+        if ( ir.Width < 1f || gr.Width < 1f ) return; // not laid out yet — stay dirty, retry
 
         float sc = ScaleFromScreen;
         if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
@@ -377,8 +471,11 @@
         { _ringL = left; _ringT = top; _ringW = w; _ringH = h; changed = true; }
         if ( _ringWarmup < 2 ) { _ringWarmup++; changed = true; } // snap first 1-2 frames, then glide
 
+        // Sleep the latch once the warmup snaps are done — the CSS
+        // transitions carry the glide from here with zero per-frame work.
+        _ringDirty = _ringWarmup < 2;
+
         if ( changed ) StateHasChanged(); // markup position — rare (focus changes), not per-frame
-        ApplyRingWave();                   // transform — imperative EVERY frame, no re-render
     }
 
     // The focused tile's ICON square, walked from the grid ref each call
@@ -410,22 +507,9 @@
         return null;
     }
 
-    // The menu's ApplyCursorTransform wave, scaled: two slow non-harmonic
-    // sines per axis (organic, non-repeating) + a slow rotateZ drift.
-    // Driven by sin(clock) — seamless, center-symmetric. No 3D/stretch
-    // terms here: the device's lean is inherited, jumps are one grid cell.
-    private void ApplyRingWave()
-    {
-        if ( _ringRef == null ) return;
-        float wt = Time.Now;
-        float skewX = RingWaveScale * ( 4.5f * MathF.Sin( wt * 2.2f ) + 1.4f * MathF.Sin( wt * 3.5f + 1.1f ) );
-        float skewY = RingWaveScale * ( 1.6f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.7f * MathF.Sin( wt * 2.9f ) );
-        float rotZ = RingWaveScale * ( 0.8f * MathF.Sin( wt * 1.0f ) + 0.35f * MathF.Sin( wt * 2.4f + 0.5f ) );
-        var t = new PanelTransform();
-        t.AddRotation( 0f, 0f, rotZ );       // the lean
-        t.AddSkew( skewX, skewY, 0f );       // the liquid wobble
-        _ringRef.Style.Transform = t;
-    }
+    // (v4: ApplyRingWave is DELETED — see the FPS LAW comment above. If the
+    // wave ever comes back, it must live on a ROOT-level element outside
+    // the leaned device, like the menu's cursor — never in this subtree.)
 
     // ── Focus brighten — the focused app's fill lifts toward white.
     // Inline C# swap (instant SNAP), not a CSS overlay: absolute full-cover
@@ -489,7 +573,26 @@
     private bool Shown => IsVisible || _fx != FxPhase.Idle || Time.Now < _closingUntil;
 
     // ── Flavor chrome ────────────────────────────────────────────────────
-    private string ClockText => DateTime.Now.ToString( "HH:mm" );
+    // Clock string is CACHED and refreshed at most once a second (v4 fps
+    // hygiene) — BuildHash reads ClockText EVERY frame, and a fresh
+    // DateTime.ToString per frame is pure allocation churn for a value
+    // that changes once a minute. Delta is sign-checked: Time.Now resets
+    // to ~0 each editor session while instance fields can survive hotload.
+    private string _clockCache = "";
+    private float _clockCheckedAt = -999f;
+    private string ClockText
+    {
+        get
+        {
+            float dt = Time.Now - _clockCheckedAt;
+            if ( _clockCache == "" || dt < 0f || dt > 1f )
+            {
+                _clockCheckedAt = Time.Now;
+                _clockCache = DateTime.Now.ToString( "HH:mm" );
+            }
+            return _clockCache;
+        }
+    }
     private string TamerLine
     {
         get
@@ -509,6 +612,17 @@
         Beastborne.Core.TamerManager.Instance?.CurrentTamer?.Gender == Beastborne.Data.TamerGender.Female
             ? "ui/characters/female/female_tamer.png"
             : "ui/characters/male/male_tamer.png";
+
+    // cb-avatar's fallback layer (verbatim from GameHUD) — sits behind the
+    // img and props the circle open even if the image never resolves.
+    private string GetAvatarEmoji() =>
+        Beastborne.Core.TamerManager.Instance?.CurrentTamer?.Gender == Beastborne.Data.TamerGender.Female ? "👩" : "👨";
+
+    // One-shot avatar diagnostic (v4) — the status-row avatar failed to
+    // render across two live tests; this logs the EXACT src the markup
+    // resolves on the first visible frame so the next session can diagnose
+    // from the log if it's still missing.
+    private bool _avaLogged;
 
     // ── Badges (carried over from the command bar's counts) ─────────────
     private int GetBadgeCount( string appId ) => appId switch
@@ -531,7 +645,8 @@
         // in NavManager order) so Enter re-launches where you are.
         var idx = NavManager.IndexOf( NavManager.CurrentTab );
         _kb = idx >= 0 ? idx : 0;
-        _ringWarmup = 0; // ring SNAPS to its first position on open, glides thereafter
+        _ringWarmup = 0;   // ring SNAPS to its first position on open, glides thereafter
+        _ringDirty = true; // wake the event-driven ring update
     }
 
     private void OnBackdropClicked()
@@ -543,6 +658,7 @@
     {
         if ( !IsVisible || i == _kb ) return;
         _kb = i;
+        _ringDirty = true;
         SoundManager.PlayHover();
     }
 
@@ -552,6 +668,7 @@
         if ( i < 0 || i >= Apps.Length ) return;
         var app = Apps[i];
         _kb = i;
+        _ringDirty = true;
 
         if ( !IsWidgetApp( app.Id ) )
         {
@@ -740,11 +857,20 @@
 
         if ( !IsVisible ) return;
 
-        // The living ring — positioned every visible frame (cheap: rect math
-        // + one imperative transform; StateHasChanged only on focus moves).
-        // Runs even when a stacked modal owns input, so the ring never
-        // strands while the phone is visibly open underneath.
-        UpdateRing();
+        // One-shot avatar-source diagnostic (v4 — see field comment).
+        if ( !_avaLogged )
+        {
+            _avaLogged = true;
+            var sid = GetSteamId();
+            Log.Info( $"[pawpad] avatar src = '{( sid > 0 ? $"avatar:{sid}" : GetAvatarImagePath() )}' (steamId={sid}, ref-in-dom={_ringRef != null})" );
+        }
+
+        // The living ring — EVENT-DRIVEN (v4 fps fix): rect math + markup
+        // writes run ONLY while an open/focus change is pending. Steady-
+        // state open = zero per-frame ring work; the CSS transitions own
+        // the glide. Still checked even when a stacked modal owns input,
+        // so the ring never strands while the phone is visible underneath.
+        if ( _ringDirty ) UpdateRing();
         if ( !UIModalState.IsTopModal( "PhoneLauncher" ) ) return;
         if ( ChatPanel.IsChatFocused ) return;
 
@@ -793,6 +919,7 @@
         if ( moved )
         {
             _kb = row * Cols + col;
+            _ringDirty = true;
             SoundManager.PlayHover();
             return;
         }
