@@ -149,13 +149,8 @@
 					<span class="pill-label">@(isMultiSelectMode ? L("ui.roster.cancel") : L("ui.roster.multi_release"))</span>
 				</button>
 			}
-			@if (isMultiSelectMode && selectedForRelease.Count > 0)
-			{
-				<button class="sort-btn release-confirm" onclick=@OnReleaseSelectedClicked
-					onmouseover=@(() => SoundManager.PlayHover())>
-					<span class="pill-label">@string.Format(L("ui.roster.release_count"), selectedForRelease.Count)</span>
-				</button>
-			}
+			@* Release-confirm moved OUT of the header — the multi-release
+			   confirm bar now docks under the stage (.ms-dockbar). *@
 		</div>
 		<div class="rh-storage">
 			<div class="rh-storage-in">
@@ -165,256 +160,380 @@
 		</div>
 	</div>
 
-	<!-- Collection View — fusion is now an in-place mode toggle, not a separate view -->
-	<div class="view-container">
-		<div class="collection-layout with-detail">
+	@* ═══ CENTER STAGE (2026-07 rebuild) ══════════════════════════════════
+	   Three zones: COLLECTION (left rail, 4-col mini-card grid) / STAGE
+	   (center, the selected beast at 2.5x on an open floor) / FACTS
+	   (right, scrolling dossier). cs-inspect wraps STAGE + FACTS and
+	   carries detailScrollRef so the ONE living ring can walk both zones
+	   (kb .kb-focused path + mouse-hover path). Fusion turns the stage
+	   into the altar; multi-release docks its confirm bar under the
+	   stage actions. *@
+	<div class="cs-zones">
 
-			@if (isFusionMode || SelectedMonster != null)
+		@* ────── COLLECTION (left) ────── *@
+		<div class="cs-collection">
+			<div @ref="rosterGridRef" class="roster-grid" onmouseup=@OnDragSelectEnd>
+			@{
+				// In fusion mode, use the breeding filter state (separate from the
+				// collection filter state) so swapping in/out of fusion mode doesn't
+				// disturb the player's primary collection sort/filter setup.
+				var collectionMonsters = isFusionMode ? GetAvailableBreedingMonsters() : GetFilteredMonsters();
+				var keyboardIdx = Math.Clamp(selectedMonsterIndex, 0, Math.Max(0, collectionMonsters.Count - 1));
+			}
+			@for (int i = 0; i < collectionMonsters.Count; i++)
 			{
-				<!-- Unified sidebar element. Both detail view AND fusion staging
-				     live under a single outer .detail-sidebar div so Razor reuses
-				     the DOM node when toggling between modes — prevents the grid
-				     from reflowing/squishing during the swap. -->
-				<div class="detail-sidebar @(isFusionMode ? "fusion-sidebar entered" : (rosterRevealStage >= 1 ? "entered" : ""))">
-				@if (isFusionMode)
-				{
-					@{
-						// Compatibility + preview computed once for the whole sidebar so the
-						// header pill, hero card, gene grid, outcomes row and CTA all stay
-						// in sync. `bothPicked` gates the preview-only sections.
-						var bothPicked = Parent1 != null && Parent2 != null;
-						BreedCompatibility fusionCompat = bothPicked ? GeneticsCalculator.CheckCompatibility(Parent1, Parent2) : null;
-						BreedingPreview fusionPreview = (bothPicked && fusionCompat != null && fusionCompat.CanBreed)
-							? GeneticsCalculator.PreviewOffspring(Parent1, Parent2, lockedGenes.Count > 0 ? lockedGenes : null)
-							: null;
-						int maxLocks = fusionPreview?.GeneLockSlots ?? (int)(TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneLock ) ?? 0);
-						bool hasLockSkill = maxLocks > 0;
-						int p1Total = Parent1?.Genetics?.TotalValue ?? 0;
-						int p2Total = Parent2?.Genetics?.TotalValue ?? 0;
-						int previewTotal = fusionPreview != null
-							? fusionPreview.AvgHP + fusionPreview.AvgATK + fusionPreview.AvgDEF + fusionPreview.AvgSpA + fusionPreview.AvgSpD + fusionPreview.AvgSPD
-							: 0;
-						int fusionCost = bothPicked ? GeneticsCalculator.CalculateBreedingCost(Parent1, Parent2) : 0;
-						bool canAffordFusion = TamerManager.Instance?.CurrentTamer?.Gold >= fusionCost;
-						bool canFuse = bothPicked && fusionCompat != null && fusionCompat.CanBreed && canAffordFusion;
+				var monster = collectionMonsters[i];
+				var idx = i;
+				var isKeyboardSelected = isKeyboardNavigationActive && i == keyboardIdx;
+				var isSelectedForRelease = selectedForRelease.Contains(monster.Id);
+				var isFusionParent1 = isFusionMode && Parent1?.Id == monster.Id;
+				var isFusionParent2 = isFusionMode && Parent2?.Id == monster.Id;
+				var isFusionParent = isFusionParent1 || isFusionParent2;
+				var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && monster.SpeciesId != Parent1.SpeciesId;
+				// Beast-art editor is only active in "card" mode, when the
+				// editor toolbar is enabled, and when no other interaction
+				// mode (fusion / multi-select) is competing for clicks.
+				var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
+				<div @ref="cardSizeRef" class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
+					 onclick=@(() => OnMonsterCardClicked(monster, idx))
+					 onmousedown=@(() => { OnCardMouseDown(monster, idx); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+					 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+					 onmouseout=@(() => { if (_mybCardEditing) OnMyBeastsArtLeave(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
+					 onmouseup=@OnDragSelectEnd>
+					@if (justSelectedMonsterId.HasValue && justSelectedMonsterId.Value == monster.Id)
+					{
+						@* One-shot select pulse. Keyed on selectPulseVersion so
+						   each click remounts the overlay and css-keyframes fire
+						   fresh (s&box quirk: keyframes only run on first mount).
+						   Removes itself visually via SCSS opacity: 0 end-state. *@
+						<div class="select-pulse pulse-@selectPulseVersion"></div>
 					}
-
-					<!-- ====== FUSION HEADER ====== -->
-					<div class="fusion-header">
-						<iconify icon="lucide:combine" Size=@(20) Color="#c4b5fd" />
-						<div class="fusion-header-text">
-							<div class="fusion-header-title">@L("ui.roster.contract_fusion")</div>
-							<div class="fusion-header-sub">
-								@(bothPicked && fusionCompat?.CanBreed == true
-									? L("ui.roster.both_consumed")
-									: "Pick two beasts of the same species")
-							</div>
+					@if (isMultiSelectMode)
+					{
+						<div class="select-checkbox @(isSelectedForRelease ? "checked" : "")">
+							@(isSelectedForRelease ? "✓" : "")
 						</div>
-						@if (fusionPreview != null)
+					}
+					@if (isFusionParent1)
+					{
+						<div class="parent-indicator p1">B1</div>
+					}
+					@if (isFusionParent2)
+					{
+						<div class="parent-indicator p2">B2</div>
+					}
+					@{
+						// Card is hovered if it matches the hoveredMonsterId
+						var isThisCardHovered = hoveredMonsterId.HasValue && hoveredMonsterId.Value == monster.Id;
+						// Card is selected if it's the SelectedMonster, keyboard selected, or hovered (for visual styling - purple glow)
+						var isThisCardSelected = (SelectedMonster?.Id == monster.Id || isKeyboardSelected || isThisCardHovered);
+						// Should animate if: hovered, OR (selected AND no other card is hovered)
+						var shouldAnimate = isThisCardHovered || (isThisCardSelected && !hoveredMonsterId.HasValue);
+					}
+					<MonsterCard Monster=@monster
+								 IsSelected=@isThisCardSelected
+								 ShouldAnimate=@shouldAnimate
+								 IsMini=@true
+								 ShowGenes=@isFusionMode
+								 AnimateOnHover=@true
+								 AnimationFrame=@SpriteAnimator.GlobalFrame
+								 OverrideArtSpeciesId=@(_mybCardEditing ? _myBeastsTestSpeciesId : null)
+								 ArtVersion=@_myBeastsArtVersion
+								 ClickAction=@(() => {})
+								 HoverAction=@(() => OnMouseHoverCard(monster.Id))
+								 LeaveAction=@OnMouseLeaveCard />
+					@* Favorite quick-toggle — one click from the rail, no
+					   select-then-stage round trip. Same spot as the (hidden)
+					   mini-fav star; suppressed in multi-select via SCSS. *@
+					@if (!isMultiSelectMode)
+					{
+						<div class="card-fav-qt @(monster.IsFavorite ? "fav" : "")"
+							 onclick=@(() => ToggleFavoriteFor(monster)) onclick:stopPropagation
+							 onmouseover=@(() => SoundManager.PlayHover())>
+							<iconify icon="lucide:star" Size=@(13) Color="@(monster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
+						</div>
+					}
+					@* Hover-preview ring — the cheap flat-panel recipe (absolute
+					   bordered div, opacity swap on :hover). The SELECTED beast
+					   gets the one waving imperative ring instead (root level). *@
+					<div class="card-ring"></div>
+				</div>
+			}
+
+			@if (currentFilter == "all")
+			{
+				var totalMonsters = GetMonsterCount();
+				var emptySlots = GetEmptySlotCount(totalMonsters);
+				@for (int i = 0; i < emptySlots; i++)
+				{
+					<div class="empty-slot mini" onmouseover=@OnMouseLeaveCard>
+						<div class="empty-slot-border"></div>
+					</div>
+				}
+			}
+
+			@if (GetFilteredMonsters().Count == 0 && currentFilter != "all")
+			{
+				<div class="empty-roster">
+					<div class="empty-icon">?</div>
+					<div class="empty-text">@L("ui.roster.no_monsters")</div>
+					<div class="empty-hint">@L("ui.roster.no_filter_match")</div>
+				</div>
+			}
+			</div>
+		</div>
+
+		@* ────── STAGE + FACTS (shared ancestor = the ring's detail walk) ────── *@
+		<div @ref="detailScrollRef" class="cs-inspect @(rosterRevealStage >= 1 ? "entered" : "")">
+		@if (isFusionMode)
+		{
+			@{
+				// Compatibility + preview computed once for the whole altar so the
+				// slots, core, hero bar, gene grid and CTA all stay in sync.
+				// `bothPicked` gates the preview-only sections.
+				var bothPicked = Parent1 != null && Parent2 != null;
+				BreedCompatibility fusionCompat = bothPicked ? GeneticsCalculator.CheckCompatibility(Parent1, Parent2) : null;
+				BreedingPreview fusionPreview = (bothPicked && fusionCompat != null && fusionCompat.CanBreed)
+					? GeneticsCalculator.PreviewOffspring(Parent1, Parent2, lockedGenes.Count > 0 ? lockedGenes : null)
+					: null;
+				int maxLocks = fusionPreview?.GeneLockSlots ?? (int)(TamerManager.Instance?.GetSkillBonus( SkillEffectType.GeneLock ) ?? 0);
+				bool hasLockSkill = maxLocks > 0;
+				int p1Total = Parent1?.Genetics?.TotalValue ?? 0;
+				int p2Total = Parent2?.Genetics?.TotalValue ?? 0;
+				int previewTotal = fusionPreview != null
+					? fusionPreview.AvgHP + fusionPreview.AvgATK + fusionPreview.AvgDEF + fusionPreview.AvgSpA + fusionPreview.AvgSpD + fusionPreview.AvgSPD
+					: 0;
+				int fusionCost = bothPicked ? GeneticsCalculator.CalculateBreedingCost(Parent1, Parent2) : 0;
+				bool canAffordFusion = TamerManager.Instance?.CurrentTamer?.Gold >= fusionCost;
+				bool canFuse = bothPicked && fusionCompat != null && fusionCompat.CanBreed && canAffordFusion;
+				// The altar core previews the offspring's species art (family
+				// fusion keeps Parent1's line, so its icon is the honest preview).
+				var altarSpecies = Parent1 != null ? MonsterManager.Instance?.GetSpecies(Parent1.SpeciesId) : null;
+				var altarIcon = altarSpecies?.IconPath ?? "";
+				var altarActive = bothPicked && fusionCompat?.CanBreed == true;
+			}
+
+			@* ══ THE ALTAR — parents flank the predicted offspring ══ *@
+			<div class="cs-stage altar">
+				<div class="altar-kicker">
+					<iconify icon="lucide:combine" Size=@(16) Color="#c4b5fd" />
+					<span class="altar-kicker-text">@(altarActive ? L("ui.roster.both_consumed") : "Pick two beasts of the same species")</span>
+				</div>
+
+				<div class="altar-row">
+					@* Slot 1 — hover sound is routed through the inner MonsterCard's
+					   HoverAction so the card's isInternallyHovered guard prevents
+					   spam when the mouse moves between child elements. *@
+					<div class="altar-slot @(Parent1 != null ? "filled" : "") @(selectedForSlot == 1 ? "selecting" : "")"
+						 onclick=@(() => SetSelectingSlot(1))>
+						<div class="fusion-slot-tag">B1</div>
+						@if (Parent1 != null)
 						{
-							<!-- Outcome chances live in the header right side, freeing
-							     vertical space in the body for the gene grid. -->
-							<div class="fusion-header-chances">
-								<div class="header-chance twin">
-									<iconify icon="lucide:users" Size=@(11) Color="#fbbf24" />
-									<span class="hc-label">Twin</span>
-									<span class="hc-value">@((fusionPreview.TwinChance * 100).ToString("F0"))%</span>
-								</div>
-								<div class="header-chance mutation">
-									<iconify icon="lucide:sparkles" Size=@(11) Color="#c4b5fd" />
-									<span class="hc-label">Mut</span>
-									<span class="hc-value">@((fusionPreview.MutationChance * 100).ToString("F0"))%</span>
-								</div>
-								@if (fusionPreview.NatureInheritChance > 0)
+							<div class="fusion-card-wrap">
+								<MonsterCard Monster=@Parent1 IsMini=@true ShowGenes=@true AnimationFrame=@SpriteAnimator.GlobalFrame HoverAction=@(() => SoundManager.PlayHover()) />
+								<button class="parent-remove-btn" onclick=@(() => ClearParent(1)) onclick:stopPropagation onmouseover=@(() => SoundManager.PlayHover())>
+									<iconify icon="lucide:x" Size=@(12) Color="white" />
+								</button>
+							</div>
+							<div class="parent-extras">
+								@if (Parent1.Genetics != null)
 								{
-									<div class="header-chance nature">
-										<iconify icon="lucide:leaf" Size=@(11) Color="#86efac" />
-										<span class="hc-label">Nat</span>
-										<span class="hc-value">@((fusionPreview.NatureInheritChance * 100).ToString("F0"))%</span>
+									<div class="extra-chip nature">
+										<iconify icon="lucide:leaf" Size=@(10) Color="#86efac" />
+										<span>@Parent1.Genetics.Nature</span>
+										<span class="chip-tooltip">@Parent1.Genetics.GetNatureDescription()</span>
 									</div>
+								}
+								@if (Parent1.Traits != null)
+								{
+									@foreach (var trait in Parent1.Traits)
+									{
+										<div class="extra-chip trait">
+											<iconify icon="@GetTraitIcon(trait)" Size=@(10) Color="#fbbf24" />
+											<span>@GetTraitName(trait)</span>
+											<span class="chip-tooltip">@GetTraitDescription(trait)</span>
+										</div>
+									}
 								}
 							</div>
 						}
+						else
+						{
+							<div class="altar-empty">
+								<iconify icon="lucide:plus" Size=@(24) Color="rgba(255,255,255,0.4)" />
+								<span>Pick a beast</span>
+							</div>
+						}
 					</div>
 
-					<!-- ====== PARENTS COLUMN — sticky band, OUTSIDE the scrollable
-					     body so chip tooltips can pop without being clipped by the
-					     body's overflow:scroll. Also keeps both parents pinned and
-					     visible while the player scrolls the gene grid. -->
-					<div class="fusion-parents-section">
-						<!-- Slot 1 — NOTE: no row-level onmouseover. Hover sound is
-					     routed through the inner MonsterCard's HoverAction so the
-					     card's isInternallyHovered guard prevents the spam that
-					     happens when the mouse moves between child elements. -->
-						<div class="fusion-parent-row @(Parent1 != null ? "filled" : "") @(selectedForSlot == 1 ? "selecting" : "")"
-							 onclick=@(() => SetSelectingSlot(1))>
-							<div class="fusion-slot-tag">B1</div>
+					@* The core — chevrons converge on the predicted offspring. *@
+					<div class="altar-core @(altarActive ? "active" : "")">
+						<iconify class="altar-chev" icon="lucide:chevrons-right" Size=@(22) Color="@(altarActive ? "#fbbf24" : "rgba(255,255,255,0.25)")" />
+						<div class="altar-result">
 							@if (Parent1 != null)
 							{
-								<div class="fusion-card-wrap">
-									<MonsterCard Monster=@Parent1 IsHorizontal=@true AnimationFrame=@SpriteAnimator.GlobalFrame HoverAction=@(() => SoundManager.PlayHover()) />
-									<button class="parent-remove-btn" onclick=@(() => ClearParent(1)) onclick:stopPropagation onmouseover=@(() => SoundManager.PlayHover())>
-										<iconify icon="lucide:x" Size=@(12) Color="white" />
-									</button>
-								</div>
-								<div class="parent-extras">
-									@if (Parent1.Genetics != null)
-									{
-										<div class="extra-chip nature">
-											<iconify icon="lucide:leaf" Size=@(10) Color="#86efac" />
-											<span>@Parent1.Genetics.Nature</span>
-											<span class="chip-tooltip">@Parent1.Genetics.GetNatureDescription()</span>
-										</div>
-									}
-									@if (Parent1.Traits != null)
-									{
-										@foreach (var trait in Parent1.Traits)
-										{
-											<div class="extra-chip trait">
-												<iconify icon="@GetTraitIcon(trait)" Size=@(10) Color="#fbbf24" />
-												<span>@GetTraitName(trait)</span>
-												<span class="chip-tooltip">@GetTraitDescription(trait)</span>
-											</div>
-										}
-									}
-								</div>
+								<img class="altar-result-img" src="@altarIcon" />
 							}
 							else
 							{
-								<div class="empty-parent-horiz">
-									<iconify icon="lucide:plus" Size=@(20) Color="rgba(255,255,255,0.4)" />
-									<span>Pick a beast</span>
-								</div>
+								<span class="altar-result-q">?</span>
 							}
 						</div>
-
-						<!-- Vertical connector — two converging chevrons. No circle, no
-					     pulsing glow — flat, sharp, more "stamped" than "AI generated". -->
-						<div class="fusion-connector-v @(bothPicked && fusionCompat?.CanBreed == true ? "active" : "")">
-							<iconify class="connector-chevron up" icon="lucide:chevrons-down" Size=@(20) Color="@(bothPicked && fusionCompat?.CanBreed == true ? "#fbbf24" : "rgba(255,255,255,0.25)")" />
-						</div>
-
-						<!-- Slot 2 — same hover-sound routing as Slot 1 -->
-						<div class="fusion-parent-row @(Parent2 != null ? "filled" : "") @(selectedForSlot == 2 ? "selecting" : "")"
-							 onclick=@(() => SetSelectingSlot(2))>
-							<div class="fusion-slot-tag">B2</div>
-							@if (Parent2 != null)
-							{
-								<div class="fusion-card-wrap">
-									<MonsterCard Monster=@Parent2 IsHorizontal=@true AnimationFrame=@SpriteAnimator.GlobalFrame HoverAction=@(() => SoundManager.PlayHover()) />
-									<button class="parent-remove-btn" onclick=@(() => ClearParent(2)) onclick:stopPropagation onmouseover=@(() => SoundManager.PlayHover())>
-										<iconify icon="lucide:x" Size=@(12) Color="white" />
-									</button>
-								</div>
-								<div class="parent-extras">
-									@if (Parent2.Genetics != null)
-									{
-										<div class="extra-chip nature">
-											<iconify icon="lucide:leaf" Size=@(10) Color="#86efac" />
-											<span>@Parent2.Genetics.Nature</span>
-											<span class="chip-tooltip">@Parent2.Genetics.GetNatureDescription()</span>
-										</div>
-									}
-									@if (Parent2.Traits != null)
-									{
-										@foreach (var trait in Parent2.Traits)
-										{
-											<div class="extra-chip trait">
-												<iconify icon="@GetTraitIcon(trait)" Size=@(10) Color="#fbbf24" />
-												<span>@GetTraitName(trait)</span>
-												<span class="chip-tooltip">@GetTraitDescription(trait)</span>
-											</div>
-										}
-									}
-								</div>
-							}
-							else
-							{
-								<div class="empty-parent-horiz">
-									<iconify icon="lucide:plus" Size=@(20) Color="rgba(255,255,255,0.4)" />
-									<span>Pick a beast</span>
-								</div>
-							}
-						</div>
+						<iconify class="altar-chev" icon="lucide:chevrons-left" Size=@(22) Color="@(altarActive ? "#fbbf24" : "rgba(255,255,255,0.25)")" />
 					</div>
 
-					<!-- ====== SCROLLABLE BODY (hero + genes only) ====== -->
-					<div class="fusion-body">
+					@* Slot 2 — same routing as Slot 1 *@
+					<div class="altar-slot @(Parent2 != null ? "filled" : "") @(selectedForSlot == 2 ? "selecting" : "")"
+						 onclick=@(() => SetSelectingSlot(2))>
+						<div class="fusion-slot-tag">B2</div>
+						@if (Parent2 != null)
+						{
+							<div class="fusion-card-wrap">
+								<MonsterCard Monster=@Parent2 IsMini=@true ShowGenes=@true AnimationFrame=@SpriteAnimator.GlobalFrame HoverAction=@(() => SoundManager.PlayHover()) />
+								<button class="parent-remove-btn" onclick=@(() => ClearParent(2)) onclick:stopPropagation onmouseover=@(() => SoundManager.PlayHover())>
+									<iconify icon="lucide:x" Size=@(12) Color="white" />
+								</button>
+							</div>
+							<div class="parent-extras">
+								@if (Parent2.Genetics != null)
+								{
+									<div class="extra-chip nature">
+										<iconify icon="lucide:leaf" Size=@(10) Color="#86efac" />
+										<span>@Parent2.Genetics.Nature</span>
+										<span class="chip-tooltip">@Parent2.Genetics.GetNatureDescription()</span>
+									</div>
+								}
+								@if (Parent2.Traits != null)
+								{
+									@foreach (var trait in Parent2.Traits)
+									{
+										<div class="extra-chip trait">
+											<iconify icon="@GetTraitIcon(trait)" Size=@(10) Color="#fbbf24" />
+											<span>@GetTraitName(trait)</span>
+											<span class="chip-tooltip">@GetTraitDescription(trait)</span>
+										</div>
+									}
+								}
+							</div>
+						}
+						else
+						{
+							<div class="altar-empty">
+								<iconify icon="lucide:plus" Size=@(24) Color="rgba(255,255,255,0.4)" />
+								<span>Pick a beast</span>
+							</div>
+						}
+					</div>
+				</div>
 
-					@if (bothPicked && fusionCompat?.CanBreed == false)
-					{
-						<!-- Compat warning (same-species mismatch / contract risk / etc) -->
-						<div class="fusion-warning">
-							<iconify icon="lucide:triangle-alert" Size=@(20) Color="#ef4444" />
-							<span class="warning-text">@fusionCompat.Reason</span>
+				@if (fusionPreview != null)
+				{
+					<div class="altar-chances">
+						<div class="header-chance twin">
+							<iconify icon="lucide:users" Size=@(11) Color="#fbbf24" />
+							<span class="hc-label">Twin</span>
+							<span class="hc-value">@((fusionPreview.TwinChance * 100).ToString("F0"))%</span>
 						</div>
-					}
+						<div class="header-chance mutation">
+							<iconify icon="lucide:sparkles" Size=@(11) Color="#c4b5fd" />
+							<span class="hc-label">Mut</span>
+							<span class="hc-value">@((fusionPreview.MutationChance * 100).ToString("F0"))%</span>
+						</div>
+						@if (fusionPreview.NatureInheritChance > 0)
+						{
+							<div class="header-chance nature">
+								<iconify icon="lucide:leaf" Size=@(11) Color="#86efac" />
+								<span class="hc-label">Nat</span>
+								<span class="hc-value">@((fusionPreview.NatureInheritChance * 100).ToString("F0"))%</span>
+							</div>
+						}
+					</div>
 
+					@{
+						// Hero verdict badge — quick read of "is this fusion worth it?"
+						// Compares predicted total against the BETTER parent total.
+						var heroBetter = Math.Max(p1Total, p2Total);
+						var heroVerdict = previewTotal > heroBetter ? "improved"
+							: previewTotal == heroBetter ? "stable"
+							: "downgrade";
+						var heroVerdictIcon = previewTotal > heroBetter ? "lucide:trending-up"
+							: previewTotal == heroBetter ? "lucide:equal"
+							: "lucide:trending-down";
+						var heroVerdictLabel = previewTotal > heroBetter ? "GAIN"
+							: previewTotal == heroBetter ? "EVEN"
+							: "RISK";
+						var heroVerdictColor = previewTotal > heroBetter ? "#4ade80"
+							: previewTotal == heroBetter ? "#9ca3af"
+							: "#fbbf24";
+
+						// Family fusion detection — true when both parents share the
+						// same evolution line (compared via base form).
+						var p1BaseId = MonsterManager.Instance?.GetSpecies(Parent1.SpeciesId);
+						var p2BaseId = MonsterManager.Instance?.GetSpecies(Parent2.SpeciesId);
+						var isFamilyFusion = p1BaseId != null && p2BaseId != null && p1BaseId.Id == p2BaseId.Id;
+					}
+					<div class="fusion-hero @(fusionPreview.PredictedQuality.ToLower())">
+						<div class="hero-row">
+							<iconify icon="lucide:sparkles" Size=@(14) Color="#c4b5fd" />
+							<div class="hero-name">@GetSpeciesNameFor(Parent1)</div>
+							<div class="hero-family-tag @(isFamilyFusion ? "family" : "cross")">
+								<iconify icon="@(isFamilyFusion ? "lucide:dna" : "lucide:shuffle")" Size=@(10) Color="@(isFamilyFusion ? "#c4b5fd" : "#fbbf24")" />
+								<span>@(isFamilyFusion ? "FAMILY" : "CROSS")</span>
+							</div>
+							<div class="hero-spacer"></div>
+							<div class="hero-verdict @heroVerdict">
+								<iconify icon="@heroVerdictIcon" Size=@(12) Color="@heroVerdictColor" />
+								<span>@heroVerdictLabel</span>
+							</div>
+							<div class="hero-stat-line">
+								<span class="hero-stat-value">~@previewTotal</span>
+								<span class="hero-stat-max">/180</span>
+							</div>
+							<div class="hero-quality-badge @(fusionPreview.PredictedQuality.ToLower())">
+								@fusionPreview.PredictedQuality
+							</div>
+						</div>
+						<div class="hero-gene-bar-bg">
+							<div class="hero-gene-bar-fill @(fusionPreview.PredictedQuality.ToLower())" style="width: @((previewTotal / 180f * 100f).ToString("F0"))%"></div>
+							<div class="hero-gene-tick" style="left: 40%"></div>
+							<div class="hero-gene-tick" style="left: 60%"></div>
+							<div class="hero-gene-tick" style="left: 75%"></div>
+							<div class="hero-gene-tick" style="left: 90%"></div>
+						</div>
+					</div>
+				}
+
+				@if (bothPicked && fusionCompat?.CanBreed == false)
+				{
+					<div class="fusion-warning">
+						<iconify icon="lucide:triangle-alert" Size=@(20) Color="#ef4444" />
+						<span class="warning-text">@fusionCompat.Reason</span>
+					</div>
+				}
+
+				@* Sticky FUSE CTA — two-stage in-button confirm (pendingFusionConfirm). *@
+				@if (bothPicked && fusionCompat?.CanBreed == true)
+				{
+					<div class="fusion-cta-bar">
+						<div class="cta-cost @(canAffordFusion ? "" : "insufficient")">
+							<img class="cta-cost-icon" src="ui/icons/currency/money.svg" />
+							<span class="cta-cost-value">@fusionCost</span>
+						</div>
+						<button class="cta-fuse-btn @(canFuse ? "" : "disabled") @(pendingFusionConfirm ? "confirming" : "")"
+								onclick=@OnBreedClicked
+								onmouseover=@(() => SoundManager.PlayHover())>
+							<iconify icon="@(pendingFusionConfirm ? "lucide:check" : "lucide:combine")" Size=@(18) Color="@(canFuse ? "#2a1605" : "#ffffff")" />
+							<span class="cta-fuse-label">@(pendingFusionConfirm ? "CONFIRM" : L("ui.roster.fuse_btn"))</span>
+						</button>
+					</div>
+				}
+			</div>
+
+			@* ══ FACTS (fusion) — the gene ledger ══ *@
+			<div class="cs-facts">
+				<div class="facts-scroll">
 					@if (fusionPreview != null)
 					{
-						<!-- ====== PREDICTED OFFSPRING HERO (single-row compact) ====== -->
-						@{
-							// Hero verdict badge — quick read of "is this fusion worth it?"
-							// Compares predicted total against the BETTER parent total.
-							// > best parent → IMPROVE (green up arrow)
-							// = best parent → STABLE (gray equals)
-							// < best parent → RISK (amber down arrow)
-							var heroBetter = Math.Max(p1Total, p2Total);
-							var heroVerdict = previewTotal > heroBetter ? "improved"
-								: previewTotal == heroBetter ? "stable"
-								: "downgrade";
-							var heroVerdictIcon = previewTotal > heroBetter ? "lucide:trending-up"
-								: previewTotal == heroBetter ? "lucide:equal"
-								: "lucide:trending-down";
-							var heroVerdictLabel = previewTotal > heroBetter ? "GAIN"
-								: previewTotal == heroBetter ? "EVEN"
-								: "RISK";
-							var heroVerdictColor = previewTotal > heroBetter ? "#4ade80"
-								: previewTotal == heroBetter ? "#9ca3af"
-								: "#fbbf24";
-
-							// Family fusion detection — true when both parents share the
-							// same evolution line (compared via base form). Same family =
-							// gene-farming loop. Different families = (future) cross-species
-							// fusion that produces a different beast via the fusion table.
-							var p1BaseId = MonsterManager.Instance?.GetSpecies(Parent1.SpeciesId);
-							var p2BaseId = MonsterManager.Instance?.GetSpecies(Parent2.SpeciesId);
-							var isFamilyFusion = p1BaseId != null && p2BaseId != null && p1BaseId.Id == p2BaseId.Id;
-						}
-						<div class="fusion-hero @(fusionPreview.PredictedQuality.ToLower())">
-							<div class="hero-row">
-								<iconify icon="lucide:sparkles" Size=@(14) Color="#c4b5fd" />
-								<div class="hero-name">@GetSpeciesNameFor(Parent1)</div>
-								<div class="hero-family-tag @(isFamilyFusion ? "family" : "cross")">
-									<iconify icon="@(isFamilyFusion ? "lucide:dna" : "lucide:shuffle")" Size=@(10) Color="@(isFamilyFusion ? "#c4b5fd" : "#fbbf24")" />
-									<span>@(isFamilyFusion ? "FAMILY" : "CROSS")</span>
-								</div>
-								<div class="hero-spacer"></div>
-								<div class="hero-verdict @heroVerdict">
-									<iconify icon="@heroVerdictIcon" Size=@(12) Color="@heroVerdictColor" />
-									<span>@heroVerdictLabel</span>
-								</div>
-								<div class="hero-stat-line">
-									<span class="hero-stat-value">~@previewTotal</span>
-									<span class="hero-stat-max">/180</span>
-								</div>
-								<div class="hero-quality-badge @(fusionPreview.PredictedQuality.ToLower())">
-									@fusionPreview.PredictedQuality
-								</div>
-							</div>
-							<!-- Gene-total bar — fill colored by predicted quality tier.
-							     Tier ticks are kept very faint so they don't fight the
-							     fill color. -->
-							<div class="hero-gene-bar-bg">
-								<div class="hero-gene-bar-fill @(fusionPreview.PredictedQuality.ToLower())" style="width: @((previewTotal / 180f * 100f).ToString("F0"))%"></div>
-								<div class="hero-gene-tick" style="left: 40%"></div>
-								<div class="hero-gene-tick" style="left: 60%"></div>
-								<div class="hero-gene-tick" style="left: 75%"></div>
-								<div class="hero-gene-tick" style="left: 90%"></div>
-							</div>
-						</div>
-
-						<!-- ====== GENE COMPARISON ROWS ====== -->
 						<div class="fusion-genes-card">
 							<div class="genes-card-header">
 								<div class="genes-card-title">
@@ -431,7 +550,6 @@
 								}
 							</div>
 
-							<!-- Column headers — tells the player which numbers are which beast -->
 							<div class="gene-row gene-col-headers">
 								<div class="gene-row-label"></div>
 								<div class="gene-cell col-head">Beast 1</div>
@@ -461,10 +579,6 @@
 								var canLockMore = hasLockSkill && (locked || lockedGenes.Count < maxLocks);
 								var p1Best = row.p1 >= row.p2;
 								var p2Best = row.p2 >= row.p1;
-								// Verdict per gene: predicted vs the BETTER of the two parents.
-								// > better parent → "improved" (green) — actually a gain
-								// = better parent → "stable" (gold/default) — preserved high value
-								// < better parent → "downgrade" (amber) — likely loss
 								var betterParent = Math.Max(row.p1, row.p2);
 								var verdict = row.avg > betterParent ? "improved"
 									: row.avg == betterParent ? "stable"
@@ -484,13 +598,8 @@
 							}
 
 							@{
-								// Total row verdict — same logic as per-row but on the sum.
-								// Also compute a TYPICAL spread (~80% of outcomes) instead of
-								// absolute worst-case extremes. The absolute min/max from
-								// PreviewOffspring assume every gene rolls its worst variance
-								// simultaneously, which is astronomically unlikely. The typical
-								// spread is expected ± 6 (about 1.5 standard deviations across
-								// 6 independent rolls of -2 to +2 variance).
+								// Total row verdict — same logic as per-row but on the sum,
+								// plus a TYPICAL spread (~80% of outcomes; expected ± 6).
 								var betterParentTotal = Math.Max(p1Total, p2Total);
 								var totalVerdict = previewTotal > betterParentTotal ? "improved"
 									: previewTotal == betterParentTotal ? "stable"
@@ -507,20 +616,14 @@
 								<div class="gene-cell predicted @totalVerdict">~@previewTotal</div>
 								<div class="gene-lock-toggle empty"></div>
 							</div>
-							<!-- Variance range under the totals row — tells the player how
-							     wide the outcome spread is so they can judge risk. Uses
-							     plain "to" because the en-dash collides with adjacent
-							     numbers in s&box's font rendering. -->
 							<div class="gene-range-row">
 								<span class="gene-range-label">Range</span>
 								<span class="gene-range-value">@minTotal to @maxTotal</span>
 							</div>
 						</div>
-
 					}
-					else if (!bothPicked)
+					else
 					{
-						<!-- Empty state — clean prompt, no tip wall -->
 						<div class="fusion-empty">
 							<div class="fusion-empty-icon">
 								<iconify icon="lucide:flame" Size=@(48) Color="rgba(196, 181, 253, 0.4)" />
@@ -532,479 +635,448 @@
 							@if (Parent1 != null && Parent2 == null)
 							{
 								<div class="fusion-empty-hint">
-									<iconify icon="lucide:arrow-up" Size=@(14) Color="#c4b5fd" />
+									<iconify icon="lucide:arrow-left" Size=@(14) Color="#c4b5fd" />
 									<span>Pick a second @GetSpeciesNameFor(Parent1)</span>
 								</div>
 							}
 						</div>
 					}
+				</div>
+			</div>
+		}
+		else if (SelectedMonster != null)
+		{
+			@* ══ THE STAGE — the selected beast at 2.5x ══ *@
+			<div class="cs-stage">
+				@* Zone hint strip — TAB hands keyboard focus to the stage;
+				   Q returns to the grid. Reads kbFocusZone (in BuildHash). *@
+				<div class="stage-zone-hint">
+					<span class="kb-key">@(kbFocusZone == "detail" ? "Q" : "TAB")</span>
+					<span class="szh-label">@(kbFocusZone == "detail" ? "Back to collection" : "Inspect beast")</span>
+				</div>
 
-					</div>
-
-				<!-- ====== STICKY FUSE CTA ======
-				     Two-stage in-button confirm: first click arms the
-				     `pendingFusionConfirm` flag and the button morphs
-				     into "CONFIRM" with an amber accent. Second click
-				     within ~4s actually fires the fusion. Replaces the
-				     old centered modal popup. -->
-				@if (bothPicked && fusionCompat?.CanBreed == true)
-				{
-					<div class="fusion-cta-bar">
-						<div class="cta-cost @(canAffordFusion ? "" : "insufficient")">
-							<img class="cta-cost-icon" src="ui/icons/currency/money.svg" />
-							<span class="cta-cost-value">@fusionCost</span>
+				<div class="portrait-wrapper">
+					@{
+						// Inline transform pulls per-species DetailIconScale/OffsetX/OffsetY
+						// from MonsterSpecies. Tuned via the MyBeasts art editor (DETAIL mode).
+						// When a test species is selected in the editor, the portrait
+						// previews THAT species' icon + transforms instead of the live
+						// SelectedMonster, so framing can be tuned without owning the beast.
+						var _diEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "detail" && SelectedMonster != null;
+						var _diArtId = ( _diEditing && !string.IsNullOrEmpty( _myBeastsTestSpeciesId ) )
+							? _myBeastsTestSpeciesId
+							: SelectedMonster?.SpeciesId;
+						var _diSp = !string.IsNullOrEmpty( _diArtId ) ? MonsterManager.Instance?.GetSpecies( _diArtId ) : null;
+						var _diIconPath = ( _diEditing && !string.IsNullOrEmpty( _myBeastsTestSpeciesId ) && _diSp != null )
+							? ( _diSp.AnimationFrames != null && _diSp.AnimationFrames.Count > 0 ? _diSp.AnimationFrames[0] : _diSp.IconPath )
+							: GetSelectedIconPath();
+						var _diCi = System.Globalization.CultureInfo.InvariantCulture;
+						var _diScale = (_diSp?.DetailIconScale ?? 1f).ToString("F3", _diCi);
+						// Stage geometry is DetailArtK× the geometry the per-species
+						// offsets were tuned at (120px container / 180px sprite), so
+						// the px offsets scale by K to keep the tuned framing exact.
+						var _diOffX = ((_diSp?.DetailIconOffsetX ?? 0f) * DetailArtK).ToString("F2", _diCi);
+						var _diOffY = ((_diSp?.DetailIconOffsetY ?? 0f) * DetailArtK).ToString("F2", _diCi);
+						var _diTransform = $"transform: translate({_diOffX}px, {_diOffY}px) scale({_diScale}); transform-origin: center center;";
+					}
+					<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass() @(_diEditing ? "myb-art-edit" : "")"
+						 onmousedown=@(() => { if (_diEditing) StartMyBeastsArtDrag(_diArtId); })
+						 onmouseover=@(() => { if (_diEditing) OnMyBeastsArtHover(_diArtId); })
+						 onmouseout=@(() => { if (_diEditing) OnMyBeastsArtLeave(_diArtId); })>
+						<div class="evolution-glow"></div>
+						<div class="evolution-particles">
+							<div class="particle p1"></div>
+							<div class="particle p2"></div>
+							<div class="particle p3"></div>
+							<div class="particle p4"></div>
+							<div class="particle p5"></div>
+							<div class="particle p6"></div>
+							<div class="particle p7"></div>
+							<div class="particle p8"></div>
 						</div>
-						<button class="cta-fuse-btn @(canFuse ? "" : "disabled") @(pendingFusionConfirm ? "confirming" : "")"
-								onclick=@OnBreedClicked
-								onmouseover=@(() => SoundManager.PlayHover())>
-							<iconify icon="@(pendingFusionConfirm ? "lucide:check" : "lucide:combine")" Size=@(18) Color="@(canFuse ? "#2a1605" : "#ffffff")" />
-							<span class="cta-fuse-label">@(pendingFusionConfirm ? "CONFIRM" : L("ui.roster.fuse_btn"))</span>
-						</button>
-					</div>
-				}
-				}
-				else
-				{
-					<!-- Zone hint strip — tells the keyboard player how to hand
-					     focus to the stage (TAB) and back to the grid (Q). Reads
-					     from kbFocusZone (in BuildHash) so it live-swaps. -->
-					<div class="stage-zone-hint">
-						<span class="kb-key">@(kbFocusZone == "detail" ? "Q" : "TAB")</span>
-						<span class="szh-label">@(kbFocusZone == "detail" ? "Back to collection" : "Inspect beast")</span>
-					</div>
-					<div @ref="detailScrollRef" class="detail-scroll">
-						<!-- BEAST STAGE HERO (2026-07 recomposition) — the selected
-						     beast is the panel's primary zone now: sprite at 2× on
-						     an open stage with a rarity pedestal, name block beside
-						     it, diamond actions on the stage's right edge. -->
-						<div class="stage-hero">
-							<div class="portrait-wrapper">
-								@{
-									// Inline transform pulls per-species DetailIconScale/OffsetX/OffsetY
-									// from MonsterSpecies. Tuned via the MyBeasts art editor (DETAIL mode).
-									// When a test species is selected in the editor, the portrait
-									// previews THAT species' icon + transforms instead of the live
-									// SelectedMonster, so framing can be tuned without owning the beast.
-									var _diEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "detail" && SelectedMonster != null;
-									var _diArtId = ( _diEditing && !string.IsNullOrEmpty( _myBeastsTestSpeciesId ) )
-										? _myBeastsTestSpeciesId
-										: SelectedMonster?.SpeciesId;
-									var _diSp = !string.IsNullOrEmpty( _diArtId ) ? MonsterManager.Instance?.GetSpecies( _diArtId ) : null;
-									var _diIconPath = ( _diEditing && !string.IsNullOrEmpty( _myBeastsTestSpeciesId ) && _diSp != null )
-										? ( _diSp.AnimationFrames != null && _diSp.AnimationFrames.Count > 0 ? _diSp.AnimationFrames[0] : _diSp.IconPath )
-										: GetSelectedIconPath();
-									var _diCi = System.Globalization.CultureInfo.InvariantCulture;
-									var _diScale = (_diSp?.DetailIconScale ?? 1f).ToString("F3", _diCi);
-									// Stage geometry is DetailArtK× the geometry the per-species
-									// offsets were tuned at (120px container / 180px sprite), so
-									// the px offsets scale by K to keep the tuned framing exact.
-									var _diOffX = ((_diSp?.DetailIconOffsetX ?? 0f) * DetailArtK).ToString("F2", _diCi);
-									var _diOffY = ((_diSp?.DetailIconOffsetY ?? 0f) * DetailArtK).ToString("F2", _diCi);
-									var _diTransform = $"transform: translate({_diOffX}px, {_diOffY}px) scale({_diScale}); transform-origin: center center;";
-								}
-								<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass() @(_diEditing ? "myb-art-edit" : "")"
-									 onmousedown=@(() => { if (_diEditing) StartMyBeastsArtDrag(_diArtId); })
-									 onmouseover=@(() => { if (_diEditing) OnMyBeastsArtHover(_diArtId); })
-									 onmouseout=@(() => { if (_diEditing) OnMyBeastsArtLeave(_diArtId); })>
-									<div class="evolution-glow"></div>
-									<div class="evolution-particles">
-										<div class="particle p1"></div>
-										<div class="particle p2"></div>
-										<div class="particle p3"></div>
-										<div class="particle p4"></div>
-										<div class="particle p5"></div>
-										<div class="particle p6"></div>
-										<div class="particle p7"></div>
-										<div class="particle p8"></div>
-									</div>
-									<div class="monster-portrait @(evolutionPhase == "transform" || evolutionPhase == "burst" ? "hidden" : "")" style="background-image: url(@_diIconPath); @_diTransform"></div>
-									@if (!string.IsNullOrEmpty(evolvedIconPath) && (evolutionPhase == "transform" || evolutionPhase == "burst"))
-									{
-										<div class="monster-portrait evolved-portrait" style="background-image: url(@evolvedIconPath); @_diTransform"></div>
-									}
-								</div>
-								<!-- Rarity pedestal — the beast's floor. Carries the rarity
-								     color as the sanctioned bottom strip (no card-wide
-								     rarity border), skewed into the angled dialect. -->
-								<div class="stage-pedestal @GetSelectedRarityClass()"></div>
-								<div class="element-tags-row @(HasSelectedSecondaryElement() ? "dual" : "")">
-								<div class="element-tag @GetSelectedElementClass()">
-									<img class="element-tag-icon" src="ui/icons/elements/element_white/@(GetSelectedElementClass()).svg" />
-									<span class="element-tag-text">@GetSelectedElementName()</span>
-								</div>
-								@if (HasSelectedSecondaryElement())
-								{
-									<div class="element-tag secondary @GetSelectedSecondaryElementClass()">
-										<img class="element-tag-icon" src="ui/icons/elements/element_white/@(GetSelectedSecondaryElementClass()).svg" />
-										<span class="element-tag-text">@GetSelectedSecondaryElementName()</span>
-									</div>
-								}
-							</div>
-							</div>
-							<div class="monster-name-section">
-								<div class="species-name">@GetSelectedSpeciesName()</div>
-								<div class="nickname-row">
-									@if (isEditingNickname)
-									{
-										<div class="nickname-input-wrapper">
-											<TextEntry class="nickname-input" @ref="nicknameInput" Text="@editingNickname" />
-										</div>
-										<div class="nickname-btn save" onclick=@SaveNickname>✓</div>
-										<div class="nickname-btn cancel" onclick=@CancelNicknameEdit>✕</div>
-									}
-									else
-									{
-										<div class="nickname">@SelectedMonster.Nickname</div>
-										<div class="nickname-btn edit @(IsDetailControlFocused("nick") ? "kb-focused" : "")" onclick=@StartNicknameEdit>✎</div>
-									}
-								</div>
-								@if (isEditingNickname)
-								{
-									<!-- Hotkey caps for the nickname edit — placed BELOW the
-									     field (the diamond column is to the right, so caps
-									     there would overlap it). Q = cancel, Enter = confirm.
-									     Clickable too, for mouse parity with the ✓/✕ buttons. -->
-									<div class="nickname-keys-row">
-										<div class="nickname-key-hint cancel" onclick=@CancelNicknameEdit onmouseover=@(() => SoundManager.PlayHover())>
-											<span class="kb-key">Q</span>
-											<span class="nickname-key-label">Cancel</span>
-										</div>
-										<div class="nickname-key-hint confirm" onclick=@SaveNickname onmouseover=@(() => SoundManager.PlayHover())>
-											<span class="kb-key">Enter</span>
-											<span class="nickname-key-label">Confirm</span>
-										</div>
-									</div>
-								}
-								<div class="level-power-row">
-									<div class="level-badge">LV @SelectedMonster.Level</div>
-									<div class="power-badge">
-										<span class="power-label">PWR</span>
-										<span class="power-value">@SelectedMonster.PowerRating.ToString("N0")</span>
-									</div>
-								</div>
-								<div class="portrait-xp-bar @(SelectedMonster.Level >= Monster.MaxLevel ? "maxed" : "")">
-									<div class="xp-fill" style="width: @(SelectedMonster.Level >= Monster.MaxLevel ? 100 : GetSelectedXPPercent())%"></div>
-									<span class="xp-readout">@GetXpReadout()</span>
-								</div>
-							</div>
-							<!-- Diamond Actions (vertical) -->
-							<div class="portrait-actions">
-								<div class="detail-diamond @(IsDetailControlFocused("diamond-showoff") ? "kb-focused" : "")" onclick=@ShowOffBeast onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="diamond-shape"><iconify icon="lucide:megaphone" Size=@(16) Color="white" /></div>
-									<span class="diamond-tooltip">@L("ui.roster.show_off")</span>
-								</div>
-								@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
-								{
-									<div class="detail-diamond @(IsDetailControlFocused("diamond-journal") ? "kb-focused" : "")" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
-										<div class="diamond-shape"><iconify icon="lucide:book-open" Size=@(16) Color="white" /></div>
-										<span class="diamond-tooltip">@L("ui.roster.journal")</span>
-									</div>
-								}
-								<div class="detail-diamond @(SelectedMonster.IsFavorite ? "active" : "") @(IsDetailControlFocused("diamond-fav") ? "kb-focused" : "")" onclick=@ToggleFavorite onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="diamond-shape"><iconify icon="lucide:star" Size=@(16) Color="@(SelectedMonster.IsFavorite ? "#fbbf24" : "white")" /></div>
-									<span class="diamond-tooltip">@L("ui.roster.favorite")</span>
-								</div>
-							</div>
-						</div>
-
-						<!-- Actions (moved above stats per UX feedback — primary actions sit
-						     near the portrait so the player doesn't have to scroll to find them) -->
-						<div class="actions-section">
-							<div class="section-title">ACTIONS</div>
-							<div class="detail-actions-v2">
-							@if (CanSelectedMonsterEvolve())
-							{
-								<button class="action-v2 evolve @(IsDetailControlFocused("evolve") ? "kb-focused" : "")" onclick=@OnEvolveClicked onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="action-v2-diamond evolve-diamond">
-										<iconify icon="lucide:sparkles" Size=@(16) Color="white" />
-									</div>
-									<span class="action-v2-text">@L("ui.roster.evolve_to") @GetSelectedMonsterEvolutionName()</span>
-								</button>
-							}
-							<div class="action-v2-row">
-								<button class="action-v2 item @(HasSelectedHeldItem() ? "has-item" : "no-item") @(IsDetailControlFocused("item") ? "kb-focused" : "")" onclick=@OpenItemPicker onmouseover=@(() => SoundManager.PlayHover())>
-									@* Ghost-child safety: always mount both icon slots, toggle
-									   visibility via has-item/no-item class on the button. Avoids
-									   s&box ghost-child bug when a Razor @if/else swaps different
-									   child tag types (img vs iconify) inside a button during
-									   state transitions. Mirrors shop GetBuyButtonContent. *@
-									<div class="action-v2-diamond item-diamond">
-										<img class="action-v2-item-img" src="@GetSelectedHeldItemIconPath()" onerror="this.style.display='none'" />
-										<iconify class="action-v2-item-fallback" icon="lucide:shield" Size=@(16) Color="white" />
-									</div>
-									<span class="action-v2-text">@(HasSelectedHeldItem() ? GetSelectedHeldItemName() : L("ui.roster.item"))</span>
-								</button>
-								<button class="action-v2 fuse @(IsDetailControlFocused("fuse") ? "kb-focused" : "")" onclick=@OnBreedFromDetail onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="action-v2-diamond fuse-diamond">
-										<iconify icon="lucide:combine" Size=@(16) Color="white" />
-									</div>
-									<span class="action-v2-text">@L("ui.roster.fuse")</span>
-								</button>
-								<button class="action-v2 release @(CanReleaseMonster() ? "" : "disabled") @(IsDetailControlFocused("release") ? "kb-focused" : "")" onclick=@OnReleaseClicked onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="action-v2-diamond release-diamond">
-										<iconify icon="lucide:arrow-up-right" Size=@(16) Color="white" />
-									</div>
-									<span class="action-v2-text">@(CanReleaseMonster() ? L("ui.roster.release") : L("ui.roster.last"))</span>
-								</button>
-							</div>
-						</div>
-						</div>
-
-						@if (showItemPicker)
+						<div class="monster-portrait @(evolutionPhase == "transform" || evolutionPhase == "burst" ? "hidden" : "")" style="background-image: url(@_diIconPath); @_diTransform"></div>
+						@if (!string.IsNullOrEmpty(evolvedIconPath) && (evolutionPhase == "transform" || evolutionPhase == "burst"))
 						{
-							<!-- Inline Item Picker -->
-							<div class="inline-picker-header">
-								<div class="picker-back" onclick=@CloseItemPicker onmouseover=@(() => SoundManager.PlayHover())>
-									<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
-									<span class="kb-key">Q</span>
-								</div>
-								<span class="picker-title-text">@L("ui.roster.item")</span>
-								<span class="picker-count">@GetAvailableHeldItems().Count</span>
-							</div>
-							@if (HasSelectedHeldItem())
-							{
-								<div class="inline-equipped">
-									<img class="inline-equipped-icon" src="@GetSelectedHeldItemIconPath()" />
-									<div class="inline-equipped-info">
-										<span class="inline-equipped-name">@GetSelectedHeldItemName()</span>
-										<span class="inline-equipped-label">Equipped</span>
-									</div>
-									<button class="inline-unequip" onclick=@UnequipCurrentItem onmouseover=@(() => SoundManager.PlayHover())>
-										<iconify icon="lucide:x" Size=@(14) Color="white" />
-									</button>
-								</div>
-							}
-							@{ int _itemRowIdx = 0; }
-							@foreach (var item in GetAvailableHeldItems())
-							{
-								var _itemKbFocused = IsPickerRowFocused(_itemRowIdx);
-								_itemRowIdx++;
-								<div class="inline-item @($"rarity-{GetItemRarityClass(item)}") @(_itemKbFocused ? "kb-focused" : "")" onclick="@(() => EquipItem(item.Id))" onmouseover="@(() => { if (hoveredPickerItem?.Id != item.Id) { hoveredPickerItem = item; SoundManager.PlayHover(); } })">
-									<div class="inline-item-diamond @($"rarity-{GetItemRarityClass(item)}")">
-										<img class="inline-item-img" src="@item.IconPath" />
-									</div>
-									<div class="inline-item-info">
-										<div class="inline-item-name">@item.Name</div>
-										<div class="inline-item-desc">@item.Description</div>
-									</div>
-									@if (GetItemQuantity(item.Id) > 1)
-									{
-										<span class="inline-item-qty">x@(GetItemQuantity(item.Id))</span>
-									}
-								</div>
-							}
-							@if (GetAvailableHeldItems().Count == 0)
-							{
-								<div class="inline-empty">
-									<iconify icon="lucide:package-x" Size=@(24) Color="rgba(255,255,255,0.3)" />
-									<span class="inline-empty-text">No held items</span>
-								</div>
-							}
+							<div class="monster-portrait evolved-portrait" style="background-image: url(@evolvedIconPath); @_diTransform"></div>
 						}
-						else if (showMovePicker)
+					</div>
+					@* The floor — a slate wedge grounds the sprite; the rarity
+					   strip rides it (the sanctioned rarity accent, skewed). *@
+					<div class="stage-floor"></div>
+					<div class="stage-pedestal @GetSelectedRarityClass()"></div>
+				</div>
+
+				@* Nameplate block — identity under the beast. *@
+				<div class="stage-plate">
+					<div class="species-name">@GetSelectedSpeciesName()</div>
+					<div class="nickname-row">
+						@if (isEditingNickname)
 						{
-							<!-- Inline Move Picker -->
-							<div class="inline-picker-header">
-								<div class="picker-back" onclick=@CloseMoveSwap onmouseover=@(() => SoundManager.PlayHover())>
-									<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
-									<span class="kb-key">Q</span>
-								</div>
-								<span class="picker-title-text">@(selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0) ? "Swap Move" : "Learn Move")</span>
-								<span class="picker-count">@GetAvailableMovesForPicker().Count</span>
+							<div class="nickname-input-wrapper">
+								<TextEntry class="nickname-input" @ref="nicknameInput" Text="@editingNickname" />
 							</div>
-							@if (selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0))
-							{
-								var currentMove = SelectedMonster.Moves[selectedMoveSlot];
-								var currentDef = MoveDatabase.GetMove(currentMove.MoveId);
-								@if (currentDef != null)
-								{
-									var curElClass = currentDef.Element.ToString().ToLower();
-									<div class="inline-equipped">
-										<img class="inline-equipped-icon" src="ui/icons/elements/background/@(curElClass).svg" />
-										<div class="inline-equipped-info">
-											<span class="inline-equipped-name">@currentDef.Name</span>
-											<span class="inline-equipped-label">Replacing</span>
-										</div>
-									</div>
-								}
-							}
-							@{
-								// Current move for comparison (null if learning into empty slot)
-								MoveDefinition pickerCurrentMove = null;
-								if (selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0))
-								{
-									pickerCurrentMove = MoveDatabase.GetMove(SelectedMonster.Moves[selectedMoveSlot].MoveId);
-								}
-							}
-							@{ int _moveRowIdx = 0; }
-							@foreach (var lm in GetAvailableMovesForPicker())
-							{
-								var moveDef = MoveDatabase.GetMove(lm.MoveId);
-								var _moveKbFocused = IsPickerRowFocused(_moveRowIdx);
-								_moveRowIdx++;
-								if (moveDef != null)
-								{
-									var elClass = moveDef.Element.ToString().ToLower();
-									var isStab = IsMoveSTAB(moveDef);
-									var effectsSummary = GetMoveEffectsSummary(moveDef);
-									var powerDiff = pickerCurrentMove != null && pickerCurrentMove.BasePower > 0 ? moveDef.BasePower - pickerCurrentMove.BasePower : 0;
-									var isUpgrade = powerDiff > 0;
-									var isDowngrade = powerDiff < 0;
-									<div class="inline-item @elClass @(isStab ? "stab" : "") @(isUpgrade ? "upgrade" : "") @(isDowngrade ? "downgrade" : "") @(_moveKbFocused ? "kb-focused" : "")" onclick="@(() => SwapMoveSlot(lm.MoveId))" onmouseover=@(() => SoundManager.PlayHover())>
-										<div class="inline-item-diamond @elClass">
-											<img class="inline-item-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
-										</div>
-										<div class="inline-item-info">
-											<div class="inline-item-name-row">
-												<span class="inline-item-name">@moveDef.Name</span>
-												@if (isStab)
-												{
-													<span class="picker-stab-badge">STAB</span>
-												}
-											</div>
-											<div class="inline-item-desc">@moveDef.Description</div>
-											@if (!string.IsNullOrEmpty(effectsSummary))
-											{
-												<div class="inline-item-effects">
-													<iconify icon="lucide:sparkles" Size=@(10) Color="#c4b5fd" />
-													<span>@effectsSummary</span>
-												</div>
-											}
-										</div>
-										<div class="inline-move-stats">
-											<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
-											@if (moveDef.BasePower > 0)
-											{
-												<div class="move-pwr-row">
-													<span class="move-pwr">@moveDef.BasePower</span>
-													@if (powerDiff != 0)
-													{
-														<span class="move-pwr-diff @(isUpgrade ? "up" : "down")">@(powerDiff > 0 ? "+" : "")@powerDiff</span>
-													}
-												</div>
-											}
-											<span class="move-acc">@moveDef.Accuracy%</span>
-										</div>
-									</div>
-								}
-							}
-							@if (GetAvailableMovesForPicker().Count == 0)
-							{
-								<div class="inline-empty">
-									<iconify icon="lucide:swords" Size=@(24) Color="rgba(255,255,255,0.3)" />
-									<span class="inline-empty-text">No other moves available</span>
-								</div>
-							}
+							<div class="nickname-btn save" onclick=@SaveNickname>✓</div>
+							<div class="nickname-btn cancel" onclick=@CancelNicknameEdit>✕</div>
 						}
 						else
 						{
-
-						<!-- Stats + Info Row -->
-						<div class="stats-info-row">
-							<!-- Stats Section -->
-							<div class="stats-section">
-								<div class="section-title">@L("ui.roster.stats")</div>
-								<div class="stats-grid">
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">HP <span class="stat-gene">(@SelectedMonster.Genetics.HPGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.MaxHP @if(GetStatVeteranBonus(SelectedMonster.MaxHP, true) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.MaxHP, true))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill hp" style="width: @(GetStatPercent(SelectedMonster.MaxHP, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">ATK <span class="stat-gene">(@SelectedMonster.Genetics.ATKGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.ATK @if(GetStatVeteranBonus(SelectedMonster.ATK) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.ATK))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill atk" style="width: @(GetStatPercent(SelectedMonster.ATK, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">DEF <span class="stat-gene">(@SelectedMonster.Genetics.DEFGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.DEF @if(GetStatVeteranBonus(SelectedMonster.DEF) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.DEF))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill def" style="width: @(GetStatPercent(SelectedMonster.DEF, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">SpA <span class="stat-gene">(@SelectedMonster.Genetics.SpAGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.SpA @if(GetStatVeteranBonus(SelectedMonster.SpA) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpA))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill spa" style="width: @(GetStatPercent(SelectedMonster.SpA, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">SpD <span class="stat-gene">(@SelectedMonster.Genetics.SpDGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.SpD @if(GetStatVeteranBonus(SelectedMonster.SpD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpD))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill spd-def" style="width: @(GetStatPercent(SelectedMonster.SpD, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">SPD <span class="stat-gene">(@SelectedMonster.Genetics.SPDGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.SPD @if(GetStatVeteranBonus(SelectedMonster.SPD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SPD))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill spd" style="width: @(GetStatPercent(SelectedMonster.SPD, 1330))%"></div>
-										</div>
-									</div>
-								</div>
+							<div class="nickname">@SelectedMonster.Nickname</div>
+							<div class="nickname-btn edit @(IsDetailControlFocused("nick") ? "kb-focused" : "")" onclick=@StartNicknameEdit>✎</div>
+							<div class="stage-fav @(SelectedMonster.IsFavorite ? "active" : "") @(IsDetailControlFocused("diamond-fav") ? "kb-focused" : "")"
+								 onclick=@ToggleFavorite onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="lucide:star" Size=@(15) Color="@(SelectedMonster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
 							</div>
+						}
+					</div>
+					@if (isEditingNickname)
+					{
+						@* Hotkey caps for the nickname edit — Q = cancel, Enter =
+						   confirm. Clickable too, for mouse parity with ✓/✕. *@
+						<div class="nickname-keys-row">
+							<div class="nickname-key-hint cancel" onclick=@CancelNicknameEdit onmouseover=@(() => SoundManager.PlayHover())>
+								<span class="kb-key">Q</span>
+								<span class="nickname-key-label">Cancel</span>
+							</div>
+							<div class="nickname-key-hint confirm" onclick=@SaveNickname onmouseover=@(() => SoundManager.PlayHover())>
+								<span class="kb-key">Enter</span>
+								<span class="nickname-key-label">Confirm</span>
+							</div>
+						</div>
+					}
+					<div class="level-power-row">
+						<div class="level-badge">LV @SelectedMonster.Level</div>
+						<div class="power-badge">
+							<span class="power-label">PWR</span>
+							<span class="power-value">@SelectedMonster.PowerRating.ToString("N0")</span>
+						</div>
+						<div class="stage-elements">
+							<div class="element-tag @GetSelectedElementClass()">
+								<img class="element-tag-icon" src="ui/icons/elements/element_white/@(GetSelectedElementClass()).svg" />
+								<span class="element-tag-text">@GetSelectedElementName()</span>
+							</div>
+							@if (HasSelectedSecondaryElement())
+							{
+								<div class="element-tag secondary @GetSelectedSecondaryElementClass()">
+									<img class="element-tag-icon" src="ui/icons/elements/element_white/@(GetSelectedSecondaryElementClass()).svg" />
+									<span class="element-tag-text">@GetSelectedSecondaryElementName()</span>
+								</div>
+							}
+						</div>
+					</div>
+					<div class="portrait-xp-bar @(SelectedMonster.Level >= Monster.MaxLevel ? "maxed" : "")">
+						<div class="xp-fill" style="width: @(SelectedMonster.Level >= Monster.MaxLevel ? 100 : GetSelectedXPPercent())%"></div>
+						<span class="xp-readout">@GetXpReadout()</span>
+					</div>
+				</div>
 
-							<!-- Info Section -->
-							<div class="info-section">
-								<div class="section-title">@L("ui.roster.info")</div>
-								<div class="info-grid">
-									<div class="info-row">
-										<span class="info-label">@L("ui.roster.gen")</span>
-										<span class="info-value">@(SelectedMonster.Generation == 0 ? L("ui.roster.wild") : $"{SelectedMonster.Generation}")</span>
-									</div>
-									@if (!string.IsNullOrEmpty(SelectedMonster.OriginalTrainerName))
-									{
-										<div class="info-row">
-											<span class="info-label">@L("ui.roster.ot")</span>
-											<span class="info-value">@SelectedMonster.OriginalTrainerName</span>
-										</div>
-									}
-									<div class="info-row">
-										<span class="info-label">@L("ui.roster.obtained")</span>
-										<span class="info-value">@SelectedMonster.CaughtAt.ToString("MMM d")</span>
+				@* ACTIONS — evolve hero slab + the ITEM/FUSE/RELEASE tier row. *@
+				<div class="actions-section">
+					<div class="section-title">ACTIONS</div>
+					<div class="detail-actions-v2">
+					@if (CanSelectedMonsterEvolve())
+					{
+						<button class="action-v2 evolve @(IsDetailControlFocused("evolve") ? "kb-focused" : "")" onclick=@OnEvolveClicked onmouseover=@(() => SoundManager.PlayHover())>
+							<div class="action-v2-diamond evolve-diamond">
+								<iconify icon="lucide:sparkles" Size=@(16) Color="white" />
+							</div>
+							<span class="action-v2-text">@L("ui.roster.evolve_to") @GetSelectedMonsterEvolutionName()</span>
+						</button>
+					}
+					<div class="action-v2-row">
+						<button class="action-v2 item @(HasSelectedHeldItem() ? "has-item" : "no-item") @(IsDetailControlFocused("item") ? "kb-focused" : "")" onclick=@OpenItemPicker onmouseover=@(() => SoundManager.PlayHover())>
+							@* Ghost-child safety: always mount both icon slots, toggle
+							   visibility via has-item/no-item class on the button.
+							   Mirrors shop GetBuyButtonContent. *@
+							<div class="action-v2-diamond item-diamond">
+								<img class="action-v2-item-img" src="@GetSelectedHeldItemIconPath()" onerror="this.style.display='none'" />
+								<iconify class="action-v2-item-fallback" icon="lucide:shield" Size=@(16) Color="white" />
+							</div>
+							<span class="action-v2-text">@(HasSelectedHeldItem() ? GetSelectedHeldItemName() : L("ui.roster.item"))</span>
+						</button>
+						<button class="action-v2 fuse @(IsDetailControlFocused("fuse") ? "kb-focused" : "")" onclick=@OnBreedFromDetail onmouseover=@(() => SoundManager.PlayHover())>
+							<div class="action-v2-diamond fuse-diamond">
+								<iconify icon="lucide:combine" Size=@(16) Color="white" />
+							</div>
+							<span class="action-v2-text">@L("ui.roster.fuse")</span>
+						</button>
+						<button class="action-v2 release @(CanReleaseMonster() ? "" : "disabled") @(IsDetailControlFocused("release") ? "kb-focused" : "")" onclick=@OnReleaseClicked onmouseover=@(() => SoundManager.PlayHover())>
+							<div class="action-v2-diamond release-diamond">
+								<iconify icon="lucide:arrow-up-right" Size=@(16) Color="white" />
+							</div>
+							<span class="action-v2-text">@(CanReleaseMonster() ? L("ui.roster.release") : L("ui.roster.last"))</span>
+						</button>
+					</div>
+					</div>
+				</div>
+
+				@* Multi-release confirm bar — docks under the stage actions. *@
+				@if (isMultiSelectMode)
+				{
+					<div class="ms-dockbar @(selectedForRelease.Count > 0 ? "armed" : "")">
+						<div class="ms-dock-info">
+							<iconify icon="lucide:trash-2" Size=@(15) Color="@(selectedForRelease.Count > 0 ? "#f87171" : "rgba(244, 241, 234, 0.5)")" />
+							<span class="ms-dock-count">@selectedForRelease.Count marked</span>
+						</div>
+						<button class="ms-dock-btn cancel" onclick=@ToggleMultiSelectMode onmouseover=@(() => SoundManager.PlayHover())>
+							<span>@L("ui.roster.cancel")</span>
+						</button>
+						@if (selectedForRelease.Count > 0)
+						{
+							<button class="ms-dock-btn release" onclick=@OnReleaseSelectedClicked onmouseover=@(() => SoundManager.PlayHover())>
+								<span>@string.Format(L("ui.roster.release_count"), selectedForRelease.Count)</span>
+							</button>
+						}
+					</div>
+				}
+			</div>
+
+			@* ══ FACTS — the scrolling dossier ══ *@
+			<div class="cs-facts">
+				<div @ref="factsScrollRef" class="facts-scroll">
+					@if (showItemPicker)
+					{
+						<div class="inline-picker-header">
+							<div class="picker-back" onclick=@CloseItemPicker onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
+								<span class="kb-key">Q</span>
+							</div>
+							<span class="picker-title-text">@L("ui.roster.item")</span>
+							<span class="picker-count">@GetAvailableHeldItems().Count</span>
+						</div>
+						@if (HasSelectedHeldItem())
+						{
+							<div class="inline-equipped">
+								<img class="inline-equipped-icon" src="@GetSelectedHeldItemIconPath()" />
+								<div class="inline-equipped-info">
+									<span class="inline-equipped-name">@GetSelectedHeldItemName()</span>
+									<span class="inline-equipped-label">Equipped</span>
+								</div>
+								<button class="inline-unequip" onclick=@UnequipCurrentItem onmouseover=@(() => SoundManager.PlayHover())>
+									<iconify icon="lucide:x" Size=@(14) Color="white" />
+								</button>
+							</div>
+						}
+						@{ int _itemRowIdx = 0; }
+						@foreach (var item in GetAvailableHeldItems())
+						{
+							var _itemKbFocused = IsPickerRowFocused(_itemRowIdx);
+							_itemRowIdx++;
+							<div class="inline-item @($"rarity-{GetItemRarityClass(item)}") @(_itemKbFocused ? "kb-focused" : "")" onclick="@(() => EquipItem(item.Id))" onmouseover="@(() => { if (hoveredPickerItem?.Id != item.Id) { hoveredPickerItem = item; SoundManager.PlayHover(); } })">
+								<div class="inline-item-diamond @($"rarity-{GetItemRarityClass(item)}")">
+									<img class="inline-item-img" src="@item.IconPath" />
+								</div>
+								<div class="inline-item-info">
+									<div class="inline-item-name">@item.Name</div>
+									<div class="inline-item-desc">@item.Description</div>
+								</div>
+								@if (GetItemQuantity(item.Id) > 1)
+								{
+									<span class="inline-item-qty">x@(GetItemQuantity(item.Id))</span>
+								}
+							</div>
+						}
+						@if (GetAvailableHeldItems().Count == 0)
+						{
+							<div class="inline-empty">
+								<iconify icon="lucide:package-x" Size=@(24) Color="rgba(255,255,255,0.3)" />
+								<span class="inline-empty-text">No held items</span>
+							</div>
+						}
+					}
+					else if (showMovePicker)
+					{
+						<div class="inline-picker-header">
+							<div class="picker-back" onclick=@CloseMoveSwap onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
+								<span class="kb-key">Q</span>
+							</div>
+							<span class="picker-title-text">@(selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0) ? "Swap Move" : "Learn Move")</span>
+							<span class="picker-count">@GetAvailableMovesForPicker().Count</span>
+						</div>
+						@if (selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0))
+						{
+							var currentMove = SelectedMonster.Moves[selectedMoveSlot];
+							var currentDef = MoveDatabase.GetMove(currentMove.MoveId);
+							@if (currentDef != null)
+							{
+								var curElClass = currentDef.Element.ToString().ToLower();
+								<div class="inline-equipped">
+									<img class="inline-equipped-icon" src="ui/icons/elements/background/@(curElClass).svg" />
+									<div class="inline-equipped-info">
+										<span class="inline-equipped-name">@currentDef.Name</span>
+										<span class="inline-equipped-label">Replacing</span>
 									</div>
 								</div>
-								<!-- Quality + Nature cards — inline name + description, no
-								     tooltips. Hover-gated info gets ignored; this shows
-								     all the meaningful info at a glance. -->
-								<div class="info-pills">
-									<div class="info-card info-card-quality @GetSelectedGeneticsClass()">
-										<div class="info-card-header">
-											<span class="info-card-label">@L("ui.roster.quality")</span>
-											<span class="info-card-value">@SelectedMonster.Genetics.QualityRating</span>
-										</div>
-										<span class="info-card-meta">@GetSelectedTotalGenes()/180 @L("ui.roster.genes")</span>
+							}
+						}
+						@{
+							// Current move for comparison (null if learning into empty slot)
+							MoveDefinition pickerCurrentMove = null;
+							if (selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0))
+							{
+								pickerCurrentMove = MoveDatabase.GetMove(SelectedMonster.Moves[selectedMoveSlot].MoveId);
+							}
+						}
+						@{ int _moveRowIdx = 0; }
+						@foreach (var lm in GetAvailableMovesForPicker())
+						{
+							var moveDef = MoveDatabase.GetMove(lm.MoveId);
+							var _moveKbFocused = IsPickerRowFocused(_moveRowIdx);
+							_moveRowIdx++;
+							if (moveDef != null)
+							{
+								var elClass = moveDef.Element.ToString().ToLower();
+								var isStab = IsMoveSTAB(moveDef);
+								var effectsSummary = GetMoveEffectsSummary(moveDef);
+								var powerDiff = pickerCurrentMove != null && pickerCurrentMove.BasePower > 0 ? moveDef.BasePower - pickerCurrentMove.BasePower : 0;
+								var isUpgrade = powerDiff > 0;
+								var isDowngrade = powerDiff < 0;
+								<div class="inline-item @elClass @(isStab ? "stab" : "") @(isUpgrade ? "upgrade" : "") @(isDowngrade ? "downgrade" : "") @(_moveKbFocused ? "kb-focused" : "")" onclick="@(() => SwapMoveSlot(lm.MoveId))" onmouseover=@(() => SoundManager.PlayHover())>
+									<div class="inline-item-diamond @elClass">
+										<img class="inline-item-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
 									</div>
-									<div class="info-card info-card-nature">
-										<div class="info-card-header">
-											<span class="info-card-label">@L("ui.roster.nature")</span>
-											<span class="info-card-value">@GetSelectedNature()</span>
+									<div class="inline-item-info">
+										<div class="inline-item-name-row">
+											<span class="inline-item-name">@moveDef.Name</span>
+											@if (isStab)
+											{
+												<span class="picker-stab-badge">STAB</span>
+											}
 										</div>
-										<span class="info-card-meta">@GetSelectedNatureEffect()</span>
+										<div class="inline-item-desc">@moveDef.Description</div>
+										@if (!string.IsNullOrEmpty(effectsSummary))
+										{
+											<div class="inline-item-effects">
+												<iconify icon="lucide:sparkles" Size=@(10) Color="#c4b5fd" />
+												<span>@effectsSummary</span>
+											</div>
+										}
+									</div>
+									<div class="inline-move-stats">
+										<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
+										@if (moveDef.BasePower > 0)
+										{
+											<div class="move-pwr-row">
+												<span class="move-pwr">@moveDef.BasePower</span>
+												@if (powerDiff != 0)
+												{
+													<span class="move-pwr-diff @(isUpgrade ? "up" : "down")">@(powerDiff > 0 ? "+" : "")@powerDiff</span>
+												}
+											</div>
+										}
+										<span class="move-acc">@moveDef.Accuracy%</span>
+									</div>
+								</div>
+							}
+						}
+						@if (GetAvailableMovesForPicker().Count == 0)
+						{
+							<div class="inline-empty">
+								<iconify icon="lucide:swords" Size=@(24) Color="rgba(255,255,255,0.3)" />
+								<span class="inline-empty-text">No other moves available</span>
+							</div>
+						}
+					}
+					else
+					{
+						<div class="stats-section">
+							<div class="section-title">@L("ui.roster.stats")</div>
+							<div class="stats-grid">
+								<div class="stat-item">
+									<div class="stat-header">
+										<span class="stat-name">HP <span class="stat-gene">(@SelectedMonster.Genetics.HPGene/30)</span></span>
+										<span class="stat-value">@SelectedMonster.MaxHP @if(GetStatVeteranBonus(SelectedMonster.MaxHP, true) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.MaxHP, true))</span>}</span>
+									</div>
+									<div class="stat-bar-bg">
+										<div class="stat-bar-fill hp" style="width: @(GetStatPercent(SelectedMonster.MaxHP, 1330))%"></div>
+									</div>
+								</div>
+								<div class="stat-item">
+									<div class="stat-header">
+										<span class="stat-name">ATK <span class="stat-gene">(@SelectedMonster.Genetics.ATKGene/30)</span></span>
+										<span class="stat-value">@SelectedMonster.ATK @if(GetStatVeteranBonus(SelectedMonster.ATK) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.ATK))</span>}</span>
+									</div>
+									<div class="stat-bar-bg">
+										<div class="stat-bar-fill atk" style="width: @(GetStatPercent(SelectedMonster.ATK, 1330))%"></div>
+									</div>
+								</div>
+								<div class="stat-item">
+									<div class="stat-header">
+										<span class="stat-name">DEF <span class="stat-gene">(@SelectedMonster.Genetics.DEFGene/30)</span></span>
+										<span class="stat-value">@SelectedMonster.DEF @if(GetStatVeteranBonus(SelectedMonster.DEF) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.DEF))</span>}</span>
+									</div>
+									<div class="stat-bar-bg">
+										<div class="stat-bar-fill def" style="width: @(GetStatPercent(SelectedMonster.DEF, 1330))%"></div>
+									</div>
+								</div>
+								<div class="stat-item">
+									<div class="stat-header">
+										<span class="stat-name">SpA <span class="stat-gene">(@SelectedMonster.Genetics.SpAGene/30)</span></span>
+										<span class="stat-value">@SelectedMonster.SpA @if(GetStatVeteranBonus(SelectedMonster.SpA) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpA))</span>}</span>
+									</div>
+									<div class="stat-bar-bg">
+										<div class="stat-bar-fill spa" style="width: @(GetStatPercent(SelectedMonster.SpA, 1330))%"></div>
+									</div>
+								</div>
+								<div class="stat-item">
+									<div class="stat-header">
+										<span class="stat-name">SpD <span class="stat-gene">(@SelectedMonster.Genetics.SpDGene/30)</span></span>
+										<span class="stat-value">@SelectedMonster.SpD @if(GetStatVeteranBonus(SelectedMonster.SpD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpD))</span>}</span>
+									</div>
+									<div class="stat-bar-bg">
+										<div class="stat-bar-fill spd-def" style="width: @(GetStatPercent(SelectedMonster.SpD, 1330))%"></div>
+									</div>
+								</div>
+								<div class="stat-item">
+									<div class="stat-header">
+										<span class="stat-name">SPD <span class="stat-gene">(@SelectedMonster.Genetics.SPDGene/30)</span></span>
+										<span class="stat-value">@SelectedMonster.SPD @if(GetStatVeteranBonus(SelectedMonster.SPD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SPD))</span>}</span>
+									</div>
+									<div class="stat-bar-bg">
+										<div class="stat-bar-fill spd" style="width: @(GetStatPercent(SelectedMonster.SPD, 1330))%"></div>
 									</div>
 								</div>
 							</div>
 						</div>
 
-						<!-- Moves Section -->
+						@* Quality/Nature tiles sit FLAT in the facts scroll — the
+						   .info-pills wrapper made their layout heights collapse
+						   (nested-flex-in-scroll law; siblings positioned as if the
+						   tiles were slivers). Direct children compute correctly. *@
+						<div class="info-card info-card-quality @GetSelectedGeneticsClass()">
+							<div class="info-card-header">
+								<span class="info-card-label">@L("ui.roster.quality")</span>
+								<span class="info-card-value">@SelectedMonster.Genetics.QualityRating</span>
+							</div>
+							<span class="info-card-meta">@GetSelectedTotalGenes()/180 @L("ui.roster.genes")</span>
+						</div>
+						<div class="info-card info-card-nature">
+							<div class="info-card-header">
+								<span class="info-card-label">@L("ui.roster.nature")</span>
+								<span class="info-card-value">@GetSelectedNature()</span>
+							</div>
+							<span class="info-card-meta">@GetSelectedNatureEffect()</span>
+						</div>
+
+						@if (SelectedMonster.Traits != null && SelectedMonster.Traits.Count > 0)
+						{
+							<div class="traits-section">
+								<div class="section-title">@L("ui.roster.traits")</div>
+								<div class="traits-list">
+									@foreach (var traitId in SelectedMonster.Traits)
+									{
+										<div class="trait-card">
+											<div class="trait-card-header">
+												<iconify icon="@GetTraitIcon(traitId)" Size=@(12) Color="#a78bfa" />
+												<span class="trait-card-name">@GetTraitName(traitId)</span>
+											</div>
+											<span class="trait-card-desc">@GetTraitDescription(traitId)</span>
+										</div>
+									}
+								</div>
+							</div>
+						}
+
 						<div class="moves-section">
 							<div class="section-title">
 								@L("ui.roster.moves")
@@ -1017,7 +1089,6 @@
 								@{
 									var moves = SelectedMonster.Moves ?? new List<MonsterMove>();
 								}
-								<!-- Row 1 -->
 								<div class="moves-row">
 									@for (int i = 0; i < 2; i++)
 									{
@@ -1049,7 +1120,6 @@
 															}
 														</div>
 													</div>
-													<!-- Tooltip showing full description + accuracy + effects -->
 													<div class="move-tooltip">
 														<span class="move-tip-name">@moveDef.Name</span>
 														<span class="move-tip-desc">@moveDef.Description</span>
@@ -1091,7 +1161,6 @@
 										}
 									}
 								</div>
-								<!-- Row 2 -->
 								<div class="moves-row">
 									@for (int i = 2; i < 4; i++)
 									{
@@ -1123,7 +1192,6 @@
 															}
 														</div>
 													</div>
-													<!-- Tooltip showing full description + accuracy + effects -->
 													<div class="move-tooltip">
 														<span class="move-tip-name">@moveDef.Name</span>
 														<span class="move-tip-desc">@moveDef.Description</span>
@@ -1168,8 +1236,27 @@
 							</div>
 						</div>
 
+						<div class="info-section">
+							<div class="section-title">@L("ui.roster.info")</div>
+							<div class="info-grid">
+								<div class="info-row">
+									<span class="info-label">@L("ui.roster.gen")</span>
+									<span class="info-value">@(SelectedMonster.Generation == 0 ? L("ui.roster.wild") : $"{SelectedMonster.Generation}")</span>
+								</div>
+								@if (!string.IsNullOrEmpty(SelectedMonster.OriginalTrainerName))
+								{
+									<div class="info-row">
+										<span class="info-label">@L("ui.roster.ot")</span>
+										<span class="info-value">@SelectedMonster.OriginalTrainerName</span>
+									</div>
+								}
+								<div class="info-row">
+									<span class="info-label">@L("ui.roster.obtained")</span>
+									<span class="info-value">@SelectedMonster.CaughtAt.ToString("MMM d")</span>
+								</div>
+							</div>
+						</div>
 
-						<!-- Lineage Section (for bred monsters) -->
 						@if (SelectedMonster.Generation > 0 && (SelectedMonster.Parent1Id.HasValue || SelectedMonster.Parent2Id.HasValue))
 						{
 							<div class="lineage-section">
@@ -1197,257 +1284,144 @@
 							</div>
 						}
 
-						<!-- Traits Section (sits between moves and battle mastery — traits
-						     are character flavor that modify how moves work, so they
-						     read naturally as a footnote to the moves above. Hidden
-						     when the beast has no traits, so layout collapses cleanly). -->
-						@if (SelectedMonster.Traits != null && SelectedMonster.Traits.Count > 0)
-						{
-							<div class="traits-section">
-								<div class="section-title">@L("ui.roster.traits")</div>
-								<div class="traits-list">
-									@foreach (var traitId in SelectedMonster.Traits)
-									{
-										<div class="trait-card">
-											<div class="trait-card-header">
-												<iconify icon="@GetTraitIcon(traitId)" Size=@(12) Color="#a78bfa" />
-												<span class="trait-card-name">@GetTraitName(traitId)</span>
-											</div>
-											<span class="trait-card-desc">@GetTraitDescription(traitId)</span>
-										</div>
-									}
+						@* Journal / Show-off — glyph rows at the dossier's foot. *@
+						<div class="facts-utility">
+							@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
+							{
+								<div class="detail-diamond wide @(IsDetailControlFocused("diamond-journal") ? "kb-focused" : "")" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
+									<div class="diamond-shape"><iconify icon="lucide:book-open" Size=@(16) Color="white" /></div>
+									<span class="diamond-label">@L("ui.roster.journal")</span>
 								</div>
+							}
+							<div class="detail-diamond wide @(IsDetailControlFocused("diamond-showoff") ? "kb-focused" : "")" onclick=@ShowOffBeast onmouseover=@(() => SoundManager.PlayHover())>
+								<div class="diamond-shape"><iconify icon="lucide:megaphone" Size=@(16) Color="white" /></div>
+								<span class="diamond-label">@L("ui.roster.show_off")</span>
 							</div>
-						}
-
-						<!-- Battle Mastery removed — mastery is now species-level in the Beastbook -->
-
-					</div>
-
-					}
-				</div>
-				}
-				</div>
-			}
-
-			<div class="collection-main">
-				<div @ref="rosterGridRef" class="roster-grid" onmouseup=@OnDragSelectEnd>
-				@{
-					// In fusion mode, use the breeding filter state (separate from the
-					// collection filter state) so swapping in/out of fusion mode doesn't
-					// disturb the player's primary collection sort/filter setup.
-					var collectionMonsters = isFusionMode ? GetAvailableBreedingMonsters() : GetFilteredMonsters();
-					var keyboardIdx = Math.Clamp(selectedMonsterIndex, 0, Math.Max(0, collectionMonsters.Count - 1));
-				}
-				@for (int i = 0; i < collectionMonsters.Count; i++)
-				{
-					var monster = collectionMonsters[i];
-					var idx = i;
-					var isKeyboardSelected = isKeyboardNavigationActive && i == keyboardIdx;
-					var isSelectedForRelease = selectedForRelease.Contains(monster.Id);
-					var isFusionParent1 = isFusionMode && Parent1?.Id == monster.Id;
-					var isFusionParent2 = isFusionMode && Parent2?.Id == monster.Id;
-					var isFusionParent = isFusionParent1 || isFusionParent2;
-					var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && monster.SpeciesId != Parent1.SpeciesId;
-					// Beast-art editor is only active in "card" mode, when the
-					// editor toolbar is enabled, and when no other interaction
-					// mode (fusion / multi-select) is competing for clicks.
-					var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
-					<div @ref="cardSizeRef" class="monster-card-wrapper @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
-						 onclick=@(() => OnMonsterCardClicked(monster, idx))
-						 onmousedown=@(() => { OnCardMouseDown(monster, idx); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
-						 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
-						 onmouseout=@(() => { if (_mybCardEditing) OnMyBeastsArtLeave(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
-						 onmouseup=@OnDragSelectEnd>
-						@if (justSelectedMonsterId.HasValue && justSelectedMonsterId.Value == monster.Id)
-						{
-							<!-- One-shot select pulse. Keyed on selectPulseVersion so
-							     each click remounts the overlay and css-keyframes fire
-							     fresh (s&box quirk: keyframes only run on first mount).
-							     Removes itself visually via SCSS opacity: 0 end-state. -->
-							<div class="select-pulse pulse-@selectPulseVersion"></div>
-						}
-						@if (isMultiSelectMode)
-						{
-							<div class="select-checkbox @(isSelectedForRelease ? "checked" : "")">
-								@(isSelectedForRelease ? "✓" : "")
-							</div>
-						}
-						@if (isFusionParent1)
-						{
-							<div class="parent-indicator p1">B1</div>
-						}
-						@if (isFusionParent2)
-						{
-							<div class="parent-indicator p2">B2</div>
-						}
-@{
-							// Card is hovered if it matches the hoveredMonsterId
-							var isThisCardHovered = hoveredMonsterId.HasValue && hoveredMonsterId.Value == monster.Id;
-							// Card is selected if it's the SelectedMonster, keyboard selected, or hovered (for visual styling - purple glow)
-							var isThisCardSelected = (SelectedMonster?.Id == monster.Id || isKeyboardSelected || isThisCardHovered);
-							// Should animate if: hovered, OR (selected AND no other card is hovered)
-							var shouldAnimate = isThisCardHovered || (isThisCardSelected && !hoveredMonsterId.HasValue);
-						}
-						<MonsterCard Monster=@monster
-									 IsSelected=@isThisCardSelected
-									 ShouldAnimate=@shouldAnimate
-									 IsMini=@true
-									 ShowGenes=@isFusionMode
-									 AnimateOnHover=@true
-									 AnimationFrame=@SpriteAnimator.GlobalFrame
-									 OverrideArtSpeciesId=@(_mybCardEditing ? _myBeastsTestSpeciesId : null)
-									 ArtVersion=@_myBeastsArtVersion
-									 ClickAction=@(() => {})
-									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
-									 LeaveAction=@OnMouseLeaveCard />
-						@* Favorite quick-toggle — one click from the rail, no
-						   select-then-diamond round trip. Same spot as the (hidden)
-						   mini-fav star; suppressed in multi-select via SCSS. *@
-						@if (!isMultiSelectMode)
-						{
-							<div class="card-fav-qt @(monster.IsFavorite ? "fav" : "")"
-								 onclick=@(() => ToggleFavoriteFor(monster)) onclick:stopPropagation
-								 onmouseover=@(() => SoundManager.PlayHover())>
-								<iconify icon="lucide:star" Size=@(13) Color="@(monster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
-							</div>
-						}
-						@* Hover-preview ring — the cheap flat-panel recipe (absolute
-						   bordered div, opacity swap on :hover). The SELECTED beast
-						   gets the one waving imperative ring instead (root level). *@
-						<div class="card-ring"></div>
-					</div>
-				}
-
-				@if (currentFilter == "all")
-				{
-					var totalMonsters = GetMonsterCount();
-					var emptySlots = GetEmptySlotCount(totalMonsters);
-					@for (int i = 0; i < emptySlots; i++)
-					{
-						<div class="empty-slot mini" onmouseover=@OnMouseLeaveCard>
-							<div class="empty-slot-border"></div>
 						</div>
 					}
-				}
+				</div>
+			</div>
+		}
+		else
+		{
+			@* ══ Empty stage — quiet prompt, no selection / empty roster. ══ *@
+			<div class="cs-stage stage-empty">
+				<div class="stage-empty-prompt">
+					<iconify icon="lucide:paw-print" Size=@(56) Color="rgba(155, 108, 255, 0.35)" />
+					<span class="sep-title">No beast on stage</span>
+					<span class="sep-hint">Catch a beast on an expedition and it will take the stage here.</span>
+				</div>
+			</div>
+			@* Not empty-empty: a bare childless div can render as a gray
+			   artifact panel (engine quirk) — one quiet span props it. *@
+			<div class="cs-facts facts-empty">
+				<span class="facts-empty-hint">FACTS</span>
+			</div>
+		}
+		</div>
+	</div>
 
-				@if (GetFilteredMonsters().Count == 0 && currentFilter != "all")
-				{
-					<div class="empty-roster">
-						<div class="empty-icon">?</div>
-						<div class="empty-text">@L("ui.roster.no_monsters")</div>
-						<div class="empty-hint">@L("ui.roster.no_filter_match")</div>
+	<!-- Release Confirmation Modal -->
+	@if (showReleaseConfirm && monsterToRelease != null)
+	{
+		@{
+			var _releaseSpecies = MonsterManager.Instance?.GetSpecies(monsterToRelease.SpeciesId);
+			var _releaseElementClass = _releaseSpecies?.Element.ToString().ToLower() ?? "neutral";
+		}
+		<div class="bulk-release-overlay" onclick=@CancelRelease>
+			<div class="bulk-release-panel" onclick:stopPropagation>
+				<!-- Header with warning icon -->
+				<div class="bulk-release-header">
+					<div class="bulk-release-warning-icon">
+						<iconify icon="lucide:triangle-alert" Size=@(28) Color="#ef4444" />
 					</div>
-				}
+					<div class="bulk-release-title-block">
+						<span class="bulk-release-title">Release this Beast?</span>
+						<span class="bulk-release-subtitle">This action cannot be undone</span>
+					</div>
+				</div>
+
+				<!-- Single beast card -->
+				<div class="bulk-release-list">
+					<div class="bulk-release-card @($"element-{_releaseElementClass}")">
+						<div class="bulk-release-card-portrait" style="background-image: url(@(_releaseSpecies?.IconPath ?? ""))"></div>
+						<div class="bulk-release-card-info">
+							<span class="bulk-release-card-name">@monsterToRelease.Nickname</span>
+							<div class="bulk-release-card-meta">
+								<span class="bulk-release-card-level">LV @monsterToRelease.Level</span>
+								<img class="bulk-release-card-element" src="ui/icons/elements/element_white/@(_releaseElementClass).svg" />
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Action buttons -->
+				<div class="bulk-release-buttons">
+					<button class="bulk-release-btn cancel" onclick=@CancelRelease onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:x" Size=@(16) Color="white" />
+						<span>@L("ui.common.cancel")</span>
+					</button>
+					<button class="bulk-release-btn release" onclick=@ConfirmRelease onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:trash-2" Size=@(16) Color="white" />
+						<span>@L("ui.roster.release")</span>
+					</button>
 				</div>
 			</div>
 		</div>
+	}
 
-
-			<!-- Release Confirmation Modal -->
-			@if (showReleaseConfirm && monsterToRelease != null)
-			{
-				@{
-					var _releaseSpecies = MonsterManager.Instance?.GetSpecies(monsterToRelease.SpeciesId);
-					var _releaseElementClass = _releaseSpecies?.Element.ToString().ToLower() ?? "neutral";
-				}
-				<div class="bulk-release-overlay" onclick=@CancelRelease>
-					<div class="bulk-release-panel" onclick:stopPropagation>
-						<!-- Header with warning icon -->
-						<div class="bulk-release-header">
-							<div class="bulk-release-warning-icon">
-								<iconify icon="lucide:triangle-alert" Size=@(28) Color="#ef4444" />
-							</div>
-							<div class="bulk-release-title-block">
-								<span class="bulk-release-title">Release this Beast?</span>
-								<span class="bulk-release-subtitle">This action cannot be undone</span>
-							</div>
-						</div>
-
-						<!-- Single beast card -->
-						<div class="bulk-release-list">
-							<div class="bulk-release-card @($"element-{_releaseElementClass}")">
-								<div class="bulk-release-card-portrait" style="background-image: url(@(_releaseSpecies?.IconPath ?? ""))"></div>
-								<div class="bulk-release-card-info">
-									<span class="bulk-release-card-name">@monsterToRelease.Nickname</span>
-									<div class="bulk-release-card-meta">
-										<span class="bulk-release-card-level">LV @monsterToRelease.Level</span>
-										<img class="bulk-release-card-element" src="ui/icons/elements/element_white/@(_releaseElementClass).svg" />
+	<!-- Journal Modal -->
+	@if (showJournalModal && SelectedMonster != null)
+	{
+		<div class="journal-modal-overlay" onclick=@CloseJournal>
+			<div class="journal-modal" onclick:stopPropagation>
+				<div class="journal-modal-header">
+					<div class="journal-modal-title">
+						<span class="journal-icon">📖</span>
+						<span class="journal-name">@(string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname)'s Journal</span>
+					</div>
+					<button class="close-btn" onclick=@CloseJournal><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
+				</div>
+				<div class="journal-modal-content">
+					@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
+					{
+						@foreach (var entry in SelectedMonster.Journal.OrderByDescending(e => e.Timestamp))
+						{
+							<div class="journal-modal-entry @GetJournalEntryClass(entry.Type) @(!string.IsNullOrEmpty(entry.ZoneId) ? "has-background" : "") @(entry.Type == JournalEntryType.BossDefeat ? "has-monster" : "")" style="@GetEntryBackgroundStyle(entry)">
+								<span class="entry-icon">@GetJournalEntryIcon(entry.Type)</span>
+								<div class="entry-body">
+									<div class="entry-text">@entry.Content</div>
+									<div class="entry-meta">
+										<div class="entry-badge @GetJournalEntryClass(entry.Type)">
+											<span class="badge-text">@GetJournalEntryBadge(entry.Type)</span>
+										</div>
+										<div class="entry-timestamp">@entry.Timestamp.ToString("MMM d, yyyy") at @entry.Timestamp.ToString("h:mm tt")</div>
 									</div>
 								</div>
-							</div>
-						</div>
-
-						<!-- Action buttons -->
-						<div class="bulk-release-buttons">
-							<button class="bulk-release-btn cancel" onclick=@CancelRelease onmouseover=@(() => SoundManager.PlayHover())>
-								<iconify icon="lucide:x" Size=@(16) Color="white" />
-								<span>@L("ui.common.cancel")</span>
-							</button>
-							<button class="bulk-release-btn release" onclick=@ConfirmRelease onmouseover=@(() => SoundManager.PlayHover())>
-								<iconify icon="lucide:trash-2" Size=@(16) Color="white" />
-								<span>@L("ui.roster.release")</span>
-							</button>
-						</div>
-					</div>
-				</div>
-			}
-
-	
-			<!-- Journal Modal -->
-			@if (showJournalModal && SelectedMonster != null)
-			{
-				<div class="journal-modal-overlay" onclick=@CloseJournal>
-					<div class="journal-modal" onclick:stopPropagation>
-						<div class="journal-modal-header">
-							<div class="journal-modal-title">
-								<span class="journal-icon">📖</span>
-								<span class="journal-name">@(string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname)'s Journal</span>
-							</div>
-							<button class="close-btn" onclick=@CloseJournal><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
-						</div>
-						<div class="journal-modal-content">
-							@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
-							{
-								@foreach (var entry in SelectedMonster.Journal.OrderByDescending(e => e.Timestamp))
+								@if (entry.Type == JournalEntryType.BossDefeat)
 								{
-									<div class="journal-modal-entry @GetJournalEntryClass(entry.Type) @(!string.IsNullOrEmpty(entry.ZoneId) ? "has-background" : "") @(entry.Type == JournalEntryType.BossDefeat ? "has-monster" : "")" style="@GetEntryBackgroundStyle(entry)">
-										<span class="entry-icon">@GetJournalEntryIcon(entry.Type)</span>
-										<div class="entry-body">
-											<div class="entry-text">@entry.Content</div>
-											<div class="entry-meta">
-												<div class="entry-badge @GetJournalEntryClass(entry.Type)">
-													<span class="badge-text">@GetJournalEntryBadge(entry.Type)</span>
-												</div>
-												<div class="entry-timestamp">@entry.Timestamp.ToString("MMM d, yyyy") at @entry.Timestamp.ToString("h:mm tt")</div>
-											</div>
-										</div>
-										@if (entry.Type == JournalEntryType.BossDefeat)
+									<div class="entry-monster">
+										@if (!string.IsNullOrEmpty(entry.SpeciesId))
 										{
-											<div class="entry-monster">
-												@if (!string.IsNullOrEmpty(entry.SpeciesId))
-												{
-													<img src="@GetJournalSpeciesIcon(entry.SpeciesId)" />
-												}
-												else
-												{
-													<span class="monster-placeholder">💀</span>
-												}
-											</div>
+											<img src="@GetJournalSpeciesIcon(entry.SpeciesId)" />
+										}
+										else
+										{
+											<span class="monster-placeholder">💀</span>
 										}
 									</div>
 								}
-							}
-							else
-							{
-								<div class="journal-empty">@L("ui.roster.journal_empty")</div>
-							}
-						</div>
-					</div>
+							</div>
+						}
+					}
+					else
+					{
+						<div class="journal-empty">@L("ui.roster.journal_empty")</div>
+					}
 				</div>
-			}
+			</div>
 		</div>
-		</div>
+	}
 
 	<!-- THE LIVING VIOLET RING — one waving selection cursor wrapping the
 	     selected beast's card (menu/PawPad signature, flat-panel recipe).
@@ -1966,6 +1940,8 @@
 	{
 		"action-v2", "detail-diamond", "nickname-btn", "nickname-key-hint",
 		"move-diamond-slot", "inline-item", "picker-back",
+		// Center Stage rebuild (2026-07): the stage's favorite star square.
+		"stage-fav",
 	};
 
 	// Deepest hovered descendant carrying a ring-host class. HasHovered
@@ -2011,19 +1987,20 @@
 		gridRingRef.Style.Transform = t;
 	}
 
-	// ---- Grid <-> detail-panel keyboard focus switch -------------------
+	// ---- Grid <-> inspect (STAGE+FACTS) keyboard focus switch ----------
 	// kbFocusZone is the zone the keyboard currently drives:
 	//   "grid"   — WASD/arrows move the beast grid cursor (default)
-	//   "detail" — arrows move a 2D positional cursor over the detail panel
-	// Tab (Score) toggles grid -> detail; Tab or Q (Menu) returns to grid.
+	//   "detail" — arrows move a 2D positional cursor over the inspect zones
+	// Tab (Score) toggles grid -> inspect; Tab or Q (Menu) returns to grid.
 	//
-	// The detail panel has a genuine TWO-COLUMN top region, so the cursor is
+	// Center Stage (2026-07): the inspect area is genuinely TWO COLUMNS —
+	// the STAGE (center) and the FACTS dossier (right) — so the cursor is
 	// a real 2D positional model — see DetailFocusItem + GetDetailFocusItems().
 	// Each control carries (Col, Band, Sub):
-	//   Col  0 = left/main column, 1 = the diamond column on the right edge
+	//   Col  0 = the STAGE column, 1 = the FACTS column
 	//   Band = vertical order within that column (0 at top)
 	//   Sub  = horizontal index within a band (the ACTIONS triplet, the
-	//          two-wide MOVES rows). Single controls have Sub 0.
+	//          two-wide MOVES rows, the glyph pair). Single controls have Sub 0.
 	// W/S walk a column by Band; A/D move within a band by Sub and, off the
 	// edge of a band, BRIDGE between the two columns landing on the control
 	// whose Band is nearest. detailFocusIndex is a flat cursor into the list.
@@ -2048,11 +2025,15 @@
 		{ Id = id; Col = col; Band = band; Sub = sub; }
 	}
 
-	// @ref to the detail scroll container. The focused control itself is
-	// found by walking this container's descendants for the `.kb-focused`
-	// class (s&box has no native scroll-into-view, so we compute the target
-	// offset from Box.Rect). Avoids needing a separate @ref per control.
+	// @ref to the STAGE+FACTS shared ancestor (.cs-inspect). The ring's
+	// detail walk (kb .kb-focused + mouse hover) covers BOTH zones through
+	// this one ref — the focused control is found by descending for the
+	// `.kb-focused` class. Name kept from the pre-Center-Stage era when it
+	// pointed at the single detail scroll column.
 	private Panel detailScrollRef;
+	// @ref to the FACTS column's scroll container (.facts-scroll) — the
+	// only scrolling inspect zone, so scroll-follow targets this one.
+	private Panel factsScrollRef;
 	// Set true when the cursor moves; Tick() consumes it to run the
 	// scroll-into-view AFTER layout has positioned the new focused element.
 	private bool detailScrollFollowPending = false;
@@ -2074,19 +2055,22 @@
 	}
 
 	// Builds the 2D positional layout of focusable controls for the current
-	// SelectedMonster. Two columns:
+	// SelectedMonster. Center Stage geometry — two columns:
 	//
-	//   LEFT column (Col 0) — top-to-bottom:
-	//     Band 0  nick                    (the nickname-edit pencil)
+	//   STAGE column (Col 0) — top-to-bottom:
+	//     Band 0  nick / diamond-fav      (nickname pencil + favorite star,
+	//                                      Sub 0/1 — both on the nameplate)
 	//     Band 1  evolve                  (full-width, only when evolvable)
 	//     Band 2  item / fuse / release   (the ACTIONS triplet, Sub 0/1/2)
-	//     Band 3  move-0 / move-1         (MOVES row 1, Sub 0/1)
-	//     Band 4  move-2 / move-3         (MOVES row 2, Sub 0/1)
 	//
-	//   DIAMOND column (Col 1) — the vertical stack on the panel's top-right:
-	//     Band 0  diamond-showoff
-	//     Band 1  diamond-journal         (only when the beast has a journal)
-	//     Band 2  diamond-fav
+	//   FACTS column (Col 1) — the scrolling dossier on the right:
+	//     Band 0  move-0 / move-1         (MOVES row 1, Sub 0/1)
+	//     Band 1  move-2 / move-3         (MOVES row 2, Sub 0/1)
+	//     Band 2  diamond-journal         (only when a journal exists)
+	//     Band 3  diamond-showoff
+	//     (the glyph rows stack VERTICALLY at the dossier's foot — a
+	//      flex-row direct child of a scroll container collapses, so
+	//      they're full-width stacked chips → one band each)
 	//
 	// Conditional controls (Evolve, Journal) are simply omitted when not
 	// rendered — the navigation methods operate on whatever is in the list,
@@ -2098,10 +2082,14 @@
 		var items = new List<DetailFocusItem>();
 		if ( SelectedMonster == null ) return items;
 
-		// --- LEFT / MAIN column (Col 0) ---
-		// Nickname pencil — hidden while editing (the TextEntry owns the keys).
+		// --- STAGE column (Col 0) ---
+		// Nickname pencil + favorite star — hidden while editing (the
+		// TextEntry owns the keys; the star leaves with the pencil).
 		if ( !isEditingNickname )
-			items.Add( new DetailFocusItem( "nick", 0, 0, 0 ) );
+		{
+			items.Add( new DetailFocusItem( "nick",        0, 0, 0 ) );
+			items.Add( new DetailFocusItem( "diamond-fav", 0, 0, 1 ) );
+		}
 
 		// Evolve — own band, only when the beast can evolve.
 		if ( CanSelectedMonsterEvolve() )
@@ -2112,18 +2100,20 @@
 		items.Add( new DetailFocusItem( "fuse",    0, 2, 1 ) );
 		items.Add( new DetailFocusItem( "release", 0, 2, 2 ) );
 
+		// --- FACTS column (Col 1) ---
 		// MOVES 2x2 — two bands, two Subs each. All four slots always render
 		// (empty slots included — clicking one opens the learn-move picker).
-		items.Add( new DetailFocusItem( "move-0", 0, 3, 0 ) );
-		items.Add( new DetailFocusItem( "move-1", 0, 3, 1 ) );
-		items.Add( new DetailFocusItem( "move-2", 0, 4, 0 ) );
-		items.Add( new DetailFocusItem( "move-3", 0, 4, 1 ) );
+		items.Add( new DetailFocusItem( "move-0", 1, 0, 0 ) );
+		items.Add( new DetailFocusItem( "move-1", 1, 0, 1 ) );
+		items.Add( new DetailFocusItem( "move-2", 1, 1, 0 ) );
+		items.Add( new DetailFocusItem( "move-3", 1, 1, 1 ) );
 
-		// --- DIAMOND column (Col 1) ---
-		items.Add( new DetailFocusItem( "diamond-showoff", 1, 0, 0 ) );
+		// Glyph rows at the dossier's foot — stacked vertically, so each
+		// gets its own band (W/S walks them; bands aren't renumbered when
+		// Journal is absent — nearest-band mapping handles the gap).
 		if ( SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0 )
-			items.Add( new DetailFocusItem( "diamond-journal", 1, 1, 0 ) );
-		items.Add( new DetailFocusItem( "diamond-fav", 1, 2, 0 ) );
+			items.Add( new DetailFocusItem( "diamond-journal", 1, 2, 0 ) );
+		items.Add( new DetailFocusItem( "diamond-showoff", 1, 3, 0 ) );
 
 		return items;
 	}
@@ -2378,51 +2368,50 @@
 		}
 	}
 
-	// True when the detail cursor is on the LAST navigable control — the
-	// bottom move row (the highest Band in the left/main column). Used by
-	// scroll-follow: on the last control, scroll all the way to the bottom
-	// so the display-only TRAITS section below the moves comes into view
-	// (traits are never a focus target, so scroll is the only way to see
-	// them). Not relevant while a picker is open.
+	// True when the detail cursor is on the LAST navigable band of the
+	// FACTS column (the glyph rows at the dossier's foot). Used by
+	// scroll-follow: on the last band, scroll all the way to the bottom so
+	// anything display-only beneath the focusables comes fully into view.
+	// Not relevant while a picker is open.
 	private bool IsFocusedDetailControlLast()
 	{
 		if ( showItemPicker || showMovePicker ) return false;
 		var items = GetDetailFocusItems();
 		if ( items.Count == 0 ) return false;
 		var cur = items[Math.Clamp( detailFocusIndex, 0, items.Count - 1 )];
-		if ( cur.Col != 0 ) return false;
-		int maxLeftBand = 0;
+		if ( cur.Col != 1 ) return false;
+		int maxFactsBand = 0;
 		foreach ( var it in items )
-			if ( it.Col == 0 && it.Band > maxLeftBand ) maxLeftBand = it.Band;
-		return cur.Band == maxLeftBand;
+			if ( it.Col == 1 && it.Band > maxFactsBand ) maxFactsBand = it.Band;
+		return cur.Band == maxFactsBand;
 	}
 
-	// Scroll the detail panel so the currently-focused control is fully
+	// Scroll the FACTS column so the currently-focused control is fully
 	// visible. s&box has no scroll-into-view; we compute the target offset
 	// from screen-space Box.Rect. Called from Tick() one frame AFTER the
 	// cursor moved, so layout has positioned the new focused element.
+	// Stage controls never scroll (the stage is a fixed column), so the
+	// walk is scoped to factsScrollRef — a stage-side focus simply no-ops.
 	private void ScrollFocusedDetailIntoView()
 	{
-		if ( detailScrollRef == null ) return;
-		var focused = FindPanelByClass( detailScrollRef, "kb-focused" );
-		if ( focused == null ) return;
+		if ( factsScrollRef == null ) return;
+		var focused = FindPanelByClass( factsScrollRef, "kb-focused" );
+		if ( focused == null ) return; // focused control lives on the stage
 
-		var view = detailScrollRef.Box.Rect;
+		var view = factsScrollRef.Box.Rect;
 		var ctrl = focused.Box.Rect;
 		if ( view.Height <= 0f || ctrl.Height <= 0f ) return;
 
-		float curOff = detailScrollRef.ScrollOffset.y;
+		float curOff = factsScrollRef.ScrollOffset.y;
 
-		// Special case: cursor on the LAST navigable control (bottom move
-		// row). The TRAITS section sits below it and is display-only — never
-		// focusable — so the only way a keyboard player ever sees it is for
-		// the scroll to go past the moves. Jump straight to the content
-		// bottom so everything beneath the last move (the traits) is shown.
+		// Special case: cursor on the LAST navigable band (the glyph rows).
+		// Jump straight to the content bottom so anything display-only
+		// beneath the last focusable is fully shown.
 		if ( IsFocusedDetailControlLast() )
 		{
-			float bottomOff = Math.Max( 0f, detailScrollRef.ScrollSize.y );
+			float bottomOff = Math.Max( 0f, factsScrollRef.ScrollSize.y );
 			if ( Math.Abs( bottomOff - curOff ) > 0.5f )
-				detailScrollRef.ScrollOffset = new Vector2( detailScrollRef.ScrollOffset.x, bottomOff );
+				factsScrollRef.ScrollOffset = new Vector2( factsScrollRef.ScrollOffset.x, bottomOff );
 			return;
 		}
 
@@ -2439,7 +2428,7 @@
 
 		newOff = Math.Max( 0f, newOff );
 		if ( Math.Abs( newOff - curOff ) > 0.5f )
-			detailScrollRef.ScrollOffset = new Vector2( detailScrollRef.ScrollOffset.x, newOff );
+			factsScrollRef.ScrollOffset = new Vector2( factsScrollRef.ScrollOffset.x, newOff );
 	}
 
 	// Track which card is being hovered (to prevent selected card from animating when hovering another)
@@ -4269,8 +4258,9 @@
 	// Markup multiplies the tuned px offsets by K; the art editor's drag
 	// divides mouse deltas by K so a saved offset stays in TUNED-space px.
 	// Keep in lockstep with .portrait-container / .monster-portrait sizes
-	// in the SCSS (240px container, 360px sprite = K 2).
-	private const float DetailArtK = 2f;
+	// in the SCSS (300px container, 450px sprite = K 2.5 — the Center
+	// Stage hero scale).
+	private const float DetailArtK = 2.5f;
 	private string _myBeastsEditMode = "card";
 	private string _myBeastsDraggingId;
 	private string _myBeastsHoveredId;
@@ -4697,13 +4687,14 @@
 
 	// Live column count for keyboard up/down navigation. The grid is a
 	// responsive flex-wrap so this changes with window size — measured from
-	// the rendered grid/card widths (ratio is unit-agnostic). Falls back to 9
-	// before the first layout pass has populated Box.Rect.
+	// the rendered grid/card widths (ratio is unit-agnostic). Falls back to 4
+	// (the Center Stage collection rail's designed column count) before the
+	// first layout pass has populated Box.Rect.
 	private int GetGridColumns()
 	{
 		var gridW = rosterGridRef?.Box.Rect.Width ?? 0f;
 		var cardW = cardSizeRef?.Box.Rect.Width ?? 0f;
-		if ( gridW <= 0f || cardW <= 0f ) return 9;
+		if ( gridW <= 0f || cardW <= 0f ) return 4;
 		return Math.Max( 1, (int)(gridW / cardW) );
 	}
 
