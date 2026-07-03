@@ -1872,29 +1872,20 @@
 		{
 			var focused = FindPanelByClass( detailScrollRef, "kb-focused" );
 			if ( focused == null ) return;
-
-			var rrd = Box.Rect;
-			var dvr = detailScrollRef.Box.Rect;
-			var fr = focused.Box.Rect;
-			if ( rrd.Width < 1f || fr.Width < 1f ) return;
-
-			// Same scroll-clip discipline, against the detail viewport.
-			if ( fr.Top < dvr.Top - 10f || fr.Bottom > dvr.Bottom + 10f ) return;
-
-			float scd = ScaleFromScreen;
-			if ( scd <= 0.01f || float.IsNaN( scd ) || float.IsInfinity( scd ) ) scd = 1f;
-
-			// Small hosts → tighter inset + radius (.tight in SCSS).
-			gridRingL = (int)(( fr.Left - rrd.Left ) * scd) - DetailRingInset;
-			gridRingT = (int)(( fr.Top - rrd.Top ) * scd) - DetailRingInset;
-			gridRingW = (int)(fr.Width * scd) + DetailRingInset * 2 - 8;
-			gridRingH = (int)(fr.Height * scd) + DetailRingInset * 2 - 8;
-			gridRingTight = true;
-
-			gridRingVisible = true;
-			if ( !wasVisible ) gridRingWarm = 0;
-			else if ( gridRingWarm < 2 ) gridRingWarm++;
+			WrapDetailRing( focused, wasVisible );
 			return;
+		}
+
+		// MOUSE PATH — the same ring serves the pointer (user call
+		// 2026-07-02: "we need the liquid ring around the detail buttons
+		// too"). While the cursor rests on a dossier control the ring
+		// flies over and wraps it; when it leaves, the ring glides home
+		// to the selected grid card below.
+		if ( !showResult && !isFusionMode && detailScrollRef != null && detailScrollRef.HasHovered )
+		{
+			var hovered = FindHoveredRingHost( detailScrollRef );
+			if ( hovered != null && WrapDetailRing( hovered, wasVisible ) )
+				return;
 		}
 
 		bool want = rosterGridRef != null && !showResult
@@ -1937,6 +1928,65 @@
 		gridRingVisible = true;
 		if ( !wasVisible ) gridRingWarm = 0;       // re-appearing → snap first, glide after
 		else if ( gridRingWarm < 2 ) gridRingWarm++;
+	}
+
+	// Wrap the ring around a dossier control (tight inset), clipped
+	// against the detail scroll viewport. Shared by the kb-focus and
+	// mouse-hover detail paths. Returns false if the host is off-screen
+	// or not yet laid out.
+	private bool WrapDetailRing( Panel host, bool wasVisible )
+	{
+		var rrd = Box.Rect;
+		var dvr = detailScrollRef.Box.Rect;
+		var fr = host.Box.Rect;
+		if ( rrd.Width < 1f || fr.Width < 1f ) return false;
+
+		// Same scroll-clip discipline, against the detail viewport.
+		if ( fr.Top < dvr.Top - 10f || fr.Bottom > dvr.Bottom + 10f ) return false;
+
+		float scd = ScaleFromScreen;
+		if ( scd <= 0.01f || float.IsNaN( scd ) || float.IsInfinity( scd ) ) scd = 1f;
+
+		// Small hosts → tighter inset + radius (.tight in SCSS).
+		gridRingL = (int)(( fr.Left - rrd.Left ) * scd) - DetailRingInset;
+		gridRingT = (int)(( fr.Top - rrd.Top ) * scd) - DetailRingInset;
+		gridRingW = (int)(fr.Width * scd) + DetailRingInset * 2 - 8;
+		gridRingH = (int)(fr.Height * scd) + DetailRingInset * 2 - 8;
+		gridRingTight = true;
+
+		gridRingVisible = true;
+		if ( !wasVisible ) gridRingWarm = 0;
+		else if ( gridRingWarm < 2 ) gridRingWarm++;
+		return true;
+	}
+
+	// Ring-eligible dossier controls for the mouse-hover path — kept in
+	// sync with the markup's .kb-focused hosts (plus picker rows/back).
+	private static readonly string[] RingHostClasses =
+	{
+		"action-v2", "detail-diamond", "nickname-btn", "nickname-key-hint",
+		"move-diamond-slot", "inline-item", "picker-back",
+	};
+
+	// Deepest hovered descendant carrying a ring-host class. HasHovered
+	// is only true along the single ancestor chain under the cursor, so
+	// this walk descends one path — cheap per frame. Disabled controls
+	// don't earn the ring (it promises actionability).
+	private static Panel FindHoveredRingHost( Panel root )
+	{
+		if ( root == null || !root.HasHovered ) return null;
+		foreach ( var child in root.Children )
+		{
+			if ( child is Panel p && p.HasHovered )
+			{
+				var hit = FindHoveredRingHost( p );
+				if ( hit != null ) return hit;
+			}
+		}
+		if ( root.HasClass( "disabled" ) ) return null;
+		foreach ( var cls in RingHostClasses )
+			if ( root.HasClass( cls ) ) return root;
+		return null;
 	}
 
 	// The liquid ink-lean — the menu cursor's multi-sine at the PawPad's

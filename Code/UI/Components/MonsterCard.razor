@@ -67,8 +67,13 @@
 }
 else if (IsMini)
 {
-	<!-- Mini Card: Sprite + overlays -->
+	<!-- Mini Card: Sprite + overlays. Shell width/height are emitted
+	     inline from MiniSize (default 150 -> the classic 150x180) so grid
+	     rebuilds can tune the card column without forking the SCSS. The
+	     sprite framing math below scales by the same K so per-species
+	     tuned MiniScale/MiniOffset values stay correct at any size. -->
 	<div class="monster-card mini @(IsSelected ? "selected" : "") @(ShowGenes ? "show-genes" : "")"
+		 style="@GetMiniShellStyle()"
 		 onclick=@OnCardClicked onmouseover=@OnMouseEnter onmouseout=@OnMouseLeave>
 		<!-- Sprite. Aspect ratio preserved via `background-size: contain`
 		     on an explicitly-sized inner div. NOT transform — transform
@@ -85,10 +90,14 @@ else if (IsMini)
 			var _miniArtId = !string.IsNullOrEmpty(OverrideArtSpeciesId) ? OverrideArtSpeciesId : Monster?.SpeciesId;
 			var _miniSpecies = MonsterManager.Instance?.GetSpecies(_miniArtId);
 			var _miniCi = System.Globalization.CultureInfo.InvariantCulture;
+			// K scales the tuned-at-150px species framing (MiniScale is
+			// multiplicative — no compensation; MiniOffsetX/Y are px in
+			// tuned-space — multiply by K). Same law as DetailArtK.
+			var _miniK = MiniSize / 150f;
 			var _miniScale = _miniSpecies?.MiniScale ?? 1f;
-			var _miniBoxPx = 150f * _miniScale;
-			var _miniLeft = (150f - _miniBoxPx) * 0.5f + (_miniSpecies?.MiniOffsetX ?? 0f);
-			var _miniTop = (150f - _miniBoxPx) * 0.5f + (_miniSpecies?.MiniOffsetY ?? 0f);
+			var _miniBoxPx = MiniSize * _miniScale;
+			var _miniLeft = (MiniSize - _miniBoxPx) * 0.5f + (_miniSpecies?.MiniOffsetX ?? 0f) * _miniK;
+			var _miniTop = (MiniSize - _miniBoxPx) * 0.5f + (_miniSpecies?.MiniOffsetY ?? 0f) * _miniK;
 			var _miniBoxStr = _miniBoxPx.ToString("F1", _miniCi);
 			var _miniLeftStr = _miniLeft.ToString("F1", _miniCi);
 			var _miniTopStr = _miniTop.ToString("F1", _miniCi);
@@ -124,13 +133,19 @@ else if (IsMini)
 		}
 		<!-- Rarity edge line -->
 		<div class="mini-rarity-edge @GetRarityClass()"></div>
-		<!-- Bottom: Name bar with element icon(s). Dual-type beasts get
-		     a second smaller icon stacked next to the primary. -->
+		<!-- Bottom: Nameplate. Element icon(s) sit on small raised glyph
+		     tiles (the dock-tier tile miniaturized — two-tone: raised
+		     dark square, colored element glyph). Dual-type beasts get a
+		     second, slightly smaller tile next to the primary. -->
 		<div class="mini-name-bar">
-			<img class="mini-name-el" src="ui/icons/elements/background/@(GetElementClass()).svg" />
+			<div class="mini-el-tile">
+				<img class="mini-name-el" src="ui/icons/elements/background/@(GetElementClass()).svg" />
+			</div>
 			@if (HasSecondaryElement())
 			{
-				<img class="mini-name-el secondary" src="ui/icons/elements/background/@(GetSecondaryElementClass()).svg" />
+				<div class="mini-el-tile secondary">
+					<img class="mini-name-el" src="ui/icons/elements/background/@(GetSecondaryElementClass()).svg" />
+				</div>
 			}
 			<span class="mini-name">@(!string.IsNullOrEmpty(Monster.Nickname) ? Monster.Nickname : (MonsterManager.Instance?.GetSpecies(Monster.SpeciesId)?.Name ?? Monster.SpeciesId))</span>
 		</div>
@@ -270,6 +285,28 @@ else
 	public Action LeaveAction { get; set; }
 	public bool ShouldAnimate { get; set; } = false;
 	public int AnimationFrame { get; set; } = 0;
+
+	// Mini-card shell size in px (width; height = 1.2x). Default 150 is
+	// the classic 150x180 footprint every current consumer assumes
+	// (roster grid, team picker rows, fusion result). Grid rebuilds may
+	// pass a smaller/larger value — the sprite framing math K-scales the
+	// per-species tuned MiniScale/MiniOffset values automatically. NOTE:
+	// fixed-px chrome (34px nameplate, badges) does not scale; sensible
+	// range is roughly 120-180.
+	public float MiniSize { get; set; } = 150f;
+
+	// Inline width/height for the mini shell — computed in code because
+	// s&box's razor generator breaks on $"..." inside attribute
+	// expressions (engine law). Always emitted; overrides the SCSS
+	// default (inline styles are never removed once emitted, so this
+	// must be unconditional anyway).
+	private string GetMiniShellStyle()
+	{
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		var w = MiniSize.ToString( "F0", ci );
+		var h = (MiniSize * 1.2f).ToString( "F0", ci );
+		return $"width: {w}px; height: {h}px;";
+	}
 
 	// Dev-tool override (used by MonsterRosterPanel's beast-art editor):
 	// when set, the mini variant renders this species' sprite + Mini
