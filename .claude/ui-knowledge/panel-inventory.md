@@ -136,10 +136,10 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Critical preserved API:** `FeedbackApiClient.{ListAsync, ToggleVoteAsync, CreateAsync, PatchAsync, DeleteAsync}`, seen-resolved-IDs persistence to `FileSystem.Data/feedback-seen-ids.json`, `myResolvedUnreadCount` badge logic, all TextEntry `@ref` + `Tick()` poll pattern (titleInput, whatInput, stepsInput, expectedInput, actualInput, resolveNoteInput, versionInput).
 - **Neighbors:** MenuPopup (launcher → `FeedbackPanel.Show()`), OptionsPanel (sibling center modal — same envelope/edge/header pattern).
 
-### DailyPanel
-- **Files:** `Code/UI/Panels/DailyPanel.razor` (~600), `.scss` (~1200)
-- **Purpose:** Daily login streak (7-day track) + daily/weekly/monthly missions, side-by-side reward and milestone display.
-- **Visual style notes:** 1200px wide modal, pop-@popVersion class retriggers modal-scale entrance, escalating day-node heights (90→165px), Day 7 gold tint + rotating legendary silhouette (3s cycle), bg-scroll SVG pattern. Uses the established header with sort-btn pill tabs.
+### DailyPanel _[2026-07 sweep 2026-07-03 — supersedes older visual notes where they conflict]_
+- **Files:** `Code/UI/Panels/DailyPanel.razor` (~1100), `.scss` (~1600)
+- **Purpose:** The LOGIN-TIME AUTO-POPUP (sole Show() caller: `DailyRewardManager.OpenDailyPanelDelayed`, 2s after load). QuestPanel now duplicates all of its content (streak board + missions) — this popup exists for the claim moment. Streak tab (hero + 7-day strip + milestone) + missions tab.
+- **Visual style notes (2026-07-03 sweep):** Solid `#15121f` modal radius 26 (no border); opaque `#0a0912` header with green `LOGIN BONUS` kicker chip + Exo2Italic-900 title + skewed `dh-tab` pegs (active = quest green `#3fb45e`, hover = violet ring border) + green keycap reset timer. Speaks the QUESTS streak-board vocabulary: week strip = cal-day green/gold tiles (claimed = green tint + check, today = pulsing gold ring `dpTodayPulse`, future = `#131019`, Day 7 = gold wash + solid-gold MASTER INK stamp); mission rows = two-tone slips (`#16131f`; completed = lit `#221c2a` + gold edge; claimed = quiet dim; monthly = gold left-accent slab) with SOLID green fills (gold at ≥75%); ALL claim buttons = house gold gradient + ink text (`dp-claim`, renamed from `claim-btn`). Hero streak number = 92px Exo2Italic-900 gold. Section headers = skewed green `dm-chip` slabs (gold variant for monthly). bg-scroll SVG + P5 stamp header + all glow keyframes RETIRED. **SCSS carries a "LEGACY — SOUP-FROZEN" tail** (old bare `.sort-btn/.claim-btn/.section-title/.mission-*` rules kept verbatim for cross-sheet tie stability with FilterBar/Roster/Shop/Quest — do not edit or delete). Old shared-name markup classes were RENAMED (dh-*, dp-claim, dm-chip), not restyled in place. Not yet live-verified post-sweep.
 - **Juice tier (current / target):** **Tier 2 routine claim + Tier 4 Day-7 setpiece** (Phase 1 2026-04-08, Phase 2 2026-06-03). Routine claim: coordinated button overshoot + 12-particle radial burst + gold/ink/token reward flyers toward GameHUD currency pill + deferred manager call timed to flyer landing. Day-7 claim now branches to a fullscreen cinematic (`PlayDay7Setpiece()` → `.day7-setpiece` overlay, sibling of the modal, z-index 2000): 4-stage anticipation (scrim dim + contracting iris, ~700ms held beat) → reveal (Master Ink slams up a light pillar + spotlight bloom) → celebration (52px name-slam banner + 12 god-rays + 18 confetti, manager call committed mid-celebration for cause↔effect) → settle. **Animation architecture (corrected in 2026-06-03 adversarial review):** PERSISTENT layers (scrim/spotlight/pillar/prize-wrap) drive enter+exit via CSS TRANSITIONS keyed on the `.day7-setpiece.stage-N` parent class — NOT per-phase `@keyframes` class swaps (the original code did that and the loop/exit phases were silently dead, since a @keyframe never replays on a still-mounted element). They mount at a stage-0 priming frame (`day7Stage=0; await 0.05s`) in hidden base state so later stage flips are real class changes the transitions fire on. Infinite ambient loops (spotlight scale-blaze, prize-img idle bob) are `@keyframes` on a DIFFERENT property than the transition owns. MOUNT-AND-UNMOUNT layers (iris @stage 1, rays/banner/confetti @stage 3) are gated `@if (stage == N)` so their entrance `@keyframes` fire fresh on mount; scrim fade covers the settle (no exit anim on those). Open stagger converted to real `transition-delay` (26.06.03): hero/week-strip/milestone cascade off ONE `.entered` flip at 0/0.12/0.24s; per-section swoosh cues kept in C#. Mission card state hierarchy unchanged.
 - **Known issues:**
   - ~~Claim action has zero visual payoff~~ FIXED (Phase 1).
@@ -202,13 +202,19 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Known issues:** InvGridColumns=7 constant must track `.sat-card` width/gap. Entrance transforms only on the spine (fixed-width children); center/right are opacity-only (flex-grow poison law). Not yet live-verified post-recomposition.
 - **Neighbors:** ShopPanel, BattleView (battle bag), ItemManager, PhoneLauncher (Bag tile accent + sweep).
 
-### AchievementPanel _[T3 juice pass 2026-06-03]_
-- **Files:** `Code/UI/Panels/AchievementPanel.razor` (~600), `.scss` (~1000)
+### AchievementPanel _[T3 juice pass 2026-06-03; 2026-07 sweep 2026-07-03 — supersedes visual notes where they conflict]_
+- **Files:** `Code/UI/Panels/AchievementPanel.razor` (~630), `.scss` (~1100)
 - **Purpose:** Achievement list with unlocked counter, per-category tabs, claim + claim-all.
-- **Visual style notes:** Center modal (720px, 84%h), gold chrome + per-category accent on rows/tabs/progress bars. P5-stamp tabs. Unclaimed gold banner with CLAIM ALL. Category icon diamonds per row.
+- **Visual style notes (2026-07-03 sweep):** Dock-tier slab — centered 740px modal on solid `#14151b` radius 26 (no border, no top gradient line), header = graphite glyph square (gold trophy, bg pulses gold when rewards wait) + violet `TAMER RECORD` kicker chip + Exo2Italic-900 title + gold-digit completion keycap. Tabs = skewed slab chips (`ach-tab` + counter-skewed `ach-tab-in`; hover = violet ring border; active chip wears its SOLID category color with ink label — one accent lit at a time). Rows = two-tone `#1a1c23` tiles radius 16 with constant 2px transparent border → violet on hover (ring hug); claimable = gold-lit (`rgba(255,206,58,.07)` + gold border) with solid-gold READY stamp; claimed = quiet green pill + 0.65 dim; locked = darker + faint. Per-category color survives on glyph-square tints (inline) + progress fills (inline) + tab chips. Reward pills = solid `#101117` chips, colored text (the old inline bg/border ghost bug fixed — pills used to keep their tint after claiming). All claims = house gold gradient + ink text (`ach-claim`/`ach-claimall`). Unclaimed banner = gold-lit slab with 4px gold left accent. **SCSS carries a "LEGACY — SOUP-FROZEN" tail** (old `.modal-header/.header-*/.modal-scroll*/.claim-btn/.claim-all-btn/.tab-label/.empty-*` bare rules kept verbatim for cross-sheet tie stability with Options/Feedback/Help/Quest/Guild — do not edit or delete); markup renamed to ach-* equivalents. Celebration + stagger entrance preserved (cb-card reskinned to house slab). Not yet live-verified post-sweep.
 - **Juice tier (current / target):** **Tier 3 (achieved 2026-06-03).** Entrance: rows cascade in via real `transition-delay` (26.06.03) capped at 12 rows, gated on `.ach-container.visible` (the `<root>` carries both classes — element-name selector `AchievementPanel.visible` is unverified in s&box and was corrected in adversarial review) so it replays every open; category switch remounts rows so it re-fires (also bumps `listVersion % 8`). Hover delay zeroed so feedback stays instant. **T3 claim celebration:** `pointer-events:none` sibling-of-modal overlay (mounts via `@if claimCelebrationActive`), gold radial flash + 2 expanding shockwave rings + 12-mote radial burst (`cbP0..cbP11`) + center reward card slam naming the achievement + its first reward; `ClaimReward()` deferred ~0.42s so row flip + GameHUD currency roll-up land as the burst peaks. Claim All reuses the overlay with `is-all` variant + claimed count. Anti-gacha clean (deterministic rewards, "CLAIMED" framing). Target: keep — milestone-frequency claims are correctly T3.
 - **Known issues:** Celebration sound is layered `PlayClick + PlaySuccess + PlayGoldReward` (reuses existing cues). A dedicated achievement-claim chime would sharpen the T3 audio signature — no such file exists, flag for product if wanted. Reward card shows only the FIRST reward when an achievement grants multiple (kept the card uncluttered); the row's reward pills still show all.
 - **Neighbors:** DailyPanel (sibling reward panel + shared claim/burst patterns), ProfilePanel.
+
+### GiftInboxPopup _[added to inventory + 2026-07 sweep 2026-07-03]_
+- **Files:** `Code/UI/Components/GiftInboxPopup.razor` (~300), `.scss` (~450)
+- **Purpose:** Dev-granted rewards inbox (GiftManager / web dashboard). Auto-opens on the MAIN MENU only when gifts are pending (`OnGiftsAvailable` gated on `GameState.MainMenu`); session-suppress latch if closed without claiming. Multi-instance aware (`PickActiveInstance` walks for the visible subtree — it's mounted in more than one tree).
+- **Visual style notes (2026-07-03 sweep):** Dock-tier slab — flex-centered 560×620 modal on solid `#14151b` radius 26 (top/bottom gradient lines REMOVED), violet accent: graphite glyph square with violet gift glyph, skewed violet `FROM THE DEVELOPERS` kicker chip + Exo2Italic-900 `GIFT INBOX` title, violet-digit count keycap ("You received N rewards"). Gift rows = `#1a1c23` tiles radius 16, violet sparkles glyph square, loot line in gold Exo2Italic-900, quoted reason + violet uppercase sender. CTA = one gold `gift-claim` slab (300×52, breath pulse, ink text; `busy` = dim + no breath). Hover on rows = fill brighten only (scroll law). **SCSS carries a "LEGACY — SOUP-FROZEN" tail** (old `.header-*/.modal-top-line/.modal-bottom-line/.claim-all-btn` rules kept verbatim). No keyboard nav (mouse-only, pre-existing — candidate for the popup kb pattern if ever promoted). Not yet live-verified post-sweep.
+- **Neighbors:** MainMenu (host + auto-open context), GiftManager (data + claim), AchievementPanel/DailyPanel (sibling reward-family popups, same gold-CTA dialect).
 
 ### ProfilePanel
 - **Files:** `Code/UI/Panels/ProfilePanel.razor` (669), `.scss`
@@ -234,16 +240,17 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Known issues:** 2085 lines for content — size is the issue, not feel.
 - **Neighbors:** MenuPopup, TutorialPanel.
 
-### CreditsPanel
-- **Files:** `Code/UI/Panels/CreditsPanel.razor` (119), `.scss`
+### CreditsPanel _[2026-07 sweep — dock-tier dialect]_
+- **Files:** `Code/UI/Panels/CreditsPanel.razor` (~135), `.scss`
 - **Purpose:** Rolling credits modal.
+- **Visual style notes:** Dock-tier system slab (#14151b radius 26, no hairlines), violet SYSTEM kicker chip + Exo2Italic title, #1a1c23 entry tiles under violet section bars, gold version chip in a #101117 footer. Section titles span-wrapped.
 - **Juice tier (current / target):** Tier 1 scroll. Target: keep simple.
 - **Neighbors:** MainMenu.
 
-### TradingPanel _[T3 trade-complete + request-popup polish 2026-06-03]_
-- **Files:** `Code/UI/Panels/TradingPanel.razor` (~760), `.scss`
+### TradingPanel _[2026-07 sweep — TamerLink-blue dialect; T3 trade-complete kept from 2026-06-03]_
+- **Files:** `Code/UI/Panels/TradingPanel.razor` (~790), `.scss`
 - **Purpose:** P2P monster trading with request popups.
-- **Visual style notes:** Nested trade-request-popup + main trade UI. Scrolling pattern bg, P5-stamp dialect on headers/CTAs (italic skewX, hard offset shadows). Lock-in countdown overlay (ambient @keyframes loops). Trade-complete is a sibling-of-trade-body overlay OUTSIDE the scroll containers, so its burst/rings are unclipped.
+- **Visual style notes:** 2026-07 sweep: full-screen flex-centered root, ONE #0a0912 slab window (radius 26 — the old scrolling pattern bg + gradient overlay are gone), accent = Online blue #3f8fe0 (kicker chips, offer CTA, selected state, section bars), gold #ffce3a = READY UP / ACCEPT only, green = offered/ready semantics, violet = hover borders. Beast grid slots pinned 150×180 around MonsterCard v2 minis; scroll-law states (border-color swaps only, opacity-only entrance). Request popup = dock-tier #14151b slab with blue INCOMING kicker. Lock-in countdown overlay (ambient keyframe loops; `.lock-ring` gold pulse rings — previously unstyled divs). Trade-complete is a sibling-of-trade-body overlay OUTSIDE the scroll containers, so its burst/rings are unclipped.
 - **Juice tier (current / target):** **Tier 3 achieved (2026-06-03)** on trade complete + Tier 2 polish on accept/decline + request popup. **T3 celebration:** the `@if showTradeComplete` overlay mounts fresh so all @keyframes fire reliably — scrim fade, green screen flash, twin shockwave rings, 12-mote baked-direction burst (`cmote1..cmote12` — NO custom props), opacity-fading god-rays under a slow-spinning parent, slab slam (overshoot) with icon pop + staggered title/sub. Layered `PlaySuccess()` + `PlayGoldReward()` cue; auto-close extended 2.5s→3.2s. **T2 request popup (preserved):** gold icon disc swap-in spin + halo loop, content stagger-in (title/body/buttons 0.12/0.20/0.28s), accept/decline `:active` press states, accept `PlayForward()`. Anti-gacha clean — celebrates the earned exchange, no RNG framing. Target: keep — milestone-frequency trade is correctly T3, no T4 needed.
 - **Known issues:** No dedicated trade-complete sound (reuses success+gold chime) — flag for product if a unique cue is wanted. Partner avatar is hardcoded to `male_tamer.png` (line ~62) — doesn't reflect the partner's actual gender (data not plumbed to the preview). Lock-in + ready-pulse use infinite ambient @keyframes loops (fine for their gated/active contexts).
 - **Neighbors:** OnlineHubPanel, MonsterRosterPanel.
@@ -333,16 +340,27 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Neighbors:** FilterBar (shared, untouched), MonsterRosterPanel, BeastiaryManager (data API, untouched).
 - **Data additions:** `MonsterSpecies.IsAIGenerated` (bool) and `MonsterSpecies.ArtistCredit` (string, nullable) — additive, UI-only, do not affect battle or breeding. `SecondaryElement` already existed.
 
-### ContractNegotiationPanel _[T3 capture celebration + per-slot keyframe entrance, 2026-06-03]_
-- **Files:** `Code/UI/Panels/ContractNegotiationPanel.razor` (~545), `.scss` (~1000)
-- **Purpose:** Radial diamond UI overlay for capturing beasts — 4 approach options positioned around the target beast's 3D screen position.
-- **Visual style notes:** Radial positioning, diamond container, result class states, 4 position classes (top/right/bottom/left) preserved exactly.
-- **Juice tier (current / target):** **Tier 3 achieved on successful capture (2026-06-03).** Open entrance: the 4 approach diamonds fan in left→right (screen slot 1→4) via per-slot `@keyframes` (`fanInTop/Mid/Bottom`) staggered by `animation-delay` (0.02/0.09/0.16/0.23s); the bottom chrome slides up after via `bottomSectionUp` (0.28s delay). NOTE: the panel is MOUNTED FRESH every contract (BattleView `@if showNegotiationOverlay`, `IsVisible=@true` hardcoded), so it never toggles an already-painted element — that's exactly the case where CSS transitions DON'T fire (no prior state to interpolate from). Keyframes are the correct tool here for the same reason they're correct on the result subtree. An earlier pass wired this to `transition-delay` on `.contract-radial.visible`; that was reverted to keyframes because the entrance simply never played (diamonds appeared instantly). Success reveal is a Hades-shape sequence (fresh-mount `@keyframes`, fires every catch): frame slam + white anticipation flash → title slam (skew-preserving) → portrait spring + expanding light-ring + warm-green radial-ray bloom → 8-spark radial burst (per-spark directional keyframes `sparkPop0-7`) → gentle green border-breath settle. Text + CONTINUE fade up last. Deterministic / anti-gacha: identical beat for a 30% or 100% catch, no RNG framing.
+### ContractNegotiationPanel _[2026-07 dialect sweep (approach tiles + BbButton CTAs), 2026-07-03 — supersedes the 2026-06-03 diamond styling; keeps its T3 capture celebration]_
+- **Files:** `Code/UI/Panels/ContractNegotiationPanel.razor` (~615), `.scss` (~750)
+- **Purpose:** In-battle catch overlay — 4 approach options in a shallow arc anchored to the target beast's 3D screen position (`.radial-container` inline left/top % + translate; unavoidable transform — flex centering can't express a dynamic anchor, so EVERYTHING inside is explicit-px).
+- **Visual style notes (2026-07 sweep):** Accent = contract violet `#7b4ddb` (ink/roster family), gold = ATTEMPT, ring `#9b6cff`. Approaches are `skewX(-8deg)` TWO-TONE TILES (`.approach-tile slot-1..4`, declared 226×62 + 2px ring border): solid violet `%` chip (the compared number, hero of each tile) + dark body w/ house `.kb-key` cap, Exo2Italic name, cost row. Hover/selected = border-color-swap ring ON the skew holder (ChatPanel .ch-tab recipe); dimmed = opacity 0.78 (one tile is ALWAYS selected via PickBestOption); NO state transforms. Below: violet kicker chip "CONTRACT OFFER" → hint slab → dossier bar (element-edged sprite tile, LV, ink-wallet keycap slab, Master Ink skew-chip toggle) → BbButton CTAs (primary ATTEMPT 56 w/ `Focused=@(selectedOption != null)` static concentric ring + KeyCap SPACE; ghost CANCEL 44 KeyCap Q). Old glowy diamonds/hard-offset P5 shadows/skew-transform faux-italics all retired.
+- **Juice tier (current / target):** **Tier 3 on successful capture (kept through the sweep).** Entrance: tiles fan in L→R via ONE keyframe `cnFanTile` (skew BAKED into every step — genePillFadeIn law) staggered by `animation-delay` longhand (0.02/0.09/0.16/0.23s); bottom chrome rides `cnBottomUp` (0.28s delay, translateX(-50%) baked). Panel MOUNTS FRESH every contract (BattleView `@if` + `IsVisible=@true` hardcoded) → keyframes are the correct entrance tool. Success = Hades-shape fresh-mount sequence (`cnSlam/cnChipIn/cnTitleSlam/cnPortraitSpring/cnRing/cnRays/cnFlash/cnSpark0-7`): flash → green "CONTRACT SIGNED" chip → 144px portrait spring + light-ring + green ray bloom → 8-spark burst; the BEAST'S NAME is the headline. Failed = red chip + `cnFailShake`. Deterministic / anti-gacha: identical beat at 30% or 100%.
 - **Known issues:**
-  - Interactive transforms on the two vertically-centered slots (`.radial-top`/`.radial-bottom`) re-compose `translateY(-50%)` per-state under `.visible` so hover/selected/dimmed/cant-afford don't snap out of center (see learnings 2026-06-03).
-  - **Sound gap (flag for product):** the T3 visual rides only the existing `SoundManager.PlayMonsterCatch()` fired in code-behind. A layered cue (success chime + soft bass hit timed to the portrait spring ~0.3-0.4s) would close the "sound is 50% of feel" gap. No new sound file exists yet — proposed, user's call.
-  - Diamond `.selected`/`.approach-diamond` colored `box-shadow` glows are SAFE — the radial container is absolutely positioned (`pointer-events: all`), NOT inside a scroll viewport, so the scroll-grid glow-leak rule doesn't apply.
-- **Neighbors:** BattleView, MonsterRosterPanel (post-capture).
+  - **Sound gap (flag for product):** T3 visual still rides only `PlayMonsterCatch()`. A layered cue timed to the portrait spring (~0.3-0.4s) is still the proposed close for the "sound is 50% of feel" gap.
+  - Entrance keyframes use fill `both` + opacity state classes (`.dimmed`/`.cant-afford`) on the same elements — shipped-working pattern from the old file, but if dimming ever looks dead at capture, the filled `opacity: 1` is the suspect.
+  - BbButton's `.bb-btn-ring` (absolute child) sits under two transform ancestors (`.radial-container` translate + `.radial-bottom-section` translateX) — deeply-nested absolutes lean correctly per PawPad law, but verify the ATTEMPT ring hugs the button at capture.
+  - API surface frozen: `TargetMonster/IsVisible/IsBossContract/WasSkipped/OnNegotiationComplete/TickInput()/Initialize()` — BattleView.razor:1130 binds them all; screen-slot tables `_indexToSlot/_slotToIndex` own the 1-4 caps/hotkeys.
+- **Neighbors:** BattleView (mounts it — OFF-LIMITS), BbButton/BbTokens, MonsterRosterPanel (post-capture).
+
+### ExpeditionResultPopup _[2026-07 dialect sweep (xr-* rename + BbButton rows), 2026-07-03]_
+- **Files:** `Code/UI/Components/ExpeditionResultPopup.razor` (~290), `.scss` (~290)
+- **Purpose:** End-of-run modal (win/loss) mounted globally in GameHUD (survives the expedition→map swap). Victory: rewards + EMBARK AGAIN / RETURN TO MAP. Defeat: RETRY (hero row) + CHANGE TEAM / MAP.
+- **Visual style notes:** Solid slab modal `#15121f` r26, FLEX-CENTERED root (translate(-50%,-50%) centering removed — width-poison law). Identity = skewed kicker chip (expedition orange `#ee5421` on victory / red `#e0414a` on defeat, ink text) + solid 45° outcome diamond (green/red, `xrIconBreathe` w/ rotate baked) + Exo2Italic-900 46px title (victory green w/ scale-only breathe). Rewards = two-tone slab rows (`.xr-reward-row` 528×48 on `#1c1830`: tinted icon chip + label + Exo2Italic gold/green/violet amount — gold is THE reward highlight). Buttons = BbButton tiers; kb cursor = the primitive's Focused violet ring (old `.kb-active` glow retired). Entrance `xrEnter` runs fill NONE so no transform lingers on the modal (flex-grow protection).
+- **Known issues / hard constraints:**
+  - **CLASS NAMES ARE xr-* ON PURPOSE** — ExpeditionPanel.razor(.scss) still carries a full legacy copy of the old `result-popup-*`/`.result-btn` names + `resultPopupEnter/Backdrop` keyframes (~razor 650-720, scss 3047-3324). Stylesheets are global; renaming back = cross-sheet roulette. The legacy copy is unreachable dead code — bit-freeze it.
+  - Banner uses `isComplete` (`_won && _wave >= zone.Waves`) while root victory/defeat class uses `_won` — a pre-existing logic quirk, deliberately untouched.
+  - Keyboard contract unchanged: Left/Right/Up/Down move `_kbIndex`, Space/Enter activates, Menu/run = map; `UIModalState.IsTopModal("ExpeditionResultPopup")` gates input.
+- **Neighbors:** GameHUD (mount), TeamPickerPopup (embark-again route), BattleTransition (retry), BbButton.
 
 ---
 
@@ -443,11 +461,12 @@ _(see Core panels)_
 - **Juice tier (current / target):** Tier 1. Target: keep.
 - **Neighbors:** MenuPopup.
 
-### TutorialPanel
-- **Files:** `Code/UI/Components/TutorialPanel.razor` (139), `.scss`
-- **Purpose:** Tutorial overlay with step-by-step prompts.
+### TutorialPanel _[2026-07 sweep — clean-first violet]_
+- **Files:** `Code/UI/Components/TutorialPanel.razor` (~415), `.scss`
+- **Purpose:** Tutorial overlay — info steps (centered slab) + action steps (top banner with spotlight hole + gold arrow tracking a target rect).
+- **Visual style notes:** Clean-first: #14151b slabs (radius 26 card / 16 banner), violet #9b6cff single accent (TUTORIAL kicker chip, Next button, banner left-bar + glyph square), 15px/23px body type, house keycaps (SPACE/Q) in the footer. Gold survives only on the arrow + action hint. Skip pill = round chip w/ violet hover ring. Spotlight/arrow target-tracking logic untouched.
 - **Juice tier (current / target):** Tier 1. Target: keep quiet.
-- **Neighbors:** MainMenu, HelpPanel.
+- **Neighbors:** MainMenu, HelpPanel, ConfirmDialog (skip confirm).
 
 ### NotificationPanel
 - **Files:** `Code/UI/Components/NotificationPanel.razor` (261), `.scss` in GameHUD.razor.scss
@@ -482,17 +501,18 @@ _(see Core panels)_
 - **Purpose:** Renders a single tamer card (the player's or others).
 - **Neighbors:** CardCollectionPanel, TamerCardShowcasePopup.
 
-### TamerCardShowcasePopup
-- **Files:** `Code/UI/Components/TamerCardShowcasePopup.razor` (201), `.scss`
+### TamerCardShowcasePopup _[2026-07 sweep — premium gold card]_
+- **Files:** `Code/UI/Components/TamerCardShowcasePopup.razor` (~225), `.scss`
 - **Purpose:** Popup when someone shows off their tamer card in chat.
+- **Visual style notes:** #14151b slab radius 26, gold TAMER CARD kicker chip, gold hardware-ringed 84px avatar + gold Exo2Italic level number. Lifetime stats grid LEADS; arena strip demoted below it (PvP dormant — ProfilePanel precedent), rank colors still inline-driven. Favorites keep element-tinted FILLS (no borders); expedition bg image kept at 0.16–0.18 opacity.
 - **Juice tier (current / target):** Tier 2 reveal. Target: keep.
 - **Neighbors:** TamerCardComponent, ChatPanel.
 
-### BeastShowcasePopup
-- **Files:** `Code/UI/Components/BeastShowcasePopup.razor` (199), `.scss`
+### BeastShowcasePopup _[2026-07 sweep — sprite-as-star stage]_
+- **Files:** `Code/UI/Components/BeastShowcasePopup.razor` (~205), `.scss`
 - **Purpose:** Popup when someone shows off their beast in chat — portrait + stats.
-- **Visual style notes:** Element class on popup, animated sprite.
-- **Juice tier (current / target):** Tier 2-3 reveal. Target: keep, possible Tier 3 polish.
+- **Visual style notes:** #14151b slab radius 26, gold SHOWCASE kicker. Hero row replaced by a centered STAGE: 192px animated pixel sprite (pixelated, no filters) on a #1c1830 slab whose bottom strip carries the element color, Exo2Italic 26px name, two-tone element/rarity chips, POWER in 32px gold italics. Sections = #1a1c23 slabs with gold left bars; content column scrolls (sections are direct children).
+- **Juice tier (current / target):** Tier 2-3 reveal. Target: keep.
 - **Neighbors:** ChatPanel, MonsterDetailPanel.
 
 ### SkillNodeComponent _[orphan 2026-04-17]_
