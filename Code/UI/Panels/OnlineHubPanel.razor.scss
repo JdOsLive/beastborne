@@ -1,9 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════
-// OnlineHubPanel — Tamers · Leaderboards · Guild
-// Three-tab hub. Tamers tab uses MonsterRoster/Beastbook layout pattern:
-//   header row | optional voice strip | collection-main grid + detail-sidebar
-// Sidebar selection is selection-driven (no modal overlay): click a tile,
-// the right column shows that tamer's card (yourself / online / collected).
+// ONLINE HUB — Tamers · Leaderboards · Guild (2026-07 sweep)
+//
+// Accent: ONLINE BLUE #3f8fe0 (the panel's PawPad tile color).
+// Violet #9b6cff = cursor/focus only. Gold #ffce3a = LV / level only.
+// Green #4ade80 = live/voice semantics only.
+//
+// Composition: ONE opaque chrome band (BbSectionHeader identity +
+// skewed section slab tabs + presence status), then full-bleed
+// content. Tamers = presence-card grid (avatar · name · LV) + detail
+// rail; the keyboard cursor is THE living violet ring (imperative,
+// root-level); hover = inset violet ring per card; committed
+// selection = blue border + lit edge slab.
+//
+// Engine laws honored:
+// - Cards live in a scroll container → hover/selected feedback is
+//   border/bg/inset-ring only (no transforms, no colored halos);
+//   overhanging chips sit INSIDE card bounds; chrome above is opaque.
+// - Skewed slabs (tabs, LV chips): bg + border live ON the skew
+//   holder, content counter-skewed, children pointer-events: none.
+// - Explicit width/height on every absolute + every flex card
+//   (all-edge stretching = zero size; content-box math throughout).
+// - Vector rule: no hairline outlines — separation by fill contrast.
 // ═══════════════════════════════════════════════════════════════════
 
 .online-hub {
@@ -13,35 +30,33 @@
 	height: 100%;
 	overflow: hidden;
 	position: relative;
-	background-image: url(ui/menus/animated-bg.webp);
-	background-size: cover;
-	background-position: center;
+	background-color: #0a0912;
 }
 
-.online-hub-overlay {
-	display: none;
-}
-
+// Section swap entrance — opacity ONLY (a transform here would poison
+// flex-grow width resolution in every descendant while it plays).
 @keyframes tabContentFadeIn {
-	0% { opacity: 0; transform: translateY(8px); }
-	100% { opacity: 1; transform: translateY(0); }
+	0% { opacity: 0; }
+	100% { opacity: 1; }
 }
 
-@keyframes headerSlideIn {
-	0% { opacity: 0; transform: translateY(-6px); }
-	100% { opacity: 1; transform: translateY(0); }
+// The inset hover ring's quiet life — tiny breathe, safely inside the
+// card bounds. Invisible at opacity 0, alive when revealed.
+@keyframes ohRingBreathe {
+	0%, 100% { transform: skewX(0deg) rotate(0deg); }
+	33% { transform: skewX(0.4deg) rotate(0.2deg); }
+	66% { transform: skewX(-0.4deg) rotate(-0.2deg); }
 }
 
 .tamers-content,
 LeaderboardPanel,
 GuildPanel,
 .hub-guild-wrap {
-	animation: tabContentFadeIn 0.3s ease-out;
+	animation: tabContentFadeIn 0.25s ease-out;
 }
 
-// Wrapper around <GuildPanel /> — Razor element selectors don't reliably
-// propagate flex:1 in s&box, but a plain class wrapper does. The plaza
-// inside fills via its own flex chain.
+// Wrapper around the GuildPanel embed — razor element selectors don't
+// reliably propagate flex:1 in s&box, but a plain class wrapper does.
 .hub-guild-wrap {
 	flex: 1 1 0;
 	min-height: 0;
@@ -51,137 +66,181 @@ GuildPanel,
 }
 
 // ═══════════════════════════════════════
-// Header row (title · pills · status)
+// HEADER — identity + section slabs + status
 // ═══════════════════════════════════════
 
-.hub-header-row {
+.oh-header {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	padding: 14px 20px;
+	padding: 20px 40px 14px 40px;
+	gap: 36px;
 	flex-shrink: 0;
 	position: relative;
-	gap: 20px;
-	animation: headerSlideIn 0.3s ease-out;
-	background-color: rgba(8, 6, 18, 0.5);
-	border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+	z-index: 500;
+	background-color: #0a0912; // opaque — covers ring/scroll leaks from below
 }
 
-.hub-title-group {
+.oh-tabs {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 10px;
+	flex: 1 1 0;
+	min-width: 0;
+	margin-top: 10px; // optically align slabs with the title mass
+}
+
+// Section slab tab — skewed peg (hud-player-tag / QuestPanel dialect):
+// bg + ring border live ON the skew holder, content counter-skews.
+.oh-tab {
+	height: 46px;
+	margin-right: 12px;
+	background-color: #15121f;
+	border: 2px solid rgba(0, 0, 0, 0);
+	border-radius: 12px;
+	transform: skewX(-8deg);
+	cursor: pointer;
+	pointer-events: all;
 	flex-shrink: 0;
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
+
+	// hover-flicker law: children pass the cursor through
+	> * {
+		pointer-events: none;
+	}
+
+	&:hover {
+		border-color: #9b6cff;
+
+		.oh-tab-label { color: #f4f1ea; }
+	}
+
+	&.active {
+		background-color: #3f8fe0;
+
+		.oh-tab-label { color: #071426; }
+
+		.oh-tab-count {
+			background-color: rgba(7, 20, 38, 0.28);
+
+			span { color: #071426; }
+		}
+	}
 }
 
-.hub-title-icon {
-	width: 24px;
-	height: 24px;
-	opacity: 0.8;
+.oh-tab-inner {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 100%;
+	padding: 0 24px;
+	gap: 10px;
+	transform: skewX(8deg);
 }
 
-.hub-title {
-	font-size: 24px;
-	font-weight: 700;
-	color: #ffffff;
-	line-height: 24px;
+.oh-tab-label {
+	flex: 0 0 auto;
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 15px;
+	letter-spacing: 1.8px;
+	text-transform: uppercase;
+	color: rgba(244, 241, 234, 0.62);
+	white-space: nowrap;
+	transition: color 0.14s ease-out;
 }
 
-.hub-pills {
+.oh-tab-count {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	min-width: 22px;
+	height: 20px;
+	padding: 0 6px;
+	border-radius: 6px;
+	background-color: rgba(63, 143, 224, 0.18);
+
+	span {
+		font-family: Exo2;
+		font-size: 11px;
+		font-weight: 800;
+		line-height: 13px;
+		color: #9ecdf5;
+	}
+}
+
+// Z / X cycle caps — discoverability strip for the section hotkeys.
+.oh-cycle {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 6px;
-	padding: 4px 8px;
-	background-color: rgba(15, 12, 28, 0.85);
-	background-image: url(ui/icons/animated/tab-bg.webp);
-	background-size: cover;
-	background-position: center;
-	border-radius: 10px;
-	border: 1px solid rgba(139, 92, 246, 0.15);
-	z-index: 200;
-}
-
-// Hub tab pills (Tamers / Leaderboards / Guild) — bumped from 13px label
-// + 8/14 padding to a P5-stamp slab. Wider, taller, hard offset shadow,
-// uppercase letterspaced label so they read as deliberate destinations
-// rather than incidental nav chips.
-.hub-pill {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	padding: 11px 20px;
-	border-radius: 4px;
-	cursor: pointer;
-	pointer-events: all;
-	background-color: rgba(20, 14, 32, 0.92);
-	border: 2px solid rgba(0, 0, 0, 0.55);
-	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4);
-	transition: all 0.18s ease;
-
-	.pill-icon {
-		width: 18px;
-		height: 18px;
-		opacity: 0.7;
-		transition: all 0.18s ease;
-	}
-
-	.pill-label {
-		font-size: 14px;
-		font-weight: 800;
-		letter-spacing: 1.5;
-		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.85);
-		line-height: 16px;
-		transition: all 0.18s ease;
-	}
-
-	&:hover {
-		background-color: rgba(40, 28, 60, 0.95);
-		.pill-label { color: #ffffff; }
-		.pill-icon { opacity: 0.95; }
-	}
-
-	&.active {
-		background-color: rgba(88, 48, 150, 0.85);
-		border-color: rgba(139, 92, 246, 0.85);
-		box-shadow: 4px 4px 0 rgba(124, 58, 237, 0.4);
-		.pill-label { color: #ffffff; }
-		.pill-icon { opacity: 1; }
-	}
-}
-
-.hub-status {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
+	margin-left: 10px;
 	flex-shrink: 0;
-	background-color: rgba(0, 0, 0, 0.3);
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	padding: 8px 16px;
-	border-radius: 8px;
+}
+
+.oh-cap {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 20px;
+	border-radius: 6px;
+	background-color: #1c1830;
+	flex: 0 0 24px;
+
+	span {
+		font-family: Exo2;
+		font-size: 10px;
+		font-weight: 800;
+		line-height: 12px;
+		color: rgba(214, 206, 236, 0.7);
+	}
+}
+
+.oh-cycle-label {
+	font-family: Exo2;
+	font-size: 10px;
+	font-weight: 800;
+	line-height: 12px;
+	letter-spacing: 1.5px;
+	color: rgba(214, 206, 236, 0.4);
+}
+
+.oh-status {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 9px;
+	flex-shrink: 0;
+	background-color: #15121f;
+	padding: 9px 18px;
+	border-radius: 999px;
+	margin-top: 10px;
 }
 
 .status-dot {
 	width: 8px;
 	height: 8px;
 	border-radius: 50%;
-	background-color: rgba(255, 255, 255, 0.3);
+	background-color: rgba(255, 255, 255, 0.25);
+	flex: 0 0 8px;
 
 	&.connected {
 		background-color: #4ade80;
-		box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
 	}
 }
 
 .status-text {
-	font-size: 13px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.7);
+	font-size: 12px;
+	font-weight: 700;
+	color: rgba(214, 206, 236, 0.65);
+	white-space: nowrap;
+	line-height: 14px;
 }
 
 // ═══════════════════════════════════════
@@ -199,70 +258,70 @@ GuildPanel,
 
 // ═══════════════════════════════════════
 // Voice strip (lobby-only for launch)
-// 56px row pinned above the split layout.
 // ═══════════════════════════════════════
 
 .voice-strip {
-	height: 56px;
-	flex: 0 0 56px;
+	height: 54px;
+	flex: 0 0 54px;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 8px;
-	padding: 0 20px;
-	background-color: rgba(8, 6, 18, 0.45);
-	border-bottom: 1px solid rgba(139, 92, 246, 0.08);
+	gap: 10px;
+	padding: 0 32px;
+	background-color: #0a0912; // opaque — part of the chrome band above the scroll
 	flex-shrink: 0;
+	position: relative;
+	z-index: 400;
 }
 
 .voice-strip-pill {
-	height: 36px;
+	height: 38px;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 8px;
-	padding: 0 14px;
-	border-radius: 8px;
-	background-color: rgba(40, 35, 55, 0.85);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	padding: 0 16px;
+	border-radius: 10px;
+	background-color: #1c1830;
+	border: 2px solid rgba(0, 0, 0, 0);
 	cursor: pointer;
 	pointer-events: all;
-	transition: all 0.15s ease;
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
 
 	&:hover {
-		background-color: rgba(50, 45, 70, 0.95);
-		border-color: rgba(255, 255, 255, 0.25);
+		border-color: #9b6cff;
 	}
 
 	&.lobby.active {
-		background-color: rgba(34, 197, 94, 0.18);
-		border-color: rgba(74, 222, 128, 0.5);
+		background-color: rgba(34, 197, 94, 0.16);
 
 		.voice-strip-label { color: #4ade80; }
 	}
 
 	&.mic {
-		background-color: rgba(139, 92, 246, 0.15);
-		border-color: rgba(139, 92, 246, 0.4);
+		background-color: rgba(63, 143, 224, 0.14);
 
-		.voice-strip-label { color: #c4b5fd; }
+		.voice-strip-label { color: #9ecdf5; }
 	}
 }
 
 .voice-strip-label {
-	font-size: 13px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.85);
-	letter-spacing: 0.5px;
+	font-size: 12px;
+	font-weight: 800;
+	color: rgba(244, 241, 234, 0.85);
+	letter-spacing: 0.8px;
+	line-height: 14px;
+	white-space: nowrap;
 }
 
 .voice-strip-count {
 	font-size: 11px;
-	font-weight: 700;
-	color: rgba(255, 255, 255, 0.65);
+	font-weight: 800;
+	color: rgba(255, 255, 255, 0.7);
 	background-color: rgba(0, 0, 0, 0.35);
 	padding: 2px 8px;
-	border-radius: 10px;
+	border-radius: 8px;
+	line-height: 13px;
 }
 
 .voice-strip-spacer {
@@ -277,13 +336,13 @@ GuildPanel,
 	span {
 		font-size: 11px;
 		font-weight: 500;
-		color: rgba(255, 255, 255, 0.35);
+		color: rgba(214, 206, 236, 0.32);
+		line-height: 13px;
 	}
 }
 
 // ═══════════════════════════════════════
-// Collection layout (grid + detail sidebar)
-// Mirrors MonsterRoster/Beastbook pattern.
+// Collection layout (grid + detail rail)
 // ═══════════════════════════════════════
 
 .collection-layout {
@@ -302,8 +361,8 @@ GuildPanel,
 	flex-direction: column;
 	overflow-y: scroll;
 	overflow-x: hidden;
-	padding: 16px 20px 20px 20px;
-	gap: 22px;
+	padding: 18px 32px 24px 32px;
+	gap: 20px;
 }
 
 .detail-sidebar {
@@ -313,18 +372,19 @@ GuildPanel,
 	flex-direction: column;
 	overflow-y: scroll;
 	overflow-x: hidden;
-	background-color: rgba(8, 6, 18, 0.5);
-	border-left: 1px solid rgba(139, 92, 246, 0.12);
+	background-color: #0f0d1a; // separation by contrast, not stroke
+	position: relative;
+	z-index: 80;
 }
 
 // ═══════════════════════════════════════
-// Section dividers (ONLINE NOW, COLLECTED)
+// Section header (ONLINE NOW)
 // ═══════════════════════════════════════
 
 .tamers-section {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 14px;
 	flex-shrink: 0;
 }
 
@@ -333,306 +393,123 @@ GuildPanel,
 	flex-direction: row;
 	align-items: center;
 	gap: 10px;
-	padding-bottom: 8px;
-	border-bottom: 1px solid rgba(139, 92, 246, 0.12);
+	padding: 3px 0 3px 12px;
+	border-left: 3px solid #3f8fe0;
 }
 
 .tamers-section-label {
-	font-size: 11px;
+	font-size: 12px;
 	font-weight: 800;
 	letter-spacing: 2.5px;
-	color: rgba(255, 255, 255, 0.6);
+	color: rgba(158, 205, 245, 0.9);
 	text-transform: uppercase;
+	line-height: 15px;
 }
 
 .tamers-section-count {
 	font-size: 11px;
-	font-weight: 700;
-	color: rgba(167, 139, 250, 0.9);
-	background-color: rgba(139, 92, 246, 0.15);
-	border: 1px solid rgba(139, 92, 246, 0.25);
-	padding: 2px 8px;
-	border-radius: 10px;
-}
-
-.tamers-section-action {
-	margin-left: auto;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 10px;
+	font-weight: 800;
+	color: #9ecdf5;
+	background-color: rgba(63, 143, 224, 0.16);
+	padding: 2px 9px;
 	border-radius: 8px;
-	cursor: pointer;
-	pointer-events: all;
-	transition: background-color 0.15s ease;
-
-	span {
-		font-size: 11px;
-		font-weight: 700;
-		color: rgba(167, 139, 250, 0.85);
-		letter-spacing: 1px;
-	}
-
-	&:hover {
-		background-color: rgba(139, 92, 246, 0.14);
-	}
+	line-height: 14px;
 }
 
 // ═══════════════════════════════════════
-// Tamer tile grid (online + collected)
+// Presence cards (the tamer grid)
 // ═══════════════════════════════════════
 
 .tamers-grid {
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
-	gap: 10px;
+	gap: 12px;
 }
 
-// ─────────────────────────────────────────────────────────────────────
-// Tamer tile — Persona 5-style "stamped tag" treatment, Beastborne palette.
-// The tile reads as a stylized identity stamp rather than a tidy info row:
-//   • asymmetric purple color block on the LEFT (gradient behind avatar)
-//     transitioning to dark on the right via a hard-edge linear gradient
-//   • bottom rail bar fading L→R (gold gradient, no transform: rotate so
-//     it stays scroll-grid safe)
-//   • angled gold accent line in the top-right (hard-stop diagonal grad)
-//   • twin-slash purple flourish in the bottom-right corner (CSS-only,
-//     no data URI, no repeating-linear-gradient)
-//   • LV chip restyled as a flat black-on-gold "stamp" rectangle
-//   • DEV chip restyled as a flat gold flag with hard offset shadow
-//   • bold italic uppercase typography, 1px hard offset text shadows
-//   • selected state: gold border + gold corner SEL/YOU stamp + brighter
-//     bg-block; YOU tile shows a "01" index stamp at rest
-//
-// CONSTRAINTS HONORED (per CLAUDE.md scroll-grid rule):
-//   • NO transform on hover/selected — only border/border-color/bg shifts
-//   • NO colored box-shadow halos (only a dark drop shadow at rest)
-//   • All overhang elements stay INSIDE tile bounds (no top: -Npx)
-//   • All accent layers use background-image gradients (which DO stack
-//     above parent background-color in s&box, unlike full-fill img bgs)
-// ─────────────────────────────────────────────────────────────────────
-
+// Presence card — flat slab host (safe for detached rings): skewed blue
+// edge, avatar circle in the player's title color, name + title, gold
+// LV slab. Border box = 296 + 36 pad + 4 border = 336w × 92h.
+// States: hover = inset violet ring + brighten · kb cursor = THE living
+// ring (root-level) + subtle brighten · selected = blue border + lit edge.
 .tamer-tile {
-	width: 320px;
-	min-width: 320px;
-	flex: 0 0 320px;
-	height: 110px;
+	width: 296px;
+	min-width: 296px;
+	flex: 0 0 296px;
+	height: 88px;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 14px;
-	padding: 12px 14px 12px 22px;
-	background-color: #0a0820;
-	border: 2px solid rgba(15, 12, 28, 1);
-	border-radius: 6px;
+	padding: 0 14px 0 22px;
+	background-color: #15121f;
+	border: 2px solid rgba(0, 0, 0, 0);
+	border-radius: 16px;
 	position: relative;
-	overflow: hidden;
 	cursor: pointer;
 	pointer-events: all;
-	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
-	transition: border-color 0.15s ease, background-color 0.15s ease;
+	transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
 
 	&:hover {
-		background-color: #120c2c;
-		border-color: rgba(167, 139, 250, 0.55);
+		background-color: #1c1830;
 
-		.tile-rail-bar {
-			background-image: linear-gradient(to right, #fbbf24 0%, #fbbf24 65%, rgba(251, 191, 36, 0) 100%);
-		}
-
-		.tile-corner-cut {
-			// 18px / 21px on a 64px corner element ≈ 28% / 33%.
-			background-image: linear-gradient(225deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 28%, #fbbf24 28%, #fbbf24 33%, rgba(0, 0, 0, 0) 33%, rgba(0, 0, 0, 0) 100%);
+		.tile-ring {
+			opacity: 1;
 		}
 	}
 
-	// Keyboard-nav cursor. Lives on a tile inside the scrolling collection-main
-	// container, so per the s&box scroll-clip quirk: border + background ONLY —
-	// no transform, no box-shadow (both leak past the scroll viewport). A bright
-	// purple inner border reads clearly against both the unselected dark tile
-	// and the gold .selected border without competing with it.
+	// Keyboard cursor tile — the living ring wraps it from outside; the
+	// tile itself just brightens so the pairing reads as one state.
 	&.online-kb-selected {
-		border-color: #c4b5fd;
-		background-color: #15102e;
+		background-color: #1c1830;
 	}
 
-	// When the keyboard cursor lands on the currently-selected tile, keep the
-	// gold selected border (committed selection) and add a thin purple offset
-	// via the rail so both states stay legible at once.
-	&.selected.online-kb-selected {
-		border-color: #fbbf24;
-		background-color: #1a1140;
-	}
-
+	// Committed selection (drives the detail rail) — ONLINE BLUE.
 	&.selected {
-		background-color: #160e34;
-		border-color: #fbbf24;
+		border-color: #3f8fe0;
+		background-color: #172033;
 
-		.tile-rail-bar {
-			background-image: linear-gradient(to right, #fbbf24 0%, #fbbf24 80%, rgba(251, 191, 36, 0.4) 100%);
-			height: 4px;
-		}
-
-		.tile-corner-cut {
-			// s&box gradient parser only accepts percentage stops, not px.
-			// Approximate the original 22px / 26px corner stripe as % stops.
-			background-image: linear-gradient(225deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 18%, #fbbf24 18%, #fbbf24 22%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 100%);
-		}
-
-		.tile-bg-block {
-			// 86px → 78% / 110px → 100% on the 110px-wide block (approximate).
-			background-image: linear-gradient(to right, rgba(139, 92, 246, 0.55) 0%, rgba(76, 29, 149, 0.45) 78%, rgba(76, 29, 149, 0) 100%, rgba(0, 0, 0, 0) 100%);
-		}
-	}
-
-	// YOU tile — same P5 stamp treatment, just keeps the gold "01" index
-	// stamp visible in the top-right when not selected. No blue.
-	&.you-tile {
-		// resting border slightly warmer to hint at "your" tile without
-		// breaking palette
-		border-color: rgba(251, 191, 36, 0.18);
-
-		&:hover {
-			border-color: rgba(251, 191, 36, 0.6);
+		.tile-edge {
+			background-color: #3f8fe0;
 		}
 	}
 
 	&.no-profile {
-		opacity: 0.7;
-	}
-
-	// When selected, the gold "SEL"/"YOU" stamp takes the corner — hide
-	// the resting "01" index so they don't overlap.
-	&.selected .tile-index-stamp {
-		opacity: 0;
+		opacity: 0.72;
 	}
 }
 
-// ── P5 stamp layers (in-flow flex children, sit behind avatar/info) ──
-// All layers are absolute-positioned over the parent `background-color`.
-// In s&box, absolutely-positioned children CAN render above the parent
-// background-color when they declare explicit top/left/right/bottom (the
-// quirk only bites bg-image overlays — solid bg-color children render fine).
-// To be safe we paint with `background-image: linear-gradient(...)` not a
-// solid `background-color`, since gradients ARE allowed to layer over the
-// parent's color. Each layer's z-stack order matches DOM source order:
-// block → halftone → corner-cut → rail-bar, then the avatar/info above.
-
-.tile-bg-block {
+// Skewed blue edge slab — the card's one angle.
+.tile-edge {
 	position: absolute;
-	top: 0;
-	left: 0;
-	width: 110px;
-	height: 100%;
-	// s&box gradient parser only accepts % stops, not px. 70px on a 110px-
-	// wide block ≈ 64%.
-	background-image: linear-gradient(to right, rgba(139, 92, 246, 0.32) 0%, rgba(76, 29, 149, 0.22) 64%, rgba(76, 29, 149, 0) 100%);
+	left: 7px;
+	top: 15px;
+	width: 5px;
+	height: 58px;
+	border-radius: 3px;
+	background-color: rgba(63, 143, 224, 0.45);
+	transform: skewX(-8deg);
 	pointer-events: none;
+	transition: background-color 0.15s ease-out;
 }
 
-// Diagonal slash-mark in the bottom-right — a pure-CSS P5 graphic flourish.
-// Two angled hard-stop linear gradients give the impression of a stamped
-// "/" across the corner. No data URI, no repeating-linear-gradient, no
-// transforms — works within s&box constraints.
-.tile-halftone {
+// Inset violet hover ring — explicit size (all-edge offsets = zero size
+// on an empty div). 3px inside the 336×92 border box, minus its own 8px
+// of border: 318×74, radius host 16 − 3 = 13.
+.tile-ring {
 	position: absolute;
-	right: 0;
-	bottom: 8px;
-	width: 80px;
-	height: 38px;
-	background-image: linear-gradient(135deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 38%, rgba(167, 139, 250, 0.35) 38%, rgba(167, 139, 250, 0.35) 42%, rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0) 60%, rgba(167, 139, 250, 0.22) 60%, rgba(167, 139, 250, 0.22) 64%, rgba(0, 0, 0, 0) 64%, rgba(0, 0, 0, 0) 100%);
+	left: 3px;
+	top: 3px;
+	width: 318px;
+	height: 74px;
+	border: 4px solid #9b6cff;
+	border-radius: 13px;
+	background-color: rgba(0, 0, 0, 0);
+	opacity: 0;
 	pointer-events: none;
-}
-
-// Top-right angled gold accent line — a single sharp diagonal slash 18-21
-// px from the corner, edged in gold. Achieved with a hard-stop linear
-// gradient (no transforms). The gradient direction is 225deg so the line
-// runs from top-left to bottom-right of the corner box, sloping NE→SW
-// when viewed against the tile.
-.tile-corner-cut {
-	position: absolute;
-	top: 0;
-	right: 0;
-	width: 64px;
-	height: 64px;
-	// s&box gradient parser only accepts % stops, not px. 18/21 on a 64px
-	// corner element ≈ 28% / 33%.
-	background-image: linear-gradient(225deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0) 28%, rgba(251, 191, 36, 0.55) 28%, rgba(251, 191, 36, 0.55) 33%, rgba(0, 0, 0, 0) 33%, rgba(0, 0, 0, 0) 100%);
-	pointer-events: none;
-}
-
-// Bottom rail — a 3px bar that fades from gold-bright at the LEFT to
-// transparent at the RIGHT. The fade-edge gives a stamp/dynamic feel
-// without using `transform: rotate`. On hover/selected it brightens
-// (snaps — gradient transitions don't interpolate, and that's fine).
-.tile-rail-bar {
-	position: absolute;
-	bottom: 0;
-	left: 0;
-	width: 100%;
-	height: 3px;
-	background-image: linear-gradient(to right, rgba(251, 191, 36, 0.85) 0%, rgba(251, 191, 36, 0.45) 50%, rgba(251, 191, 36, 0) 100%);
-	transition: height 0.15s ease;
-	pointer-events: none;
-}
-
-// "01" index stamp on the YOU tile — sits in the corner-cut zone, big
-// gold sans serif numeral. Bottom-right could clash with halftone, so it
-// sits TOP-LEFT of the avatar block but pushed to top-right of the tile.
-.tile-index-stamp {
-	position: absolute;
-	top: 6px;
-	right: 10px;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	pointer-events: none;
+	transition: opacity 0.12s ease-out;
+	animation: ohRingBreathe 5s ease-in-out infinite;
 	z-index: 5;
-
-	span {
-		font-size: 16px;
-		font-weight: 900;
-		color: #1a1100;
-		letter-spacing: 0.5px;
-		font-style: italic;
-		text-shadow: 0 1px 0 rgba(251, 191, 36, 0.6);
-		line-height: 18px;
-	}
-}
-
-// "YOU" / "SEL" stamp that appears in the top-right corner when the tile
-// is selected. Solid gold rectangle, dark text, thick black border —
-// reads as "stamped on top". Replaces the index stamp visually when YOU
-// is selected (it sits in the same place but with higher z-index).
-.tile-selected-stamp {
-	position: absolute;
-	top: 8px;
-	right: 8px;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	height: 20px;
-	padding: 0 9px;
-	background-color: #fbbf24;
-	border: 2px solid #1a1100;
-	border-radius: 2px;
-	box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4);
-	pointer-events: none;
-	z-index: 10;
-
-	span {
-		font-size: 10px;
-		font-weight: 900;
-		color: #1a1100;
-		letter-spacing: 1.6px;
-		text-transform: uppercase;
-		font-style: italic;
-		line-height: 12px;
-	}
 }
 
 .tile-indicator {
@@ -640,7 +517,6 @@ GuildPanel,
 	height: 12px;
 	border-radius: 50%;
 	background-color: #4ade80;
-	box-shadow: 0 0 6px rgba(74, 222, 128, 0.4);
 	flex-shrink: 0;
 }
 
@@ -648,7 +524,7 @@ GuildPanel,
 	width: 64px;
 	height: 64px;
 	min-width: 64px;
-	background-color: #0a0820;
+	background-color: #0a0912;
 	border-radius: 50%;
 	overflow: hidden;
 	border: 3px solid rgba(255, 255, 255, 0.15);
@@ -658,11 +534,8 @@ GuildPanel,
 	flex-shrink: 0;
 	position: relative;
 	z-index: 2;
-	box-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
 
-	// Inline `style="border-color: ..."` (title color) wins over these
-	// gender fallbacks, but they remain as a safety net when no profile
-	// color is available.
+	// Inline border-color (title color) wins over these gender fallbacks.
 	&.male {
 		border-color: rgba(59, 130, 246, 0.4);
 	}
@@ -671,7 +544,7 @@ GuildPanel,
 		border-color: rgba(236, 72, 153, 0.4);
 	}
 
-	// Steam avatar — square Steam profile pic, fills the circle exactly.
+	// Steam avatar — square profile pic fills the circle exactly.
 	&.steam {
 		justify-content: center;
 		align-items: center;
@@ -683,7 +556,7 @@ GuildPanel,
 		}
 	}
 
-	// Cartoon avatar — top-cropped face zoom from the larger character sprite.
+	// Cartoon avatar — top-cropped face zoom from the character sprite.
 	&.cartoon {
 		img {
 			min-width: 138px;
@@ -706,45 +579,7 @@ GuildPanel,
 	}
 }
 
-// ── Inline trailing level pill (YOU + Collected tiles) ──
-// Lives at the right end of the tile flex row, after `.tile-info`.
-
-// LV chip — P5-style flat black-on-gold stamp. Sharp corners, thick dark
-// border, hard offset shadow for "stamped on" feel. Solid rectangle reads
-// as a label, not a pill — fits the "stamped tag" tile vocabulary.
-.tile-level-pill {
-	flex-shrink: 0;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	min-width: 52px;
-	padding: 6px 10px;
-	background-color: #fbbf24;
-	border: 2px solid #1a1100;
-	border-radius: 3px;
-	box-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
-	position: relative;
-	z-index: 3;
-}
-
-.tile-level-pill-num {
-	font-size: 11px;
-	font-weight: 900;
-	letter-spacing: 1.4px;
-	color: #1a1100;
-	font-style: italic;
-	text-transform: uppercase;
-	line-height: 13px;
-}
-
-// Tiny green dot pinned to the bottom-right of the avatar circle for live
-// online players — the only corner overlay we keep, and it's tiny enough to
-// stay inside the avatar's `overflow: hidden` clip safely.
-
-// Inset to sit inside the avatar circle's clip — overflow:hidden on the
-// avatar would clip a corner-edge dot, so we push it ~6px in from the edges
-// to land in the visible inscribed-square area.
+// Live dot pinned inside the avatar circle's clip.
 .tile-online-dot {
 	position: absolute;
 	bottom: 6px;
@@ -753,7 +588,7 @@ GuildPanel,
 	height: 10px;
 	border-radius: 50%;
 	background-color: #4ade80;
-	box-shadow: 0 0 0 2px rgba(8, 6, 18, 0.95), 0 0 6px rgba(74, 222, 128, 0.6);
+	box-shadow: 0 0 0 2px rgba(10, 9, 18, 0.95);
 }
 
 .tile-info {
@@ -761,7 +596,7 @@ GuildPanel,
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 3px;
 	position: relative;
 	z-index: 2;
 }
@@ -775,116 +610,206 @@ GuildPanel,
 }
 
 .tile-guild-tag {
-	font-size: 12px;
+	font-size: 11px;
 	font-weight: 900;
 	color: #c084fc;
 	white-space: nowrap;
 	flex-shrink: 0;
-	letter-spacing: 0.8px;
-	font-style: italic;
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
-	line-height: 14px;
+	letter-spacing: 0.6px;
+	line-height: 13px;
 }
 
-// Bold P5 italic name: 900 weight, uppercase, dramatic letter-spacing,
-// 1px hard-offset black shadow (not a soft blur — a stamped offset).
 .tile-name {
-	font-size: 18px;
-	font-weight: 900;
-	color: #ffffff;
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.95);
-	letter-spacing: 1.2px;
+	font-family: Exo2Italic;
 	font-style: italic;
+	font-size: 16px;
+	font-weight: 900;
+	color: #f4f1ea;
+	letter-spacing: 0.8px;
 	text-transform: uppercase;
 	white-space: nowrap;
 	overflow: hidden;
-	text-overflow: clip;
-	line-height: 22px;
+	line-height: 20px;
 
-	&.dev { color: #fbbf24; }
+	&.dev { color: #ffce3a; }
 }
 
-// Title sits like a sub-stamp under the name. Title color is set inline
-// (player identity color), so we only stamp the typography here. Tight
-// caps + hard 1px offset shadow keeps it stamped-on.
+// Title sub-line — color arrives inline (player identity color).
 .tile-role {
 	font-size: 10px;
-	font-weight: 900;
-	color: rgba(255, 255, 255, 0.65);
-	letter-spacing: 2px;
+	font-weight: 800;
+	color: rgba(244, 241, 234, 0.6);
+	letter-spacing: 1.8px;
 	text-transform: uppercase;
-	text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
 	white-space: nowrap;
-	line-height: 14px;
+	line-height: 13px;
 }
 
-// DEV badge — small inline yellow pill that sits at the top of `.tile-info`
-// (above the name row). Wrapped as `<div><span>DEV</span></div>` with explicit
-// `display: flex` to dodge the s&box bare-text-vertical-render quirk that
-// previously made it stack one char per line.
-
-// DEV stamp — flat solid-gold flag with thick dark border, 1px hard
-// offset shadow. Reads as a P5 sticker / bumper-tag.
+// DEV chip — small gold slab inline in the name row.
 .dev-badge {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: center;
 	flex: 0 0 auto;
-	align-self: flex-start;
-	background-color: #fbbf24;
-	border: 2px solid #1a1100;
-	padding: 0 7px;
-	border-radius: 2px;
-	height: 16px;
-	position: relative;
-	box-shadow: 1px 1px 0 rgba(0, 0, 0, 0.55);
+	background-color: #ffce3a;
+	padding: 0 6px;
+	border-radius: 4px;
+	height: 15px;
 
 	span {
+		font-family: Exo2Italic;
+		font-style: italic;
 		font-size: 9px;
 		font-weight: 900;
-		color: #1a1100;
-		letter-spacing: 1.6px;
-		font-style: italic;
+		color: #2a1605;
+		letter-spacing: 1.4px;
 		line-height: 11px;
 	}
 }
 
-// Alone notice (connected but solo)
+// LV slab — gold skewed chip (LV = gold, house-wide). Content counter-skews.
+.tile-lv {
+	flex-shrink: 0;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	min-width: 44px;
+	height: 24px;
+	padding: 0 9px;
+	background-color: #ffce3a;
+	border-radius: 7px;
+	transform: skewX(-8deg);
+	position: relative;
+	z-index: 3;
+
+	> * {
+		pointer-events: none;
+	}
+}
+
+.tile-lv-num {
+	flex: 0 0 auto;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 11px;
+	font-weight: 900;
+	letter-spacing: 1.2px;
+	color: #2a1605;
+	text-transform: uppercase;
+	white-space: nowrap;
+	line-height: 13px;
+	transform: skewX(8deg);
+}
+
+// YOU chip — blue skewed slab pinned INSIDE card bounds (scroll law).
+.tile-you-chip {
+	position: absolute;
+	top: 7px;
+	right: 12px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 17px;
+	background-color: #3f8fe0;
+	border-radius: 5px;
+	transform: skewX(-8deg);
+	pointer-events: none;
+	z-index: 4;
+
+	span {
+		flex: 0 0 auto;
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-size: 9px;
+		font-weight: 900;
+		color: #071426;
+		letter-spacing: 1.4px;
+		line-height: 11px;
+		transform: skewX(8deg);
+	}
+}
+
+// ═══════════════════════════════════════
+// Alone notice (connected but solo) — warm and quiet
+// ═══════════════════════════════════════
 
 .alone-notice {
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 6px;
-	padding: 32px 20px;
-	opacity: 0.7;
+	gap: 8px;
+	padding: 44px 20px;
+}
+
+.alone-rule {
+	width: 44px;
+	height: 3px;
+	border-radius: 999px;
+	background-color: rgba(63, 143, 224, 0.55);
+	margin-bottom: 6px;
 }
 
 .alone-text {
-	font-size: 15px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.5);
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 18px;
+	font-weight: 900;
+	color: rgba(244, 241, 234, 0.8);
+	line-height: 22px;
 }
 
 .alone-hint {
 	font-size: 12px;
-	color: rgba(255, 255, 255, 0.3);
+	font-weight: 500;
+	color: rgba(214, 206, 236, 0.4);
 	text-align: center;
+	line-height: 15px;
 }
 
 // ═══════════════════════════════════════
-// Detail sidebar — selected tamer card
-// .tamer-* (tamer detail) classes — mirrors MonsterRoster sidebar pattern:
-//   portrait section → ACTIONS → STATS → FAVORITE BEAST → INFO
-// Each section gets a labeled header. Element-color border on portrait,
-// chips overlaid on the avatar (level/dev) so name+title row is clean.
+// THE LIVING VIOLET RING — keyboard cursor
+// Root-level absolute; position written imperatively per tick, wave via
+// imperative transform. z 60: above grid cards, below the detail rail
+// (80) and header (500) — flat z-index law, no stacking contexts.
+// ═══════════════════════════════════════
+
+.tamer-ring {
+	position: absolute;
+	top: -500px;
+	left: -500px;
+	width: 340px;
+	height: 96px;
+	border: 4px solid #9b6cff;
+	border-radius: 24px; // card 16 + 8 inset — concentric gap
+	background-color: rgba(0, 0, 0, 0);
+	pointer-events: none;
+	opacity: 0;
+	z-index: 60;
+	transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1), top 0.27s cubic-bezier(0.22, 1, 0.36, 1), width 0.27s cubic-bezier(0.22, 1, 0.36, 1), height 0.27s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease-out;
+
+	&.on {
+		opacity: 1;
+	}
+
+	// Warmup / re-appear: land instantly, glide thereafter.
+	&.snap {
+		transition: opacity 0.15s ease-out;
+	}
+}
+
+// ═══════════════════════════════════════
+// Detail rail — selected tamer card
+// portrait → ACTIONS → STATS → FAVORITE BEAST → INFO
 // ═══════════════════════════════════════
 
 .td-card {
 	display: flex;
 	flex-direction: column;
-	padding: 14px;
+	padding: 18px 16px;
 	animation: tabContentFadeIn 0.25s ease-out;
 }
 
@@ -895,9 +820,9 @@ GuildPanel,
 	flex-direction: row;
 	align-items: center;
 	gap: 14px;
-	padding: 12px;
-	background-color: rgba(0, 0, 0, 0.18);
-	border-radius: 12px;
+	padding: 14px;
+	background-color: #15121f;
+	border-radius: 16px;
 	margin-bottom: 14px;
 	flex-shrink: 0;
 }
@@ -914,15 +839,14 @@ GuildPanel,
 	height: 96px;
 	min-width: 96px;
 	min-height: 96px;
-	background-color: rgba(0, 0, 0, 0.5);
+	background-color: #0a0912;
 	border-radius: 50%;
-	border: 3px solid rgba(167, 139, 250, 0.55);
+	border: 3px solid rgba(158, 205, 245, 0.55);
 	overflow: hidden;
 	display: flex;
 	justify-content: center;
 	align-items: flex-start;
 
-	// Steam variant — fills the circle exactly.
 	&.steam {
 		justify-content: center;
 		align-items: center;
@@ -934,7 +858,6 @@ GuildPanel,
 		}
 	}
 
-	// Cartoon variant — top-cropped face zoom from the larger sprite.
 	&.cartoon {
 		.tamer-portrait-img {
 			min-width: 200px;
@@ -950,9 +873,7 @@ GuildPanel,
 	}
 }
 
-// LV chip pinned to the bottom of the portrait. Absolute-positioned so it
-// never participates in flex flow, eliminating the "level overlaps name"
-// row-flex bug.
+// LV chip pinned under the portrait — gold slab (LV = gold).
 .tamer-portrait-level {
 	position: absolute;
 	bottom: -6px;
@@ -963,20 +884,20 @@ GuildPanel,
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background-color: #1a1230;
-	border: 1px solid rgba(167, 139, 250, 0.7);
-	border-radius: 11px;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
+	background-color: #ffce3a;
+	border-radius: 8px;
 }
 
 .tamer-portrait-level-num {
+	font-family: Exo2Italic;
+	font-style: italic;
 	font-size: 11px;
-	font-weight: 800;
+	font-weight: 900;
 	letter-spacing: 0.8px;
-	color: #d4bfff;
+	color: #2a1605;
+	line-height: 13px;
 }
 
-// DEV chip pinned to the top-right of the portrait. Same absolute treatment.
 .tamer-portrait-dev {
 	position: absolute;
 	top: -4px;
@@ -987,16 +908,17 @@ GuildPanel,
 	justify-content: center;
 	height: 18px;
 	padding: 0 7px;
-	background-color: #fbbf24;
-	border: 1px solid rgba(120, 80, 0, 0.6);
-	border-radius: 9px;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+	background-color: #ffce3a;
+	border-radius: 6px;
 
 	span {
+		font-family: Exo2Italic;
+		font-style: italic;
 		font-size: 9px;
-		font-weight: 800;
-		color: #1a1100;
+		font-weight: 900;
+		color: #2a1605;
 		letter-spacing: 1.2px;
+		line-height: 11px;
 	}
 }
 
@@ -1016,16 +938,17 @@ GuildPanel,
 }
 
 .tamer-name {
-	font-size: 19px;
-	font-weight: 800;
-	color: #ffffff;
-	text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
-	letter-spacing: 0.2px;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 20px;
+	font-weight: 900;
+	color: #f4f1ea;
+	letter-spacing: 0.4px;
 	white-space: nowrap;
-	line-height: 22px;
+	line-height: 24px;
 
 	&.dev {
-		color: #fbbf24;
+		color: #ffce3a;
 	}
 }
 
@@ -1041,7 +964,6 @@ GuildPanel,
 	font-weight: 800;
 	letter-spacing: 1.4px;
 	text-transform: uppercase;
-	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 	white-space: nowrap;
 	line-height: 14px;
 }
@@ -1062,11 +984,11 @@ GuildPanel,
 	line-height: 13px;
 }
 
-// XP bar — mirrors roster's .portrait-xp-bar pattern (slim rail + fill).
+// XP bar — slim rail + blue fill (the panel's accent carries progress).
 .tamer-xp-bar {
 	width: 100%;
 	height: 5px;
-	background-color: rgba(255, 255, 255, 0.08);
+	background-color: rgba(255, 255, 255, 0.07);
 	border-radius: 3px;
 	margin-top: 6px;
 	position: relative;
@@ -1078,7 +1000,7 @@ GuildPanel,
 	top: 0;
 	left: 0;
 	height: 100%;
-	background: linear-gradient(to right, #6366f1, #a78bfa);
+	background: linear-gradient(to right, #2c6cb0, #3f8fe0);
 	border-radius: 3px;
 	transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -1090,10 +1012,9 @@ GuildPanel,
 	align-items: center;
 	gap: 6px;
 	margin-top: 6px;
-	padding: 3px 8px;
+	padding: 3px 9px;
 	background-color: rgba(34, 197, 94, 0.14);
-	border: 1px solid rgba(74, 222, 128, 0.35);
-	border-radius: 10px;
+	border-radius: 8px;
 	align-self: flex-start;
 }
 
@@ -1102,7 +1023,6 @@ GuildPanel,
 	height: 6px;
 	border-radius: 50%;
 	background-color: #4ade80;
-	box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
 }
 
 .tamer-online-text {
@@ -1110,50 +1030,30 @@ GuildPanel,
 	font-weight: 800;
 	color: #4ade80;
 	letter-spacing: 1.4px;
+	line-height: 11px;
 }
 
-// "SNAPSHOT" pill on the collected-card branch.
-.tamer-snapshot-pill {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 5px;
-	margin-top: 6px;
-	padding: 3px 8px;
-	background-color: rgba(139, 92, 246, 0.12);
-	border: 1px solid rgba(167, 139, 250, 0.3);
-	border-radius: 10px;
-	align-self: flex-start;
-}
-
-.tamer-snapshot-text {
-	font-size: 9px;
-	font-weight: 800;
-	color: rgba(196, 181, 253, 0.92);
-	letter-spacing: 1.4px;
-}
-
-// ── Section header (mirrors roster .detail-section-header) ──
+// ── Section header (blue accent bar) ──
 
 .tamer-detail-section-header {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 8px;
-	padding: 6px 10px;
+	padding: 4px 0 4px 10px;
 	margin-bottom: 8px;
 	margin-top: 6px;
-	border-left: 3px solid rgba(139, 92, 246, 0.5);
-	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+	border-left: 3px solid #3f8fe0;
 	flex-shrink: 0;
 }
 
 .tamer-detail-section-text {
 	font-size: 11px;
 	font-weight: 800;
-	color: rgba(196, 181, 253, 0.85);
+	color: rgba(158, 205, 245, 0.85);
 	letter-spacing: 1.8px;
 	text-transform: uppercase;
+	line-height: 14px;
 }
 
 // ── Stats grid ──
@@ -1161,10 +1061,9 @@ GuildPanel,
 .tamer-stats {
 	display: flex;
 	flex-direction: row;
-	background-color: rgba(0, 0, 0, 0.22);
-	border: 1px solid rgba(255, 255, 255, 0.06);
-	border-radius: 10px;
-	padding: 10px 6px;
+	background-color: #15121f;
+	border-radius: 12px;
+	padding: 12px 6px;
 	margin-bottom: 10px;
 	flex-shrink: 0;
 }
@@ -1175,7 +1074,7 @@ GuildPanel,
 	flex-direction: column;
 	align-items: center;
 	gap: 3px;
-	border-right: 1px solid rgba(255, 255, 255, 0.06);
+	border-right: 1px solid rgba(255, 255, 255, 0.05);
 
 	&:last-child {
 		border-right: 0;
@@ -1183,20 +1082,21 @@ GuildPanel,
 }
 
 .tamer-stat-val {
-	font-size: 17px;
+	font-size: 18px;
 	font-weight: 800;
-	color: #ffffff;
-	line-height: 18px;
+	color: #f4f1ea;
+	line-height: 20px;
 }
 
 .tamer-stat-label {
 	font-size: 9px;
 	font-weight: 700;
-	color: rgba(255, 255, 255, 0.5);
+	color: rgba(214, 206, 236, 0.5);
 	letter-spacing: 1.2px;
+	line-height: 11px;
 }
 
-// ── Actions row ──
+// ── Actions ──
 
 .tamer-actions {
 	display: flex;
@@ -1206,15 +1106,9 @@ GuildPanel,
 	flex-shrink: 0;
 }
 
-.tamer-actions-row {
-	display: flex;
+// Actions triplet on the online-player branch — one row of three.
+.tamer-actions.tamer-actions-grid {
 	flex-direction: row;
-	gap: 8px;
-
-	.tamer-action {
-		flex: 0 0 auto;
-		width: calc(50% - 4px);
-	}
 }
 
 .tamer-action {
@@ -1224,92 +1118,74 @@ GuildPanel,
 	align-items: center;
 	justify-content: center;
 	gap: 6px;
-	padding: 10px 12px;
-	background-color: rgba(40, 35, 55, 0.85);
-	border: 1px solid rgba(255, 255, 255, 0.15);
-	border-radius: 8px;
+	padding: 11px 12px;
+	background-color: #1c1830;
+	border: 2px solid rgba(0, 0, 0, 0);
+	border-radius: 12px;
 	cursor: pointer;
 	pointer-events: all;
-	transition: all 0.15s ease;
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
 
 	.tamer-action-label {
 		font-size: 12px;
 		font-weight: 700;
-		color: rgba(255, 255, 255, 0.85);
+		color: rgba(244, 241, 234, 0.85);
 		letter-spacing: 0.5px;
 		line-height: 14px;
+		white-space: nowrap;
 	}
 
 	&:hover {
-		background-color: rgba(50, 45, 70, 0.95);
-		border-color: rgba(255, 255, 255, 0.3);
-		transform: translateY(-1px);
+		border-color: #9b6cff;
 	}
 
 	&.primary {
-		background-color: rgba(139, 92, 246, 0.18);
-		border-color: rgba(167, 139, 250, 0.45);
+		background-color: rgba(63, 143, 224, 0.16);
 
-		.tamer-action-label { color: #d4bfff; }
-
-		&:hover {
-			background-color: rgba(139, 92, 246, 0.3);
-			border-color: rgba(167, 139, 250, 0.65);
-		}
-	}
-
-	&.danger {
-		background-color: rgba(248, 113, 113, 0.1);
-		border-color: rgba(248, 113, 113, 0.32);
-
-		.tamer-action-label { color: #f87171; }
+		.tamer-action-label { color: #9ecdf5; }
 
 		&:hover {
-			background-color: rgba(248, 113, 113, 0.2);
-			border-color: rgba(248, 113, 113, 0.5);
+			background-color: rgba(63, 143, 224, 0.26);
 		}
 	}
 
 	&.muted {
 		background-color: rgba(248, 113, 113, 0.12);
-		border-color: rgba(248, 113, 113, 0.35);
 
 		.tamer-action-label { color: #f87171; }
 	}
 
 	&.active {
-		background-color: rgba(167, 139, 250, 0.18);
-		border-color: rgba(167, 139, 250, 0.45);
+		background-color: rgba(34, 197, 94, 0.14);
 
-		.tamer-action-label { color: #c4b5fd; }
+		.tamer-action-label { color: #4ade80; }
 	}
 }
 
-// ── Favorite-beast box ──
+// ── Favorite-beast box (element tint = information, kept) ──
 
 .tamer-fav-box {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 	padding: 12px 14px;
-	background-color: rgba(255, 255, 255, 0.03);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	border-radius: 10px;
+	background-color: #15121f;
+	border-radius: 12px;
 	margin-bottom: 10px;
 	flex-shrink: 0;
 	position: relative;
 	overflow: hidden;
 
-	&.fire { background-color: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.22); }
-	&.water { background-color: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.22); }
-	&.earth { background-color: rgba(180, 83, 9, 0.08); border-color: rgba(180, 83, 9, 0.22); }
-	&.wind { background-color: rgba(45, 212, 191, 0.08); border-color: rgba(45, 212, 191, 0.22); }
-	&.electric { background-color: rgba(250, 204, 21, 0.08); border-color: rgba(250, 204, 21, 0.22); }
-	&.ice { background-color: rgba(125, 211, 252, 0.08); border-color: rgba(125, 211, 252, 0.22); }
-	&.nature { background-color: rgba(74, 222, 128, 0.08); border-color: rgba(74, 222, 128, 0.22); }
-	&.metal { background-color: rgba(156, 163, 175, 0.08); border-color: rgba(156, 163, 175, 0.22); }
-	&.shadow { background-color: rgba(168, 85, 247, 0.08); border-color: rgba(168, 85, 247, 0.22); }
-	&.spirit { background-color: rgba(244, 114, 182, 0.08); border-color: rgba(244, 114, 182, 0.22); }
+	&.fire { background-color: rgba(239, 68, 68, 0.1); }
+	&.water { background-color: rgba(59, 130, 246, 0.1); }
+	&.earth { background-color: rgba(180, 83, 9, 0.1); }
+	&.wind { background-color: rgba(45, 212, 191, 0.1); }
+	&.electric { background-color: rgba(250, 204, 21, 0.1); }
+	&.ice { background-color: rgba(125, 211, 252, 0.1); }
+	&.nature { background-color: rgba(74, 222, 128, 0.1); }
+	&.metal { background-color: rgba(156, 163, 175, 0.1); }
+	&.shadow { background-color: rgba(168, 85, 247, 0.1); }
+	&.spirit { background-color: rgba(244, 114, 182, 0.1); }
 }
 
 .tamer-fav-display {
@@ -1331,7 +1207,7 @@ GuildPanel,
 	width: 48px;
 	height: 44px;
 	min-width: 48px;
-	border-radius: 6px;
+	border-radius: 8px;
 	overflow: hidden;
 	flex-shrink: 0;
 	display: flex;
@@ -1350,22 +1226,22 @@ GuildPanel,
 	flex: 1 1 0;
 	font-size: 13px;
 	font-weight: 700;
-	color: rgba(255, 255, 255, 0.92);
+	color: rgba(244, 241, 234, 0.92);
 	white-space: nowrap;
-	line-height: 14px;
+	line-height: 15px;
 }
 
 .tamer-fav-change {
 	font-size: 10px;
 	font-weight: 800;
-	color: rgba(196, 181, 253, 0.95);
-	background-color: rgba(139, 92, 246, 0.18);
-	border: 1px solid rgba(139, 92, 246, 0.4);
-	border-radius: 10px;
+	color: #9ecdf5;
+	background-color: rgba(63, 143, 224, 0.16);
+	border-radius: 8px;
 	padding: 3px 9px;
 	letter-spacing: 0.6px;
 	white-space: nowrap;
 	flex-shrink: 0;
+	line-height: 12px;
 }
 
 .tamer-fav-dropdown {
@@ -1374,9 +1250,8 @@ GuildPanel,
 	gap: 4px;
 	max-height: 220px;
 	overflow-y: scroll;
-	background-color: rgba(10, 10, 20, 0.95);
-	border: 1px solid rgba(255, 255, 255, 0.1);
-	border-radius: 8px;
+	background-color: #0f0d1a;
+	border-radius: 10px;
 	padding: 6px;
 	flex-shrink: 0;
 }
@@ -1387,14 +1262,14 @@ GuildPanel,
 	align-items: center;
 	gap: 10px;
 	padding: 8px 12px;
-	border-radius: 6px;
+	border-radius: 8px;
 	cursor: pointer;
 	pointer-events: all;
 	transition: background-color 0.15s ease;
 	flex-shrink: 0;
 
 	&:hover {
-		background-color: rgba(139, 92, 246, 0.14);
+		background-color: rgba(63, 143, 224, 0.14);
 	}
 }
 
@@ -1408,21 +1283,20 @@ GuildPanel,
 .tamer-fav-opt-name {
 	font-size: 12px;
 	font-weight: 700;
-	color: rgba(255, 255, 255, 0.88);
+	color: rgba(244, 241, 234, 0.88);
 	white-space: nowrap;
 	line-height: 14px;
 }
 
-// ── Info block (key/value rows like roster's .info-row) ──
+// ── Info block (key/value rows) ──
 
 .tamer-info-block {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	padding: 10px 14px;
-	background-color: rgba(0, 0, 0, 0.18);
-	border: 1px solid rgba(255, 255, 255, 0.05);
-	border-radius: 10px;
+	padding: 12px 14px;
+	background-color: #15121f;
+	border-radius: 12px;
 	margin-bottom: 10px;
 	flex-shrink: 0;
 }
@@ -1437,19 +1311,13 @@ GuildPanel,
 .tamer-info-label {
 	font-size: 12px;
 	font-weight: 600;
-	color: rgba(255, 255, 255, 0.5);
+	color: rgba(214, 206, 236, 0.5);
 	line-height: 14px;
 }
 
 .tamer-info-value {
 	font-size: 12px;
 	font-weight: 700;
-	color: rgba(255, 255, 255, 0.88);
+	color: rgba(244, 241, 234, 0.88);
 	line-height: 14px;
 }
-
-// (Legacy `.tile-level-chip` / `.tile-level-chip-num` rules removed — the
-// LV chip is now a corner overlay (`.tile-corner-level`) pinned to the
-// avatar wrapper rather than a flex sibling on the right of the tile.)
-// (Legacy .td-stats / .td-fav-* / .td-actions / .td-footer rules removed —
-// the sidebar now uses the .tamer-* family above.)

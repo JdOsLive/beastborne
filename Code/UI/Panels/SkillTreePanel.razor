@@ -4,76 +4,98 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
+@using Beastborne.UI.Primitives;
 @using System.Linq;
 @inherits Panel
+
+@*
+	SKILLS — talent workbench, efficiency-first sweep (2026-07).
+
+	Composition: identity header (section header + TREE/STATS slab tabs +
+	SP hero + inline two-stage reset) over an angled pink seam, then five
+	branch pillars beside a FIXED INSPECTOR rail. The inspector replaces
+	the old cursor-chasing tooltip — hover or WASD onto any node and its
+	full reading (rank, effects, cost, status, big gold INVEST) sits
+	still on the right. With nothing focused it auto-suggests the
+	cheapest affordable node ("NEXT UP") so "what do I invest in next"
+	is answered the moment the panel opens.
+
+	Behavior preserved from v1: WASD/arrow nearest-node nav, Space/Enter
+	invest, Tab view swap, F two-stage reset, per-invest ripple + burst,
+	stats tab (eye toggle, 1Hz boost-timer heartbeat, W/S scroll).
+	Refinement: Space now invests the INSPECTED node (what the player is
+	reading) instead of a possibly-stale keyboard index.
+
+	Generator dialect notes: class strings and colors are precomputed in
+	code blocks (no quoted literals inside attribute value expressions
+	where avoidable); dollar-interpolation only happens in code-behind.
+*@
 
 <div class="skill-tree-panel" onclick=@OnPanelClicked onmousemove=@OnPanelMouseMove>
 
 	@* =========================== Header =========================== *@
-	<div class="skill-header">
-		<div class="skill-header-left">
-			<iconify class="skill-title-icon" icon="lucide:sparkles" Size=@(24) Color="#c4b5fd" />
-			<div class="skill-title">@L("ui.skill.title")</div>
+	<div class="sk-header">
+		<div class="sk-head-left">
+			<BbSectionHeader Kicker="TAMER TALENTS" Title="@TitleText" Size=@(52) AccentColor="#ff6bd6" />
+		</div>
 
-			@* Tab pills sit immediately right of the title, grouped on the left
-			   side of the header (not centered). *@
-			<div class="stree-tabs">
-				<div class="stree-tab @(currentTab == "tree" ? "active" : "")"
-					 onclick=@(() => SetTab("tree"))
-					 onmouseover=@(() => OnTabHover("tree"))>
-					<iconify icon="lucide:sparkles" Size=@(16) Color="@(currentTab == "tree" ? "#ffffff" : "rgba(255, 255, 255, 0.7)")" />
-					<span class="stree-tab-label">TREE</span>
+		@{
+			var treeTabClass = currentTab == "tree" ? "sk-tab active" : "sk-tab";
+			var statsTabClass = currentTab == "stats" ? "sk-tab active" : "sk-tab";
+			var treeIconColor = TabIconColor( "tree" );
+			var statsIconColor = TabIconColor( "stats" );
+			var activeStats = GetActiveStatCount();
+		}
+		<div class="sk-tabs">
+			<div class="@treeTabClass" onclick=@OnTreeTabClick onmouseover=@OnTreeTabHover>
+				<div class="sk-tab-inner">
+					<iconify icon="lucide:network" Size=@(16) Color="@treeIconColor" />
+					<span class="sk-tab-label">TREE</span>
 				</div>
-				<div class="stree-tab @(currentTab == "stats" ? "active" : "")"
-					 onclick=@(() => SetTab("stats"))
-					 onmouseover=@(() => OnTabHover("stats"))>
-					<iconify icon="lucide:bar-chart-3" Size=@(16) Color="@(currentTab == "stats" ? "#ffffff" : "rgba(255, 255, 255, 0.7)")" />
-					<span class="stree-tab-label">STATS</span>
-					@{ var activeStats = GetActiveStatCount(); }
+			</div>
+			<div class="@statsTabClass" onclick=@OnStatsTabClick onmouseover=@OnStatsTabHover>
+				<div class="sk-tab-inner">
+					<iconify icon="lucide:bar-chart-3" Size=@(16) Color="@statsIconColor" />
+					<span class="sk-tab-label">STATS</span>
 					@if (activeStats > 0)
 					{
-						<span class="stree-tab-count">@activeStats</span>
+						<span class="sk-tab-badge">@activeStats</span>
 					}
 				</div>
 			</div>
-			<div class="kb-hint stree-kb-hint">
-				<div class="cb-key stree-cap"><span>Tab</span></div>
-				<span class="kb-hint-label">Switch view</span>
+			<div class="sk-tab-hint">
+				<div class="cb-key sk-cap"><span>Tab</span></div>
+				<span class="sk-hint-label">View</span>
 			</div>
 		</div>
 
-		<div class="skill-header-right">
-			@* SP pill — shows the player's currently-available skill points as
-			   a single gold number. Previously rendered "avail / total" with a
-			   progress fill, but that read as "X of Y for THIS tree" rather than
-			   "your tamer-wide SP balance" and confused players. Single number
-			   now: "⭐ 5 SP" means you have 5 SP to spend. *@
-			<div class="skill-pill sp-pill-combined">
-				<iconify icon="lucide:star" Size=@(14) Color="#fbbf24" />
-				<span class="skill-pill-value-gold">@GetSkillPoints()</span>
-				<span class="skill-pill-label-inline">SP</span>
+		<div class="sk-head-right">
+			@* SP hero — the tamer-wide balance as a one-glance number. *@
+			<div class="sp-hero">
+				<span class="sp-hero-label">SKILL POINTS</span>
+				<div class="sp-hero-row">
+					<iconify icon="lucide:star" Size=@(22) Color="#ffce3a" />
+					<span class="sp-hero-value">@GetSkillPoints()</span>
+					<span class="sp-hero-unit">SP</span>
+				</div>
 			</div>
+
 			@if (GetTotalRanksUnlocked() > 0)
 			{
-				@* Inline two-stage confirm. No popup modal — the button itself is
-				   the flow. Render-key (`reset-btn-@resetBtnVersion`) remounts the
-				   element on each state flip so the armed pulse keyframe replays
-				   cleanly. Tuple pattern mirrors ShopPanelContent.GetBuyButtonContent
-				   to sidestep the Razor @if/else ghost-child bug (doubled icons on
-				   rapid state changes). *@
+				@* Inline two-stage confirm. Render-key remounts the element on
+				   each state flip so the armed pulse keyframe replays cleanly.
+				   Tuple pattern mirrors ShopPanelContent.GetBuyButtonContent to
+				   sidestep the ghost-child diff bug on rapid state changes. *@
 				@{ var reset = GetResetButtonContent(); }
 				<button class="reset-btn @reset.cssClass reset-btn-@resetBtnVersion"
 						onclick=@OnResetClicked
 						onmouseover=@OnResetHover>
-					@* Armed pulse overlay — conditionally mounted so the @keyframes
-					   replays fresh on each arm (s&box keyframes only fire on DOM
-					   mount, not class toggle). Pointer-events off so clicks still
-					   reach the parent button. *@
 					@if (resetConfirming)
 					{
 						<div class="reset-armed-glow"></div>
 					}
-					<div class="cb-key stree-cap"><span>F</span></div>
+					<div class="cb-key sk-cap"><span>F</span></div>
 					<iconify icon="@reset.icon" Size=@(14) Color="@reset.color" />
 					<span>@reset.label</span>
 				</button>
@@ -81,78 +103,63 @@
 		</div>
 	</div>
 
-	@* =========================== Branch Clusters Row =========================== *@
+	@* Angled seam — the panel's pink signature line. *@
+	<div class="sk-seam">
+		<div class="sk-seam-a"></div>
+		<div class="sk-seam-b"></div>
+	</div>
+
+	@* =========================== TREE TAB =========================== *@
 	@if (currentTab == "tree")
 	{
-	<div class="skill-body">
-		<div class="clusters-row">
+	<div class="sk-body">
+		<div class="sk-tree-zone">
 			@foreach (var branch in AllBranches)
 			{
-				var branchClass = branch.ToString().ToLower();
 				var branchPts = GetBranchPointsSpent(branch);
 				var branchMax = GetBranchMaxPoints(branch);
 				var mastered = branchPts >= branchMax && branchMax > 0;
 				var branchNodes = GetBranchNodes(branch);
+				var clusterClass = mastered ? "sk-cluster mastered" : "sk-cluster";
+				var chipClass = mastered ? "sk-branch-chip mastered" : "sk-branch-chip";
+				var fillClass = mastered ? "sk-foot-fill mastered" : "sk-foot-fill";
 
-				<div class="branch-cluster @branchClass @(mastered ? "mastered" : "")">
+				<div class="@clusterClass">
 
-					@* ---- Branch header ---- *@
-					<div class="branch-header @branchClass">
-						@* P5 stamp wash — subtle halftone behind the title. Pointer-
-						   events off (set in SCSS) so the parent stays clickable.
-						   (Corner-cut element was dropped — it rendered as a visible
-						   dark square punching through each header's rounded card
-						   corner instead of blending.) *@
-						<div class="branch-header-halftone"></div>
-						<div class="branch-header-title">
-							@if (mastered)
-							{
-								@* On max, the branch icon becomes the crown — clearer than
-								   cramming both icons side-by-side, and the gold reads
-								   strongly against the warm-dark mastered bg. *@
-								<iconify class="branch-header-icon mastered" icon="lucide:crown" Size=@(20) Color="#fbbf24" />
-							}
-							else
-							{
-								<iconify class="branch-header-icon" icon="@GetBranchIcon(branch)" Size=@(18) Color="@GetBranchAccent(branch)" />
-							}
-							<span class="branch-name @(mastered ? "mastered" : "")">@branch.ToString().ToUpper()</span>
-						</div>
-						@* Partial state (spent > 0 && < max) tints the counter amber —
-						   reads as "in progress" between cool-default and mastered-gold. *@
-						@{
-							var partialBranch = !mastered && branchPts > 0 && branchPts < branchMax;
-						}
-						<div class="branch-header-pts @(mastered ? "mastered" : "") @(partialBranch ? "partial" : "")">
-							<span class="branch-pts-value">@branchPts</span>
-							<span class="branch-pts-sep">/</span>
-							<span class="branch-pts-max">@branchMax</span>
+					@* ---- Branch identity chip ---- *@
+					<div class="sk-branch-row">
+						<div class="@chipClass">
+							<div class="sk-branch-chip-inner">
+								@if (mastered)
+								{
+									<iconify icon="lucide:crown" Size=@(16) Color="#2a1605" />
+								}
+								else
+								{
+									<iconify icon="@GetBranchIcon(branch)" Size=@(16) Color="@GetBranchAccent(branch)" />
+								}
+								<span class="sk-branch-name">@branch.ToString().ToUpper()</span>
+							</div>
 						</div>
 					</div>
 
 					@* ---- Flower canvas ---- *@
-					<div class="cluster-canvas">
+					<div class="sk-canvas">
 
-						@* Connector lines — keystone-bottom-center to each petal-top.
-						   Two divs per cluster, anchored at keystone center via the
-						   `.left` / `.right` modifier in SCSS. They sit BEHIND the
-						   hex bodies via z-index so they read as "the petals plug
-						   into the keystone." Brighten to branch color when the
-						   downstream petal is unlocked — the bright line signals
-						   "energy flows here now." *@
+						@* Connector lines — brighten to pink when the downstream
+						   petal's prereq is met ("energy flows here now"). *@
 						@{
-							// The two petals both list the keystone as their prereq.
-							// Resolve "unlocked" once for each so the connector class
-							// stays in sync with the visual hex state.
 							var leftUnlocked  = branchNodes.Count > 1
 								&& (string.IsNullOrEmpty(branchNodes[1].RequiredSkillId)
 									|| GetSkillRank(branchNodes[1].RequiredSkillId) >= branchNodes[1].RequiredSkillRank);
 							var rightUnlocked = branchNodes.Count > 2
 								&& (string.IsNullOrEmpty(branchNodes[2].RequiredSkillId)
 									|| GetSkillRank(branchNodes[2].RequiredSkillId) >= branchNodes[2].RequiredSkillRank);
+							var connLeftClass  = leftUnlocked  ? "hex-connector left active"  : "hex-connector left";
+							var connRightClass = rightUnlocked ? "hex-connector right active" : "hex-connector right";
 						}
-						<div class="hex-connector left @branchClass @(leftUnlocked ? "active" : "")"></div>
-						<div class="hex-connector right @branchClass @(rightUnlocked ? "active" : "")"></div>
+						<div class="@connLeftClass"></div>
+						<div class="@connRightClass"></div>
 
 						@for (int nodeIdx = 0; nodeIdx < branchNodes.Count; nodeIdx++)
 						{
@@ -160,56 +167,49 @@
 							var rank = GetSkillRank(node.Id);
 							var isMaxed = rank >= node.MaxRank;
 							var canUpgrade = CanUpgradeSkill(node.Id);
-							// Node is visually "available" only when its branch-point gate
-							// AND its prereq-skill dependency are both satisfied. Launch
-							// tree uses prereqs (keystone unlocks petals), no branch gates.
 							var tierUnlocked = branchPts >= node.RequiredBranchPoints
 								&& (string.IsNullOrEmpty(node.RequiredSkillId)
 									|| GetSkillRank(node.RequiredSkillId) >= node.RequiredSkillRank);
 							var stateClass = GetNodeStateClass(node, rank, canUpgrade, tierUnlocked);
 							var unlockKey = GetUnlockKey(node.Id);
-							// First node in the branch list is always the keystone. Marks
-							// the start of the chain visually (slightly larger hex + an
-							// inner accent ring on the body).
 							var isKeystone = nodeIdx == 0;
+							var slotClass = "hex-slot " + stateClass
+								+ (tierUnlocked ? " revealed" : " dimmed")
+								+ (isKeystone ? " is-keystone" : "")
+								+ (IsKbFocused(node) ? " kb-focused" : "");
+							var bodyClass = "hex-body " + stateClass + (isKeystone ? " is-keystone" : "");
+							var badgeClass = isMaxed ? "rank-badge maxed" : "rank-badge";
+							var iconSize = isKeystone ? 36 : 34;
 
-							<div class="hex-slot @branchClass @stateClass @(tierUnlocked ? "revealed" : "dimmed") @(isKeystone ? "is-keystone" : "") @(IsKbFocused(node) ? "kb-focused" : "")"
-								 style="left: @(node.GridX)px; top: @(node.GridY)px;"
+							<div class="@slotClass"
+								 style="left: @(NodeLeft(node))px; top: @(NodeTop(node))px;"
 								 onclick=@(() => OnNodeClicked(node))
 								 onmouseover=@(() => OnNodeHover(node))
 								 onmouseout=@OnNodeHoverOut>
 
-								@* Hex body — state class drives visual; unlock pulse is a
-								   separate conditionally-mounted overlay so the keyframe
-								   fires fresh per invest. *@
-								<div class="hex-body @branchClass @stateClass @(isKeystone ? "is-keystone" : "")">
-									<iconify class="hex-icon" icon="@GetNodeIcon(node)" Size=@(26) Color="@GetNodeIconColor(node, rank, isMaxed)" />
+								<div class="@bodyClass">
+									<iconify class="hex-icon" icon="@GetNodeIcon(node)" Size=@(iconSize) Color="@GetNodeIconColor(node, rank, isMaxed)" />
 
-									@* Locked petal lock-icon overlay — small lucide:lock in
-									   the top-right corner. Only on petals (keystones are
-									   never gated). Strengthens the "this is gated" read
-									   beyond opacity alone. *@
 									@if (!tierUnlocked && !isKeystone)
 									{
 										<div class="hex-lock-corner">
-											<iconify icon="lucide:lock" Size=@(10) Color="rgba(255, 255, 255, 0.55)" />
+											<iconify icon="lucide:lock" Size=@(11) Color="rgba(255, 255, 255, 0.55)" />
 										</div>
 									}
 								</div>
 
-								@* One-shot unlock pulse overlay — mounted fresh per invest via pulse-N key *@
+								@* One-shot invest ripple — mounted fresh per invest via pulse-N key *@
 								@if (unlockKey > 0 && node.Id == lastInvestedId && sinceBurst < 0.6f)
 								{
-									<div class="hex-unlock-pulse @branchClass pulse-@unlockKey"></div>
+									<div class="hex-unlock-pulse pulse-@unlockKey"></div>
 								}
 
-								@* Rank badge *@
 								@if (rank > 0 || isMaxed)
 								{
-									<div class="rank-badge @branchClass @(isMaxed ? "maxed" : "")">
+									<div class="@badgeClass">
 										@if (isMaxed)
 										{
-											<iconify icon="lucide:check" Size=@(10) Color="#ffffff" />
+											<iconify icon="lucide:check" Size=@(11) Color="#ffce3a" />
 										}
 										else
 										{
@@ -221,6 +221,133 @@
 						}
 					</div>
 
+					@* ---- Mastery footer ---- *@
+					<div class="sk-branch-foot">
+						<div class="sk-foot-track">
+							<div class="@fillClass" style="width: @(GetBranchFillPx(branchPts, branchMax))px;"></div>
+						</div>
+						<span class="sk-foot-num">@branchPts</span>
+						<span class="sk-foot-sep">/</span>
+						<span class="sk-foot-max">@branchMax</span>
+					</div>
+
+				</div>
+			}
+		</div>
+
+		@* =========================== THE INSPECTOR =========================== *@
+		@{
+			bool inspSuggested;
+			var insp = GetInspectedNode(out inspSuggested);
+		}
+		<div class="sk-inspector">
+			@if (insp != null)
+			{
+				var iRank = GetSkillRank(insp.Id);
+				var iMaxed = iRank >= insp.MaxRank;
+				var iCan = CanUpgradeSkill(insp.Id);
+				var iBranchGateOk = GetBranchPointsSpent(insp.Branch) >= insp.RequiredBranchPoints;
+				var iPrereqOk = string.IsNullOrEmpty(insp.RequiredSkillId)
+					|| GetSkillRank(insp.RequiredSkillId) >= insp.RequiredSkillRank;
+				var iNextRank = iRank + 1;
+				var invest = GetInvestButtonContent(insp);
+
+				<div class="insp-chip-row">
+					<div class="insp-chip">
+						<div class="insp-chip-inner">
+							<iconify icon="@GetBranchIcon(insp.Branch)" Size=@(13) Color="@GetBranchAccent(insp.Branch)" />
+							<span class="insp-chip-label">@insp.Branch.ToString().ToUpper()</span>
+						</div>
+					</div>
+					@if (inspSuggested)
+					{
+						<div class="insp-next-tag"><span>NEXT UP</span></div>
+					}
+				</div>
+
+				<div class="insp-name">@insp.Name</div>
+
+				<div class="insp-rank-row">
+					<span class="insp-rank-label">RANK</span>
+					<span class="insp-rank-value">@iRank</span>
+					<span class="insp-rank-sep">/</span>
+					<span class="insp-rank-max">@insp.MaxRank</span>
+					@if (iMaxed)
+					{
+						<BbStamp Text="MAX" Tone="gold" Tilt=@(3) Class="insp-max-stamp" />
+					}
+				</div>
+
+				<div class="insp-desc">@insp.Description</div>
+
+				<div class="insp-effects">
+					@foreach (var effect in insp.Effects)
+					{
+						var cur = GetEffectDisplay(insp, effect, iRank);
+						var nxt = GetEffectDisplay(insp, effect, iNextRank);
+						<div class="insp-eff-row">
+							@if (iRank > 0)
+							{
+								<span class="insp-eff-current">@cur</span>
+							}
+							@if (!iMaxed)
+							{
+								@if (iRank > 0)
+								{
+									<span class="insp-eff-arrow">→</span>
+								}
+								<span class="insp-eff-next">@nxt</span>
+							}
+						</div>
+					}
+				</div>
+
+				@if (!iMaxed)
+				{
+					@if (!iBranchGateOk)
+					{
+						<div class="insp-status warn">
+							<iconify icon="lucide:lock" Size=@(13) Color="#f87171" />
+							<span>@GetBranchGateText(insp)</span>
+						</div>
+					}
+					else if (!iPrereqOk)
+					{
+						<div class="insp-status warn">
+							<iconify icon="lucide:lock" Size=@(13) Color="#f87171" />
+							<span>@GetPrereqText(insp)</span>
+						</div>
+					}
+					else if (iCan)
+					{
+						<div class="insp-status ok">
+							<iconify icon="lucide:zap" Size=@(13) Color="#4ade80" />
+							<span>Ready to invest</span>
+						</div>
+					}
+					else
+					{
+						<div class="insp-status warn">
+							<iconify icon="lucide:star" Size=@(13) Color="#f87171" />
+							<span>Not enough SP</span>
+						</div>
+					}
+				}
+
+				<button class="insp-invest @invest.cssClass"
+						onclick=@OnInvestClicked
+						onmouseover=@OnInvestHover
+						onmouseout=@OnInvestHoverOut>
+					<div class="cb-key sk-cap invest-cap"><span>Space</span></div>
+					<iconify icon="@invest.icon" Size=@(18) Color="@invest.color" />
+					<span class="insp-invest-label">@invest.label</span>
+				</button>
+			}
+			else
+			{
+				<div class="insp-done">
+					<iconify icon="lucide:crown" Size=@(40) Color="#ffce3a" />
+					<span>ALL TALENTS MASTERED</span>
 				</div>
 			}
 		</div>
@@ -236,14 +363,10 @@
 
 		<div class="stats-body">
 
-			@* Top row: worked example slab on the left, eye-toggle hint on
-			   the right. Slab sizes to content; hint fills the remaining
-			   horizontal space. *@
 			<div class="stats-top-row">
 				<div class="stats-summary-bar">
-					<div class="ssb-halftone"></div>
 					<div class="ssb-left">
-						<iconify icon="lucide:calculator" Size=@(22) Color="#fbbf24" />
+						<iconify icon="lucide:calculator" Size=@(22) Color="#ffce3a" />
 						<div class="ssb-text">
 							<span class="ssb-label">SAMPLE EXPEDITION</span>
 							<span class="ssb-sub">1,000g base → @($"{sampleGold:N0}")g with current bonuses</span>
@@ -255,28 +378,22 @@
 						<span class="ssb-pill-sep">/</span>
 						<span class="ssb-pill-max">@statRows.Count</span>
 					</div>
-					@* Eye toggle — hides/reveals the empty "available bonus" rows.
-					   Default = hidden (compact). Tap to reveal what you haven't
-					   unlocked yet. *@
+					@* Eye toggle — hides/reveals the empty "available bonus" rows. *@
 					<div class="ssb-eye @(showInactiveStats ? "active" : "")"
 						 onclick=@ToggleShowInactiveStats
 						 onmouseover=@(() => SoundManager.PlayHover())>
-						<iconify icon="@(showInactiveStats ? "lucide:eye" : "lucide:eye-off")" Size=@(14) Color="@(showInactiveStats ? "#fbbf24" : "rgba(255, 255, 255, 0.6)")" />
+						<iconify icon="@(showInactiveStats ? "lucide:eye" : "lucide:eye-off")" Size=@(14) Color="@(showInactiveStats ? "#ffce3a" : "rgba(255, 255, 255, 0.6)")" />
 					</div>
 				</div>
 
-				@* Hint sits adjacent to the summary slab so the eye reference
-				   is right next to the toggle button. *@
 				<div class="stats-footer-hint">
 					<iconify icon="lucide:info" Size=@(11) Color="rgba(196, 181, 253, 0.55)" />
 					<span>@(showInactiveStats ? "Cards without sources show bonuses you haven't unlocked yet. Tap the eye to hide them." : "Tap the eye to reveal every bonus you can still unlock.")</span>
 				</div>
 			</div>
 
-			@* Card grid — 3-up rows. Direct children of the scroll container
-			   are .stats-card-row banners, each holding up to 3 cards. Per
-			   CLAUDE.md, s&box can't compute scroll height under flex-wrap,
-			   so we chunk into explicit rows server-side. *@
+			@* Card grid — 3-up rows chunked server-side (flex-wrap misreads
+			   height in scroll containers, so rows are explicit). *@
 			@{
 				var visibleRows = showInactiveStats
 					? statRows.OrderBy(r => groupOrder.ToList().IndexOf(r.Group)).ThenBy(r => r.Name).ToList()
@@ -315,7 +432,6 @@
 							var groupClass = row.Group.ToString().ToLower();
 
 							<div class="stat-card @groupClass @(hasAny ? "active" : "inactive")">
-								@* Group tag — small italic-skewed pill at top. *@
 								<div class="sc-group" style="background-color: @PlayerStatsSummary.GetGroupColor(row.Group);">
 									<span>@PlayerStatsSummary.GetGroupName(row.Group)</span>
 								</div>
@@ -360,8 +476,6 @@
 								}
 							</div>
 						}
-						@* Pad short rows so the last row's cards don't blow up
-						   to fill the band. *@
 						@for (int pad = chunk.Count; pad < CardsPerRow; pad++)
 						{
 							<div class="stat-card-spacer"></div>
@@ -373,109 +487,7 @@
 		</div>
 	}
 
-	@* =========================== Tooltip (follows cursor) =========================== *@
-	@if (hoveredNode != null)
-	{
-		var rank = GetSkillRank(hoveredNode.Id);
-		var isMaxed = rank >= hoveredNode.MaxRank;
-		var canUpgrade = CanUpgradeSkill(hoveredNode.Id);
-		// Match the grid's availability check — branch-point gate AND prereq-skill rank.
-		var tierUnlocked = GetBranchPointsSpent(hoveredNode.Branch) >= hoveredNode.RequiredBranchPoints
-			&& (string.IsNullOrEmpty(hoveredNode.RequiredSkillId)
-				|| GetSkillRank(hoveredNode.RequiredSkillId) >= hoveredNode.RequiredSkillRank);
-		var nextRank = rank + 1;
-		var branchClass = hoveredNode.Branch.ToString().ToLower();
-		// Offset slightly from cursor; clamp to keep the tooltip fully on-screen
-		// using the panel's own Box bounds.
-		float panelW = Box.Rect.Width;
-		float panelH = Box.Rect.Height;
-		var cursorLeft = Math.Max(16f, Math.Min(panelW - 340f, lastMouseX + 20f));
-		var cursorTop = Math.Max(16f, Math.Min(panelH - 280f, lastMouseY + 20f));
-
-		<div class="skill-tooltip @branchClass"
-			 style="left: @(cursorLeft)px; top: @(cursorTop)px;">
-
-			<div class="tt-branch-tag @branchClass">@hoveredNode.Branch.ToString().ToUpper()</div>
-			<div class="tt-name">@hoveredNode.Name</div>
-			<div class="tt-rank-row">
-				<span class="tt-rank-label">Rank</span>
-				<span class="tt-rank-value">@rank</span>
-				<span class="tt-rank-sep">/</span>
-				<span class="tt-rank-max">@hoveredNode.MaxRank</span>
-				@if (isMaxed)
-				{
-					<span class="tt-maxed">MAX</span>
-				}
-			</div>
-
-			<div class="tt-desc">@hoveredNode.Description</div>
-
-			<div class="tt-effect-block">
-				@foreach (var effect in hoveredNode.Effects)
-				{
-					var cur = GetEffectDisplay(hoveredNode, effect, rank);
-					var nxt = GetEffectDisplay(hoveredNode, effect, nextRank);
-					<div class="tt-effect-row">
-						@if (rank > 0)
-						{
-							<span class="tt-eff-current">@cur</span>
-						}
-						@if (!isMaxed)
-						{
-							@if (rank > 0)
-							{
-								<span class="tt-eff-arrow">→</span>
-							}
-							<span class="tt-eff-next">@nxt</span>
-						}
-					</div>
-				}
-			</div>
-
-			@if (!isMaxed)
-			{
-				<div class="tt-divider"></div>
-				<div class="tt-cost-row">
-					<div class="tt-cost">
-						<iconify icon="lucide:star" Size=@(12) Color="#fbbf24" />
-						<span class="tt-cost-value">@hoveredNode.CostPerRank</span>
-						<span class="tt-cost-label">SP</span>
-					</div>
-					@if (!tierUnlocked)
-					{
-						<div class="tt-warn">
-							<iconify icon="lucide:lock" Size=@(12) Color="#f87171" />
-							<span>@hoveredNode.RequiredBranchPoints pts in branch</span>
-						</div>
-					}
-					else if (!string.IsNullOrEmpty(hoveredNode.RequiredSkillId) && GetSkillRank(hoveredNode.RequiredSkillId) < hoveredNode.RequiredSkillRank)
-					{
-						var reqNode = TamerManager.Instance?.SkillTree?.GetNode(hoveredNode.RequiredSkillId);
-						<div class="tt-warn">
-							<iconify icon="lucide:lock" Size=@(12) Color="#f87171" />
-							<span>Needs @reqNode?.Name rk @hoveredNode.RequiredSkillRank</span>
-						</div>
-					}
-					else if (canUpgrade)
-					{
-						<div class="tt-hint">
-							<iconify icon="lucide:mouse-pointer-click" Size=@(11) Color="#4ade80" />
-							<span>Click to invest</span>
-						</div>
-					}
-					else if (GetSkillPoints() < hoveredNode.CostPerRank)
-					{
-						<div class="tt-warn">
-							<iconify icon="lucide:coins" Size=@(12) Color="#f87171" />
-							<span>Not enough SP</span>
-						</div>
-					}
-				</div>
-			}
-		</div>
-	}
-
-	@* =========================== Floating particle layer (keystroke-mounted) =========================== *@
+	@* =========================== Invest particle burst (keystroke-mounted) =========================== *@
 	@if (showBurst)
 	{
 		<div class="unlock-burst-layer burst-@burstVersion" style="left: @(burstX)px; top: @(burstY)px;">
@@ -486,9 +498,12 @@
 		</div>
 	}
 
-	@* Reset confirmation is now inline on the button itself (see the header's
-	   `reset-btn`). No modal / backdrop / card markup — the two-stage flow
-	   happens in-place so a misclick doesn't trap the player. *@
+	@* =========================== THE LIVING VIOLET RING =========================== *@
+	@* Keyboard cursor over the hex graph — root-level absolute (roster
+	   flat-panel recipe). Position bound each tick from UpdateRing; the
+	   liquid wave runs imperatively in ApplyRingWave (no re-render). *@
+	<div @ref="ringRef" class="sk-ring @(ringVisible ? "on" : "") @(ringWarm < 2 ? "snap" : "")"
+		 style="left: @(ringL)px; top: @(ringT)px; width: @(ringW)px; height: @(ringH)px;"></div>
 
 </div>
 
@@ -498,31 +513,30 @@
 	// State
 	// =========================================================================
 
-	// Tab state — "tree" shows the existing flower clusters; "stats" shows
-	// the player-wide modifier breakdown. Defaults to tree to preserve the
-	// pre-existing landing experience.
+	// Tab state — "tree" (default landing) or "stats".
 	private string currentTab = "tree";
 	private string lastTabHover = null; // sound guard (s&box onmouseover fires repeatedly)
 
 	// When false (default), the stats list hides every row that has zero
-	// contributions, plus any group with no active rows. Cuts ~80% of
-	// vertical space at typical investment levels. Toggle in the summary
-	// bar flips it on so the player can see every available bonus channel.
+	// contributions. Toggle in the summary bar flips it on.
 	private bool showInactiveStats = false;
-	// Stats subtab refresh tick — boost timers count down live, so we bump a
-	// version int every second and feed it into BuildHash.
+	// Stats subtab refresh tick — boost timers count down live.
 	private int statsTickVersion = 0;
 	private TimeSince sinceStatsTick = 0f;
 
+	// Live hover target (mouse OR keyboard cursor — SyncKbCursor writes it).
 	private SkillNode hoveredNode;
-	private string lastHoveredId = null; // hover-sound guard (s&box onmouseover fires repeatedly)
+	private string lastHoveredId = null; // hover-sound guard
 
-	// Tooltip position tracking
+	// The inspector's sticky target — survives hover-out so the reading
+	// rail never blanks mid-browse. Falls back to the suggested pick.
+	private string inspectedNodeId = null;
+
+	// Cursor tracking — used to aim the invest particle burst.
 	private float lastMouseX;
 	private float lastMouseY;
 
-	// Unlock keys drive a one-shot flash via CSS animation mounted on a key-changing div.
-	// When a rank is invested we bump the key for that node so CSS remounts and plays.
+	// Unlock keys drive the one-shot invest ripple via key-changing remounts.
 	private Dictionary<string, int> unlockVersions = new();
 
 	// Particle burst state
@@ -530,33 +544,27 @@
 	private int burstVersion;
 	private float burstX;
 	private float burstY;
-	private string burstColor = "#ffffff";
+	private string burstColor = "#ff6bd6";
 	private TimeSince sinceBurst;
 
-	// Tracks which node was most-recently invested so the unlock pulse overlay
-	// only mounts on that specific hex (not every hex with unlockKey > 0).
+	// Tracks which node was most-recently invested so the ripple overlay
+	// only mounts on that hex.
 	private string lastInvestedId = null;
 
-	// Reset confirmation — inline two-stage flow on the header button itself.
-	// No modal. `resetConfirming` arms the button; `resetConfirmExpires` is a
-	// RealTime.Now timestamp at which the armed state auto-reverts if the user
-	// doesn't click again. `resetFlashUntil` drives the brief "Reset!" success
-	// flash after a confirmed click. `resetBtnVersion` is a render-key that
-	// remounts the button element each state flip so the armed pulse @keyframes
-	// replays cleanly (s&box only plays keyframes on first mount).
+	// Reset confirmation — inline two-stage flow on the header button.
 	private bool resetConfirming;
 	private float resetConfirmExpires = 0f;
 	private float resetFlashUntil = 0f;
 	private int resetBtnVersion = 0;
-	// Set in OnResetClicked so the bubbling panel-level click handler (which
-	// runs AFTER the button's own handler) doesn't immediately disarm the
-	// state we just entered. RealTime.Now timestamp — grace window ~0.1s.
 	private float resetClickGuardUntil = 0f;
 	private string lastResetHoverState = null;
 
 	private bool IsResetFlashing => RealTime.Now < resetFlashUntil;
 	private const float ResetConfirmWindow = 3.0f;
 	private const float ResetFlashDuration = 0.9f;
+
+	// Invest CTA hover sound guard.
+	private bool investHovered;
 
 	private SkillBranch[] AllBranches = new[]
 	{
@@ -572,6 +580,29 @@
 	// =========================================================================
 	private string L(string key) => LocalizationManager.Get(key);
 	private string L(string key, params object[] args) => LocalizationManager.Get(key, args);
+	private string TitleText => L("ui.skill.title");
+
+	// =========================================================================
+	// Node layout — data GridX/GridY (tuned for the old 58px slots in a
+	// 260px canvas) remapped into the new 248px canvas with 84px slots.
+	// Center-preserving: oldCenter = Grid + 29; KX squeezes into 248-space,
+	// KY 1.55 opens vertical room for the bigger nodes. Keystone center
+	// lands (123, 74); petals (46, 192) / (199, 192) — the SCSS connector
+	// constants derive from these.
+	// =========================================================================
+	private const float NodeKX = 0.9538f;
+	private const float NodeKY = 1.55f;
+	private const int NodeSlot = 84;
+
+	private int NodeLeft(SkillNode n) => (int)((n.GridX + 29) * NodeKX) - NodeSlot / 2;
+	private int NodeTop(SkillNode n) => (int)((n.GridY + 29) * NodeKY) - 62;
+
+	// Mastery bar fill — computed px (180px track).
+	private int GetBranchFillPx(int pts, int max)
+	{
+		if (max <= 0) return 0;
+		return Math.Clamp((int)(180f * pts / max), 0, 180);
+	}
 
 	// =========================================================================
 	// Lifecycle
@@ -588,40 +619,41 @@
 	{
 		base.Tick();
 
-		// Auto-hide burst after ~0.9s so the layer can remount on next click.
+		// Auto-hide burst after ~0.9s so the layer can remount next invest.
 		if (showBurst && sinceBurst > 0.9f)
 		{
 			showBurst = false;
 		}
 
-		// Auto-revert the armed reset button if the user doesn't confirm
-		// within the confirm window. Silent — no sound on timeout (user didn't
-		// act, so playing a "back" cue would be noise).
+		// Auto-revert the armed reset if the confirm window lapses. Silent.
 		if (resetConfirming && RealTime.Now > resetConfirmExpires)
 		{
 			resetConfirming = false;
 			resetBtnVersion++;
 		}
 
-		// Stats tab needs a 1Hz heartbeat so boost-timer text updates in
-		// real time. Only relevant on the stats tab — skip otherwise.
+		// Stats tab 1Hz heartbeat for live boost timers.
 		if (currentTab == "stats" && sinceStatsTick > 1.0f)
 		{
 			statsTickVersion++;
 			sinceStatsTick = 0f;
 		}
+
+		// Living ring — position recomputed per tick (layout can reflow),
+		// wave applied imperatively (flat panel: per-frame writes are cheap;
+		// the 7fps law only bites inside perspective leans).
+		UpdateRing();
+		ApplyRingWave();
 	}
 
 	// =========================================================================
 	// Keyboard navigation
 	// =========================================================================
-	// TREE tab: a spatial cursor over the hex graph. The 5 branch clusters lay
-	// their nodes out as absolutely-positioned flowers, so there's no grid math
-	// to lean on — we read the rendered .hex-slot screen rects and pick the
-	// best node in the pressed direction (primary-axis distance + a perpendicular
-	// penalty). The focused node drives the same tooltip the mouse hover uses.
-	// STATS tab: W/S scroll the card list, Space toggles the inactive-rows eye.
-	// Tab toggles the two sub-tabs; F fires the header reset button.
+	// TREE tab: spatial cursor over the hex graph — reads rendered .hex-slot
+	// rects and picks the best node in the pressed direction. The focused
+	// node drives the inspector (same channel the mouse hover uses).
+	// STATS tab: W/S scroll the card list, Space toggles the eye.
+	// Tab toggles the sub-tabs; F fires the header reset button.
 	private int _kbNodeIndex = 0;
 	private bool _kbActive = false;
 
@@ -634,8 +666,7 @@
 			return;
 		}
 
-		// F — header reset button (its own two-stage confirm guards it). No-op
-		// when the button isn't shown (0 ranks): OnResetClicked early-returns.
+		// F — header reset button (its own two-stage confirm guards it).
 		if (Input.Pressed("Flashlight"))
 		{
 			OnResetClicked();
@@ -654,14 +685,18 @@
 		if (nodes.Count == 0) return;
 		ClampKbIndex(nodes.Count);
 
-		// Space / Enter — invest in the focused node.
+		// Space / Enter — invest in the INSPECTED node (what the player is
+		// reading in the rail; matches the CTA's Space keycap).
 		if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 		{
+			bool _s;
+			var target = GetInspectedNode(out _s);
+			if (target == null) return;
 			_kbActive = true;
-			var investRects = CollectHexRects();
-			if (investRects.Count == nodes.Count)
-				SyncKbCursor(nodes, investRects);
-			OnNodeClicked(nodes[_kbNodeIndex]);
+			int ti = nodes.FindIndex(n => n.Id == target.Id);
+			if (ti >= 0) _kbNodeIndex = ti;
+			AimBurstAtNode(target);
+			OnNodeClicked(target);
 			return;
 		}
 
@@ -721,19 +756,21 @@
 		}
 	}
 
-	// Focused node → drive the shared tooltip + park the cursor coords on the
-	// node so the tooltip (and any invest burst) lands on it, not a stale mouse
-	// spot. Box.Rect is screen-space; subtract the panel origin for panel-local.
+	// Focused node → drive the inspector + park burst coords on the node so
+	// an invest lands its particles there, not at a stale mouse spot.
 	private void SyncKbCursor(List<SkillNode> nodes, List<Rect> rects)
 	{
 		if (_kbNodeIndex < 0 || _kbNodeIndex >= nodes.Count) return;
 		hoveredNode = nodes[_kbNodeIndex];
 		lastHoveredId = hoveredNode.Id;
+		inspectedNodeId = hoveredNode.Id;
 		if (_kbNodeIndex < rects.Count)
 		{
+			float sc = ScaleFromScreen;
+			if (sc <= 0.01f || float.IsNaN(sc) || float.IsInfinity(sc)) sc = 1f;
 			var c = rects[_kbNodeIndex].Center;
-			lastMouseX = c.x - Box.Rect.Left;
-			lastMouseY = c.y - Box.Rect.Top;
+			lastMouseX = (c.x - Box.Rect.Left) * sc;
+			lastMouseY = (c.y - Box.Rect.Top) * sc;
 		}
 	}
 
@@ -743,8 +780,8 @@
 		_kbNodeIndex = Math.Clamp(_kbNodeIndex, 0, count - 1);
 	}
 
-	// Flat node list in render order: AllBranches × GetBranchNodes. MUST stay in
-	// sync with the .hex-slot DOM order so CollectHexRects indexes line up.
+	// Flat node list in render order: AllBranches × GetBranchNodes. MUST stay
+	// in sync with the .hex-slot DOM order so CollectHexRects indexes line up.
 	private List<SkillNode> GetAllNodesFlat()
 	{
 		var list = new List<SkillNode>();
@@ -761,9 +798,8 @@
 			&& nodes[_kbNodeIndex].Id == node.Id;
 	}
 
-	// Depth-first collect of every rendered .hex-slot's screen rect. DOM order
-	// matches GetAllNodesFlat() (clusters in AllBranches order, nodes in list
-	// order), so the result is index-parallel to it.
+	// Depth-first collect of every rendered .hex-slot's screen rect, in DOM
+	// order (index-parallel to GetAllNodesFlat).
 	private List<Rect> CollectHexRects()
 	{
 		var panels = new List<Panel>();
@@ -791,10 +827,8 @@
 		return null;
 	}
 
-	// Pick the nearest node in direction `dir` from `from`. Score = distance
-	// along the press axis + 2.5× the perpendicular offset, so a roughly-aligned
-	// node always beats a closer-but-sideways one. Returns -1 when nothing lies
-	// in that direction (e.g. Up from a top-row keystone).
+	// Pick the nearest node in direction `dir`. Score = primary-axis distance
+	// + 2.5× perpendicular offset. Returns -1 when nothing lies that way.
 	private int FindNeighbor(int from, int dir, List<Rect> rects)
 	{
 		if (from < 0 || from >= rects.Count) return -1;
@@ -822,16 +856,132 @@
 	}
 
 	// =========================================================================
+	// THE LIVING VIOLET RING — roster flat-panel recipe
+	// =========================================================================
+	// Position recomputed every Tick from live Box.Rects (tab swaps and
+	// hotloads invalidate rects). Content-box math: declared size = target
+	// + 2×inset − 2×border (s&box has no border-box).
+	private Panel ringRef;
+	private int ringL, ringT, ringW = 96, ringH = 96;
+	private bool ringVisible;
+	private int ringWarm; // <2 = snap to position (no glide) while rects land
+	private const int RingInset = 10;
+
+	private void UpdateRing()
+	{
+		bool wasVisible = ringVisible;
+		ringVisible = false;
+
+		if (currentTab != "tree" || !_kbActive) return;
+
+		var nodes = GetAllNodesFlat();
+		if (nodes.Count == 0) return;
+		ClampKbIndex(nodes.Count);
+
+		var rects = CollectHexRects();
+		if (_kbNodeIndex >= rects.Count) return;
+
+		var rr = Box.Rect;
+		var cr = rects[_kbNodeIndex];
+		if (rr.Width < 1f || cr.Width < 1f) return;
+
+		float sc = ScaleFromScreen;
+		if (sc <= 0.01f || float.IsNaN(sc) || float.IsInfinity(sc)) sc = 1f;
+
+		ringL = (int)((cr.Left - rr.Left) * sc) - RingInset;
+		ringT = (int)((cr.Top - rr.Top) * sc) - RingInset;
+		ringW = (int)(cr.Width * sc) + RingInset * 2 - 8;
+		ringH = (int)(cr.Height * sc) + RingInset * 2 - 8;
+
+		ringVisible = true;
+		if (!wasVisible) ringWarm = 0;       // re-appearing → snap first, glide after
+		else if (ringWarm < 2) ringWarm++;
+	}
+
+	// The liquid ink-lean — menu-cursor multi-sine at the PawPad's ×0.6
+	// amplitude + out-of-phase breathing. Imperative transform: no re-render;
+	// flat panel so per-frame writes are cheap.
+	private void ApplyRingWave()
+	{
+		if (ringRef == null || !ringVisible) return;
+		float wt = Time.Now;
+		float skX = (2.0f * MathF.Sin(wt * 2.2f) + 0.7f * MathF.Sin(wt * 3.5f + 1.1f)) * 0.6f;
+		float skY = (2.3f * MathF.Sin(wt * 1.8f + 1.9f) + 0.9f * MathF.Sin(wt * 2.9f)) * 0.6f;
+		float rotZ = (1.1f * MathF.Sin(wt * 1.0f) + 0.5f * MathF.Sin(wt * 2.4f + 0.5f)) * 0.6f;
+		float brX = 1f + 0.013f * MathF.Sin(wt * 1.35f + 0.7f) + 0.006f * MathF.Sin(wt * 2.7f);
+		float brY = 1f + 0.013f * MathF.Sin(wt * 1.15f + 2.6f) + 0.006f * MathF.Sin(wt * 2.3f + 1.4f);
+
+		var t = new PanelTransform();
+		t.AddRotation(0f, 0f, rotZ);
+		t.AddSkew(skX, skY, 0f);
+		t.AddScale(new Vector2(brX, brY));
+		ringRef.Style.Transform = t;
+	}
+
+	// =========================================================================
+	// Inspector resolution
+	// =========================================================================
+	// Priority: live hover/kb cursor → sticky last-inspected → the suggested
+	// pick (cheapest affordable node — "what to invest in next").
+	private SkillNode GetInspectedNode(out bool suggested)
+	{
+		suggested = false;
+
+		if (hoveredNode != null) return hoveredNode;
+
+		if (!string.IsNullOrEmpty(inspectedNodeId))
+		{
+			var sticky = TamerManager.Instance?.SkillTree?.GetNode(inspectedNodeId);
+			if (sticky != null) return sticky;
+		}
+
+		var pick = DefaultInspectNode();
+		if (pick != null && CanUpgradeSkill(pick.Id)) suggested = true;
+		return pick;
+	}
+
+	private SkillNode DefaultInspectNode()
+	{
+		var all = GetAllNodesFlat();
+		if (all.Count == 0) return null;
+
+		// Cheapest affordable first.
+		var afford = all.Where(n => CanUpgradeSkill(n.Id))
+			.OrderBy(n => n.CostPerRank).FirstOrDefault();
+		if (afford != null) return afford;
+
+		// Otherwise the first not-yet-maxed talent; null when ALL are maxed
+		// (the inspector then shows the mastered celebration block).
+		return all.FirstOrDefault(n => GetSkillRank(n.Id) < n.MaxRank);
+	}
+
+	// Aim the burst at a node's hex center (keyboard / CTA invests happen
+	// while the mouse cursor isn't on the node).
+	private void AimBurstAtNode(SkillNode node)
+	{
+		if (node == null) return;
+		var nodes = GetAllNodesFlat();
+		int idx = nodes.FindIndex(n => n.Id == node.Id);
+		if (idx < 0) return;
+		var rects = CollectHexRects();
+		if (idx >= rects.Count) return;
+		float sc = ScaleFromScreen;
+		if (sc <= 0.01f || float.IsNaN(sc) || float.IsInfinity(sc)) sc = 1f;
+		var c = rects[idx].Center;
+		lastMouseX = (c.x - Box.Rect.Left) * sc;
+		lastMouseY = (c.y - Box.Rect.Top) * sc;
+	}
+
+	// =========================================================================
 	// Event handlers
 	// =========================================================================
 	private void OnPanelClicked()
 	{
 		GameHUD.EnterPanel();
 
-		// Click-elsewhere cancels the armed reset. The reset button's onclick
-		// runs first and sets `resetClickGuardUntil` to block this immediate
-		// bubble — so this path only fires for genuine "click outside the
-		// button" inputs, the intended escape hatch.
+		// Click-elsewhere cancels the armed reset (the button's own onclick
+		// runs first and sets the guard, so this only fires for genuine
+		// outside clicks).
 		if (resetConfirming && RealTime.Now > resetClickGuardUntil)
 		{
 			resetConfirming = false;
@@ -841,8 +991,7 @@
 
 	private void OnPanelMouseMove()
 	{
-		// Track cursor for tooltip positioning. MousePosition is already in
-		// panel-local coordinates on s&box Panels.
+		// Track cursor for burst positioning (MousePosition is panel-local).
 		lastMouseX = MousePosition.x;
 		lastMouseY = MousePosition.y;
 	}
@@ -853,15 +1002,13 @@
 		if (lastHoveredId == node.Id) return; // guard repeat-fire
 		lastHoveredId = node.Id;
 		hoveredNode = node;
-		// Mouse took over — drop the keyboard cursor so the gold focus ring and
-		// the CSS :hover ring never show on two different nodes at once. The
-		// next WASD press re-engages it.
+		inspectedNodeId = node.Id;
+		// Mouse took over — drop the keyboard cursor so the violet ring and
+		// CSS :hover never mark two different nodes at once.
 		_kbActive = false;
 
-		// Locked petals (prereq unmet) get a soft deny cue instead of the
-		// standard hover ping — communicates "this is gated" without
-		// forcing the player to read the tooltip. Same prereq-resolution
-		// logic the visual `tierUnlocked` flag uses.
+		// Locked petals get a soft deny cue — "this is gated" without
+		// forcing a read of the inspector.
 		bool tierUnlocked = GetBranchPointsSpent(node.Branch) >= node.RequiredBranchPoints
 			&& (string.IsNullOrEmpty(node.RequiredSkillId)
 				|| GetSkillRank(node.RequiredSkillId) >= node.RequiredSkillRank);
@@ -877,6 +1024,8 @@
 
 	private void OnNodeHoverOut()
 	{
+		// The inspector keeps reading the last node (inspectedNodeId is
+		// already sticky) — only the live-hover channel clears.
 		lastHoveredId = null;
 		hoveredNode = null;
 	}
@@ -888,12 +1037,11 @@
 		var tamer = TamerManager.Instance;
 		if (tamer == null) return;
 
-		// Attempt the unlock. The manager owns the eligibility logic.
-		bool ok = tamer.CanUnlockSkill(node.Id);
+		inspectedNodeId = node.Id;
 
+		bool ok = tamer.CanUnlockSkill(node.Id);
 		if (!ok)
 		{
-			// Denied — soft feedback (no shake for now; would need per-node version for CSS trigger).
 			SoundManager.PlayDeny();
 			return;
 		}
@@ -907,20 +1055,21 @@
 		bool justMaxed = newNode != null && newRank >= newNode.MaxRank;
 		bool isCapstoneSetpiece = justMaxed && node.Tier == 3;
 
-		// Bump the unlock version → CSS keyframe remounts + replays.
+		// Bump the unlock version → ripple overlay remounts + replays.
 		if (!unlockVersions.ContainsKey(node.Id)) unlockVersions[node.Id] = 0;
 		unlockVersions[node.Id]++;
 		lastInvestedId = node.Id;
 
-		// Trigger particle burst at cursor (local coords) with branch color.
+		// Particle burst at the cursor (or node center for kb/CTA invests —
+		// AimBurstAtNode parks the coords there first). Skills pink.
 		burstVersion++;
 		burstX = lastMouseX;
 		burstY = lastMouseY;
-		burstColor = GetBranchAccent(node.Branch);
+		burstColor = "#ff6bd6";
 		showBurst = true;
 		sinceBurst = 0f;
 
-		// Sound — tiered based on what just happened.
+		// Sound — tiered.
 		if (isCapstoneSetpiece)
 		{
 			SoundManager.PlaySuccess();
@@ -936,23 +1085,40 @@
 		}
 	}
 
+	// INVEST CTA — invests whatever the inspector is reading.
+	private void OnInvestClicked()
+	{
+		bool _s;
+		var node = GetInspectedNode(out _s);
+		if (node == null) return;
+		AimBurstAtNode(node);
+		OnNodeClicked(node);
+	}
+
+	private void OnInvestHover()
+	{
+		if (investHovered) return;
+		investHovered = true;
+		SoundManager.PlayHover();
+	}
+
+	private void OnInvestHoverOut()
+	{
+		investHovered = false;
+	}
+
 	// Inline two-stage reset. First click arms; second click (within the
-	// confirm window) fires; click-elsewhere or timeout reverts silently.
+	// window) fires; click-elsewhere or timeout reverts silently.
 	private void OnResetClicked()
 	{
 		if (GetTotalRanksUnlocked() <= 0) return;
 
-		// Block the bubbling panel-level click from immediately disarming.
-		// Keep the window short — just enough for the same frame's bubble.
 		resetClickGuardUntil = RealTime.Now + 0.1f;
 
-		// Already flashing "Reset!" — ignore extra clicks during the payoff
-		// so the player can't accidentally re-arm before the flash finishes.
 		if (IsResetFlashing) return;
 
 		if (!resetConfirming)
 		{
-			// Stage 1: arm. Small click cue — feels deliberate.
 			resetConfirming = true;
 			resetConfirmExpires = RealTime.Now + ResetConfirmWindow;
 			resetBtnVersion++; // remount so the armed pulse keyframe plays
@@ -960,9 +1126,6 @@
 		}
 		else
 		{
-			// Stage 2: confirm + fire. Destructive action — use PlayBack so
-			// the audio colors "undoing progress" distinctly from the normal
-			// success cue (that'd read as if something was gained).
 			var tm = TamerManager.Instance;
 			if (tm == null)
 			{
@@ -975,11 +1138,14 @@
 			unlockVersions.Clear();
 			lastInvestedId = null;
 			hoveredNode = null;
+			inspectedNodeId = null;
 
 			resetConfirming = false;
 			resetFlashUntil = RealTime.Now + ResetFlashDuration;
 			resetBtnVersion++;
 
+			// Destructive action — PlayBack colors "undoing progress"
+			// distinctly from a gain cue.
 			SoundManager.PlayBack();
 			Log.Info($"[SkillTree] Inline reset confirmed — refunded {refunded} SP");
 		}
@@ -993,18 +1159,16 @@
 	}
 
 	// =========================================================================
-	// Stats subtab — tab switching + helpers
+	// Tabs
 	// =========================================================================
 	private void SetTab(string tab)
 	{
 		if (currentTab == tab) return;
 		currentTab = tab;
-		// Clear any tree-specific transient state so it doesn't bleed into
-		// the stats view (or vice-versa when switching back).
+		// Clear tree-transient state so it doesn't bleed across views.
 		hoveredNode = null;
 		lastHoveredId = null;
 		showBurst = false;
-		// Nudge timer baseline so the first second on stats tab is fresh.
 		sinceStatsTick = 0f;
 		SoundManager.PlayTabSwitch();
 	}
@@ -1016,6 +1180,18 @@
 		SoundManager.PlayHover();
 	}
 
+	// Parameterless wrappers — keeps quoted literals out of markup attribute
+	// expressions (generator dialect).
+	private void OnTreeTabClick() => SetTab("tree");
+	private void OnStatsTabClick() => SetTab("stats");
+	private void OnTreeTabHover() => OnTabHover("tree");
+	private void OnStatsTabHover() => OnTabHover("stats");
+
+	private string TabIconColor(string tab)
+	{
+		return currentTab == tab ? "#2e0a22" : "rgba(214, 206, 236, 0.75)";
+	}
+
 	private void ToggleShowInactiveStats()
 	{
 		showInactiveStats = !showInactiveStats;
@@ -1024,8 +1200,6 @@
 
 	private int GetActiveStatCount()
 	{
-		// Cheap call — read once per frame is fine. The list build itself is
-		// O(skills + relics + boosts) which is small.
 		return PlayerStatsSummary.CountActiveRows();
 	}
 
@@ -1036,9 +1210,8 @@
 		return $"{ts.Minutes:D1}:{ts.Seconds:D2}";
 	}
 
-	// Tuple-render helper. Mirrors ShopPanelContent.GetBuyButtonContent — keeps
-	// the Razor button body a single <iconify> + single <span> so s&box only
-	// swaps attribute values (no ghost-child bug on rapid state changes).
+	// Tuple-render helper for the reset button (single iconify + span so
+	// s&box only swaps attribute values — no ghost children).
 	private (string icon, string label, string color, string cssClass) GetResetButtonContent()
 	{
 		if (IsResetFlashing)
@@ -1048,6 +1221,42 @@
 			return ("lucide:alert-triangle", "Click again to confirm", "#fbbf24", "armed");
 
 		return ("lucide:rotate-ccw", "Reset", "#f87171", "");
+	}
+
+	// Tuple-render helper for the INVEST CTA — same ghost-child dodge.
+	private (string icon, string label, string color, string cssClass) GetInvestButtonContent(SkillNode node)
+	{
+		if (node == null)
+			return ("lucide:crown", "All mastered", "#ffce3a", "maxed-cta");
+
+		int rank = GetSkillRank(node.Id);
+		if (rank >= node.MaxRank)
+			return ("lucide:crown", "Mastered", "#ffce3a", "maxed-cta");
+
+		bool branchGateOk = GetBranchPointsSpent(node.Branch) >= node.RequiredBranchPoints;
+		bool prereqOk = string.IsNullOrEmpty(node.RequiredSkillId)
+			|| GetSkillRank(node.RequiredSkillId) >= node.RequiredSkillRank;
+		if (!branchGateOk || !prereqOk)
+			return ("lucide:lock", "Locked", "rgba(214, 206, 236, 0.45)", "off");
+
+		if (CanUpgradeSkill(node.Id))
+			return ("lucide:zap", $"Invest · {node.CostPerRank} SP", "#2a1605", "");
+
+		return ("lucide:star", $"Need {node.CostPerRank} SP", "rgba(214, 206, 236, 0.45)", "off");
+	}
+
+	// Status strings for the inspector's lock lines — built in C# so no
+	// dollar-interpolation touches markup.
+	private string GetBranchGateText(SkillNode node)
+	{
+		return $"Needs {node.RequiredBranchPoints} pts in {node.Branch}";
+	}
+
+	private string GetPrereqText(SkillNode node)
+	{
+		var reqNode = TamerManager.Instance?.SkillTree?.GetNode(node.RequiredSkillId);
+		var reqName = reqNode?.Name ?? "prerequisite";
+		return $"Needs {reqName} rank {node.RequiredSkillRank}";
 	}
 
 	// =========================================================================
@@ -1083,7 +1292,7 @@
 	}
 
 	// =========================================================================
-	// Node state → CSS class
+	// Node state → CSS class (investability language: pink/gold/quiet)
 	// =========================================================================
 	private string GetNodeStateClass(SkillNode node, int rank, bool canUpgrade, bool tierUnlocked)
 	{
@@ -1096,9 +1305,9 @@
 
 	private string GetNodeIconColor(SkillNode node, int rank, bool isMaxed)
 	{
-		if (isMaxed) return "#0c0a18"; // dark icon on warm filled hex
+		if (isMaxed) return "#2a1605"; // dark ink on the gold-filled hex
 		if (rank > 0) return "#ffffff";
-		return "rgba(255, 255, 255, 0.75)";
+		return "rgba(255, 255, 255, 0.7)";
 	}
 
 	// =========================================================================
@@ -1130,13 +1339,9 @@
 		};
 	}
 
-
 	// =========================================================================
-	// Node icons — per skill id
-	// Only the 15 launch talents are mapped. Post-launch updates that add new
-	// nodes need to add a new arm here AND fall through cleanly via the
-	// default. Don't pre-populate icons for unimplemented IDs — dead arms
-	// imply missing features and noise the search.
+	// Node icons — per skill id (launch talents only; new nodes add arms
+	// here and fall through cleanly via the default)
 	// =========================================================================
 	private string GetNodeIcon(SkillNode node)
 	{
@@ -1172,7 +1377,7 @@
 	}
 
 	// =========================================================================
-	// Effect display (tooltip text)
+	// Effect display (inspector text)
 	// =========================================================================
 	private string GetEffectDisplay(SkillNode node, SkillEffect effect, int rank)
 	{
@@ -1186,7 +1391,6 @@
 
 		if (rank <= 0) return "Locked";
 
-		// For normal scaling effects: show cumulative at this rank.
 		float total = effect.Value * rank;
 		string sign = total >= 0 ? "+" : "";
 		string suffix = GetEffectSuffix(effect);
@@ -1245,7 +1449,7 @@
 	}
 
 	// =========================================================================
-	// BuildHash — include every piece of state that affects rendering
+	// BuildHash — every piece of state that affects rendering
 	// =========================================================================
 	protected override int BuildHash()
 	{
@@ -1259,28 +1463,33 @@
 		hash.Add(GetTotalSkillPointsSpent());
 		hash.Add(GetTotalRanksUnlocked());
 		hash.Add(hoveredNode?.Id);
+		hash.Add(inspectedNodeId);
 		hash.Add(resetConfirming);
 		hash.Add(IsResetFlashing);
 		hash.Add(resetBtnVersion);
 		hash.Add(showBurst);
 		hash.Add(burstVersion);
 		hash.Add(lastInvestedId);
-		// Ticking the hash while the pulse overlay is visible so it unmounts at ~0.6s.
+		// Tick the hash while the ripple overlay is visible so it unmounts.
 		hash.Add(showBurst && sinceBurst < 0.6f);
-		// Include branch totals so the tier-gates update when they cross a threshold.
+		// Living ring geometry (markup-bound style values).
+		hash.Add(ringL);
+		hash.Add(ringT);
+		hash.Add(ringW);
+		hash.Add(ringH);
+		hash.Add(ringVisible);
+		hash.Add(ringWarm < 2);
+		// Branch totals — tier gates + mastery bars update on thresholds.
 		foreach (var b in AllBranches)
 		{
 			hash.Add(GetBranchPointsSpent(b));
 		}
-		// Include per-node unlock versions so the flash triggers on new click.
+		// Per-node unlock versions — the ripple triggers on new invests.
 		foreach (var kv in unlockVersions)
 		{
 			hash.Add(kv.Key);
 			hash.Add(kv.Value);
 		}
-		// Cursor-driven tooltip position
-		hash.Add((int)(lastMouseX / 8));
-		hash.Add((int)(lastMouseY / 8));
 		return hash.ToHashCode();
 	}
 }

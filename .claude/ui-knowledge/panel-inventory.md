@@ -262,12 +262,13 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Juice tier (current / target):** Tier 2. Plaza entrance has stagger keyframes (banner emblem pop, monument slide-in, portrait drop). Target: Tier 3 on raid complete + perk unlock celebration.
 - **Neighbors:** OnlineHubPanel, ChatPanel.
 
-### OnlineHubPanel
-- **Files:** `Code/UI/Panels/OnlineHubPanel.razor` (1040), `.scss`
-- **Purpose:** Online hub wrapper with section pills (players/leaderboards/guild), `bg-{currentSection}` dynamic background. Tamers tab hosts split layout (tile grid + detail sidebar).
-- **Visual style notes:** Hub-header-row with pills, dynamic section bg via class. Host for sub-panels. **Tamer tile (2026-04-25):** Persona 5 "stamped tag" treatment — purple bg-block gradient on left, gold rail bar across bottom, angled gold corner accent in top-right, twin-slash purple flourish in bottom-right corner. LV chip is flat black-on-gold stamp. DEV badge is solid gold flag. Italic uppercase typography with 1px hard-offset shadows. YOU tile shows "01" italic gold index stamp at corner; selected state replaces it with gold "YOU"/"SEL" rectangle stamp. ALL layers respect scroll-grid clip rule (no transform/no halo on hover/selected, only border + bg-color shifts). Stamp layers use `background-image: linear-gradient(...)` rather than `<img>` overlays so they stack above parent bg-color correctly.
-- **Juice tier (current / target):** Tier 1. Target: Tier 2 on section swap.
-- **Neighbors:** ArenaPanel, GuildPanel, TradingPanel, LeaderboardPanel.
+### OnlineHubPanel _[SWEPT 2026-07-02 — presence-card recomposition, ONLINE BLUE #3f8fe0]_
+- **Files:** `Code/UI/Panels/OnlineHubPanel.razor` (~1300), `.scss`
+- **Purpose:** Online hub wearing its PawPad tile color: BbSectionHeader identity band ("TAMERLINK NETWORK / Online"), skewed section slab tabs (Tamers/Leaderboards/Guild-gated, Z/X cycle caps), presence status chip. Tamers = presence-card grid + detail rail.
+- **Visual style notes:** Solid `#0a0912` page (animated-bg image + `bg-{section}` class retired). **Presence card:** flat 336×92 slab `#15121f` r16, skewed blue edge slab at left, 64px avatar circle in the player's title color + live dot, Exo2Italic-900 uppercase name + title sub-line, gold skewed LV chip, blue skewed YOU chip (inside bounds). States: hover = inset violet ring div (explicit-size, breathe keyframe) + brighten; kb cursor = THE living violet ring (root-level, IMPERATIVE Style.Left/Top/W/H writes from Tick since this panel doesn't re-render per frame — variant #3, see learnings) + brighten; committed selection = blue border + lit edge. Detail rail: `#0f0d1a` fill, blue accent-bar section headers, gold LV chips, blue XP fill, action slabs with violet-border hover. z-ladder: cards ~1-5 < ring 60 < sidebar 80 < voice strip 400 < header 500.
+- **Juice tier (current / target):** Tier 1 ambient (living ring + ring breathe) + Tier 2 section-swap fade. Correct for a presence hub.
+- **Keyboard:** Z/X sections · WASD/arrows grid · Space/Enter select · F5-free; all preserved from pre-sweep.
+- **Neighbors:** ArenaPanel (dormant, untouched), GuildPanel (dormant, untouched), TradingPanel, LeaderboardPanel.
 
 ### ArenaPanel _[T3 rank-up + T4 win-streak setpiece 2026-06-03]_
 - **Files:** `Code/UI/Panels/ArenaPanel.razor` (~1460), `.scss` (~2900)
@@ -280,12 +281,13 @@ _(Overlays that dock on top of gameplay — click-outside-to-close, scaled-in mo
 - **Known issues / notes:** No dedicated celebration sound — rank-up/streak reuse `PlayVictory` (set win) + `PlayClick` (dismiss). A T3 chime + T4 swell would sharpen the audio signature; no such files exist — flag for product. Win-streak only advances when `CurrentMatchConfig.TrackResult` is true (ranked-tracked sets), so casual/AI play won't trigger the T4 — correct, the streak is a tracked-record stat. The pre-pass `.rank-up-*` SCSS was DEAD (overlay styled but never rendered in markup; `DismissRankUp` referenced by keyboard with no UI) — now live + modernized.
 - **Neighbors:** OnlineHubPanel, LeaderboardPanel.
 
-### LeaderboardPanel
-- **Files:** `Code/UI/Panels/LeaderboardPanel.razor` (384), `.scss`
-- **Purpose:** Live leaderboards with loading spinner + scroll.
-- **Visual style notes:** Simple list with loading state.
-- **Juice tier (current / target):** Tier 1. Target: keep simple; highlight user's row.
-- **Neighbors:** ArenaPanel.
+### LeaderboardPanel _[SWEPT 2026-07-02 — rank diamonds, hub-blue accent]_
+- **Files:** `Code/UI/Panels/LeaderboardPanel.razor` (~670), `.scss` (~700)
+- **Purpose:** Live leaderboards inside the Online hub — 2.5D group carousel (Battle/Collection/Social/Economy) over category cards of ranked rows.
+- **Visual style notes:** Wears the hub's ONLINE BLUE. P5 stamp layers removed. Category cards `#15121f` r22, hover/kb-cursor = violet border swap (variable-height cards in a scroll → no inset ring div possible, border swap is the sanctioned dialect). Rows `#1c1830` r10 with **45° rank diamonds** (number counter-rotated): gold #ffce3a / silver-violet #c9c4ea / bronze-tan #d9a054 podium, dark slab for the field; your row = blue tint + blue left rail + skewed blue YOU chip; category color stays on scores/icons (informational). Hotkey caps strip in the top bar (A/D · W/S · SPACE · F). Carousel wheel/spin mechanics untouched, reskinned (slab arrows, r22 wheel items keeping inline group-color borders).
+- **Juice tier (current / target):** Tier 1 + the carousel spin (Tier 2). Correct.
+- **Keyboard:** A/D groups · W/S cards · Space expand · F refresh; all preserved.
+- **Neighbors:** OnlineHubPanel (host), ArenaPanel.
 
 ### BreedingPanel
 - **Files:** `Code/UI/Panels/BreedingPanel.razor` (615), `.scss`
@@ -550,3 +552,13 @@ _(see Core panels)_
 - **Behavior preserved:** all claim/accept handlers, badges, streak logic, guild goal seeding, Esc/Menu/run close, UIModalState "QuestPanel", GetTotalUnclaimedCount static for HUD/PawPad. Overlay click-close is gone (panel is full-bleed now).
 - **Not yet live-verified:** the whole rebuild (compile + visual). Watch: % vs px fill under tilt, hanging tags vs row spacing, peg row fit at 1920.
 - **Neighbors:** GameHUD (mount + toggle), PhoneLauncher (quests tile badge), DailyRewardManager / MissionManager / SideQuestManager / GuildManager.
+
+---
+
+## 2026-07-02 — DOCK-TIER sweep (system popups batch)
+
+ProfilePanel, HelpPanel, FeedbackPanel, MenuPopup redone as ONE family (the PawPad System Dock's OS chrome — violet `#9b6cff` on `#14151b`/`#1a1c23`, radius-26 centered slabs, skewed violet kicker + Exo2Italic-900 title headers, gold reserved for primary CTAs). Details + the reusable family recipe: learnings.md "Sweep — system-popup dock tier". Per panel:
+- **ProfilePanel** — hero inverted to the tamer: 116px gold-ringed circular avatar (HUD player tag hardware at card scale), italic name, level block right; zones reordered Favorite+Discovery → Achievements (clickable) → Arena COMPACT strip (dormant feature demoted from headline) → footer. Rank color survives only on the avatar stamp, rank pill, and the (still fully wired) T3 rank-up overlay. Interactive slabs use border-swap violet rings.
+- **HelpPanel** — macro layout kept (sidebar topics + reading pane + single-cursor W/S walk / Space / Q, all unchanged); chrome rethemed to dock tiles; header now shows W/S·SPACE·Q keycaps; controls copy updated for the retired bottom command bar (PawPad 8, tabs 1-6, 7/9/0, T/R/C/N documented in controls/overview; first-run step 1 no longer says "bottom command bar").
+- **FeedbackPanel** — board + composer + admin flows unchanged; tabs/toolbar/entries rethemed (uniform violet active states, entry hover = violet border ring); composer SUBMIT → gold **SEND** (`#ffce3a` / ink `#2a1605`) — the panel's only gold.
+- **MenuPopup** — no longer anchored to the retired MENU button; now a centered SYSTEM slab (kicker "TAMERLINK OS" / title "SYSTEM"), uniform violet tile list, notch + horizontal layout variant deleted, and the imperative living violet ring glides across the 5 launchers (kb + hover, one cursor). All open/close paths, kb models, UIModalState contracts preserved across all four.
