@@ -167,8 +167,14 @@
 								@{
 									var ci = System.Globalization.CultureInfo.InvariantCulture;
 									var artVals = GetCardArt(species);
-									var cardOx = artVals.OffX.ToString("F2", ci);
-									var cardOy = artVals.OffY.ToString("F2", ci);
+									// Tuned-space px offsets → tile space via TileArtK
+									// (const in code-behind). Values were authored for the
+									// pre-rebuild 180px sprite box; applied raw to the
+									// 70px tile they threw sprites out of frame — the
+									// "ragged grid" bug. Scale is multiplicative and
+									// carries over unchanged.
+									var cardOx = (artVals.OffX * TileArtK).ToString("F2", ci);
+									var cardOy = (artVals.OffY * TileArtK).ToString("F2", ci);
 									var cardSc = artVals.Scale.ToString("F2", ci);
 									var cardTransform = $"transform: translate({cardOx}px, {cardOy}px) scale({cardSc}); transform-origin: center bottom;";
 								}
@@ -204,10 +210,13 @@
 		<!-- ============================================================
 		     SHOWCASE STAGE — the museum wall's exhibit. One species,
 		     giant animated sprite (pixelated, never filtered except the
-		     undiscovered silhouette), teal-lit pedestal, registry-number
-		     watermark behind. Click = zoom/inspect popup (same handler
-		     the old portrait used). Remounts per species via the drev
-		     key so the entrance keyframes replay (proven pattern).
+		     undiscovered silhouette) over a soft teal spotlight halo,
+		     registry-number watermark behind. Click = zoom/inspect popup
+		     (same handler the old portrait used). Remounts per species
+		     via the drev key so the entrance keyframes replay (proven
+		     pattern). The solid pedestal bar + hard-edged glow were CUT
+		     2026-07-03 — same user call as the roster stage ("remove the
+		     element bar thats on the circle" / halo read as a plate).
 		     ============================================================ -->
 		<div class="bb-stage">
 			@if (selectedSpecies == null)
@@ -223,7 +232,11 @@
 				var stageDiscovered = IsDiscovered(selectedSpecies.Id);
 				var stageSeen = IsSeen(selectedSpecies.Id);
 				<div class="@($"bb-stage-wall drev-{detailRevealVersion}")">
-					<div class="bb-stage-num"><span>@(stageDiscovered || stageSeen ? "#" + selectedSpecies.BeastiaryNumber.ToString("D3") : "#???")</span></div>
+					<!-- Registry number shows for EVERY state (2026-07-03): the grid
+					     is sorted by number so position reveals it anyway, and the
+					     undiscovered placard now headlines the number — the old
+					     "#???" here would contradict it on the same screen. -->
+					<div class="bb-stage-num"><span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span></div>
 					<div class="bb-stage-exhibit"
 						 onclick=@OnPortraitClick
 						 onmouseover=@(() => OnDiamondHover("portrait"))
@@ -238,7 +251,6 @@
 							<div class="bb-stage-unknown">?</div>
 						}
 					</div>
-					<div class="bb-stage-pedestal"></div>
 				</div>
 			}
 		</div>
@@ -263,11 +275,36 @@
 				}
 				else if (!IsDiscovered(selectedSpecies.Id) && !IsSeen(selectedSpecies.Id))
 				{
-					<!-- Undiscovered state -->
-					<div class="bb-empty">
-						<iconify icon="lucide:help-circle" Size=@(72) Color="rgba(255,255,255,0.12)" />
-						<span class="bb-empty-text">???</span>
-						<span class="bb-empty-hint">@L("ui.beastbook.find_hint")</span>
+					<!-- Undiscovered dossier (2026-07-03 refinement) — compact
+					     registry treatment instead of the old full-height "???"
+					     void. Big registry number as the headline (safe to show:
+					     the rail is number-sorted so position reveals it anyway),
+					     UNDISCOVERED kicker chip in the section-title dialect, a
+					     quiet black silhouette motif, and the expedition hint as
+					     a proper FIELD NOTES slab — now zone-aware via the
+					     expedition spawn pools (GetUndiscoveredHint). drev key =
+					     same remount-per-species entrance as the discovered
+					     branch, so paging through unknowns still animates. -->
+					<div class="@($"bb-undisc drev-{detailRevealVersion}")">
+						<div class="bb-undisc-num"><span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span></div>
+						<div class="bb-undisc-kicker"><span>UNDISCOVERED</span></div>
+						<div class="bb-undisc-silhouette">
+							@if (HasSprite(selectedSpecies))
+							{
+								<img class="bb-undisc-sprite" src="@selectedSpecies.IconPath" />
+							}
+							else
+							{
+								<span class="bb-undisc-q">?</span>
+							}
+						</div>
+						<div class="bb-undisc-hint-row">
+							<iconify icon="lucide:map-pin" Size=@(14) Color="#2dd4bf" />
+							<div class="bb-undisc-hint-col">
+								<span class="bb-undisc-hint-label">FIELD NOTES</span>
+								<span class="bb-undisc-hint-text">@GetUndiscoveredHint(selectedSpecies)</span>
+							</div>
+						</div>
 					</div>
 				}
 				else
@@ -293,7 +330,15 @@
 						     mount-time @keyframes replay. A version class on the
 						     parent `.bb-detail-fixed` alone does NOT remount
 						     descendants — the token must live on each animated node. -->
-						<div class="@($"bb-portrait-section drev-{detailRevealVersion}")">
+						@{
+							// Identity stack height is deterministic per discovery state
+							// (all rows have explicit heights) — the state class pins the
+							// wrapper's height, because nested flex columns don't propagate
+							// children's heights reliably here (caught live 2026-07-03:
+							// flavor + ACTIONS rendered over the name rows).
+							var idnClass = isFullyDiscovered ? "idn-full" : (IsSeen(selectedSpecies.Id) ? "idn-seen" : "idn-min");
+						}
+						<div class="@($"bb-portrait-section {idnClass} drev-{detailRevealVersion}")">
 
 							<!-- Identity block — strict VERTICAL STACK.
 							     Row 1 (line 1): #num pill alone.
@@ -833,7 +878,8 @@
 	     Shows a bigger sprite with zoom controls — future home for per-
 	     species cry audio + animation-set picker. Closes on backdrop
 	     click, X button, or species change. -->
-	@if (showBeastPopup && selectedSpecies != null && HasSprite(selectedSpecies))
+	@* Render-side spoiler guard too — belt and braces with OnPortraitClick's gate. *@
+	@if (showBeastPopup && selectedSpecies != null && HasSprite(selectedSpecies) && IsDiscovered(selectedSpecies.Id))
 	{
 		<div class="bb-beast-popup-root">
 			<div class="bb-beast-popup-overlay" onclick=@CloseBeastPopup></div>
@@ -1252,10 +1298,45 @@
 	}
 
 	// ───────────────────── EDIT-MODE HANDLERS ─────────────────────────────
+	// ── Tile-space K for the tuned card art ───────────────────────────
+	// CardScale/CardOffsetX/Y were authored in the ORIGINAL beastbook card
+	// geometry (172×216 card / 180px sprite box, pre museum-wall rebuild —
+	// values like CardOffsetY=185f only make sense there). The index rail's
+	// tile sprite box is 70px, so stored px offsets are mapped into tile
+	// space by K = 70/180 at render time, and the dev art editor divides
+	// its drag deltas by K so SAVED values stay in tuned-space and every
+	// other consumer keeps working (the roster DetailArtK law — one K,
+	// applied in both directions). Scale is multiplicative: no compensation.
+	private const float TileArtK = 70f / 180f;
+
 	private (float Scale, float OffX, float OffY) GetCardArt( MonsterSpecies species )
 	{
 		if ( _cardOverrides.TryGetValue( species.Id, out var ov ) ) return ov;
 		return (species.CardScale, species.CardOffsetX, species.CardOffsetY);
+	}
+
+	// ── Undiscovered placard hint ──────────────────────────────────────
+	// Zone-aware "where to look" line for the FIELD NOTES slab. Read-only
+	// scan of the expedition spawn pools (ExpeditionManager.Expeditions is
+	// a public IReadOnlyList): if the species appears in any non-tutorial
+	// pool, name those zones — an earned, actionable breadcrumb, not a
+	// spoiler (collector-book staple). Evolution-only species (in no wild
+	// pool but with EvolvesFrom set) get a deliberately vague nudge that
+	// doesn't name the pre-evolution. Anything else (boss-only etc.) falls
+	// back to the existing localized generic hint.
+	private string GetUndiscoveredHint( MonsterSpecies species )
+	{
+		var zones = ExpeditionManager.Instance?.Expeditions
+			?.Where( e => !e.TutorialOnly && e.PossibleSpecies != null && e.PossibleSpecies.Contains( species.Id ) )
+			.Select( e => e.Name )
+			.Distinct()
+			.Take( 3 )
+			.ToList();
+		if ( zones != null && zones.Count > 0 )
+			return $"Sighted near: {string.Join( " · ", zones )}";
+		if ( !string.IsNullOrEmpty( species.EvolvesFrom ) )
+			return "No wild sightings. Rumor says it emerges when another beast grows.";
+		return L( "ui.beastbook.find_hint" );
 	}
 
 	private void ToggleEditMode()
@@ -1302,7 +1383,10 @@
 		var prev = _cardOverrides.TryGetValue( _draggingSpeciesId, out var ov )
 			? ov
 			: GetSpeciesArtFallback( _draggingSpeciesId );
-		_cardOverrides[_draggingSpeciesId] = (prev.Scale, _dragStartOffX + dx, _dragStartOffY + dy);
+		// Screen-space drag deltas → tuned-space values (÷ TileArtK): render
+		// multiplies by K, so dividing here keeps saved offsets in the
+		// original 180px tuned space (DetailArtK law — both directions).
+		_cardOverrides[_draggingSpeciesId] = (prev.Scale, _dragStartOffX + dx / TileArtK, _dragStartOffY + dy / TileArtK);
 		StateHasChanged();
 	}
 
@@ -2019,6 +2103,10 @@
 	private void OnPortraitClick()
 	{
 		if ( selectedSpecies == null ) return;
+		// SPOILER GATE (2026-07-03, caught live): the art viewer shows the
+		// full sprite + real NAME — undiscovered species must not leak
+		// either. Silhouette-on-stage is all the player gets until caught.
+		if ( !IsDiscovered( selectedSpecies.Id ) ) return;
 		beastPopupZoom = 1f;
 		beastPopupPanX = 0f;
 		beastPopupPanY = 0f;
