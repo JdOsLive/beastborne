@@ -5,9 +5,13 @@
 @using Beastborne.Data;
 @using Beastborne.Systems;
 @using Beastborne.UI.Components;
+@using Beastborne.UI.Primitives;
 @inherits Panel
 
 <div class="roster-panel @(isFusionMode ? "fusion-view" : "")" onclick=@OnPanelClicked>
+	@* Living background: the panel's own app glyph drifting at the house
+	   angle (BbIconScroll supplies the base fill — root paints none). *@
+	<BbIconScroll Icon="beasts" />
 	@* ═══ DEV: MY-BEASTS ART POSITION EDITOR ═══════════════════════
 	   Hidden behind ShowMyBeastsArtEditor. Two modes:
 	     CARD   — drag/scroll any grid mini-card sprite to tune
@@ -553,7 +557,7 @@
 						<button class="cta-fuse-btn @(canFuse ? "" : "disabled") @(pendingFusionConfirm ? "confirming" : "")"
 								onclick=@OnBreedClicked
 								onmouseover=@(() => SoundManager.PlayHover())>
-							<iconify icon="@(pendingFusionConfirm ? "lucide:check" : "lucide:combine")" Size=@(18) Color="#ffffff" />
+							<iconify icon="@(pendingFusionConfirm ? "lucide:check" : "lucide:combine")" Size=@(18) Color="@(canFuse ? "#2a1605" : "#ffffff")" />
 							<span class="cta-fuse-label">@(pendingFusionConfirm ? "CONFIRM" : L("ui.roster.fuse_btn"))</span>
 						</button>
 					</div>
@@ -678,9 +682,9 @@
 										<span class="power-value">@SelectedMonster.PowerRating.ToString("N0")</span>
 									</div>
 								</div>
-								<div class="portrait-xp-bar">
+								<div class="portrait-xp-bar @(SelectedMonster.Level >= Monster.MaxLevel ? "maxed" : "")">
 									<div class="xp-fill" style="width: @(SelectedMonster.Level >= Monster.MaxLevel ? 100 : GetSelectedXPPercent())%"></div>
-									<span class="xp-text-small">@(SelectedMonster.Level >= Monster.MaxLevel ? "MAX" : $"{SelectedMonster.CurrentXP} / {SelectedMonster.XPToNextLevel} XP")</span>
+									<span class="xp-readout">@GetXpReadout()</span>
 								</div>
 							</div>
 							<!-- Diamond Actions (vertical) -->
@@ -1297,6 +1301,17 @@
 									 ClickAction=@(() => {})
 									 HoverAction=@(() => OnMouseHoverCard(monster.Id))
 									 LeaveAction=@OnMouseLeaveCard />
+						@* Favorite quick-toggle — one click from the rail, no
+						   select-then-diamond round trip. Same spot as the (hidden)
+						   mini-fav star; suppressed in multi-select via SCSS. *@
+						@if (!isMultiSelectMode)
+						{
+							<div class="card-fav-qt @(monster.IsFavorite ? "fav" : "")"
+								 onclick=@(() => ToggleFavoriteFor(monster)) onclick:stopPropagation
+								 onmouseover=@(() => SoundManager.PlayHover())>
+								<iconify icon="lucide:star" Size=@(13) Color="@(monster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
+							</div>
+						}
 						@* Hover-preview ring — the cheap flat-panel recipe (absolute
 						   bordered div, opacity swap on :hover). The SELECTED beast
 						   gets the one waving imperative ring instead (root level). *@
@@ -1441,7 +1456,7 @@
 	     imperative Style.Transform in ApplyGridRingWave. z 60: above the
 	     grid cards, below the sidebar (80) / journal modal (100) /
 	     header (500) — flat z-index law, no stacking contexts. -->
-	<div @ref="gridRingRef" class="grid-ring @(gridRingVisible ? "on" : "") @(gridRingWarm < 2 ? "snap" : "")"
+	<div @ref="gridRingRef" class="grid-ring @(gridRingVisible ? "on" : "") @(gridRingWarm < 2 ? "snap" : "") @(gridRingTight ? "tight" : "")"
 		 style="left: @(gridRingL)px; top: @(gridRingT)px; width: @(gridRingW)px; height: @(gridRingH)px;"></div>
 
 	<!-- Move Picker Modal (at root level for full coverage) -->
@@ -1832,17 +1847,55 @@
 	private Panel gridRingRef;
 	private int gridRingL, gridRingT, gridRingW = 150, gridRingH = 180;
 	private bool gridRingVisible;
+	private bool gridRingTight; // detail-zone hosts are small — tighter inset/radius
 	private int gridRingWarm; // <2 = snap to position (no glide) while first rects land
 
 	// 10px box inset each side; the 4px border lives in SCSS. Declared
 	// width/height are CONTENT-box (s&box has no border-box), so the
 	// update subtracts the 8px of border to keep the ring concentric.
 	private const int GridRingInset = 10;
+	// Dossier controls are small — scale the concentric gap down.
+	private const int DetailRingInset = 6;
 
 	private void UpdateGridRing()
 	{
 		bool wasVisible = gridRingVisible;
 		gridRingVisible = false;
+		gridRingTight = false;
+
+		// STAGE ZONE — one cursor language (user mandate 2026-07-02): when
+		// keyboard focus hands over to the dossier, the SAME waving ring
+		// wraps the focused control there (found via the .kb-focused class
+		// the markup already assigns — action slabs, move slots, glyph
+		// squares, picker rows). No separate ring system.
+		if ( kbFocusZone == "detail" && !showResult && !isFusionMode && detailScrollRef != null )
+		{
+			var focused = FindPanelByClass( detailScrollRef, "kb-focused" );
+			if ( focused == null ) return;
+
+			var rrd = Box.Rect;
+			var dvr = detailScrollRef.Box.Rect;
+			var fr = focused.Box.Rect;
+			if ( rrd.Width < 1f || fr.Width < 1f ) return;
+
+			// Same scroll-clip discipline, against the detail viewport.
+			if ( fr.Top < dvr.Top - 10f || fr.Bottom > dvr.Bottom + 10f ) return;
+
+			float scd = ScaleFromScreen;
+			if ( scd <= 0.01f || float.IsNaN( scd ) || float.IsInfinity( scd ) ) scd = 1f;
+
+			// Small hosts → tighter inset + radius (.tight in SCSS).
+			gridRingL = (int)(( fr.Left - rrd.Left ) * scd) - DetailRingInset;
+			gridRingT = (int)(( fr.Top - rrd.Top ) * scd) - DetailRingInset;
+			gridRingW = (int)(fr.Width * scd) + DetailRingInset * 2 - 8;
+			gridRingH = (int)(fr.Height * scd) + DetailRingInset * 2 - 8;
+			gridRingTight = true;
+
+			gridRingVisible = true;
+			if ( !wasVisible ) gridRingWarm = 0;
+			else if ( gridRingWarm < 2 ) gridRingWarm++;
+			return;
+		}
 
 		bool want = rosterGridRef != null && !showResult
 			&& (isFusionMode ? isKeyboardNavigationActive : SelectedMonster != null);
@@ -2623,6 +2676,24 @@
 			SelectedMonster.IsFavorite = !SelectedMonster.IsFavorite;
 			SoundManager.PlayClick();
 		}
+	}
+
+	// Favorite quick-toggle on rail cards — works on ANY beast, not just
+	// the selected one (the card star pill in the grid).
+	private void ToggleFavoriteFor(Monster m)
+	{
+		if (m == null) return;
+		m.IsFavorite = !m.IsFavorite;
+		SoundManager.PlayClick();
+	}
+
+	// XP gauge readout — computed in code (never $"..." in markup
+	// attribute/content positions; generator law).
+	private string GetXpReadout()
+	{
+		if (SelectedMonster == null) return "";
+		if (SelectedMonster.Level >= Monster.MaxLevel) return "MAX LEVEL";
+		return SelectedMonster.CurrentXP.ToString("N0") + " / " + SelectedMonster.XPToNextLevel.ToString("N0") + " XP";
 	}
 
 	private void ShowOffBeast()

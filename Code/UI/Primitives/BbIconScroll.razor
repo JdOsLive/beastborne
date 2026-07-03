@@ -1,0 +1,56 @@
+@using Sandbox;
+@using Sandbox.UI;
+@namespace Beastborne.UI.Primitives
+@inherits Panel
+
+@*
+    BbIconScroll — the living panel background (user concept 2026-07-02):
+    the panel's own app glyph drifting infinitely at an angle. One
+    oversized tiled layer (480px pattern tiles from Assets/ui/patterns,
+    glyphs baked at 5% over the house dark) translated IMPERATIVELY along
+    its rotated axes each frame — per-frame transforms are proven cheap
+    on flat panels (the living rings run 90+ fps), and the translation
+    wraps at exactly one tile period so the loop is seamless.
+
+    Usage: first child of a panel whose root paints NO fill of its own
+    (this component supplies the base #0a0912 — an absolute layer behind
+    a parent's own bg would be invisible, the paint-behind law):
+        <BbIconScroll Icon="beastbook" />
+
+    The layer is IN-FLOW with negative margins (the wallpaper overlay
+    trick) because an absolute child would paint behind this root's own
+    base fill.
+*@
+
+<root class="bbis-root">
+    <div @ref="_layer" class="bbis-layer" style="background-image: url( @PatternUrl() );"></div>
+</root>
+
+@code {
+    public string Icon { get; set; } = "beasts";
+    public float Speed { get; set; } = 12f;    // drift px/sec along the tilted axes
+    public float AngleDeg { get; set; } = -8f; // the house lean
+
+    private Panel _layer;
+
+    private string PatternUrl() => "ui/patterns/" + Icon + ".png";
+
+    public override void Tick()
+    {
+        base.Tick();
+        if ( _layer == null ) return;
+        // PERF LAW (learned at 0fps live): NEVER rotate the tiled layer —
+        // rotating a huge repeating-background layer re-rasterizes it
+        // every frame (3.5s frames). The angle is PRE-BAKED into the
+        // pattern tiles; the layer only ever does an axis-aligned
+        // translate, which the compositor scrolls for ~free. Also: skip
+        // entirely while the host panel isn't laid out (hidden tabs).
+        if ( Box.Rect.Width < 1f ) return;
+        float off = ( Time.Now * Speed ) % 480f;
+        var tr = new PanelTransform();
+        tr.AddTranslate( Length.Pixels( -off ), Length.Pixels( -off ), Length.Pixels( 0f ) );
+        _layer.Style.Transform = tr;
+    }
+
+    protected override int BuildHash() => HashCode.Combine( Icon );
+}

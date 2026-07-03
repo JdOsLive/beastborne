@@ -352,15 +352,15 @@ _(Deep-dive panels for a specific thing)_
 ### MonsterRosterPanel _[recomposed 2026-07-02 — beast-stage inversion]_
 - **Files:** `Code/UI/Panels/MonsterRosterPanel.razor` (~5250 — largest in project), `.scss` (~10k)
 - **Purpose:** BEAST-primary layout: 640px selected-beast STAGE on the LEFT (`.detail-sidebar` class kept for style/fusion continuity — 2× sprite on `.portrait-container` 240px + `.stage-pedestal` rarity strip, species kicker over italic-900 nickname, gold LV / dark PWR skew slabs, dossier sections, `.stage-zone-hint` TAB/Q strip) + collection RAIL on the right (flex-1 `.collection-main` grid, full-size 150px MonsterCard minis, living violet ring). Fusion re-dresses the stage in place. `DetailArtK = 2f` keeps tuned per-species detail-art offsets exact — change it in lockstep with the container/sprite px.
-- **Visual style notes:** Violet `#7b4ddb` identity header (wave-1), angled dialect (seams, skew slabs, pedestal), helix-particle pattern lives in the scss.
+- **Visual style notes:** Violet `#7b4ddb` identity header (wave-1), angled dialect (seams, skew slabs, pedestal), helix-particle pattern lives in the scss. **v2 unification (2026-07-02, [VERIFY LIVE]):** BbIconScroll "beasts" drift bg (root paints NO fill; `.roster-panel > .bbis-root` specificity-insurance rule keeps it absolute under the `> *` content lift); 45° DIAMOND MOTIF DISSOLVED page-wide (user call) — `.detail-diamond/.diamond-shape` = glyph squares, `.action-v2-diamond`/`.move-diamond-icon`/`.inline-item-diamond` = in-flow icon tiles (class names kept, SCSS-only dissolution); dossier section wash-boxes dissolved to one stage surface (kickers = solid violet left bars, no hairline underlines); Quality/Nature/Traits = two-tone tiles (solid #1c1830 + tier-colored left edge); moves + picker rows = element-edged slabs; XP = 16px gold gauge w/ in-bar readout + `.maxed` ink-on-gold; fusion CTA = gold "go" tier (ink text) w/ bg-pulse confirm; `.card-fav-qt` fav quick-toggle on rail cards (replaces MonsterCard's `.mini-fav`, hidden by `.roster-grid .mini-fav { display: none }`); hint caps = house `.sat-cap` dialect.
 - **Juice tier (current / target):** Tier 1-2. Target: Tier 2 on card hover/select, Tier 3 on evolution.
 - **Known issues / notes:**
+  - **ONE ring, two zones (2026-07-02):** `UpdateGridRing` branches on `kbFocusZone` — grid = Nth-wrapper traversal, detail = `FindPanelByClass(detailScrollRef, "kb-focused")`; small hosts get `.tight` (inset 6, radius 18, z 90 between sidebar 80 and journal 100). `.kb-focused` SCSS is now hover-equivalent fills ONLY (gold alternate cursor retired — user mandate).
   - Duplicated move-picker with MonsterDetailPanel (CLAUDE.md quirk).
-  - 8 instances of `flex-wrap: wrap` flagged in learnings — need to verify none are broken.
-  - Sheer size (3361 lines) makes targeted edits risky.
-  - **[fixed 2026-04-17]** `.action-v2.item` (held-item button, line 662) had a Razor @if/else that swapped `<img>` vs `<iconify>` as the diamond child — same ghost-child bug class as the shop Purchase button. Applied stable-DOM fix: both slots always mount, visibility toggled via `has-item` / `no-item` class on the button. See learnings 2026-04-17.
-  - **[flagged 2026-04-17]** `.portrait-container.rarity-epic/legendary` (scss:3905-3906) has 16px blur colored halos at 0.2 alpha and lives inside `.detail-scroll`. Alpha is subtle; no observed bug; left alone. If leak is seen on scrolling detail pane, reduce blur or remove colored halo.
-- **Neighbors:** MonsterCard, MonsterDetailPanel, FilterBar, BreedingPanel.
+  - Sheer size (~5300 razor / ~9500 scss) makes targeted edits risky.
+  - **[fixed 2026-04-17]** `.action-v2.item` ghost-child fix (both icon slots always mount, `has-item`/`no-item` class swap) — preserved through the v2 dissolution.
+  - Fusion staging zone got only a light v2 pass (CTA + cost chip + shared slab tiles); `.parent-slot` / `.fusion-hero` / gene table still carry some wave-1 hairlines — candidate for a follow-up.
+- **Neighbors:** MonsterCard, MonsterDetailPanel, FilterBar (reskinned this pass), BreedingPanel, BbIconScroll.
 
 ### MonsterDetailPanel _[robustness pass 2026-04-17]_
 - **Files:** `Code/UI/Panels/MonsterDetailPanel.razor` (1177), `.scss`
@@ -394,11 +394,12 @@ _(see Core panels)_
 - **Juice tier (current / target):** Tier 2. Target: Tier 2 on select.
 - **Neighbors:** BattleView, MonsterDetailPanel, MonsterRosterPanel (duplicated).
 
-### FilterBar
-- **Files:** `Code/UI/Components/FilterBar.razor` (488), `.scss`
-- **Purpose:** Shared element/sort/rarity/name filter UI used in roster + beastiary.
+### FilterBar _[swept 2026-07-02 — skew-slab dialect]_
+- **Files:** `Code/UI/Components/FilterBar.razor` (~470), `.scss`
+- **Purpose:** Shared element/sort/rarity/name filter UI used in roster + beastiary. Public API unchanged this pass (all [Property] bindings + callbacks intact).
+- **Visual style notes:** `.dropdown-btn` + `.sort-direction-btn` = skewX(-8°) slabs (#1c1830, 2px violet-dim border, radius 8, counter-skewed children via `> * { transform: skewX(8deg) }`, hover border → #9b6cff); element/rarity active = two-tone solid fill + bright rim on the slab; `.dropdown-arrow.open` must VALUE-SWAP `skewX(8deg) rotate(180deg)` (plain rotate would drop the counter-skew); menu = solid #15121f slab, violet item fills, no hairlines; search popup = dossier slab (radius 22, italic-900 title); search results use element SVG icons (emoji helper deleted).
 - **Juice tier (current / target):** Tier 1. Target: Tier 1 (utility).
-- **Neighbors:** MonsterRosterPanel, BeastiaryPanel.
+- **Neighbors:** MonsterRosterPanel, BeastiaryPanel (both pick up the new look for free).
 
 ### ActiveEffectsPanel
 - **Files:** `Code/UI/Components/ActiveEffectsPanel.razor` (503), `.scss` in GameHUD.razor.scss
