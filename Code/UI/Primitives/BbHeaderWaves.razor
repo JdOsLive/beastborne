@@ -1,0 +1,118 @@
+@using Sandbox;
+@using Sandbox.UI;
+@namespace Beastborne.UI.Primitives
+@inherits Panel
+
+@*
+    BbHeaderWaves — infinite counter-flowing wave decoration for page
+    header bands (user-approved Claude-Design turn 7A, 2026-07-05). Two
+    accent-tinted wave strips drift horizontally in opposite directions
+    UNDER the header content. The component also paints the header's
+    OPAQUE BASE fill — the host header must NOT paint its own
+    background-color (paint-behind law: an absolute layer under a
+    filled parent renders invisibly behind the fill).
+
+    HOST INTEGRATION (recipe — roster-header is the canonical mount):
+      1. Mount as the FIRST child of the header band markup:
+             <BbHeaderWaves Accent=@("violet") />
+      2. Position the root from the HOST's scss (component-root
+         absolute from its OWN scss is unreliable — BbIconScroll v2
+         precedent):
+             .my-header { position: relative; }        // anchor
+             .my-header > .bhw-root {
+                 position: absolute;
+                 top: 0px; left: 0px; right: 0px; bottom: 0px;
+                 z-index: 0;
+             }
+             .my-header > * { position: relative; z-index: 1; } // lift
+      3. REMOVE the header's own background-color (override .bhw-base's
+         color from the host sheet if the band isn't the house dark).
+
+    PER-PAGE ACCENTS (baked PNGs — s&box cannot CSS-tint an image, the
+    img-filter law): collection=violet #8B5CF6 · expedition=green
+    #4ADE80 · battle=red #F87171 · fusion=pink #F472B6 · journal=gold
+    #FBBF24. Assets: Assets/ui/wave-<accent>-<a|b>.png, baked at the
+    EXACT rendered tile size per layer (1600×70 / 1600×53). Regen:
+    .claude/ui-knowledge/scripts/make-waves.ps1.
+
+    DRIFT is imperative per-tick translateX, wrapped at one tile period
+    (BbIconScroll precedent — the proven-cheap compositor path; CSS
+    %-translate keyframes are unproven and a header re-render would
+    restart them). The strips are LEAF background divs: no flex
+    descendants → the transform cannot poison derived widths; no ring
+    hosts inside; NEVER add rotation (tiled-layer re-rasterize = 0fps).
+
+    THE SEAM LAWS (three live user reports drove these — all integer,
+    all native, or a hairline shows at every tile join):
+      · NATIVE-SIZE TILING ONLY — no background-size scaling: the tile
+        PNG is baked at the exact rendered period (1600px) and height;
+        every proven seamless tiler in the codebase (bbis patterns,
+        gauge-stripe) tiles at native size. Sample-time downscale was
+        the residual seam suspect after the edge fix.
+      · EDGE-INTERIOR BAKE — the PNG's edge columns are interior
+        samples of the periodic curve (path extended one segment past
+        both canvas edges), so edge AA can't leave semi-transparent
+        boundary pixels for bilinear sampling to draw as a line.
+      · INTEGER GEOMETRY END TO END — strip width 6400 = exactly 4 ×
+        the 1600px period; the per-tick translate is ROUNDED to whole
+        px; the wrap distance is exactly one period. Arithmetic:
+        band W ≤ 4800 (4K max 3840) → strip 6400 covers [t, t+6400]
+        ⊇ [0, W] for every t ∈ [-1600, 0]; wrap t: -1600 → 0 shifts
+        the strip exactly one period, so the tiled pattern maps onto
+        itself pixel-identically (no pop).
+    The mock's bottom overhang crop (bottom -14/-22 via overflow) is
+    baked as strip-shorter-than-tile: strip 58 shows the top 58px of
+    the 70px tile (A), 35 of 53 (B) — s&box clips don't hold
+    transformed children, so no CSS crop is used at all.
+*@
+
+<root class="bhw-root">
+    <div class="bhw-base"></div>
+    <div @ref="_stripA" class="bhw-strip a" style="background-image: url( @WaveUrlA() );"></div>
+    <div @ref="_stripB" class="bhw-strip b" style="background-image: url( @WaveUrlB() );"></div>
+</root>
+
+@code {
+    /// Accent asset key: violet | green | red | pink | gold.
+    /// Value-swappable at runtime (roster swaps violet ↔ pink on fusion
+    /// mode) — BuildHash re-renders, the inline url value-swaps cleanly.
+    public string Accent { get; set; } = "violet";
+
+    // One wave tile = 1600px (2 crest-trough cycles — the mock's
+    // wavelength on a 1600px band). Mock timing: full period in 30s
+    // forward (layer A) / 18s reverse (layer B).
+    private const float Period = 1600f;
+
+    private Panel _stripA, _stripB;
+
+    // Parameterless per layer — a string-literal argument inside the
+    // double-quoted style attribute would terminate the attribute.
+    private string WaveUrlA() => "ui/wave-" + Accent + "-a.png";
+    private string WaveUrlB() => "ui/wave-" + Accent + "-b.png";
+
+    public override void Tick()
+    {
+        base.Tick();
+        if ( _stripA == null || _stripB == null ) return;
+        // Skip while the host isn't laid out (hidden tab) — bbis guard.
+        if ( Box.Rect.Width < 1f ) return;
+
+        // ROUNDED to whole px (seam law: integer geometry end to end —
+        // fractional translate resamples the tiled layer sub-pixel).
+        // ~53 px/s (A, leftward) / ~89 px/s (B, rightward): 1-2px steps
+        // per frame, imperceptible.
+        float offA = MathF.Round( ( Time.Now * ( Period / 30f ) ) % Period );
+        float offB = MathF.Round( ( Time.Now * ( Period / 18f ) ) % Period );
+
+        var trA = new PanelTransform();
+        trA.AddTranslate( Length.Pixels( -offA ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+        _stripA.Style.Transform = trA;
+
+        // Reverse layer stays inside [-Period, 0] so coverage never gaps.
+        var trB = new PanelTransform();
+        trB.AddTranslate( Length.Pixels( offB - Period ), Length.Pixels( 0f ), Length.Pixels( 0f ) );
+        _stripB.Style.Transform = trB;
+    }
+
+    protected override int BuildHash() => HashCode.Combine( Accent );
+}

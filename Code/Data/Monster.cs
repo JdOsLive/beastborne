@@ -130,6 +130,11 @@ public class Monster
 		if ( Level >= MaxLevel )
 			CurrentXP = 0;
 
+		// Milestone journal: log the moment the cap is reached (once —
+		// this branch only runs on the crossing level-up).
+		if ( leveledUp && Level >= MaxLevel )
+			AddJournalEntry( $"Reached max level — LV {MaxLevel}", JournalEntryType.Milestone );
+
 		return leveledUp;
 	}
 
@@ -250,7 +255,11 @@ public enum JournalEntryType
 	Evolution,
 	BossDefeat,
 	Milestone,
-	Expedition
+	Expedition,
+	// Appended 2026-07-05 (milestone journal) — append-only for
+	// serialization safety.
+	NameChange,
+	Ranked
 }
 
 /// <summary>

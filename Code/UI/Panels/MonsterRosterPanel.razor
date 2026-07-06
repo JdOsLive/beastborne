@@ -92,6 +92,13 @@
 	   FilterBar + mode toggles right-anchored in the same band. The
 	   header stays OPAQUE with gap 0 to the grid (scroll-leak law). *@
 	<div class="roster-header">
+		@* Living wave band (turn 7A) — counter-flowing accent waves under
+		   the header content. The component paints the header's opaque
+		   base fill (the old background-color moved onto .bhw-base —
+		   paint-behind law); host positioning rule lives in the scss
+		   (.roster-header > .bhw-root). Accent value-swaps to the fusion
+		   pink when the forge takes the header. *@
+		<BbHeaderWaves Accent=@(isFusionMode ? "pink" : "violet") />
 		<div class="rh-identity">
 			<span class="rh-kicker">@(isFusionMode ? "GENE FORGE" : "COLLECTION")</span>
 			<div class="rh-title-row">
@@ -250,7 +257,7 @@
 						<div class="card-fav-qt @(monster.IsFavorite ? "fav" : "")"
 							 onclick=@(() => ToggleFavoriteFor(monster)) onclick:stopPropagation
 							 onmouseover=@(() => SoundManager.PlayHover())>
-							<iconify icon="lucide:star" Size=@(13) Color="@(monster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
+							<iconify icon="lucide:star" Size=@(14) Color="@(monster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
 						</div>
 					}
 					@* Hover-preview ring — the cheap flat-panel recipe (absolute
@@ -280,6 +287,14 @@
 					<div class="empty-hint">@L("ui.roster.no_filter_match")</div>
 				</div>
 			}
+			</div>
+			@* Overlay scrollbar — read-only thumb driven per-tick from the
+			   grid's ScrollOffset/ScrollSize (UpdateScrollbars). s&box's
+			   scrollbar-color/-width don't parse (learnings 2026-04-15), so
+			   this IS the scrollbar visual; pointer-events: none so wheel and
+			   hover pass straight through to the grid. *@
+			<div @ref="gridSbTrackRef" class="col-scrollbar">
+				<div @ref="gridSbThumbRef" class="col-sb-thumb"></div>
 			</div>
 		</div>
 
@@ -531,16 +546,47 @@
 
 			@* ══ FACTS (fusion) — the gene ledger ══ *@
 			<div class="cs-facts">
-				@* Angled roofline cap (2026-07-05 slate rebuild) — OUTSIDE the
-				   scroll: the column's tilted lid + opaque top leak-cover in
-				   one element. *@
-				<div class="facts-roof">
-					<div class="facts-roof-slate"><span class="facts-roof-label">GENE LEDGER</span></div>
+				@* Slim container-tone cap — leak cover for the rotated
+				   corner-cut squares (transforms escape the scroll clip);
+				   container-toned, it reads as the panel's own top padding. *@
+				<div class="facts-roof"></div>
+				@* 13c — FUSE header band: pink kicker, two orbs orbiting
+				   (about to become one). Ambient first in DOM, content above;
+				   back card exits fusion (R is the existing fusion exit key,
+				   so the cap says R, not Q). Non-scrolling sibling — the
+				   rotating orbit never nears a scroll edge. *@
+				<div class="fsub-head fusion">
+					<div class="fsub-orbit-glow"></div>
+					<div class="fsub-orbit">
+						<div class="fsub-orbit-ring"></div>
+						<div class="fsub-orbit-dot a"></div>
+						<div class="fsub-orbit-dot b"></div>
+					</div>
+					<div class="picker-back" onclick=@ToggleFusionMode onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify icon="lucide:arrow-left" Size=@(16) Color="#A79DBE" />
+						<span class="kb-key">R</span>
+					</div>
+					<div class="fsub-id">
+						<span class="fsub-kicker">FUSE</span>
+						<span class="fsub-name">@(Parent1 != null ? (string.IsNullOrEmpty(Parent1.Nickname) ? GetSpeciesNameFor(Parent1) : Parent1.Nickname) : "GENE FORGE")</span>
+					</div>
+					<div class="fsub-spacer"></div>
+					<div class="fd-head-badge dim"><span>@GetFusionHeaderStatus()</span></div>
+					<div class="fd-cut"></div>
 				</div>
 				<div class="facts-scroll">
+					@* 1B section: GENE LEDGER header (violet chip + hairline)
+					   with the corner-cut card below, all inside a scroll-
+					   direct padded section (collapse-safe shape). *@
+					<div class="genes-zone fd-zone">
+					<div class="fd-head">
+						<div class="fd-head-chip"><span>GENE LEDGER</span></div>
+						<div class="fd-head-line"></div>
+					</div>
 					@if (fusionPreview != null)
 					{
 						<div class="fusion-genes-card">
+							<div class="fd-cut"></div>
 							<div class="genes-card-header">
 								<div class="genes-card-title">
 									<iconify icon="lucide:dna" Size=@(14) Color="#c4b5fd" />
@@ -631,6 +677,7 @@
 					else
 					{
 						<div class="fusion-empty">
+							<div class="fd-cut"></div>
 							<div class="fusion-empty-icon">
 								<iconify icon="lucide:flame" Size=@(48) Color="rgba(196, 181, 253, 0.4)" />
 							</div>
@@ -647,10 +694,12 @@
 							}
 						</div>
 					}
+					</div>
 				</div>
-				@* Counter-tilted foot cap — bottom leak-cover + closing shelf. *@
-				<div class="facts-foot">
-					<div class="facts-foot-slate"></div>
+				@* Slim container-tone foot cap — bottom leak cover. *@
+				<div class="facts-foot"></div>
+				<div @ref="factsSbTrackRef" class="col-scrollbar">
+					<div @ref="factsSbThumbRef" class="col-sb-thumb"></div>
 				</div>
 			</div>
 		}
@@ -684,11 +733,17 @@
 							? ( _diSp.AnimationFrames != null && _diSp.AnimationFrames.Count > 0 ? _diSp.AnimationFrames[0] : _diSp.IconPath )
 							: GetSelectedIconPath();
 					}
-					@* Showcase layer: the soft halo spotlight paints BENEATH the
-					   sprite (earlier sibling wins the flat z-order). The shadow
-					   disc was cut 2026-07-03 (user call: remove the bar on the
-					   circle) — rarity lives on the species kicker now. *@
-					<div class="stage-halo"></div>
+					@* Showcase layer (turn 5A/6A, 2026-07-05): the ELEMENT DAIS —
+					   the beast STANDS on an elliptical stage tinted by its
+					   primary element; paints BENEATH the sprite (earlier
+					   sibling wins the flat z-order). Replaces the violet
+					   .stage-halo spotlight. BAKED PNG per element (platter
+					   wash + rim + inner ring in one 600×148 asset at 2x) —
+					   CSS could not draw it: border-radius:50% pills instead
+					   of ellipsing and the percent-stop radial painted
+					   near-solid (live-verified). Swapped per element via src
+					   (value-swap; GetSelectedElementClass = the filename key). *@
+					<img class="stage-dais" src="ui/dais/dais-@(GetSelectedElementClass()).png" />
 					@* pop-@N render key: a beast switch remounts the container so
 					   the stagePop entrance keyframe replays (select-pulse
 					   precedent — class-string change forces a fresh mount).
@@ -737,7 +792,7 @@
 							<div class="nickname-btn edit @(IsDetailControlFocused("nick") ? "kb-focused" : "")" onclick=@StartNicknameEdit>✎</div>
 							<div class="stage-fav @(SelectedMonster.IsFavorite ? "active" : "") @(IsDetailControlFocused("diamond-fav") ? "kb-focused" : "")"
 								 onclick=@ToggleFavorite onmouseover=@(() => SoundManager.PlayHover())>
-								<iconify icon="lucide:star" Size=@(15) Color="@(SelectedMonster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
+								<iconify icon="lucide:star" Size=@(16) Color="@(SelectedMonster.IsFavorite ? "#ffce3a" : "rgba(244, 241, 234, 0.7)")" />
 							</div>
 						}
 					</div>
@@ -843,27 +898,74 @@
 				}
 			</div>
 
-			@* ══ FACTS — the scrolling dossier. 2026-07-05 SLATE REBUILD: the
-			   column is now an ANGLED LEDGER — a skewY(-2°) roofline slate in
-			   an opaque cap above the scroll, alternating-lean slates inside
-			   (wedge-capped sections), and a counter-tilted foot slate below.
-			   The caps double as the scroll's leak covers (transforms escape
-			   the scroll clip; opaque z-5 zones above/below bury the pokes). *@
+			@* ══ FACTS — the scrolling dossier. OPTION 1B "SIGNATURE EDGE"
+			   (2026-07-05, user-approved mock: Downloads/Detail Sidebar
+			   .dc.html #1b): ONE quiet container — transparent sections
+			   separated by 34px gaps, each led by a violet skewX(-12°)
+			   header chip + hairline; cards (tiles, move slabs, buttons)
+			   are #1A1428 with a 1px #2A2340 border and the signature
+			   TOP-RIGHT CORNER CUT (a container-tone rotate(45°) square —
+			   s&box has no clip-path). Icon tiles/badges/gauges are skewX
+			   parallelograms on LEAF children only (ring-host roots stay
+			   untransformed). Full spec + width math: .razor.scss
+			   "SIGNATURE EDGE" banner. *@
 			<div class="cs-facts">
-				<div class="facts-roof">
-					<div class="facts-roof-slate"><span class="facts-roof-label">FIELD DOSSIER</span></div>
-				</div>
-				<div @ref="factsScrollRef" class="facts-scroll">
+				<div class="facts-roof"></div>
+				@* ══ 13-SERIES SUB-VIEW HEADER BAND (2026-07-05, turns 13a/13b)
+				   — a NON-SCROLLING band between the roof cap and the scroll
+				   (its ambient keyframe dots can then never straddle a scroll
+				   edge — animated/transformed content escapes scroll clips).
+				   Ambient dots come FIRST in DOM (nth-child geometry in scss;
+				   content paints above by flat z-order): journal = twinkling
+				   starlight, pickers = motes rising. Back card = the shared
+				   .picker-back (Q). The band remounts per sub-view swap, which
+				   restarts the ambient loops — intended. *@
+				@if (showItemPicker || showMovePicker || showJournalView)
+				{
+					<div class="fsub-head @(showJournalView ? "journal" : "moves")">
+						@if (showJournalView)
+						{
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+							<div class="fsub-star"></div>
+						}
+						else
+						{
+							<div class="fsub-mote"></div>
+							<div class="fsub-mote"></div>
+							<div class="fsub-mote"></div>
+							<div class="fsub-mote"></div>
+							<div class="fsub-mote"></div>
+							<div class="fsub-mote"></div>
+						}
+						<div class="picker-back" onclick=@CloseCurrentSubView onmouseover=@(() => SoundManager.PlayHover())>
+							<iconify icon="lucide:arrow-left" Size=@(16) Color="#A79DBE" />
+							<span class="kb-key">Q</span>
+						</div>
+						<div class="fsub-id">
+							<span class="fsub-kicker">@(showJournalView ? "JOURNAL" : (showMovePicker ? "MOVES" : "ITEM"))</span>
+							<span class="fsub-name">@GetSelectedDisplayName()</span>
+						</div>
+						<div class="fsub-spacer"></div>
+						@if (showJournalView)
+						{
+							<div class="fd-head-badge dim"><span>@GetJournalMilestones().Count MILESTONES</span></div>
+						}
+						else
+						{
+							<div class="fd-head-badge"><span>@(showMovePicker ? GetAvailableMovesForPicker().Count : GetAvailableHeldItems().Count) @L("ui.roster.available")</span></div>
+						}
+						<div class="fd-cut"></div>
+					</div>
+				}
+				<div @ref="factsScrollRef" class="facts-scroll @(showItemPicker || showMovePicker || showJournalView ? "picking" : "")">
 					@if (showItemPicker)
 					{
-						<div class="inline-picker-header">
-							<div class="picker-back" onclick=@CloseItemPicker onmouseover=@(() => SoundManager.PlayHover())>
-								<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
-								<span class="kb-key">Q</span>
-							</div>
-							<span class="picker-title-text">@L("ui.roster.item")</span>
-							<span class="picker-count">@GetAvailableHeldItems().Count</span>
-						</div>
 						@if (HasSelectedHeldItem())
 						{
 							<div class="inline-equipped">
@@ -906,14 +1008,8 @@
 					}
 					else if (showMovePicker)
 					{
-						<div class="inline-picker-header">
-							<div class="picker-back" onclick=@CloseMoveSwap onmouseover=@(() => SoundManager.PlayHover())>
-								<iconify icon="lucide:arrow-left" Size=@(18) Color="white" />
-								<span class="kb-key">Q</span>
-							</div>
-							<span class="picker-title-text">@(selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0) ? "Swap Move" : "Learn Move")</span>
-							<span class="picker-count">@GetAvailableMovesForPicker().Count</span>
-						</div>
+						@* (13b: the picker header moved OUT of the scroll into the
+						   .fsub-head band above — kicker MOVES + motes ambient.) *@
 						@if (selectedMoveSlot < (SelectedMonster.Moves?.Count ?? 0))
 						{
 							var currentMove = SelectedMonster.Moves[selectedMoveSlot];
@@ -952,41 +1048,44 @@
 								var powerDiff = pickerCurrentMove != null && pickerCurrentMove.BasePower > 0 ? moveDef.BasePower - pickerCurrentMove.BasePower : 0;
 								var isUpgrade = powerDiff > 0;
 								var isDowngrade = powerDiff < 0;
-								<div class="inline-item @elClass @(isStab ? "stab" : "") @(isUpgrade ? "upgrade" : "") @(isDowngrade ? "downgrade" : "") @(_moveKbFocused ? "kb-focused" : "")" onclick="@(() => SwapMoveSlot(lm.MoveId))" onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="inline-item-diamond @elClass">
-										<img class="inline-item-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
+								// 4A row (2026-07-05) — PORTS the dossier move-slab family
+								// (.move-diamond-slot: parallelogram element tile, name +
+								// STAB stamp, colored cat/power token, inline desc,
+								// fd-cut) with a picker-only .mvp width override and the
+								// ARM-THEN-CONFIRM flow: first click arms the row (violet
+								// border + the chip slot becomes a solid LEARN button),
+								// second click on the SAME row commits via the original
+								// SwapMoveSlot. The chip is ONE value-swapped element
+								// (ghost-child law) and pointer-inert like every row
+								// child, so there is no nested-handler bubbling — the
+								// armed row itself is the commit surface.
+								var _isArmed = pickerArmedMoveId == lm.MoveId;
+								<div class="move-diamond-slot mvp @elClass @(_isArmed ? "armed" : "") @(_moveKbFocused ? "kb-focused" : "")" onclick="@(() => OnMovePickerRowClicked(lm.MoveId))" onmouseover=@(() => SoundManager.PlayHover())>
+									<div class="move-diamond-icon @elClass">
+										<img class="move-el-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
 									</div>
-									<div class="inline-item-info">
-										<div class="inline-item-name-row">
-											<span class="inline-item-name">@moveDef.Name</span>
+									<div class="move-diamond-info">
+										<div class="move-name-row">
+											<span class="move-diamond-name">@moveDef.Name</span>
 											@if (isStab)
 											{
-												<span class="picker-stab-badge">STAB</span>
+												<span class="move-stab-badge"><span>STAB</span></span>
 											}
 										</div>
-										<div class="inline-item-desc">@moveDef.Description</div>
-										@if (!string.IsNullOrEmpty(effectsSummary))
-										{
-											<div class="inline-item-effects">
-												<iconify icon="lucide:sparkles" Size=@(10) Color="#c4b5fd" />
-												<span>@effectsSummary</span>
-											</div>
-										}
+										<div class="move-diamond-meta">
+											<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()@(moveDef.BasePower > 0 ? " " + moveDef.BasePower : "")</span>
+											@if (powerDiff != 0)
+											{
+												<span class="move-pwr-diff @(isUpgrade ? "up" : "down")">@(powerDiff > 0 ? "+" : "")@powerDiff</span>
+											}
+											<span class="move-meta-stat">ACC @moveDef.Accuracy%</span>
+										</div>
+										<span class="move-desc">@moveDef.Description</span>
 									</div>
-									<div class="inline-move-stats">
-										<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
-										@if (moveDef.BasePower > 0)
-										{
-											<div class="move-pwr-row">
-												<span class="move-pwr">@moveDef.BasePower</span>
-												@if (powerDiff != 0)
-												{
-													<span class="move-pwr-diff @(isUpgrade ? "up" : "down")">@(powerDiff > 0 ? "+" : "")@powerDiff</span>
-												}
-											</div>
-										}
-										<span class="move-acc">@moveDef.Accuracy%</span>
+									<div class="mvp-chip @(_isArmed ? "learn" : (string.IsNullOrEmpty(effectsSummary) ? "off" : ""))">
+										<span>@(_isArmed ? "LEARN" : effectsSummary)</span>
 									</div>
+									<div class="fd-cut"></div>
 								</div>
 							}
 						}
@@ -998,154 +1097,223 @@
 							</div>
 						}
 					}
+					else if (showJournalView)
+					{
+						@* ══ 10A MILESTONE JOURNAL — register cards, scroll-direct.
+						   The per-register accent (border tint, corner glow, icon
+						   tile, tag, medallion rings) is COMPUTED INLINE from
+						   GetJmAccent — a per-kind × per-element scss matrix
+						   would be ~60 rules. All inline styles are always-
+						   emitted (ghost-style law). Glow kinds crop their 180px
+						   corner wash via the card's overflow:hidden (explicit
+						   W+H — the record-tile precedent). Evolution cards wear
+						   the beast's PRIMARY element accent + both forms'
+						   sprites in tinted medallions; THE BEGINNING is
+						   synthesized last from Monster fields. *@
+						@foreach (var jm in GetJournalMilestones())
+						{
+							var jmAcc = GetJmAccent(jm.Kind);
+							<div class="jm-card @jm.Kind" style="border-color: @(jmAcc.glow ? JmRgba(jmAcc.hex, 0.35f) : "#262038");">
+								@if (jmAcc.glow)
+								{
+									<div class="jm-glow" style="background-image: radial-gradient(@JmRgba(jmAcc.hex, 0.14f) 0%, rgba(0, 0, 0, 0) 70%);"></div>
+								}
+								<div class="jm-tile" style="background-color: @JmRgba(jmAcc.hex, 0.12f);">
+									<iconify icon="@GetJmIcon(jm.Kind)" Size=@(17) Color="@jmAcc.hex" />
+								</div>
+								<div class="jm-body">
+									<div class="jm-title-row">
+										<span class="jm-title">@jm.Title</span>
+										@if (!string.IsNullOrEmpty(jm.Sub))
+										{
+											<span class="jm-sub">@jm.Sub</span>
+										}
+									</div>
+									<div class="jm-meta">
+										<span class="jm-tag" style="color: @jmAcc.hex;">@jm.Tag</span>
+										@if (!string.IsNullOrEmpty(jm.Date))
+										{
+											<span class="jm-date">@jm.Date</span>
+										}
+									</div>
+								</div>
+								@if (jm.Kind == "evo" && !string.IsNullOrEmpty(jm.PreIcon))
+								{
+									<div class="jm-medal sm" style="background-color: @JmRgba(jmAcc.hex, 0.06f); border-color: @JmRgba(jmAcc.hex, 0.18f);">
+										<img class="jm-medal-img sm" src="@jm.PreIcon" />
+									</div>
+									<span class="jm-evo-arrow" style="color: @jmAcc.hex;">→</span>
+								}
+								@if (!string.IsNullOrEmpty(jm.MedalIcon))
+								{
+									<div class="jm-medal" style="background-color: @JmRgba(jmAcc.hex, 0.08f); border-color: @JmRgba(jmAcc.hex, 0.25f);">
+										<img class="jm-medal-img" src="@jm.MedalIcon" />
+									</div>
+								}
+								<div class="fd-cut"></div>
+							</div>
+						}
+					}
 					else
 					{
-						@* ══ VITALS SLATE (2026-07-05 angled rebuild) — stats +
-						   quality/nature fold into ONE slate. Slates = filled
-						   sections capped by skewY WEDGES straddling the flat
-						   edges (the wedge fully covers the horizontal edge line,
-						   so the visible silhouette IS the wedge's slanted edge).
-						   Wedges are SIBLINGS of content — never ancestors of
-						   ring hosts — their ±5.5px lean stays inside the 14px
-						   inter-slate gaps, and scroll-boundary pokes are buried
-						   under the opaque z-5 roof/foot caps. *@
-						<div class="stats-section fd-slate fd-slate-a">
-							<div class="fd-roof-wedge"></div>
-							<div class="section-title">@L("ui.roster.stats")</div>
-							@* Two-per-row compact cells (user: full-width gauges read
-							   "really long"). Explicit rows, explicit heights — the
-							   flex-wrap and layout-height-collapse laws both bite in
-							   this scroll column otherwise. *@
-							<div class="stats-grid">
-								<div class="stats-row">
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">HP <span class="stat-gene">(@SelectedMonster.Genetics.HPGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.MaxHP @if(GetStatVeteranBonus(SelectedMonster.MaxHP, true) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.MaxHP, true))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill hp" style="width: @(GetStatPercent(SelectedMonster.MaxHP, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">ATK <span class="stat-gene">(@SelectedMonster.Genetics.ATKGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.ATK @if(GetStatVeteranBonus(SelectedMonster.ATK) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.ATK))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill atk" style="width: @(GetStatPercent(SelectedMonster.ATK, 1330))%"></div>
-										</div>
-									</div>
+						@* ══ 1B STATS — header chip + six single-line stat rows +
+						   quality/nature corner-cut tiles. Rows are EXPLICIT-width
+						   flex (42/46/270/62/36 + 12 gaps = 504 — the mock's 5-col
+						   grid translated; no display:grid in s&box). Bar fills are
+						   EXPLICIT PX via GetStatBarPx — a % width under the skewed
+						   .sb-bar ancestor is derived-width poison. The boost slot is
+						   ALWAYS rendered so values stay aligned. This section stays
+						   UN-frev'd so the bar widths re-tween on beast switch. *@
+						@{
+							var _hasTraits = SelectedMonster.Traits != null && SelectedMonster.Traits.Count > 0;
+						}
+						<div class="stats-section fd-zone">
+							<div class="fd-head">
+								<div class="fd-head-chip"><span>@L("ui.roster.stats")</span></div>
+								<div class="fd-head-line"></div>
+							</div>
+							<div class="sb-row">
+								<span class="sb-label hp">HP</span>
+								<span class="sb-gene">@(SelectedMonster.Genetics.HPGene)/30</span>
+								<div class="sb-bar"><div class="sb-fill hp" style="width: @GetStatBarPx(SelectedMonster.MaxHP)"></div></div>
+								<span class="sb-value">@SelectedMonster.MaxHP</span>
+								<div class="sb-boost">
+									@if (GetStatVeteranBonus(SelectedMonster.MaxHP, true) > 0)
+									{
+										<span class="sb-boost-chip"><span>+@GetStatVeteranBonus(SelectedMonster.MaxHP, true)</span></span>
+									}
 								</div>
-								<div class="stats-row">
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">DEF <span class="stat-gene">(@SelectedMonster.Genetics.DEFGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.DEF @if(GetStatVeteranBonus(SelectedMonster.DEF) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.DEF))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill def" style="width: @(GetStatPercent(SelectedMonster.DEF, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">SpA <span class="stat-gene">(@SelectedMonster.Genetics.SpAGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.SpA @if(GetStatVeteranBonus(SelectedMonster.SpA) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpA))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill spa" style="width: @(GetStatPercent(SelectedMonster.SpA, 1330))%"></div>
-										</div>
-									</div>
+							</div>
+							<div class="sb-row">
+								<span class="sb-label atk">ATK</span>
+								<span class="sb-gene">@(SelectedMonster.Genetics.ATKGene)/30</span>
+								<div class="sb-bar"><div class="sb-fill atk" style="width: @GetStatBarPx(SelectedMonster.ATK)"></div></div>
+								<span class="sb-value">@SelectedMonster.ATK</span>
+								<div class="sb-boost">
+									@if (GetStatVeteranBonus(SelectedMonster.ATK) > 0)
+									{
+										<span class="sb-boost-chip"><span>+@GetStatVeteranBonus(SelectedMonster.ATK)</span></span>
+									}
 								</div>
-								<div class="stats-row">
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">SpD <span class="stat-gene">(@SelectedMonster.Genetics.SpDGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.SpD @if(GetStatVeteranBonus(SelectedMonster.SpD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SpD))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill spd-def" style="width: @(GetStatPercent(SelectedMonster.SpD, 1330))%"></div>
-										</div>
-									</div>
-									<div class="stat-item">
-										<div class="stat-header">
-											<span class="stat-name">SPD <span class="stat-gene">(@SelectedMonster.Genetics.SPDGene/30)</span></span>
-											<span class="stat-value">@SelectedMonster.SPD @if(GetStatVeteranBonus(SelectedMonster.SPD) > 0){<span class="stat-bonus">(+@GetStatVeteranBonus(SelectedMonster.SPD))</span>}</span>
-										</div>
-										<div class="stat-bar-bg">
-											<div class="stat-bar-fill spd" style="width: @(GetStatPercent(SelectedMonster.SPD, 1330))%"></div>
-										</div>
-									</div>
+							</div>
+							<div class="sb-row">
+								<span class="sb-label def">DEF</span>
+								<span class="sb-gene">@(SelectedMonster.Genetics.DEFGene)/30</span>
+								<div class="sb-bar"><div class="sb-fill def" style="width: @GetStatBarPx(SelectedMonster.DEF)"></div></div>
+								<span class="sb-value">@SelectedMonster.DEF</span>
+								<div class="sb-boost">
+									@if (GetStatVeteranBonus(SelectedMonster.DEF) > 0)
+									{
+										<span class="sb-boost-chip"><span>+@GetStatVeteranBonus(SelectedMonster.DEF)</span></span>
+									}
+								</div>
+							</div>
+							<div class="sb-row">
+								<span class="sb-label spa">SpA</span>
+								<span class="sb-gene">@(SelectedMonster.Genetics.SpAGene)/30</span>
+								<div class="sb-bar"><div class="sb-fill spa" style="width: @GetStatBarPx(SelectedMonster.SpA)"></div></div>
+								<span class="sb-value">@SelectedMonster.SpA</span>
+								<div class="sb-boost">
+									@if (GetStatVeteranBonus(SelectedMonster.SpA) > 0)
+									{
+										<span class="sb-boost-chip"><span>+@GetStatVeteranBonus(SelectedMonster.SpA)</span></span>
+									}
+								</div>
+							</div>
+							<div class="sb-row">
+								<span class="sb-label spd-def">SpD</span>
+								<span class="sb-gene">@(SelectedMonster.Genetics.SpDGene)/30</span>
+								<div class="sb-bar"><div class="sb-fill spd-def" style="width: @GetStatBarPx(SelectedMonster.SpD)"></div></div>
+								<span class="sb-value">@SelectedMonster.SpD</span>
+								<div class="sb-boost">
+									@if (GetStatVeteranBonus(SelectedMonster.SpD) > 0)
+									{
+										<span class="sb-boost-chip"><span>+@GetStatVeteranBonus(SelectedMonster.SpD)</span></span>
+									}
+								</div>
+							</div>
+							<div class="sb-row">
+								<span class="sb-label spd">SPD</span>
+								<span class="sb-gene">@(SelectedMonster.Genetics.SPDGene)/30</span>
+								<div class="sb-bar"><div class="sb-fill spd" style="width: @GetStatBarPx(SelectedMonster.SPD)"></div></div>
+								<span class="sb-value">@SelectedMonster.SPD</span>
+								<div class="sb-boost">
+									@if (GetStatVeteranBonus(SelectedMonster.SPD) > 0)
+									{
+										<span class="sb-boost-chip"><span>+@GetStatVeteranBonus(SelectedMonster.SPD)</span></span>
+									}
 								</div>
 							</div>
 
-							@* Quality + Nature SIDE BY SIDE — folded INTO the
-							   vitals slate (2026-07-05 rebuild): one slab carries
-							   all the numbers. Explicit row height kept; cell
-							   widths drop 223 → 211 for the padded-section
-							   context (the record-tile math). *@
+							@* Quality + Nature side by side — 1B corner-cut tiles.
+							   Explicit row height + explicit tile widths (212 content;
+							   2×246 occupied + 12 gap = 504). *@
 							<div class="info-card-row">
 							<div class="info-card info-card-quality @GetSelectedGeneticsClass()">
+								<div class="fd-cut"></div>
 								<div class="info-card-header">
 									<span class="info-card-label">@L("ui.roster.quality")</span>
-									<span class="info-card-value">@SelectedMonster.Genetics.QualityRating</span>
+									<span class="info-card-meta">@GetSelectedTotalGenes()/180</span>
 								</div>
-								<span class="info-card-meta">@GetSelectedTotalGenes()/180 @L("ui.roster.genes")</span>
-								@* Gene-total gauge (user license 2026-07-05): the quality
-								   tile VISUALIZES its meta line. Same recess + transition
-								   family as the stat bars, so it re-tweens on beast
-								   switch (this tile persists across switches). *@
+								<span class="info-card-value">@SelectedMonster.Genetics.QualityRating</span>
+								@* Gene-total gauge — % fill + width transition kept (the tile
+								   persists across switches, so it re-tweens). *@
 								<div class="quality-gene-bar">
 									<div class="quality-gene-fill @GetSelectedGeneticsClass()" style="width: @GetSelectedGenePercent()%"></div>
 								</div>
 							</div>
 							<div class="info-card info-card-nature">
-								<div class="info-card-header">
-									<span class="info-card-label">@L("ui.roster.nature")</span>
-									<span class="info-card-value">@GetSelectedNature()</span>
-								</div>
+								<div class="fd-cut"></div>
+								<span class="info-card-label">@L("ui.roster.nature")</span>
+								<span class="info-card-value">@GetSelectedNature()</span>
 								<span class="info-card-meta">@GetSelectedNatureEffect()</span>
 							</div>
 							</div>
-							<div class="fd-foot-wedge"></div>
 						</div>
 
-						@if (SelectedMonster.Traits != null && SelectedMonster.Traits.Count > 0)
+						@if (_hasTraits)
 						{
-							<div class="traits-section fd-slate fd-slate-b frev frev-@stageRevVersion">
-								<div class="fd-roof-wedge"></div>
-								<div class="section-title">@L("ui.roster.traits")</div>
+							<div class="traits-section fd-zone frev frev-@stageRevVersion">
+								<div class="fd-head">
+									<div class="fd-head-chip"><span>@L("ui.roster.traits")</span></div>
+									<div class="fd-head-line"></div>
+								</div>
 								<div class="traits-list">
 									@foreach (var traitId in SelectedMonster.Traits)
 									{
 										<div class="trait-card">
-											<div class="trait-card-header">
-												<iconify icon="@GetTraitIcon(traitId)" Size=@(12) Color="#a78bfa" />
-												<span class="trait-card-name">@GetTraitName(traitId)</span>
+											<div class="trait-icon-tile">
+												<iconify icon="@GetTraitIcon(traitId)" Size=@(15) Color="#A78BFA" />
 											</div>
-											<span class="trait-card-desc">@GetTraitDescription(traitId)</span>
+											<div class="trait-card-body">
+												<span class="trait-card-name">@GetTraitName(traitId)</span>
+												<span class="trait-card-desc">@GetTraitDescription(traitId)</span>
+											</div>
+											<div class="fd-cut"></div>
 										</div>
 									}
 								</div>
-								<div class="fd-foot-wedge"></div>
 							</div>
 						}
 
-						@* ══ MOVES — ONE COLUMN of full-width slabs, each carrying the
-						   move's DESCRIPTION inline (user 2026-07-05). The hover
-						   tooltip is RETIRED (out of style + flicker); everything it
-						   said now lives on the slab: desc, ACC, PP, PRI, effects.
-						   Layout follows the traits-list recipe (variable-height
-						   tiles in a column inside a PADDED section — live-proven
-						   in this same scroll column); hover stays bg-only
-						   (scroll-clip law). frev key = species-change cascade. *@
-						<div class="moves-section fd-slate fd-slate-a frev frev-@stageRevVersion">
-							<div class="fd-roof-wedge"></div>
-							<div class="section-title">
-								@L("ui.roster.moves")
+						@* ══ MOVES — ONE COLUMN of full-width 1B corner-cut slabs,
+						   each carrying the move's DESCRIPTION inline (user
+						   2026-07-05; the hover tooltip is RETIRED). Meta row now
+						   also carries the violet EFFECT chip (mock's -ATK -SpA /
+						   30% Paralyze — meta-row placement instead of the
+						   header's far right to avoid a 3rd sibling in the
+						   icon/info flex pair, the flex-1 misdistribution law).
+						   Layout: variable-height tiles in a column inside a
+						   PADDED section (live-proven); hover stays bg-only
+						   (scroll-clip law). frev key = species-change cascade.
+						   The "N AVAILABLE" chip sits on the header hairline. *@
+						<div class="moves-section fd-zone frev frev-@stageRevVersion">
+							<div class="fd-head">
+								<div class="fd-head-chip"><span>@L("ui.roster.moves")</span></div>
+								<div class="fd-head-line"></div>
 								@if (GetAvailableMovesCount() > 0)
 								{
-									<span class="moves-available-badge">@GetAvailableMovesCount() @L("ui.roster.available")</span>
+									<div class="fd-head-badge"><span>@GetAvailableMovesCount() @L("ui.roster.available")</span></div>
 								}
 							</div>
 							<div class="moves-list">
@@ -1173,28 +1341,25 @@
 														<span class="move-diamond-name">@moveDef.Name</span>
 														@if (isStab)
 														{
-															<span class="move-stab-badge">STAB</span>
+															<span class="move-stab-badge"><span>STAB</span></span>
 														}
 													</div>
 													<div class="move-diamond-meta">
-														<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
-														@if (moveDef.BasePower > 0)
-														{
-															<span class="move-pwr">@moveDef.BasePower</span>
-														}
+														<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()@(moveDef.BasePower > 0 ? " " + moveDef.BasePower : "")</span>
 														<span class="move-meta-stat">ACC @moveDef.Accuracy%</span>
 														<span class="move-meta-stat">PP @move.CurrentPP/@moveDef.MaxPP</span>
 														@if (moveDef.Priority != 0)
 														{
 															<span class="move-meta-stat pri">PRI @(moveDef.Priority > 0 ? "+" : "")@moveDef.Priority</span>
 														}
+														@if (!string.IsNullOrEmpty(effectsSummary))
+														{
+															<div class="move-effect-chip"><span>@effectsSummary</span></div>
+														}
 													</div>
 													<span class="move-desc">@moveDef.Description</span>
-													@if (!string.IsNullOrEmpty(effectsSummary))
-													{
-														<span class="move-effects">@effectsSummary</span>
-													}
 												</div>
+												<div class="fd-cut"></div>
 											</div>
 										}
 									}
@@ -1207,51 +1372,61 @@
 											<div class="move-diamond-info">
 												<span class="move-diamond-name empty-text">Empty Slot</span>
 											</div>
+											<div class="fd-cut"></div>
 										</div>
 									}
 								}
 							</div>
-							<div class="fd-foot-wedge"></div>
 						</div>
 
-						@* ══ RECORD — lifetime battle ledger (user 2026-07-05,
-						   feature). Data already lives on Monster's combat
-						   counters. Tiles follow the stats-cell recipe: explicit
-						   row height + explicit tile widths (the collapse +
-						   flex-misdistribution laws both bite here otherwise). *@
-						<div class="record-section fd-slate fd-slate-b frev frev-@stageRevVersion">
-							<div class="fd-roof-wedge"></div>
-							<div class="section-title">RECORD</div>
+						@* ══ RECORD — lifetime battle ledger. 1B: header chip +
+						   2×2 corner-cut tiles (explicit row heights + tile
+						   widths — collapse + flex-misdistribution laws). *@
+						<div class="record-section fd-zone frev frev-@stageRevVersion">
+							<div class="fd-head">
+								<div class="fd-head-chip"><span>RECORD</span></div>
+								<div class="fd-head-line"></div>
+							</div>
 							<div class="record-row">
 								<div class="record-tile">
-									<span class="record-value">@SelectedMonster.TotalKnockouts.ToString("N0")</span>
+									<div class="record-ghost"><iconify icon="lucide:skull" Size=@(112) Color="rgba(167,139,250,0.11)" /></div>
+									<span class="record-value">@FormatRecordValue(SelectedMonster.TotalKnockouts)</span>
 									<span class="record-label">KNOCKOUTS</span>
+									<div class="fd-cut"></div>
 								</div>
 								<div class="record-tile">
-									<span class="record-value">@SelectedMonster.TotalDamageDealt.ToString("N0")</span>
+									<div class="record-ghost"><iconify icon="lucide:swords" Size=@(112) Color="rgba(167,139,250,0.11)" /></div>
+									<span class="record-value">@FormatRecordValue(SelectedMonster.TotalDamageDealt)</span>
 									<span class="record-label">DAMAGE DEALT</span>
+									<div class="fd-cut"></div>
 								</div>
 							</div>
 							<div class="record-row">
 								<div class="record-tile">
-									<span class="record-value">@SelectedMonster.BossesDefeated.ToString("N0")</span>
-									<span class="record-label">BOSSES FELLED</span>
+									<div class="record-ghost"><iconify icon="lucide:crown" Size=@(112) Color="rgba(167,139,250,0.11)" /></div>
+									<span class="record-value">@FormatRecordValue(SelectedMonster.BossesDefeated)</span>
+									<span class="record-label">BOSSES FAINTED</span>
+									<div class="fd-cut"></div>
 								</div>
 								<div class="record-tile">
-									<span class="record-value">@SelectedMonster.ExpeditionsCompleted.ToString("N0")</span>
+									<div class="record-ghost"><iconify icon="lucide:map" Size=@(112) Color="rgba(167,139,250,0.11)" /></div>
+									<span class="record-value">@FormatRecordValue(SelectedMonster.ExpeditionsCompleted)</span>
 									<span class="record-label">EXPEDITIONS</span>
+									<div class="fd-cut"></div>
 								</div>
 							</div>
-							<div class="fd-foot-wedge"></div>
 						</div>
 
-						@* ══ IDENTITY SLATE — info + lineage merged (2026-07-05
-						   slate rebuild): the lineage panel duplicated the GEN
-						   row; its SOURCE rows join the info grid as pink-valued
-						   info rows instead of owning a whole section. *@
-						<div class="info-section fd-slate fd-slate-a frev frev-@stageRevVersion">
-							<div class="fd-roof-wedge"></div>
-							<div class="section-title">@L("ui.roster.info")</div>
+						@* ══ INFO — 1B: header chip + quiet label/value rows with
+						   hairline separators (info + lineage merged 2026-07-05),
+						   then JOURNAL / SHOW OFF as two corner-cut buttons
+						   (folded INSIDE this section per the mock — one level
+						   deep in a padded section is collapse-safe). *@
+						<div class="info-section fd-zone frev frev-@stageRevVersion">
+							<div class="fd-head">
+								<div class="fd-head-chip"><span>@L("ui.roster.info")</span></div>
+								<div class="fd-head-line"></div>
+							</div>
 							<div class="info-grid">
 								<div class="info-row">
 									<span class="info-label">@L("ui.roster.gen")</span>
@@ -1283,31 +1458,33 @@
 									</div>
 								}
 							</div>
-							<div class="fd-foot-wedge"></div>
-						</div>
 
-						@* Journal / Show-off — ONE side-by-side row of half-width
-						   chips (user 2026-07-05). Explicit chip widths in SCSS —
-						   flex:1 misdistributes; the info-card-row recipe is the
-						   live precedent for a flex-row direct child here. *@
-						<div class="facts-utility frev frev-@stageRevVersion">
-							@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
-							{
-								<div class="detail-diamond wide @(IsDetailControlFocused("diamond-journal") ? "kb-focused" : "")" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
-									<div class="diamond-shape"><iconify icon="lucide:book-open" Size=@(16) Color="white" /></div>
-									<span class="diamond-label">@L("ui.roster.journal")</span>
+							@* Journal / Show-off — 1B corner-cut buttons, one
+							   side-by-side row (explicit row height + explicit
+							   button widths in SCSS — flex:1 misdistributes).
+							   kb ids/classes unchanged (ring + activation). *@
+							<div class="facts-utility">
+								@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
+								{
+									<div class="detail-diamond wide @(IsDetailControlFocused("diamond-journal") ? "kb-focused" : "")" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
+										<iconify icon="lucide:book-open" Size=@(14) Color="#A79DBE" />
+										<span class="diamond-label">@L("ui.roster.journal")</span>
+										<div class="fd-cut"></div>
+									</div>
+								}
+								<div class="detail-diamond wide @(IsDetailControlFocused("diamond-showoff") ? "kb-focused" : "")" onclick=@ShowOffBeast onmouseover=@(() => SoundManager.PlayHover())>
+									<iconify icon="lucide:megaphone" Size=@(14) Color="#A79DBE" />
+									<span class="diamond-label">@L("ui.roster.show_off")</span>
+									<div class="fd-cut"></div>
 								</div>
-							}
-							<div class="detail-diamond wide @(IsDetailControlFocused("diamond-showoff") ? "kb-focused" : "")" onclick=@ShowOffBeast onmouseover=@(() => SoundManager.PlayHover())>
-								<div class="diamond-shape"><iconify icon="lucide:megaphone" Size=@(16) Color="white" /></div>
-								<span class="diamond-label">@L("ui.roster.show_off")</span>
 							</div>
 						</div>
 					}
 				</div>
-				@* Counter-tilted foot cap — bottom leak-cover + closing shelf. *@
-				<div class="facts-foot">
-					<div class="facts-foot-slate"></div>
+				@* Slim container-tone foot cap — bottom leak cover. *@
+				<div class="facts-foot"></div>
+				<div @ref="factsSbTrackRef" class="col-scrollbar">
+					<div @ref="factsSbThumbRef" class="col-sb-thumb"></div>
 				</div>
 			</div>
 		}
@@ -1321,18 +1498,14 @@
 					<span class="sep-hint">Catch a beast on an expedition and it will take the stage here.</span>
 				</div>
 			</div>
-			@* Empty facts keeps the ledger silhouette: roof + foot caps with
-			   the hint centered in the flex-1 middle zone between them. *@
+			@* Empty facts keeps the column silhouette: slim caps with the
+			   hint centered in the flex-1 middle zone between them. *@
 			<div class="cs-facts facts-empty">
-				<div class="facts-roof">
-					<div class="facts-roof-slate"><span class="facts-roof-label">FIELD DOSSIER</span></div>
-				</div>
+				<div class="facts-roof"></div>
 				<div class="facts-empty-mid">
 					<span class="facts-empty-hint">FACTS</span>
 				</div>
-				<div class="facts-foot">
-					<div class="facts-foot-slate"></div>
-				</div>
+				<div class="facts-foot"></div>
 			</div>
 		}
 		</div>
@@ -1387,67 +1560,10 @@
 		</div>
 	}
 
-	<!-- Journal Modal -->
-	@if (showJournalModal && SelectedMonster != null)
-	{
-		<div class="journal-modal-overlay" onclick=@CloseJournal>
-			<div class="journal-modal" onclick:stopPropagation>
-				<div class="journal-modal-header">
-					<div class="journal-modal-title">
-						@* 2026-07-05 dialect sweep: emoji book → the house violet
-						   kicker chip + italic-900 name (roster section-title
-						   vocabulary, so the modal reads as this panel's child). *@
-						<div class="journal-kicker">
-							<iconify icon="lucide:book-open" Size=@(13) Color="#cdbcf2" />
-							<span>JOURNAL</span>
-						</div>
-						<span class="journal-name">@(string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname)</span>
-					</div>
-					<button class="close-btn" onclick=@CloseJournal><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
-				</div>
-				<div class="journal-modal-content">
-					@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
-					{
-						@foreach (var entry in SelectedMonster.Journal.OrderByDescending(e => e.Timestamp))
-						{
-							<div class="journal-modal-entry @GetJournalEntryClass(entry.Type) @(!string.IsNullOrEmpty(entry.ZoneId) ? "has-background" : "") @(entry.Type == JournalEntryType.BossDefeat ? "has-monster" : "")" style="@GetEntryBackgroundStyle(entry)">
-								@* Type-tinted glyph square (emoji retired — dialect). *@
-								<div class="entry-icon">
-									<iconify icon="@GetJournalEntryLucide(entry.Type)" Size=@(20) Color="@GetJournalEntryColor(entry.Type)" />
-								</div>
-								<div class="entry-body">
-									<div class="entry-text">@entry.Content</div>
-									<div class="entry-meta">
-										<div class="entry-badge @GetJournalEntryClass(entry.Type)">
-											<span class="badge-text">@GetJournalEntryBadge(entry.Type)</span>
-										</div>
-										<div class="entry-timestamp">@entry.Timestamp.ToString("MMM d, yyyy") at @entry.Timestamp.ToString("h:mm tt")</div>
-									</div>
-								</div>
-								@if (entry.Type == JournalEntryType.BossDefeat)
-								{
-									<div class="entry-monster">
-										@if (!string.IsNullOrEmpty(entry.SpeciesId))
-										{
-											<img src="@GetJournalSpeciesIcon(entry.SpeciesId)" />
-										}
-										else
-										{
-											<iconify icon="lucide:skull" Size=@(40) Color="rgba(248, 113, 113, 0.45)" />
-										}
-									</div>
-								}
-							</div>
-						}
-					}
-					else
-					{
-						<div class="journal-empty">@L("ui.roster.journal_empty")</div>
-					}
-				</div>
-			</div>
-		</div>
-	}
+	@* (Journal modal RETIRED 2026-07-05 — turn 10A: the journal is now an
+	   in-column facts sub-view (.fsub-head band + .jm-card milestones).
+	   The .journal-modal-* scss is inert-frozen; the modal's helper
+	   methods (GetJournalEntry*) remain for future reuse.) *@
 
 	<!-- THE LIVING VIOLET RING — one waving selection cursor wrapping the
 	     selected beast's card (menu/PawPad signature, flat-panel recipe).
@@ -1816,7 +1932,7 @@
 	private bool isDragSelecting = false;
 
 	// Journal modal state
-	private bool showJournalModal = false;
+	private bool showJournalView = false; // 10A in-column journal (modal retired 2026-07-05)
 
 	// ── STAGE/FACTS replay key (2026-07-05 juice pass) ──────────────────
 	// Bumped once whenever a DIFFERENT beast takes the stage (mouse click,
@@ -1837,6 +1953,10 @@
 	// Move picker state
 	private bool showMovePicker = false;
 	private int selectedMoveSlot = -1;
+	// 4A arm-then-confirm (2026-07-05): the move id the picker has ARMED.
+	// First activation (click or kb) arms; a second on the same row
+	// commits via SwapMoveSlot. Prevents one stray click from learning.
+	private string pickerArmedMoveId = null;
 
 	// Track if keyboard navigation is active (vs mouse)
 	private bool isKeyboardNavigationActive = false;
@@ -1857,10 +1977,83 @@
 	// extra. The ink-lean wave is imperative Style.Transform per frame —
 	// repaints the ring alone, never re-renders (PawPad v4.2 law).
 	private Panel gridRingRef;
+	// Ring scope (user 2026-07-05): the violet cursor belongs to BEAST
+	// SELECTION only — no liquid ring over the stage/facts columns (their
+	// controls keep hover/press styling). readonly (not const) so the
+	// gated blocks don't trip CS0162; flip to restore the detail-zone
+	// ring + the Space grid→dossier handoff.
+	private static readonly bool DetailRingEnabled = false;
 	private int gridRingL, gridRingT, gridRingW = 150, gridRingH = 180;
 	private bool gridRingVisible;
 	private bool gridRingTight; // detail-zone hosts are small — tighter inset/radius
 	private int gridRingWarm; // <2 = snap to position (no glide) while first rects land
+
+	// ── OVERLAY SCROLLBARS (2026-07-05) ─────────────────────────────────
+	// s&box's scrollbar-color/-width don't parse (learnings 2026-04-15),
+	// so both scroll columns carry a hand-rolled overlay: an absolute
+	// track pinned to the column's right edge + a thumb whose top/height
+	// are written IMPERATIVELY per tick (OnlineHubPanel ring precedent —
+	// Style writes fire CSS transitions and need no BuildHash input).
+	// Geometry from the scroll panel's proven API surface: ScrollOffset.y
+	// (current), ScrollSize.y (max offset = content − viewport; proven by
+	// ScrollFocusedDetailIntoView's scroll-to-bottom), Box.Rect (screen
+	// px — commensurate with ScrollOffset per UiGridScroll's math).
+	private Panel gridSbTrackRef, gridSbThumbRef, factsSbTrackRef, factsSbThumbRef;
+	private int _gridSbTop = int.MinValue, _gridSbH = int.MinValue, _gridSbTrackH = int.MinValue;
+	private int _factsSbTop = int.MinValue, _factsSbH = int.MinValue, _factsSbTrackH = int.MinValue;
+	// Cache-identity guards: template swaps (normal <-> fusion <-> empty)
+	// REMOUNT the track/thumb elements — a stale only-on-change cache
+	// would then skip writing onto the fresh element, leaving the thumb
+	// at its CSS default. Reset the caches whenever the instance changes.
+	private Panel _gridSbSeen, _factsSbSeen;
+
+	private void UpdateScrollbars()
+	{
+		if ( !ReferenceEquals( _gridSbSeen, gridSbThumbRef ) )
+		{ _gridSbSeen = gridSbThumbRef; _gridSbTop = _gridSbH = _gridSbTrackH = int.MinValue; }
+		if ( !ReferenceEquals( _factsSbSeen, factsSbThumbRef ) )
+		{ _factsSbSeen = factsSbThumbRef; _factsSbTop = _factsSbH = _factsSbTrackH = int.MinValue; }
+
+		// Grid track top 12 (SCSS) + 12 bottom breathing = 24 trimmed.
+		UpdateScrollbar( rosterGridRef, gridSbTrackRef, gridSbThumbRef, 24,
+			ref _gridSbTop, ref _gridSbH, ref _gridSbTrackH );
+		// Facts track top 28 = roof cap 24 + 4; 4 more at the foot = 8.
+		UpdateScrollbar( factsScrollRef, factsSbTrackRef, factsSbThumbRef, 8,
+			ref _factsSbTop, ref _factsSbH, ref _factsSbTrackH );
+	}
+
+	private void UpdateScrollbar( Panel scroll, Panel track, Panel thumb, int trimLayoutPx,
+		ref int lastTop, ref int lastH, ref int lastTrackH )
+	{
+		if ( track == null || thumb == null ) return;
+
+		float maxOff = scroll?.ScrollSize.y ?? 0f;
+		float viewH = scroll?.Box.Rect.Height ?? 0f;
+		if ( scroll == null || maxOff < 2f || viewH <= 0f )
+		{
+			track.SetClass( "on", false ); // content fits — hide entirely
+			return;
+		}
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		// Track height derives from the scroll viewport (explicit Style
+		// write — absolute top+bottom stretch is unproven in-engine, an
+		// explicit height is deterministic).
+		int trackH = (int)(viewH * sc) - trimLayoutPx;
+		if ( trackH < 40 ) { track.SetClass( "on", false ); return; }
+
+		float contentH = viewH + maxOff;
+		int h = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
+		float t01 = Math.Clamp( scroll.ScrollOffset.y / maxOff, 0f, 1f );
+		int top = (int)((trackH - h) * t01);
+
+		if ( trackH != lastTrackH ) { lastTrackH = trackH; track.Style.Height = Length.Pixels( trackH ); }
+		if ( h != lastH ) { lastH = h; thumb.Style.Height = Length.Pixels( h ); }
+		if ( top != lastTop ) { lastTop = top; thumb.Style.Top = Length.Pixels( top ); }
+		track.SetClass( "on", true );
+	}
 
 	// 10px box inset each side; the 4px border lives in SCSS. Declared
 	// width/height are CONTENT-box (s&box has no border-box), so the
@@ -1887,7 +2080,7 @@
 		// ring in kb mode). A hovered dossier control always takes the
 		// ring and suppresses the kb highlight; the next kb nav input
 		// reclaims it (SetDetailFocus / FocusDetailZone clear the flag).
-		if ( !showResult && !isFusionMode && detailScrollRef != null && detailScrollRef.HasHovered )
+		if ( DetailRingEnabled && !showResult && !isFusionMode && detailScrollRef != null && detailScrollRef.HasHovered )
 		{
 			var hovered = FindHoveredRingHost( detailScrollRef );
 			if ( hovered != null && WrapDetailRing( hovered, wasVisible ) )
@@ -1897,7 +2090,7 @@
 			}
 		}
 
-		if ( kbFocusZone == "detail" && !detailMouseDriving && !showResult && !isFusionMode && detailScrollRef != null )
+		if ( DetailRingEnabled && kbFocusZone == "detail" && !detailMouseDriving && !showResult && !isFusionMode && detailScrollRef != null )
 		{
 			var focused = FindPanelByClass( detailScrollRef, "kb-focused" );
 			if ( focused == null ) return;
@@ -2191,7 +2384,7 @@
 	// Cursor starts on the first item (the nickname pencil, top-left).
 	private void FocusDetailZone()
 	{
-		if ( SelectedMonster == null || isFusionMode ) return;
+		if ( !DetailRingEnabled || SelectedMonster == null || isFusionMode ) return;
 		kbFocusZone = "detail";
 		detailFocusIndex = 0;
 		detailMouseDriving = false;
@@ -2832,7 +3025,22 @@
 			var newName = nicknameInput.Text?.Trim();
 			if (!string.IsNullOrEmpty(newName))
 			{
+				var oldName = string.IsNullOrEmpty(SelectedMonster.Nickname)
+					? GetSelectedSpeciesName()
+					: SelectedMonster.Nickname;
 				SelectedMonster.Nickname = newName;
+				// 10A rename hook (2026-07-05): name changes are identity
+				// milestones — the NameChange enum member landed same day, so
+				// entries are properly typed. Content keeps the structured
+				// `Renamed to "X" — was "Y"` form the display splits on.
+				if (newName != oldName)
+				{
+					SelectedMonster.AddJournalEntry(
+						$"Renamed to \"{newName}\" — was \"{oldName}\"",
+						JournalEntryType.NameChange
+					);
+					MonsterManager.Instance?.SaveMonsters();
+				}
 			}
 		}
 		isEditingNickname = false;
@@ -2909,6 +3117,40 @@
 	private float GetStatPercent(int value, int max)
 	{
 		return Math.Min(100, (float)value / max * 100);
+	}
+
+	// 1B stat gauge fill — EXPLICIT PX, not %: the .sb-bar container is
+	// skewX-transformed, and a % width under a transformed ancestor is
+	// in the derived-width poison family (QuestPanel law). 270 = the
+	// bar's explicit content width (see the .razor.scss width math).
+	//
+	// Scale recalibrated 2026-07-05 (user: "what's the highest number
+	// obtainable?"). Formula: Base + Lv×Growth×0.6 + Gene, Lv cap 50,
+	// gene cap 30. Launch-roster ceiling = Manehelm ATK: 118 + 50×9×0.6
+	// + 30 = 418 raw; ×1.10 nature ×1.12 mastery ≈ 515 fully buffed.
+	// 550 leaves headroom for skill/relic % stacking; the old 1330 was
+	// a relic that capped even the strongest stat at ~35% fill.
+	// GetStatPercent clamps at 100, so over-550 stacks just fill the bar.
+	private string GetStatBarPx(int value)
+	{
+		return $"{(int)(GetStatPercent(value, 550) * 2.70f)}px";
+	}
+
+	// RECORD tile numerals — compact abbreviation (user 2026-07-05:
+	// "k for thousand because it could get very long"). Full digits up
+	// to 9,999; then one-decimal K/M/B with the trailing .0 dropped
+	// (117,687 → 117.7K; 12,000 → 12K).
+	private string FormatRecordValue( long value )
+	{
+		string Compact( double v, string suffix )
+		{
+			var s = (Math.Floor( v * 10 ) / 10).ToString( "0.#" );
+			return $"{s}{suffix}";
+		}
+		if ( value >= 1_000_000_000 ) return Compact( value / 1_000_000_000d, "B" );
+		if ( value >= 1_000_000 ) return Compact( value / 1_000_000d, "M" );
+		if ( value >= 10_000 ) return Compact( value / 1_000d, "K" );
+		return value.ToString( "N0" );
 	}
 
 	private string GetSelectedGeneticsClass()
@@ -3512,17 +3754,50 @@
 	// Journal Modal Methods
 	// ==========================================
 
+	// 10A (2026-07-05): the journal is an IN-COLUMN sub-view now, not a
+	// modal — clicking JOURNAL swaps the facts column content (the same
+	// swap the move/item pickers use) with a 13a header band + milestone
+	// cards. The modal markup is retired.
 	private void OpenJournal()
 	{
 		if (SelectedMonster == null) return;
-		showJournalModal = true;
+		showJournalView = true;
+		// Fresh view starts at the top (the dossier's scroll offset would
+		// otherwise carry over into the journal list).
+		if (factsScrollRef != null) factsScrollRef.ScrollOffset = Vector2.Zero;
 		SoundManager.PlayClick();
 	}
 
 	private void CloseJournal()
 	{
-		showJournalModal = false;
+		showJournalView = false;
+		if (factsScrollRef != null) factsScrollRef.ScrollOffset = Vector2.Zero;
 		SoundManager.PlayBack();
+	}
+
+	// 13-series band back-card dispatch — one handler for whichever
+	// sub-view currently owns the facts column.
+	private void CloseCurrentSubView()
+	{
+		if (showJournalView) CloseJournal();
+		else if (showItemPicker) CloseItemPicker();
+		else if (showMovePicker) CloseMoveSwap();
+	}
+
+	// Nickname-or-species display name (band title line).
+	private string GetSelectedDisplayName()
+	{
+		return string.IsNullOrEmpty(SelectedMonster?.Nickname)
+			? GetSelectedSpeciesName()
+			: SelectedMonster.Nickname;
+	}
+
+	// 13c band status pill — the fusion state's live readout.
+	private string GetFusionHeaderStatus()
+	{
+		if (Parent1 == null) return "PICK TWO PARENTS";
+		if (Parent2 == null) return "PICK A PARTNER";
+		return "READY TO FUSE";
 	}
 
 	// ==========================================
@@ -3690,6 +3965,11 @@
 		// Fusion staging replaces the detail panel — detail-zone keyboard
 		// focus is meaningless there, so always fall back to the grid.
 		kbFocusZone = "grid";
+		// A facts sub-view left open under fusion would pop back
+		// unexpectedly on exit — close them all (10A journal included).
+		showJournalView = false;
+		showItemPicker = false;
+		showMovePicker = false;
 		ClearPendingFusionConfirm();
 		if (!isFusionMode)
 		{
@@ -4746,6 +5026,9 @@
 		// ink-lean wave imperatively.
 		UpdateGridRing();
 		ApplyGridRingWave();
+
+		// Overlay scrollbar thumbs (both columns) — imperative, cheap.
+		UpdateScrollbars();
 	}
 
 	/// <summary>
@@ -4938,13 +5221,19 @@
 				//                   nav (claims the back key so GameHUD
 				//                   doesn't also exit to tabs)
 				// List rows stay mouse-operable too.
-				if (showItemPicker || showMovePicker)
+				if (showItemPicker || showMovePicker || showJournalView)
 				{
 					if (Input.Pressed("Score") || Input.Pressed("Menu"))
 					{
 						if (showItemPicker) CloseItemPicker();
-						else CloseMoveSwap();
+						else if (showMovePicker) CloseMoveSwap();
+						else CloseJournal(); // 10A in-column journal — Q backs out like the pickers
 						GameHUD.PanelHandledBackKey = true;
+					}
+					else if (showJournalView)
+					{
+						// Journal has no row cursor — read-only milestones;
+						// wheel scrolls, Q leaves. Swallow nav keys.
 					}
 					else if (Input.Pressed("Up"))
 					{
@@ -5120,10 +5409,11 @@
 		hash.Add(isMultiSelectMode);
 		hash.Add(selectedForRelease.Count);
 		hash.Add(showBulkReleaseConfirm);
-		hash.Add(showJournalModal);
+		hash.Add(showJournalView);
 		hash.Add(showItemPicker);
 		hash.Add(showMovePicker);
 		hash.Add(selectedMoveSlot);
+		hash.Add(pickerArmedMoveId); // 4A armed row (LEARN button state)
 		hash.Add(SelectedMonster?.HeldItemId);
 		hash.Add(SelectedMonster?.Moves?.Count);
 		hash.Add(isEvolving);
@@ -5272,6 +5562,236 @@
 		return species?.IconPath ?? "";
 	}
 
+	// ═══ 10A MILESTONE JOURNAL (2026-07-05) ══════════════════════════
+	// The in-column journal shows MILESTONE registers only — the grind
+	// (expedition completions, generic notes) stays in data but is
+	// filtered from display; the RECORD section owns the counters.
+
+	private class JournalMilestone
+	{
+		public string Kind;      // ranked | milestone | boss | rename | evo | origin
+		public string Title;
+		public string Sub;       // dim suffix (rename: `was "Y"`)
+		public string Tag;       // register label (BOSS FELLED, EVOLUTION, ...)
+		public string Date;      // formatted, "" = undated (synthetic rows)
+		public string MedalIcon; // 52px medallion sprite (boss / evo current form)
+		public string PreIcon;   // 40px medallion sprite (evo pre-form)
+	}
+
+	private List<JournalMilestone> GetJournalMilestones()
+	{
+		var rows = new List<JournalMilestone>();
+		var m = SelectedMonster;
+		if (m == null) return rows;
+
+		// Synthetic max-level milestone — display-time fallback for beasts
+		// that CAPPED before the AddXP write hook existed (2026-07-05).
+		// Skipped when a real logged entry is present (no doubles).
+		bool hasLoggedMaxLevel = m.Journal != null && m.Journal.Any(x =>
+			x.Type == JournalEntryType.Milestone && x.Content != null && x.Content.Contains("max level"));
+		if (m.Level >= Monster.MaxLevel && !hasLoggedMaxLevel)
+		{
+			rows.Add(new JournalMilestone
+			{
+				Kind = "milestone",
+				Title = $"Reached max level — LV {Monster.MaxLevel}",
+				Tag = "MILESTONE",
+				Date = ""
+			});
+		}
+
+		if (m.Journal != null)
+		{
+			foreach (var e in m.Journal.OrderByDescending(x => x.Timestamp))
+			{
+				var date = e.Timestamp.ToString("MMM d, yyyy").ToUpper();
+				switch (e.Type)
+				{
+					case JournalEntryType.BossDefeat:
+						rows.Add(new JournalMilestone
+						{
+							Kind = "boss",
+							Title = e.Content,
+							Tag = "BOSS FELLED",
+							Date = date,
+							MedalIcon = GetJournalSpeciesIcon(e.SpeciesId)
+						});
+						break;
+
+					case JournalEntryType.Evolution:
+					{
+						// Entries bake `Evolved from {A} into {B}! ...` — parse
+						// the names to resolve BOTH forms' sprites (the entry
+						// itself stores no speciesId). Fallback: current
+						// species + its EvolvesFrom.
+						string fromName = null, toName = null;
+						var c = e.Content ?? "";
+						var intoIdx = c.IndexOf(" into ");
+						if (c.StartsWith("Evolved from ") && intoIdx > 0)
+						{
+							fromName = c.Substring(13, intoIdx - 13);
+							var bangIdx = c.IndexOf('!', intoIdx);
+							if (bangIdx > intoIdx)
+								toName = c.Substring(intoIdx + 6, bangIdx - intoIdx - 6);
+						}
+						rows.Add(new JournalMilestone
+						{
+							Kind = "evo",
+							Title = fromName != null ? $"Evolved from {fromName}!" : "Evolved!",
+							Tag = "EVOLUTION",
+							Date = date,
+							PreIcon = FindSpeciesIconByName(fromName),
+							MedalIcon = FindSpeciesIconByName(toName) ?? GetJournalSpeciesIcon(m.SpeciesId)
+						});
+						break;
+					}
+
+					case JournalEntryType.Milestone:
+						rows.Add(new JournalMilestone
+						{
+							Kind = "milestone",
+							Title = e.Content,
+							Tag = "MILESTONE",
+							Date = date
+						});
+						break;
+
+					case JournalEntryType.General:
+						// NAME CHANGE register — SaveNickname writes the
+						// structured marker `Renamed to "X" — was "Y"`
+						// (General type; a proper NameChange enum member is
+						// proposed — Data is out of UI scope). Other General
+						// entries are noise here.
+						if (e.Content != null && e.Content.StartsWith("Renamed to "))
+						{
+							var sep = e.Content.IndexOf(" — ");
+							rows.Add(new JournalMilestone
+							{
+								Kind = "rename",
+								Title = sep > 0 ? e.Content.Substring(0, sep) : e.Content,
+								Sub = sep > 0 ? e.Content.Substring(sep + 3) : "",
+								Tag = "NAME CHANGE",
+								Date = date
+							});
+						}
+						break;
+
+					// NameChange enum member landed 2026-07-05 — new renames
+					// arrive typed; the General-prefix bridge above still
+					// catches entries written before the member existed.
+					case JournalEntryType.NameChange:
+					{
+						var sep2 = e.Content != null ? e.Content.IndexOf(" — ") : -1;
+						rows.Add(new JournalMilestone
+						{
+							Kind = "rename",
+							Title = sep2 > 0 ? e.Content.Substring(0, sep2) : (e.Content ?? "Renamed"),
+							Sub = sep2 > 0 ? e.Content.Substring(sep2 + 3) : "",
+							Tag = "NAME CHANGE",
+							Date = date
+						});
+						break;
+					}
+
+					// RANKED register — live now that the enum member exists;
+					// entries appear once Online Arena returns and writes them.
+					case JournalEntryType.Ranked:
+						rows.Add(new JournalMilestone
+						{
+							Kind = "ranked",
+							Title = e.Content,
+							Tag = "RANKED",
+							Date = date
+						});
+						break;
+
+					// Caught / Bred → synthesized as THE BEGINNING below;
+					// Expedition → grind noise, lives in RECORD.
+				}
+			}
+		}
+
+		// THE BEGINNING — always the last entry, synthesized from the
+		// Monster's own fields so it exists even for pre-journal beasts.
+		rows.Add(new JournalMilestone
+		{
+			Kind = "origin",
+			Title = m.IsBred ? "Born into the team" : "Caught in the wild",
+			Tag = "THE BEGINNING",
+			Date = m.ObtainedAt.ToString("MMM d, yyyy").ToUpper()
+		});
+
+		return rows;
+	}
+
+	// Species icon by display NAME (evolution entries only store prose).
+	private string FindSpeciesIconByName(string name)
+	{
+		if (string.IsNullOrEmpty(name)) return null;
+		var all = MonsterManager.Instance?.GetAllSpecies();
+		var sp = all?.FirstOrDefault(s => s.Name == name);
+		return sp?.IconPath;
+	}
+
+	// Register accent: hex + whether the card gets the corner glow +
+	// bright border treatment. Evolution wears the beast's PRIMARY
+	// element accent (turn-6 palette, same as the stage dais).
+	private (string hex, bool glow) GetJmAccent(string kind)
+	{
+		return kind switch
+		{
+			"ranked" => ("#FBBF24", true),
+			"milestone" => ("#FBBF24", false),
+			"boss" => ("#F87171", true),
+			"rename" => ("#A8A29E", false),
+			"evo" => (GetSelectedElementHex(), true),
+			_ => ("#A78BFA", false) // origin
+		};
+	}
+
+	private string GetJmIcon(string kind)
+	{
+		return kind switch
+		{
+			"ranked" => "lucide:crown",
+			"milestone" => "lucide:star",
+			"boss" => "lucide:skull",
+			"rename" => "lucide:pencil",
+			"evo" => "lucide:sparkles",
+			_ => "lucide:gem" // origin
+		};
+	}
+
+	// Turn-6 element palette (matches the bestiary icons + dais assets).
+	private string GetSelectedElementHex()
+	{
+		return GetSelectedElementClass() switch
+		{
+			"fire" => "#FB923C",
+			"water" => "#60A5FA",
+			"nature" => "#4ADE80",
+			"wind" => "#2DD4BF",
+			"electric" => "#FBBF24",
+			"earth" => "#C9974C",
+			"ice" => "#7DD3FC",
+			"metal" => "#94A3B8",
+			"spirit" => "#F472B6",
+			"shadow" => "#9D7BEA",
+			_ => "#A8A29E"
+		};
+	}
+
+	// Hex → rgba() string for the computed inline styles (the per-kind ×
+	// per-element accent matrix would be ~60 scss rules; computed inline
+	// values collapse it — always-emitted, so no ghost-style risk).
+	private static string JmRgba(string hex, float a)
+	{
+		var r = Convert.ToInt32(hex.Substring(1, 2), 16);
+		var g = Convert.ToInt32(hex.Substring(3, 2), 16);
+		var b = Convert.ToInt32(hex.Substring(5, 2), 16);
+		return $"rgba({r}, {g}, {b}, {a.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)})";
+	}
+
 	private string GetJournalZoneBackground(string zoneId)
 	{
 		if (string.IsNullOrEmpty(zoneId)) return "";
@@ -5329,6 +5849,7 @@
 		}
 		selectedMoveSlot = slot;
 		showMovePicker = true;
+		pickerArmedMoveId = null;       // fresh picker = nothing armed
 		pickerCursorIndex = 0;          // seed the keyboard cursor at row 0
 		detailScrollFollowPending = true;
 		SoundManager.PlayClick();
@@ -5338,6 +5859,22 @@
 	{
 		showMovePicker = false;
 		selectedMoveSlot = -1;
+		pickerArmedMoveId = null;
+	}
+
+	// 4A arm-then-confirm dispatch — the row's onclick AND the keyboard
+	// activation both land here, so mouse and kb share the exact flow:
+	// first hit arms the row, second hit on the same row commits through
+	// the ORIGINAL SwapMoveSlot (the commit method is unchanged).
+	private void OnMovePickerRowClicked( string moveId )
+	{
+		if ( pickerArmedMoveId == moveId )
+		{
+			SwapMoveSlot( moveId );
+			return;
+		}
+		pickerArmedMoveId = moveId;
+		SoundManager.PlayClick();
 	}
 
 	// ---- Inline picker keyboard navigation -----------------------------
@@ -5385,7 +5922,9 @@
 			var moves = GetAvailableMovesForPicker();
 			if ( moves.Count == 0 ) return;
 			int i = Math.Clamp( pickerCursorIndex, 0, moves.Count - 1 );
-			SwapMoveSlot( moves[i].MoveId );
+			// Arm-then-confirm parity with the mouse (4A): first press arms,
+			// second press on the same row commits.
+			OnMovePickerRowClicked( moves[i].MoveId );
 		}
 		else if ( showItemPicker )
 		{
@@ -5432,6 +5971,7 @@
 
 		showMovePicker = false;
 		selectedMoveSlot = -1;
+		pickerArmedMoveId = null;
 	}
 
 	private int GetAvailableMovesCount()
