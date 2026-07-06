@@ -24,18 +24,21 @@ public static class UiGridScroll
 		string excludeClass = null, float margin = 24f )
 	{
 		if ( scroll == null || index < 0 ) return;
+		IntoView( scroll, FindIndexed( scroll, index, cardClass, excludeClass ), margin );
+	}
 
-		Panel target = null;
-		int n = 0;
-		foreach ( var c in scroll.Children )
-		{
-			if ( !c.HasClass( cardClass ) ) continue;
-			if ( excludeClass != null && c.HasClass( excludeClass ) ) continue;
-			if ( n == index ) { target = c; break; }
-			n++;
-		}
-
-		IntoView( scroll, target, margin );
+	/// <summary>
+	/// Compute-only variant (2026-07-06 nav-animations pass): returns the
+	/// offset ScrollIndexIntoView would apply, or null when the card is
+	/// already fully visible. Lets callers GLIDE toward the target (a
+	/// per-tick lerp) instead of snapping — behavior of the applying
+	/// overloads is unchanged.
+	/// </summary>
+	public static float? ComputeIndexOffset( Panel scroll, int index, string cardClass,
+		string excludeClass = null, float margin = 24f )
+	{
+		if ( scroll == null || index < 0 ) return null;
+		return ComputeOffset( scroll, FindIndexed( scroll, index, cardClass, excludeClass ), margin );
 	}
 
 	/// <summary>
@@ -44,11 +47,22 @@ public static class UiGridScroll
 	/// </summary>
 	public static void IntoView( Panel scroll, Panel target, float margin = 24f )
 	{
-		if ( scroll == null || target == null ) return;
+		var newOff = ComputeOffset( scroll, target, margin );
+		if ( newOff.HasValue )
+			scroll.ScrollOffset = new Vector2( scroll.ScrollOffset.x, newOff.Value );
+	}
+
+	/// <summary>
+	/// Shared core: the offset that brings `target` fully into view, or
+	/// null when no scroll is needed (already visible / not laid out).
+	/// </summary>
+	public static float? ComputeOffset( Panel scroll, Panel target, float margin = 24f )
+	{
+		if ( scroll == null || target == null ) return null;
 
 		var view = scroll.Box.Rect;
 		var card = target.Box.Rect;
-		if ( view.Height <= 0f || card.Height <= 0f ) return;
+		if ( view.Height <= 0f || card.Height <= 0f ) return null;
 
 		float curOff = scroll.ScrollOffset.y;
 		// Card position in the scroll container's content space.
@@ -62,7 +76,21 @@ public static class UiGridScroll
 			newOff = cardBottom + margin - view.Height;      // clipped below the viewport
 
 		newOff = Math.Max( 0f, newOff );
-		if ( Math.Abs( newOff - curOff ) > 0.5f )
-			scroll.ScrollOffset = new Vector2( scroll.ScrollOffset.x, newOff );
+		return Math.Abs( newOff - curOff ) > 0.5f ? newOff : null;
+	}
+
+	// Nth child carrying cardClass (skipping excludeClass) — cards must be
+	// DIRECT children of the scroll (scroll-container law).
+	private static Panel FindIndexed( Panel scroll, int index, string cardClass, string excludeClass )
+	{
+		int n = 0;
+		foreach ( var c in scroll.Children )
+		{
+			if ( !c.HasClass( cardClass ) ) continue;
+			if ( excludeClass != null && c.HasClass( excludeClass ) ) continue;
+			if ( n == index ) return c;
+			n++;
+		}
+		return null;
 	}
 }
