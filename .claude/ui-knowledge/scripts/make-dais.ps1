@@ -3,7 +3,9 @@
 # wide-short div caps at a stadium pill (no ellipse), and the percent-stop
 # radial painted near-solid. So the whole platter + inner ring is baked:
 #   canvas 600x148 = exact 2x of the 300x74 display size
-#   outer ellipse: PathGradientBrush wash, center a=71 (0.28) -> 0.06 at
+#   outer ellipse: PathGradientBrush wash, center a=110 (0.43; raised from
+#     the mock's 0.28 on 2026-07-05 live capture - a whisper on our dark
+#     stage) -> 0.10 at
 #     60% -> 0 at 78% (ColorBlend positions run boundary 0 -> center 1)
 #     + 2px (=1px display) rim at a=56 (0.22)
 #   inner ring: 420x96 (210x48 display), bottom 20px (10 display) above
@@ -53,20 +55,20 @@ foreach ($name in $elements.Keys) {
     $blend.Colors = @(
         [System.Drawing.Color]::FromArgb(0,  $r, $g_, $b),
         [System.Drawing.Color]::FromArgb(0,  $r, $g_, $b),
-        [System.Drawing.Color]::FromArgb(15, $r, $g_, $b),
-        [System.Drawing.Color]::FromArgb(71, $r, $g_, $b)
+        [System.Drawing.Color]::FromArgb(26, $r, $g_, $b),
+        [System.Drawing.Color]::FromArgb(110, $r, $g_, $b)
     )
     $blend.Positions = [float[]]@(0.0, 0.22, 0.40, 1.0)
     $pgb.InterpolationColors = $blend
     $g.FillPath($pgb, $ellipse)
 
     # ── platter rim (1px display = 2px here, alpha 0.22)
-    $penRim = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(56, $r, $g_, $b), 2.0)
+    $penRim = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(86, $r, $g_, $b), 2.0)
     $g.DrawEllipse($penRim, 1, 1, ($W - 2), ($H - 2))
 
     # ── inner ring (210x48 display -> 420x96, bottom 10 display above the
     #    platter bottom -> y = 148 - 20 - 96 = 32), alpha 0.14
-    $penRing = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(36, $r, $g_, $b), 2.0)
+    $penRing = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(56, $r, $g_, $b), 2.0)
     $g.DrawEllipse($penRing, (($W - 420) / 2), 32, 420, 96)
 
     $out = Join-Path $outDir "dais-$name.png"
