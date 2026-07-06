@@ -648,11 +648,15 @@
 		{
 			@* ══ THE STAGE — the selected beast at 2.5x ══ *@
 			<div class="cs-stage">
-				@* Zone hint strip — TAB hands keyboard focus to the stage;
-				   Q returns to the grid. Reads kbFocusZone (in BuildHash). *@
-				<div class="stage-zone-hint">
-					<span class="kb-key">@(kbFocusZone == "detail" ? "Q" : "TAB")</span>
-					<span class="szh-label">@(kbFocusZone == "detail" ? "Back to collection" : "Inspect beast")</span>
+				@* Zone hint strip — DEMOTED at rest (user 2026-07-05: clicking
+				   already inspects, don't advertise a TAB affordance). Resting
+				   state leads with the natural action, keycap hidden via SCSS;
+				   Tab keeps working silently. The Q cap only surfaces once the
+				   keyboard actually holds the stage. Both spans stay mounted
+				   (value-swap, never child-swap — ghost-child law). *@
+				<div class="stage-zone-hint @(kbFocusZone == "detail" ? "kb-live" : "demoted")">
+					<span class="kb-key">Q</span>
+					<span class="szh-label">@(kbFocusZone == "detail" ? "Back to collection" : "Click a beast to inspect")</span>
 				</div>
 
 				<div class="portrait-wrapper">
@@ -675,7 +679,12 @@
 					   disc was cut 2026-07-03 (user call: remove the bar on the
 					   circle) — rarity lives on the species kicker now. *@
 					<div class="stage-halo"></div>
-					<div class="portrait-container @GetSelectedRarityClass() @GetEvolutionClass() @(_diEditing ? "myb-art-edit" : "")"
+					@* pop-@N render key: a beast switch remounts the container so
+					   the stagePop entrance keyframe replays (select-pulse
+					   precedent — class-string change forces a fresh mount).
+					   Evolution keeps the same Monster.Id so the key holds
+					   still through the whole evolve sequence. *@
+					<div class="portrait-container pop-@stageRevVersion @GetSelectedRarityClass() @GetEvolutionClass() @(_diEditing ? "myb-art-edit" : "")"
 						 onmousedown=@(() => { if (_diEditing) StartMyBeastsArtDrag(_diArtId); })
 						 onmouseover=@(() => { if (_diEditing) OnMyBeastsArtHover(_diArtId); })
 						 onmouseout=@(() => { if (_diEditing) OnMyBeastsArtLeave(_diArtId); })>
@@ -1055,6 +1064,13 @@
 									<span class="info-card-value">@SelectedMonster.Genetics.QualityRating</span>
 								</div>
 								<span class="info-card-meta">@GetSelectedTotalGenes()/180 @L("ui.roster.genes")</span>
+								@* Gene-total gauge (user license 2026-07-05): the quality
+								   tile VISUALIZES its meta line. Same recess + transition
+								   family as the stat bars, so it re-tweens on beast
+								   switch (this tile persists across switches). *@
+								<div class="quality-gene-bar">
+									<div class="quality-gene-fill @GetSelectedGeneticsClass()" style="width: @GetSelectedGenePercent()%"></div>
+								</div>
 							</div>
 							<div class="info-card info-card-nature">
 								<div class="info-card-header">
@@ -1067,7 +1083,7 @@
 
 						@if (SelectedMonster.Traits != null && SelectedMonster.Traits.Count > 0)
 						{
-							<div class="traits-section">
+							<div class="traits-section frev frev-@stageRevVersion">
 								<div class="section-title">@L("ui.roster.traits")</div>
 								<div class="traits-list">
 									@foreach (var traitId in SelectedMonster.Traits)
@@ -1084,7 +1100,15 @@
 							</div>
 						}
 
-						<div class="moves-section">
+						@* ══ MOVES — ONE COLUMN of full-width slabs, each carrying the
+						   move's DESCRIPTION inline (user 2026-07-05). The hover
+						   tooltip is RETIRED (out of style + flicker); everything it
+						   said now lives on the slab: desc, ACC, PP, PRI, effects.
+						   Layout follows the traits-list recipe (variable-height
+						   tiles in a column inside a PADDED section — live-proven
+						   in this same scroll column); hover stays bg-only
+						   (scroll-clip law). frev key = species-change cascade. *@
+						<div class="moves-section frev frev-@stageRevVersion">
 							<div class="section-title">
 								@L("ui.roster.moves")
 								@if (GetAvailableMovesCount() > 0)
@@ -1092,158 +1116,101 @@
 									<span class="moves-available-badge">@GetAvailableMovesCount() @L("ui.roster.available")</span>
 								}
 							</div>
-							<div class="moves-grid-2x2">
+							<div class="moves-list">
 								@{
 									var moves = SelectedMonster.Moves ?? new List<MonsterMove>();
 								}
-								<div class="moves-row">
-									@for (int i = 0; i < 2; i++)
+								@for (int i = 0; i < 4; i++)
+								{
+									var slotIndex = i;
+									@if (i < moves.Count)
 									{
-										var slotIndex = i;
-										@if (i < moves.Count)
+										var move = moves[i];
+										var moveDef = MoveDatabase.GetMove(move.MoveId);
+										if (moveDef != null)
 										{
-											var move = moves[i];
-											var moveDef = MoveDatabase.GetMove(move.MoveId);
-											if (moveDef != null)
-											{
-												var elementClass = moveDef.Element.ToString().ToLower();
-												var isStab = IsMoveSTAB(moveDef);
-												var effectsSummary = GetMoveEffectsSummary(moveDef);
-												<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") has-move-tip @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
-													<div class="move-diamond-icon @elementClass">
-														<img class="move-el-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
-													</div>
-													<div class="move-diamond-info">
-														<span class="move-diamond-name">@moveDef.Name</span>
-														<div class="move-diamond-meta">
-															<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
-															@if (moveDef.BasePower > 0)
-															{
-																<span class="move-pwr">@moveDef.BasePower</span>
-															}
-															@if (isStab)
-															{
-																<span class="move-stab-badge">STAB</span>
-															}
-														</div>
-													</div>
-													<div class="move-tooltip">
-														<span class="move-tip-name">@moveDef.Name</span>
-														<span class="move-tip-desc">@moveDef.Description</span>
-														<div class="move-tip-stats">
-															<span class="move-tip-stat">
-																<span class="tip-label">ACC</span>
-																<span class="tip-val">@moveDef.Accuracy%</span>
-															</span>
-															<span class="move-tip-stat">
-																<span class="tip-label">PP</span>
-																<span class="tip-val">@move.CurrentPP/@moveDef.MaxPP</span>
-															</span>
-															@if (moveDef.Priority != 0)
-															{
-																<span class="move-tip-stat">
-																	<span class="tip-label">PRI</span>
-																	<span class="tip-val">@(moveDef.Priority > 0 ? "+" : "")@moveDef.Priority</span>
-																</span>
-															}
-														</div>
-														@if (!string.IsNullOrEmpty(effectsSummary))
-														{
-															<span class="move-tip-effects">@effectsSummary</span>
-														}
-													</div>
-												</div>
-											}
-										}
-										else
-										{
-											<div class="move-diamond-slot empty @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
-												<div class="move-diamond-icon empty-icon">
-													<span class="move-empty-plus">+</span>
+											var elementClass = moveDef.Element.ToString().ToLower();
+											var isStab = IsMoveSTAB(moveDef);
+											var effectsSummary = GetMoveEffectsSummary(moveDef);
+											<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
+												<div class="move-diamond-icon @elementClass">
+													<img class="move-el-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
 												</div>
 												<div class="move-diamond-info">
-													<span class="move-diamond-name empty-text">Empty Slot</span>
+													<div class="move-name-row">
+														<span class="move-diamond-name">@moveDef.Name</span>
+														@if (isStab)
+														{
+															<span class="move-stab-badge">STAB</span>
+														}
+													</div>
+													<div class="move-diamond-meta">
+														<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
+														@if (moveDef.BasePower > 0)
+														{
+															<span class="move-pwr">@moveDef.BasePower</span>
+														}
+														<span class="move-meta-stat">ACC @moveDef.Accuracy%</span>
+														<span class="move-meta-stat">PP @move.CurrentPP/@moveDef.MaxPP</span>
+														@if (moveDef.Priority != 0)
+														{
+															<span class="move-meta-stat pri">PRI @(moveDef.Priority > 0 ? "+" : "")@moveDef.Priority</span>
+														}
+													</div>
+													<span class="move-desc">@moveDef.Description</span>
+													@if (!string.IsNullOrEmpty(effectsSummary))
+													{
+														<span class="move-effects">@effectsSummary</span>
+													}
 												</div>
 											</div>
 										}
 									}
+									else
+									{
+										<div class="move-diamond-slot empty @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
+											<div class="move-diamond-icon empty-icon">
+												<span class="move-empty-plus">+</span>
+											</div>
+											<div class="move-diamond-info">
+												<span class="move-diamond-name empty-text">Empty Slot</span>
+											</div>
+										</div>
+									}
+								}
+							</div>
+						</div>
+
+						@* ══ RECORD — lifetime battle ledger (user 2026-07-05,
+						   feature). Data already lives on Monster's combat
+						   counters. Tiles follow the stats-cell recipe: explicit
+						   row height + explicit tile widths (the collapse +
+						   flex-misdistribution laws both bite here otherwise). *@
+						<div class="record-section frev frev-@stageRevVersion">
+							<div class="section-title">RECORD</div>
+							<div class="record-row">
+								<div class="record-tile">
+									<span class="record-value">@SelectedMonster.TotalKnockouts.ToString("N0")</span>
+									<span class="record-label">KNOCKOUTS</span>
 								</div>
-								<div class="moves-row">
-									@for (int i = 2; i < 4; i++)
-									{
-										var slotIndex = i;
-										@if (i < moves.Count)
-										{
-											var move = moves[i];
-											var moveDef = MoveDatabase.GetMove(move.MoveId);
-											if (moveDef != null)
-											{
-												var elementClass = moveDef.Element.ToString().ToLower();
-												var isStab = IsMoveSTAB(moveDef);
-												var effectsSummary = GetMoveEffectsSummary(moveDef);
-												<div class="move-diamond-slot @elementClass @(GetAvailableMovesCount() > 0 ? "swappable" : "") @(isStab ? "stab" : "") has-move-tip @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
-													<div class="move-diamond-icon @elementClass">
-														<img class="move-el-img" src="ui/icons/elements/element_white/@(GetElementIconName(moveDef.Element)).svg" />
-													</div>
-													<div class="move-diamond-info">
-														<span class="move-diamond-name">@moveDef.Name</span>
-														<div class="move-diamond-meta">
-															<span class="move-cat @moveDef.Category.ToString().ToLower()">@moveDef.Category.ToString().Substring(0, 3).ToUpper()</span>
-															@if (moveDef.BasePower > 0)
-															{
-																<span class="move-pwr">@moveDef.BasePower</span>
-															}
-															@if (isStab)
-															{
-																<span class="move-stab-badge">STAB</span>
-															}
-														</div>
-													</div>
-													<div class="move-tooltip">
-														<span class="move-tip-name">@moveDef.Name</span>
-														<span class="move-tip-desc">@moveDef.Description</span>
-														<div class="move-tip-stats">
-															<span class="move-tip-stat">
-																<span class="tip-label">ACC</span>
-																<span class="tip-val">@moveDef.Accuracy%</span>
-															</span>
-															<span class="move-tip-stat">
-																<span class="tip-label">PP</span>
-																<span class="tip-val">@move.CurrentPP/@moveDef.MaxPP</span>
-															</span>
-															@if (moveDef.Priority != 0)
-															{
-																<span class="move-tip-stat">
-																	<span class="tip-label">PRI</span>
-																	<span class="tip-val">@(moveDef.Priority > 0 ? "+" : "")@moveDef.Priority</span>
-																</span>
-															}
-														</div>
-														@if (!string.IsNullOrEmpty(effectsSummary))
-														{
-															<span class="move-tip-effects">@effectsSummary</span>
-														}
-													</div>
-												</div>
-											}
-										}
-										else
-										{
-											<div class="move-diamond-slot empty @(IsDetailControlFocused($"move-{slotIndex}") ? "kb-focused" : "")" onclick="@(() => OpenMoveSwap(slotIndex))" onmouseover=@(() => SoundManager.PlayHover())>
-												<div class="move-diamond-icon empty-icon">
-													<span class="move-empty-plus">+</span>
-												</div>
-												<div class="move-diamond-info">
-													<span class="move-diamond-name empty-text">Empty Slot</span>
-												</div>
-											</div>
-										}
-									}
+								<div class="record-tile">
+									<span class="record-value">@SelectedMonster.TotalDamageDealt.ToString("N0")</span>
+									<span class="record-label">DAMAGE DEALT</span>
+								</div>
+							</div>
+							<div class="record-row">
+								<div class="record-tile">
+									<span class="record-value">@SelectedMonster.BossesDefeated.ToString("N0")</span>
+									<span class="record-label">BOSSES FELLED</span>
+								</div>
+								<div class="record-tile">
+									<span class="record-value">@SelectedMonster.ExpeditionsCompleted.ToString("N0")</span>
+									<span class="record-label">EXPEDITIONS</span>
 								</div>
 							</div>
 						</div>
 
-						<div class="info-section">
+						<div class="info-section frev frev-@stageRevVersion">
 							<div class="section-title">@L("ui.roster.info")</div>
 							<div class="info-grid">
 								<div class="info-row">
@@ -1266,7 +1233,7 @@
 
 						@if (SelectedMonster.Generation > 0 && (SelectedMonster.Parent1Id.HasValue || SelectedMonster.Parent2Id.HasValue))
 						{
-							<div class="lineage-section">
+							<div class="lineage-section frev frev-@stageRevVersion">
 								<div class="section-title">@L("ui.roster.lineage")</div>
 								<div class="lineage-info">
 									<div class="lineage-row">
@@ -1291,8 +1258,11 @@
 							</div>
 						}
 
-						@* Journal / Show-off — glyph rows at the dossier's foot. *@
-						<div class="facts-utility">
+						@* Journal / Show-off — ONE side-by-side row of half-width
+						   chips (user 2026-07-05). Explicit chip widths in SCSS —
+						   flex:1 misdistributes; the info-card-row recipe is the
+						   live precedent for a flex-row direct child here. *@
+						<div class="facts-utility frev frev-@stageRevVersion">
 							@if (SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0)
 							{
 								<div class="detail-diamond wide @(IsDetailControlFocused("diamond-journal") ? "kb-focused" : "")" onclick=@OpenJournal onmouseover=@(() => SoundManager.PlayHover())>
@@ -1384,8 +1354,14 @@
 			<div class="journal-modal" onclick:stopPropagation>
 				<div class="journal-modal-header">
 					<div class="journal-modal-title">
-						<span class="journal-icon">📖</span>
-						<span class="journal-name">@(string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname)'s Journal</span>
+						@* 2026-07-05 dialect sweep: emoji book → the house violet
+						   kicker chip + italic-900 name (roster section-title
+						   vocabulary, so the modal reads as this panel's child). *@
+						<div class="journal-kicker">
+							<iconify icon="lucide:book-open" Size=@(13) Color="#cdbcf2" />
+							<span>JOURNAL</span>
+						</div>
+						<span class="journal-name">@(string.IsNullOrEmpty(SelectedMonster.Nickname) ? GetSelectedSpeciesName() : SelectedMonster.Nickname)</span>
 					</div>
 					<button class="close-btn" onclick=@CloseJournal><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
 				</div>
@@ -1395,7 +1371,10 @@
 						@foreach (var entry in SelectedMonster.Journal.OrderByDescending(e => e.Timestamp))
 						{
 							<div class="journal-modal-entry @GetJournalEntryClass(entry.Type) @(!string.IsNullOrEmpty(entry.ZoneId) ? "has-background" : "") @(entry.Type == JournalEntryType.BossDefeat ? "has-monster" : "")" style="@GetEntryBackgroundStyle(entry)">
-								<span class="entry-icon">@GetJournalEntryIcon(entry.Type)</span>
+								@* Type-tinted glyph square (emoji retired — dialect). *@
+								<div class="entry-icon">
+									<iconify icon="@GetJournalEntryLucide(entry.Type)" Size=@(20) Color="@GetJournalEntryColor(entry.Type)" />
+								</div>
 								<div class="entry-body">
 									<div class="entry-text">@entry.Content</div>
 									<div class="entry-meta">
@@ -1414,7 +1393,7 @@
 										}
 										else
 										{
-											<span class="monster-placeholder">💀</span>
+											<iconify icon="lucide:skull" Size=@(40) Color="rgba(248, 113, 113, 0.45)" />
 										}
 									</div>
 								}
@@ -1799,6 +1778,18 @@
 	// Journal modal state
 	private bool showJournalModal = false;
 
+	// ── STAGE/FACTS replay key (2026-07-05 juice pass) ──────────────────
+	// Bumped once whenever a DIFFERENT beast takes the stage (mouse click,
+	// keyboard nav, auto-select — all funnel through the Tick compare).
+	// Render-keys the facts cascade (frev-@N on traits/moves/record/info/
+	// lineage/utility) and the stage sprite pop (pop-@N on the portrait
+	// container): the class-string change forces a fresh DOM mount so the
+	// mount-time keyframes replay per switch (select-pulse precedent).
+	// STATS + the quality/nature row are deliberately NOT keyed — they
+	// persist so their width-transition bars re-tween instead of popping.
+	private int stageRevVersion = 0;
+	private Guid _lastStagedMonsterId = Guid.Empty;
+
 	// Item picker modal state
 	private bool showItemPicker = false;
 	private ItemDefinition hoveredPickerItem = null;
@@ -1836,7 +1827,9 @@
 	// update subtracts the 8px of border to keep the ring concentric.
 	private const int GridRingInset = 10;
 	// Dossier controls are small — scale the concentric gap down.
-	private const int DetailRingInset = 6;
+	// 8px (was 6): the ring reads as clearly WRAPPING the control
+	// (user 2026-07-03: "doesn't actually go around the button").
+	private const int DetailRingInset = 8;
 
 	private void UpdateGridRing()
 	{
@@ -1849,24 +1842,27 @@
 		// wraps the focused control there (found via the .kb-focused class
 		// the markup already assigns — action slabs, move slots, glyph
 		// squares, picker rows). No separate ring system.
-		if ( kbFocusZone == "detail" && !showResult && !isFusionMode && detailScrollRef != null )
+		// MOUSE PATH FIRST — LAST-INPUT-WINS (user 2026-07-03: the kb
+		// highlight lingered while mousing, and the moused control got no
+		// ring in kb mode). A hovered dossier control always takes the
+		// ring and suppresses the kb highlight; the next kb nav input
+		// reclaims it (SetDetailFocus / FocusDetailZone clear the flag).
+		if ( !showResult && !isFusionMode && detailScrollRef != null && detailScrollRef.HasHovered )
+		{
+			var hovered = FindHoveredRingHost( detailScrollRef );
+			if ( hovered != null && WrapDetailRing( hovered, wasVisible ) )
+			{
+				detailMouseDriving = true;
+				return;
+			}
+		}
+
+		if ( kbFocusZone == "detail" && !detailMouseDriving && !showResult && !isFusionMode && detailScrollRef != null )
 		{
 			var focused = FindPanelByClass( detailScrollRef, "kb-focused" );
 			if ( focused == null ) return;
 			WrapDetailRing( focused, wasVisible );
 			return;
-		}
-
-		// MOUSE PATH — the same ring serves the pointer (user call
-		// 2026-07-02: "we need the liquid ring around the detail buttons
-		// too"). While the cursor rests on a dossier control the ring
-		// flies over and wraps it; when it leaves, the ring glides home
-		// to the selected grid card below.
-		if ( !showResult && !isFusionMode && detailScrollRef != null && detailScrollRef.HasHovered )
-		{
-			var hovered = FindHoveredRingHost( detailScrollRef );
-			if ( hovered != null && WrapDetailRing( hovered, wasVisible ) )
-				return;
 		}
 
 		bool want = rosterGridRef != null && !showResult
@@ -2071,13 +2067,14 @@
 	//     Band 2  item / fuse / release   (the ACTIONS triplet, Sub 0/1/2)
 	//
 	//   FACTS column (Col 1) — the scrolling dossier on the right:
-	//     Band 0  move-0 / move-1         (MOVES row 1, Sub 0/1)
-	//     Band 1  move-2 / move-3         (MOVES row 2, Sub 0/1)
-	//     Band 2  diamond-journal         (only when a journal exists)
-	//     Band 3  diamond-showoff
-	//     (the glyph rows stack VERTICALLY at the dossier's foot — a
-	//      flex-row direct child of a scroll container collapses, so
-	//      they're full-width stacked chips → one band each)
+	//     Band 0-3  move-0..move-3        (MOVES: one COLUMN of full-width
+	//                                      slabs since 2026-07-05 — one
+	//                                      band each, single Sub)
+	//     Band 4  diamond-journal / diamond-showoff
+	//                                     (utility chips side-by-side —
+	//                                      Sub 0/1; explicit chip widths
+	//                                      make the row safe in the scroll
+	//                                      column, the info-card-row recipe)
 	//
 	// Conditional controls (Evolve, Journal) are simply omitted when not
 	// rendered — the navigation methods operate on whatever is in the list,
@@ -2108,19 +2105,21 @@
 		items.Add( new DetailFocusItem( "release", 0, 2, 2 ) );
 
 		// --- FACTS column (Col 1) ---
-		// MOVES 2x2 — two bands, two Subs each. All four slots always render
-		// (empty slots included — clicking one opens the learn-move picker).
+		// MOVES — one COLUMN of full-width slabs (2026-07-05): one band per
+		// slot, single Sub. All four slots always render (empty slots
+		// included — clicking one opens the learn-move picker).
 		items.Add( new DetailFocusItem( "move-0", 1, 0, 0 ) );
-		items.Add( new DetailFocusItem( "move-1", 1, 0, 1 ) );
-		items.Add( new DetailFocusItem( "move-2", 1, 1, 0 ) );
-		items.Add( new DetailFocusItem( "move-3", 1, 1, 1 ) );
+		items.Add( new DetailFocusItem( "move-1", 1, 1, 0 ) );
+		items.Add( new DetailFocusItem( "move-2", 1, 2, 0 ) );
+		items.Add( new DetailFocusItem( "move-3", 1, 3, 0 ) );
 
-		// Glyph rows at the dossier's foot — stacked vertically, so each
-		// gets its own band (W/S walks them; bands aren't renumbered when
-		// Journal is absent — nearest-band mapping handles the gap).
-		if ( SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0 )
-			items.Add( new DetailFocusItem( "diamond-journal", 1, 2, 0 ) );
-		items.Add( new DetailFocusItem( "diamond-showoff", 1, 3, 0 ) );
+		// Utility chips (Journal / Show-off) — ONE side-by-side band at the
+		// dossier's foot (2026-07-05 row conversion). Journal is Sub 0 when
+		// present; Show-off slides into Sub 0 when it isn't.
+		bool hasJournal = SelectedMonster.Journal != null && SelectedMonster.Journal.Count > 0;
+		if ( hasJournal )
+			items.Add( new DetailFocusItem( "diamond-journal", 1, 4, 0 ) );
+		items.Add( new DetailFocusItem( "diamond-showoff", 1, 4, hasJournal ? 1 : 0 ) );
 
 		return items;
 	}
@@ -2138,9 +2137,15 @@
 		return items[i].Id;
 	}
 
+	// True while the MOUSE drives the detail ring — suppresses the kb
+	// highlight (last-input-wins, user 2026-07-03). Cleared by kb nav.
+	private bool detailMouseDriving = false;
+
 	// Markup helper — true when `id` is the focused detail control.
+	// Suppressed while the mouse drives so the kb highlight never
+	// lingers under a moused pointer.
 	private bool IsDetailControlFocused( string id )
-		=> GetFocusedDetailControl() == id;
+		=> !detailMouseDriving && GetFocusedDetailControl() == id;
 
 	// Move keyboard focus to the detail panel (if a beast is selected).
 	// Cursor starts on the first item (the nickname pencil, top-left).
@@ -2149,6 +2154,7 @@
 		if ( SelectedMonster == null || isFusionMode ) return;
 		kbFocusZone = "detail";
 		detailFocusIndex = 0;
+		detailMouseDriving = false;
 		detailScrollFollowPending = true;
 		SoundManager.PlayClick();
 	}
@@ -2173,6 +2179,9 @@
 	// blip and queues the scroll-into-view.
 	private void SetDetailFocus( int newIndex )
 	{
+		// KB input reclaims the ring from the mouse (last-input-wins) —
+		// even a no-op move re-asserts the kb highlight.
+		detailMouseDriving = false;
 		if ( newIndex < 0 || newIndex == detailFocusIndex ) return;
 		detailFocusIndex = newIndex;
 		detailScrollFollowPending = true;
@@ -2877,6 +2886,14 @@
 	private string GetSelectedNature()
 	{
 		return SelectedMonster?.Genetics?.Nature.ToString() ?? "Neutral";
+	}
+
+	// Gene-total fill percent for the quality tile's gauge. Integer so the
+	// inline width binding never emits a locale comma (invariant law).
+	private int GetSelectedGenePercent()
+	{
+		if (SelectedMonster?.Genetics == null) return 0;
+		return (int)Math.Round(Math.Clamp(GetSelectedTotalGenes() / 180f, 0f, 1f) * 100f);
 	}
 
 	private string GetSelectedNatureEffect()
@@ -4638,6 +4655,16 @@
 			}
 		}
 
+		// Beast-switch replay key — edge-detected here so EVERY selection
+		// path (click, keyboard, auto-select) bumps exactly once. Drives the
+		// facts cascade + stage sprite pop render keys.
+		var _stagedId = SelectedMonster?.Id ?? Guid.Empty;
+		if ( _stagedId != _lastStagedMonsterId )
+		{
+			_lastStagedMonsterId = _stagedId;
+			stageRevVersion++;
+		}
+
 		// Wait for the second tick before flipping rosterRevealStage to 1.
 		// First tick = panel mounts, hidden state paints (opacity:0 + translateX-80).
 		// Second tick = flip to entered, transition has a starting state to interpolate from.
@@ -5067,6 +5094,10 @@
 		// won't remount. (Shop uses the same pair.)
 		hash.Add(justSelectedMonsterId);
 		hash.Add(selectPulseVersion);
+		// Beast-switch replay key — drives frev-@N / pop-@N class strings.
+		hash.Add(stageRevVersion);
+		// Last-input-wins: kb highlight suppression while the mouse drives.
+		hash.Add(detailMouseDriving);
 		// Living violet ring — markup-bound position + visibility class.
 		hash.Add(gridRingL);
 		hash.Add(gridRingT);
@@ -5146,6 +5177,37 @@
 			JournalEntryType.Milestone => "🏅",
 			JournalEntryType.Expedition => "🗺",
 			_ => "📝"
+		};
+	}
+
+	// 2026-07-05 journal dialect sweep — emoji retired in the modal; each
+	// entry type gets a lucide glyph + its badge color (matches the
+	// existing per-type SCSS accent hues).
+	private string GetJournalEntryLucide(JournalEntryType type)
+	{
+		return type switch
+		{
+			JournalEntryType.Caught => "lucide:target",
+			JournalEntryType.Bred => "lucide:egg",
+			JournalEntryType.Evolution => "lucide:sparkles",
+			JournalEntryType.BossDefeat => "lucide:skull",
+			JournalEntryType.Milestone => "lucide:medal",
+			JournalEntryType.Expedition => "lucide:map",
+			_ => "lucide:pen-line"
+		};
+	}
+
+	private string GetJournalEntryColor(JournalEntryType type)
+	{
+		return type switch
+		{
+			JournalEntryType.Caught => "#60a5fa",
+			JournalEntryType.Bred => "#f472b6",
+			JournalEntryType.Evolution => "#fbbf24",
+			JournalEntryType.BossDefeat => "#f87171",
+			JournalEntryType.Milestone => "#4ade80",
+			JournalEntryType.Expedition => "#a78bfa",
+			_ => "#9ca3af"
 		};
 	}
 
