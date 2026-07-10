@@ -433,7 +433,9 @@ public static class TraitDatabase
 			Name = "Barbed Hide",
 			Description = "Attackers take 12% of their max HP as damage when using contact moves.",
 			Rarity = TraitRarity.Uncommon,
-			Icon = "lucide:cactus",
+			// lucide:cactus doesn't exist (404 spam in console, blank trait
+			// tile) — shell = the carapace/hide read, still trait-unique.
+			Icon = "lucide:shell",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ContactDamage, Value = 12 }
