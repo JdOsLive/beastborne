@@ -84,6 +84,16 @@ public class MonsterSpecies
 	public string EvolvesTo { get; set; }
 	public int EvolutionLevel { get; set; }
 
+	/// <summary>
+	/// Escape hatch for the Pattern Book's hard rule: a fusion pattern's
+	/// result must normally be STANDALONE (no EvolvesFrom/EvolvesTo) so the
+	/// loom can never counterfeit leveling evolution. A species flagged
+	/// FusionOnly is exempt — it exists ONLY as a fusion result and may sit
+	/// inside an evolution line. No species uses this yet (future-proofing);
+	/// FusionPatterns.Validate enforces the rule at load.
+	/// </summary>
+	public bool FusionOnly { get; set; } = false;
+
 	// Catchability
 	public bool IsCatchable { get; set; } = true;
 	public float BaseCatchRate { get; set; } = 0.5f;

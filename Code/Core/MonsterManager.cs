@@ -189,6 +189,7 @@ public sealed class MonsterManager : Component
 		_hasHydrated = false;
 		OwnedMonsters = new();
 		MaxMonsters = BASE_MAX_MONSTERS;
+		DiscoveredPatterns = new();
 		_otBackfillDone = false;
 		Hydrate();
 		Log.Info( "[MonsterManager] reset to empty roster" );
@@ -235,6 +236,10 @@ public sealed class MonsterManager : Component
 		// Create default species for MVP
 		CreateDefaultSpecies();
 		Log.Info( $"Loaded {_speciesDatabase.Count} monster species" );
+
+		// Pattern Book hard-rule check: every fusion pattern's result must be
+		// standalone-or-FusionOnly. Logs an error naming any violation.
+		FusionPatterns.Validate( _speciesDatabase );
 
 		// Register a themed material item for every launch-roster species so
 		// signature drops work at defeat time. ItemManager reads SignatureDropName
@@ -8196,6 +8201,7 @@ public sealed class MonsterManager : Component
 		OwnedMonsters = blob.Monsters ?? new();
 		MaxMonsters = blob.MaxMonsters > 0 ? blob.MaxMonsters : BASE_MAX_MONSTERS;
 		if ( MaxMonsters < BASE_MAX_MONSTERS ) MaxMonsters = BASE_MAX_MONSTERS;
+		DiscoveredPatterns = new HashSet<string>( blob.DiscoveredPatterns ?? new() );
 
 		// Migrate existing monsters
 		bool needsSave = false;
@@ -8872,14 +8878,40 @@ public sealed class MonsterManager : Component
 
 	public Monster BreedMonsters( Monster parent1, Monster parent2, HashSet<string> lockedGenes = null )
 	{
-		// Must be same species (or evolutions of same line)
 		var species1 = GetSpecies( parent1.SpeciesId );
 		var species2 = GetSpecies( parent2.SpeciesId );
 
 		if ( species1 == null || species2 == null ) return null;
 
-		// Determine offspring species (use base form)
-		string offspringSpeciesId = GetBaseFormId( parent1.SpeciesId );
+		// Determine offspring species:
+		//  - Same species → Gene Weave (existing behavior, base form offspring)
+		//  - Different species → ONLY allowed via a hand-authored fusion
+		//    pattern (unordered pair match). No pattern = the loom refuses.
+		string offspringSpeciesId;
+		FusionPattern matchedPattern = null;
+
+		if ( parent1.SpeciesId == parent2.SpeciesId )
+		{
+			offspringSpeciesId = GetBaseFormId( parent1.SpeciesId );
+		}
+		else
+		{
+			matchedPattern = FusionPatterns.Find( parent1.SpeciesId, parent2.SpeciesId );
+			if ( matchedPattern == null )
+			{
+				Log.Warning( $"[BreedMonsters] Refused cross-species weave {parent1.SpeciesId} × {parent2.SpeciesId} — the loom knows no such pattern." );
+				return null;
+			}
+
+			int avgParentLevel = (parent1.Level + parent2.Level) / 2;
+			if ( avgParentLevel < matchedPattern.MinAvgLevel )
+			{
+				Log.Warning( $"[BreedMonsters] Refused pattern '{matchedPattern.Id}' — avg level {avgParentLevel} below MinAvgLevel {matchedPattern.MinAvgLevel}." );
+				return null;
+			}
+
+			offspringSpeciesId = matchedPattern.ResultSpeciesId;
+		}
 
 		var offspringGenetics = GeneticsCalculator.CalculateOffspringGenetics( parent1.Genetics, parent2.Genetics, lockedGenes );
 
@@ -8997,7 +9029,47 @@ public sealed class MonsterManager : Component
 		RemoveMonster( parent1.Id );
 		RemoveMonster( parent2.Id );
 
+		// First successful weave of a pattern inscribes it in the Pattern Book.
+		if ( matchedPattern != null )
+			DiscoverPattern( matchedPattern.Id );
+
 		return AddMonster( offspring );
+	}
+
+	// ═════════════════════════════════════════════════════════════════════
+	// THE PATTERN BOOK — discovered cross-species fusion patterns.
+	// A pattern becomes discovered the first time it is successfully woven;
+	// ids persist on the save blob alongside the roster.
+	// ═════════════════════════════════════════════════════════════════════
+
+	/// <summary>Pattern ids the player has woven at least once.</summary>
+	public HashSet<string> DiscoveredPatterns { get; private set; } = new();
+
+	/// <summary>Fired when a pattern is inscribed for the first time (UI unveil moment).</summary>
+	public Action<FusionPattern> OnPatternDiscovered;
+
+	public bool IsPatternDiscovered( string patternId ) => DiscoveredPatterns.Contains( patternId );
+
+	/// <summary>Mark a pattern discovered and persist. No-op if already known.</summary>
+	public void DiscoverPattern( string patternId )
+	{
+		if ( string.IsNullOrEmpty( patternId ) ) return;
+		if ( !DiscoveredPatterns.Add( patternId ) ) return;
+
+		SaveDiscoveredPatterns();
+
+		var pattern = FusionPatterns.All.FirstOrDefault( p => p.Id == patternId );
+		Log.Info( $"[PatternBook] NEW PATTERN inscribed: {pattern?.Name ?? patternId}" );
+		if ( pattern != null )
+			OnPatternDiscovered?.Invoke( pattern );
+	}
+
+	private void SaveDiscoveredPatterns()
+	{
+		var blob = SaveService.Instance?.CurrentBlob;
+		if ( blob == null ) return;
+		blob.DiscoveredPatterns = DiscoveredPatterns.ToList();
+		SaveService.Instance.MarkDirty( "patterns" );
 	}
 
 	private string GetBaseFormId( string speciesId )

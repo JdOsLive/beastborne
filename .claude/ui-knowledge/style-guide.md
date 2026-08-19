@@ -161,7 +161,7 @@ States: hover brighten / active dim, **hue never changes, no transforms** (ring 
 |---|---|---|
 | `Icon` | sparkles | iconify name, counter-rotated upright |
 | `Size` | `36` | frame side px; root bounding box = Size×1.45 (never overhangs flex rows) |
-| `Tint` | violet | solid fill — tint to FUNCTION (Item blue, Fuse pink, Release red) |
+| `Tint` | violet | solid fill — tint to FUNCTION (Item blue, Fuse violet `#7b4ddb` — pink retired 2026-07-12, Release red) |
 | `DarkGlyph` | `false` | ink glyph for light tints (gold) |
 | `OnClick` | — | when set: pointer cursor, spring hover scale, press dip, hover sound. **Hover scales = transforms — don't put interactive diamonds directly in scroll grids.** |
 

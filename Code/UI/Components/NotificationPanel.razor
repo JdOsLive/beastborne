@@ -3,251 +3,144 @@
 @using Sandbox;
 @using Sandbox.UI;
 @using Beastborne.Core;
-@using Beastborne.Data;
 @using Beastborne.Systems;
 @inherits Panel
 
+@*
+	NOTIFICATION PEEKS (v10, 2026-07-12) — the floating toast stack + the
+	draggable history dropdown are RETIRED (user: "can popup notifications
+	just be on the notifications app of your phone instead? they are so
+	oddly placed and i hate it"). The PawPad's ALERTS app is the ONE
+	persistent record now (PhoneLauncher reads NotificationHistory — up
+	to 50, written at AddNotification time, so dismissal never loses
+	anything). This component renders only the transient "phone peek"
+	stream: compact cards in the phone's own row dialect that slide out
+	of the PawPad button's corner (bottom-right, stacked directly above
+	the paw chip, right edges aligned), read for ~3.6s, then slide back
+	toward the phone. Clicking a peek opens the phone onto ALERTS.
+	Max 3 live peeks; older ones dim/compress. Mouse-only — no keyboard
+	cursor on ephemera (N still opens the alerts app via NavManager).
 
-<div class="notification-panel @(isExpanded ? "expanded" : "")">
-<div class="notif-drag-wrap" style="@GetDragStyle()">
-	<!-- Expanded History View — always rendered, animated via CSS -->
-	<div class="notification-history @(isExpanded ? "open" : "")">
-			<div class="bg-scroll"><img src="ui/bg-patterns/bg-notifications.svg" /></div>
-			<!-- Header -->
-			<div class="notif-header">
-				<div class="notif-header-left" onmousedown=@OnDragStart>
-					<iconify icon="lucide:grip-horizontal" Size=@(16) Color="rgba(139,92,246,0.45)" />
-					<iconify icon="lucide:bell" Size=@(22) Color="#c4b5fd" />
-					<span class="notif-title">@L("ui.notifications.title")</span>
-				</div>
-				<div class="notif-header-right">
-					@{
-						var unread = GetUnreadCount();
-					}
-					@if (unread > 0)
-					{
-						<span class="notif-badge">@unread @L("ui.notifications.new")</span>
-					}
-					<button class="close-btn" onclick=@ToggleExpanded><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
-				</div>
-			</div>
+	Engine laws honored: entrance = @@keyframes on MOUNT (each peek is a
+	fresh transient element — the one lawful mount-keyframe use); exit =
+	class toggle + transition (replays every time, keyframes wouldn't);
+	anchored `position: absolute` against the fullscreen HUD root (no
+	position: fixed); every bare string wrapped in a <span>.
+*@
 
-			<!-- Filter Tabs -->
-			<div class="notif-filter">
-				<div class="nf-pill @(currentFilter == "all" ? "active" : "")" onclick=@(() => SetFilter("all"))><span>@L("ui.notifications.all")</span></div>
-				<div class="nf-pill @(currentFilter == "game" ? "active" : "")" onclick=@(() => SetFilter("game"))><span>@L("ui.notifications.game")</span></div>
-				<div class="nf-pill @(currentFilter == "social" ? "active" : "")" onclick=@(() => SetFilter("social"))><span>@L("ui.notifications.social")</span></div>
-				<div class="nf-pill @(currentFilter == "system" ? "active" : "")" onclick=@(() => SetFilter("system"))><span>@L("ui.notifications.system")</span></div>
-			</div>
-
-			<!-- Notification List -->
-			<div class="notif-list">
-				@{
-					var filtered = GetFilteredHistory();
-				}
-				@if (filtered.Count == 0)
+<root class="peek-root">
+	@{ var last = LastLivePeek(); }
+	@foreach (var p in _peeks)
+	{
+		<div class="peek @(p.Leaving ? "leaving" : "") @(!p.Leaving && p != last ? "stale" : "")"
+		     onclick=@OnPeekClicked>
+			<div class="peek-icon">
+				@if (p.Notif.HasImageIcon)
 				{
-					<div class="no-notifications"><span>@L("ui.notifications.no_notifications")</span></div>
+					<img class="peek-icon-img" src=@p.Notif.IconPath />
 				}
 				else
 				{
-					@foreach (var notification in filtered)
-					{
-						<div class="notif-msg @GetTypeClass(notification.Type)">
-							<div class="ni @GetTypeClass(notification.Type)">
-								@if (notification.HasImageIcon)
-								{
-									<img class="ni-img" src=@notification.IconPath />
-								}
-								else
-								{
-									<iconify icon="@GetNotificationIconName(notification.Type)" Size=@(20) Color="@GetNotificationIconColor(notification.Type)" />
-								}
-							</div>
-							<div class="nc">
-								<span class="nt @GetTypeClass(notification.Type)">@notification.Title</span>
-								<span class="ns">@notification.Message</span>
-							</div>
-							<span class="ntime">@GetTimeAgo(notification.CreatedAt)</span>
-						</div>
-					}
+					<iconify icon="@GetNotificationIconName(p.Notif.Type)" Size=@(18) Color="@GetNotificationIconColor(p.Notif.Type)" />
 				}
 			</div>
-
-			<!-- Clear All -->
-			@if (GetHistory().Count > 0)
-			{
-				<div class="notif-clear">
-					<div class="notif-clear-btn" onclick=@ClearHistory><span>@L("ui.notifications.clear_all")</span></div>
-				</div>
-			}
-		</div>
-
-	@if (!isExpanded && !_userDismissed)
-	{
-		<!-- Toast Notifications (below button) -->
-		@foreach (var notification in GetNotifications())
-		{
-			<div class="notification @GetTypeClass(notification.Type) @(_dismissingIds.Contains(notification.Id) ? "dismissing" : "")" onclick=@(() => DismissNotification(notification.Id))>
-				<div class="notification-icon">
-					@if (notification.HasImageIcon)
-					{
-						<img class="notification-icon-img" src=@notification.IconPath />
-					}
-					else
-					{
-						<iconify icon="@GetNotificationIconName(notification.Type)" Size=@(20) Color="@GetNotificationIconColor(notification.Type)" />
-					}
-				</div>
-				<div class="notification-content">
-					<div class="notification-title">@notification.Title</div>
-					<div class="notification-message">@notification.Message</div>
-				</div>
-				<div class="notification-close"><iconify icon="lucide:x" Size=@(12) Color="rgba(255, 255, 255, 0.7)" /></div>
-				<div class="notification-progress">
-					<div class="notification-progress-bar" style="width: @(notification.Progress * 100)%"></div>
-				</div>
+			<div class="peek-body">
+				<span class="peek-title" style="color: @GetNotificationIconColor(p.Notif.Type);">@p.Notif.Title</span>
+				<span class="peek-msg">@p.Notif.Message</span>
 			</div>
-		}
+		</div>
 	}
-</div>
-</div>
-@if ( _isDragging )
-{
-	<div class="notif-drag-shield" onmousemove=@OnDragMove onmouseup=@OnDragEnd></div>
-}
+</root>
 
 @code {
-	// Localization helper
-	private string L( string key ) => LocalizationManager.Get( key );
-	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
-
-	private bool isExpanded = false;
-	private string currentFilter = "all";
-	private HashSet<Guid> _dismissingIds = new();
-
-	// When the user manually dismisses all toasts or moves the popup, suppress
-	// auto-show toasts until the next new notification arrives.
-	private bool _userDismissed = false;
-
-	// ─── Drag state ────────────────────────────────────────────────
-	private bool _isDragging = false;
-	private bool _needsDragAnchor = false;
-	private float _dragStartMouseX, _dragStartMouseY;
-	private float _dragStartOffsetX, _dragStartOffsetY;
-	private float _dragOffsetX = 0f, _dragOffsetY = 0f;
-
-	private void OnDragStart( PanelEvent e )
+	// ── Peek model ──────────────────────────────────────────────────────
+	private class Peek
 	{
-		_isDragging = true;
-		_dragStartOffsetX = _dragOffsetX;
-		_dragStartOffsetY = _dragOffsetY;
-		_needsDragAnchor = true;
-		StateHasChanged();
+		public Notification Notif;
+		public float BornAt;
+		public bool Leaving;
+		public float GoneAt;   // when a leaving peek is removed from the list
 	}
 
-	private void OnDragMove( PanelEvent e )
+	private readonly List<Peek> _peeks = new();
+	private readonly HashSet<Guid> _seen = new();
+
+	private const int MaxPeeks = 3;
+	private const float PeekLifeSeconds = 3.6f;
+	private const float PeekExitSeconds = 0.24f;
+
+	/// <summary>Unread count for the HUD chip + PawPad badges (proxies the manager).</summary>
+	public static int UnreadCount => NotificationManager.Instance?.UnreadCount ?? 0;
+
+	/// <summary>Time.Now stamp of the most recent peek arrival — GameHUD
+	/// reads this to pop the PawPad chip when the phone "announces".</summary>
+	public static float LastPeekBornAt { get; private set; } = -999f;
+
+	public override void Tick()
 	{
-		if ( !_isDragging ) return;
-		if ( _needsDragAnchor )
+		base.Tick();
+
+		var active = NotificationManager.Instance?.ActiveNotifications;
+		if (active != null)
 		{
-			_dragStartMouseX = MousePosition.x;
-			_dragStartMouseY = MousePosition.y;
-			_needsDragAnchor = false;
-			return;
-		}
-		_dragOffsetX = _dragStartOffsetX + ( MousePosition.x - _dragStartMouseX );
-		_dragOffsetY = _dragStartOffsetY + ( MousePosition.y - _dragStartMouseY );
-		StateHasChanged();
-	}
-
-	private void OnDragEnd( PanelEvent e )
-	{
-		_isDragging = false;
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		if (tamer != null)
-		{
-			tamer.NotifPanelOffsetX = _dragOffsetX;
-			tamer.NotifPanelOffsetY = _dragOffsetY;
-			TamerManager.Instance?.SaveToCloud();
-		}
-		StateHasChanged();
-	}
-
-	private string GetDragStyle()
-	{
-		if ( _dragOffsetX == 0f && _dragOffsetY == 0f ) return "";
-		return string.Format( System.Globalization.CultureInfo.InvariantCulture,
-			"transform: translate({0:F0}px, {1:F0}px);", _dragOffsetX, _dragOffsetY );
-	}
-
-	// Static instance for external access
-	public static NotificationPanel Instance { get; private set; }
-
-	// Static property so other components can check if notifications are open
-	public static bool IsNotificationsExpanded { get; private set; } = false;
-
-	/// <summary>
-	/// Static toggle for external callers (e.g. bottom bar button)
-	/// </summary>
-	public static void Toggle() => Instance?.ToggleExpanded();
-
-	/// <summary>
-	/// Static unread count for external callers
-	/// </summary>
-	public static int UnreadCount => Instance?.GetUnreadCount() ?? 0;
-
-	protected override void OnAfterTreeRender( bool firstTime )
-	{
-		if ( firstTime )
-		{
-			Instance = this;
-			var tamer = TamerManager.Instance?.CurrentTamer;
-			if (tamer != null)
+			foreach (var n in active)
 			{
-				_dragOffsetX = tamer.NotifPanelOffsetX;
-				_dragOffsetY = tamer.NotifPanelOffsetY;
+				if (_seen.Contains(n.Id)) continue;
+				_seen.Add(n.Id);
+
+				// While the phone is up, the app list + badge already show
+				// it — announcing over the announcer would be noise.
+				if (PhoneLauncher.IsVisible) continue;
+
+				_peeks.Add(new Peek { Notif = n, BornAt = Time.Now });
+				LastPeekBornAt = Time.Now;
+
+				// Max 3 live peeks — push the oldest out early.
+				var live = _peeks.Where(p => !p.Leaving).ToList();
+				for (int i = 0; i < live.Count - MaxPeeks; i++)
+					BeginLeave(live[i]);
 			}
+
+			// Prune the seen-set against the active list (expired ids never
+			// return, so this can't re-admit an old notification).
+			if (_seen.Count > 0)
+				_seen.RemoveWhere(id => !active.Any(n => n.Id == id));
+		}
+
+		// Session-restart sanity: Time.Now resets to ~0 per editor session
+		// while instance fields can survive hotload — future stamps are stale.
+		if (LastPeekBornAt > Time.Now + 1f) LastPeekBornAt = -999f;
+
+		// Age out.
+		for (int i = _peeks.Count - 1; i >= 0; i--)
+		{
+			var p = _peeks[i];
+			if (p.BornAt > Time.Now + 1f) p.BornAt = Time.Now;       // stale-session stamp
+			if (p.GoneAt > Time.Now + 1f) p.GoneAt = Time.Now;       // stale-session stamp
+			if (!p.Leaving && Time.Now - p.BornAt >= PeekLifeSeconds) BeginLeave(p);
+			if (p.Leaving && Time.Now >= p.GoneAt) _peeks.RemoveAt(i);
 		}
 	}
 
-	private List<Notification> GetNotifications()
+	private void BeginLeave(Peek p)
 	{
-		return NotificationManager.Instance?.ActiveNotifications?.ToList() ?? new();
+		if (p.Leaving) return;
+		p.Leaving = true;
+		p.GoneAt = Time.Now + PeekExitSeconds;
 	}
 
-	private List<Notification> GetHistory()
+	private Peek LastLivePeek() => _peeks.LastOrDefault(p => !p.Leaving);
+
+	private void OnPeekClicked()
 	{
-		return NotificationManager.Instance?.NotificationHistory?.ToList() ?? new();
+		SoundManager.PlayClick();
+		// Everything on screen is already in the record — sweep the peeks
+		// and open the phone onto ALERTS (which marks all read).
+		foreach (var p in _peeks) BeginLeave(p);
+		PhoneLauncher.OpenToApp("alerts");
 	}
 
-	private List<Notification> GetFilteredHistory()
-	{
-		var history = GetHistory();
-		if (currentFilter == "all") return history;
-		return history.Where(n => GetFilterCategory(n.Type) == currentFilter).ToList();
-	}
-
-	private string GetFilterCategory(NotificationType type)
-	{
-		return type switch
-		{
-			NotificationType.Evolution => "game",
-			NotificationType.Catch => "game",
-			NotificationType.ServerBoost => "game",
-			NotificationType.ExpeditionUnlock => "game",
-			NotificationType.Achievement => "game",
-			NotificationType.TamerLevelUp => "game",
-			NotificationType.RankedBattle => "social",
-			_ => "system"
-		};
-	}
-
-	private int GetUnreadCount()
-	{
-		return NotificationManager.Instance?.UnreadCount ?? 0;
-	}
-
+	// ── Per-type icon vocabulary (carried over from the old toast) ──────
 	private string GetNotificationIconName(NotificationType type)
 	{
 		return type switch
@@ -282,113 +175,41 @@
 		};
 	}
 
-	private string GetTypeClass(NotificationType type)
+	// ────────────────────────────────────────────────────────────────────
+	// TEMP dev tooling — REMOVE once peek verification is done.
+	// `dev_notify` fires one test notification; `dev_notify 4` fires four
+	// rapid ones to exercise the max-3 stack compression.
+	// ────────────────────────────────────────────────────────────────────
+	[ConCmd("dev_notify")]
+	public static void DevNotify(int count = 1)
 	{
-		return type switch
+		var types = new[] { NotificationType.Success, NotificationType.Catch, NotificationType.TamerLevelUp, NotificationType.Achievement, NotificationType.Info };
+		for (int i = 0; i < count; i++)
 		{
-			NotificationType.Info => "info",
-			NotificationType.Success => "success",
-			NotificationType.Warning => "warning",
-			NotificationType.Evolution => "evolution",
-			NotificationType.ServerBoost => "server-boost",
-			NotificationType.RankedBattle => "ranked-battle",
-			NotificationType.Catch => "catch",
-			NotificationType.TamerLevelUp => "tamer-level-up",
-			NotificationType.ExpeditionUnlock => "expedition-unlock",
-			NotificationType.Achievement => "achievement",
-			_ => "info"
-		};
-	}
-
-	private string GetTimeAgo(DateTime time)
-	{
-		var diff = DateTime.UtcNow - time;
-		if (diff.TotalSeconds < 60) return "Just now";
-		if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m";
-		if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h";
-		return $"{(int)diff.TotalDays}d";
-	}
-
-	private void SetFilter(string filter)
-	{
-		if (currentFilter == filter) return;
-		currentFilter = filter;
-		SoundManager.PlayTabSwitch();
-	}
-
-	private void DismissNotification(Guid id)
-	{
-		if (_dismissingIds.Contains(id)) return;
-		SoundManager.PlayClick();
-		_dismissingIds.Add(id);
-		// If user dismissed the last visible toast, suppress further auto-shows
-		// until the next new notification arrives.
-		var remaining = GetNotifications().Count(n => !_dismissingIds.Contains(n.Id));
-		if (remaining <= 1) _userDismissed = true;
-		StateHasChanged();
-		_ = RemoveAfterDismissAnimation(id);
-	}
-
-	private async Task RemoveAfterDismissAnimation(Guid id)
-	{
-		await Task.Delay(220);
-		_dismissingIds.Remove(id);
-		NotificationManager.Instance?.RemoveNotification(id);
-		StateHasChanged();
-	}
-
-	private void ToggleExpanded()
-	{
-		isExpanded = !isExpanded;
-		IsNotificationsExpanded = isExpanded;
-		if (isExpanded)
-		{
-			_userDismissed = false;
-			NotificationManager.Instance?.MarkAllRead();
-			SoundManager.PlayPopup();
-		}
-		else
-		{
-			SoundManager.PlayPopdown();
+			var t = types[i % types.Length];
+			NotificationManager.Instance?.AddNotification(t, $"Test {t}", $"Peek verification #{i + 1} — routed via the PawPad.", 5f);
 		}
 	}
 
-	private void ClearHistory()
+	// TEMP — REMOVE with dev_notify: opens the PawPad onto the ALERTS app
+	// (what clicking a peek / pressing N does) for hands-off verification.
+	[ConCmd("dev_alerts")]
+	public static void DevAlerts()
 	{
-		NotificationManager.Instance?.ClearHistory();
-		SoundManager.PlayBack();
-	}
-
-	private int _lastNotificationCount = 0;
-
-	public override void Tick()
-	{
-		base.Tick();
-		var count = GetNotifications().Count;
-		if (count > _lastNotificationCount)
-			_userDismissed = false;
-		_lastNotificationCount = count;
+		PhoneLauncher.OpenToApp("alerts");
 	}
 
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
-		hash.Add(isExpanded);
-		hash.Add(_userDismissed);
-		hash.Add(currentFilter);
-		hash.Add(GetNotifications().Count);
-		hash.Add(GetHistory().Count);
-		hash.Add(GetUnreadCount());
-		hash.Add(_dismissingIds.Count);
-		hash.Add(_isDragging);
-		hash.Add((int)_dragOffsetX);
-		hash.Add((int)_dragOffsetY);
-		foreach (var n in GetNotifications())
+		hash.Add(_peeks.Count);
+		foreach (var p in _peeks)
 		{
-			hash.Add(n.Id);
-			hash.Add((int)(n.Progress * 100));
-			hash.Add(_dismissingIds.Contains(n.Id));
+			hash.Add(p.Notif.Id);
+			hash.Add(p.Leaving);
 		}
+		// Which peek is "last live" drives the .stale class distribution.
+		hash.Add(LastLivePeek()?.Notif.Id ?? Guid.Empty);
 		return hash.ToHashCode();
 	}
 }

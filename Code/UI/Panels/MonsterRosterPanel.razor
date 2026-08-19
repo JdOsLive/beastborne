@@ -98,7 +98,7 @@
 		   paint-behind law); host positioning rule lives in the scss
 		   (.roster-header > .bhw-root). Accent value-swaps to the fusion
 		   pink when the forge takes the header. *@
-		<BbHeaderWaves Accent=@(isFusionMode ? "pink" : "violet") />
+		<BbHeaderWaves Accent=@("violet") />
 		<div class="rh-identity">
 			<span class="rh-kicker">@(isFusionMode ? "GENE FORGE" : "COLLECTION")</span>
 			<div class="rh-title-row">
@@ -186,6 +186,11 @@
 				// disturb the player's primary collection sort/filter setup.
 				var collectionMonsters = isFusionMode ? GetAvailableBreedingMonsters() : GetFilteredMonsters();
 				var keyboardIdx = Math.Clamp(selectedMonsterIndex, 0, Math.Max(0, collectionMonsters.Count - 1));
+				// PATTERN BOOK spotlight — a selected pattern row highlights
+				// its eligible parents in this grid and dims everything else.
+				var spotlightPattern = isFusionMode && selectedPatternId != null
+					? FusionPatterns.All.FirstOrDefault(p => p.Id == selectedPatternId)
+					: null;
 			}
 			@for (int i = 0; i < collectionMonsters.Count; i++)
 			{
@@ -196,12 +201,16 @@
 				var isFusionParent1 = isFusionMode && Parent1?.Id == monster.Id;
 				var isFusionParent2 = isFusionMode && Parent2?.Id == monster.Id;
 				var isFusionParent = isFusionParent1 || isFusionParent2;
-				var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && monster.SpeciesId != Parent1.SpeciesId;
+				// Pairable = same species (Gene Weave) OR an unordered pattern
+				// match (Pattern Book) — the loom refuses everything else.
+				var isFusionIncompatible = isFusionMode && Parent1 != null && !isFusionParent && !IsWeavePairable(Parent1, monster);
+				var isPatternEligible = spotlightPattern != null && (monster.SpeciesId == spotlightPattern.ParentA || monster.SpeciesId == spotlightPattern.ParentB);
+				var isPatternDim = spotlightPattern != null && !isPatternEligible;
 				// Beast-art editor is only active in "card" mode, when the
 				// editor toolbar is enabled, and when no other interaction
 				// mode (fusion / multi-select) is competing for clicks.
 				var _mybCardEditing = ShowMyBeastsArtEditor && _myBeastsEditMode == "card" && !isFusionMode && !isMultiSelectMode;
-				<div @ref="cardSizeRef" class="monster-card-wrapper @(releasingIds.Contains(monster.Id) ? "releasing" : "") @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
+				<div @ref="cardSizeRef" class="monster-card-wrapper @(releasingIds.Contains(monster.Id) ? "releasing" : "") @(isMultiSelectMode ? "multi-select-mode" : "") @(isSelectedForRelease ? "selected-for-release" : "") @(isFusionMode ? "fusion-mode" : "") @(isFusionParent ? "fusion-parent" : "") @(isFusionIncompatible ? "fusion-incompatible" : "") @(isPatternEligible ? $"pattern-eligible spotcol-{idx % 4}" : "") @(isPatternDim ? "pattern-dim" : "") @(_mybCardEditing ? "myb-art-edit" : "")"
 					 onclick=@(() => OnMonsterCardClicked(monster, idx))
 					 onmousedown=@((e) => { OnCardMouseDown(monster, idx); if (isMultiSelectMode) e.StopPropagation(); if (_mybCardEditing) StartMyBeastsArtDrag(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
 					 onmouseover=@(() => { OnCardMouseEnter(monster, idx); if (_mybCardEditing) OnMyBeastsArtHover(_myBeastsTestSpeciesId ?? monster.SpeciesId); })
@@ -321,18 +330,25 @@
 				int fusionCost = bothPicked ? GeneticsCalculator.CalculateBreedingCost(Parent1, Parent2) : 0;
 				bool canAffordFusion = TamerManager.Instance?.CurrentTamer?.Gold >= fusionCost;
 				bool canFuse = bothPicked && fusionCompat != null && fusionCompat.CanBreed && canAffordFusion;
-				// The altar core previews the offspring's species art (family
-				// fusion keeps Parent1's line, so its icon is the honest preview).
-				var altarSpecies = Parent1 != null ? MonsterManager.Instance?.GetSpecies(Parent1.SpeciesId) : null;
+				// The altar core previews the offspring's species art. Same
+				// species → Parent1's line (the honest family preview). Cross
+				// species → the fusion's result (nothing is hidden — every
+				// fusion is visible and plannable from the start).
+				var altarPattern = bothPicked ? FusionPatterns.Find(Parent1.SpeciesId, Parent2.SpeciesId) : null;
+				var altarSpecies = altarPattern != null
+					? MonsterManager.Instance?.GetSpecies(altarPattern.ResultSpeciesId)
+					: (Parent1 != null ? MonsterManager.Instance?.GetSpecies(Parent1.SpeciesId) : null);
 				var altarIcon = altarSpecies?.IconPath ?? "";
 				var altarActive = bothPicked && fusionCompat?.CanBreed == true;
+				// Fusion slotted in the altar → its list row highlights.
+				var slottedPatternId = altarPattern?.Id;
 			}
 
 			@* ══ THE ALTAR — parents flank the predicted offspring ══ *@
 			<div class="cs-stage altar">
 				<div class="altar-kicker">
-					<iconify icon="lucide:combine" Size=@(16) Color="#f9a8d4" />
-					<span class="altar-kicker-text">@(showResult && breedingResult != null ? "FUSION COMPLETE" : (altarActive ? L("ui.roster.both_consumed") : "Pick two beasts of the same species"))</span>
+					<iconify icon="lucide:combine" Size=@(16) Color="#c4b5fd" />
+					<span class="altar-kicker-text">@(showResult && breedingResult != null ? "FUSION COMPLETE" : (altarActive ? L("ui.roster.both_consumed") : "Pick two beasts that can fuse"))</span>
 				</div>
 
 				@if (showResult && breedingResult != null && !isFusionAnimating)
@@ -351,6 +367,110 @@
 					<div class="fr-name">@(string.IsNullOrEmpty(breedingResult.Nickname) ? _frSpecies?.Name : breedingResult.Nickname)</div>
 					<div class="fr-quality @_frQualityClass"><span>@(breedingResult.Genetics?.QualityRating ?? "Average")</span></div>
 				</div>
+
+				@* ══ RESULT LEDGER — re-homed UNDER the altar (2026-07-12
+				   Pattern Book: the right column is the book now). Same
+				   markup/keys as before, just scrolling in the middle. *@
+				@{
+					var _rq = breedingResult.Genetics?.QualityRating ?? "Average";
+					var _rTot = GetResultTotalGenes();
+					var _rDelta = _rTot - lastFusionExpectedTotal;
+					var _rvx = _rDelta >= 3 ? "lucky" : _rDelta <= -3 ? "harsh" : "ontarget";
+					var _rvxLabel = _rDelta >= 3 ? "LUCKY" : _rDelta <= -3 ? "HARSH" : "ON TARGET";
+					var _natSrc = GetNatureSource();
+					var _natLabel = _natSrc == "both" ? "inherited" : _natSrc == "b1" ? $"from {lastFusionParent1?.Nickname ?? "B1"}" : _natSrc == "b2" ? $"from {lastFusionParent2?.Nickname ?? "B2"}" : "random";
+				}
+				<div class="altar-ledger">
+					<div class="fr-zone fd-zone rrev-@resultRevVersion">
+						<div class="fd-head">
+							<div class="fd-head-chip"><span>FUSION RESULT</span></div>
+							<div class="fd-head-line"></div>
+							<div class="fd-head-badge dim"><span>@_rq.ToUpper()</span></div>
+						</div>
+						<div class="fr-card">
+							<div class="fd-cut"></div>
+							@if (lastFusionExpectedTotal > 0)
+							{
+								<div class="fr-rvx">
+									@* Count-up ticker (juice 2026-07-12) — displayedResultTotal
+									   lerps in Tick once the card has faded in (the PWR
+									   count-up precedent; the panel re-renders per frame).
+									   Delta/verdict math above stays on the REAL total. *@
+									<span class="fr-rvx-total">@((int)displayedResultTotal)</span>
+									<span class="fr-rvx-max">/180</span>
+									<span class="fr-rvx-expected">~@lastFusionExpectedTotal expected</span>
+									<div class="fr-rvx-verdict @_rvx"><span>@(_rDelta > 0 ? "+" : "")@_rDelta @_rvxLabel</span></div>
+								</div>
+							}
+							<div class="fr-ghead">
+								<span class="fr-g-label"></span>
+								<span class="fr-g-col">@(lastFusionParent1?.Nickname ?? "B1")</span>
+								<span class="fr-g-col">@(lastFusionParent2?.Nickname ?? "B2")</span>
+								<span class="fr-g-col result">RESULT</span>
+							</div>
+							@{
+								var _frRows = new (string label, string cls, int p1, int p2, int res)[]
+								{
+									("HP",  "hp",      lastFusionParent1?.Genetics?.HPGene ?? 0,  lastFusionParent2?.Genetics?.HPGene ?? 0,  breedingResult.Genetics?.HPGene ?? 0),
+									("ATK", "atk",     lastFusionParent1?.Genetics?.ATKGene ?? 0, lastFusionParent2?.Genetics?.ATKGene ?? 0, breedingResult.Genetics?.ATKGene ?? 0),
+									("DEF", "def",     lastFusionParent1?.Genetics?.DEFGene ?? 0, lastFusionParent2?.Genetics?.DEFGene ?? 0, breedingResult.Genetics?.DEFGene ?? 0),
+									("SpA", "spa",     lastFusionParent1?.Genetics?.SpAGene ?? 0, lastFusionParent2?.Genetics?.SpAGene ?? 0, breedingResult.Genetics?.SpAGene ?? 0),
+									("SpD", "spd-def", lastFusionParent1?.Genetics?.SpDGene ?? 0, lastFusionParent2?.Genetics?.SpDGene ?? 0, breedingResult.Genetics?.SpDGene ?? 0),
+									("SPD", "spd",     lastFusionParent1?.Genetics?.SPDGene ?? 0, lastFusionParent2?.Genetics?.SPDGene ?? 0, breedingResult.Genetics?.SPDGene ?? 0),
+								};
+							}
+							@foreach (var g in _frRows)
+							{
+								var _avg = (g.p1 + g.p2) / 2f;
+								var _verdict = g.res > _avg + 0.5f ? "up" : (g.res < _avg - 0.5f ? "down" : "even");
+								@* fg-@cls keys the per-row ticker cascade (percentage
+								   staggers in scss — the delay-murder law). *@
+								<div class="fr-gene fg-@g.cls">
+									<span class="fr-g-label @g.cls">@g.label</span>
+									<span class="fr-g-col">@g.p1</span>
+									<span class="fr-g-col">@g.p2</span>
+									<span class="fr-g-col result @_verdict">@g.res</span>
+								</div>
+							}
+							<div class="fr-nature">
+								<iconify icon="lucide:leaf" Size=@(13) Color="#86efac" />
+								<span class="fr-nature-name">@(breedingResult.Genetics?.Nature.ToString() ?? "")</span>
+								<span class="fr-nature-src">@_natLabel</span>
+							</div>
+						</div>
+						@if (breedingResult.Traits != null && breedingResult.Traits.Count > 0)
+						{
+							@* Trait register rows (2026-07-13) — trait hover tooltips are
+							   RETIRED game-wide (user ruling); the effect text lives ON
+							   the row, same as the dossier .trait-card and the moves
+							   slabs. Source tag mirrors .fr-nature-src ("from B1" etc). *@
+							<div class="fr-traits">
+								@foreach (var trait in breedingResult.Traits)
+								{
+									var _tSrc = GetTraitSource(trait);
+									var _tSrcLabel = _tSrc == "both" ? "both parents" : _tSrc == "b1" ? $"from {lastFusionParent1?.Nickname ?? "B1"}" : _tSrc == "b2" ? $"from {lastFusionParent2?.Nickname ?? "B2"}" : "new";
+									<div class="fr-trait">
+										<div class="fr-trait-head">
+											<iconify icon="@GetTraitIcon(trait)" Size=@(12) Color="#c4b5fd" />
+											<span class="fr-trait-name">@GetTraitName(trait)</span>
+											<span class="fr-trait-src">@_tSrcLabel</span>
+										</div>
+										<span class="fr-trait-desc">@GetTraitDescription(trait)</span>
+									</div>
+								}
+							</div>
+						}
+						<div class="fr-cta-row">
+							<button class="fr-btn view @(fusionResultCursor == 0 ? "kb-focused" : "")" onclick=@OnViewFusedBeast onmouseover=@(() => OnResultBtnHover(0))>
+								<span>VIEW BEAST</span>
+							</button>
+							<button class="fr-btn again @(fusionResultCursor == 1 ? "kb-focused" : "")" onclick=@FuseAgain onmouseover=@(() => OnResultBtnHover(1))>
+								<iconify icon="lucide:combine" Size=@(15) Color="#ffffff" />
+								<span>FUSE AGAIN</span>
+							</button>
+						</div>
+					</div>
+				</div>
 			}
 			else
 			{
@@ -358,7 +478,10 @@
 					@* Slot 1 — hover sound is routed through the inner MonsterCard's
 					   HoverAction so the card's isInternallyHovered guard prevents
 					   spam when the mouse moves between child elements. *@
-					<div class="altar-slot @(Parent1 != null ? "filled" : "") @(selectedForSlot == 1 ? "selecting" : "")"
+					@* `invite` (juice 2026-07-12): the empty slot breathes ONLY
+					   while its partner is filled — a purposeful "you're one
+					   pick away" cue, not ambient noise. *@
+					<div class="altar-slot @(Parent1 != null ? "filled" : "") @(selectedForSlot == 1 ? "selecting" : "") @(Parent1 == null && Parent2 != null ? "invite" : "")"
 						 onclick=@(() => SetSelectingSlot(1))>
 						<div class="fusion-slot-tag">B1</div>
 						@if (Parent1 != null)
@@ -372,10 +495,12 @@
 							<div class="parent-extras">
 								@if (Parent1.Genetics != null)
 								{
+									@* Minimal chips (2026-07-13) — trait/nature hover tooltips
+									   RETIRED game-wide (user ruling); full effect text is
+									   readable in the beast's dossier. *@
 									<div class="extra-chip nature">
 										<iconify icon="lucide:leaf" Size=@(10) Color="#86efac" />
 										<span>@Parent1.Genetics.Nature</span>
-										<span class="chip-tooltip">@Parent1.Genetics.GetNatureDescription()</span>
 									</div>
 								}
 								@if (Parent1.Traits != null)
@@ -385,7 +510,6 @@
 										<div class="extra-chip trait">
 											<iconify icon="@GetTraitIcon(trait)" Size=@(10) Color="#fbbf24" />
 											<span>@GetTraitName(trait)</span>
-											<span class="chip-tooltip">@GetTraitDescription(trait)</span>
 										</div>
 									}
 								}
@@ -404,7 +528,7 @@
 					<div class="altar-core @(altarActive ? "active" : "")">
 						<iconify class="altar-chev" icon="lucide:chevrons-right" Size=@(22) Color="@(altarActive ? "#fbbf24" : "rgba(255,255,255,0.25)")" />
 						<div class="altar-result">
-							@if (Parent1 != null)
+							@if (Parent1 != null && !string.IsNullOrEmpty(altarIcon))
 							{
 								<img class="altar-result-img" src="@altarIcon" />
 							}
@@ -417,7 +541,7 @@
 					</div>
 
 					@* Slot 2 — same routing as Slot 1 *@
-					<div class="altar-slot @(Parent2 != null ? "filled" : "") @(selectedForSlot == 2 ? "selecting" : "")"
+					<div class="altar-slot @(Parent2 != null ? "filled" : "") @(selectedForSlot == 2 ? "selecting" : "") @(Parent2 == null && Parent1 != null ? "invite" : "")"
 						 onclick=@(() => SetSelectingSlot(2))>
 						<div class="fusion-slot-tag">B2</div>
 						@if (Parent2 != null)
@@ -431,10 +555,10 @@
 							<div class="parent-extras">
 								@if (Parent2.Genetics != null)
 								{
+									@* Minimal chips — same tooltip retirement as Slot 1. *@
 									<div class="extra-chip nature">
 										<iconify icon="lucide:leaf" Size=@(10) Color="#86efac" />
 										<span>@Parent2.Genetics.Nature</span>
-										<span class="chip-tooltip">@Parent2.Genetics.GetNatureDescription()</span>
 									</div>
 								}
 								@if (Parent2.Traits != null)
@@ -444,7 +568,6 @@
 										<div class="extra-chip trait">
 											<iconify icon="@GetTraitIcon(trait)" Size=@(10) Color="#fbbf24" />
 											<span>@GetTraitName(trait)</span>
-											<span class="chip-tooltip">@GetTraitDescription(trait)</span>
 										</div>
 									}
 								}
@@ -469,7 +592,7 @@
 							<span class="hc-value">@((fusionPreview.TwinChance * 100).ToString("F0"))%</span>
 						</div>
 						<div class="header-chance mutation">
-							<iconify icon="lucide:sparkles" Size=@(11) Color="#f9a8d4" />
+							<iconify icon="lucide:sparkles" Size=@(11) Color="#c4b5fd" />
 							<span class="hc-label">Mut</span>
 							<span class="hc-value">@((fusionPreview.MutationChance * 100).ToString("F0"))%</span>
 						</div>
@@ -508,10 +631,11 @@
 					}
 					<div class="fusion-hero @(fusionPreview.PredictedQuality.ToLower())">
 						<div class="hero-row">
-							<iconify icon="lucide:sparkles" Size=@(14) Color="#f9a8d4" />
-							<div class="hero-name">@GetSpeciesNameFor(Parent1)</div>
+							<iconify icon="lucide:sparkles" Size=@(14) Color="#c4b5fd" />
+							@* Cross fusions name the RESULT. *@
+							<div class="hero-name">@(altarPattern != null ? (altarSpecies?.Name ?? "") : GetSpeciesNameFor(Parent1))</div>
 							<div class="hero-family-tag @(isFamilyFusion ? "family" : "cross")">
-								<iconify icon="@(isFamilyFusion ? "lucide:dna" : "lucide:shuffle")" Size=@(10) Color="@(isFamilyFusion ? "#f9a8d4" : "#fbbf24")" />
+								<iconify icon="@(isFamilyFusion ? "lucide:dna" : "lucide:shuffle")" Size=@(10) Color="@(isFamilyFusion ? "#c4b5fd" : "#fbbf24")" />
 								<span>@(isFamilyFusion ? "FAMILY" : "CROSS")</span>
 							</div>
 							<div class="hero-spacer"></div>
@@ -545,6 +669,115 @@
 					</div>
 				}
 
+				@* ══ GENE LEDGER — re-homed UNDER the altar (2026-07-12 Pattern
+				   Book: the right column is the book now). Scrolls in the slack
+				   between the altar and the CTA; same card markup as before. *@
+				<div class="altar-ledger">
+					@if (fusionPreview != null)
+					{
+						<div class="genes-zone fd-zone">
+							<div class="fd-head">
+								<div class="fd-head-chip"><span>GENE LEDGER</span></div>
+								<div class="fd-head-line"></div>
+							</div>
+							<div class="fusion-genes-card">
+								<div class="fd-cut"></div>
+								<div class="genes-card-header">
+									<div class="genes-card-title">
+										<iconify icon="lucide:dna" Size=@(14) Color="#f9a8d4" />
+										<span>GENETICS</span>
+									</div>
+									@if (hasLockSkill)
+									{
+										<div class="genes-lock-counter">
+											<iconify icon="lucide:lock" Size=@(11) Color="#fbbf24" />
+											<span class="lock-current">@lockedGenes.Count</span>
+											<span class="lock-max">/@maxLocks</span>
+										</div>
+									}
+								</div>
+
+								<div class="gene-row gene-col-headers">
+									<div class="gene-row-label"></div>
+									<div class="gene-cell col-head">Beast 1</div>
+									<div class="gene-cell col-head">Beast 2</div>
+									<div class="gene-arrow"></div>
+									<div class="gene-cell col-head predicted">Result</div>
+									<div class="gene-lock-toggle empty"></div>
+								</div>
+
+								@{
+									// Inline helper data so each row uses the same compact layout.
+									var geneRows = new (string key, string label, int p1, int p2, int avg)[]
+									{
+										("HP",  "HP",  Parent1.Genetics.HPGene,  Parent2.Genetics.HPGene,  fusionPreview.AvgHP),
+										("ATK", "ATK", Parent1.Genetics.ATKGene, Parent2.Genetics.ATKGene, fusionPreview.AvgATK),
+										("DEF", "DEF", Parent1.Genetics.DEFGene, Parent2.Genetics.DEFGene, fusionPreview.AvgDEF),
+										("SpA", "SpA", Parent1.Genetics.SpAGene, Parent2.Genetics.SpAGene, fusionPreview.AvgSpA),
+										("SpD", "SpD", Parent1.Genetics.SpDGene, Parent2.Genetics.SpDGene, fusionPreview.AvgSpD),
+										("SPD", "SPD", Parent1.Genetics.SPDGene, Parent2.Genetics.SPDGene, fusionPreview.AvgSPD),
+									};
+								}
+
+								@foreach (var row in geneRows)
+								{
+									var key = row.key;
+									var locked = lockedGenes.Contains(key);
+									var canLockMore = hasLockSkill && (locked || lockedGenes.Count < maxLocks);
+									var p1Best = row.p1 >= row.p2;
+									var p2Best = row.p2 >= row.p1;
+									var betterParent = Math.Max(row.p1, row.p2);
+									var verdict = row.avg > betterParent ? "improved"
+										: row.avg == betterParent ? "stable"
+										: "downgrade";
+									<div class="gene-row @(locked ? "locked" : "")">
+										<div class="gene-row-label gene-@key.ToLower()">@row.label</div>
+										<div class="gene-cell @(p1Best ? "best" : "")">@row.p1</div>
+										<div class="gene-cell @(p2Best ? "best" : "")">@row.p2</div>
+										<div class="gene-arrow"><iconify icon="lucide:arrow-right" Size=@(12) Color="rgba(255,255,255,0.4)" /></div>
+										<div class="gene-cell predicted @verdict">@row.avg</div>
+										<div class="gene-lock-toggle @(locked ? "active" : "") @(!canLockMore && !locked ? "disabled" : "") @(!hasLockSkill ? "no-skill" : "")"
+											 onclick=@(() => ToggleGeneLock(key))
+											 onmouseover=@OnHoverBlip>
+											<iconify icon="@(locked ? "lucide:lock" : "lucide:lock-open")" Size=@(12) Color="@(locked ? "#fbbf24" : "rgba(255,255,255,0.4)")" />
+										</div>
+									</div>
+								}
+
+								@{
+									// Total row verdict — same logic as per-row but on the sum,
+									// plus a TYPICAL spread (~80% of outcomes; expected ± 6).
+									var betterParentTotal = Math.Max(p1Total, p2Total);
+									var totalVerdict = previewTotal > betterParentTotal ? "improved"
+										: previewTotal == betterParentTotal ? "stable"
+										: "downgrade";
+									var typicalSpread = 6;
+									var minTotal = Math.Max(0, previewTotal - typicalSpread);
+									var maxTotal = Math.Min(180, previewTotal + typicalSpread);
+								}
+								<div class="gene-row totals-row">
+									<div class="gene-row-label">TOTAL</div>
+									<div class="gene-cell @(p1Total >= p2Total ? "best" : "")">@p1Total</div>
+									<div class="gene-cell @(p2Total >= p1Total ? "best" : "")">@p2Total</div>
+									<div class="gene-arrow"><iconify icon="lucide:arrow-right" Size=@(12) Color="rgba(255,255,255,0.4)" /></div>
+									<div class="gene-cell predicted @totalVerdict">~@previewTotal</div>
+									<div class="gene-lock-toggle empty"></div>
+								</div>
+								<div class="gene-range-row">
+									<span class="gene-range-label">Range</span>
+									<span class="gene-range-value">@minTotal to @maxTotal</span>
+								</div>
+							</div>
+						</div>
+					}
+					else
+					{
+						<div class="altar-ledger-hint">
+							<span>@(Parent1 == null ? "Pick two beasts to see what they'd make." : "Pick a partner — the same species, or a pair from the fusion list.")</span>
+						</div>
+					}
+				</div>
+
 				@* Sticky FUSE CTA — two-stage in-button confirm (pendingFusionConfirm). *@
 				@if (bothPicked && fusionCompat?.CanBreed == true)
 				{
@@ -553,7 +786,7 @@
 							<img class="cta-cost-icon" src="ui/icons/currency/money.svg" />
 							<span class="cta-cost-value">@fusionCost</span>
 						</div>
-						<button class="cta-fuse-btn @(canFuse ? "" : "disabled") @(pendingFusionConfirm ? "confirming" : "")"
+						<button class="cta-fuse-btn @(canFuse ? "" : "disabled") @(pendingFusionConfirm ? "confirming" : "") @(canFuse && !pendingFusionConfirm ? "ready" : "")"
 								onclick=@OnBreedClicked
 								onmouseover=@OnHoverBlip>
 							<iconify icon="@(pendingFusionConfirm ? "lucide:check" : "lucide:combine")" Size=@(18) Color="@(canFuse ? "#3a0a22" : "#ffffff")" />
@@ -571,40 +804,68 @@
 				   parents drain out of their slots (.consuming). *@
 				@if (isFusionAnimating)
 				{
-					@* ══ THE RITUAL (2026-07-06 rebuild — two beasts die for
-					   this): essence orbs in the PARENTS' element colors slam
-					   to the center; a rising two-tone helix twines up; pink
-					   shockwaves + a white-hot flash on the merge; the
-					   offspring FORMS as a dark silhouette in a glow, holds a
-					   beat, then the real reveal springs in (.fr-stage).
-					   Phases (spiral → flash → forming) gate the pieces via
-					   ancestor-scoped animation rules; sounds ride
-					   RunFusionAnimation's beats. *@
+					@* ══ THE LOOM-HELIX (2026-07-06, user synthesis of the Loom +
+					   Helix Cathedral briefs — "the weave IS the helix"):
+					   GATHER (0.5s) threads unspool from each parent's side in
+					   their element colors → BIND (0.9s) a BAKED rotating
+					   double-helix (element strand × forge-pink strand,
+					   ui/fusion/helix-*.webp) rises out of the dimming weave;
+					   cross-fusions FIGHT for the first beat (lattice shake)
+					   before snapping into rhythm → COCOON (0.9s) the risen
+					   helix contracts around the offspring's silhouette,
+					   heartbeat pulses in near-silence, then the tapestry
+					   burns away with a pink flare → the real reveal springs
+					   (.fr-stage). Phase classes drive everything (proven
+					   restart mechanism). The CSS rung/rail/shuttle lattice
+					   was retired 2026-07-12 — it never read as a helix. *@
 					@{
 						var _fx1 = GetElementHexFor(lastFusionParent1);
-						var _fx2 = GetElementHexFor(lastFusionParent2);
+						// Strand family B = the FORGE accent, not parent 2's
+						// element: fusion is same-species-only, so both parents
+						// always share one element color and the "two-tone helix"
+						// read was dead on arrival (everything monochrome).
+						// Element × forge is the pairing that exists on EVERY
+						// fuse. 2026-07-12: forge accent = My Beasts violet
+						// (user: fusion + roster are the same PawPad app).
+						var _fx2 = "#9b6cff";
 						var _fxSpecies = MonsterManager.Instance?.GetSpecies(breedingResult?.SpeciesId);
+						var _fxFamily = lastFusionParent1?.SpeciesId == lastFusionParent2?.SpeciesId;
 					}
 					<div class="fr-anim-box">
-						<div class="fusion-animation-container @fusionPhase">
-							<div class="fx-orb a" style="background-image: radial-gradient(@JmRgba(_fx1, 0.9f) 0%, @JmRgba(_fx1, 0.25f) 45%, rgba(0, 0, 0, 0) 70%);"></div>
-							<div class="fx-orb b" style="background-image: radial-gradient(@JmRgba(_fx2, 0.9f) 0%, @JmRgba(_fx2, 0.25f) 45%, rgba(0, 0, 0, 0) 70%);"></div>
-							<div class="fx-helix">
-								@for (int i = 0; i < 12; i++)
-								{
-									<div class="fx-dot d@(i)" style="background-color: @(i % 2 == 0 ? _fx1 : _fx2);"></div>
-								}
+						<div class="fusion-animation-container loom @fusionPhase @(_fxFamily ? "family" : "cross")">
+							<div class="lm-thread la t0" style="background-color: @_fx1;"></div>
+							<div class="lm-thread la t1" style="background-color: @_fx1;"></div>
+							<div class="lm-thread la t2" style="background-color: @_fx1;"></div>
+							<div class="lm-thread la t3" style="background-color: @_fx1;"></div>
+							<div class="lm-thread lb t0" style="background-color: @_fx2;"></div>
+							<div class="lm-thread lb t1" style="background-color: @_fx2;"></div>
+							<div class="lm-thread lb t2" style="background-color: @_fx2;"></div>
+							<div class="lm-thread lb t3" style="background-color: @_fx2;"></div>
+							<div class="lm-lattice">
+								@* The helix is a BAKED animated WebP (2026-07-12) — the old
+								   CSS rung/rail/shuttle lattice never read as a helix (user:
+								   "it does not look like a helix at all"; CSS can't draw
+								   crossing sine strands). One variant per element, strand B
+								   always the forge VIOLET #9b6cff (fusion recolor — shadow's
+								   strand B is nudged lighter in the bake so two strands still
+								   read). -v2 = the violet rebake (texture-cache law: the -tall
+								   pink files were already loaded; never overwrite in place).
+								   Bake script: .claude/ui-knowledge/scripts/bake-helix.py *@
+								<img class="lm-helix" src="ui/fusion/helix-@(GetElementNameFor(lastFusionParent1))-v2.webp" />
 							</div>
-							<div class="fx-ring r1"></div>
-							<div class="fx-ring r2"></div>
-							<div class="fx-flash"></div>
-							<div class="fx-glow"></div>
-							<img class="fx-silhouette" src="@(_fxSpecies?.IconPath ?? "")" />
+							<div class="lm-core">
+								<div class="lm-glow"></div>
+								<img class="lm-silhouette" src="@(_fxSpecies?.IconPath ?? "")" />
+							</div>
+							<div class="lm-flare"></div>
+							@* White-hot leading ring — rips a beat ahead of the
+							   violet flare (juice 2026-07-12). *@
+							<div class="lm-flare f2"></div>
 						</div>
 					</div>
 				}
 
-				@* Contextual key legend — fusion context				@* Contextual key legend — fusion context (2026-07-06); always
+				@* Contextual key legend — fusion context (2026-07-06); always
 				   visible (user call); content swaps in the result state. *@
 					<div class="kb-legend">
 						@if (showResult && breedingResult != null)
@@ -613,10 +874,17 @@
 							<span class="kb-key">Space</span><span class="kbl-label">Select</span>
 							<span class="kb-key">Q</span><span class="kbl-label">Fuse Again</span>
 						}
+						else if (kbFocusZone == "book")
+						{
+							<span class="kb-key">WASD</span><span class="kbl-label">Fusions</span>
+							<span class="kb-key">Space</span><span class="kbl-label">Spotlight</span>
+							<span class="kb-key">Q</span><span class="kbl-label">Back</span>
+						}
 						else
 						{
 							<span class="kb-key">E</span><span class="kbl-label">Slot</span>
 							<span class="kb-key">R</span><span class="kbl-label">Fuse</span>
+							<span class="kb-key">Tab</span><span class="kbl-label">Book</span>
 							<span class="kb-key">Q</span><span class="kbl-label">Exit</span>
 						}
 					</div>
@@ -654,217 +922,113 @@
 					<div class="fd-head-badge dim"><span>@GetFusionHeaderStatus()</span></div>
 					<div class="fd-cut"></div>
 				</div>
-				<div class="facts-scroll">
-					@if (showResult && breedingResult != null && !isFusionAnimating)
-					{
-						@* ══ INLINE RESULT LEDGER (2026-07-06) — the gene table
-						   vs BOTH parents cascades in (nth ladder, opacity-only
-						   in the scroll), then quality/nature settle, then the
-						   CTAs. One-cursor: the CTA pair is kb+hover driven via
-						   fusionResultCursor. *@
-						@{
-							var _rq = breedingResult.Genetics?.QualityRating ?? "Average";
-							var _rTot = GetResultTotalGenes();
-							var _rDelta = _rTot - lastFusionExpectedTotal;
-							var _rvx = _rDelta >= 3 ? "lucky" : _rDelta <= -3 ? "harsh" : "ontarget";
-							var _rvxLabel = _rDelta >= 3 ? "LUCKY" : _rDelta <= -3 ? "HARSH" : "ON TARGET";
-							var _natSrc = GetNatureSource();
-							var _natLabel = _natSrc == "both" ? "inherited" : _natSrc == "b1" ? $"from {lastFusionParent1?.Nickname ?? "B1"}" : _natSrc == "b2" ? $"from {lastFusionParent2?.Nickname ?? "B2"}" : "random";
-						}
-						<div class="fr-zone fd-zone rrev-@resultRevVersion">
-							<div class="fd-head">
-								<div class="fd-head-chip"><span>FUSION RESULT</span></div>
-								<div class="fd-head-line"></div>
-								<div class="fd-head-badge dim"><span>@_rq.ToUpper()</span></div>
-							</div>
-							<div class="fr-card">
-								<div class="fd-cut"></div>
-								@if (lastFusionExpectedTotal > 0)
-								{
-									<div class="fr-rvx">
-										<span class="fr-rvx-total">@_rTot</span>
-										<span class="fr-rvx-max">/180</span>
-										<span class="fr-rvx-expected">~@lastFusionExpectedTotal expected</span>
-										<div class="fr-rvx-verdict @_rvx"><span>@(_rDelta > 0 ? "+" : "")@_rDelta @_rvxLabel</span></div>
-									</div>
-								}
-								<div class="fr-ghead">
-									<span class="fr-g-label"></span>
-									<span class="fr-g-col">@(lastFusionParent1?.Nickname ?? "B1")</span>
-									<span class="fr-g-col">@(lastFusionParent2?.Nickname ?? "B2")</span>
-									<span class="fr-g-col result">RESULT</span>
-								</div>
-								@{
-									var _frRows = new (string label, string cls, int p1, int p2, int res)[]
-									{
-										("HP",  "hp",      lastFusionParent1?.Genetics?.HPGene ?? 0,  lastFusionParent2?.Genetics?.HPGene ?? 0,  breedingResult.Genetics?.HPGene ?? 0),
-										("ATK", "atk",     lastFusionParent1?.Genetics?.ATKGene ?? 0, lastFusionParent2?.Genetics?.ATKGene ?? 0, breedingResult.Genetics?.ATKGene ?? 0),
-										("DEF", "def",     lastFusionParent1?.Genetics?.DEFGene ?? 0, lastFusionParent2?.Genetics?.DEFGene ?? 0, breedingResult.Genetics?.DEFGene ?? 0),
-										("SpA", "spa",     lastFusionParent1?.Genetics?.SpAGene ?? 0, lastFusionParent2?.Genetics?.SpAGene ?? 0, breedingResult.Genetics?.SpAGene ?? 0),
-										("SpD", "spd-def", lastFusionParent1?.Genetics?.SpDGene ?? 0, lastFusionParent2?.Genetics?.SpDGene ?? 0, breedingResult.Genetics?.SpDGene ?? 0),
-										("SPD", "spd",     lastFusionParent1?.Genetics?.SPDGene ?? 0, lastFusionParent2?.Genetics?.SPDGene ?? 0, breedingResult.Genetics?.SPDGene ?? 0),
-									};
-								}
-								@foreach (var g in _frRows)
-								{
-									var _avg = (g.p1 + g.p2) / 2f;
-									var _verdict = g.res > _avg + 0.5f ? "up" : (g.res < _avg - 0.5f ? "down" : "even");
-									<div class="fr-gene">
-										<span class="fr-g-label @g.cls">@g.label</span>
-										<span class="fr-g-col">@g.p1</span>
-										<span class="fr-g-col">@g.p2</span>
-										<span class="fr-g-col result @_verdict">@g.res</span>
-									</div>
-								}
-								<div class="fr-nature">
-									<iconify icon="lucide:leaf" Size=@(13) Color="#86efac" />
-									<span class="fr-nature-name">@(breedingResult.Genetics?.Nature.ToString() ?? "")</span>
-									<span class="fr-nature-src">@_natLabel</span>
-								</div>
-							</div>
-							@if (breedingResult.Traits != null && breedingResult.Traits.Count > 0)
-							{
-								<div class="fr-traits">
-									@foreach (var trait in breedingResult.Traits)
-									{
-										<div class="fr-trait"><iconify icon="@GetTraitIcon(trait)" Size=@(11) Color="#f9a8d4" /><span>@GetTraitName(trait)</span></div>
-									}
-								</div>
-							}
-							<div class="fr-cta-row">
-								<button class="fr-btn view @(fusionResultCursor == 0 ? "kb-focused" : "")" onclick=@OnViewFusedBeast onmouseover=@(() => OnResultBtnHover(0))>
-									<span>VIEW BEAST</span>
-								</button>
-								<button class="fr-btn again @(fusionResultCursor == 1 ? "kb-focused" : "")" onclick=@FuseAgain onmouseover=@(() => OnResultBtnHover(1))>
-									<iconify icon="lucide:combine" Size=@(15) Color="#ffffff" />
-									<span>FUSE AGAIN</span>
-								</button>
-							</div>
-						</div>
-					}
-					else
-					{
-					@* 1B section: GENE LEDGER header (violet chip + hairline)
-					   with the corner-cut card below, all inside a scroll-
-					   direct padded section (collapse-safe shape). *@
-					<div class="genes-zone fd-zone">
-					<div class="fd-head">
-						<div class="fd-head-chip"><span>GENE LEDGER</span></div>
-						<div class="fd-head-line"></div>
-					</div>
-					@if (fusionPreview != null)
-					{
-						<div class="fusion-genes-card">
-							<div class="fd-cut"></div>
-							<div class="genes-card-header">
-								<div class="genes-card-title">
-									<iconify icon="lucide:dna" Size=@(14) Color="#f9a8d4" />
-									<span>GENETICS</span>
-								</div>
-								@if (hasLockSkill)
-								{
-									<div class="genes-lock-counter">
-										<iconify icon="lucide:lock" Size=@(11) Color="#fbbf24" />
-										<span class="lock-current">@lockedGenes.Count</span>
-										<span class="lock-max">/@maxLocks</span>
-									</div>
-								}
-							</div>
-
-							<div class="gene-row gene-col-headers">
-								<div class="gene-row-label"></div>
-								<div class="gene-cell col-head">Beast 1</div>
-								<div class="gene-cell col-head">Beast 2</div>
-								<div class="gene-arrow"></div>
-								<div class="gene-cell col-head predicted">Result</div>
-								<div class="gene-lock-toggle empty"></div>
-							</div>
-
-							@{
-								// Inline helper data so each row uses the same compact layout.
-								var geneRows = new (string key, string label, int p1, int p2, int avg)[]
-								{
-									("HP",  "HP",  Parent1.Genetics.HPGene,  Parent2.Genetics.HPGene,  fusionPreview.AvgHP),
-									("ATK", "ATK", Parent1.Genetics.ATKGene, Parent2.Genetics.ATKGene, fusionPreview.AvgATK),
-									("DEF", "DEF", Parent1.Genetics.DEFGene, Parent2.Genetics.DEFGene, fusionPreview.AvgDEF),
-									("SpA", "SpA", Parent1.Genetics.SpAGene, Parent2.Genetics.SpAGene, fusionPreview.AvgSpA),
-									("SpD", "SpD", Parent1.Genetics.SpDGene, Parent2.Genetics.SpDGene, fusionPreview.AvgSpD),
-									("SPD", "SPD", Parent1.Genetics.SPDGene, Parent2.Genetics.SPDGene, fusionPreview.AvgSPD),
-								};
-							}
-
-							@foreach (var row in geneRows)
-							{
-								var key = row.key;
-								var locked = lockedGenes.Contains(key);
-								var canLockMore = hasLockSkill && (locked || lockedGenes.Count < maxLocks);
-								var p1Best = row.p1 >= row.p2;
-								var p2Best = row.p2 >= row.p1;
-								var betterParent = Math.Max(row.p1, row.p2);
-								var verdict = row.avg > betterParent ? "improved"
-									: row.avg == betterParent ? "stable"
-									: "downgrade";
-								<div class="gene-row @(locked ? "locked" : "")">
-									<div class="gene-row-label gene-@key.ToLower()">@row.label</div>
-									<div class="gene-cell @(p1Best ? "best" : "")">@row.p1</div>
-									<div class="gene-cell @(p2Best ? "best" : "")">@row.p2</div>
-									<div class="gene-arrow"><iconify icon="lucide:arrow-right" Size=@(12) Color="rgba(255,255,255,0.4)" /></div>
-									<div class="gene-cell predicted @verdict">@row.avg</div>
-									<div class="gene-lock-toggle @(locked ? "active" : "") @(!canLockMore && !locked ? "disabled" : "") @(!hasLockSkill ? "no-skill" : "")"
-										 onclick=@(() => ToggleGeneLock(key))
-										 onmouseover=@OnHoverBlip>
-										<iconify icon="@(locked ? "lucide:lock" : "lucide:lock-open")" Size=@(12) Color="@(locked ? "#fbbf24" : "rgba(255,255,255,0.4)")" />
-									</div>
-								</div>
-							}
-
-							@{
-								// Total row verdict — same logic as per-row but on the sum,
-								// plus a TYPICAL spread (~80% of outcomes; expected ± 6).
-								var betterParentTotal = Math.Max(p1Total, p2Total);
-								var totalVerdict = previewTotal > betterParentTotal ? "improved"
-									: previewTotal == betterParentTotal ? "stable"
-									: "downgrade";
-								var typicalSpread = 6;
-								var minTotal = Math.Max(0, previewTotal - typicalSpread);
-								var maxTotal = Math.Min(180, previewTotal + typicalSpread);
-							}
-							<div class="gene-row totals-row">
-								<div class="gene-row-label">TOTAL</div>
-								<div class="gene-cell @(p1Total >= p2Total ? "best" : "")">@p1Total</div>
-								<div class="gene-cell @(p2Total >= p1Total ? "best" : "")">@p2Total</div>
-								<div class="gene-arrow"><iconify icon="lucide:arrow-right" Size=@(12) Color="rgba(255,255,255,0.4)" /></div>
-								<div class="gene-cell predicted @totalVerdict">~@previewTotal</div>
-								<div class="gene-lock-toggle empty"></div>
-							</div>
-							<div class="gene-range-row">
-								<span class="gene-range-label">Range</span>
-								<span class="gene-range-value">@minTotal to @maxTotal</span>
-							</div>
-						</div>
-					}
-					else
-					{
-						<div class="fusion-empty">
-							<div class="fd-cut"></div>
-							<div class="fusion-empty-icon">
-								<iconify icon="lucide:flame" Size=@(48) Color="rgba(249, 168, 212, 0.4)" />
-							</div>
-							<div class="fusion-empty-title">Forge a New Lineage</div>
-							<div class="fusion-empty-text">
-								Choose two beasts of the same species. Their genes combine into a single offspring — both parents are consumed.
-							</div>
-							@if (Parent1 != null && Parent2 == null)
-							{
-								<div class="fusion-empty-hint">
-									<iconify icon="lucide:arrow-left" Size=@(14) Color="#f9a8d4" />
-									<span>Pick a second @GetSpeciesNameFor(Parent1)</span>
-								</div>
-							}
-						</div>
-					}
-					</div>
+				@* ══ FUSION TILE GRID (2026-07-12, user: "make it squares and
+				   it has a silhouette of the beast you want to fuse ... if you
+				   dont have it then it shows ??? and a silhouette") — the
+				   right column is a 2-wide scrollable grid of square result
+				   tiles. Reveal is keyed to the BEASTBOOK (owned/recorded OR
+				   seen), NOT to woven-state: unknown results render as a dark
+				   silhouette + "???" (the level stays visible so planning
+				   still works). The RECIPE STRIP under the header shows the
+				   highlighted tile's parents — a fixed non-scrolling sibling.
+				   Green check = woven at least once (small IN-BOUNDS corner
+				   badge — overhanging badges leak past scroll viewports).
+				   Selecting a tile spotlights eligible parents in the grid.
+				   SCROLL LAWS: tiles are DIRECT children of the scroll (the
+				   roster-grid wrap precedent); tile states are border + bg
+				   tint only — no transforms, no colored shadows. *@
+				@{
+					var _stripPat = bookCursorIndex >= 1 && bookCursorIndex - 1 < FusionPatterns.All.Count
+						? FusionPatterns.All[bookCursorIndex - 1]
+						: null;
+					var _stripA = _stripPat != null ? MonsterManager.Instance?.GetSpecies(_stripPat.ParentA) : null;
+					var _stripB = _stripPat != null ? MonsterManager.Instance?.GetSpecies(_stripPat.ParentB) : null;
+					var _stripR = _stripPat != null ? MonsterManager.Instance?.GetSpecies(_stripPat.ResultSpeciesId) : null;
+					var _stripRKnown = _stripR != null && IsResultKnown(_stripR.Id);
+					var _sameSpeciesPair = bothPicked && Parent1.SpeciesId == Parent2.SpeciesId;
+					var _gwFocused = kbFocusZone == "book" && bookCursorIndex == 0;
 				}
+				<div class="pb-recipe-strip">
+					@if (_stripPat != null)
+					{
+						<div class="pb-parent">
+							<img class="pb-sprite" src="@(_stripA?.IconPath ?? "")" />
+							<span class="pb-pname">@(_stripA?.Name ?? "")</span>
+						</div>
+						<span class="pb-x">+</span>
+						<div class="pb-parent">
+							<img class="pb-sprite" src="@(_stripB?.IconPath ?? "")" />
+							<span class="pb-pname">@(_stripB?.Name ?? "")</span>
+						</div>
+						<iconify class="pb-arrow" icon="lucide:move-right" Size=@(16) Color="rgba(196, 181, 253, 0.65)" />
+						<div class="pb-parent result">
+							@* Beastbook gate applies here too — the strip must not
+							   leak an unseen result's art or name. *@
+							<img class="pb-sprite @(_stripRKnown ? "" : "silhouette")" src="@(_stripR?.IconPath ?? "")" />
+							<span class="pb-pname result">@(_stripRKnown ? (_stripR?.Name ?? "") : "???")</span>
+						</div>
+					}
+					else
+					{
+						<span class="pb-strip-plain">Two of the same species → one beast with better genes</span>
+					}
+				</div>
+				<div @ref="factsScrollRef" class="facts-scroll book">
+					<div class="fd-head book-head">
+						<div class="fd-head-chip"><span>FUSIONS</span></div>
+						<div class="fd-head-line"></div>
+						<div class="fd-head-badge dim"><span>@GetDiscoveredPatternCount() / @FusionPatterns.All.Count WOVEN</span></div>
+					</div>
+
+					@* SAME SPECIES — the always-available fusion, tile 0. Shows
+					   the slotted pair's fuse level when two of a kind are staged. *@
+					<div class="pb-tile gene-weave @(_sameSpeciesPair ? "slotted" : "") @(_gwFocused ? "kb-focused" : "")"
+						 onclick=@(() => ActivateBookRowAt(0))
+						 onmouseover=@(() => OnBookRowHover(0))>
+						<div class="pb-tile-art"><iconify icon="lucide:dna" Size=@(56) Color="#c4b5fd" /></div>
+						<span class="pb-tile-name">SAME SPECIES</span>
+						<span class="pb-tile-lv @(_sameSpeciesPair ? "" : "plain")">@(_sameSpeciesPair ? $"Lv {Math.Max(1, (Parent1.Level + Parent2.Level) / 2)}" : "improves genes")</span>
+					</div>
+
+					@for (int pi = 0; pi < FusionPatterns.All.Count; pi++)
+					{
+						var pat = FusionPatterns.All[pi];
+						var rowIdx = pi + 1;
+						var spR = MonsterManager.Instance?.GetSpecies(pat.ResultSpeciesId);
+						var known = spR != null && IsResultKnown(spR.Id);
+						var woven = MonsterManager.Instance?.IsPatternDiscovered(pat.Id) ?? false;
+						var fuseLv = GetFusionLevelFor(pat);
+						var isSel = selectedPatternId == pat.Id;
+						var isSlotted = slottedPatternId == pat.Id;
+						var isUnveil = unveilPatternId == pat.Id;
+						var rowFocused = kbFocusZone == "book" && bookCursorIndex == rowIdx;
+						<div class="pb-tile @(fuseLv <= 0 ? "unavailable" : "") @(isSel ? "selected" : "") @(isSlotted ? "slotted" : "") @(rowFocused ? "kb-focused" : "") @(isUnveil ? $"pb-new npv-{newPatternRev}" : "")"
+							 onclick=@(() => ActivateBookRowAt(rowIdx))
+							 onmouseover=@(() => OnBookRowHover(rowIdx))>
+							<div class="pb-tile-art">
+								@* Silhouette = brightness(0) on the img (the accepted
+								   blurry-silhouette case — the shape IS the point). *@
+								<img class="pb-tile-sprite @(known ? "" : "silhouette")" src="@(spR?.IconPath ?? "")" />
+							</div>
+							@if (woven)
+							{
+								<div class="pb-tile-check"><iconify icon="lucide:check" Size=@(12) Color="#4ade80" /></div>
+							}
+							@if (isUnveil)
+							{
+								@* First-completion flourish — gold flash + NEW chip;
+								   reveal beat baked into keyframe PERCENTAGES (no
+								   animation-delay). Cosmetic only — never gates info. *@
+								<span class="pb-new-chip">NEW</span>
+							}
+							<span class="pb-tile-name">@(known ? (spR?.Name?.ToUpper() ?? "???") : "???")</span>
+							<span class="pb-tile-lv @(fuseLv <= 0 ? "none" : "")">@(fuseLv > 0 ? $"Lv {fuseLv}" : "—")</span>
+						</div>
+					}
+
+					<div class="pb-hint">
+						<span>Click a fusion to highlight the beasts that can make it. Fusing uses up both beasts.</span>
+					</div>
 				</div>
 				@* Slim container-tone foot cap — bottom leak cover. *@
 				<div class="facts-foot"></div>
@@ -1906,6 +2070,159 @@
 	private string lastFusionExpectedQuality = "";
 	private HashSet<string> lockedGenes = new();
 
+	// ── THE PATTERN BOOK (2026-07-12) ────────────────────────────────
+	// selectedPatternId — the book row the player has SPOTLIGHTED: its
+	// eligible parents highlight pink in the grid, everything else dims.
+	// Toggled by clicking the row / Space in the book zone; cleared by
+	// re-selecting, activating GENE WEAVE, or Q from the fusion grid.
+	private string selectedPatternId = null;
+	// Keyboard cursor over the book rows: 0 = GENE WEAVE, 1..N = the
+	// patterns in FusionPatterns.All order. Mouse hover moves it too
+	// (one-cursor model).
+	private int bookCursorIndex = 0;
+	// First-weave unveil — the pattern id whose row wears the gold NEW
+	// PATTERN moment, keyed npv-@newPatternRev so the keyframes remount.
+	private string unveilPatternId = null;
+	private int newPatternRev = 0;
+
+	// Beastbook reveal gate for the fusion tiles (2026-07-12 tile grid):
+	// a RESULT is shown (sprite + name) only once the species is in the
+	// book — owned/recorded (IsDiscovered) or encountered (IsSeen).
+	// Unknown results render silhouette + "???" — the fuse level stays
+	// visible so planning still works.
+	private bool IsResultKnown(string speciesId)
+	{
+		if (string.IsNullOrEmpty(speciesId)) return false;
+		var bm = BeastiaryManager.Instance;
+		if (bm == null) return false;
+		return bm.IsDiscovered(speciesId) || bm.IsSeen(speciesId);
+	}
+
+	// Pairable = Gene Weave (same species) OR a Pattern Book match.
+	private bool IsWeavePairable(Monster a, Monster b)
+	{
+		if (a == null || b == null) return false;
+		if (a.SpeciesId == b.SpeciesId) return true;
+		return FusionPatterns.Find(a.SpeciesId, b.SpeciesId) != null;
+	}
+
+	private int GetDiscoveredPatternCount()
+	{
+		var discovered = MonsterManager.Instance?.DiscoveredPatterns;
+		if (discovered == null) return 0;
+		return FusionPatterns.All.Count(p => discovered.Contains(p.Id));
+	}
+
+	// The level this fusion would produce RIGHT NOW: floor(avg) of the
+	// slotted pair when it matches, else of the player's best (highest-
+	// level) owned parent of each species. 0 = no eligible pair (row
+	// renders dimmed with "—").
+	private int GetFusionLevelFor(FusionPattern pat)
+	{
+		if (Parent1 != null && Parent2 != null && pat.Matches(Parent1.SpeciesId, Parent2.SpeciesId))
+			return Math.Max(1, (Parent1.Level + Parent2.Level) / 2);
+
+		var mons = MonsterManager.Instance?.OwnedMonsters;
+		if (mons == null) return 0;
+		Monster bestA = null, bestB = null;
+		foreach (var m in mons)
+		{
+			if (m.SpeciesId == pat.ParentA && (bestA == null || m.Level > bestA.Level)) bestA = m;
+			else if (m.SpeciesId == pat.ParentB && (bestB == null || m.Level > bestB.Level)) bestB = m;
+		}
+		if (bestA == null || bestB == null) return 0;
+		return Math.Max(1, (bestA.Level + bestB.Level) / 2);
+	}
+
+	// Activate a book row (click or Space): row 0 = GENE WEAVE (clears
+	// any spotlight — it's the "no pattern" weave); rows 1..N toggle the
+	// pattern spotlight that highlights eligible parents in the grid.
+	private void ActivateBookRowAt(int rowIdx)
+	{
+		bookCursorIndex = rowIdx;
+		if (rowIdx <= 0)
+		{
+			if (selectedPatternId != null) { selectedPatternId = null; SoundManager.PlayBack(); }
+			else SoundManager.PlayClick();
+			return;
+		}
+
+		int pi = rowIdx - 1;
+		if (pi >= FusionPatterns.All.Count) return;
+		var pat = FusionPatterns.All[pi];
+		if (selectedPatternId == pat.Id)
+		{
+			selectedPatternId = null;
+			SoundManager.PlayBack();
+		}
+		else
+		{
+			selectedPatternId = pat.Id;
+			SoundManager.PlaySelect();
+			// The spotlight wave sweeps the grid — a soft swoosh sells the
+			// motion (juice 2026-07-12; existing asset, no new sounds).
+			SoundManager.PlaySwoosh();
+		}
+	}
+
+	// One-cursor: hovering a book row moves the cursor (mouse mode only —
+	// parked-cursor law keeps kb ownership while keyboarding).
+	private void OnBookRowHover(int rowIdx)
+	{
+		if (lastInputDevice != InputDevice.Mouse) return;
+		if (bookCursorIndex == rowIdx && kbFocusZone == "book") return;
+		bookCursorIndex = rowIdx;
+		SoundManager.PlayHover();
+	}
+
+	// ── HEADER WALKUP (2026-07-12) ───────────────────────────────────
+	// Keyboard cursor over the header toolbar controls, measured by class
+	// at the roster layer (FilterBar stays untouched — shared component).
+	private int headerCursorIndex = 0;
+
+	private List<Panel> CollectHeaderControls()
+	{
+		var outList = new List<Panel>();
+		var toolbar = FindPanelByClass( this, "rh-toolbar" );
+		if ( toolbar == null ) return outList;
+		CollectHeaderControlsRec( toolbar, outList );
+		return outList;
+	}
+
+	private void CollectHeaderControlsRec( Panel root, List<Panel> outList )
+	{
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( "dropdown-btn" ) || c.HasClass( "sort-direction-btn" ) || c.HasClass( "sort-btn" ) )
+			{
+				outList.Add( c );
+				continue;
+			}
+			CollectHeaderControlsRec( c, outList );
+		}
+	}
+
+	private void FocusHeaderZone()
+	{
+		kbFocusZone = "header";
+		var ctrls = CollectHeaderControls();
+		headerCursorIndex = Math.Clamp( headerCursorIndex, 0, Math.Max( 0, ctrls.Count - 1 ) );
+		SetInputDevice( InputDevice.Keyboard );
+		SoundManager.PlayHover();
+	}
+
+	// Hand the keyboard to the Pattern Book (fusion's third nav zone —
+	// grid ↔ book seam mirrors the collection's grid ↔ inspect seam).
+	private void FocusBookZone()
+	{
+		if (!isFusionMode) return;
+		kbFocusZone = "book";
+		int rows = 1 + FusionPatterns.All.Count;
+		bookCursorIndex = Math.Clamp(bookCursorIndex, 0, rows - 1);
+		SetInputDevice(InputDevice.Keyboard);
+		SoundManager.PlayClick();
+	}
+
 	// Fusion animation state
 	private bool isFusionAnimating = false;
 	private string fusionPhase = "";
@@ -2179,6 +2496,33 @@
 		bool wasVisible = gridRingVisible;
 		gridRingVisible = false;
 		gridRingTight = false;
+
+		// HEADER WALKUP zone (2026-07-12) — the one ring parks on the
+		// focused toolbar control (tight inset; symmetric math — no -8).
+		if ( kbFocusZone == "header" && IsKbMode && !showResult )
+		{
+			var hdrCtrls = CollectHeaderControls();
+			if ( headerCursorIndex >= 0 && headerCursorIndex < hdrCtrls.Count )
+			{
+				var hostH = hdrCtrls[headerCursorIndex];
+				var rrh = Box.Rect;
+				var frH = hostH.Box.Rect;
+				if ( rrh.Width >= 1f && frH.Width >= 1f )
+				{
+					float sch = ScaleFromScreen;
+					if ( sch <= 0.01f || float.IsNaN( sch ) || float.IsInfinity( sch ) ) sch = 1f;
+					gridRingL = (int)(( frH.Left - rrh.Left ) * sch) - DetailRingInset;
+					gridRingT = (int)(( frH.Top - rrh.Top ) * sch) - DetailRingInset;
+					gridRingW = (int)(frH.Width * sch) + DetailRingInset * 2;
+					gridRingH = (int)(frH.Height * sch) + DetailRingInset * 2;
+					gridRingTight = true;
+					gridRingVisible = true;
+					if ( !wasVisible ) gridRingWarm = 0;
+					else if ( gridRingWarm < 2 ) gridRingWarm++;
+				}
+			}
+			return;
+		}
 
 		// STAGE ZONE — one cursor language (user mandate 2026-07-02): when
 		// keyboard focus hands over to the dossier, the SAME waving ring
@@ -2529,6 +2873,11 @@
 	// Commit a cursor move to the item at `items[newIndex]`. No-ops (and stays
 	// silent) when the move didn't change anything; otherwise plays the hover
 	// blip and queues the scroll-into-view.
+	// The facts-column control the cursor last sat on — the D-seam from
+	// the stage RESUMES here instead of a raw nearest-band landing
+	// (user 2026-07-12: D from RELEASE landed on "the third move").
+	private string lastFactsColFocusId = null;
+
 	private void SetDetailFocus( int newIndex )
 	{
 		// KB input reclaims the highlight from the mouse (last-input-wins)
@@ -2536,6 +2885,9 @@
 		SetInputDevice( InputDevice.Keyboard );
 		if ( newIndex < 0 || newIndex == detailFocusIndex ) return;
 		detailFocusIndex = newIndex;
+		var itsL = GetDetailFocusItems();
+		if ( newIndex < itsL.Count && itsL[newIndex].Col == 1 )
+			lastFactsColFocusId = itsL[newIndex].Id;
 		detailScrollFollowPending = true;
 		SoundManager.PlayHover();
 	}
@@ -2639,10 +2991,26 @@
 		int within = FindSubStep( items, cur, 1 );
 		if ( within >= 0 ) { SetDetailFocus( within ); return; }
 
-		// At the band's right edge: from the left column, cross to diamonds.
-		// The diamond column is single-Sub, so the tie preference is moot.
+		// At the band's right edge: from the left column, cross to the facts
+		// column. RESUME the control the cursor last walked over there
+		// (predictable landing — user 2026-07-12: nearest-band from RELEASE
+		// hit "the third move" and felt random); nearest-band only on the
+		// first-ever crossing. Scroll-follow reveals the landing either way.
 		if ( cur.Col == 0 )
+		{
+			if ( lastFactsColFocusId != null )
+			{
+				for ( int i = 0; i < items.Count; i++ )
+				{
+					if ( items[i].Col == 1 && items[i].Id == lastFactsColFocusId )
+					{
+						SetDetailFocus( i );
+						return;
+					}
+				}
+			}
 			SetDetailFocus( FindNearestInColumn( items, 1, cur.Band, false ) );
+		}
 	}
 
 	// Index of the item one Sub-step (dir = -1 / +1) from `cur` within the
@@ -2803,7 +3171,15 @@
 
 		var view = factsScrollRef.Box.Rect;
 		var ctrl = focused.Box.Rect;
-		if ( view.Height <= 0f || ctrl.Height <= 0f ) return;
+		if ( view.Height <= 0f || ctrl.Height <= 0f )
+		{
+			// Focused control exists but layout hasn't placed it yet (fresh
+			// seam landing / remount) — retry next tick instead of silently
+			// leaving the cursor off-screen (user 2026-07-12: seam landings
+			// weren't scrolled into view).
+			detailScrollFollowPending = true;
+			return;
+		}
 
 		float curOff = factsScrollRef.ScrollOffset.y;
 
@@ -2814,7 +3190,7 @@
 		{
 			float bottomOff = Math.Max( 0f, factsScrollRef.ScrollSize.y );
 			if ( Math.Abs( bottomOff - curOff ) > 0.5f )
-				factsScrollRef.ScrollOffset = new Vector2( factsScrollRef.ScrollOffset.x, bottomOff );
+				factsScrollGlideTarget = bottomOff; // GLIDE, not snap (user 2026-07-12)
 			return;
 		}
 
@@ -2829,7 +3205,7 @@
 		if ( pickerAtTop || IsFocusedDetailControlFirstFacts() )
 		{
 			if ( curOff > 0.5f )
-				factsScrollRef.ScrollOffset = new Vector2( factsScrollRef.ScrollOffset.x, 0f );
+				factsScrollGlideTarget = 0f; // GLIDE, not snap (user 2026-07-12)
 			return;
 		}
 
@@ -2846,7 +3222,7 @@
 
 		newOff = Math.Max( 0f, newOff );
 		if ( Math.Abs( newOff - curOff ) > 0.5f )
-			factsScrollRef.ScrollOffset = new Vector2( factsScrollRef.ScrollOffset.x, newOff );
+			factsScrollGlideTarget = newOff; // GLIDE via the shared facts glide
 	}
 
 	// Track which card is being hovered (to prevent selected card from animating when hovering another)
@@ -3980,10 +4356,12 @@
 	{
 		if ( factsScrollRef == null ) return;
 		float max = Math.Max( 0f, factsScrollRef.ScrollSize.y );
-		float cur = factsScrollRef.ScrollOffset.y;
+		// Base repeated nudges off the ACTIVE glide target so held-key
+		// paging accumulates smoothly instead of fighting the lerp.
+		float cur = factsScrollGlideTarget >= 0f ? factsScrollGlideTarget : factsScrollRef.ScrollOffset.y;
 		float next = Math.Clamp( cur + dy, 0f, max );
 		if ( Math.Abs( next - cur ) < 0.5f ) return;
-		factsScrollRef.ScrollOffset = new Vector2( factsScrollRef.ScrollOffset.x, next );
+		factsScrollGlideTarget = next; // GLIDE, not snap (user 2026-07-12)
 		SoundManager.PlayHover();
 	}
 
@@ -4166,6 +4544,9 @@
 				Parent2 = null;
 				selectedForSlot = 1;
 				lockedGenes.Clear();
+				selectedPatternId = null;
+				bookCursorIndex = 0;
+				unveilPatternId = null;
 			}
 		}
 	}
@@ -4194,6 +4575,10 @@
 			Parent2 = null;
 			selectedForSlot = 1;
 			lockedGenes.Clear();
+			// Pattern Book state resets with the forge.
+			selectedPatternId = null;
+			bookCursorIndex = 0;
+			unveilPatternId = null;
 		}
 		else
 		{
@@ -4614,8 +4999,10 @@
 			return;
 		}
 
-		// Check compatibility if parent 1 is already selected
-		if (Parent1 != null && monster.SpeciesId != Parent1.SpeciesId)
+		// Check compatibility if parent 1 is already selected — same
+		// species (Gene Weave) or a Pattern Book pair both slot; the
+		// loom refuses everything else.
+		if (Parent1 != null && Parent2 == null && !IsWeavePairable(Parent1, monster))
 		{
 			SoundManager.PlayDeny();
 			return;
@@ -4719,15 +5106,30 @@
 		lastFusionExpectedTotal = preview.AvgHP + preview.AvgATK + preview.AvgDEF + preview.AvgSpA + preview.AvgSpD + preview.AvgSPD;
 		lastFusionExpectedQuality = preview.PredictedQuality;
 
+		// Pattern Book: was this cross pair's pattern still a riddle?
+		// (Checked BEFORE BreedMonsters, which inscribes it on success.)
+		var weavePattern = Parent1.SpeciesId != Parent2.SpeciesId
+			? FusionPatterns.Find(Parent1.SpeciesId, Parent2.SpeciesId)
+			: null;
+		bool patternWasKnown = weavePattern == null
+			|| (MonsterManager.Instance?.IsPatternDiscovered(weavePattern.Id) ?? false);
+
 		// Create the offspring (pass locked genes for guaranteed inheritance)
 		breedingResult = MonsterManager.Instance?.BreedMonsters(Parent1, Parent2, lockedGenes.Count > 0 ? lockedGenes : null);
 
 		if (breedingResult != null)
 		{
+			// First weave of a pattern — the book row unveils in gold.
+			// npv-@newPatternRev keys the row so its keyframes remount.
+			if (weavePattern != null && !patternWasKnown)
+			{
+				unveilPatternId = weavePattern.Id;
+				newPatternRev++;
+			}
 			// Start fusion animation sequence
 			showResult = true;
 			isFusionAnimating = true;
-			fusionPhase = "spiral";
+			fusionPhase = "gather"; // loom-helix opening beat
 			fusionAnimationStart = RealTime.Now;
 
 			// Phase 1: Spiral (0.8s) -> Phase 2: Flash (0.3s) -> Phase 3: Reveal (0.5s)
@@ -4794,6 +5196,7 @@
 	{
 		if (breedingResult == null) return;
 		SoundManager.PlayClick();
+		SoundManager.PlaySwoosh(); // back into the forge — page-turn cue (juice 2026-07-12)
 		Parent1 = breedingResult;
 		Parent2 = null;
 		selectedForSlot = 2;
@@ -4806,25 +5209,35 @@
 
 	private async Task RunFusionAnimation()
 	{
-		// THE RITUAL (2026-07-06): spiral (essence orbs slam + helix
-		// rises) → flash (shockwaves + white-hot merge) → forming (the
-		// offspring holds as a dark silhouette in the glow) → reveal
+		// THE LOOM-HELIX (2026-07-06): gather (threads unspool, 0.5s) →
+		// bind (the weave rises into the two-tone helix, 0.9s) → cocoon
+		// (heartbeat in near-silence + tapestry burn, 0.9s) → reveal
 		// (isFusionAnimating false; .fr-stage springs the real sprite).
-		fusionPhase = "spiral";
+		// ~2.3s of ritual, spent unevenly — the cocoon's stillness is
+		// the suspense; the payoff sounds land ON THE REVEAL.
+		fusionPhase = "gather";
 		SoundManager.PlayForward();
-		await GameTask.DelaySeconds(1.4f);
+		await GameTask.DelaySeconds(0.5f);
 
-		// Merge hit — layered: catch (the hit) + success (positive) +
-		// gold (the "you got something").
-		fusionPhase = "flash";
+		fusionPhase = "bind";
+		SoundManager.PlaySwoosh(); // soft — the weave, not the hit
+		await GameTask.DelaySeconds(0.9f);
+
+		// Cocoon — QUIET (no cue; the silence is the suspense).
+		fusionPhase = "cocoon";
+		await GameTask.DelaySeconds(0.9f);
+
+		// The payoff lands with the reveal: catch (the hit) + success
+		// (positive) + gold (the "you got something").
 		SoundManager.PlayMonsterCatch();
 		SoundManager.PlaySuccess();
 		SoundManager.PlayGoldReward();
-		await GameTask.DelaySeconds(0.5f);
 
-		// Forming — the silhouette beat (quiet; the flash still rings).
-		fusionPhase = "forming";
-		await GameTask.DelaySeconds(0.9f);
+		// First weave of a pattern — a distinct discovery ping layered a
+		// hair over the payoff stack (the book row is flashing gold right
+		// now; juice 2026-07-12).
+		if ( unveilPatternId != null )
+			SoundManager.PlayNotification();
 
 		// Animation complete — the INLINE reveal takes the altar + facts
 		// (2026-07-06): rrev remount fires the entrance keyframes; the CTA
@@ -4834,6 +5247,165 @@
 		isFusionAnimating = false;
 		resultRevVersion++;
 		fusionResultCursor = 0;
+		// Count-up ticker arms with the reveal (juice 2026-07-12).
+		displayedResultTotal = 0f;
+		resultRevealAt = RealTime.Now;
+	}
+
+	// ── DEV: fusion-ritual inspector ─────────────────────────────────
+	// dev_fusefx play          — replay the full Loom-Helix on demand
+	// dev_fusefx gather|bind|cocoon — freeze a phase (mounts WITH the
+	//                            class, so its keyframes fire and HOLD
+	//                            at their end state via `both` fill)
+	// dev_fusefx reveal        — jump to the .fr-stage reveal state
+	// dev_fusefx off           — clear all fusion result state
+	// Uses the first two owned beasts as fake parents + result. Panel
+	// must be mounted (open My Beasts → Fuse to actually see it).
+	private static MonsterRosterPanel _devFx;
+
+	[ConCmd( "dev_fusefx" )]
+	public static void DevFuseFx( string phase = "play" )
+	{
+		var p = _devFx;
+		if ( p == null ) { Log.Warning( "[dev_fusefx] Roster panel not mounted." ); return; }
+		var mons = MonsterManager.Instance?.OwnedMonsters;
+		if ( mons == null || mons.Count < 1 ) { Log.Warning( "[dev_fusefx] Need at least one owned beast." ); return; }
+
+		if ( phase == "off" )
+		{
+			p.showResult = false;
+			p.breedingResult = null;
+			p.isFusionAnimating = false;
+			p.fusionPhase = "";
+			Log.Info( "[dev_fusefx] Cleared." );
+			return;
+		}
+
+		p.isFusionMode = true;
+		p.lastFusionParent1 = mons[0];
+		p.lastFusionParent2 = mons.Count > 1 ? mons[1] : mons[0];
+		p.breedingResult = mons[0];
+		p.showResult = true;
+
+		if ( phase == "reveal" )
+		{
+			p.isFusionAnimating = false;
+			p.fusionPhase = "";
+			p.resultRevVersion++;
+			p.fusionResultCursor = 0;
+			p.displayedResultTotal = 0f;
+			p.resultRevealAt = RealTime.Now;
+			Log.Info( "[dev_fusefx] Reveal state." );
+			return;
+		}
+
+		p.isFusionAnimating = true;
+
+		if ( phase == "play" )
+		{
+			p.fusionPhase = "gather";
+			_ = p.RunFusionAnimation();
+			Log.Info( "[dev_fusefx] Playing the full ritual." );
+			return;
+		}
+
+		p.fusionPhase = phase;
+		Log.Info( $"[dev_fusefx] Frozen at '{phase}' (end state)." );
+	}
+
+	// ── DEV: Pattern Book inspector ──────────────────────────────────
+	// dev_patternbook            — open My Beasts in fusion mode (the book)
+	// dev_patternbook slot A B   — also slot the first owned beast of each
+	//                              species id as B1/B2 (e.g. pagefin dewdrop)
+	// dev_patternbook fuse       — press FUSE on whatever is slotted
+	// dev_patternbook spot <n>   — spotlight book row n (1-based pattern)
+	// dev_patternbook forget     — clear DISCOVERED patterns (session only,
+	//                              persists an empty set — dev saves only!)
+	[ConCmd( "dev_patternbook" )]
+	public static void DevPatternBook( string action = "", string argA = "", string argB = "" )
+	{
+		NavManager.GoTo( "monsters" );
+		var p = _devFx;
+		if ( p == null ) { Log.Warning( "[dev_patternbook] Roster panel not mounted yet — run again." ); return; }
+		if ( !p.isFusionMode ) p.ToggleFusionMode();
+
+		switch ( action )
+		{
+			case "slot":
+			{
+				var mons = MonsterManager.Instance?.OwnedMonsters;
+				var a = mons?.FirstOrDefault( m => m.SpeciesId == argA );
+				var b = mons?.FirstOrDefault( m => m.SpeciesId == argB && m.Id != a?.Id );
+				if ( a == null || b == null ) { Log.Warning( $"[dev_patternbook] Need owned '{argA}' and '{argB}' (dev_givebeast)." ); return; }
+				p.Parent1 = a;
+				p.Parent2 = b;
+				p.selectedForSlot = 2;
+				p.lockedGenes.Clear();
+				Log.Info( $"[dev_patternbook] Slotted {a.Nickname} × {b.Nickname}." );
+				break;
+			}
+			case "fuse":
+				if ( p.Parent1 == null || p.Parent2 == null ) { Log.Warning( "[dev_patternbook] Slot two parents first." ); return; }
+				p.ExecuteFusion();
+				Log.Info( "[dev_patternbook] Fused." );
+				break;
+			case "spot":
+			{
+				int idx = int.TryParse( argA, out var n ) ? n : 1;
+				p.ActivateBookRowAt( Math.Clamp( idx, 0, FusionPatterns.All.Count ) );
+				Log.Info( $"[dev_patternbook] Spotlight row {idx} → '{p.selectedPatternId ?? "none"}'." );
+				break;
+			}
+			case "forget":
+				MonsterManager.Instance?.DiscoveredPatterns.Clear();
+				Log.Info( "[dev_patternbook] Discovered patterns cleared (in-memory)." );
+				break;
+			default:
+				Log.Info( "[dev_patternbook] Fusion mode open — the Pattern Book is the right column." );
+				break;
+		}
+	}
+
+	// ── DEV: trait register-row inspector (2026-07-13 tooltip retirement) ──
+	// dev_traitrows          — open My Beasts (normal mode) on the first
+	//                          owned beast WITH traits (dossier .trait-card rows)
+	// dev_traitrows result   — freeze the fusion reveal with a traited
+	//                          beast as the offspring (.fr-trait rows)
+	[ConCmd( "dev_traitrows" )]
+	public static void DevTraitRows( string mode = "" )
+	{
+		NavManager.GoTo( "monsters" );
+		var p = _devFx;
+		if ( p == null ) { Log.Warning( "[dev_traitrows] Roster panel not mounted yet — run again." ); return; }
+		var mons = MonsterManager.Instance?.OwnedMonsters;
+		var traited = mons?.FirstOrDefault( m => m.Traits != null && m.Traits.Count > 0 );
+		if ( traited == null ) { Log.Warning( "[dev_traitrows] No owned beast has traits." ); return; }
+
+		if ( mode == "result" )
+		{
+			if ( !p.isFusionMode ) p.ToggleFusionMode();
+			p.lastFusionParent1 = mons[0];
+			p.lastFusionParent2 = mons.Count > 1 ? mons[1] : mons[0];
+			p.breedingResult = traited;
+			p.showResult = true;
+			p.isFusionAnimating = false;
+			p.fusionPhase = "";
+			p.resultRevVersion++;
+			p.fusionResultCursor = 0;
+			p.displayedResultTotal = 0f;
+			p.resultRevealAt = RealTime.Now;
+			Log.Info( $"[dev_traitrows] Fusion reveal frozen on '{traited.Nickname}' ({traited.Traits.Count} traits)." );
+			return;
+		}
+
+		if ( p.isFusionMode ) p.ToggleFusionMode();
+		p.showResult = false;
+		p.breedingResult = null;
+		p.SelectedMonster = traited;
+		var _tm = p.GetFilteredMonsters();
+		var _ti = _tm.FindIndex( m => m.Id == traited.Id );
+		if ( _ti >= 0 ) p.selectedMonsterIndex = _ti;
+		Log.Info( $"[dev_traitrows] Dossier on '{traited.Nickname}' ({traited.Traits.Count} traits)." );
 	}
 
 	// CancelFusion / ConfirmFusion removed — replaced with two-stage
@@ -5273,6 +5845,7 @@
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
 		base.OnAfterTreeRender( firstTime );
+		_devFx = this; // dev_fusefx handle — see DevFuseFx
 		if ( firstTime && !_myBeastsArtLoaded )
 		{
 			// Snapshot first so RESET can revert; THEN apply persisted overrides.
@@ -5380,6 +5953,19 @@
 		else
 			displayedPwr = _pwrTarget;
 
+		// JUICE 2026-07-12: fusion-result total ticks up once the ledger
+		// card is on screen (reveal + 0.45s). Slower rate than PWR (0.09)
+		// — the roll deserves ~half a second of drama.
+		if ( showResult && breedingResult != null && !isFusionAnimating
+			&& RealTime.Now - resultRevealAt > 0.45f )
+		{
+			float _resTarget = GetResultTotalGenes();
+			if ( Math.Abs( _resTarget - displayedResultTotal ) > 0.9f )
+				displayedResultTotal += ( _resTarget - displayedResultTotal ) * 0.09f;
+			else
+				displayedResultTotal = _resTarget;
+		}
+
 		// FEEL P2: facts-column wheel GLIDE (shared premium scroll feel —
 		// see OnMouseWheel).
 		UpdateFactsScrollGlide();
@@ -5463,6 +6049,13 @@
 	// FEEL P1: PWR display value (count-up ticker — see Tick).
 	private float displayedPwr = 0f;
 
+	// JUICE 2026-07-12: fusion-result gene total counts up in the rvx
+	// row (Balatro number-juice; the verdict chip's keyframe holds until
+	// it settles). Reset to 0 per reveal; gated on resultRevealAt so the
+	// count starts once the ledger card has faded in.
+	private float displayedResultTotal = 0f;
+	private float resultRevealAt = 0f;
+
 	// FEEL: facts-column wheel glide target (<0 = idle).
 	private float factsScrollGlideTarget = -1f;
 
@@ -5517,7 +6110,7 @@
 				fusionResultCursor = fusionResultCursor == 0 ? 1 : 0;
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+			else if (UiInput.ConfirmPressed())
 			{
 				if (fusionResultCursor == 0) OnViewFusedBeast();
 				else FuseAgain();
@@ -5544,7 +6137,7 @@
 				releaseKbCursor = releaseKbCursor == 0 ? 1 : 0;
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+			else if (UiInput.ConfirmPressed())
 			{
 				if (releaseKbCursor == 1)
 				{
@@ -5560,19 +6153,136 @@
 			return;
 		}
 
+		// ── HEADER WALKUP zone (2026-07-12, user: "we should also have
+		// that walkup in my beasts for the sorting stuff at top") — W from
+		// the grid's top row parks the ring on the header controls
+		// (FilterBar dropdowns + sort direction + the FUSE/CANCEL/MULTI
+		// slabs; measured by class at the roster layer — no FilterBar
+		// changes). A/D across, Space/E clicks the control, S back down to
+		// the grid, W escalates to the HUD tabs, Q backs to the grid.
+		// Works in BOTH normal and fusion mode (fusion's CANCEL slab is in
+		// the same toolbar walk).
+		if (kbFocusZone == "header")
+		{
+			var hdr = CollectHeaderControls();
+			if (hdr.Count == 0) { FocusGridZone(); return; }
+			headerCursorIndex = Math.Clamp(headerCursorIndex, 0, hdr.Count - 1);
+			if (Input.Pressed("Menu") || Input.Pressed("Score"))
+			{
+				FocusGridZone();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			else if (Input.Pressed("Left"))
+			{
+				if (headerCursorIndex > 0) { headerCursorIndex--; SoundManager.PlayHover(); }
+			}
+			else if (Input.Pressed("Right"))
+			{
+				if (headerCursorIndex < hdr.Count - 1) { headerCursorIndex++; SoundManager.PlayHover(); }
+			}
+			else if (Input.Pressed("Down"))
+			{
+				// S returns to the grid (the grid cursor kept its column).
+				FocusGridZone();
+			}
+			else if (Input.Pressed("Up"))
+			{
+				kbFocusZone = "grid";
+				GameHUD.ExitPanel();
+			}
+			else if (UiInput.ConfirmPressed())
+			{
+				// Activate = exactly what a mouse click does (dropdowns
+				// open, slabs toggle). Dropdown MENUS are mouse territory
+				// once open (click-to-open convention).
+				hdr[headerCursorIndex].CreateEvent("onclick");
+				SoundManager.PlayClick();
+			}
+			return;
+		}
+
 		// Fusion mode keyboard controls (inline grid selection assigns to parent slots)
 		if (isFusionMode)
 		{
 			var monsters = GetAvailableBreedingMonsters();
 
+			// ── FUSION TILE GRID zone (2026-07-12) — fusion's third nav
+			// zone, now TRUE 2D over the 2-wide square tiles: W/S rows,
+			// A/D within the pair (A off the LEFT column seams back to the
+			// grid), Space/E spotlights, Q (or Tab) backs out. Handled
+			// BEFORE the fusion-wide Q so the book owns its back key. The
+			// scroll GLIDES to follow the cursor (shared facts glide).
+			if (kbFocusZone == "book")
+			{
+				int tileCount = 1 + FusionPatterns.All.Count;
+				bool bookMoved = false;
+				if (Input.Pressed("Menu") || Input.Pressed("Score"))
+				{
+					FocusGridZone();
+					GameHUD.PanelHandledBackKey = true;
+				}
+				else if (Input.Pressed("Up"))
+				{
+					if (bookCursorIndex >= 2) { bookCursorIndex -= 2; bookMoved = true; }
+				}
+				else if (Input.Pressed("Down"))
+				{
+					if (bookCursorIndex + 2 < tileCount) { bookCursorIndex += 2; bookMoved = true; }
+					// Short last row — S from the row above lands on the
+					// final tile instead of dead-ending.
+					else if (bookCursorIndex < tileCount - 1 && bookCursorIndex / 2 < (tileCount - 1) / 2)
+					{ bookCursorIndex = tileCount - 1; bookMoved = true; }
+				}
+				else if (Input.Pressed("Left"))
+				{
+					if (bookCursorIndex % 2 == 1) { bookCursorIndex--; bookMoved = true; }
+					else FocusGridZone(); // seam mirror — A walks back across
+				}
+				else if (Input.Pressed("Right"))
+				{
+					if (bookCursorIndex % 2 == 0 && bookCursorIndex + 1 < tileCount)
+					{ bookCursorIndex++; bookMoved = true; }
+				}
+				else if (UiInput.ConfirmPressed())
+				{
+					ActivateBookRowAt(bookCursorIndex);
+				}
+				if (bookMoved)
+				{
+					SetInputDevice(InputDevice.Keyboard);
+					SoundManager.PlayHover();
+					var bt = UiGridScroll.ComputeIndexOffset(factsScrollRef, bookCursorIndex, "pb-tile");
+					factsScrollGlideTarget = bt ?? -1f;
+				}
+				return;
+			}
+
 			// Q/R SWAP (2026-07-06, user-approved: ONE back key — Q means
 			// back EVERYWHERE). Q now exits fusion (was R); R is the BREED
 			// confirm (was Q) — see below. Q always claims the back key so
-			// GameHUD's exit-to-tabs yields.
+			// GameHUD's exit-to-tabs yields. Pattern Book addendum: an
+			// active pattern spotlight is a STATE Q backs out of first —
+			// first Q clears the spotlight, second Q exits the forge.
 			if (Input.Pressed("Menu"))
 			{
-				ToggleFusionMode();
+				if (selectedPatternId != null)
+				{
+					selectedPatternId = null;
+					SoundManager.PlayBack();
+				}
+				else
+				{
+					ToggleFusionMode();
+				}
 				GameHUD.PanelHandledBackKey = true;
+				return;
+			}
+
+			// Tab — hand the keyboard to the Pattern Book (mirrors the
+			// collection's Tab-into-inspect seam).
+			if (Input.Pressed("Score"))
+			{
+				FocusBookZone();
 				return;
 			}
 
@@ -5599,15 +6309,26 @@
 				}
 				else if (Input.Pressed("Right"))
 				{
-					selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + 1);
-					SetInputDevice( InputDevice.Keyboard );
-					SoundManager.PlayHover();
+					// D off a row's right edge crosses the seam into the
+					// Pattern Book (the collection's arrow-seam, mirrored).
+					bool atRowEnd = (selectedMonsterIndex + 1) % columns == 0
+						|| selectedMonsterIndex == monsters.Count - 1;
+					if (!atRowEnd)
+					{
+						selectedMonsterIndex = Math.Min(monsters.Count - 1, selectedMonsterIndex + 1);
+						SetInputDevice( InputDevice.Keyboard );
+						SoundManager.PlayHover();
+					}
+					else
+					{
+						FocusBookZone();
+					}
 				}
 				else if (Input.Pressed("Up"))
 				{
 					if (selectedMonsterIndex < columns)
 					{
-						GameHUD.ExitPanel();
+						FocusHeaderZone(); // top row → header walkup (2026-07-12)
 					}
 					else
 					{
@@ -5622,7 +6343,7 @@
 					SetInputDevice( InputDevice.Keyboard );
 					SoundManager.PlayHover();
 				}
-				else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+				else if (UiInput.ConfirmPressed())
 				{
 					OnBreedingMonsterClicked(monsters[selectedMonsterIndex]);
 				}
@@ -5738,7 +6459,7 @@
 					{
 						MovePickerCursor(1);
 					}
-					else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+					else if (UiInput.ConfirmPressed())
 					{
 						ActivatePickerRow();
 					}
@@ -5757,7 +6478,7 @@
 				else if (Input.Pressed("Down"))  MoveDetailDown();
 				else if (Input.Pressed("Left"))  MoveDetailLeft();
 				else if (Input.Pressed("Right")) MoveDetailRight();
-				else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+				else if (UiInput.ConfirmPressed())
 				{
 					ActivateFocusedDetailControl();
 				}
@@ -5828,10 +6549,11 @@
 			}
 			else if (Input.Pressed("Up"))
 			{
-				// If at top row, exit to tab navigation
+				// Top row → header walkup (2026-07-12); W again from the
+				// header escalates to tab navigation.
 				if (selectedMonsterIndex < columns)
 				{
-					GameHUD.ExitPanel();
+					FocusHeaderZone();
 				}
 				else
 				{
@@ -5850,7 +6572,7 @@
 				SetInputDevice( InputDevice.Keyboard );
 				SoundManager.PlayHover();
 			}
-			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
+			else if (UiInput.ConfirmPressed())
 			{
 				// Confirm the highlighted beast — hand keyboard control to the
 				// detail panel so its controls can be used. The detail already
@@ -5903,6 +6625,14 @@
 		hash.Add(GetMonsterCount());
 		hash.Add(GetMaxMonsters());
 		hash.Add(PendingFocusMonsterId);
+		// Pattern Book — spotlight, row cursor, first-weave unveil, and
+		// the discovered count (so a fresh weave re-renders the book).
+		hash.Add(selectedPatternId);
+		hash.Add(bookCursorIndex);
+		hash.Add(unveilPatternId);
+		hash.Add(newPatternRev);
+		hash.Add(headerCursorIndex); // header walkup zone (2026-07-12)
+		hash.Add(MonsterManager.Instance?.DiscoveredPatterns?.Count ?? 0);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		hash.Add(selectedMonsterIndex);
 		hash.Add(lastInputDevice); // one device flag (2026-07-06) — drives .kbd-mode/.mouse-mode
@@ -6044,7 +6774,7 @@
 		return type switch
 		{
 			JournalEntryType.Caught => "#60a5fa",
-			JournalEntryType.Bred => "#f472b6",
+			JournalEntryType.Bred => "#9b6cff", // fusion identity = forge violet (2026-07-12)
 			JournalEntryType.Evolution => "#fbbf24",
 			JournalEntryType.BossDefeat => "#f87171",
 			JournalEntryType.Milestone => "#4ade80",
@@ -6301,6 +7031,14 @@
 	{
 		var sp = m != null ? MonsterManager.Instance?.GetSpecies( m.SpeciesId ) : null;
 		return ElementHex( sp?.Element.ToString().ToLower() ?? "neutral" );
+	}
+
+	// Element NAME (lowercase) for any monster — keys the baked helix
+	// variant (ui/fusion/helix-<element>.webp; one per ElementType value).
+	private string GetElementNameFor( Monster m )
+	{
+		var sp = m != null ? MonsterManager.Instance?.GetSpecies( m.SpeciesId ) : null;
+		return sp?.Element.ToString().ToLower() ?? "neutral";
 	}
 
 	// Hex → rgba() string for the computed inline styles (the per-kind ×

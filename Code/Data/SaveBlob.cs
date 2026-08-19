@@ -40,6 +40,12 @@ public class SaveBlob
 	/// <summary>Roster cap. Mirrors <c>MonsterManager</c>'s current max-monsters cookie.</summary>
 	public int MaxMonsters { get; set; } = 50;
 
+	/// <summary>
+	/// Fusion pattern ids the player has discovered (successfully woven at
+	/// least once). Owned by <c>MonsterManager.DiscoveredPatterns</c>.
+	/// </summary>
+	public List<string> DiscoveredPatterns { get; set; } = new();
+
 	/// <summary>Discovery + seen state for the monster encyclopedia.</summary>
 	public BeastiarySaveData Beastiary { get; set; }
 

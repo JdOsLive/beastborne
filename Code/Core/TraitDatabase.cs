@@ -76,7 +76,9 @@ public static class TraitDatabase
 			Name = "Terra Force",
 			Description = "Earth-type moves deal +15% damage.",
 			Rarity = TraitRarity.Common,
-			Icon = "lucide:gem-stone",
+			// lucide:gem-stone doesn't exist (404 spam in console, blank trait
+			// tile) — mountain = the earth-power read, still trait-unique.
+			Icon = "lucide:mountain",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 15, AffectedElement = ElementType.Earth }
@@ -210,7 +212,10 @@ public static class TraitDatabase
 			Name = "Tidal Wrath",
 			Description = "Water-type moves deal +50% damage when HP is below 33%.",
 			Rarity = TraitRarity.Uncommon,
-			Icon = "lucide:tsunami",
+			// lucide:tsunami doesn't exist (404 spam in console, blank trait
+			// tile) — storm-surge read; lucide:waves is already taken by the
+			// basic water trait, so this stays trait-unique.
+			Icon = "lucide:cloud-rain-wind",
 			Effects = new()
 			{
 				new TraitEffect { Type = TraitEffectType.ElementDamageBonus, Value = 50, AffectedElement = ElementType.Water, Condition = "below_33_hp" }

@@ -295,12 +295,27 @@ public static class GeneticsCalculator
 			return result;
 		}
 
-		// Must be same species
+		// Same species → gene fusion (always allowed). Different species →
+		// only the hand-authored pairs in the fusion list can fuse.
 		if ( parent1.SpeciesId != parent2.SpeciesId )
 		{
-			result.CanBreed = false;
-			result.Reason = "Monsters must be the same species to breed";
-			return result;
+			var pattern = FusionPatterns.Find( parent1.SpeciesId, parent2.SpeciesId );
+			if ( pattern == null )
+			{
+				result.CanBreed = false;
+				result.Reason = "These two can't be fused.";
+				return result;
+			}
+
+			int avgLevel = (parent1.Level + parent2.Level) / 2;
+			if ( avgLevel < pattern.MinAvgLevel )
+			{
+				result.CanBreed = false;
+				result.Reason = $"Their average level is too low — needs Lv {pattern.MinAvgLevel}+.";
+				return result;
+			}
+
+			result.MatchedPattern = pattern;
 		}
 
 		// Check if either parent is at risk (contract satisfaction too low)
@@ -330,8 +345,11 @@ public static class GeneticsCalculator
 		int avgLevel = (parent1.Level + parent2.Level) / 2;
 		int baseCost = 100 + (avgLevel * 20);
 
-		// Rarity multiplier
-		var species = MonsterManager.Instance?.GetSpecies( parent1.SpeciesId );
+		// Rarity multiplier — use the rarer of the two parents so cross-species
+		// pattern weaves cost the same regardless of slot order.
+		var species1 = MonsterManager.Instance?.GetSpecies( parent1.SpeciesId );
+		var species2 = MonsterManager.Instance?.GetSpecies( parent2.SpeciesId );
+		var species = (species2?.BaseRarity ?? Rarity.Common) > (species1?.BaseRarity ?? Rarity.Common) ? species2 : species1;
 		float rarityMultiplier = species?.BaseRarity switch
 		{
 			Rarity.Uncommon => 1.5f,
@@ -393,4 +411,10 @@ public class BreedCompatibility
 {
 	public bool CanBreed { get; set; }
 	public string Reason { get; set; }
+
+	/// <summary>
+	/// The fusion pattern this cross-species pair matched, if any.
+	/// Null for same-species Gene Weave pairs.
+	/// </summary>
+	public FusionPattern MatchedPattern { get; set; }
 }

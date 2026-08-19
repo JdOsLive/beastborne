@@ -24,8 +24,10 @@ $accents = [ordered]@{
     'violet' = '#8B5CF6'   # collection (My Beasts)
     'green'  = '#4ADE80'   # expedition
     'red'    = '#F87171'   # battle
-    'pink'   = '#F472B6'   # fusion
+    'pink'   = '#F472B6'   # fusion (RETIRED 2026-07-12 — fusion now rides violet)
     'gold'   = '#FBBF24'   # journal
+    'appink' = '#FF6BD6'   # skills (Tamer Talents — the PawPad SKILLS app pink)
+    'teal'   = '#2DD4BF'   # beastbook (Specimen Hall — the PawPad BEASTBOOK app teal, 2026-07-12)
 }
 # layer key -> rendered tile height (width is always the 1600px period)
 $layers = [ordered]@{ 'a' = 70; 'b' = 53 }

@@ -124,7 +124,11 @@
 	     the button is an absolute HUD-root child (no scroll/clip
 	     ancestor, so the overhang is lawful). BEHAVIOR UNCHANGED:
 	     OnPhoneClicked, badge source, the "8" hotkey cap. -->
-	<button class="hud-phone-btn" onclick=@OnPhoneClicked>
+	<!-- v10: the `pop` class fires when a notification peek arrives (the
+	     phone "announces" — see NotificationPanel.LastPeekBornAt): a
+	     0.35s scale pop on the body + badge via class-toggle transition
+	     (replays every time; keyframes wouldn't). -->
+	<button class="hud-phone-btn @(IsPhonePopping() ? "pop" : "")" onclick=@OnPhoneClicked>
 		<div class="hud-phone-body">
 			@* Gradient moved OFF the bordered body onto this first-child
 			   fill (2026-07-09) — bg-on-bordered-radius painted over the
@@ -1506,8 +1510,19 @@
 
 	private void OnNotificationsClicked()
 	{
-		SoundManager.PlayClick();
-		NotificationPanel.Toggle();
+		// v10: the notifications popup is RETIRED — alerts live on the
+		// PawPad (mirrors the v9.2 chat retirement). N and every alerts
+		// entry point land here via NavManager.OverlayNotifications.
+		PhoneLauncher.OpenToApp( "alerts" );
+	}
+
+	/// <summary>True for a beat after a notification peek arrives — drives
+	/// the PawPad chip's announce pop. Sign-checked: Time.Now resets per
+	/// session while the static stamp can survive.</summary>
+	private bool IsPhonePopping()
+	{
+		var t = NotificationPanel.LastPeekBornAt;
+		return t > 0f && Time.Now >= t && Time.Now - t < 0.35f;
 	}
 
 	private int GetChatUnreadCount() => ChatPanel.UnreadMessageCount;
@@ -1638,17 +1653,11 @@
 			{
 				hash.Add((int)boost.TimeRemaining.TotalSeconds);
 			}
-			// Notifications (update when notifications change)
-			var notifications = NotificationManager.Instance?.ActiveNotifications;
-			hash.Add(notifications?.Count ?? 0);
-			if (notifications != null)
-			{
-				foreach (var n in notifications)
-				{
-					hash.Add(n.Id);
-					hash.Add((int)(n.Progress * 100));
-				}
-			}
+			// Notifications (badge count) + the PawPad announce pop window.
+			// v10: the per-toast Progress hashing is gone with the toasts —
+			// peeks re-render inside NotificationPanel, not here.
+			hash.Add(NotificationManager.Instance?.ActiveNotifications?.Count ?? 0);
+			hash.Add(IsPhonePopping());
 			return hash.ToHashCode();
 		}
 		catch (Exception ex)

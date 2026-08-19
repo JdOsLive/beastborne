@@ -298,6 +298,13 @@
                                     <span class="pl-empty">ALL CAUGHT UP</span>
                                 }
                             </div>
+                            @* v10: the record's only wipe control (the retired
+                               popup carried Clear All before). Routed through
+                               the backdrop hit-router like every phone control. *@
+                            @if ( PhoneNotifications().Count > 0 )
+                            {
+                                <div class="pl-alert-clear pl-hit hit-clear"><span>CLEAR ALL</span></div>
+                            }
                         }
                     </div>
                 }
@@ -492,6 +499,8 @@
         if ( Instance != null )
         {
             Instance._appView = id;
+            // v10: landing on ALERTS marks everything read (same as OpenApp).
+            if ( id == "alerts" ) Beastborne.Core.NotificationManager.Instance?.MarkAllRead();
             Instance.StateHasChanged();
         }
     }
@@ -1102,6 +1111,9 @@
     private void OpenApp( string id )
     {
         _appView = id;
+        // v10: opening ALERTS is "reading your notifications" — clears the
+        // unread badge (the retired popup's Toggle used to do this).
+        if ( id == "alerts" ) Beastborne.Core.NotificationManager.Instance?.MarkAllRead();
         SoundManager.PlayForward();
         StateHasChanged();
     }
@@ -1121,8 +1133,11 @@
     private bool IsOwnPhoneMsg( Beastborne.Data.ChatMessage m ) =>
         m.SteamId == ( Beastborne.Core.ChatManager.Instance?.LocalSteamId ?? 0 );
 
+    // v10: ALERTS reads the persistent HISTORY (the record, up to 50 —
+    // written at AddNotification time), not the transient active list.
+    // A dismissed/expired peek is gone from the screen but ALWAYS here.
     private List<Beastborne.Core.Notification> PhoneNotifications() =>
-        Beastborne.Core.NotificationManager.Instance?.ActiveNotifications?.ToList() ?? new List<Beastborne.Core.Notification>();
+        Beastborne.Core.NotificationManager.Instance?.NotificationHistory?.ToList() ?? new List<Beastborne.Core.Notification>();
 
     private void OnPhoneChatSend()
     {
@@ -1143,6 +1158,7 @@
     {
         "hit-back", "hit-chan-global", "hit-chan-guild", "hit-chan-trade",
         "hit-send", "hit-input", "hit-radio-prev", "hit-radio-play", "hit-radio-next",
+        "hit-clear",
     };
 
     private string ActionAtScreen( Vector2 screenPx )
@@ -1188,6 +1204,7 @@
             case "hit-radio-prev": Beastborne.Systems.RadioManager.PreviousTrack(); SoundManager.PlayClick(); break;
             case "hit-radio-play": Beastborne.Systems.RadioManager.TogglePlay(); SoundManager.PlayClick(); break;
             case "hit-radio-next": Beastborne.Systems.RadioManager.NextTrack(); SoundManager.PlayClick(); break;
+            case "hit-clear": Beastborne.Core.NotificationManager.Instance?.ClearHistory(); SoundManager.PlayBack(); break;
         }
         StateHasChanged();
     }
@@ -1587,12 +1604,15 @@
             // panel never repaints a focus glide (missing-BuildHash trap).
             HashCode.Combine( _ringL, _ringT, _ringW, _ringH, _ringWarmup ),
             // v9 in-phone apps: view + channel + live data the views render.
+            // v10: + the alert record's count so the ALERTS list re-renders
+            // as history arrives/clears.
             HashCode.Combine(
                 _appView,
                 _phoneChan,
                 Beastborne.Core.ChatManager.Instance?.Messages?.Count ?? 0,
                 Beastborne.Systems.RadioManager.IsPlaying,
                 Beastborne.Systems.RadioManager.CurrentTrackIndex,
-                NotificationPanel.UnreadCount ) );
+                NotificationPanel.UnreadCount,
+                Beastborne.Core.NotificationManager.Instance?.NotificationHistory?.Count ?? 0 ) );
     }
 }

@@ -8,19 +8,21 @@
 @using Beastborne.UI.Primitives;
 @inherits Panel
 
-<root class="beastbook-panel" onclick=@OnPanelClicked>
+<root class="beastbook-panel" onclick=@OnPanelClicked onmousemove=@OnPanelMouseMove>
 	<!-- v10 living background: the panels own glyph drifting at the
 	     house angle (user concept). Replaces animated-bg.webp. -->
 	<BbIconScroll Icon="beastbook" />
 
 	<!-- ============================================================
-	     HEADER — museum/archive identity row (2026-07 sweep). Teal
-	     kicker + huge italic title + skewed seam dashes on the left
-	     (roster .rh-* silhouette, Beastbook teal), FilterBar pushed
-	     right, completion HERO STAT as the archive's headline number.
-	     Opaque bg + the ONE teal signature strip (scroll-leak law).
+	     HEADER — museum/archive identity row (SPECIMEN HALL, 2026-07-12).
+	     TEAL wave band (BbHeaderWaves — the page wears its PawPad app
+	     color #2dd4bf), teal kicker + huge BoldItalic title + skewed
+	     seam dashes, FilterBar pushed right. The wave component paints
+	     the header's OPAQUE base fill (paint-behind law — host must not
+	     fill); host positioning rules live in the scss.
 	     ============================================================ -->
 	<div class="beastbook-header">
+		<BbHeaderWaves Accent=@("teal") />
 		<div class="bh-identity">
 			<span class="bh-kicker">FIELD ARCHIVE</span>
 			<div class="bh-title-row">
@@ -41,9 +43,11 @@
 					   OnSortDirectionChanged=@OnSortDirectionChanged
 					   OnNameFilterChanged=@OnNameFilterChanged
 					   AvailableNames=@GetSpeciesNames() />
+			@* Input grammar (2026-07-12): R is the SHOWN cycle key — Z/X
+			   keep working silently (CyclePrev/CycleNext, reverse pair).
+			   Legend shows only the working headline key. *@
 			<div class="kb-hint beastbook-kb-hint">
-				<div class="cb-key kb-cap"><span>Z</span></div>
-				<div class="cb-key kb-cap"><span>X</span></div>
+				<div class="cb-key kb-cap"><span>R</span></div>
 				<span class="kb-hint-label">Cycle element</span>
 			</div>
 		</div>
@@ -108,21 +112,17 @@
 							var primaryClass = species.Element.ToString().ToLower();
 							var elementClass = $"element-{primaryClass}";
 							var rarityClassCard = $"rarity-{species.BaseRarity.ToString().ToLower()}";
-							// Per-card entrance stagger — small, capped delay so the
-							// grid "deals in" on open instead of snapping as one block.
-							// Capped at 16 cards (~0.4s) so a large filtered set never
-							// drips in slowly; cards past the cap share the final delay.
-							// Skipped entirely in edit mode (drag/scale needs instant
-							// repaint). InvariantCulture for the `.` decimal s&box needs.
-							var gci = System.Globalization.CultureInfo.InvariantCulture;
-							var cardDelay = _editMode ? 0f : Math.Min(gi, 16) * 0.025f;
-							var cardDelayStyle = $"animation-delay: {cardDelay.ToString("F3", gci)}s;";
-							// Card = flat uniform #0c0a18 bg for every card. Element color
-							// is bounded to the small square badge(s) in the bottom strip —
-							// no per-card tint floods anymore. Rarity = border color + thickness.
-							// Number = LV-style dark pill in the top-left corner.
-							<div class="bb-card @stateClass @elementClass @rarityClassCard @(isSelected ? "selected" : "") @(_editMode ? "bb-edit" : "") @(_editMode && _hoveredEditCardId == species.Id ? "bb-edit-hover" : "")"
-								 style="@cardDelayStyle"
+							// Per-card entrance stagger — the ANIMATION-DELAY LAW
+							// (2026-07-12): this panel re-renders every frame (GlobalFrame
+							// in BuildHash), and a re-render cancels any animation still
+							// waiting out its delay. So the deal-in is baked into
+							// keyframe PERCENTAGES instead: `stag-N` picks a full-length
+							// t=0 animation whose hidden hold encodes the old delay.
+							// Capped at 16 steps (~0.4s); cards past the cap share the
+							// final ladder step. Edit mode skips the stagger (no stag
+							// class → the base instant fade) for instant repaint.
+							var stagClass = _editMode ? "" : $"stag-{Math.Min(gi, 16)}";
+							<div class="bb-card @stateClass @elementClass @rarityClassCard @stagClass @(isSelected ? "selected" : "") @(_editMode ? "bb-edit" : "") @(_editMode && _hoveredEditCardId == species.Id ? "bb-edit-hover" : "")"
 								 onclick=@(() => { if (!_editMode) SelectSpecies(species, isDiscovered); })
 								 onmousedown=@(() => StartDragCard(species))
 								 onmouseover=@(() => { OnCardHover(species.Id); OnEditCardEnter(species.Id); })
@@ -193,13 +193,10 @@
 								     museum wall carries identity on the STAGE + PLACARD.
 								     The slot is a compact numbered specimen thumb. -->
 
-								<!-- Hover-preview ring — cheap per-card recipe (opacity swap
-								     on :hover). INSET inside the card bounds (scroll containers
-								     never clip overhanging absolutes — engine law) and given
-								     explicit width/height (all-edge offsets = zero size on an
-								     empty div). The keyboard/selection cursor is the ONE living
-								     ring at panel root — this is just the mouse preview. -->
-								<div class="bb-card-ring"></div>
+								<!-- (The old .bb-card-ring hover-preview ring is RETIRED —
+								     one-cursor model 2026-07-12: hover now MOVES the
+								     selection, so the living ring itself glides to the
+								     hovered tile. A second ring was double-cursor noise.) -->
 
 							</div>
 						}
@@ -231,6 +228,7 @@
 			{
 				var stageDiscovered = IsDiscovered(selectedSpecies.Id);
 				var stageSeen = IsSeen(selectedSpecies.Id);
+				var stageMastery = stageDiscovered ? (BeastiaryManager.Instance?.GetMasteryLevel(selectedSpecies.Id) ?? 0) : 0;
 				<div class="@($"bb-stage-wall drev-{detailRevealVersion}")">
 					<!-- Registry number shows for EVERY state (2026-07-03): the grid
 					     is sorted by number so position reveals it anyway, and the
@@ -241,7 +239,28 @@
 						 onclick=@OnPortraitClick
 						 onmouseover=@(() => OnDiamondHover("portrait"))
 						 title="@L("ui.beastbook.click_to_hear")">
-						<div class="bb-stage-glow"></div>
+						@* SPECIMEN HALL layers (2026-07-12, v2 after user verdict —
+						   "museum is the CONCEPT, Beastborne is the MATERIAL").
+						   Discovered = the baked display FIELD behind the sprite:
+						   dark glass disc + crisp 1px teal ring + sharp dial ticks
+						   (dais family, not an antique plate) + a one-shot GLINT
+						   that replays per selection via the drev remount + the
+						   approved teal spotlight halo. Undiscovered/seen = the
+						   baked EMPTY DISPLAY CASE brackets — the absence is the
+						   exhibit. All layers are absolute children of a FILL-LESS
+						   parent (the paint-behind law only bites under a filled
+						   parent — the halo shipped this exact way). Sprite stays
+						   z-top and UNFILTERED (silhouette excepted). *@
+						@if (stageDiscovered)
+						{
+							<img class="bb-stage-plate" src="ui/beastbook/field-specimen-v1.png" />
+							<div class="bb-plate-glint"></div>
+							<div class="bb-stage-glow"></div>
+						}
+						else
+						{
+							<img class="bb-stage-case" src="ui/beastbook/case-brackets-v1.png" />
+						}
 						@if (HasSprite(selectedSpecies))
 						{
 							<img class="bb-stage-sprite @(stageDiscovered ? "" : (stageSeen ? "seen-only" : "silhouette"))" src="@GetAnimatedIcon(selectedSpecies)" />
@@ -251,351 +270,324 @@
 							<div class="bb-stage-unknown">?</div>
 						}
 					</div>
+					<!-- THE REGISTRY NAMEPLATE — skewed dark slab chip (the house
+					     skew/counter-skew stamp family, NOT a brass texture —
+					     user verdict 2026-07-12): teal accent edge, #NNN in
+					     teal, name in Exo2SemiBold white. Undiscovered reads
+					     "???" — no name leak. Mastery = a flat two-tone MEDAL
+					     chip (metal rim + level number) hung off the right end.
+					     Stamps in per selection (drev remount replays keyframes). -->
+					<div class="bb-stage-tag">
+						<div class="bb-tag-chip">
+							<div class="bb-tag-inner">
+								<span class="bb-tag-num">#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
+								<span class="bb-tag-name">@(stageDiscovered || stageSeen ? selectedSpecies.Name.ToUpper() : "???")</span>
+							</div>
+						</div>
+						@if (stageMastery > 0)
+						{
+							<div class="bb-stage-medal medal-@MedalMetal(stageMastery)"><span>@stageMastery</span></div>
+						}
+					</div>
 				</div>
 			}
 		</div>
 
 		<!-- ============================================================
-		     PLACARD — the gallery label column. Identity block, flavor
-		     quote, diamond actions, swappable deep views (stats / moves /
-		     evolution / lore / mastery). The sprite itself lives on the
-		     stage now — the placard is pure reading. Keeps the class name
-		     `detail-sidebar` so the cascade/scroll rules carry over.
+		     THE DOSSIER — ground-up rebuild (2026-07-12). The Beastbook's
+		     reading column is a SIBLING of My Beasts' FIELD DOSSIER:
+		     container-tone roof/foot caps, a non-scrolling SUB-VIEW BAND
+		     (kicker + species name + count badge, back card on deep
+		     views, ambient teal motes), and a scroll of transparent
+		     zones led by skewed TEAL header chips + hairlines; cards are
+		     #1A1428 corner-cut slabs. Same book, teal chapter.
+		     Class families are bb-prefixed (bbf-/bbs-/bbm-/bbt-/bbi-/
+		     bba-/bbe-/bbl-/bbk-) — the roster's fd-*/fsub-* names are
+		     GLOBAL across stylesheets; colliding with them is cross-sheet
+		     tie roulette (soup law). Hard-won guards preserved: the
+		     spoiler gate (name/rarity/flavor never leak pre-discovery)
+		     and collapse-immune identity geometry (direct zone children
+		     with explicit heights — the 2026-07-03 wrap-collapse bug
+		     lives in this file's history).
+		     Traits render their effect text INLINE (user ruling
+		     2026-07-12: the hover tooltip fired on mouse-LEAVE — the
+		     tooltip machinery is deleted, a trait is now a register row).
 		     ============================================================ -->
-		<div class="detail-sidebar entered">
+		<div @ref="bbDossierRef" class="bb-dossier entered">
+			@if (selectedSpecies == null)
+			{
+				<div class="bb-empty">
+					<iconify icon="lucide:book-open" Size=@(72) Color="rgba(255,255,255,0.12)" />
+					<span class="bb-empty-text">@L("ui.beastbook.empty_state")</span>
+					<span class="bb-empty-hint">@L("ui.beastbook.empty_hint")</span>
+				</div>
+			}
+			else
+			{
+				var sbDiscovered = IsDiscovered(selectedSpecies.Id);
+				var sbSeen = IsSeen(selectedSpecies.Id);
+				var isFullyDiscovered = sbDiscovered;
+				var primaryClass = selectedSpecies.Element.ToString().ToLower();
+				var secondaryClass = selectedSpecies.SecondaryElement.HasValue
+					? selectedSpecies.SecondaryElement.Value.ToString().ToLower()
+					: null;
 
-				@if (selectedSpecies == null)
-				{
-					<!-- Empty state -->
-					<div class="bb-empty">
-						<iconify icon="lucide:book-open" Size=@(72) Color="rgba(255,255,255,0.12)" />
-						<span class="bb-empty-text">@L("ui.beastbook.empty_state")</span>
-						<span class="bb-empty-hint">@L("ui.beastbook.empty_hint")</span>
-					</div>
-				}
-				else if (!IsDiscovered(selectedSpecies.Id) && !IsSeen(selectedSpecies.Id))
-				{
-					<!-- Undiscovered dossier (2026-07-03 refinement) — compact
-					     registry treatment instead of the old full-height "???"
-					     void. Big registry number as the headline (safe to show:
-					     the rail is number-sorted so position reveals it anyway),
-					     UNDISCOVERED kicker chip in the section-title dialect, a
-					     quiet black silhouette motif, and the expedition hint as
-					     a proper FIELD NOTES slab — now zone-aware via the
-					     expedition spawn pools (GetUndiscoveredHint). drev key =
-					     same remount-per-species entrance as the discovered
-					     branch, so paging through unknowns still animates. -->
-					<div class="@($"bb-undisc drev-{detailRevealVersion}")">
-						<div class="bb-undisc-num"><span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span></div>
-						<div class="bb-undisc-kicker"><span>UNDISCOVERED</span></div>
-						<div class="bb-undisc-silhouette">
-							@if (HasSprite(selectedSpecies))
-							{
-								<img class="bb-undisc-sprite" src="@selectedSpecies.IconPath" />
-							}
-							else
-							{
-								<span class="bb-undisc-q">?</span>
-							}
-						</div>
-						<div class="bb-undisc-hint-row">
-							<iconify icon="lucide:map-pin" Size=@(14) Color="#2dd4bf" />
-							<div class="bb-undisc-hint-col">
-								<span class="bb-undisc-hint-label">FIELD NOTES</span>
-								<span class="bb-undisc-hint-text">@GetUndiscoveredHint(selectedSpecies)</span>
+				<!-- Slim container-tone cap — buries rotated-cut leaks at the
+				     scroll's top edge; reads as the column's own padding, NOT
+				     a header (user ruling 2026-07-12: the details column gets
+				     NO header/title band — content starts at the first
+				     section; the sub-view band was removed same-day). -->
+				<div class="bbf-roof"></div>
+
+				<div @ref="bbDetailScrollRef" class="bbf-scroll @(detailFreshSelect ? "casc-select" : "casc-switch")"
+					 onmouseover=@(() => { _isMouseOverDossier = true; })
+					 onmouseout=@(() => { _isMouseOverDossier = false; })>
+					@if (!sbDiscovered && !sbSeen)
+					{
+						<!-- UNDISCOVERED — a registry page, not a void. Number is
+						     safe to show (the rail is number-sorted); the hint is
+						     the zone-aware FIELD NOTES breadcrumb. Silhouette =
+						     brightness(0), the one sanctioned img filter. -->
+						<div class="@($"bbf-zone bbz-undisc drev-{detailRevealVersion}")">
+							<div class="bb-undisc-num"><span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span></div>
+							<div class="bb-undisc-silhouette">
+								@if (HasSprite(selectedSpecies))
+								{
+									<img class="bb-undisc-sprite" src="@selectedSpecies.IconPath" />
+								}
+								else
+								{
+									<span class="bb-undisc-q">?</span>
+								}
+							</div>
+							<div class="bbf-head">
+								<div class="bbf-chip"><span>FIELD NOTES</span></div>
+								<div class="bbf-line"></div>
+							</div>
+							<div class="bb-undisc-hint-row">
+								<iconify icon="lucide:map-pin" Size=@(14) Color="#2dd4bf" />
+								<div class="bb-undisc-hint-col">
+									<span class="bb-undisc-hint-text">@GetUndiscoveredHint(selectedSpecies)</span>
+								</div>
+								<div class="bbf-cut"></div>
 							</div>
 						</div>
-					</div>
-				}
-				else
-				{
-					var isFullyDiscovered = IsDiscovered(selectedSpecies.Id);
-					var primaryClass = selectedSpecies.Element.ToString().ToLower();
-					var secondaryClass = selectedSpecies.SecondaryElement.HasValue
-						? selectedSpecies.SecondaryElement.Value.ToString().ToLower()
-						: null;
-
-					<!-- ============================================================
-					     FIXED TOP — portrait + identity + description. Does NOT
-					     scroll. Pinned so the beast + its flavor stay visible no
-					     matter which swappable view is active below.
-					     ============================================================ -->
-					<div class="@($"bb-detail-fixed detail-rev-{detailRevealVersion}")">
-
-						<!-- ====== IDENTITY BLOCK (placard header) ======
-						     The portrait moved to the SHOWCASE STAGE — the placard
-						     opens straight on the identity read. Render-key token
-						     (`drev-N`) on every entrance-animated element below so
-						     s&box remounts THAT element on species change and its
-						     mount-time @keyframes replay. A version class on the
-						     parent `.bb-detail-fixed` alone does NOT remount
-						     descendants — the token must live on each animated node. -->
-						@{
-							// Identity stack height is deterministic per discovery state
-							// (all rows have explicit heights) — the state class pins the
-							// wrapper's height, because nested flex columns don't propagate
-							// children's heights reliably here (caught live 2026-07-03:
-							// flavor + ACTIONS rendered over the name rows).
-							var idnClass = isFullyDiscovered ? "idn-full" : (IsSeen(selectedSpecies.Id) ? "idn-seen" : "idn-min");
-						}
-						<div class="@($"bb-portrait-section {idnClass} drev-{detailRevealVersion}")">
-
-							<!-- Identity block — strict VERTICAL STACK.
-							     Row 1 (line 1): #num pill alone.
-							     Row 2 (line 2): big name.
-							     Row 3 (line 3): element pill(s) with icon + full name label.
-							     Row 4 (line 4): rarity badge + BST badge on their own row.
-							     Per user feedback — number on top, name below, element beneath
-							     with its full word, stats+rarity as a final summary row. -->
-							<div class="bb-name-section">
-								<div class="@($"bb-identity-row-num drev-{detailRevealVersion}")">
-									<div class="bb-number-pill">
-										<span>#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
-									</div>
-								</div>
-								<div class="@($"bb-identity-row-name drev-{detailRevealVersion}")">
-									<div class="bb-name">@selectedSpecies.Name</div>
-								</div>
-								@if (isFullyDiscovered || IsSeen(selectedSpecies.Id))
+					}
+					else
+					{
+						<!-- REGISTRY — fresh identity registers (2026-07-13 ground-up).
+						     Every row is a DIRECT zone child with an explicit height
+						     (the proven .bbs-row collapse-immunity recipe — the old
+						     state-keyed wrapper existed only to pin a nested flex
+						     column, so the nesting is deleted, not repainted). Row
+						     ladder: title (teal #num + italic-900 name) → taxonomy
+						     (two-tone element slabs + rarity slab) → attributes
+						     (quiet BST/personality chips, discovered only). drev
+						     tokens per row so mount keyframes replay per species. -->
+						<div class="bbf-zone bbz-registry">
+							<div class="bbf-head">
+								<div class="bbf-chip"><span>REGISTRY</span></div>
+								<div class="bbf-line"></div>
+								@if (isFullyDiscovered && !selectedSpecies.IsCatchable)
 								{
-									<!-- Element pills — own row. Dual-type (FIRE + SHADOW)
-									     sits horizontally, wraps only if column gets cramped. -->
-									<div class="@($"bb-identity-elements-row drev-{detailRevealVersion}")">
-										<div class="bb-pill element-@primaryClass bb-element-pill-full">
-											<img src="ui/icons/elements/element_white/@(primaryClass).svg" />
-											<span>@primaryClass.ToUpper()</span>
-										</div>
-										@if (secondaryClass != null)
-										{
-											<div class="bb-pill element-@secondaryClass bb-element-pill-full">
-												<img src="ui/icons/elements/element_white/@(secondaryClass).svg" />
-												<span>@secondaryClass.ToUpper()</span>
-											</div>
-										}
+									<div class="bbf-badge warn"><span>CANNOT CONTRACT</span></div>
+								}
+							</div>
+							<div class="@($"bbi-title drev-{detailRevealVersion}")">
+								<span class="bbi-num">#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
+								<span class="bbi-name">@selectedSpecies.Name</span>
+							</div>
+							<div class="@($"bbi-tax drev-{detailRevealVersion}")">
+								<div class="bbi-el element-@primaryClass">
+									<img src="ui/icons/elements/element_white/@(primaryClass).svg" />
+									<span>@primaryClass.ToUpper()</span>
+								</div>
+								@if (secondaryClass != null)
+								{
+									<div class="bbi-el element-@secondaryClass">
+										<img src="ui/icons/elements/element_white/@(secondaryClass).svg" />
+										<span>@secondaryClass.ToUpper()</span>
 									</div>
 								}
 								@if (isFullyDiscovered)
 								{
-									<!-- Rarity + BST row — sits directly under the element pills
-									     so the "what kind of beast" summary reads top-down as
-									     element → rarity/stats → personality (identity trailer). -->
-									<div class="@($"bb-identity-row-bottom drev-{detailRevealVersion}")">
-										<div class="bb-rarity-badge rarity-@selectedSpecies.BaseRarity.ToString().ToLower()">
-											<span>@selectedSpecies.BaseRarity.ToString().ToUpper()</span>
-										</div>
-										<div class="bb-bst-badge">
-											<span class="bb-bst-label">BST</span>
-											<span class="bb-bst-value">@GetBaseStatTotal(selectedSpecies)</span>
-										</div>
-										@if (!selectedSpecies.IsCatchable)
-										{
-											<span class="zd-no-contract">CANNOT CONTRACT</span>
-										}
-									</div>
-									<!-- Personality pill — standalone, no label. Sits below
-									     rarity/BST so the identity block reads: type → tier →
-									     character. Label dropped per user feedback — other rows
-									     don't have labels, so this one shouldn't either. Tiny
-									     iconify prefix (lucide:user) gives the pill a shape
-									     distinct from the element pills (which use element
-									     glyphs) without coloring it like a third element. -->
-									<div class="@($"bb-identity-personality-row drev-{detailRevealVersion}")">
-										<div class="bb-pill personality bb-personality-pill-inline">
-											<iconify icon="lucide:user" Size=@(11) Color="rgba(255,255,255,0.7)" />
-											<span>@selectedSpecies.Personality.ToString().ToUpper()</span>
-										</div>
+									<div class="bbi-rarity rarity-@selectedSpecies.BaseRarity.ToString().ToLower()">
+										<span>@selectedSpecies.BaseRarity.ToString().ToUpper()</span>
 									</div>
 								}
 							</div>
+							@if (isFullyDiscovered)
+							{
+								<div class="@($"bbi-attr drev-{detailRevealVersion}")">
+									<div class="bbi-chip">
+										<span class="bbi-chip-k">BST</span>
+										<span class="bbi-chip-v">@GetBaseStatTotal(selectedSpecies)</span>
+									</div>
+									<div class="bbi-chip">
+										<iconify icon="lucide:user" Size=@(11) Color="rgba(255,255,255,0.55)" />
+										<span class="bbi-chip-v">@selectedSpecies.Personality.ToString().ToUpper()</span>
+									</div>
+								</div>
+							}
+							@if (isFullyDiscovered && !string.IsNullOrEmpty(selectedSpecies.Description))
+							{
+								<div class="@($"bb-flavor drev-{detailRevealVersion}")">
+									<span>@selectedSpecies.Description</span>
+									<div class="bbf-cut"></div>
+								</div>
+							}
+							else if (!isFullyDiscovered)
+							{
+								<div class="@($"bb-flavor drev-{detailRevealVersion}")">
+									<span>???</span>
+									<div class="bbf-cut"></div>
+								</div>
+							}
 						</div>
 
-						<!-- ====== FLAVOR DESCRIPTION ======
-						     MOVED UP from inside the stats view — lives in the fixed
-						     top so it's always visible regardless of which swappable
-						     view is active. Core identity, not view-specific content. -->
-						@if (isFullyDiscovered && !string.IsNullOrEmpty(selectedSpecies.Description))
-						{
-							<div class="@($"bb-flavor drev-{detailRevealVersion}")"><span>@selectedSpecies.Description</span></div>
-						}
-						else if (!isFullyDiscovered && (IsDiscovered(selectedSpecies.Id) || IsSeen(selectedSpecies.Id)))
-						{
-							<div class="@($"bb-flavor drev-{detailRevealVersion}")"><span>???</span></div>
-						}
-
-					</div>
-
-					<!-- ============================================================
-					     SCROLLABLE BODY — actions, mastery, swappable view, footer.
-					     Direct children only (s&box scroll-height quirk).
-					     ============================================================ -->
-					<div class="@($"bb-detail-scroll {(detailFreshSelect ? "casc-select" : "casc-switch")}")">
-
-						<!-- ====== ACTIONS — diamond row ======
-						     Cry / Moves / Evolution / Lore / Mastery. First thing in the
-						     scroll area — primary navigation for the swappable bottom view. -->
 						@if (isFullyDiscovered)
 						{
 							var moveCount = selectedSpecies.LearnableMoves?.Count ?? 0;
 							var hasEvolution = GetEvolutionChain(selectedSpecies).Count > 1;
-							<div class="@($"bb-actions-section drev-{detailRevealVersion}")">
-								<div class="bb-section-title"><span>ACTIONS</span></div>
-								<div class="bb-diamond-row">
 
-								<!-- 1. Cry — plays beast cry, does NOT switch views -->
-								<div class="bb-detail-diamond cry @(IsDetailActionFocused("cry") ? "kb-focused" : "")" onclick=@OnPortraitClick onmouseover=@(() => OnDiamondHover("cry"))>
-									<div class="bb-diamond-shape"><iconify icon="lucide:volume-2" Size=@(16) Color="#c4b5fd" /></div>
-									<span class="bb-diamond-tooltip">@L("ui.beastbook.click_to_hear")</span>
+							<!-- ACTIONS — fresh KEY DECK (2026-07-13 ground-up): five
+							     74px slab keys across the 412 inner (5×76 + 4×8),
+							     each a 45° diamond gem over a VISIBLE label — the
+							     hover tooltips die with the mystery-diamond row.
+							     One accent system: neutral ink, TEAL = active view,
+							     VIOLET = keyboard cursor. Fill/border states only —
+							     the old scale transforms broke the scroll-clip law. -->
+							<div class="@($"bbf-zone bbz-actions drev-{detailRevealVersion}")">
+								<div class="bbf-head">
+									<div class="bbf-chip"><span>ACTIONS</span></div>
+									<div class="bbf-line"></div>
 								</div>
-
-								<!-- 2. Moves — toggles bottom section to moves view -->
-								<div class="bb-detail-diamond moves @(detailView == "moves" ? "active" : "") @(IsDetailActionFocused("moves") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("moves")) onmouseover=@(() => OnDiamondHover("moves"))>
-									<div class="bb-diamond-shape"><iconify icon="lucide:sparkles" Size=@(16) Color="white" /></div>
-									<div class="bb-diamond-badge"><span>@moveCount</span></div>
-									<span class="bb-diamond-tooltip">@L("ui.beastbook.learns_moves", moveCount)</span>
-								</div>
-
-								<!-- 3. Evolution — toggles bottom section to evolution view -->
-								@if (hasEvolution)
-								{
-									<div class="bb-detail-diamond evolution @(detailView == "evolution" ? "active" : "") @(IsDetailActionFocused("evolution") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("evolution")) onmouseover=@(() => OnDiamondHover("evolution"))>
-										<div class="bb-diamond-shape"><iconify icon="lucide:git-fork" Size=@(16) Color="#7dd3fc" /></div>
-										<span class="bb-diamond-tooltip">View evolution line</span>
+								<div class="bba-deck">
+									<div class="bba-key @(IsDetailActionFocused("cry") ? "kb-focused" : "")" onclick=@OnPortraitClick onmouseover=@(() => OnDiamondHover("cry"))>
+										<div class="bba-gem"><iconify icon="lucide:volume-2" Size=@(13) Color="#d7dee2" /></div>
+										<div class="bba-label"><span>CRY</span></div>
 									</div>
-								}
-
-								<!-- 4. Lore — toggles bottom section to lore view -->
-								<div class="bb-detail-diamond lore @(detailView == "lore" ? "active" : "") @(IsDetailActionFocused("lore") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("lore")) onmouseover=@(() => OnDiamondHover("lore"))>
-									<div class="bb-diamond-shape"><iconify icon="lucide:scroll" Size=@(16) Color="#fcd34d" /></div>
-									<span class="bb-diamond-tooltip">@(detailView == "lore" ? "Hide lore" : "Read lore")</span>
-								</div>
-
-								<!-- 5. Mastery — toggles bottom section to mastery view -->
-								<div class="bb-detail-diamond mastery @(detailView == "mastery" ? "active" : "") @(IsDetailActionFocused("mastery") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("mastery")) onmouseover=@(() => OnDiamondHover("mastery"))>
-									<div class="bb-diamond-shape"><iconify icon="lucide:crown" Size=@(16) Color="#c4b5fd" /></div>
-									<span class="bb-diamond-tooltip">@(detailView == "mastery" ? "Hide mastery" : "View mastery")</span>
-								</div>
+									<div class="bba-key @(detailView == "moves" ? "active" : "") @(IsDetailActionFocused("moves") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("moves")) onmouseover=@(() => OnDiamondHover("moves"))>
+										<div class="bba-gem"><iconify icon="lucide:sparkles" Size=@(13) Color="#d7dee2" /></div>
+										<div class="bba-label"><span>MOVES</span><span class="bba-count">@moveCount</span></div>
+									</div>
+									@if (hasEvolution)
+									{
+										<div class="bba-key @(detailView == "evolution" ? "active" : "") @(IsDetailActionFocused("evolution") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("evolution")) onmouseover=@(() => OnDiamondHover("evolution"))>
+											<div class="bba-gem"><iconify icon="lucide:git-fork" Size=@(13) Color="#d7dee2" /></div>
+											<div class="bba-label"><span>EVOLUTION</span></div>
+										</div>
+									}
+									<div class="bba-key @(detailView == "lore" ? "active" : "") @(IsDetailActionFocused("lore") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("lore")) onmouseover=@(() => OnDiamondHover("lore"))>
+										<div class="bba-gem"><iconify icon="lucide:scroll" Size=@(13) Color="#d7dee2" /></div>
+										<div class="bba-label"><span>LORE</span></div>
+									</div>
+									<div class="bba-key @(detailView == "mastery" ? "active" : "") @(IsDetailActionFocused("mastery") ? "kb-focused" : "")" onclick=@(() => OnDiamondClick("mastery")) onmouseover=@(() => OnDiamondHover("mastery"))>
+										<div class="bba-gem"><iconify icon="lucide:crown" Size=@(13) Color="#d7dee2" /></div>
+										<div class="bba-label"><span>MASTERY</span></div>
+									</div>
 								</div>
 							</div>
-						}
 
-						<!-- ============================================================
-						     SWAPPABLE BOTTOM SECTION — controlled by detailView state.
-						     Diamonds toggle between stats/moves/evolution/lore/mastery.
-						     Personality + traits live in the fixed top (see CHARACTER
-						     section above) — identity, not stats. Stats view shows only
-						     the stat bars + BST total.
-						     ============================================================ -->
-						@if (isFullyDiscovered)
-						{
-							<!-- ====== STATS VIEW (default) — stats bars only; description
-							     lives in the fixed top now so it's always visible. ====== -->
 							@if (detailView == "stats")
 							{
-								<div class="@($"bb-stats-section drev-{detailRevealVersion}")">
-									<div class="bb-section-title"><span>@L("ui.beastiary.base_stats")</span></div>
-									<div class="bb-stats-grid">
-										<!-- Compact single-line stat rows — LABEL | BAR | VALUE.
-										     Fixed-width label column (36px) + fixed-width value
-										     column (30px) means every row's columns line up
-										     vertically across the six stats. Bar gets flex: 1
-										     to fill the middle. Hover tints the row bg subtly —
-										     Tier 1 ambient "this is inspectable" feedback. -->
-										<div class="bb-stat-item hp">
-											<span class="bb-stat-name">HP</span>
-											<div class="bb-stat-bar-bg">
-												<div class="bb-stat-bar-fill hp" style="width: @(GetStatFillPct(selectedSpecies.BaseHP))%"></div>
-											</div>
-											<span class="bb-stat-value">@selectedSpecies.BaseHP</span>
-										</div>
-										<div class="bb-stat-item atk">
-											<span class="bb-stat-name">ATK</span>
-											<div class="bb-stat-bar-bg">
-												<div class="bb-stat-bar-fill atk" style="width: @(GetStatFillPct(selectedSpecies.BaseATK))%"></div>
-											</div>
-											<span class="bb-stat-value">@selectedSpecies.BaseATK</span>
-										</div>
-										<div class="bb-stat-item def">
-											<span class="bb-stat-name">DEF</span>
-											<div class="bb-stat-bar-bg">
-												<div class="bb-stat-bar-fill def" style="width: @(GetStatFillPct(selectedSpecies.BaseDEF))%"></div>
-											</div>
-											<span class="bb-stat-value">@selectedSpecies.BaseDEF</span>
-										</div>
-										<div class="bb-stat-item spa">
-											<span class="bb-stat-name">SpA</span>
-											<div class="bb-stat-bar-bg">
-												<div class="bb-stat-bar-fill spa" style="width: @(GetStatFillPct(selectedSpecies.BaseSpA))%"></div>
-											</div>
-											<span class="bb-stat-value">@selectedSpecies.BaseSpA</span>
-										</div>
-										<div class="bb-stat-item spd-def">
-											<span class="bb-stat-name">SpD</span>
-											<div class="bb-stat-bar-bg">
-												<div class="bb-stat-bar-fill spd-def" style="width: @(GetStatFillPct(selectedSpecies.BaseSpD))%"></div>
-											</div>
-											<span class="bb-stat-value">@selectedSpecies.BaseSpD</span>
-										</div>
-										<div class="bb-stat-item spd">
-											<span class="bb-stat-name">SPD</span>
-											<div class="bb-stat-bar-bg">
-												<div class="bb-stat-bar-fill spd" style="width: @(GetStatFillPct(selectedSpecies.BaseSPD))%"></div>
-											</div>
-											<span class="bb-stat-value">@selectedSpecies.BaseSPD</span>
-										</div>
-										<!-- BST total row — inline summary so the bars resolve to a number. -->
-										<div class="bb-stat-total-row">
-											<span class="bb-stat-total-label">TOTAL</span>
-											<span class="bb-stat-total-value">@GetBaseStatTotal(selectedSpecies)</span>
-										</div>
-										<!-- TRAITS row — sits at the very bottom of the stats
-										     view, below TOTAL. Compact inline format: mini-label
-										     on the left, wrapping trait pills on the right. Hidden
-										     entirely if the species has no possible traits. -->
-										@if (selectedSpecies.PossibleTraits != null && selectedSpecies.PossibleTraits.Count > 0)
-										{
-											<div class="bb-stat-traits-row">
-												<span class="bb-stat-traits-label">TRAITS</span>
-												<div class="bb-stat-traits-pills">
-													@foreach (var traitId in selectedSpecies.PossibleTraits)
-													{
-														var trait = TraitDatabase.GetTrait(traitId);
-														var traitName = trait?.Name ?? traitId;
-														var traitDesc = trait?.Description ?? "";
-														var traitIcon = string.IsNullOrEmpty(trait?.Icon) ? "lucide:zap" : trait.Icon;
-														var isHovered = hoveredTraitId == traitId;
-														var capturedId = traitId;
-														<div class="bb-pill trait has-tooltip @(isHovered ? "is-hovered" : "")"
-															 onmouseover=@(() => OnTraitHover(capturedId))
-															 onmouseout=@(() => OnTraitOut(capturedId))>
-															<iconify icon="@traitIcon" Size=@(11) Color="#ffffff" />
-															<span>@traitName</span>
-															@if (!string.IsNullOrEmpty(traitDesc))
-															{
-																<div class="bb-trait-tooltip"
-																	 onmouseover=@(() => OnTraitHover(capturedId))>
-																	<div class="bb-trait-tt-name">@traitName</div>
-																	<div class="bb-trait-tt-desc">@traitDesc</div>
-																</div>
-															}
-														</div>
-													}
-												</div>
-											</div>
-										}
+								<!-- STATS — the roster sb-row grammar: italic colored
+								     label / skewed parallelogram gauge / big italic
+								     value. Fill widths are EXPLICIT PX (GetStatBarPx)
+								     — a % width under the skewed bar ancestor is
+								     derived-width poison. 44+288+56 + 2x12 = 412. -->
+								<div class="@($"bbf-zone bbz-stats drev-{detailRevealVersion}")">
+									<div class="bbf-head">
+										<div class="bbf-chip"><span>@L("ui.beastiary.base_stats")</span></div>
+										<div class="bbf-line"></div>
+									</div>
+									<div class="bbs-row">
+										<span class="bbs-label hp">HP</span>
+										<div class="bbs-bar"><div class="bbs-fill hp" style="width: @GetStatBarPx(selectedSpecies.BaseHP)"></div></div>
+										<span class="bbs-value">@selectedSpecies.BaseHP</span>
+									</div>
+									<div class="bbs-row">
+										<span class="bbs-label atk">ATK</span>
+										<div class="bbs-bar"><div class="bbs-fill atk" style="width: @GetStatBarPx(selectedSpecies.BaseATK)"></div></div>
+										<span class="bbs-value">@selectedSpecies.BaseATK</span>
+									</div>
+									<div class="bbs-row">
+										<span class="bbs-label def">DEF</span>
+										<div class="bbs-bar"><div class="bbs-fill def" style="width: @GetStatBarPx(selectedSpecies.BaseDEF)"></div></div>
+										<span class="bbs-value">@selectedSpecies.BaseDEF</span>
+									</div>
+									<div class="bbs-row">
+										<span class="bbs-label spa">SpA</span>
+										<div class="bbs-bar"><div class="bbs-fill spa" style="width: @GetStatBarPx(selectedSpecies.BaseSpA)"></div></div>
+										<span class="bbs-value">@selectedSpecies.BaseSpA</span>
+									</div>
+									<div class="bbs-row">
+										<span class="bbs-label spd-def">SpD</span>
+										<div class="bbs-bar"><div class="bbs-fill spd-def" style="width: @GetStatBarPx(selectedSpecies.BaseSpD)"></div></div>
+										<span class="bbs-value">@selectedSpecies.BaseSpD</span>
+									</div>
+									<div class="bbs-row">
+										<span class="bbs-label spd">SPD</span>
+										<div class="bbs-bar"><div class="bbs-fill spd" style="width: @GetStatBarPx(selectedSpecies.BaseSPD)"></div></div>
+										<span class="bbs-value">@selectedSpecies.BaseSPD</span>
+									</div>
+									<div class="bbs-total">
+										<span class="bbs-total-label">TOTAL</span>
+										<span class="bbs-total-value">@GetBaseStatTotal(selectedSpecies)</span>
 									</div>
 								</div>
+
+								@if (selectedSpecies.PossibleTraits != null && selectedSpecies.PossibleTraits.Count > 0)
+								{
+									<!-- TRAITS — inline registers (user ruling 2026-07-12:
+									     the hover tooltip fired on mouse-LEAVE across all
+									     panels; effect text is now WRITTEN IN). Roster
+									     trait-card silhouette: icon tile + name + desc. -->
+									<div class="@($"bbf-zone bbz-traits drev-{detailRevealVersion}")">
+										<div class="bbf-head">
+											<div class="bbf-chip"><span>TRAITS</span></div>
+											<div class="bbf-line"></div>
+											<div class="bbf-badge dim"><span>POSSIBLE @selectedSpecies.PossibleTraits.Count</span></div>
+										</div>
+										<div class="bbt-list">
+											@foreach (var traitId in selectedSpecies.PossibleTraits)
+											{
+												var trait = TraitDatabase.GetTrait(traitId);
+												var traitName = trait?.Name ?? traitId;
+												var traitDesc = trait?.Description ?? "";
+												var traitIcon = string.IsNullOrEmpty(trait?.Icon) ? "lucide:zap" : trait.Icon;
+												<div class="bbt-card">
+													<div class="bbt-icon">
+														<iconify icon="@traitIcon" Size=@(14) Color="#2DD4BF" />
+													</div>
+													<div class="bbt-body">
+														<span class="bbt-name">@traitName</span>
+														@if (!string.IsNullOrEmpty(traitDesc))
+														{
+															<span class="bbt-desc">@traitDesc</span>
+														}
+													</div>
+													<div class="bbf-cut"></div>
+												</div>
+											}
+										</div>
+									</div>
+								}
 							}
 
-							<!-- ====== MOVES VIEW ====== -->
 							@if (detailView == "moves")
 							{
 								var moves = selectedSpecies.LearnableMoves ?? new List<LearnableMove>();
-								<div class="@($"bb-moves-section drev-{detailRevealVersion}")">
-									<div class="bb-section-title">
-										<span>MOVES</span>
+								<!-- MOVES — full-width corner-cut slabs (the roster
+								     move-slab silhouette): element left edge + skewed
+								     two-tone icon tile + name/meta rows. -->
+								<div class="@($"bbf-zone bbz-moves drev-{detailRevealVersion}")">
+									<div class="bbf-head">
+										<div class="bbf-chip"><span>MOVES</span></div>
+										<div class="bbf-line"></div>
 										@if (moves.Count > 0)
 										{
-											<span class="bb-section-count-badge">@moves.Count @L("ui.roster.available")</span>
+											<div class="bbf-badge"><span>@moves.Count @L("ui.roster.available")</span></div>
 										}
 									</div>
 									@if (moves.Count == 0)
@@ -607,7 +599,7 @@
 									}
 									else
 									{
-										<div class="bb-moves-list">
+										<div class="bbm-list">
 											@foreach (var lm in moves.OrderBy(m => m.LearnLevel))
 											{
 												var moveDef = MoveDatabase.GetMove(lm.MoveId);
@@ -616,38 +608,27 @@
 												var moveCat = moveDef?.Category.ToString() ?? "";
 												var movePwr = moveDef?.BasePower ?? 0;
 												var moveAcc = moveDef?.Accuracy ?? 0;
-												<!-- Move row — strict 4-column grid. Diamond (40px) |
-												     name+level column (flex) | category pill (50px) |
-												     power/accuracy stacked (60px, right-aligned). Fixed
-												     widths so every row's columns line up regardless of
-												     name length. Hover sound guarded via move id so the
-												     same row doesn't re-fire every frame. -->
-												<div class="bb-move-row @moveEl" onmouseover=@(() => OnMoveRowHover(lm.MoveId))>
-													<div class="bb-move-diamond-col">
-														<div class="bb-move-diamond @moveEl">
-															<img class="bb-move-diamond-icon" src="ui/icons/elements/element_white/@(moveEl).svg" />
+												<div class="bbm-slab @moveEl" onmouseover=@(() => OnMoveRowHover(lm.MoveId))>
+													<div class="bbm-icon @moveEl">
+														<img class="bbm-icon-img" src="ui/icons/elements/element_white/@(moveEl).svg" />
+													</div>
+													<div class="bbm-info">
+														<div class="bbm-name-row">
+															<span class="bbm-name">@moveName</span>
+															<span class="bbm-lv">LV @lm.LearnLevel</span>
+														</div>
+														<div class="bbm-meta">
+															@if (!string.IsNullOrEmpty(moveCat))
+															{
+																<span class="bbm-cat @moveCat.ToLower()">@moveCat.Substring(0, 3).ToUpper()@(movePwr > 0 ? " " + movePwr : "")</span>
+															}
+															@if (moveAcc > 0)
+															{
+																<span class="bbm-stat">ACC @(moveAcc)%</span>
+															}
 														</div>
 													</div>
-													<div class="bb-move-info">
-														<span class="bb-move-name">@moveName</span>
-														<span class="bb-move-level">Lv.@lm.LearnLevel</span>
-													</div>
-													<div class="bb-move-cat-col">
-														@if (!string.IsNullOrEmpty(moveCat))
-														{
-															<span class="bb-move-cat @moveCat.ToLower()">@moveCat.Substring(0, 3).ToUpper()</span>
-														}
-													</div>
-													<div class="bb-move-stats-col">
-														@if (movePwr > 0)
-														{
-															<span class="bb-move-pwr">@movePwr</span>
-														}
-														@if (moveAcc > 0)
-														{
-															<span class="bb-move-acc">@(moveAcc)%</span>
-														}
-													</div>
+													<div class="bbf-cut"></div>
 												</div>
 											}
 										</div>
@@ -655,122 +636,127 @@
 								</div>
 							}
 
-							<!-- ====== EVOLUTION VIEW — connected diamond nodes ====== -->
 							@if (detailView == "evolution")
 							{
 								var evolutionChain = GetEvolutionChain(selectedSpecies);
-								@if (evolutionChain.Count > 1)
-								{
-									<div class="@($"bb-evo-section drev-{detailRevealVersion}")">
-										<div class="bb-section-title"><span>@L("ui.beastbook.evolution")</span></div>
-										<!-- Connected DIAMOND nodes (the action-shape dialect).
-										     Each node = a 45°-rotated diamond backplate with the
-										     sprite floating unclipped ON TOP (clean-first: the
-										     sprite is the star, the diamond is the node shape —
-										     no overflow-clip gamble on rotated elements). The
-										     evolve level rides the CONNECTOR between nodes,
-										     where the transition actually happens. -->
-										<div class="bb-evo-chain">
+								<!-- EVOLUTION — fresh LINEAGE REGISTERS (2026-07-13
+								     ground-up): the horizontal diamond chain becomes
+								     vertical medallion rows (the roster journal's
+								     before→after medallion language). Round sprite
+								     medallion + name + BASE FORM / FROM LV n sub;
+								     the current stage wears the teal left edge, teal
+								     medallion ring, and a skewed VIEWING chip. Sprites
+								     use contain + no-repeat (img edge-tiling law). -->
+								<div class="@($"bbf-zone bbz-evo drev-{detailRevealVersion}")">
+									<div class="bbf-head">
+										<div class="bbf-chip"><span>@L("ui.beastbook.evolution")</span></div>
+										<div class="bbf-line"></div>
+										@if (evolutionChain.Count > 1)
+										{
+											<div class="bbf-badge dim"><span>@evolutionChain.Count STAGES</span></div>
+										}
+									</div>
+									@if (evolutionChain.Count > 1)
+									{
+										<div class="bbe-list">
 											@for (int i = 0; i < evolutionChain.Count; i++)
 											{
 												var evoSpecies = evolutionChain[i];
 												var isCurrent = evoSpecies.Id == selectedSpecies.Id;
 												var evoDiscovered = IsDiscovered(evoSpecies.Id);
-
-												@if (i > 0)
-												{
-													var prevEvo = evolutionChain[i - 1];
-													<div class="bb-evo-link">
-														@if (prevEvo.EvolutionLevel > 0)
-														{
-															<span class="bb-evo-link-lv">LV @prevEvo.EvolutionLevel</span>
-														}
-														<div class="bb-evo-link-bar"></div>
-													</div>
-												}
-
-												<div class="bb-evo-node @(isCurrent ? "current" : "") @(evoDiscovered ? "" : "unknown")"
+												var evoSub = i == 0
+													? "BASE FORM"
+													: (evolutionChain[i - 1].EvolutionLevel > 0
+														? $"FROM LV {evolutionChain[i - 1].EvolutionLevel}"
+														: "EVOLVED FORM");
+												<div class="bbe-stage @(isCurrent ? "current" : "") @(evoDiscovered ? "" : "unknown")"
 													 onmouseover=@(() => OnEvoStageHover(evoSpecies.Id))>
-													<div class="bb-evo-diamond-wrap">
-														<div class="bb-evo-diamond"></div>
+													<div class="bbe-medal">
 														@if (evoDiscovered && HasSprite(evoSpecies))
 														{
-															<img class="bb-evo-sprite" src="@(isCurrent ? GetAnimatedIcon(evoSpecies) : evoSpecies.IconPath)" />
+															<img class="bbe-sprite" src="@(isCurrent ? GetAnimatedIcon(evoSpecies) : evoSpecies.IconPath)" />
 														}
 														else
 														{
-															<span class="bb-evo-unknown">?</span>
-														}
-														@if (isCurrent)
-														{
-															<div class="bb-evo-here-stamp"><span>HERE</span></div>
+															<span class="bbe-q">?</span>
 														}
 													</div>
-													<span class="bb-evo-name">@(evoDiscovered ? evoSpecies.Name : "???")</span>
+													<div class="bbe-info">
+														<span class="bbe-name">@(evoDiscovered ? evoSpecies.Name : "???")</span>
+														<span class="bbe-sub">@evoSub</span>
+													</div>
+													@if (isCurrent)
+													{
+														<div class="bbe-here"><span>VIEWING</span></div>
+													}
+													<div class="bbf-cut"></div>
 												</div>
 											}
 										</div>
-									</div>
-								}
-								else
-								{
-									<div class="@($"bb-evo-section drev-{detailRevealVersion}")">
-										<div class="bb-section-title"><span>@L("ui.beastbook.evolution")</span></div>
+									}
+									else
+									{
 										<div class="bb-moves-empty">
 											<iconify icon="lucide:git-fork" Size=@(36) Color="rgba(255,255,255,0.2)" />
 											<span>This species does not evolve.</span>
-										</div>
-									</div>
-								}
-							}
-
-							<!-- ====== LORE VIEW (mastery-gated entries) ======
-							     Dark neutral rows, tier-colored LV chip + thin accent strip on
-							     unlocked. Locked rows dim, italic — readable against dark bg. -->
-							@if (detailView == "lore")
-							{
-								var bmgrLore = BeastiaryManager.Instance;
-								var loreMasteryLvl = bmgrLore?.GetMasteryLevel(selectedSpecies.Id) ?? 0;
-								<div class="@($"bb-lore-block drev-{detailRevealVersion}")">
-									<div class="bb-section-title"><span>@L("ui.beastbook.lore_title")</span></div>
-
-									<!-- Lore entry 1 (mastery Lv1) — uses the species Description -->
-									<div class="bb-lore-entry tier-1 @(loreMasteryLvl >= 1 ? "unlocked" : "locked")">
-										<div class="bb-lore-level-pill tier-1"><span>LV 1</span></div>
-										@if (loreMasteryLvl >= 1 && !string.IsNullOrEmpty(selectedSpecies.Description))
-										{
-											<span class="bb-lore-text">@selectedSpecies.Description</span>
-										}
-										else
-										{
-											<span class="bb-lore-locked-text">@L("ui.beastbook.lore_locked", 1)</span>
-										}
-									</div>
-
-									<!-- Future lore entries (Lv2-6) — placeholder locked cards.
-									     When LoreEntries are authored on MonsterSpecies, loop
-									     those here instead of these stubs. -->
-									@for (int loreIdx = 2; loreIdx <= 6; loreIdx++)
-									{
-										// Hoist to a local so Razor parses cleanly. User reported
-										// that "Lv@(loreIdx) to unlock" was rendering the literal
-										// source text (not the value) in s&box razor. A named local
-										// sidesteps whatever tokenizer edge case is biting.
-										var lockedLv = loreIdx;
-										<div class="bb-lore-entry tier-@loreIdx locked">
-											<div class="bb-lore-level-pill tier-@loreIdx"><span>LV @loreIdx</span></div>
-											<span class="bb-lore-locked-text">@L("ui.beastbook.lore_locked", lockedLv)</span>
 										</div>
 									}
 								</div>
 							}
 
-							<!-- ====== MASTERY VIEW — per-species progression badge + tier list ====== -->
+							@if (detailView == "lore")
+							{
+								var bmgrLore = BeastiaryManager.Instance;
+								var loreMasteryLvl = bmgrLore?.GetMasteryLevel(selectedSpecies.Id) ?? 0;
+								<!-- LORE — fresh REGISTER ROWS (2026-07-13 ground-up):
+								     one unified tier loop; corner-cut rows with a
+								     uniform 3px left border (metal when unlocked,
+								     container-dark when locked — no box-model shift,
+								     no box-shadow strip trick) + skewed metal tier
+								     chips. Medal ladder: bronze 1-2 / silver 3-4 /
+								     gold 5-6, never rarity colors. -->
+								<div class="@($"bbf-zone bbz-lore drev-{detailRevealVersion}")">
+									<div class="bbf-head">
+										<div class="bbf-chip"><span>@L("ui.beastbook.lore_title")</span></div>
+										<div class="bbf-line"></div>
+										<div class="bbf-badge dim"><span>MASTERY LV @loreMasteryLvl</span></div>
+									</div>
+									@for (int loreTier = 1; loreTier <= 6; loreTier++)
+									{
+										var loreText = loreTier == 1 ? selectedSpecies.Description : null;
+										var loreOpen = loreMasteryLvl >= loreTier && !string.IsNullOrEmpty(loreText);
+										<div class="bbl-row @MedalMetal(loreTier) @(loreOpen ? "unlocked" : "locked")">
+											<div class="bbl-tier"><span>LV @loreTier</span></div>
+											@if (loreOpen)
+											{
+												<span class="bbl-text">@loreText</span>
+											}
+											else
+											{
+												<span class="bbl-text locked">@L("ui.beastbook.lore_locked", loreTier)</span>
+											}
+											<div class="bbf-cut"></div>
+										</div>
+									}
+								</div>
+							}
+
 							@if (detailView == "mastery")
 							{
-								<div class="@($"bb-mastery-section drev-{detailRevealVersion}")">
-									<div class="bb-section-title"><span>@L("ui.beastbook.mastery_title")</span></div>
-
+								<!-- MASTERY — fresh RANK LADDER (2026-07-13 ground-up):
+								     skewed metal medal slab + italic-900 rank title,
+								     the NEXT requirement as a corner-cut card carrying
+								     the house parallelogram gauge (EXPLICIT-PX fill —
+								     GetMasteryBarPx; % under the skew is derived-width
+								     poison), tier checklist as a 2×3 grid of explicit-
+								     width steps (no flex-wrap). Medal metals: bronze
+								     1-2 / silver 3-4 / gold 5-6; the gauge fill wears
+								     the metal being EARNED (MedalMetal(lvl+1)). -->
+								<div class="@($"bbf-zone bbz-mastery drev-{detailRevealVersion}")">
+									<div class="bbf-head">
+										<div class="bbf-chip"><span>@L("ui.beastbook.mastery_title")</span></div>
+										<div class="bbf-line"></div>
+									</div>
 									@{
 										var bmgr = BeastiaryManager.Instance;
 										var masteryLvl = bmgr?.GetMasteryLevel(selectedSpecies.Id) ?? 0;
@@ -789,78 +775,81 @@
 										var progressPct = masteryRequired > 0
 											? Math.Clamp((float)masteryCurrent / masteryRequired * 100f, 0f, 100f)
 											: 0f;
+										var rankMetal = masteryLvl == 0 ? "none" : MedalMetal(masteryLvl);
 									}
-
-									<div class="bb-mastery-header">
-										<div class="bb-mastery-level-badge level-@masteryLvl">
-											<span class="bb-mastery-level-num">@masteryLvl</span>
-											<span class="bb-mastery-level-caption">LV</span>
+									<div class="bbk-rank">
+										<div class="bbk-medal @rankMetal">
+											<div class="bbk-medal-in">
+												<span class="bbk-medal-num">@masteryLvl</span>
+												<span class="bbk-medal-cap">LV</span>
+											</div>
 										</div>
-										<div class="bb-mastery-header-text">
-											<div class="bb-pill bb-mastery-title-pill level-@masteryLvl"><span>@masteryTitle</span></div>
+										<div class="bbk-rank-col">
+											<span class="bbk-title @rankMetal">@masteryTitle</span>
 											@if (masteryBonusPct > 0)
 											{
-												<div class="bb-pill bb-mastery-bonus-pill"><span>+@masteryBonusPct% stats</span></div>
+												<div class="bbk-bonus"><span>+@masteryBonusPct% STATS</span></div>
 											}
 										</div>
 									</div>
-
 									@if (masteryLvl < 6)
 									{
-										<div class="bb-mastery-next">
-											<span class="bb-mastery-next-label">@L("ui.beastbook.mastery_next", masteryDescription)</span>
-											<div class="bb-mastery-progress-bar">
-												<div class="bb-mastery-progress-fill level-@masteryLvl" style="width: @(progressPct)%"></div>
-											</div>
+										<div class="bbk-next">
+											<span class="bbk-next-label">@L("ui.beastbook.mastery_next", masteryDescription)</span>
+											<div class="bbk-bar"><div class="bbk-fill @MedalMetal(masteryLvl + 1)" style="width: @GetMasteryBarPx(progressPct)"></div></div>
+											<div class="bbf-cut"></div>
 										</div>
 									}
-
-									<div class="bb-mastery-tiers">
-										@for (int tier = 1; tier <= 6; tier++)
-										{
-											var unlocked = masteryLvl >= tier;
-											var tierTitle = tier switch
+									@for (int lrow = 0; lrow < 3; lrow++)
+									{
+										<div class="bbk-lrow">
+											@for (int lcol = 0; lcol < 2; lcol++)
 											{
-												1 => "Novice",
-												2 => "Adept",
-												3 => "Veteran",
-												4 => "Elite",
-												5 => "Master",
-												6 => "Grandmaster",
-												_ => ""
-											};
-											@{
-												var tierColor = tier switch
+												var tier = lrow * 2 + lcol + 1;
+												var unlocked = masteryLvl >= tier;
+												var tierTitle = tier switch
 												{
-													1 => "#9ca3af",
-													2 => "#4ade80",
-													3 => "#60a5fa",
-													4 => "#a855f7",
-													5 => "#fbbf24",
-													6 => "#ec4899",
-													_ => "#ffffff"
+													1 => "Novice",
+													2 => "Adept",
+													3 => "Veteran",
+													4 => "Elite",
+													5 => "Master",
+													6 => "Grandmaster",
+													_ => ""
 												};
+												<div class="bbk-step @MedalMetal(tier) @(unlocked ? "unlocked" : "locked")">
+													<iconify icon="@(unlocked ? "lucide:check" : "lucide:lock")" Size=@(11) Color="@(unlocked ? MedalHex(tier) : "rgba(255,255,255,0.25)")" />
+													@* Two spans, not one interpolated string — razor whitespace
+													   collapses around inline separators (caught live 2026-07-13:
+													   "LV 1 · Novice" rendered squashed). *@
+													<span class="bbk-step-lv">LV @tier</span>
+													<span class="bbk-step-name">@tierTitle</span>
+												</div>
 											}
-											<div class="bb-mastery-tier tier-@tier @(unlocked ? "unlocked" : "locked")">
-												<iconify icon="@(unlocked ? "lucide:check" : "lucide:circle")" Size=@(11) Color="@(unlocked ? tierColor : "rgba(255,255,255,0.25)")" />
-												<span class="bb-mastery-tier-name">Lv@(tier) @tierTitle</span>
-											</div>
-										}
-									</div>
+										</div>
+									}
+								</div>
+							}
+
+							@if (!string.IsNullOrEmpty(selectedSpecies.ArtistCredit))
+							{
+								<div class="bb-artist-credit">
+									<span>@L("ui.beastbook.art_by", "@" + selectedSpecies.ArtistCredit)</span>
 								</div>
 							}
 						}
+					}
+				</div>
 
-						<!-- ====== ARTIST CREDIT FOOTER ====== -->
-						@if (isFullyDiscovered && !string.IsNullOrEmpty(selectedSpecies.ArtistCredit))
-						{
-							<div class="bb-artist-credit">
-								<span>@L("ui.beastbook.art_by", "@" + selectedSpecies.ArtistCredit)</span>
-							</div>
-						}
-					</div>
-				}
-			</div>
+				<!-- Foot cap + hand-rolled overlay scrollbar (scrollbar-color/
+				     -width don't parse) — track/thumb geometry written per
+				     tick in UpdateDossierScrollbar. Read-only (wheel scrolls). -->
+				<div class="bbf-foot"></div>
+				<div @ref="bbSbTrackRef" class="bbf-sb">
+					<div @ref="bbSbThumbRef" class="bbf-sb-thumb"></div>
+				</div>
+			}
+		</div>
 	</div>
 
 	<!-- THE LIVING VIOLET RING — the one waving selection cursor wrapping
@@ -902,7 +891,7 @@
 					 onmouseout=@OnBeastStageLeave>
 					<img class="bb-beast-popup-sprite" src="@GetAnimatedIcon(selectedSpecies)" style="@BeastPopupSpriteStyle()" />
 					<div class="bb-beast-popup-hint">
-						<iconify icon="lucide:move" Size=@(11) Color="rgba(196, 181, 253, 0.55)" />
+						<iconify icon="lucide:move" Size=@(11) Color="rgba(143, 232, 220, 0.6)" />
 						<span>Drag to pan · Scroll to zoom</span>
 					</div>
 				</div>
@@ -1150,11 +1139,159 @@
 	// don't re-fire PlayHover() every frame while the mouse is over the same card.
 	private string lastHoveredCardId = null;
 
+	// ───────────────────── ONE-CURSOR MODEL (2026-07-12) ──────────────────
+	// Hover SELECTS (the living ring glides to the hovered tile); keyboard
+	// and mouse share the same selection. Last-input-wins via a minimal
+	// device flag: keyboard scroll-follow slides tiles under a parked
+	// cursor, firing SYNTHETIC onmouseover per tile — honoring those would
+	// machine-gun the selection back to the cursor (the roster menu-contract
+	// lesson). Real mouse motion fires onmousemove FIRST, which flips the
+	// flag back, after which hovers are honored.
+	private string _inputDevice = "mouse";
+	// Dwell-commit: selection commits ~110ms after the hover lands so a
+	// sweep across the rail doesn't strobe the stage entrance cascade.
+	private string pendingHoverSpeciesId = null;
+	private RealTimeSince pendingHoverAt;
+
+	private void OnPanelMouseMove()
+	{
+		if ( _inputDevice != "mouse" ) _inputDevice = "mouse";
+	}
+
+	// Medal ladder (2026-07-12) — mastery wears bronze/silver/gold metal,
+	// never the rarity colors. Lv1-2 bronze, Lv3-4 silver, Lv5-6 gold.
+	// Flat two-tone CSS chips (baked metallic renders were rejected as
+	// off-brand skeuomorphism — user verdict same day).
+	private static string MedalMetal( int lvl ) => lvl >= 5 ? "gold" : (lvl >= 3 ? "silver" : "bronze");
+	private static string MedalHex( int lvl ) => lvl >= 5 ? "#e2ac3a" : (lvl >= 3 ? "#c3ccd8" : "#c08850");
+
+	// =========================================================================
+	// TEMP dev hook (sbox-ui verification, 2026-07-12) — jumps the running
+	// session to the Beastbook and optionally forces a UI state for MCP
+	// screenshots (the dev_skillspage pattern). Call twice from the main
+	// menu (first call enters the hub, second routes once GameHUD hosts nav).
+	//   dev_beastbook             → open the Beastbook
+	//   dev_beastbook undisc      → select the first undiscovered species
+	//   dev_beastbook moves|lore|mastery|evolution → force that deep view
+	// REMOVE after the redesign is user-approved.
+	// =========================================================================
+	private static string devBbPending;
+
+	[ConCmd( "dev_beastbook" )]
+	public static void DevOpenBeastbook( string arg = "" )
+	{
+		var gm = Beastborne.Core.GameManager.Instance;
+		if ( gm != null && !gm.IsInGame ) gm.StartGame();
+		// Clear the PawPad if a previous test left it open over the page.
+		PhoneLauncher.Close();
+		NavManager.GoTo( "beastiary" );
+		devBbPending = arg ?? "";
+		Log.Info( $"[Beastbook] dev_beastbook → '{devBbPending}'" );
+	}
+
 	// One-shot card-select pulse — border flash on the clicked card,
 	// remounted via `pulse-@selectPulseVersion` class so @keyframes
 	// re-fire every click (s&box quirk). Ported from ShopPanelContent.
 	private string justSelectedSpeciesId = null;
 	private int selectPulseVersion = 0;
+
+	// ───────────────────── THE DOSSIER (ground-up 2026-07-12) ─────────────
+	// The reading column's plumbing: refs for the column root / scroll /
+	// overlay scrollbar, the wheel-glide target, and the sub-view band's
+	// text helpers. Sibling of the roster facts column (fd-* architecture,
+	// teal chapter).
+	private Panel bbDossierRef;
+	private Panel bbDetailScrollRef;
+	private Panel bbSbTrackRef, bbSbThumbRef;
+	private bool _isMouseOverDossier;
+	// Wheel GLIDE (roster facts recipe): the wheel writes a target offset,
+	// Tick() steps toward it exponentially. -1 = inactive.
+	private float dossierScrollTarget = -1f;
+	// Only-on-change caches for the imperative scrollbar writes; reset when
+	// the template swap remounts the track (ReferenceEquals guard).
+	private Panel _sbSeenTrack;
+	private int _sbTrackTop = -1, _sbTrackH = -1, _sbThumbTop = -1, _sbThumbH = -1;
+
+	// (Sub-view band + its kicker/badge helpers REMOVED 2026-07-12 — user
+	// ruling: the details column gets no header/title band. Keyboard Q
+	// still backs out of a deep view via BackToStatsView below.)
+
+	// Keyboard Q — leave a deep view back to the default dossier read
+	// (the roster sub-view Q semantic). Clicking the active diamond
+	// toggles back too (existing behavior).
+	private void BackToStatsView()
+	{
+		if ( detailView == "stats" ) return;
+		detailView = "stats";
+		detailFreshSelect = false;
+		ResetDossierScroll();
+		SoundManager.PlayBack();
+	}
+
+	// Content changed under the scroll (species/view swap) — park at the
+	// top and drop any in-flight glide.
+	private void ResetDossierScroll()
+	{
+		dossierScrollTarget = -1f;
+		if ( bbDetailScrollRef != null ) bbDetailScrollRef.ScrollOffset = Vector2.Zero;
+	}
+
+	// Stat gauge fill — EXPLICIT PX (the 288px bar is a skewX(-23°)
+	// transform ancestor; % widths under it are derived-width poison).
+	// 150 = the visualization max, matching the old percent scale.
+	private string GetStatBarPx( int statValue )
+	{
+		return $"{(int)(288f * Math.Clamp( statValue, 0, 150 ) / 150f)}px";
+	}
+
+	// Mastery gauge fill — same law, different bar. The .bbk-bar is 388px
+	// (mastery NEXT card content: zone inner 412 − 2×12 card padding) and
+	// skewX(-23°), so the fill must be explicit px too.
+	private string GetMasteryBarPx( float progressPct )
+	{
+		return $"{(int)(388f * Math.Clamp( progressPct, 0f, 100f ) / 100f)}px";
+	}
+
+	// Hand-rolled overlay scrollbar (scrollbar-color/-width don't parse in
+	// s&box). Track top/height follow the scroll viewport (the band comes
+	// and goes); thumb geometry from the proven ratio math: rect px and
+	// scroll px are commensurate, so viewH/contentH and offset/maxOff are
+	// unit-free ratios — only the track length needs style-space px.
+	private void UpdateDossierScrollbar()
+	{
+		if ( bbSbTrackRef == null || bbSbThumbRef == null || bbDetailScrollRef == null || bbDossierRef == null ) return;
+
+		if ( !ReferenceEquals( _sbSeenTrack, bbSbTrackRef ) )
+		{
+			// Fresh mount (template swap) — the caches describe a dead panel.
+			_sbSeenTrack = bbSbTrackRef;
+			_sbTrackTop = _sbTrackH = _sbThumbTop = _sbThumbH = -1;
+		}
+
+		float maxOff = bbDetailScrollRef.ScrollSize.y;
+		if ( maxOff < 2f ) { bbSbTrackRef.SetClass( "on", false ); return; }
+
+		var dr = bbDossierRef.Box.Rect;
+		var sr = bbDetailScrollRef.Box.Rect;
+		if ( dr.Width < 1f || sr.Height < 1f ) return;
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		int trackTop = (int)((sr.Top - dr.Top) * sc) + 2;
+		int trackH = (int)(sr.Height * sc) - 4;
+		if ( trackH < 30 ) return;
+		float viewH = sr.Height;
+		float contentH = viewH + maxOff;
+		int thumbH = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
+		int thumbTop = (int)((trackH - thumbH) * (bbDetailScrollRef.ScrollOffset.y / maxOff));
+
+		if ( trackTop != _sbTrackTop ) { bbSbTrackRef.Style.Top = Length.Pixels( trackTop ); _sbTrackTop = trackTop; }
+		if ( trackH != _sbTrackH ) { bbSbTrackRef.Style.Height = Length.Pixels( trackH ); _sbTrackH = trackH; }
+		if ( thumbH != _sbThumbH ) { bbSbThumbRef.Style.Height = Length.Pixels( thumbH ); _sbThumbH = thumbH; }
+		if ( thumbTop != _sbThumbTop ) { bbSbThumbRef.Style.Top = Length.Pixels( thumbTop ); _sbThumbTop = thumbTop; }
+		bbSbTrackRef.SetClass( "on", true );
+	}
 
 	// Detail-pane entrance — bumped each time the selected species changes so
 	// the `detail-rev-N` class remounts the `.bb-detail-fixed` subtree and its
@@ -1254,21 +1391,9 @@
 	private string lastHoveredEvoStageId = null;
 	private string lastHoveredMoveId = null;
 
-	// Trait tooltip — tracked in code-behind because the CSS `:hover .descendant`
-	// pattern is unreliable in s&box (tooltip sometimes only appears on mouseout).
-	// Instead we render the tooltip conditionally based on this state, which
-	// updates every time the hover moves between trait pills. See learnings.md.
-	private string hoveredTraitId = null;
-	private void OnTraitHover( string traitId )
-	{
-		if ( hoveredTraitId == traitId ) return;
-		hoveredTraitId = traitId;
-		SoundManager.PlayHover();
-	}
-	private void OnTraitOut( string traitId )
-	{
-		if ( hoveredTraitId == traitId ) hoveredTraitId = null;
-	}
+	// (Trait tooltip machinery DELETED 2026-07-12 — user ruling: the hover
+	// tooltip fired on mouse-LEAVE across all panels; trait effect text is
+	// now written INLINE in the TRAITS zone, so there is nothing to hover.)
 
 	private void OnDiamondHover( string diamondId )
 	{
@@ -1601,6 +1726,7 @@
 		selectedSpecies = first;
 		selectedIndex = 0;
 		detailView = "stats";
+		ResetDossierScroll();
 		showBeastPopup = false;
 		if ( first != null )
 		{
@@ -1657,6 +1783,61 @@
 	{
 		base.Tick();
 
+		// TEMP dev hook consumption (see DevOpenBeastbook).
+		if ( devBbPending != null )
+		{
+			var arg = devBbPending;
+			devBbPending = null;
+			if ( arg == "undisc" )
+			{
+				var target = GetFilteredSpecies().FirstOrDefault( s => !IsDiscovered( s.Id ) && !IsSeen( s.Id ) );
+				if ( target != null ) SelectSpecies( target, false );
+			}
+			else if ( arg == "disc" )
+			{
+				var target = GetFilteredSpecies().FirstOrDefault( s => IsDiscovered( s.Id ) );
+				if ( target != null ) SelectSpecies( target, true );
+			}
+			else if ( arg == "moves" || arg == "lore" || arg == "mastery" || arg == "evolution" )
+			{
+				detailView = arg;
+				detailFreshSelect = false;
+			}
+		}
+
+		// ONE-CURSOR dwell commit — hover-armed selection lands after 110ms.
+		// Guards re-check at commit time (state can shift during the dwell).
+		if ( pendingHoverSpeciesId != null && pendingHoverAt > 0.11f )
+		{
+			var pid = pendingHoverSpeciesId;
+			pendingHoverSpeciesId = null;
+			if ( _inputDevice == "mouse" && !_editMode && !discoveryCelebrationActive && !showBeastPopup && selectedSpecies?.Id != pid )
+			{
+				var sp = GetFilteredSpecies().FirstOrDefault( s => s.Id == pid );
+				if ( sp != null ) SelectSpecies( sp, IsDiscovered( sp.Id ), muted: true );
+			}
+		}
+
+		// Dossier wheel GLIDE — step exponentially toward the target offset
+		// (roster facts recipe: 0.30/frame, snap under 1.5px).
+		if ( dossierScrollTarget >= 0f && bbDetailScrollRef != null )
+		{
+			float cur = bbDetailScrollRef.ScrollOffset.y;
+			float diff = dossierScrollTarget - cur;
+			if ( Math.Abs( diff ) < 1.5f )
+			{
+				bbDetailScrollRef.ScrollOffset = new Vector2( 0f, dossierScrollTarget );
+				dossierScrollTarget = -1f;
+			}
+			else
+			{
+				bbDetailScrollRef.ScrollOffset = new Vector2( 0f, cur + diff * 0.30f );
+			}
+		}
+
+		// Overlay scrollbar — imperative geometry (no BuildHash pollution).
+		UpdateDossierScrollbar();
+
 		// Living ring — per-tick position (rail scrolls/reflows) + imperative wave.
 		UpdateGridRing();
 		ApplyGridRingWave();
@@ -1685,6 +1866,20 @@
 				BEAST_POPUP_ZOOM_MAX
 			);
 			return; // consume — don't let wheel fall through to the grid
+		}
+		// Dossier glide — wheel over the reading column writes a target
+		// offset that Tick() eases toward (the roster facts glide). Scoped
+		// via _isMouseOverDossier; consume so the rail doesn't also scroll.
+		if ( _isMouseOverDossier && !showBeastPopup && bbDetailScrollRef != null )
+		{
+			float maxOff = bbDetailScrollRef.ScrollSize.y;
+			if ( maxOff > 1f )
+			{
+				if ( dossierScrollTarget < 0f ) dossierScrollTarget = bbDetailScrollRef.ScrollOffset.y;
+				// delta.y positive = scroll up (toward user) = offset decreases.
+				dossierScrollTarget = Math.Clamp( dossierScrollTarget - delta.y * 90f, 0f, maxOff );
+				return;
+			}
 		}
 		// Edit mode: wheel-over-card scales the card art (CardScale tuning).
 		// Scope to ShowGridArtEditor + _editMode + actually-hovered card so
@@ -1739,12 +1934,26 @@
 	{
 		var species = GetFilteredSpecies();
 
-		// Element filter cycle (Z/X) — handled FIRST, before the empty-list
+		// Device flag — any owned key flips to keyboard mode and cancels a
+		// pending hover-select (last-input-wins; see the one-cursor block).
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" )
+			|| Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) || Input.Pressed( "Score" )
+			|| Input.Pressed( "Menu" ) || Input.Pressed( "Reload" ) || Input.Pressed( "CyclePrev" ) || Input.Pressed( "CycleNext" ) )
+		{
+			_inputDevice = "kb";
+			pendingHoverSpeciesId = null;
+			lastHoveredCardId = null;
+		}
+
+		// Element filter cycle — R is the SHOWN cycle key (page grammar,
+		// 2026-07-12); Z/X stay as the universal silent pair (X = same
+		// direction as R, Z = reverse). Handled FIRST, before the empty-list
 		// early-return below, so the player can always cycle OFF an element
 		// that currently has no species yet (e.g. Ice). Not while the detail
 		// panel holds focus — its own nav owns the keys there.
 		if ( kbFocusZone != "detail" )
 		{
+			if ( Input.Pressed( "Reload" ) ) { CycleElementForward(); return; }
 			if ( Input.Pressed( "CyclePrev" ) ) { CycleElementBack(); return; }
 			if ( Input.Pressed( "CycleNext" ) ) { CycleElementForward(); return; }
 		}
@@ -1765,13 +1974,21 @@
 			var detailActions = GetDetailActions();
 			if ( detailActions.Count == 0 ) { FocusGridZone(); return; }
 
-			// Tab or Q — back to the grid. This is an INTERNAL move, not an
-			// exit to the tab bar, so claim the back key (GameHUD ticks after
-			// this panel and would otherwise also see the Q and flip into
-			// tab-nav, freezing the panel — see GameHUD.PanelHandledBackKey).
-			if ( Input.Pressed( "Score" ) || Input.Pressed( "Menu" ) )
+			// Tab — back to the grid directly. Q backs out ONE LAYER (the
+			// roster sub-view semantic): deep view → dossier first, then
+			// grid. Both are INTERNAL moves, not exits to the tab bar, so
+			// claim the back key (GameHUD ticks after this panel and would
+			// otherwise also see the Q and flip into tab-nav).
+			if ( Input.Pressed( "Score" ) )
 			{
 				FocusGridZone();
+				GameHUD.PanelHandledBackKey = true;
+				return;
+			}
+			if ( Input.Pressed( "Menu" ) )
+			{
+				if ( detailView != "stats" ) BackToStatsView();
+				else FocusGridZone();
 				GameHUD.PanelHandledBackKey = true;
 				return;
 			}
@@ -1786,8 +2003,9 @@
 				detailActionIndex = Math.Min( detailActions.Count - 1, detailActionIndex + 1 );
 				SoundManager.PlayHover();
 			}
-			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
 			{
+				// Space AND E both confirm (settled grammar).
 				ActivateFocusedDetailAction();
 			}
 			return;
@@ -1798,9 +2016,10 @@
 		// with window size and with whether the detail pane is open).
 		int columns = GetGridColumns();
 
-		// Space / Enter — confirm the highlighted species and hand keyboard
-		// control to the detail panel. Tab also works (kept as an alias).
-		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Score" ) )
+		// Space / E / Enter — confirm the highlighted species and hand
+		// keyboard control to the detail panel (settled grammar: Space and
+		// E both confirm). Tab also works (kept as an alias).
+		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) || Input.Pressed( "Score" ) )
 		{
 			FocusDetailZone();
 			return;
@@ -2022,7 +2241,7 @@
 		return false;
 	}
 
-	private void SelectSpecies( MonsterSpecies species, bool isDiscovered )
+	private void SelectSpecies( MonsterSpecies species, bool isDiscovered, bool muted = false )
 	{
 		if ( selectedSpecies?.Id != species?.Id )
 		{
@@ -2037,6 +2256,7 @@
 			// Reset to stats view on species change — each beast starts with a
 			// clean, short detail view. User can re-toggle via diamonds.
 			detailView = "stats";
+			ResetDossierScroll();
 			// Close any open beast preview popup — it belongs to the old species.
 			showBeastPopup = false;
 			// One-shot card-select pulse — keyed on selectPulseVersion so the
@@ -2048,7 +2268,9 @@
 			// and its staggered entrance @keyframes replay for the new beast.
 			detailRevealVersion++;
 			detailFreshSelect = true; // full top→bottom cascade for this reveal
-			SoundManager.PlayClick();
+			// Hover-driven selects are QUIET (a rail sweep would click-spam);
+			// deliberate picks (click / keyboard) keep the click.
+			if ( !muted ) SoundManager.PlayClick();
 		}
 	}
 
@@ -2064,17 +2286,34 @@
 			detailView = "stats"; // toggle back
 		else
 			detailView = view;
+		ResetDossierScroll();
 		SoundManager.PlayClick();
 	}
 
 	private void OnCardHover( string speciesId )
 	{
+		// Ignore synthetic hovers while the keyboard drives (scroll-follow
+		// slides tiles under a parked cursor — the machine-gun-hover trap).
+		// Real mouse motion flips the flag back via root onmousemove first.
+		if ( _inputDevice == "kb" ) return;
+
 		// Guard — onmouseover fires repeatedly while mouse stays on the element.
 		// Only play the hover sound the first time the hovered card changes.
 		if ( lastHoveredCardId != speciesId )
 		{
 			lastHoveredCardId = speciesId;
 			SoundManager.PlayHover();
+		}
+
+		// ONE-CURSOR: hover ARMS a selection; Tick() commits it after a
+		// ~110ms dwell (sweeps don't strobe the stage). Repeated events on
+		// the same tile must NOT reset the dwell timer.
+		if ( _editMode ) return;
+		if ( selectedSpecies?.Id == speciesId ) { pendingHoverSpeciesId = null; return; }
+		if ( pendingHoverSpeciesId != speciesId )
+		{
+			pendingHoverSpeciesId = speciesId;
+			pendingHoverAt = 0f;
 		}
 	}
 
@@ -2268,7 +2507,6 @@
 		hash.Add( selectedSpecies?.Id );
 		hash.Add( detailView );
 		hash.Add( detailFreshSelect );
-		hash.Add( hoveredTraitId );
 		// Grid <-> detail keyboard focus switch — zone + action cursor both
 		// drive visible state (zone glow, affordance pill, .kb-focused).
 		hash.Add( kbFocusZone );
