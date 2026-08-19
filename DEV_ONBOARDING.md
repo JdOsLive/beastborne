@@ -1,6 +1,6 @@
 # Beastborne — Dev Onboarding
 
-A high-level resume of the project for a new coder coming on. Pair this with `CLAUDE.md` (project conventions + s&box quirks) and `~/.claude/projects/.../memory/MEMORY.md` (live decision-log index) for the full picture.
+A high-level resume of the project for a new coder coming on. Pair this with `CLAUDE.md` (project conventions + s&box quirks) and the Claude memory decision log (`.claude/memory/MEMORY.md` in-repo snapshot; live copy in `~/.claude/projects/<slug>/memory/` — see `HANDOFF.md`) for the full picture.
 
 ---
 
@@ -263,7 +263,7 @@ Plus some buttons add a 4px hard offset shadow + dark border + colored slab body
 1. **Read `CLAUDE.md`** before touching anything — has the s&box CSS quirks table (50+ rows) and project rules
 2. **Patch notes go in `Assets/data/patchnotes-pending.json` AT ship time** — append a one-line player-facing entry as you merge
 3. **Terminology rules**: "Contract" not "catch", no "loyalty" anywhere
-4. **Memory system at `~/.claude/projects/c--users-jscho-documents-s-box-projects-megarougelite/memory/`** has the live decision log; read `MEMORY.md` as the index
+4. **Memory system** — Claude's live decision log lives at `~/.claude/projects/<path-slug>/memory/` on the dev machine; a committed snapshot is at `.claude/memory/` (see `HANDOFF.md` for restoring it on a new machine). Read `MEMORY.md` as the index
 5. **Decisions log at `.claude/balance-knowledge/decisions-log.md`** — newest-first, full reasoning for every balance + architecture call
 6. **Iconify** new lucide names need manual addon refresh; flag every new name per session
 7. **Never `new Random()` in combat code** — use `BattleSimulator.CurrentRandom` (deterministic seed-replay contract; load-bearing for v1.3+ PvP)
@@ -286,4 +286,4 @@ Plus some buttons add a 4px hard offset shadow + dark border + colored slab body
 
 ---
 
-That's the lay of the land. Start with `CLAUDE.md` for the project rules, then poke through `Code/` from the file table above. When in doubt, check the project memory at `~/.claude/projects/c--users-jscho-documents-s-box-projects-megarougelite/memory/` — most non-obvious "why is it like this?" answers live there.
+That's the lay of the land. Start with `CLAUDE.md` for the project rules, then poke through `Code/` from the file table above. When in doubt, check the project memory (`.claude/memory/` snapshot, or the live copy at `~/.claude/projects/<path-slug>/memory/`) — most non-obvious "why is it like this?" answers live there.
