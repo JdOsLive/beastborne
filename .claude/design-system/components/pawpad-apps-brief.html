@@ -3,7 +3,8 @@
 <html><head><meta charset="utf-8"><title>Beastborne — PawPad Apps: Chat · Radio · Effects · Alerts</title>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
 <!--
-  PAWPAD IN-PHONE APPS — DESIGN BRIEF (rev 2, review corrections applied 2026-08-28). The four
+  PAWPAD IN-PHONE APPS — DESIGN BRIEF (rev 3 — LIFE pass 2026-08-28 on top of the rev 2 review
+  corrections; § 6 LIFE + lettered A/B motion callouts per screen; nothing from rev 2 undone). The four
   TamerLink OS apps (CHAT/RADIO/EFFECTS/ALERTS) shipped 2026-07-02 as ports of the old floating
   widgets; this is their first real DESIGN pass as coherent apps on the 512px screen. Mocks are 1:1
   of the screen content width (512 — the shipped .pl-av-head / .pl-chan-row / .pl-top box).
@@ -64,8 +65,9 @@
     animation does NOT trigger recomposite). MUST be LOSSLESS — lossy WebP drops the alpha channel
     in-engine (texture-format law) and the bars would ship on an opaque black slab. Play/pause = SRC
     value-swap between static and animated files (attribute swap only — an @if icon swap leaves ghost
-    children). Never CSS-animate it. It is the apps' ONE ambient flourish (FLOW layer) — nothing else
-    in the four apps moves on its own.
+    children). Never CSS-animate it. It is the apps' ONE ambient flourish (FLOW layer) — the only other
+    self-moving thing in the four apps is chat's showcase sprite (the beast's idle WebP, cap 3 — a
+    living thing, § 6 LIFE). Everything else moves only when something HAPPENS.
   · ICON SOURCES (the mocks use emoji/text glyphs as stand-ins — none ship): ALERTS tile glyph =
     the notification's Icon (iconify lucide name) or IconPath (pixel-art, `<img>` with
     image-rendering: pixelated at 24px inside the 34px tile); EFFECTS skill icons = the skill node's
@@ -81,7 +83,38 @@
     on a child" rule is for rotateY planes).
   · STATE — every new field an app view renders (channel unread counts, volume step, shuffle/repeat,
     alert read-watermark, CLEAR ALL armed flag, pressed stamp) goes into BuildHash or the view never
-    updates.
+    updates. LIFE adds: _appOpenedAt, per-row motion-class cache, tick parity, expiringId, clearing
+    flag, volKey, trackKey, listVersion — all of them.
+  · LIFE MECHANISMS (§ 6) — the whole motion story is built from FIVE engine-legal moves; nothing else:
+    (1) PERCENTAGE LADDERS — every staggered element runs a FULL-LENGTH @keyframes from t=0 on mount
+        and expresses its own delay as hold percentages (the roster lmThA0–3 grammar,
+        MonsterRosterPanel.razor.scss L8719). animation-delay is KILLED by re-renders (2026-07-12 law)
+        and the phone re-renders at 1 Hz (ClockText) — so no animation-delay, no transition-delay
+        ladders. Fill NONE: every ladder's 100% frame IS the rest state, so nothing lingers (a
+        forwards-filled transform would re-arm the derived-width poison).
+    (2) RENDER-KEY CLASS (the "mount-keyed span") — to REPLAY a keyframe on the same slot, cycle a
+        class on the element (`pl-pulse-@(tick % 2)`, `pl-dot-@count`, `pl-title-@trackKey`,
+        `pl-vol-@volKey`). The shipped form: BattleView.razor L1285 `.slam-@key` and the
+        `.bb-crit-flash-@N` 0..3 cycle ("the only way s&box re-runs @keyframes for the same DOM
+        slot"), DailyPanel `pop-@popVersion`. COROLLARY: a row's motion class is assigned at FIRST
+        render and cached per row id (`_rowMotion[id]`) — never recomputed, because a class change
+        IS a replay. Launch rows get `pl-cas-N`; rows first seen after `_appOpenedAt + 0.7s` get
+        `pl-arrive`.
+    (3) WEBP SRC-SWAP — the visualizer (play/pause) and chat's showcase sprites (idle animated WebP
+        on the 3 newest embeds; older embeds swap to the static frame). Texture animation never
+        recomposites the device (verified 87fps in the lean).
+    (4) CODE-STAMPED PRESS CLASS — `.pressed` for ~120ms via the router stamp + one-shot
+        StateHasChanged (PRESS FEEDBACK above). The SAME one-shot timer serves the two other timed
+        state clears: `.expired` row removal at +400ms and CLEAR ALL commit at +500ms.
+    (5) CLASS-TOGGLE TRANSITIONS for STATE (bloom, `.pl-chan.on` 140ms color, input ring, `.expired`
+        fade, unread-tick color) — one-shot, replay on every toggle. Never for staggers (see 1).
+    TRANSFORM BUDGET in the device: one-shot only, translateY ≤ 10px / scale ≤ 1.16, ≤ 640ms, never
+    on an element whose descendants use flex-grow (apps have none — rows are explicit-px), always
+    ending on identity. A row's 8px rise may paint past the scroller's bottom edge for <200ms
+    (scrollers don't clip transforms) — the input row / CLEAR ALL sit ≥ 10px below; accepted.
+    Stamps that carry the static rotate(−3deg) write it into every keyframe frame (transform is one
+    property — a bare scale() would drop the tilt). SOUND: PlayClick is the press; arrivals want a
+    counterpart (see the ASK column in § 6) — a silent arrival is half an arrival.
   · THE ACCENT BLOOM (launch/return transition + the bg model): tapping a widget tile BLOOMS the
     tile's accent from the icon position out to fill the 512px screen, then the bloom settles into the
     app's DERIVED BACKGROUND — the accent at ~8–12% over the dark base. Full-strength accent is
@@ -205,6 +238,47 @@ h2.c-chat{background:#4aa8ff}h2.c-radio{background:#c26bff}h2.c-fx{background:#f
 .lad{display:flex;flex-direction:column;gap:9px;padding:16px 18px;background:#130E1D;border:1px solid #262038;border-radius:11px;width:430px}
 .lad .r{display:flex;align-items:baseline;gap:14px}
 .lad .m{font-size:9px;font-weight:600;color:#7C7295;letter-spacing:1px;min-width:150px;text-transform:uppercase}
+/* ── § 6 LIFE — motion tables, layer chips, keyframe specimen, lettered callouts ── */
+.mt{border-collapse:collapse;width:1160px;margin:4px 0 6px}
+.mt th{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#7C7295;text-align:left;padding:4px 8px;border-bottom:1px solid #262038}
+.mt td{font-size:11px;font-weight:500;color:#A79DBE;line-height:15px;padding:5px 8px;border-bottom:1px solid #1a1526;vertical-align:top}
+.mt td:first-child{color:#EFEAF7;font-weight:700;white-space:nowrap}
+.mt code,pre.kf{font-family:ui-monospace,Consolas,monospace}
+.mt code{font-size:10px;color:#EFEAF7;background:#1a1526;padding:1px 4px;border-radius:3px;white-space:nowrap}
+.ly{display:inline-block;font-size:8px;font-weight:900;letter-spacing:1px;padding:1px 6px;border-radius:6px;color:#0A0712;margin-right:6px;vertical-align:1px}
+.ly.snap{background:#9b6cff}.ly.arr{background:#22c55e}.ly.flow{background:#4aa8ff}.ly.tick{background:#f7e024}
+pre.kf{background:#130E1D;border:1px solid #262038;border-radius:9px;padding:12px 14px;font-size:10px;line-height:14px;color:#c9c1dc;width:520px;overflow:auto;white-space:pre}
+pre.kf b{color:#EFEAF7;font-weight:700}pre.kf em{color:#7C7295;font-style:normal}
+/* the shared cascade — the SAME keyframes the pre prints (browser demo: hover replays; in-engine: mount-once) */
+@keyframes plCas0{0%{opacity:0;transform:translateY(8px)}38%{opacity:0;transform:translateY(8px)}66%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
+@keyframes plCas1{0%{opacity:0;transform:translateY(8px)}44%{opacity:0;transform:translateY(8px)}72%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
+@keyframes plCas2{0%{opacity:0;transform:translateY(8px)}50%{opacity:0;transform:translateY(8px)}78%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
+@keyframes plCas3{0%{opacity:0;transform:translateY(8px)}56%{opacity:0;transform:translateY(8px)}84%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
+@keyframes plCas4{0%{opacity:0;transform:translateY(8px)}63%{opacity:0;transform:translateY(8px)}91%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
+@keyframes plCas5{0%{opacity:0;transform:translateY(8px)}69%{opacity:0;transform:translateY(8px)}97%{opacity:1;transform:translateY(0)}100%{opacity:1;transform:translateY(0)}}
+@keyframes plClr0{0%{opacity:1}50%{opacity:0}100%{opacity:0}}
+@keyframes plClr1{0%{opacity:1}10%{opacity:1}60%{opacity:0}100%{opacity:0}}
+@keyframes plClr2{0%{opacity:1}20%{opacity:1}70%{opacity:0}100%{opacity:0}}
+@keyframes plClr3{0%{opacity:1}30%{opacity:1}80%{opacity:0}100%{opacity:0}}
+@keyframes plClr4{0%{opacity:1}40%{opacity:1}90%{opacity:0}100%{opacity:0}}
+@keyframes plClr5{0%{opacity:1}50%{opacity:1}100%{opacity:0}}
+@keyframes plVol1{0%{background:#412859}40%{background:#c26bff}100%{background:#c26bff}}
+@keyframes plVol2{0%{background:#412859}15%{background:#412859}55%{background:#c26bff}100%{background:#c26bff}}
+@keyframes plVol3{0%{background:#412859}30%{background:#412859}70%{background:#c26bff}100%{background:#c26bff}}
+@keyframes plVol4{0%{background:#412859}45%{background:#412859}85%{background:#c26bff}100%{background:#c26bff}}
+@keyframes plVol5{0%{background:#412859}60%{background:#412859}100%{background:#c26bff}}
+@keyframes plLastMin{0%{opacity:1}50%{opacity:.45}100%{opacity:1}}
+.cdemo{width:252px;padding:16px 12px;border:1px solid #2b2d36;border-radius:20px;background:linear-gradient(to bottom,rgba(247,224,36,.08),rgba(247,224,36,.04)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%);display:flex;flex-direction:column;gap:6px;cursor:pointer;position:relative}
+.cdemo i{display:block;width:228px;height:26px;border-radius:8px;background:#332c22}
+.cdemo:hover i:nth-child(1){animation:plCas0 .64s ease-out}.cdemo:hover i:nth-child(2){animation:plCas1 .64s ease-out}.cdemo:hover i:nth-child(3){animation:plCas2 .64s ease-out}
+.cdemo:hover i:nth-child(4){animation:plCas3 .64s ease-out}.cdemo:hover i:nth-child(5){animation:plCas4 .64s ease-out}.cdemo:hover i:nth-child(6){animation:plCas5 .64s ease-out}
+.cdemo .hint{position:absolute;left:0;right:0;bottom:-18px;text-align:center;font-size:9px;font-weight:700;letter-spacing:1.5px;color:#5E5678}
+.vdemo{display:flex;gap:8px;cursor:pointer}.vdemo i{display:block;width:64px;height:16px;border-radius:10px;background:#412859}
+.vdemo:hover i:nth-child(1){animation:plVol1 .2s linear forwards}.vdemo:hover i:nth-child(2){animation:plVol2 .2s linear forwards}.vdemo:hover i:nth-child(3){animation:plVol3 .2s linear forwards}.vdemo:hover i:nth-child(4){animation:plVol4 .2s linear forwards}
+.pdemo{font-style:italic;font-size:13px;font-weight:800;color:#f59e0b;animation:plLastMin 1s ease-in-out infinite}
+/* lettered LIFE callouts — hollow, so they read apart from the numbered layout callouts */
+.co.lf{background:#0A0712;color:#fff;border:2px solid #fff;font-size:9px}
+.leg b.lf{background:#0A0712;color:#fff;border:1px solid #fff;line-height:13px}
 </style></head><body>
 
 <h1>PawPad apps — <span style="color:#4aa8ff">chat</span> · <span style="color:#c26bff">radio</span> · <span style="color:#f7e024">effects</span> · <span style="color:#e0414a">alerts</span></h1>
@@ -242,6 +316,7 @@ Violet stays the cursor (and the shipped back chip), gold stays the OS. Radii: 1
     <span><i>Q backs out to the home grid</i> from every app (Esc too); Slot8 closes the phone outright. In-app taps go through the backdrop hit-router — every control below is annotated with its hit id. Apps are tap + hotkey; the living ring is hidden inside them.</span>
     <span><i>Press feedback is router-stamped</i> — a one-shot <i>pressed</i> class (~120ms) brightens dark slabs / dims accent controls. :hover/:active never fire in the device.</span>
     <span><i>Scroll:</i> wheel over the phone scrolls the ACTIVE app's list (build fix: today only chat's list is wired).</span>
+    <span><i>Life:</i> after the bloom, list rows CASCADE in (fade + 8px rise, 40ms apart — the shared <i>pl-cas-N</i> ladder, § 6); from then on things move only when they happen. The motion story per app is § 6.</span>
   </div>
 </div>
 
@@ -377,6 +452,8 @@ laws in ENGINE NOTES.</div>
       <div class="co" style="background:#4aa8ff;left:352px;top:102px">2</div>
       <div class="co" style="background:#4aa8ff;left:506px;top:306px">3</div>
       <div class="co" style="background:#4aa8ff;left:506px;top:652px">4</div>
+      <div class="co lf" style="left:6px;top:372px">A</div>
+      <div class="co lf" style="left:6px;top:300px">B</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
@@ -389,6 +466,8 @@ laws in ENGINE NOTES.</div>
       <span><i>Names:</i> other players' names are dim cream rgba(244,241,234,.6); YOUR name is the app accent #4aa8ff (own messages also keep the accent-tint row). No violet in the log — violet is the cursor. Timestamps use the shipped <i>ChatMessage.FormattedTime</i> in a 48px meta box.</span>
       <span><i>Empty states:</i> no messages at all → paw watermark + "NOTHING YET" + "Say hi — global is everyone online."; a channel with no messages since you joined → "GUILD IS QUIET" + "Messages land here as they arrive." Same recipe as Effects' empty state; never a bare string in a void.</span>
       <span><i>Derived bg #191F35</i> — the landed state of the blue bloom (accent 10% over #14101F).</span>
+      <span><b class="lf">A</b><i>LIFE — arrivals:</i> a new message slides in from the bottom (<i>pl-arrive</i>, 220ms fade + 8px rise) and the log follows it; your own lands one step lighter and settles (<i>pl-arrive-own</i>, 300ms). Launch = the shared cascade. § 6.</span>
+      <span><b class="lf">B</b><i>LIFE — the living thing:</i> the showcase sprite is the beast's idle WebP (3 newest embeds animate; older ones src-swap to the static frame). The GUILD unread dot pops as a fresh element on every count change (<i>plDotPop</i> 180ms).</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">ENTER</span><span class="klab">send</span><span class="kcap">WHEEL</span><span class="klab">scroll log</span></div>
     <div class="chg">
@@ -459,6 +538,8 @@ laws in ENGINE NOTES.</div>
       <div class="co" style="background:#c26bff;left:6px;top:306px">3</div>
       <div class="co" style="background:#c26bff;left:258px;top:386px">4</div>
       <div class="co" style="background:#c26bff;right:6px;top:476px">5</div>
+      <div class="co lf" style="left:6px;top:222px">A</div>
+      <div class="co lf" style="left:6px;top:452px">B</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
@@ -470,6 +551,8 @@ laws in ENGINE NOTES.</div>
       <span><b style="background:#c26bff">4</b><i>Transport</i> — prev/play/next (shipped hits) + SHUFFLE / REPEAT toggles (hit-radio-shuffle / -repeat; 64px wide at 10px, plain words — or a lucide icon + the word). Lit = the <i>.pl-chan.on</i> recipe: accent FILL + dark ink; off = row tone #31224a + dim text. Play is the 20px-radius hero; the rest are 16.</span>
       <span><b style="background:#c26bff">5</b><i>Stepped volume</i> — VOLUME kicker chip (96px) + 5 × 64px tap segments (hit-vol-1..5 → SetVolume 0.2–1.0), unlit segments in the track tone. A drag slider through the inverse-projection router is a project; steps are free and readable.</span>
       <span><i>Derived bg #251935</i> — the landed state of the purple bloom (accent 11% over #14101F). Rows/idle buttons #31224a, tracks #412859.</span>
+      <span><b class="lf">A</b><i>LIFE — track change:</i> kicker + title + caption re-key (<i>pl-title-@trackKey</i>) and fade up in place, 260ms. Play/pause is ONE iconify whose name value-swaps; the visualizer src-swaps with it. § 6.</span>
+      <span><b class="lf">B</b><i>LIFE — volume:</i> tapping seg 4 lights 1→4 in sequence, 30ms apart (<i>plVol1–4</i> bg-color ladder on a re-keyed segment row, 200ms); lowering goes dark at once. Progress steps at 1 Hz on purpose — no width easing inside the device.</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">SPACE</span><span class="klab">play / pause</span><span class="kcap">A / D</span><span class="klab">prev / next track</span></div>
     <div class="chg">
@@ -541,6 +624,8 @@ laws in ENGINE NOTES.</div>
       <div class="co" style="background:#f7e024;left:506px;top:186px">2</div>
       <div class="co" style="background:#f7e024;left:6px;top:330px">3</div>
       <div class="co" style="background:#f7e024;left:506px;top:566px">4</div>
+      <div class="co lf" style="left:506px;top:146px">A</div>
+      <div class="co lf" style="left:6px;top:212px">B</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
@@ -552,6 +637,8 @@ laws in ENGINE NOTES.</div>
       <span><b style="background:#f7e024;color:#241a00">4</b><i>Empty state</i> — dark paw watermark (WebP asset — no CSS pattern) + plain sentence saying where effects come from. No divider line above it (vector rule) — the gap is the separation. Never a bare "NO ACTIVE EFFECTS" string in a void.</span>
       <span>Rows are read-only — no taps beyond scroll. This is the phone's glance app; restraint is the design.</span>
       <span><i>Derived bg #26211F</i> — yellow blooms at only 8% (it runs hot); rows #332c22 (yellow ~14%), tracks #413a20. The warm cast is the mood, never the text ground.</span>
+      <span><b class="lf">A</b><i>LIFE — last minute:</i> under 60s the strip fill and the time value go amber #f59e0b and the value pulses once a second (<i>pl-pulse-@(tick % 2)</i> render-key → <i>plLastMin</i> 1s, restarted by the same 1 Hz tick that refreshes the string). § 6.</span>
+      <span><b class="lf">B</b><i>LIFE — expiry:</i> at 0 the row fades 400ms (<i>.expired</i> transition), the +400ms one-shot removes it, and the rows below settle up (<i>pl-arrive</i>); the ACTIVE stamp pops to the new count keeping its −3° tilt. A new shop boost arrives the same way.</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">WHEEL</span><span class="klab">scroll (build fix needed)</span></div>
     <div class="chg">
@@ -637,6 +724,8 @@ laws in ENGINE NOTES.</div>
       <div class="co" style="background:#e0414a;left:6px;top:232px">2</div>
       <div class="co" style="background:#e0414a;left:506px;top:164px">3</div>
       <div class="co" style="background:#e0414a;left:506px;top:656px">4</div>
+      <div class="co lf" style="left:506px;top:210px">A</div>
+      <div class="co lf" style="left:6px;top:648px">B</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
@@ -649,6 +738,8 @@ laws in ENGINE NOTES.</div>
       <span><i>Empty state ("ALL CAUGHT UP" — shipped):</i> keep the string, give it the Effects empty-state recipe — paw watermark + "ALL CAUGHT UP" + "Contracts, level-ups and unlocks land here." CLEAR ALL hides when the list is empty.</span>
       <span><i>Peek relationship:</i> peeks (max 3, 3.6s) slide from the right edge toward the phone chip; tapping any peek opens THIS app. Every peek is already in this record — the app is the paper trail, the peek is the knock.</span>
       <span><i>Derived bg #281523</i> — red blooms to a dim ember, not an alarm (accent 10% over #14101F). Rows #3a1a28.</span>
+      <span><b class="lf">A</b><i>LIFE — a new alert while open:</i> the row inserts at the top of TODAY (<i>pl-arrive</i> 220ms), then its tick lights red 200ms after it lands (<i>plTickIn</i> 0.5s on the always-emitted tick child). The knock is outside: the shipped chip pop + peek. § 6.</span>
+      <span><b class="lf">B</b><i>LIFE — CLEAR ALL commit:</i> rows fade bottom-up 40ms apart (<i>pl-clr-N</i> counted from the bottom, opacity-only ladder 400ms), the +500ms one-shot empties the list, ALL CAUGHT UP fades in 300ms and the slab hides.</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">WHEEL</span><span class="klab">scroll (build fix needed)</span></div>
     <div class="chg">
@@ -660,5 +751,128 @@ laws in ENGINE NOTES.</div>
     </div>
   </div>
 </div>
+
+<!-- ═══════════════════════════ 6 · LIFE ═══════════════════════════ -->
+<h2><span>6 · Life — the motion story</span></h2>
+<div class="cap"><b>Verdict on rev 2: "they don't feel like they have much life."</b> Right — the restraint was written as
+<i>no motion</i>, when the doctrine only bans <i>ambient</i> motion on surfaces. The fix is not more ambient: it is that
+<b>every event the app knows about becomes visible motion</b> — a message lands, a boost runs out, a track changes,
+an alert knocks — and every tap answers. Surfaces stay solid; <b>things ARRIVE, things LEAVE, the one clock TICKS.</b>
+Layers (guiding-star): <span class="ly snap">SNAP</span>≤150ms, the control you touched ·
+<span class="ly arr">ARRIVE</span>event-triggered one-shot ≤640ms — the guiding-star's <i>entrance</i> rule, applied per
+event, not a fourth layer · <span class="ly flow">FLOW</span>self-moving — the visualizer and chat's beast sprites, nothing
+else · <span class="ly tick">TICK</span>the 1 Hz clock the timers ride (a value update, not motion — until the last minute).
+Each app gets ONE hero motion (bold in its table) and the rest is support — Balatro's ambient rule, Persona's "elements
+arrive in sequence, not as a block." Tier: everything here is Tier 1–2. Nothing celebrates; the phone is where you
+<i>check</i>, and the peeks outside it are the knock.</div>
+
+<div class="wrap">
+  <div>
+    <div class="cap" style="margin-bottom:6px">The shared cascade — hover to replay (in-engine it plays once, on mount)</div>
+    <div class="cdemo"><i></i><i></i><i></i><i></i><i></i><i></i><div class="hint">ROWS HOLD 240MS (THE BLOOM) THEN LAND 40MS APART</div></div>
+    <div class="cap" style="margin:34px 0 6px">Volume ladder — hover (tap seg 4)</div>
+    <div class="vdemo"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="cap" style="margin:18px 0 6px">Last-minute pulse — 1s, restarted by the 1 Hz tick</div>
+    <span class="pdemo">0m 42s</span>
+  </div>
+  <pre class="kf"><b>/* THE SHARED CASCADE — pl-cas-0..5, one class per launch row (rows ≥ 6 reuse step 5).
+   Full-length 0.64s from t=0; the first 240ms hold IS the bloom (rows mount at the tap).
+   Fill NONE: 100% = rest. Never animation-delay (killed by the 1 Hz re-render). */</b>
+@keyframes plCas0 { 0% { opacity: 0; transform: translateY(8px); }
+                   38% { opacity: 0; transform: translateY(8px); }   <em>/* hold: bloom */</em>
+                   66% { opacity: 1; transform: translateY(0px); }
+                  100% { opacity: 1; transform: translateY(0px); } }
+@keyframes plCas1 { 0%,44% { opacity: 0; transform: translateY(8px); }  72%,100% { opacity: 1; transform: translateY(0px); } }
+@keyframes plCas2 { 0%,50% { opacity: 0; transform: translateY(8px); }  78%,100% { opacity: 1; transform: translateY(0px); } }
+@keyframes plCas3 { 0%,56% { opacity: 0; transform: translateY(8px); }  84%,100% { opacity: 1; transform: translateY(0px); } }
+@keyframes plCas4 { 0%,63% { opacity: 0; transform: translateY(8px); }  91%,100% { opacity: 1; transform: translateY(0px); } }
+@keyframes plCas5 { 0%,69% { opacity: 0; transform: translateY(8px); }  97%,100% { opacity: 1; transform: translateY(0px); } }
+.pl-cas-0 { animation: plCas0 0.64s ease-out; }  <em>… .pl-cas-5 { animation: plCas5 0.64s ease-out; }</em>
+
+<b>/* LIVE ARRIVAL — a row first seen after launch (message, alert, new boost). No hold. */</b>
+@keyframes plArrive    { 0% { opacity: 0; transform: translateY(8px); } 100% { opacity: 1; transform: translateY(0px); } }
+@keyframes plArriveOwn { 0% { opacity: 0; transform: translateY(8px); background-color: rgba(74,168,255,.28); }
+                        40% { opacity: 1; transform: translateY(0px); background-color: rgba(74,168,255,.28); }
+                       100% { opacity: 1; transform: translateY(0px); background-color: rgba(74,168,255,.10); } }
+.pl-arrive { animation: plArrive 0.22s ease-out; }   .pl-arrive-own { animation: plArriveOwn 0.30s ease-out; }
+
+<b>/* POPS — fresh element each time the value changes (render-key class), 0.18s */</b>
+@keyframes plDotPop   { 0% { opacity: 0; transform: scale(0.4); } 70% { opacity: 1; transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes plStampPop { 0% { transform: rotate(-3deg) scale(1.16); } 100% { transform: rotate(-3deg) scale(1); } }  <em>/* keeps the tilt */</em>
+
+<b>/* REVERSE LADDER — CLEAR ALL, N counts from the BOTTOM row, 0.4s */</b>
+@keyframes plClr0 { 0% { opacity: 1; }  50% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes plClr1 { 0%,10% { opacity: 1; }  60%,100% { opacity: 0; } }   <em>… plClr5 { 0%,50% { opacity: 1; } 100% { opacity: 0; } }</em>
+
+<b>/* VOLUME LADDER — segments ≤ new step, 30ms apart, 0.2s */</b>
+@keyframes plVol1 { 0% { background-color: #412859; } 40%,100% { background-color: #c26bff; } }
+@keyframes plVol2 { 0%,15% { background-color: #412859; } 55%,100% { background-color: #c26bff; } }  <em>… plVol5 { 0%,60% … 100% }</em>
+
+<b>/* LAST MINUTE — 1s, replayed by the tick-parity class */</b>
+@keyframes plLastMin { 0% { opacity: 1; } 50% { opacity: 0.45; } 100% { opacity: 1; } }
+.pl-pulse-0, .pl-pulse-1 { animation: plLastMin 1s ease-in-out; color: #f59e0b; }
+@keyframes plTickIn  { 0%,40% { background-color: #3a1a28; } 100% { background-color: #e0414a; } }  <em>/* the tick lights AFTER the row lands */</em>
+@keyframes plFadeIn  { 0% { opacity: 0; } 100% { opacity: 1; } }  <em>/* title/kicker crossfade 0.26s · empty state 0.3s */</em></pre>
+</div>
+
+<div class="cap" style="margin-top:22px"><b>Shell — shared by all four</b></div>
+<table class="mt">
+<tr><th>Element</th><th>Trigger</th><th>Motion</th><th>Mechanism</th><th>Duration</th><th>Layer · sound</th></tr>
+<tr><td>Screen</td><td>tap a tile</td><td>accent bloom out of the tile → settles to the derived bg (specced above)</td><td>pre-mounted circle + bg layer, one-shot class-toggle transitions, mask-image clip</td><td>240 + 180ms</td><td><span class="ly arr">ARRIVE</span>PlayClick (exists)</td></tr>
+<tr><td><b>List rows</b></td><td>app mounts</td><td><b>the cascade</b> — rows hold hidden through the bloom, then fade + rise 8px, 40ms apart, top-down</td><td><code>pl-cas-N</code> ladder (block above); N = row index, capped at 5; class cached per row id</td><td>0.64s incl. hold</td><td><span class="ly arr">ARRIVE</span>—</td></tr>
+<tr><td>Any hit target</td><td>tap</td><td>brighten (dark slab) / dim (accent control) — no transform</td><td>router-stamped <code>.pressed</code> + one-shot clear (ENGINE NOTES · PRESS FEEDBACK)</td><td>~120ms</td><td><span class="ly snap">SNAP</span>PlayClick (exists)</td></tr>
+<tr><td>Whole app</td><td>Q / back</td><td>app UI fades as the bloom collapses back into the tile — rows do NOT reverse-cascade (the collapse is the exit)</td><td>class-toggle: <code>.pl-appview</code> opacity 1→0 (120ms) under the reverse bloom</td><td>~240ms</td><td><span class="ly arr">ARRIVE</span>PlayBack (exists)</td></tr>
+<tr><td>Home grid tile</td><td>cursor lands</td><td>focus pop translateY(−4) scale(1.06), ring mirrors it in code (shipped, PhoneLauncher v3.1 / phone.html)</td><td>class-toggle transition 0.12s — the shared feel every app inherits</td><td>120ms</td><td><span class="ly snap">SNAP</span>hover tick (exists)</td></tr>
+<tr><td>Home tile badge</td><td>count changes</td><td>badge pops (fresh element)</td><td><code>pl-badge-@count</code> render-key → <code>plDotPop</code></td><td>180ms</td><td><span class="ly arr">ARRIVE</span>—</td></tr>
+</table>
+
+<div class="cap" style="margin-top:18px"><b style="color:#4aa8ff">Chat</b> — the log breathes because people are in it</div>
+<table class="mt">
+<tr><th>Element</th><th>Trigger</th><th>Motion</th><th>Mechanism</th><th>Duration</th><th>Layer · sound</th></tr>
+<tr><td><b>Message row (theirs)</b></td><td>message arrives while open</td><td><b>slides in from the bottom</b> — fade + rise 8px; the log auto-scrolls to newest (build fix, audit)</td><td>row first seen after launch → <code>pl-arrive</code></td><td>220ms</td><td><span class="ly arr">ARRIVE</span>soft receive tick — <b>ASK</b> (none exists)</td></tr>
+<tr><td>Message row (yours)</td><td>SEND / Enter</td><td>SEND dims (press) → the row lands with its fill one step lighter and settles to the own-row tint. No glow, no edge flash.</td><td><code>.pressed</code> on hit-send + <code>pl-arrive-own</code> (bg keyframe .28 → .10)</td><td>120 + 300ms</td><td><span class="ly snap">SNAP</span>PlayClick (exists)</td></tr>
+<tr><td>Channel unread dot</td><td>count changes on a channel you're not viewing</td><td>dot pops in / pops to the new number</td><td>dot is a fresh element per count: <code>pl-dot-@count</code> → <code>plDotPop</code>; the 16px absolute has explicit size (nested absolutes lean fine)</td><td>180ms</td><td><span class="ly arr">ARRIVE</span>—</td></tr>
+<tr><td>Channel chip</td><td>tap</td><td>lit state cross-colors (fill + ink)</td><td><code>.pl-chan.on</code> + <code>transition: background-color .14s, color .14s</code></td><td>140ms</td><td><span class="ly snap">SNAP</span>PlayClick</td></tr>
+<tr><td>Showcase embed sprite</td><td>always (3 newest embeds)</td><td>the beast idles in its tile — the one per-row living thing</td><td>animated idle WebP <code>&lt;img&gt;</code>; embeds older than the 3 newest src-swap to the static frame</td><td>∞</td><td><span class="ly flow">FLOW</span>—</td></tr>
+<tr><td>Input</td><td>focus</td><td>violet ring fades in (no geometry shift)</td><td>border-color value-swap + <code>transition: border-color .12s</code>; caret is native</td><td>120ms</td><td><span class="ly snap">SNAP</span>—</td></tr>
+</table>
+
+<div class="cap" style="margin-top:18px"><b style="color:#c26bff">Radio</b> — the only app that is allowed to breathe</div>
+<table class="mt">
+<tr><th>Element</th><th>Trigger</th><th>Motion</th><th>Mechanism</th><th>Duration</th><th>Layer · sound</th></tr>
+<tr><td><b>Visualizer</b></td><td>IsPlaying</td><td><b>bars breathe with playback</b>; freeze on pause</td><td>lossless animated WebP; src value-swap animated ↔ static frame (specced)</td><td>∞</td><td><span class="ly flow">FLOW</span>the music</td></tr>
+<tr><td>Play / pause hero</td><td>tap / Space</td><td>dims (press) and the glyph morphs play ↔ pause</td><td><code>.pressed</code> + ONE <code>&lt;iconify&gt;</code> whose name value-swaps <code>lucide:play</code> ↔ <code>lucide:pause</code> (attribute swap, never @if)</td><td>120ms</td><td><span class="ly snap">SNAP</span>PlayClick</td></tr>
+<tr><td>Track title + kicker + caption</td><td>track changes (auto or A/D)</td><td>cut-to-fade: the new title fades up in place</td><td>title cluster re-keyed <code>pl-title-@trackKey</code> → <code>plFadeIn</code> 0.26s (old text is gone — a true crossfade needs two mounted spans; not worth it)</td><td>260ms</td><td><span class="ly arr">ARRIVE</span>track-change tick — <b>ASK</b></td></tr>
+<tr><td>Progress fill</td><td>1 Hz</td><td>steps forward in px (specced) — deliberately NOT eased between ticks (a width transition is a 1s layout animation inside the device)</td><td>cached px width, ClockText cadence</td><td>—</td><td><span class="ly tick">TICK</span>—</td></tr>
+<tr><td>Volume segments</td><td>tap seg k</td><td>segments 1..k light in sequence, left→right; lowering = segments above k go dark at once</td><td>segment row re-keyed <code>pl-vol-@volKey</code>; seg n ≤ k gets <code>plVol&lt;n&gt;</code> (bg-color ladder, 30ms apart)</td><td>200ms</td><td><span class="ly snap">SNAP</span>PlayClick</td></tr>
+<tr><td>SHUFFLE / REPEAT / station chip</td><td>tap</td><td>lit state cross-colors; station chip label value-swaps and the hero re-keys with the title fade</td><td><code>.pl-chan.on</code> transition 140ms; <code>.pressed</code></td><td>140ms</td><td><span class="ly snap">SNAP</span>PlayClick</td></tr>
+</table>
+
+<div class="cap" style="margin-top:18px"><b style="color:#f7e024">Effects</b> — a clock you can watch run out</div>
+<table class="mt">
+<tr><th>Element</th><th>Trigger</th><th>Motion</th><th>Mechanism</th><th>Duration</th><th>Layer · sound</th></tr>
+<tr><td>Depletion strip + time value</td><td>1 Hz</td><td>strip fill steps down in px; value string updates (specced)</td><td>cached px + string, ClockText cadence; effects data in BuildHash (audit fix)</td><td>—</td><td><span class="ly tick">TICK</span>—</td></tr>
+<tr><td><b>Last minute</b></td><td>TimeRemaining &lt; 60s</td><td><b>strip fill and the time value turn amber #f59e0b; the value pulses once per second</b> — the only thing in the app that moves on its own, and only because the clock is about to stop</td><td><code>.last-min</code> class (color value-swap) + <code>pl-pulse-@(tick % 2)</code> render-key on the value span → <code>plLastMin</code> 1s; parity comes from the SAME cached tick that refreshes the string, so both change together</td><td>1s × 60</td><td><span class="ly tick">TICK</span>—</td></tr>
+<tr><td>Boost expiring</td><td>TimeRemaining hits 0</td><td>row fades out, then the rows below settle up into the gap</td><td><code>.expired</code> + <code>transition: opacity .4s</code>; the +400ms one-shot removes it and re-keys the rows BELOW to <code>pl-arrive</code> (rows above keep their key — no replay); count stamp pops to the new number</td><td>400 + 220ms</td><td><span class="ly arr">ARRIVE</span>soft expire tone — <b>ASK</b></td></tr>
+<tr><td>New boost (shop, while open)</td><td>boost added</td><td>row arrives in its section; "N ACTIVE" stamp pops</td><td><code>pl-arrive</code> on the new row; <code>pl-stamp-@count</code> → <code>plStampPop</code> (keeps rotate −3°)</td><td>220 / 180ms</td><td><span class="ly arr">ARRIVE</span>—</td></tr>
+<tr><td>Skill bonuses</td><td>—</td><td>nothing. Ever. They are the still part that makes the timers read as moving.</td><td>—</td><td>—</td><td>—</td></tr>
+</table>
+
+<div class="cap" style="margin-top:18px"><b style="color:#e0414a">Alerts</b> — the paper trail; the knock happens outside</div>
+<table class="mt">
+<tr><th>Element</th><th>Trigger</th><th>Motion</th><th>Mechanism</th><th>Duration</th><th>Layer · sound</th></tr>
+<tr><td>Paw chip (outside the app)</td><td>alert created</td><td>the peek slides out of the chip's corner and the chip swells for a beat — shipped (GameHUD <code>.hud-phone-btn.pop</code> 0.14s class-toggle; NotificationPanel <code>peekIn</code> 0.26s mount keyframe). Suppressed while the phone is open.</td><td>shipped v10 peek pattern</td><td>140 / 260ms</td><td><span class="ly arr">ARRIVE</span>notification sound (exists)</td></tr>
+<tr><td><b>New alert row</b></td><td>alert arrives while the app is open</td><td><b>inserts at the top of TODAY with the arrival step; 200ms later its unread tick lights red</b> — two beats, the row then the mark</td><td><code>pl-arrive</code> on the row; the tick (in-flow 4×56 first child, always emitted) mounts with <code>plTickIn</code> 0.5s (hold 40% then colors). Rows below shift instantly — no replay.</td><td>220 → 500ms</td><td><span class="ly arr">ARRIVE</span>in-app: none (the knock already sounded)</td></tr>
+<tr><td>Unread ticks (on open)</td><td>app opens</td><td>ride the cascade with their rows; already red — no separate motion</td><td>color value-swap from the read-watermark (Core ask)</td><td>—</td><td>—</td></tr>
+<tr><td>CLEAR ALL — arm</td><td>first tap</td><td>slab dims (press), label value-swaps to SURE?; disarms silently at ~2s</td><td><code>.pressed</code>; one span, interpolated text</td><td>120ms</td><td><span class="ly snap">SNAP</span>PlayClick</td></tr>
+<tr><td><b>CLEAR ALL — commit</b></td><td>second tap</td><td><b>rows fade bottom-up, 40ms apart</b>, then ALL CAUGHT UP fades in and the slab hides</td><td>every row gets <code>pl-clr-N</code> (N from the bottom, cap 5) → <code>plClrN</code> 0.4s (opacity only — a class ADD on a mounted row starts its keyframe: the render-key law); the +500ms one-shot empties the list; empty state mounts with <code>plFadeIn</code> 0.3s. FALLBACK if the class-add doesn't fire live: uniform 200ms <code>.clearing</code> opacity transition.</td><td>400 + 300ms</td><td><span class="ly arr">ARRIVE</span>PlayBack (exists)</td></tr>
+</table>
+
+<div class="cap" style="margin-top:18px"><b>What stays still.</b> Surfaces are solid: no slab breathes, ripples, drifts or glows; rows never bob (Balatro's
+float is for living things — here that is the beast sprite in a showcase, and nothing else). No ambient motion
+anywhere except the radio visualizer (and it stops when the music does) and those sprites. Kickers, stamps, tiles,
+skill-bonus rows, the OS status row and the timestamps never move. Timers tick, they do not animate — until the last
+minute. Every other motion in the four apps has a cause you can name in one word: <i>tapped, arrived, expired, cleared,
+changed.</i> If a motion has no cause, it is ambient, and ambient is banned in the device.</div>
 
 </body></html>
