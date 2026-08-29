@@ -257,6 +257,17 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	/// <summary>
 	/// Load guild data from the remote API server on startup.
 	/// </summary>
+	// TEMP diagnostic (2026-08-28): re-run the startup API load on demand so the
+	// "Failed to load from API" null-ref can be stack-traced without a play-mode
+	// restart. Remove once the root cause is fixed.
+	[ConCmd( "guild_reload" )]
+	public static void DevReloadFromApi()
+	{
+		if ( Instance == null ) { Log.Warning( "guild_reload: no GuildManager instance" ); return; }
+		Log.Info( "guild_reload: re-running LoadFromApi" );
+		_ = Instance.LoadFromApi();
+	}
+
 	private async Task LoadFromApi()
 	{
 		try
@@ -307,7 +318,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		}
 		catch ( Exception e )
 		{
-			Log.Warning( $"GuildManager: Failed to load from API: {e.Message}" );
+			Log.Warning( $"GuildManager: Failed to load from API: {e}" );
 		}
 	}
 
@@ -1690,6 +1701,12 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 	private void EnsureRaidBoss()
 	{
+		// Raids off = no boss to ensure. Without this guard the method built a boss
+		// and then logged CurrentRaidBoss.BossName - but that getter returns null while
+		// RaidsEnabled is false, so LoadFromApi threw here on EVERY boot and the weekly
+		// goals fetch downstream never ran (root-caused 2026-08-28 via guild_reload).
+		if ( !RaidsEnabled ) return;
+
 		var currentPeriod = GetCurrentPeriodNumber();
 		if ( CurrentRaidBoss != null && CurrentRaidBoss.PeriodNumber == currentPeriod )
 			return;
@@ -1714,7 +1731,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		if ( IsInGuild && Guild != null )
 			_ = LoadRaidFromApi();
 
-		Log.Info( $"GuildManager: New raid boss: {CurrentRaidBoss.BossName} (Period {currentPeriod})" );
+		Log.Info( $"GuildManager: New raid boss: {_currentRaidBoss?.BossName} (Period {currentPeriod})" );
 	}
 
 	/// <summary>
