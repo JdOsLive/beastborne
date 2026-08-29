@@ -30,6 +30,12 @@ $accents = [ordered]@{
     'appink' = '#FF6BD6'   # skills (Tamer Talents — the PawPad SKILLS app pink)
     'teal'   = '#2DD4BF'   # beastbook (Specimen Hall — the PawPad BEASTBOOK app teal, 2026-07-12)
     'blue'   = '#3F8FE0'   # online (TamerLink — the PawPad ONLINE app blue, 2026-08-28)
+    # PawPad in-phone APP accents (2026-08-28) - phone-scale header wave strips for the
+    # four apps; the 512px screen crops the 1600 tile at native size (no scaling).
+    'chat'    = '#4AA8FF'
+    'radio'   = '#C26BFF'
+    'effects' = '#F7E024'
+    'alerts'  = '#E0414A'
 }
 # layer key -> rendered tile height (width is always the 1600px period)
 $layers = [ordered]@{ 'a' = 70; 'b' = 53 }
