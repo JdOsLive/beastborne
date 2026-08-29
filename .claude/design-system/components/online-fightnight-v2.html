@@ -1,0 +1,464 @@
+<!-- @dsCard group="Briefs" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Beastborne — Fight Night v2 (Online detailed spec)</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
+<!--
+  DETAILED DESIGN SPEC (v2 of the Online redesign) — Direction B "FIGHT NIGHT" as RULED 2026-08-28,
+  with amendments: online battling SHIPS with the redesign (quickplay ghost sets = Scope A const
+  flip), ranked = v1.3 (Scope B); network ticker = YES, server-backed; trade board = YES,
+  first-class; guild = first-class marquee presence (not a backstage door); rival pin + guild
+  showcase = UNDECIDED (deep dives in §7, slots reserved but not baked in).
+
+  Shipped code this maps onto: OnlineHubPanel.razor(.scss) 2026-07 sweep (presence anatomy, detail
+  rail, root-level imperative violet ring, Z/X cycling) · ArenaPanel.razor (mode cards, record,
+  rank chips, matchmaking/vs/ready/between/result views, T3 rank-up + T4 streak setpieces — all
+  dormant behind RankedEnabled=false at OnlineHubPanel.razor:872) · CompetitiveManager.cs (Idle→
+  Searching→MatchFound→ReadyCheck→InBattle→BetweenGames→Results; queue RPC broadcast; SHA-256 team
+  checksums; Bo3 shared seed; Lv50 normalization; rank ladder = NINE tiers with colors/glyphs —
+  Unranked 0 / Bronze 200 / Silver 400 / Gold 700 / Platinum 1000 / Diamond 1500 / Master 2000 /
+  Legendary 3000 / Mythic 5000)
+  · LeaderboardPanel.razor (Steam-backed categories → recast as Tonight's Card) · TradingManager.cs
+  (P2P trade sessions → the board routes into them) · GuildPanel (interior takeover).
+
+  ENGINE NOTES (browser CSS in this card → in-engine mechanisms):
+  · NO clip-path. Corner cuts = rotated-square overlay cropped by overflow:hidden. Marquee slab,
+    blue wave pair, board grain, seat silhouettes = baked PNG/WebP (pipeline exists and is cheap).
+  · radial-gradient: bare percent stops only, no shape keywords, no `transparent` keyword in ANY
+    gradient (rgba(r,g,b,0)). Drawn circles/diamonds = bordered divs; halos = behind-divs.
+  · NO border-style:dashed in-engine. Dashed regions in this card (rival/showcase slots, empty
+    ringside seats) build as a dim solid border (~35% alpha) + darker fill, or a baked dash PNG.
+    The browser dashes below are kept for reading clarity only.
+  · All glyphs (🔒 lock, 🔥 streak, 🔊 voice, ◆ separators) = iconify (lucide) swaps in-engine;
+    emoji/UTF glyphs are mock stand-ins only.
+  · @keyframes fire on first mount only; replays need render-key remounts. NO animation-delay on
+    any panel that re-renders per frame (this page will: queue timer, crawl) — staggers are
+    keyframe-percentage holds. NO CSS custom props.
+  · Transforms poison descendant flex-grow width; transform-holders can't carry bg/border/overflow
+    (surface on a direct child). THE STAGE LAW that falls out: the marquee BACKDROP leans (+4°,
+    perspective 2000px, one baked slab + title lockup); every CONTROL sits on the flat layer above
+    it, so the root-level imperative violet ring keeps its recipe and the 7fps-inside-a-lean trap
+    never bites an interactive element.
+  · SCROLL-GRID LAWS (board slips, card rows, ringside strip): hover/selected = border-color + bg
+    fill only; no transform, no colored box-shadow; badges in-bounds; opaque chrome band above,
+    gap 0. content-box only: declared widths are CONTENT; subtract borders.
+  · THE CRAWL = imperative math-loop: per-tick Style.Left on a flat absolute strip, content
+    duplicated ×2, modulo wrap (the living ring's imperative pattern — no keyframes, no
+    transition-delay, survives content swaps). The demo below uses a browser keyframe as a stand-in.
+  · RAIL CORRECTION (supersedes v1's "THE BIG RAIL"): a server DOES exist — the HTTP API that
+    already backs guilds + gift claims, plus the session RPC lane (ChatManager profile sync).
+    Durable feeds (ticker archive, standing trade offers) are legitimate designs now; each one
+    names its endpoint in this spec. Steam leaderboards remain the always-full data source.
+  · COPY LAW (unchanged, absolute until v1.3): quickplay is Scope A shared-seed AI-mirror. Frame
+    it as GHOST SETS — you fight an AI-piloted mirror of a real tamer's squad; outcomes are
+    per-client. NEVER claim move-vs-move play before Scope B ships.
+-->
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0A0712;font-family:'Exo 2',system-ui,sans-serif;color:#f4f1ea;padding:36px 40px;max-width:1040px}
+h1{font-style:italic;font-weight:900;font-size:24px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.sub{font-size:12px;font-weight:500;color:#A79DBE;margin-bottom:24px;max-width:820px;line-height:17px}
+.sub b{color:#EFEAF7}
+h2{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#0A0712;background:#3F8FE0;display:inline-block;padding:5px 14px;border-radius:4px;transform:skewX(-12deg);margin:30px 0 12px}
+h2 span{display:inline-block;transform:skewX(12deg)}
+h3{font-style:italic;font-size:14px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;color:#6FB1F0;margin:16px 0 6px}
+.rule{font-size:12px;font-weight:500;color:#A79DBE;line-height:18px;max-width:820px;margin-bottom:8px}
+.rule b{color:#6FB1F0}
+.gold{color:#ffce3a;font-weight:800}
+.blue{color:#6FB1F0;font-weight:800}
+.green{color:#4ade80;font-weight:800}
+.box{background:#161022;border:1px solid #262038;padding:14px 16px;max-width:820px;position:relative;margin-bottom:10px}
+.box .cut{position:absolute;top:-10px;right:-10px;width:20px;height:20px;background:#0A0712;border-bottom:1px solid #262038;transform:rotate(45deg)}
+.box p{font-size:12px;font-weight:500;color:#A79DBE;line-height:18px}
+.box p b{color:#EFEAF7}
+.box ul{margin:6px 0 0 16px}
+.box li{font-size:12px;font-weight:500;color:#A79DBE;line-height:19px;margin-bottom:3px}
+.box li b{color:#EFEAF7}
+.box li i{color:#7C7295;font-style:normal;font-size:11px}
+/* spec tables */
+table{border-collapse:collapse;max-width:960px;margin-bottom:10px}
+th{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#6FB1F0;text-align:left;padding:6px 10px;border-bottom:2px solid #262038;background:#130E1D}
+td{font-size:11px;font-weight:500;color:#A79DBE;line-height:15px;padding:7px 10px;border-bottom:1px solid #1d1730;vertical-align:top}
+td b{color:#EFEAF7}
+td.zn{font-style:italic;font-weight:900;font-size:11px;letter-spacing:.6px;color:#6FB1F0;text-transform:uppercase;white-space:nowrap}
+td i{color:#7C7295;font-style:normal;font-size:10px}
+/* beats timeline */
+.tl{display:flex;gap:5px;max-width:960px;margin:6px 0 10px}
+.beat{flex:1;background:#1A1428;border:1px solid #2A2340;padding:10px 12px;position:relative}
+.beat .cut{position:absolute;top:-10px;right:-10px;width:20px;height:20px;background:#0A0712;border-bottom:1px solid #2A2340;transform:rotate(45deg)}
+.beat b{display:block;font-style:italic;font-size:13px;font-weight:900;letter-spacing:.8px;color:#6FB1F0}
+.beat i{display:block;font-style:normal;font-size:10.5px;font-weight:500;color:#A79DBE;line-height:14px;margin-top:3px}
+.beat u{display:block;text-decoration:none;font-size:8.5px;font-weight:700;letter-spacing:1.4px;color:#7C7295;margin-top:6px}
+/* THE BIG BOARD (1:2 scale of 1920×1080) */
+.bigboard{position:relative;width:960px;height:540px;background:#07050d;border:1px solid #2A2340;overflow:hidden;margin:8px 0 6px}
+.bb-zone{position:absolute;background:#120d1e;border:1px solid #2A2340;border-radius:11px;overflow:hidden}
+.bb-label{position:absolute;font-style:italic;font-size:11px;font-weight:900;letter-spacing:1px;color:#6FB1F0;text-transform:uppercase}
+.bb-mini{font-size:7.5px;font-weight:600;letter-spacing:1px;color:#7C7295;text-transform:uppercase}
+.kick{font-size:6.5px;font-weight:900;letter-spacing:1.6px;color:#3F8FE0;text-transform:uppercase}
+.pillg{display:inline-block;padding:1px 6px;border-radius:99px;background:rgba(63,180,94,.16);border:1px solid rgba(63,180,94,.55);color:#4ade80;font-size:6.5px;font-weight:800;letter-spacing:1px}
+.chip{display:inline-block;padding:1px 6px;border-radius:5px;background:#1c1830;color:#A79DBE;font-size:6.5px;font-weight:700;letter-spacing:.8px}
+.cap{font-size:9px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:#7C7295;line-height:13px;max-width:960px;margin-bottom:14px}
+.cap b{color:#6FB1F0}
+/* stage state mini-boards */
+.boards{display:flex;gap:10px;flex-wrap:wrap;max-width:960px}
+.panel{width:226px}
+.panel.wide{width:348px}
+.frame{position:relative;width:100%;height:120px;background:#0D0916;border:1px solid #2A2340;overflow:hidden}
+.pcap{font-size:9px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:#7C7295;margin-top:5px;line-height:12px}
+.pcap b{color:#6FB1F0}
+.tile{position:absolute;background:#1c1830;border:1px solid #2A2340;border-radius:2px}
+.qs li{margin-bottom:8px}
+/* verdict tags */
+.tag{display:inline-block;padding:3px 10px;border-radius:3px;transform:skewX(-12deg);font-size:10px;font-weight:700;letter-spacing:1.5px;margin-left:8px}
+.tag span{display:inline-block;transform:skewX(12deg)}
+.tag.rec{background:#3FB45E;color:#04160a}
+.tag.hold{background:#FBBF24;color:#241A00}
+/* crawl demo */
+.crawlband{position:relative;width:960px;height:34px;background:#0D0916;border-top:1px solid rgba(63,143,224,.5);border-bottom:1px solid #1d1730;overflow:hidden;display:flex;align-items:center;margin:6px 0 4px}
+.crawlcap{position:absolute;left:0;top:0;bottom:0;width:86px;background:#3F8FE0;display:flex;align-items:center;justify-content:center;gap:6px;z-index:2;transform:skewX(-12deg);margin-left:-10px;padding-left:10px}
+.crawlcap b{transform:skewX(12deg);font-style:italic;font-size:11px;font-weight:900;letter-spacing:1.5px;color:#0A0712}
+.crawlcap .dot{width:6px;height:6px;border-radius:3px;background:#0A0712;transform:skewX(12deg);animation:blink 1.6s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.crawlstrip{position:absolute;left:0;display:flex;gap:26px;white-space:nowrap;animation:crawl 26s linear infinite}
+@keyframes crawl{0%{transform:translateX(960px)}100%{transform:translateX(-1600px)}}
+.ci{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:#A79DBE}
+.ci .d{width:6px;height:6px;background:rgba(111,177,240,.55);transform:rotate(45deg);flex:0 0 auto}
+.ci b{color:#EFEAF7}
+.ci .t{font-size:9px;color:#7C7295;font-weight:700}
+/* trade slip demo */
+.slipdemo{position:relative;width:430px;height:118px;background:#161022;border:1px solid #262038;border-radius:8px;overflow:hidden;margin:6px 0}
+.ann{font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#7C7295;line-height:14px}
+.ann b{color:#6FB1F0}
+</style></head><body>
+<h1>Fight Night — Online v2 · Detailed Spec</h1>
+<div class="sub"><b>The ruling is in: the Online page is a broadcast, and the show goes live on day one.</b> Quickplay ghost sets ship with the redesign (one const flip on shipped Scope A code); the ranked season headlines the marquee for v1.3. The v1 flaw — guild and trading demoted to backstage doors — is fixed structurally: <b>every online system gets a camera angle, not a door.</b> The stage is your fight, the card is the standings, ringside is the people, the board is the contracts, the corner is your guild, the crawl is the news. This is the full-fidelity pass: zone by zone, state by state, in px.</div>
+
+<h2><span>1 · Thesis — the lights are on</span></h2>
+<div class="box"><div class="cut"></div>
+<p><b>One line: FIGHT NIGHT with the lights on.</b> v1's honest risk was "the hero is a very handsome poster until v1.3." The amendment kills that risk at the root: quickplay (Scope A ghost sets — real matchmaking, real opponents' squads, AI-piloted mirrors on a shared seed) is <b>live the day the redesign ships</b>. The broadcast metaphor now resolves cleanly:</p>
+<ul>
+<li><b>The show is real.</b> The stage CTA queues you into a real Bo3 set tonight. "OFF SEASON" is deleted from the vocabulary — the day-one state is <b class="green">QUICKPLAY · LIVE</b> with a dark ranked strip reading <b>RANKED SEASON — OPENS WITH v1.3</b>.</li>
+<li><b>The card never sleeps.</b> Tonight's Card is Steam-leaderboard-backed — full at 3am, full at population one. The page's hero content is async by construction.</li>
+<li><b>The broadcast has a news desk.</b> The crawl is server-backed (the guild/gift HTTP API precedent) — trades, contracts, climbs, and guild goals scroll even when the hub is empty. It's the metaphor's connective tissue: a broadcast with a silent lower-third feels off-air.</li>
+<li><b>Honesty is a feature.</b> Ghost-set framing ("you fight a mirror of their squad") is worn openly in rules copy and ticker phrasing — it reads as a cool sci-fi conceit, not a disclaimer, and it keeps the copy law intact until Scope B makes the claims true.</li>
+</ul>
+</div>
+
+<h2><span>2 · The zone map — 1920×1080, rendered 1:2</span></h2>
+<div class="bigboard">
+  <!-- CHROME BAND 1920×76 -->
+  <div style="position:absolute;left:0;top:0;width:960px;height:38px;background:#0A0912;border-bottom:1px solid #1d1730;z-index:3">
+    <div style="position:absolute;left:12px;top:6px" class="kick">TAMERLINK BROADCAST</div>
+    <div style="position:absolute;left:12px;top:14px;font-style:italic;font-weight:900;font-size:15px;letter-spacing:.5px;color:#EFEAF7">ONLINE</div>
+    <div style="position:absolute;left:110px;top:20px;width:120px;height:10px;background:linear-gradient(to right,rgba(63,143,224,.55),rgba(63,143,224,0))"></div>
+    <div style="position:absolute;right:12px;top:12px" ><span class="pillg">● 4 IN THE BUILDING</span></div>
+  </div>
+
+  <!-- MARQUEE STAGE 1396×392 @ (20,88) -->
+  <div class="bb-zone" style="left:10px;top:44px;width:698px;height:196px;background:linear-gradient(to bottom,#141b30,#0c0916);border-color:rgba(63,143,224,.45)">
+    <div style="position:absolute;left:14px;top:12px" class="kick">TAMERLINK BROADCAST · SALTMOOR ARENA</div>
+    <div style="position:absolute;left:14px;top:22px;font-style:italic;font-weight:900;font-size:30px;letter-spacing:1px;color:#EFEAF7">FIGHT NIGHT</div>
+    <div style="position:absolute;left:16px;top:64px"><span class="pillg">● QUICKPLAY · LIVE</span></div>
+    <!-- rank diamond + record -->
+    <div style="position:absolute;left:36px;top:100px;width:34px;height:34px;background:#1c1830;border:2px solid #eab308;transform:rotate(45deg)"></div>
+    <div style="position:absolute;left:44px;top:110px;font-weight:900;font-size:13px;color:#eab308;transform:rotate(0)">G</div>
+    <div style="position:absolute;left:96px;top:100px;font-style:italic;font-weight:900;font-size:21px;color:#EFEAF7">12W <span style="color:#7C7295">—</span> 4L</div>
+    <div style="position:absolute;left:96px;top:130px"><span class="chip" style="color:#f97316;border:1px solid rgba(249,115,22,.4)">🔥 3 STREAK</span> <span class="chip">75% WR</span></div>
+    <div style="position:absolute;left:14px;bottom:8px" class="bb-mini">stage backdrop bake leans +4° · controls flat</div>
+    <!-- CTA stack -->
+    <div style="position:absolute;right:20px;top:52px;width:180px;height:34px;border-radius:8px;background:linear-gradient(to bottom,#ffd95a,#f5a912);display:flex;align-items:center;justify-content:center"><span style="font-style:italic;font-weight:900;font-size:13px;color:#2a1605;letter-spacing:.5px">ENTER THE RING</span></div>
+    <div style="position:absolute;right:20px;top:94px;width:180px;height:24px;border-radius:6px;background:#1c1830;display:flex;align-items:center;justify-content:center"><span style="font-weight:800;font-size:9px;color:#A79DBE;letter-spacing:1px">SPAR THE AI</span></div>
+    <!-- ranked shutter strip -->
+    <div style="position:absolute;right:20px;bottom:10px;width:264px;height:26px;border-radius:6px;background:#0a0714;border:1px solid rgba(255,206,58,.28);display:flex;align-items:center;gap:8px;padding:0 10px">
+      <span style="color:rgba(255,206,58,.5);font-size:10px">🔒</span><span style="font-weight:800;font-size:8px;letter-spacing:1.2px;color:rgba(255,206,58,.75)">RANKED SEASON — OPENS WITH v1.3</span>
+    </div>
+  </div>
+  <div class="bb-label" style="left:20px;top:246px">THE MARQUEE STAGE</div>
+
+  <!-- TONIGHT'S CARD 468×916 @ (1432,88) -->
+  <div class="bb-zone" style="left:716px;top:44px;width:234px;height:458px">
+    <div style="position:absolute;left:0;top:0;right:0;height:26px;background:#161022;border-bottom:1px solid #1d1730;display:flex;align-items:center;padding:0 10px;gap:6px">
+      <span style="font-style:italic;font-weight:900;font-size:10px;letter-spacing:1px;color:#EFEAF7">TONIGHT'S CARD</span>
+      <span class="chip" style="margin-left:auto">CAUGHT</span><span class="chip" style="background:#262038;color:#EFEAF7">R</span>
+    </div>
+    <!-- headliner -->
+    <div style="position:absolute;left:8px;top:32px;right:8px;height:40px;background:#171123;border:1px solid rgba(255,206,58,.55);border-radius:6px">
+      <div style="position:absolute;left:8px;top:5px;font-style:italic;font-weight:900;font-size:13px;color:#ffce3a">№1</div>
+      <div style="position:absolute;left:34px;top:6px;font-weight:800;font-size:10px;color:#EFEAF7">KESTREL <span style="color:#7C7295;font-size:8px">[VOW]</span></div>
+      <div style="position:absolute;left:34px;top:20px" class="bb-mini">headliner · gold plate</div>
+      <div style="position:absolute;right:8px;top:11px;font-weight:800;font-size:11px;color:#6FB1F0">1,204</div>
+      <div style="position:absolute;right:-4px;top:-7px;background:#ffce3a;color:#241A00;font-size:6px;font-weight:900;letter-spacing:1px;padding:1px 5px;transform:rotate(-3deg)">HEADLINER</div>
+    </div>
+    <!-- rows -->
+    <div class="tile" style="left:8px;top:78px;right:8px;height:24px"><span style="position:absolute;left:8px;top:5px;font-size:9px;font-weight:700;color:#A79DBE">№2 · MOSSVANE</span><span style="position:absolute;right:8px;top:5px;font-size:9px;color:#6FB1F0;font-weight:800">1,121</span><span style="position:absolute;right:52px;top:6px;font-size:7px;color:#4ade80;font-weight:800">▲2</span></div>
+    <div class="tile" style="left:8px;top:106px;right:8px;height:24px;border-color:rgba(111,177,240,.85);background:#171d30"><span style="position:absolute;left:8px;top:5px;font-size:9px;font-weight:800;color:#EFEAF7">№3 · YOU</span><span style="position:absolute;right:8px;top:5px;font-size:9px;color:#6FB1F0;font-weight:800">1,067</span><span style="position:absolute;right:52px;top:6px;font-size:7px;color:#4ade80;font-weight:800">▲1</span></div>
+    <div class="tile" style="left:8px;top:134px;right:8px;height:24px"><span style="position:absolute;left:8px;top:5px;font-size:9px;font-weight:700;color:#A79DBE">№4 · VEX</span><span style="position:absolute;right:8px;top:5px;font-size:9px;color:#6FB1F0;font-weight:800">1,031</span></div>
+    <div class="tile" style="left:8px;top:162px;right:8px;height:24px"><span style="position:absolute;left:8px;top:5px;font-size:9px;font-weight:700;color:#A79DBE">№5 · BRANNOCK</span><span style="position:absolute;right:8px;top:5px;font-size:9px;color:#6FB1F0;font-weight:800">988</span></div>
+    <div class="tile" style="left:8px;top:190px;right:8px;height:24px;opacity:.75"></div>
+    <div class="tile" style="left:8px;top:218px;right:8px;height:24px;opacity:.6"></div>
+    <div class="tile" style="left:8px;top:246px;right:8px;height:24px;opacity:.5"></div>
+    <div class="tile" style="left:8px;top:274px;right:8px;height:24px;opacity:.4"></div>
+    <div class="tile" style="left:8px;top:302px;right:8px;height:24px;opacity:.3"></div>
+    <!-- rival slot (dashed = undecided) -->
+    <div style="position:absolute;left:8px;bottom:56px;right:8px;height:44px;border:1px dashed rgba(255,206,58,.4);border-radius:6px;display:flex;align-items:center;justify-content:center"><span class="bb-mini" style="color:rgba(255,206,58,.7)">THE GRUDGE — rival pin slot (§7A, if approved)</span></div>
+    <div style="position:absolute;left:0;bottom:0;right:0;height:22px;background:#161022;border-top:1px solid #1d1730;display:flex;align-items:center;justify-content:center"><span style="font-size:8px;font-weight:800;letter-spacing:1.2px;color:#6FB1F0">FULL STANDINGS →</span></div>
+  </div>
+  <div class="bb-label" style="left:716px;top:508px">TONIGHT'S CARD</div>
+
+  <!-- PROMOTER'S BOARD 896×296 @ (20,496) -->
+  <div class="bb-zone" style="left:10px;top:248px;width:448px;height:148px">
+    <div style="position:absolute;left:0;top:0;right:0;height:24px;background:#161022;border-bottom:1px solid #1d1730;display:flex;align-items:center;padding:0 10px;gap:6px">
+      <span style="font-style:italic;font-weight:900;font-size:10px;letter-spacing:1px;color:#EFEAF7">THE PROMOTER'S BOARD</span><span class="chip">6 OPEN</span>
+      <span style="margin-left:auto;background:#3F8FE0;color:#0A0712;font-size:7px;font-weight:900;letter-spacing:1px;padding:2px 8px;border-radius:4px">+ POST CONTRACT</span>
+    </div>
+    <!-- slips 2×2 -->
+    <div class="tile" style="left:8px;top:30px;width:212px;height:52px;border-left:2px solid #a855f7"><span style="position:absolute;left:8px;top:4px;font-size:7px;font-weight:900;color:#6FB1F0;letter-spacing:1px">WANT</span><span style="position:absolute;left:36px;top:3px;font-size:9px;font-weight:800;color:#EFEAF7">Emberhide ×1</span><span style="position:absolute;left:8px;top:16px;font-size:7px;font-weight:900;color:#7C7295;letter-spacing:1px">FOR</span><span style="position:absolute;left:36px;top:15px;font-size:9px;font-weight:700;color:#A79DBE">Tidewisp Pearl ×3</span><span style="position:absolute;left:8px;bottom:4px;font-size:7px;color:#7C7295">MOSSVANE · LV 41</span><span style="position:absolute;right:6px;bottom:4px" class="pillg" >LIVE</span></div>
+    <div class="tile" style="left:228px;top:30px;width:212px;height:52px;border-left:2px solid #3b82f6"><span style="position:absolute;left:8px;top:4px;font-size:7px;font-weight:900;color:#6FB1F0;letter-spacing:1px">WANT</span><span style="position:absolute;left:36px;top:3px;font-size:9px;font-weight:800;color:#EFEAF7">Wishlift ×1</span><span style="position:absolute;left:8px;top:16px;font-size:7px;font-weight:900;color:#7C7295;letter-spacing:1px">FOR</span><span style="position:absolute;left:36px;top:15px;font-size:9px;font-weight:700;color:#A79DBE">Heartwell ×1</span><span style="position:absolute;left:8px;bottom:4px;font-size:7px;color:#7C7295">VEX · LV 38</span><span style="position:absolute;right:6px;bottom:4px" class="chip">STANDING · 41H</span></div>
+    <div class="tile" style="left:8px;top:88px;width:212px;height:52px;border-left:2px solid #22c55e;opacity:.7"></div>
+    <div class="tile" style="left:228px;top:88px;width:212px;height:52px;border-left:2px solid #9ca3af;opacity:.7"></div>
+  </div>
+  <div class="bb-label" style="left:10px;top:400px">THE PROMOTER'S BOARD</div>
+
+  <!-- GUILD CORNER 484×296 @ (932,496) -->
+  <div class="bb-zone" style="left:466px;top:248px;width:242px;height:148px;border-color:rgba(124,58,237,.4)">
+    <div style="position:absolute;left:10px;top:8px;width:22px;height:26px;background:#1c1830;border:1px solid #7c3aed;border-radius:3px"></div>
+    <div style="position:absolute;left:40px;top:8px;font-weight:900;font-size:11px;color:#c084fc">[VOW] NIGHTVOW</div>
+    <div style="position:absolute;left:40px;top:22px" class="bb-mini">GUILD LV 7 · <span style="color:#4ade80">2 online</span> / 14</div>
+    <div style="position:absolute;left:10px;top:46px" class="kick" >WEEKLY GOAL — CONTRACT 120 BEASTS</div>
+    <div style="position:absolute;left:10px;top:58px;width:220px;height:8px;background:#0a0714;border-radius:4px"><div style="width:64%;height:8px;background:linear-gradient(to right,#7c3aed,#c084fc);border-radius:4px"></div></div>
+    <div style="position:absolute;left:10px;top:70px" class="bb-mini">77 / 120 · resets in 2d</div>
+    <div style="position:absolute;left:10px;bottom:26px;right:10px;height:22px;border:1px dashed rgba(192,132,252,.35);border-radius:5px;display:flex;align-items:center;justify-content:center"><span class="bb-mini" style="color:rgba(192,132,252,.7)">showcase peek slot (§7B, if approved)</span></div>
+    <div style="position:absolute;left:10px;bottom:6px;font-size:8px;font-weight:800;letter-spacing:1.2px;color:#c084fc">ENTER THE HALL →</div>
+  </div>
+  <div class="bb-label" style="left:466px;top:400px">THE GUILD CORNER</div>
+
+  <!-- RINGSIDE ROW 1396×196 @ (20,808) -->
+  <div class="bb-zone" style="left:10px;top:404px;width:698px;height:98px">
+    <div style="position:absolute;left:10px;top:6px" class="kick">RINGSIDE · 4</div>
+    <!-- YOU seat -->
+    <div style="position:absolute;left:12px;top:20px;width:64px;height:64px">
+      <div style="position:absolute;left:8px;top:2px;width:44px;height:44px;border-radius:24px;background:#1c1830;border:2px solid #a78bfa"></div>
+      <div style="position:absolute;left:14px;top:-4px;background:#ffce3a;color:#241A00;font-size:6px;font-weight:900;padding:0 4px;border-radius:3px">YOU</div>
+      <div style="position:absolute;left:0;bottom:2px;width:64px;text-align:center;font-size:8px;font-weight:800;color:#EFEAF7">TAMER <span style="color:#ffce3a">LV 44</span></div>
+    </div>
+    <div style="position:absolute;left:88px;top:20px;width:64px;height:64px">
+      <div style="position:absolute;left:8px;top:2px;width:44px;height:44px;border-radius:24px;background:#1c1830;border:2px solid #67e8f9"></div>
+      <div style="position:absolute;right:8px;top:34px;width:9px;height:9px;border-radius:5px;background:#3FB45E;border:2px solid #120d1e"></div>
+      <div style="position:absolute;left:0;bottom:2px;width:64px;text-align:center;font-size:8px;font-weight:700;color:#A79DBE">MOSSVANE</div>
+    </div>
+    <div style="position:absolute;left:164px;top:20px;width:64px;height:64px">
+      <div style="position:absolute;left:8px;top:2px;width:44px;height:44px;border-radius:24px;background:#1c1830;border:2px solid #f472b6"></div>
+      <div style="position:absolute;right:8px;top:34px;width:9px;height:9px;border-radius:5px;background:#3FB45E;border:2px solid #120d1e"></div>
+      <div style="position:absolute;left:0;bottom:2px;width:64px;text-align:center;font-size:8px;font-weight:700;color:#A79DBE">VEX</div>
+    </div>
+    <div style="position:absolute;left:240px;top:20px;width:64px;height:64px">
+      <div style="position:absolute;left:8px;top:2px;width:44px;height:44px;border-radius:24px;background:#1c1830;border:2px solid #4ade80"></div>
+      <div style="position:absolute;right:8px;top:34px;width:9px;height:9px;border-radius:5px;background:#3FB45E;border:2px solid #120d1e"></div>
+      <div style="position:absolute;left:0;bottom:2px;width:64px;text-align:center;font-size:8px;font-weight:700;color:#A79DBE">BRANNOCK</div>
+    </div>
+    <!-- empty seats -->
+    <div style="position:absolute;left:324px;top:24px;width:40px;height:40px;border-radius:22px;border:1px dashed #2A2340"></div>
+    <div style="position:absolute;left:372px;top:24px;width:40px;height:40px;border-radius:22px;border:1px dashed #2A2340;opacity:.6"></div>
+    <!-- corner team voice pill -->
+    <div style="position:absolute;right:12px;top:30px;width:150px;height:26px;border-radius:13px;background:#171221;border:1px solid rgba(74,222,128,.35);display:flex;align-items:center;justify-content:center;gap:6px"><span style="font-size:9px;color:#4ade80">🔊</span><span style="font-size:8px;font-weight:800;letter-spacing:1px;color:#A79DBE">CORNER TEAM · 2</span></div>
+    <div style="position:absolute;right:12px;bottom:8px" class="bb-mini">click a head → the interview rail slides over the card</div>
+  </div>
+  <div class="bb-label" style="left:10px;top:506px;display:none">RINGSIDE</div>
+
+  <!-- THE CRAWL 1920×60 @ (0,1020) -->
+  <div style="position:absolute;left:0;top:510px;width:960px;height:30px;background:#0D0916;border-top:1px solid rgba(63,143,224,.5);overflow:hidden">
+    <div style="position:absolute;left:-6px;top:0;bottom:0;width:74px;background:#3F8FE0;transform:skewX(-12deg);display:flex;align-items:center;justify-content:center"><span style="transform:skewX(12deg);font-style:italic;font-weight:900;font-size:10px;letter-spacing:1.5px;color:#0A0712">LIVE ●</span></div>
+    <div style="position:absolute;left:92px;top:8px;font-size:9px;font-weight:600;color:#A79DBE;white-space:nowrap">◆ <b style="color:#EFEAF7">KESTREL</b> signed a Mythic contract — Solmara &nbsp;&nbsp; ◆ <b style="color:#EFEAF7">MOSSVANE ⇄ VEX</b> completed a trade &nbsp;&nbsp; ◆ <b style="color:#EFEAF7">NIGHTVOW</b> hit their weekly goal &nbsp;&nbsp; ◆ <b style="color:#EFEAF7">BRANNOCK</b> climbed to №5 in CAUGHT</div>
+  </div>
+</div>
+<div class="cap"><b>THE BROADCAST AT 1:2.</b> Full-scale geometry (all content-box; borders subtract): chrome band <b>1920×76 @ y0</b> · marquee stage <b>1396×392 @ (20, 88)</b> r26 · tonight's card <b>468×916 @ (1432, 88)</b> r22 · promoter's board <b>896×296 @ (20, 496)</b> r22 · guild corner <b>484×296 @ (932, 496)</b> r22 · ringside row <b>1396×196 @ (20, 808)</b> r22 · the crawl <b>1920×60 @ y1020</b>, flat. Gaps 16px, page pad 20px. Dashed regions = undecided-feature slots (§7) — the layout is complete without them.</div>
+
+<div class="box"><div class="cut"></div>
+<p><b>Zone grammar — angles, type, radii, and where the ring travels:</b></p>
+<ul>
+<li><b>Angle grammar:</b> stage backdrop bake leans <b>+4°</b> (perspective 2000px, origin left-center — the wide-element law halves the ±7° scene angle; the lean lives on the baked slab + title lockup ONLY, all controls flat). Zone kickers = skewX(−12°) slabs with counter-skewed text. HEADLINER stamp tilts <b>−3°</b>, straightens on hover. Rank diamond = 45° rotate, glyph counter-rotated. Crawl cap slab skewX(−12°). Board slips + card rows + ringside heads: flat (they live in scroll containers — scroll-grid laws).</li>
+<li><b>Type scale:</b> FIGHT NIGHT <b>64px/900 italic</b> · record <b>44px/900 italic</b> · CTA 24px/900 · headliner name 18px/900 italic · card rows 15px/700 (values 15px/800 blue) · zone kickers 11px/700 ls 3px · ringside names 11px/600 · crawl text 13px/600 · slip WANT/FOR lines 14px/800 · poster plates 11px/600. All Exo2/Exo2Italic; line-height in px.</li>
+<li><b>Radii:</b> stage 26 (the guiding-star hero tier) · zone cards 22 · slips + CTA 16 · chips 10 · pills/heads 999. Concentric ring = host radius +10.</li>
+<li><b>Color:</b> page accent <b>#3F8FE0</b> (kicker, seams, chip edges, card values, crawl cap, wave bake — ONE blue wave pair bake needed). Gold = ENTER THE RING + your LV + headliner plate only. Violet #9B6CFF = the one cursor. Green = live semantics (LIVE pills, online dots, climb deltas, corner team). Rank colors from CompetitiveManager — the full NINE-tier ladder, topping at Mythic 5000 (#ec4899): Unranked #6b7280 · Bronze #d97706 · Silver #9ca3af · Gold #eab308 · Platinum #22d3ee · Diamond #60a5fa · Master #a855f7 · Legendary #fbbf24 · Mythic #ec4899. Guild corner is the one violet-adjacent zone (emblem color, capped).</li>
+<li><b>The living ring</b> (root-level, imperative, the shipped hub recipe verbatim) travels the CLEAR-SPACE hosts only: stage CTA → SPAR THE AI → ranked strip → POST CONTRACT → guild corner → ringside heads → card foot. Board slips + card rows live in scroll containers and wear the <b>slab cursor</b> (border+fill kb-focused form) instead — the clearance rule, online-motion-spec.html §1. It never enters the leaned backdrop subtree.</li>
+<li><b>Bakes needed:</b> marquee stage slab (dark Beastborne material — per the museum-law: the marquee's STRUCTURE in the game's material, i.e. dark slab + one crisp blue neon hairline + corner cuts, NOT Vegas bulbs) · blue wave pair for the chrome band · optional seat-silhouette strip for empty ringside.</li>
+</ul>
+</div>
+
+<h2><span>3 · State matrix — every zone in every state</span></h2>
+<table>
+<tr><th>ZONE</th><th>DAY ONE (quickplay live)</th><th>V1.3 (ranked season)</th><th>POPULATION ONE</th><th>IN QUEUE</th><th>POST-MATCH</th></tr>
+<tr><td class="zn">Marquee stage</td>
+<td><b class="green">QUICKPLAY · LIVE</b> pill · gold ENTER THE RING · SPAR THE AI secondary · casual W/L record + streak + rank diamond (points accrue casually) · dark ranked strip: 🔒 RANKED SEASON — OPENS WITH v1.3.</td>
+<td>Ranked headlines: rank diamond grows to hero size, points + placement (0/5) chip · ENTER THE RING = ranked queue, QUICKPLAY demotes to second CTA · season name + end-date chip. Structure unchanged — the shutter strip becomes the ranked CTA.</td>
+<td>Identical chrome, honest numbers: "0 in queue tonight" under the CTA · SPAR THE AI brightens to co-primary (the guaranteed fight) · record/diamond always yours, never empty.</td>
+<td>The stage IS the queue: title dims, pulse rings around the rank diamond, elapsed timer, "N in queue," CANCEL (Q). Page stays browsable — the show doesn't lock the building.</td>
+<td>The stage holds the DECISION: VICTORY/DEFEAT band, set pips G1–G3, points line ("Quickplay — record only" / ranked ±Δ), RUN IT BACK re-queue CTA. T3 rank-up + T4 streak setpieces (already built in ArenaPanel) fire over it.</td></tr>
+<tr><td class="zn">Tonight's card</td>
+<td>Steam standings recast as the fight card: №1 gold headliner plate, rows with signed weekly deltas (▲/▼ vs cached last-seen rank), YOUR row lit + pinned when scrolled out. R cycles category. Foot: FULL STANDINGS → LeaderboardPanel takeover.</td>
+<td>Adds ARENA category chips (points/wins) — NEW build work (no arena categories exist on LeaderboardPanel; nothing to un-filter) · headliner framed as champion of the season.</td>
+<td><b>Unchanged — this is the point.</b> The card is full at population one; it carries the page alone.</td>
+<td>Unchanged; still browsable while queued.</td>
+<td>If your standing moved, your row re-sorts with a ▲ delta pulse (border+fill only — scroll-grid law).</td></tr>
+<tr><td class="zn">Ringside row</td>
+<td>Present tamers as ringside heads (72px circles, title-color rims, green dots, YOU seat first with gold LV) + CORNER TEAM voice pill (lobby voice folded in). Click/E → interview rail (shipped td-card anatomy, 400px) slides over the card's edge; Q dismisses.</td>
+<td>Adds a CALL OUT action on the interview rail (direct ranked challenge) when both online.</td>
+<td>YOU seat + 4–5 dashed empty-seat silhouettes + one line: "You're alone ringside — the card never sleeps." No fake presence, ever.</td>
+<td>Your seat gets a small SEARCHING chip; others unchanged.</td>
+<td>Unchanged; your W/L on the interview rail is live-updated.</td></tr>
+<tr><td class="zn">The crawl</td>
+<td>Server-backed lower-third: trades, contracts, climbs, guild goals crawl continuously (§5). LIVE cap slab with pulse dot.</td>
+<td>Adds ranked items: set results, rank-ups, season milestones.</td>
+<td><b>Still crawling</b> — the archive lane (last ~48h, global) means the broadcast never goes silent. Worst-case cold API: crawl your own recent milestones from the local save, flagged "YOUR WEEK."</td>
+<td>Session lane announces "TAMER steps into the queue" to others in the hub.</td>
+<td>Winner-framed result item from the winner's client only (§5 etiquette).</td></tr>
+<tr><td class="zn">Promoter's board</td>
+<td>Open offers as fight contracts (§6): LIVE slips (poster in the building — instant P2P) + STANDING slips (server-posted, ≤48h). POST CONTRACT composer.</td>
+<td>Unchanged (standing-offer interest pings mature here if phased).</td>
+<td>STANDING slips keep it populated; zero-live is normal and honest. Empty state: "The board is open. Post the first contract."</td>
+<td>Unchanged; accepting a live offer while queued warns it will drop your queue slot.</td>
+<td>Unchanged.</td></tr>
+<tr><td class="zn">Guild corner</td>
+<td>Banner (emblem + [TAG] name in emblem color), LV, members (n online green), weekly goal bar + reset timer, ENTER THE HALL → GuildPanel takeover. Guildless: recruitment poster "FIND YOUR CORNER" → guild browser.</td>
+<td>Adds guild-vs-guild season line if raids/goals surface by then.</td>
+<td>Unchanged — guild data is API-backed, populated alone.</td>
+<td>Unchanged.</td>
+<td>Set wins tick the guild weekly goal if a battle-goal is active (progress bar nudges live).</td></tr>
+<tr><td class="zn">Ready-check fail</td><td colspan="5">Timeout or decline → BOTH players return to Searching automatically, with one quiet line on the stage: <b>"Opponent wasn't ready — searching again."</b> No blame chip, no penalty.</td></tr>
+<tr><td class="zn">Disconnect mid-set</td><td colspan="5">Quickplay: the set simply ends. The verdict face says it honestly — <b>"Connection lost — set abandoned, no points involved."</b> Record untouched; RUN IT BACK re-queues.</td></tr>
+<tr><td class="zn">Offer gone mid-view</td><td colspan="5">A board slip that expired or was fulfilled while on screen flips to a dim <b>"Offer no longer available"</b> state on interact (border+fill only — scroll-grid law), then the board refreshes.</td></tr>
+</table>
+
+<h2><span>4 · Queue + match flow — mapped onto the shipped state machine</span></h2>
+<div class="tl">
+  <div class="beat"><div class="cut"></div><b>IDLE</b><i>The stage. ENTER THE RING (E) or SPAR THE AI.</i><u>ArenaState.Idle</u></div>
+  <div class="beat"><div class="cut"></div><b>THE CORNER</b><i>Team-select takeover — ArenaPanel's shipped picker (FilterBar + squad slots), reskinned to broadcast chrome. Bans + Lv50 cap surfaced here.</i><u>team-select view</u></div>
+  <div class="beat"><div class="cut"></div><b>SEARCHING</b><i>The stage holds the queue: pulse rings on the rank diamond, timer, N-in-queue, CANCEL (Q). Page stays browsable. BroadcastJoinQueue w/ SHA-256 team checksum.</i><u>ArenaState.Searching</u></div>
+  <div class="beat"><div class="cut"></div><b>TALE OF THE TAPE</b><i>Match found → fullscreen ready-check takeover: two squads face off, "VEX'S SQUAD" badge (softened from REAL PLAYER — review D1: must not read as live sync PvP), "Bo3 · Lv50 normalized," the ghost line ("You'll battle an AI-piloted mirror — same seed both sides"), BEGIN SET / CANCEL. Proposal→accept handshake verified both ways.</i><u>MatchFound → ReadyCheck</u></div>
+  <div class="beat"><div class="cut"></div><b>THE SET</b><i>VS splash → BattleView Bo3. Between games: round card (pips W/L/–, "teams fully healed," countdown, READY skips).</i><u>InBattle ↔ BetweenGames</u></div>
+  <div class="beat"><div class="cut"></div><b>THE DECISION</b><i>Back on the stage: verdict band, pips, points line, RUN IT BACK. T3 rank-up overlay / T4 streak setpiece fire here (both shipped).</i><u>ArenaState.Results → Idle</u></div>
+</div>
+<div class="box"><div class="cut"></div>
+<p><b>What's reused vs rebuilt:</b> the entire flow after the CTA is <b>shipped ArenaPanel code</b> — team-select, matchmaking, vs-splash, opponent-found, between-games, result, rank-up, streak setpiece. The redesign REPLACES mode-select (the stage absorbs it: ENTER THE RING = casual queue, SPAR THE AI = VS AI, ranked strip = the locked ranked card) and RESKINS the takeover chrome to the broadcast dialect (blue seams, italic-900 verdicts, corner cuts). The state machine is untouched.</p>
+<p style="margin-top:8px"><b>Where ranked (v1.3 / Scope B) differs, same screens:</b> entry gate on the stage (placement 0/5 chip) · TALE OF THE TAPE adds stakes line ("±24 pts on the line") · per-turn action RPCs + authoritative resolver + turn timeouts inside BattleView (a visible turn clock is the one new battle-UI element) · DECISION shows the points delta + ladder movement · forfeit/timeout verdicts get their own copy ("won by stoppage"). No layout changes — the season just raises the stakes on the same show.</p>
+<p style="margin-top:8px"><b class="gold">Ghost-set copy law, applied:</b> rules card says it proudly — <i>"Quickplay is a ghost set: your opponent's squad enters as an AI-piloted mirror, same seed on both sides. Your record is yours alone."</i> The badge reads the OWNER'S name ("VEX'S SQUAD" — the squad IS a real player's; "REAL PLAYER" alone was ruled out in review, it reads as live sync PvP). Result copy never says "you beat Vex" — it says "you took the set against Vex's squad." The word "mirror"/"ghost" does the honesty work while sounding like worldbuilding.</p>
+</div>
+
+<h2><span>5 · The crawl — lower-third spec</span></h2>
+<div class="crawlband">
+  <div class="crawlcap"><b>LIVE</b><div class="dot"></div></div>
+  <div class="crawlstrip" style="padding-left:100px">
+    <div class="ci"><div class="d"></div><span><b>KESTREL</b> signed a Mythic contract — Solmara</span><span class="t">2m</span></div>
+    <div class="ci"><div class="d"></div><span><b>MOSSVANE ⇄ VEX</b> completed a trade</span><span class="t">9m</span></div>
+    <div class="ci"><div class="d"></div><span><b>NIGHTVOW</b> hit their weekly goal</span><span class="t">31m</span></div>
+    <div class="ci"><div class="d"></div><span><b>BRANNOCK</b> climbed to №5 in CAUGHT</span><span class="t">1h</span></div>
+    <div class="ci"><div class="d"></div><span><b>VEX</b> posted a contract on the board</span><span class="t">1h</span></div>
+    <div class="ci"><div class="d"></div><span><b>TAMER</b> took a ghost set vs Kestrel's squad</span><span class="t">3h</span></div>
+  </div>
+</div>
+<div class="ann" style="margin-bottom:10px">ANATOMY · 60px band, opaque #0D0916, 1px blue top seam (the band doubles as the page's bottom leak-cover) · LIVE cap slab skewX(−12°) with green pulse dot · items = blue diamond separator + icon-diamond + text (13px/600, names 800 cream) + relative-time chip · crawl speed <b>~90px/s</b>, in-engine recipe = imperative per-tick Style.Left, content ×2, modulo wrap (never keyframes, never transition-delay).</div>
+<table>
+<tr><th>ITEM TYPE</th><th>SOURCE LANE</th><th>TRIGGER / PHRASING</th></tr>
+<tr><td><b>Contract signed</b></td><td>Server (durable, ~48h)</td><td>Rare+ contracts only (Common/Uncommon would flood). "X signed a [rarity] contract — [species]."</td></tr>
+<tr><td><b>Trade completed</b></td><td>Server</td><td>On TradingManager completion, both consent implied by trading. "X ⇄ Y completed a trade." No item values.</td></tr>
+<tr><td><b>Rank climb</b></td><td>Server (computed vs cached standings)</td><td>Top-20 entries + any climb of 3+. "X climbed to №N in [category]." Never descents.</td></tr>
+<tr><td><b>Guild goal hit</b></td><td>Server (guild API)</td><td>"[GUILD] hit their weekly goal." Also guild level-ups.</td></tr>
+<tr><td><b>Ghost set won</b></td><td>Server, winner's client reports</td><td>"X took a ghost set vs Y's squad." Winner-framed only — outcomes are per-client in Scope A, so only the reporter's own verdict is ever published.</td></tr>
+<tr><td><b>Board post</b></td><td>Server</td><td>"X posted a contract on the board" — the crawl advertises the board.</td></tr>
+<tr><td><b>Queue / arrivals</b></td><td>Session RPC only (ephemeral)</td><td>"X steps into the queue" · "X is in the building." Session items age out in minutes and never persist.</td></tr>
+</table>
+<div class="box"><div class="cut"></div>
+<p><b>Sourcing + cadence:</b> one new endpoint pair on the existing HTTP API — <b>POST /ticker</b> (client publishes an event, server timestamps + stores, hard cap per player per hour) and <b>GET /ticker?since=</b> (last 48h, capped ~40 items), polled every 60s from the hub only. Session-lane items merge in via the ChatManager RPC lane and are marked ephemeral. Dedupe by (player, type, subject). The crawl renders newest-first, loops the merged list; below ~6 items it pads spacing rather than repeating tightly.</p>
+<p style="margin-top:8px"><b>Etiquette — never on the crawl:</b> losses/defeats by name · gold or item values · releases/consumes (fusion spends stay private) · disconnects/quits · pity/luck framing ("lucky pull" is gacha-shaped; "signed a contract" is earned language) · anything from players who set <b>Broadcast my activity: OFF</b> (one Options toggle, default ON, respected server-side at POST time). The crawl celebrates; it never shames, never sells.</p>
+</div>
+
+<h2><span>6 · The promoter's board — trade contracts</span></h2>
+<div class="slipdemo">
+  <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#a855f7"></div>
+  <div style="position:absolute;top:-10px;right:-10px;width:20px;height:20px;background:#0A0712;border-bottom:1px solid #262038;transform:rotate(45deg)"></div>
+  <div style="position:absolute;left:16px;top:10px;font-size:9px;font-weight:900;letter-spacing:1.5px;color:#6FB1F0">WANT</div>
+  <div style="position:absolute;left:64px;top:6px;width:22px;height:22px;background:#1c1830;border-radius:4px"></div>
+  <div style="position:absolute;left:94px;top:9px;font-size:13px;font-weight:800;color:#EFEAF7">Emberhide <span style="color:#7C7295;font-weight:600">×1</span> <span style="font-size:9px;color:#a855f7;font-weight:800">EPIC</span></div>
+  <div style="position:absolute;left:16px;top:40px;font-size:9px;font-weight:900;letter-spacing:1.5px;color:#7C7295">FOR</div>
+  <div style="position:absolute;left:64px;top:36px;width:22px;height:22px;background:#1c1830;border-radius:4px"></div>
+  <div style="position:absolute;left:94px;top:39px;font-size:12px;font-weight:700;color:#A79DBE">Tidewisp Pearl ×3 + Wavecrest Shard ×1</div>
+  <div style="position:absolute;left:16px;bottom:10px;display:flex;align-items:center;gap:8px">
+    <div style="width:18px;height:18px;border-radius:10px;background:#1c1830;border:1px solid #67e8f9"></div>
+    <span style="font-size:10px;font-weight:700;color:#A79DBE">MOSSVANE · LV 41</span>
+    <span class="pillg">● LIVE — IN THE BUILDING</span>
+  </div>
+  <div style="position:absolute;right:14px;bottom:10px;font-size:9px;font-weight:900;letter-spacing:1px;color:#6FB1F0">SPACE · OPEN NEGOTIATION</div>
+</div>
+<div class="ann" style="margin-bottom:10px">SLIP ANATOMY · 430×118 full-scale, r16, corner cut, left rarity edge keyed to the WANT species · WANT row (species icon + name + qty + rarity chip, 14px/800) over FOR row (offer contents, 13px/700) · poster plate (18px mini avatar in title color + name + LV) · status: <b class="green">LIVE</b> green pill (poster present) or <b>STANDING · Nh</b> gray chip (server-posted, counts down from 48h) · selection = border + fill only (scroll grid).</div>
+<div class="box"><div class="cut"></div>
+<ul>
+<li><b>Posting flow (POST CONTRACT):</b> a two-column composer popup — left <b>FOR</b> (pick from your roster/bag: beasts, materials, held items; the trade-window picker anatomy reused), right <b>WANT</b> (structured picker only: species or material + qty — no free text, so there's nothing to moderate and slips render uniformly). Confirm posts to server (<b>POST /board</b>) + broadcasts to the session; your slip appears with a gold YOURS edge and a RETRACT action. One active slip per player; posting again replaces.</li>
+<li><b>Accepting a LIVE slip:</b> E opens negotiation — routes straight into the shipped <b>TradingManager P2P session</b> (SendTradeRequest with the slip attached as context; the trade window opens pre-seeded with the poster's FOR items and your matching WANT items if owned). Both sides still ready-confirm in the existing flow — the board proposes, the trade window disposes. Cooldowns/IsInTrade guards surface as the existing notification copy.</li>
+<li><b>Accepting a STANDING slip (poster offline):</b> <b>SIGNAL INTEREST</b> — server stores your name against the slip (<b>POST /board/interest</b>); the poster sees "2 tamers signaled your contract" on next hub visit and the crawl nudges them. The actual trade still happens live P2P when both are present. <i>Phasing: LIVE-only is a complete v1 if the endpoint budget is tight; STANDING is what keeps the board populated at population one, so it's strongly recommended for the redesign release.</i></li>
+<li><b>Board layout:</b> header band (title + open count + POST CONTRACT) is opaque, gap 0 to the slip grid; grid = 2 columns × N, vertical scroll, LIVE slips sort first, then STANDING by freshness. <b>Empty state:</b> a single dim slip-outline + "The board is open. Post the first contract." — never a fake example offer.</li>
+<li><b>Expiry + hygiene:</b> standing slips expire at 48h (server-side), retract on fulfillment, and are filtered client-side against unresolvable species/items (the bag ghost-item lesson).</li>
+</ul>
+</div>
+
+<h2><span>7 · Undecided features — deep dives for ruling</span></h2>
+
+<h3>7A · The rival pin — "THE GRUDGE" <span class="tag rec"><span>RECOMMEND: SHIP WITH REDESIGN</span></span></h3>
+<div class="box"><div class="cut"></div>
+<p><b>What the player sees:</b> a 452×96 plate docked at the foot of Tonight's Card (slot shown dashed in §2). Left: the rival's avatar + name + title. Center: three head-to-head deltas computed live — CAUGHT <b class="green">you +214</b> · WINS <b style="color:#f87171">them +6</b> · STAGE <b class="green">you +3</b> — signed, colored, updated every leaderboard refresh. Right: a small crossed-swords stamp at −3°. When the rival moves on any board, their card row gets a subtle red-tinted edge so you spot them instantly while scrolling.</p>
+<p style="margin-top:6px"><b>Interactions:</b> pin from any card row or from a ringside interview rail (a small pin action; R is free on rows? no — R cycles categories, so pin is a click/E action on the row's action strip). Pinned = the plate appears; unpin from the plate. Click the plate → the rival's full leaderboard profile (existing entry-expand). <b>v1.3:</b> the plate grows a CALL OUT action when both are online — the natural seed of ranked grudge matches.</p>
+<p style="margin-top:6px"><b>Data + effort:</b> one save-side field (rival SteamId + display name) + reads the Steam leaderboard values already fetched for the card + local save for your side. <b>Zero server. Effort: LO — ~1–1.5 days</b> (plate UI, pin plumbing, delta math, row tint).</p>
+<p style="margin-top:6px"><b>What it adds / the honest cost:</b> it's the personal-stakes half of the empty-room fix — at population one the page still contains a relationship, not just a list, and every leaderboard refresh becomes "did I gain on them?" Cost: one more plate of chrome on the card column, and a rival who quits the game leaves a stale pin (mitigate: "last seen on the boards Nd ago" line after 14 idle days). <b>Verdict: ship it with the redesign — it's the cheapest high-warmth feature on the whole page and v1.3's CALL OUT needs it seeded.</b></p>
+</div>
+
+<h3>7B · The guild showcase wall <span class="tag hold"><span>RECOMMEND: APPROVE, BUT SEQUENCE TO v1.3</span></span></h3>
+<div class="box"><div class="cut"></div>
+<p><b>What the player sees:</b> inside the guild hall takeover, a SHOWCASE WALL section — each member's pinned favorite beast as a mounted sprite plate (sprite + owner nameplate + LV, the fd register-row material), the guild's collective face. On the main page, the guild corner's reserved peek slot (dashed in §2) shows the three most recent showcase sprites as small silhouettes-into-sprites — a living hint of who your people are. Browsing OTHER guilds in the guild browser shows their wall too, which finally makes choosing a guild mean something beyond a tag.</p>
+<p style="margin-top:6px"><b>Interactions:</b> your wall slot edits from your existing favorite-beast picker (same data, no new picker). Hover/E a plate → the member's interview rail. That's deliberately all — it's a wall, not a system.</p>
+<p style="margin-top:6px"><b>Data + effort:</b> the favorite species is already broadcast in session profiles, <b>but the wall must show OFFLINE members</b> — so the guild API needs a per-member <code style="font-size:11px">favoriteSpeciesId</code> field written on change and returned with the roster. <b>Effort: MED — ~2 days</b> (API field + migration, wall UI, peek slot, browser integration). The main-page footprint is small by design; the payoff surface lives inside the takeover.</p>
+<p style="margin-top:6px"><b>What it adds / the honest cost:</b> warmth and guild identity at near-zero ongoing cost — but it's a <i>secondary-surface</i> feature competing for the same build window as the board endpoints and the crawl. <b>Verdict: approve the design, ship it in the v1.3/season update</b> — the redesign reserves the peek slot (an empty reserved slot costs nothing and nothing looks missing without it), and the season update lands it alongside the guild-vs-guild season line where it amplifies most.</p>
+</div>
+
+<h2><span>8 · Keyboard grammar — one cursor, one map</span></h2>
+<div class="box"><div class="cut"></div>
+<ul>
+<li><b>WASD / arrows</b> — the one violet cursor walks zones in reading order: stage CTA → SPAR THE AI → ranked strip → board slips → POST CONTRACT → guild corner → ringside heads → card rows → card foot. It renders as the RING on clear-space hosts and as the SLAB CURSOR (border+fill only) inside the scroll lanes (board slips, card rows) — online-motion-spec.html §1. Crossing a zone boundary follows spatial direction (D from the guild corner lands on the nearest card row). The ring recipe is the shipped hub ring, unchanged.</li>
+<li><b>Space</b> — the ADVERTISED confirm cap (E stays as the silent alternate — the settled 2026-07-12 grammar): queue up, open negotiation, enter the hall, open interview rail, expand a card row. <b>The gold snap fires only on ENTER THE RING and BEGIN SET</b> (consequential commits — the rationed-gold ruling); everything else keeps the quiet press.</li>
+<li><b>Q</b> — back, always: closes interview rail → leaves takeovers (hall / full standings / team-select) → cancels queue (with a small confirm while Searching) → exits to tabs. Registered through GameHUD.PanelHandledBackKey as shipped.</li>
+<li><b>R</b> — the page's cycle key: rotates Tonight's Card category (CAUGHT → WINS → STAGE → ARENA…). Shown as a key cap on the card header.</li>
+<li><b>Z / X</b> — the universal silent cycle pair: hops the ring between ZONES (stage ⇄ board ⇄ guild ⇄ ringside ⇄ card) — the muscle-memory heir to the old tab cycling. Silent (no cap chrome).</li>
+<li><b>M</b> — PawPad, global. <b>Takeovers own the keyboard entirely while active</b> (the shipped arena delegation pattern: hub TickInput bails to the child), and modal popups register in UIModalState in priority order.</li>
+</ul>
+</div>
+
+<h2><span>9 · Build sequencing</span></h2>
+<div class="box"><div class="cut"></div>
+<p><b>SHIPS WITH THE REDESIGN (the day-one cut):</b></p>
+<ul>
+<li><b>The page:</b> stage / card / board / guild corner / ringside / crawl band, blue wave + marquee bakes, ring travel, keyboard map. Reskin of the six ArenaPanel takeover views to broadcast chrome.</li>
+<li><b>Quickplay flip:</b> see the checklist below — Scope A is one const + copy sweep away.</li>
+<li><b>Crawl v1:</b> POST/GET /ticker endpoints + session lane + the imperative crawl strip + the Options broadcast toggle.</li>
+<li><b>Board v1:</b> POST/GET /board (+ /interest if budget allows — strongly recommended), composer, LIVE routing into TradingManager.</li>
+<li><b>Rival pin</b> — if ruled yes (§7A recommends yes).</li>
+</ul>
+<p style="margin-top:8px"><b>V1.3 (the season update):</b> Scope B ranked (per-turn RPCs, authoritative resolver, turn clock, timeouts) · stage ranked-headliner state + placement flow + points deltas · CALL OUT challenges from the interview rail + grudge plate · standing-offer interest pings if deferred · guild showcase wall (§7B) · arena categories fully live on the card.</p>
+<p style="margin-top:8px"><b class="gold">The quickplay const-flip + copy checklist:</b></p>
+<ul>
+<li><b>1.</b> <b>OnlineHubPanel.razor:872</b> — <code style="font-size:11px">RankedEnabled</code> is really "arena enabled"; the rebuild replaces it with <code style="font-size:11px">QuickplayEnabled = true</code> routing to the stage flow. ArenaPanel's own ranked-locked mode card (SOON badge) stays locked — it already models "casual live, ranked teased."</li>
+<li><b>2.</b> <b>LeaderboardPanel</b> — arena leaderboard categories are <b>NEW build work, not an un-filter</b>: <code style="font-size:11px">RankedEnabled</code> is a private const in OnlineHubPanel.razor:872 only, and LeaderboardPanel defines ZERO arena categories (<code style="font-size:11px">FilterMode=="arena"</code> returns an empty array — LeaderboardPanel.razor:353-354). Day one needs new category defs for the casual-meaningful stats (wins/sets); the only shipped arena stat is CompetitiveManager's own "arena-score-launch" board. Points-based boards wait for ranked.</li>
+<li><b>3.</b> <b>Copy sweep (the law):</b> rules card gains the ghost-set paragraph · result screens say "took the set against X's squad" · the squad badge reads the owner's name ("VEX'S SQUAD" — never a bare "REAL PLAYER" label) · zero instances of "PvP," "head-to-head," or "outplay" in quickplay copy — grep the takeover views before ship.</li>
+<li><b>4.</b> <b>Profile plumbing:</b> ArenaRank/ArenaPoints already ride BroadcastPlayerProfile — surfaces on interview rails with no new sync.</li>
+<li><b>5.</b> <b>Patch note</b> at ship time per the tracking law ("Online is now Fight Night — quickplay ghost sets are live…").</li>
+</ul>
+</div>
+
+<h2><span>10 · Open questions for the session</span></h2>
+<div class="box"><div class="cut"></div>
+<ul class="qs">
+<li><b>The two rulings this brief was built to enable:</b> rival pin day-one (§7A, recommended YES) and guild showcase timing (§7B, recommended approve-but-v1.3).</li>
+<li><b>Standing offers in v1?</b> The board's population-one health depends on them, but they're 2 of the 4 new endpoints. If the server budget only fits one durable feature at launch, the crawl wins (it feeds the whole page) and the board ships LIVE-only — acceptable?</li>
+<li><b>Ghost-set ticker items:</b> comfortable publishing winner-framed set results server-side pre-v1.3 ("X took a ghost set vs Y's squad"), or hold all set results off the crawl until ranked makes outcomes authoritative?</li>
+<li><b>Queue while browsing:</b> the spec keeps the page fully browsable during Searching (the stage holds the queue). Accepting a trade or entering the hall mid-queue drops the queue with a warn — or should those actions be locked instead?</li>
+<li><b>Marquee bake direction:</b> §2 specs the Beastborne-material marquee (dark slab + one blue neon hairline, no bulbs) per the museum-law precedent — sign off before the bake, since the stage sets the whole page's temperature.</li>
+<li><b class="gold">Standing scope checks honored by every zone:</b> scroll grids = border/bg states only · controls never inside the lean · crawl is imperative, not keyframed · no animation-delay anywhere on this per-frame-rendering page · gold only on ENTER THE RING / BEGIN SET / headliner / your LV.</li>
+</ul>
+</div>
+</body></html>

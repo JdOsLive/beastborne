@@ -19,7 +19,8 @@
 
 Add-Type -AssemblyName System.Drawing
 
-$outDir = "c:\Users\jscho\OneDrive\Documents\s&box projects\beastborne\Assets\ui"
+# Desktop repo path (2026-08-28 — the old laptop OneDrive path is gone)
+$outDir = "c:\users\jscho\documents\s&box projects\megarougelite\Assets\ui"
 $accents = [ordered]@{
     'violet' = '#8B5CF6'   # collection (My Beasts)
     'green'  = '#4ADE80'   # expedition
@@ -28,6 +29,7 @@ $accents = [ordered]@{
     'gold'   = '#FBBF24'   # journal
     'appink' = '#FF6BD6'   # skills (Tamer Talents — the PawPad SKILLS app pink)
     'teal'   = '#2DD4BF'   # beastbook (Specimen Hall — the PawPad BEASTBOOK app teal, 2026-07-12)
+    'blue'   = '#3F8FE0'   # online (TamerLink — the PawPad ONLINE app blue, 2026-08-28)
 }
 # layer key -> rendered tile height (width is always the 1600px period)
 $layers = [ordered]@{ 'a' = 70; 'b' = 53 }
