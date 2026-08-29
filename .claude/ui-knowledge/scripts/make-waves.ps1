@@ -76,3 +76,48 @@ foreach ($name in $accents.Keys) {
         $brush.Dispose(); $path.Dispose(); $g.Dispose(); $bmp.Dispose()
     }
 }
+
+
+# ---------------------------------------------------------------------------
+# PHONE-PERIOD WAVES (2026-08-28): the 1600px page tile cropped to the 512px
+# PawPad screen shows one random curve, not a wave. These tiles use a 512px
+# period (one full crest+trough per screen width) at phone heights 36 / 28.
+# Files: wave-<app>-phone-a.png (512x36), wave-<app>-phone-b.png (512x28).
+# ---------------------------------------------------------------------------
+$phoneAccents = [ordered]@{
+    'chat'    = '#4AA8FF'
+    'radio'   = '#C26BFF'
+    'effects' = '#F7E024'
+    'alerts'  = '#E0414A'
+}
+$phoneLayers = [ordered]@{ 'a' = 36; 'b' = 28 }
+$PW = 512
+foreach ($name in $phoneAccents.Keys) {
+    $col = [System.Drawing.ColorTranslator]::FromHtml($phoneAccents[$name])
+    foreach ($layer in $phoneLayers.Keys) {
+        $H = [int]$phoneLayers[$layer]
+        $sx = $PW / 600.0; $sy = $H / 90.0
+        $bmp = New-Object System.Drawing.Bitmap($PW, $H, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $g.Clear([System.Drawing.Color]::Transparent)
+        $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $path.AddBezier(-150.0, 45.0, -100.0, 65.0, -50.0, 65.0,  0.0, 45.0)
+        $path.AddBezier(0.0, 45.0,   50.0, 25.0,  100.0, 25.0,  150.0, 45.0)
+        $path.AddBezier(150.0, 45.0, 200.0, 65.0, 250.0, 65.0,  300.0, 45.0)
+        $path.AddBezier(300.0, 45.0, 350.0, 25.0, 400.0, 25.0,  450.0, 45.0)
+        $path.AddBezier(450.0, 45.0, 500.0, 65.0, 550.0, 65.0,  600.0, 45.0)
+        $path.AddBezier(600.0, 45.0, 650.0, 25.0, 700.0, 25.0,  750.0, 45.0)
+        $path.AddLine(750.0, 45.0, 750.0, 90.0)
+        $path.AddLine(750.0, 90.0, -150.0, 90.0)
+        $path.CloseFigure()
+        $m = New-Object System.Drawing.Drawing2D.Matrix([float]$sx, 0.0, 0.0, [float]$sy, 0.0, 0.0)
+        $path.Transform($m)
+        $brush = New-Object System.Drawing.SolidBrush($col)
+        $g.FillPath($brush, $path)
+        $out = Join-Path $outDir "wave-$name-phone-$layer.png"
+        $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
+        Write-Host "wrote $out"
+        $brush.Dispose(); $path.Dispose(); $g.Dispose(); $bmp.Dispose()
+    }
+}
