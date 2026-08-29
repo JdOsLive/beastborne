@@ -3,55 +3,112 @@
 <html><head><meta charset="utf-8"><title>Beastborne — PawPad Apps: Chat · Radio · Effects · Alerts</title>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
 <!--
-  PAWPAD IN-PHONE APPS — DESIGN BRIEF. The four TamerLink OS apps (CHAT/RADIO/EFFECTS/ALERTS)
-  shipped 2026-07-02 as ports of the old floating widgets; this is their first real DESIGN pass
-  as coherent apps on the 512px screen. Mocks are 1:1 of the screen content width.
+  PAWPAD IN-PHONE APPS — DESIGN BRIEF (rev 2, review corrections applied 2026-08-28). The four
+  TamerLink OS apps (CHAT/RADIO/EFFECTS/ALERTS) shipped 2026-07-02 as ports of the old floating
+  widgets; this is their first real DESIGN pass as coherent apps on the 512px screen. Mocks are 1:1
+  of the screen content width (512 — the shipped .pl-av-head / .pl-chan-row / .pl-top box).
 
   ENGINE NOTES (browser CSS here → in-engine mechanism):
   · DEVICE POSE — v9 FLAT (user call: you read/type on it now; LeanSin zeroed, .pl-device carries no
     transform). BUT the file doctrine STANDS and everything below is authored lean-proof: every box
-    explicit px width (no flex-grow anywhere in the device), no text-align reliance (alignment BY
-    CONSTRUCTION: auto-width span + computed margin — LabelPadPx pattern), absolutes always carry
-    explicit widths, justify-content only when every child has an explicit width. If the lean returns,
-    these screens survive unchanged.
+    explicit px width on the MAIN axis, no text-align reliance (alignment BY CONSTRUCTION: explicit
+    box + computed margin — the LabelPadPx pattern), absolutes always carry explicit widths,
+    justify-content only when every child has an explicit width. If the lean returns, these screens
+    survive unchanged.
+    ⚠ FLEX-GROW, corrected: "no flex-grow anywhere" was WRONG. The shipped scrollers legitimately use
+    `flex: 1 1 0; min-height: 0` (.pl-chat-scroll and the effects/alerts scrollers) — MAIN-AXIS
+    HEIGHT grow on a box with an explicit 512 WIDTH is the sanctioned exception. Don't "fix" them.
+    The ban is on flex-grow WIDTH resolution (cross-axis + flex:1 siblings) — every horizontal box
+    stays explicit px. Meta placement (timestamps, values, TAP TO VIEW, volume steps) never uses
+    `margin-left: auto`: it is an explicit-width meta box (48px for times, 72px for values, 100px for
+    TAP TO VIEW) reached by a COMPUTED margin = row inner width − everything to its left. Text inside
+    a meta box sits flush-left in its column (no text-align) — ragged right is by design.
   · MOUSE — nothing in the device subtree takes pointer events. EVERY tap target here = a
     `pl-hit hit-<action>` class + an entry in PhoneLauncher's HitActions[] + a RunAppAction case,
     resolved by the backdrop router (ActionAtScreen inverse-projection). New controls in this brief
     that need registering: hit-chan dots ride existing chips; hit-embed-N (chat showcase tap),
     hit-radio-shuffle, hit-radio-repeat, hit-radio-station, hit-vol-1..5, hit-alert-clear (exists as
-    hit-clear). Volume is STEPPED (5 tap segments), not a drag slider — continuous drag through the
-    hit router is a project; taps are free.
+    hit-clear — now TWO-TAP, see ALERTS). Volume is STEPPED (5 tap segments), not a drag slider —
+    continuous drag through the hit router is a project; taps are free.
+  · PRESS FEEDBACK (router-driven) — CSS :hover/:active NEVER fire inside the device (no pointer
+    events reach it), so press feedback is stamped by the router: `RunAppAction` records
+    `_pressedHit = act` + `_pressedAt = RealTime.Now`; the matching element renders
+    `class="pl-hit hit-x @(IsPressed(x) ? "pressed" : "")"` for ~120ms (BuildHash reads the stamp;
+    a ≤1/s tick is NOT enough — arm a one-shot StateHasChanged at +120ms to clear it). `.pressed` =
+    BRIGHTEN for dark slabs (background-color one step lighter, e.g. row tone → track tone) and DIM
+    for accent-filled controls (opacity .8). No transforms, no glows (SNAP layer, ≤150ms).
+    SoundManager.PlayClick already fires per case — keep it; sound is the other half of the press.
+  · KEYBOARD REACH — apps are TAP + HOTKEY, not ring-navigated: Q / Esc back to the home grid from
+    every app; radio: Space play/pause, A/D prev/next track; chat: Enter sends (IsChatFocused gate
+    stands down every other phone key while typing). The living ring is HIDDEN in app views (the ring
+    walks the home grid + dock only — apps have no focusables; everything in them is a hit id). WASD
+    inside an app does nothing. Slot8 closes the phone outright from anywhere.
   · SCROLL — lists are DIRECT children of the overflow-y: scroll element (flat-children law).
     ⚠ BUILD FIX REQUIRED: OnMouseWheel currently routes the wheel ONLY to _chatScrollRef — EFFECTS
     and ALERTS lists cannot wheel-scroll today. Route to the active app's scroll ref.
+  · ROWS IN SCROLL LISTS never carry overflow:hidden (flex-collapse law — a clipped flex child
+    shrinks to nothing). Row recipe = COLUMN-flex at a FIXED 56px height: a 53px content row
+    (row-flex, explicit children) + a 3px bottom STRIP HOLDER (explicit 512×3, track tone, its own
+    bottom radii 0 0 12px 12px) whose FILL is an explicit-px child (own bottom-left radius 12px;
+    value-swap the bottom-right radius to 12px at 100%). Unread tick = an IN-FLOW 4×56 FIRST child
+    with its own left radii (12px 0 0 12px) — ALWAYS emitted, its background-color value-swaps
+    red ↔ row tone (never-cleared inline-style law + stable alignment). The chat embed = a row-flex
+    56px card whose 4px accent edge is the same in-flow first child. No absolutes inside rows.
   · TIME/PROGRESS FILLS (radio progress, effects depletion) — 1 Hz CACHED strings via the ClockText
     pattern (cache + refresh ≤1/s, BuildHash reads the cache), driving markup widths in PX
     (Length.Percent on absolute children paints FULL width — skill-tree law; compute px from the
-    track's fixed 476px width in C#). NO per-frame Style writes inside the device — the 7fps law is
-    written for the lean, but stays policy here so the lean can return without a perf audit.
+    track's fixed 476px width (radio) / 512px (effects strip) in C#). NO per-frame Style writes inside
+    the device — the 7fps law is written for the lean, but stays policy here so the lean can return
+    without a perf audit.
   · VISUALIZER — baked animated WebP <img> (animated WebP in <img> is verified live; texture
-    animation does NOT trigger recomposite). Play/pause = SRC value-swap between static and animated
-    files (attribute swap only — an @if icon swap leaves ghost children). Never CSS-animate it.
+    animation does NOT trigger recomposite). MUST be LOSSLESS — lossy WebP drops the alpha channel
+    in-engine (texture-format law) and the bars would ship on an opaque black slab. Play/pause = SRC
+    value-swap between static and animated files (attribute swap only — an @if icon swap leaves ghost
+    children). Never CSS-animate it. It is the apps' ONE ambient flourish (FLOW layer) — nothing else
+    in the four apps moves on its own.
+  · ICON SOURCES (the mocks use emoji/text glyphs as stand-ins — none ship): ALERTS tile glyph =
+    the notification's Icon (iconify lucide name) or IconPath (pixel-art, `<img>` with
+    image-rendering: pixelated at 24px inside the 34px tile); EFFECTS skill icons = the skill node's
+    icon path as a pixelated `<img>` (same 24-in-34 recipe), timed-boost glyph = the boost's Icon;
+    CHAT embed sprite = the showcased beast's sprite as a pixelated `<img>` 28px inside the 34px
+    tile (background-repeat: no-repeat). One icon set, one weight — no emoji in-engine.
   · CSS — background-color for rgba fills; gradients use `to bottom`/`to right` keywords and
     rgba(...,0) (never `transparent`); radial-gradient percent stops only, no shape keywords;
-    empty-state paw watermark ships as a WebP asset, not a CSS pattern.
+    empty-state paw watermark ships as a WebP asset, not a CSS pattern. Kicker chips carry a STATIC
+    class-driven `transform: skewX(-8deg)` (inner span counter-skewed +8deg) and stamps a static
+    `rotate(±3deg)` — static class transforms are legal in the device; only ongoing/per-frame
+    transforms are banned. A transform-holder carries its own bg here (2D skew, not 3D — the "surface
+    on a child" rule is for rotateY planes).
   · STATE — every new field an app view renders (channel unread counts, volume step, shuffle/repeat,
-    alert read-watermark) goes into BuildHash or the view never updates.
+    alert read-watermark, CLEAR ALL armed flag, pressed stamp) goes into BuildHash or the view never
+    updates.
   · THE ACCENT BLOOM (launch/return transition + the bg model): tapping a widget tile BLOOMS the
     tile's accent from the icon position out to fill the 512px screen, then the bloom settles into the
     app's DERIVED BACKGROUND — the accent at ~8–12% over the dark base. Full-strength accent is
     reserved for the header tile/title + key controls; raw yellow (Effects) or red (Alerts) as a text
     background is unreadable. Derived bg hexes (accent mixed over #14101F): chat #191F35 · radio
     #251935 · effects #26211F (8% — yellow runs hot) · alerts #281523. MECHANISM: a PRE-MOUNTED
-    accent circle (explicit px box, parked scale(0), positioned at the tapped tile) + a pre-mounted
-    derived-bg layer; launch = ONE-SHOT class-toggle CSS transitions (~240ms scale-up on the
-    signature ease cubic-bezier(0.22,1,0.36,1), then the circle fades out as the bg layer + app UI
+    accent circle (explicit 54×54 px box, parked scale(0), positioned at the tapped tile) + a
+    pre-mounted derived-bg layer; launch = ONE-SHOT class-toggle CSS transitions (~240ms scale-up on
+    the signature ease cubic-bezier(0.22,1,0.36,1), then the circle fades out as the bg layer + app UI
     fade in, ~180ms trailing). Class-toggle transitions re-fire on every open (the @keyframes
     play-once law) and a brief one-shot transition is the SANCTIONED transient inside the device —
     ongoing/infinite transforms in the leaned subtree stay BANNED (7fps law). Q/back runs the same
-    toggles in reverse: the bloom collapses back into the tile. BUILD FALLBACK if the scaling circle
-    misbehaves (corner clipping — the screen must NOT gain overflow:hidden to contain it; that law
-    collapses flex children): pure opacity cross-fade of the two pre-sized layers, zero transforms.
+    toggles in reverse: the bloom collapses back into the tile.
+    ⚠ THE CLIP (decision): on the real 512×~700 screen a 54px circle needs ~scale(30) to cover the
+    far corner and spills FAR past the bezel while it grows. PRIMARY = a `mask-image` rect clip on
+    `.pl-surface` — the menu featured-card recipe (`mask-image: linear-gradient(rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) 100%); mask-mode: alpha;` clips descendants to the element's box). Accept SQUARED
+    corners for the ~200ms the circle overhangs — the bezel hides most of it. FALLBACK if the mask
+    doesn't clip live = pure opacity cross-fade of the two pre-sized layers, zero transforms. The
+    screen must NOT gain overflow:hidden to contain it (flex-collapse law). Layer laws: the
+    derived-bg layer carries EXPLICIT width/height (512 × screen height — never inset-stretch, which
+    renders zero-size); `.pl-top` z-orders ABOVE the bloom (OS chrome persists through the
+    transition); the bg tint gradient uses `to bottom`; the circle's `left`/`top` are ALWAYS emitted
+    and value-swapped per tapped tile (never-cleared inline-style law); the circle + bg layer are
+    absolutes anchored AT `.pl-surface` — logged as a KNOWN LEAN EXCEPTION (v7.2 law: absolutes at
+    the transform holder render OUTSIDE the lean; harmless in v9 flat, must be re-verified or moved
+    in-flow with the negative-margin overlay trick if the lean returns).
   · LINEAGE: this is the launcher's original "liquid expansion" launch concept (the PhoneApp record's
     Liquid-flag era), retired for full-screen destinations when the accent swipe won — coming home to
     the in-phone apps, where an on-device bloom is the right scale for a Tier-1 action.
@@ -60,6 +117,11 @@
     ActiveEffectsPanel boosts (TimeRemaining) + skill bonuses (Rank); Notification Type/Icon/IconPath/
     CreatedAt + NotificationHistory. ONE code ask outside UI scope: ALERTS unread ticks need a
     read-watermark (LastOpenedAt) on NotificationManager — flagged, user's call.
+  · BUILD FROM THE SHIPPED RECIPES, not this mock's CSS: status row = `.pl-top` (64 clock box, 17px
+    italic clock, 438 right group: gold signal bars · battery · name · 32px gold-ringed Steam avatar
+    `.pl-ava-steam`); app title = `.pl-av-title` (26px/900 italic, lh 30); channel/toggle lit state =
+    `.pl-chan.on` (accent fill + dark ink) — the ONE toggle recipe for all four apps; CLEAR ALL box =
+    `.pl-alert-clear` geometry. The mock's `.st`/`.sp{flex:1}` status row is a browser shortcut only.
 -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -73,32 +135,43 @@ h2.c-chat{background:#4aa8ff}h2.c-radio{background:#c26bff}h2.c-fx{background:#f
 .cap{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#7C7295;line-height:14px;max-width:1100px;margin:4px 0 10px}
 .cap b{color:#EFEAF7}
 .wrap{display:flex;gap:44px;align-items:flex-start;flex-wrap:wrap}
-/* ── the simplified phone frame (drawn flat; 512px screen content 1:1) ── */
-.phone{position:relative;width:552px;border:2px solid #ffce3a;border-radius:44px;background:linear-gradient(to bottom,#3f434e 0%,#24262e 100%);padding:0 18px;box-shadow:-24px 20px 54px rgba(0,0,0,.55)}
+/* ── the simplified phone frame (drawn flat; 512px screen content 1:1 — 576 footprint = shipped) ── */
+.phone{position:relative;width:576px;border:2px solid #ffce3a;border-radius:44px;background:linear-gradient(to bottom,#3f434e 0%,#24262e 100%);padding:0 18px;box-shadow:-24px 20px 54px rgba(0,0,0,.55)}
 .bez{display:flex;align-items:center;justify-content:center;gap:12px;height:44px}
 .spk{width:58px;height:5px;border:1px solid #565a66;border-radius:3px;background:#0e0f13}
 .cam{width:10px;height:10px;border:2px solid #ffce3a;border-radius:50%;background:#0e0f13}
-.scr{position:relative;width:512px;border:1px solid #2b2d36;border-radius:26px;background:linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%);padding:12px 12px 14px;display:flex;flex-direction:column}
+.scr{position:relative;width:536px;border:1px solid #2b2d36;border-radius:26px;background:linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%);padding:12px 12px 14px;display:flex;flex-direction:column}
 .chin{display:flex;align-items:center;justify-content:center;height:40px;opacity:.45}
-/* status row (OS chrome — persists in apps) */
-.st{display:flex;align-items:center;height:26px;margin-bottom:8px;padding:0 4px}
-.clock{font-style:italic;font-weight:800;font-size:14px;letter-spacing:.5px}
+/* status row (OS chrome — persists in apps). MOCK ONLY — build from .pl-top (17px clock, 32px gold-ringed avatar) */
+.st{display:flex;align-items:center;height:32px;margin-bottom:8px;padding:0 4px}
+.clock{font-style:italic;font-weight:800;font-size:17px;letter-spacing:.5px;color:#fff}
 .sp{flex:1}
 .sig{display:flex;align-items:flex-end;gap:2px;margin-right:8px}.sig i{display:block;width:4px;border-radius:2px;background:#ffce3a}
 .bat{width:20px;height:9px;border:1px solid rgba(255,255,255,.45);border-radius:3px;margin-right:8px;display:flex;align-items:center}.bat i{display:block;width:12px;height:5px;margin-left:2px;background:#ffce3a;border-radius:1px}
-.tn{font-style:italic;font-weight:800;font-size:11px;letter-spacing:1.5px;color:rgba(255,255,255,.85);margin-right:8px}
-.ava{width:22px;height:22px;border:2px solid #ffce3a;border-radius:50%;background:radial-gradient(rgba(106,90,154,1) 0%,rgba(42,32,68,1) 90%)}
-/* app header (shared shell) */
+.tn{font-style:italic;font-weight:800;font-size:12px;letter-spacing:1.5px;color:rgba(255,255,255,.85);margin-right:8px}
+.ava{width:32px;height:32px;border:2px solid #ffce3a;border-radius:50%;background:radial-gradient(rgba(106,90,154,1) 0%,rgba(42,32,68,1) 90%)}
+/* app header (shared shell) — every box explicit: back 40 · +12 tile 34 · +12 title box · computed margin · util box */
 .ah{display:flex;align-items:center;height:44px;margin-bottom:10px}
 .back{display:flex;align-items:center;justify-content:center;width:40px;height:36px;border-radius:10px;background:#1a1c23;font-weight:900;font-size:17px;color:#9b6cff}
-.qcap{margin-left:6px;background:#221C38;border:1px solid #2A2340;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:800;color:#EFEAF7}
 .aglyph{width:34px;height:34px;border-radius:9px;margin-left:12px;display:flex;align-items:center;justify-content:center}
 .aglyph svg{width:19px;height:19px}
-.atitle{font-style:italic;font-weight:900;font-size:24px;letter-spacing:1.5px;text-transform:uppercase;margin-left:12px}
-.autil{margin-left:auto}
+.atitle{font-style:italic;font-weight:900;font-size:26px;line-height:30px;letter-spacing:1.5px;text-transform:uppercase;margin-left:12px;white-space:nowrap}
+.autil{display:flex;align-items:center;flex:0 0 auto}
+/* header utility-slot recipe — ONE across all four apps */
+.stamp{display:flex;align-items:center;justify-content:center;height:22px;border-radius:10px;transform:rotate(-3deg);font-style:italic;font-size:10px;font-weight:900;letter-spacing:1px;white-space:nowrap}
+.uchip{display:flex;align-items:center;justify-content:center;height:24px;border-radius:10px;font-size:10px;font-weight:800;letter-spacing:1px;white-space:nowrap}
 /* generic app furniture */
 .rows{display:flex;flex-direction:column;gap:8px}
-.sect{font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#7C7295;margin:6px 0 2px;padding-left:2px}
+/* section kicker chip — skewX(−8°) accent fill, ink text, counter-skewed span (static class transform) */
+.sect{display:flex;align-self:flex-start;align-items:center;height:20px;padding:0 10px;border-radius:10px;margin:6px 0 6px;transform:skewX(-8deg);font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;white-space:nowrap}
+.sect span{display:inline-block;transform:skewX(8deg)}
+/* list row (B2 recipe) — column-flex, fixed 56, content row + 3px strip holder; never overflow:hidden */
+.row56{display:flex;flex-direction:column;width:512px;height:56px;border-radius:12px}
+.row56 .rc{display:flex;align-items:center;height:53px;padding:0 14px}
+.row56 .sh{display:flex;width:512px;height:3px;border-radius:0 0 12px 12px}
+.row56 .sh i{display:block;height:3px;border-radius:0 0 0 12px}
+.tile{width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px;flex:0 0 auto}
+.meta{width:48px;flex:0 0 auto;font-size:10px;font-weight:600;color:#7C7295;white-space:nowrap}
 .kb{display:flex;gap:14px;align-items:center;margin-top:10px;flex-wrap:wrap}
 .kb .kcap{background:#221C38;border:1px solid #2A2340;border-radius:4px;padding:2px 8px;font-size:9px;font-weight:800;color:#EFEAF7;letter-spacing:.5px}
 .kb .klab{font-size:9px;font-weight:600;color:#7C7295;letter-spacing:1px;text-transform:uppercase;margin-left:-8px}
@@ -112,9 +185,9 @@ h2.c-chat{background:#4aa8ff}h2.c-radio{background:#c26bff}h2.c-fx{background:#f
 .chg .t{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#7C7295;margin-bottom:6px}
 .chg span{display:block;font-size:11px;font-weight:500;color:#A79DBE;line-height:16px;margin-bottom:3px}
 .chg i{color:#EFEAF7;font-style:normal;font-weight:700}
-/* bloom demo (hover the tile) */
+/* bloom demo (hover the tile). BROWSER clip = overflow:hidden HERE ONLY — in-engine the clip is the mask-image on .pl-surface (see ENGINE NOTES) */
 .bdemo{position:relative;width:252px;height:344px;border:1px solid #2b2d36;border-radius:20px;background:linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%);overflow:hidden;cursor:pointer}
-.bdemo .bgstate{position:absolute;inset:0;background:linear-gradient(rgba(194,107,255,.11),rgba(194,107,255,.05));opacity:0;transition:opacity .18s ease .18s;z-index:1}
+.bdemo .bgstate{position:absolute;left:0;top:0;width:252px;height:344px;background:linear-gradient(to bottom,rgba(194,107,255,.11),rgba(194,107,255,.05));opacity:0;transition:opacity .18s ease .18s;z-index:1}
 .bdemo .bloomc{position:absolute;left:26px;top:26px;width:54px;height:54px;border-radius:50%;background:#c26bff;transform:scale(0);transition:transform .24s cubic-bezier(.22,1,.36,1),opacity .18s ease .22s;z-index:2}
 .bdemo:hover .bloomc{transform:scale(11);opacity:0}
 .bdemo:hover .bgstate{opacity:1}
@@ -142,24 +215,32 @@ continuous gesture. Device drawn flat (v9 — the lean is retired for readabilit
 
 <!-- ═══════════════════════════ 1 · SHARED SHELL ═══════════════════════════ -->
 <h2><span>1 · The shared app shell</span></h2>
-<div class="cap"><b>Every app gets:</b> the OS status row (unchanged — apps live UNDER the OS) · an app header:
-back chip (Q) + the app's own launcher tile miniaturized at 34px (identity travels from grid to app) + accent title
-+ a right utility slot (badge / station chip / CLEAR ALL) · a scroll middle (list = direct children of the scroller)
-· pinned footer controls. The accent lives in exactly four places: header tile, title, primary action, active/unread
-marks. Everything else stays graphite <b>#1a1c23</b> rows on the wallpaper. Violet stays the cursor, gold stays the OS.</div>
+<div class="cap"><b>Every app gets:</b> the OS status row (unchanged — apps live UNDER the OS; build from <b>.pl-top</b>) · an app header:
+the shipped violet back chip (‹ — Q is the hotkey, no keycap: v5.1 removed keycaps from the device) + the app's own launcher tile
+miniaturized at 34px (identity travels from grid to app) + accent title (<b>.pl-av-title</b>, 26/900) + a right utility slot — ONE recipe:
+a ±3° solid-accent <b>stamp</b> for counts (4 ACTIVE / LAST 50), a solid accent-ink <b>chip</b> for the station · a scroll middle
+(list = direct children of the scroller) · pinned footer controls. The accent lives in exactly four places: header tile, title,
+primary action, active/unread marks. <b>Slabs separate by LIGHTNESS, not stroke (vector rule):</b> each app's rows and tracks are
+one step lighter than its derived bg in the same hue (accent ~18% over #14101F for rows, ~26% for tracks) — chat rows <b>#222a45</b>,
+radio <b>#31224a</b>, effects <b>#332c22</b> (yellow at ~14% — it runs hot), alerts <b>#3a1a28</b>. Icon tiles are all 34px r9 neutral
+<b>#262040</b>; an element/accent color lives in a row's 4px LEFT EDGE, never a tile flood. No hairline borders anywhere in the apps.
+Violet stays the cursor (and the shipped back chip), gold stays the OS. Radii: 10 chips · 12 rows · 16 buttons · 20 hero.</div>
 <div class="wrap">
   <div class="lad">
-    <div class="r"><span class="m">App title · 24/900 italic</span><span style="font-style:italic;font-weight:900;font-size:24px;letter-spacing:1.5px;color:#4aa8ff">CHAT</span></div>
-    <div class="r"><span class="m">Section label · 11/800 ls2</span><span style="font-size:11px;font-weight:800;letter-spacing:2px;color:#7C7295">SKILL BONUSES</span></div>
+    <div class="r"><span class="m">App title · 26/900 italic</span><span style="font-style:italic;font-weight:900;font-size:26px;line-height:30px;letter-spacing:1.5px;color:#4aa8ff">CHAT</span></div>
+    <div class="r"><span class="m">Section kicker · 11/800 ls2 — skewX(−8°) chip</span><span class="sect" style="margin:0;background:#f7e024;color:#241a00"><span>SKILL BONUSES</span></span></div>
+    <div class="r"><span class="m">Count stamp · 10/900 italic — rotate(−3°)</span><span class="stamp" style="width:76px;background:#f7e024;color:#241a00">4 ACTIVE</span></div>
     <div class="r"><span class="m">Row primary · 13/700</span><span style="font-size:13px;font-weight:700;color:#f4f1ea">XP BOOST ×2</span></div>
     <div class="r"><span class="m">Body / message · 13/500</span><span style="font-size:13px;font-weight:500;color:rgba(244,241,234,.88)">anyone running Old Saltmoor tonight?</span></div>
-    <div class="r"><span class="m">Author / value · 11/800 italic</span><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#9b6cff">MOSSVANE</span></div>
+    <div class="r"><span class="m">Author (others) · 11/800 italic dim cream</span><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(244,241,234,.6)">MOSSVANE</span></div>
+    <div class="r"><span class="m">Author (you) / value · 11/800 italic accent</span><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#4aa8ff">RIN</span></div>
     <div class="r"><span class="m">Meta / time · 10/600 — the floor</span><span style="font-size:10px;font-weight:600;color:#7C7295">18m ago · 21:29</span></div>
   </div>
   <div class="leg" style="max-width:560px">
     <span><i>Type ladder at phone scale.</i> 10px/600 is the readability floor on the 512px screen; nothing below it.</span>
-    <span><i>Alignment is by construction</i> — explicit-px boxes, computed margins, sibling stacking. No text-align, no flex-grow, ever (device doctrine).</span>
-    <span><i>Q backs out to the home grid</i> from every app (Esc too); Slot8 closes the phone outright. In-app taps go through the backdrop hit-router — every control below is annotated with its hit id.</span>
+    <span><i>Alignment is by construction</i> — explicit-px boxes, computed margins, sibling stacking. No text-align, no flex-grow WIDTH, no <i>margin-left: auto</i> (device doctrine). Scrollers' <i>flex: 1 1 0; min-height: 0</i> height-grow is the sanctioned exception.</span>
+    <span><i>Q backs out to the home grid</i> from every app (Esc too); Slot8 closes the phone outright. In-app taps go through the backdrop hit-router — every control below is annotated with its hit id. Apps are tap + hotkey; the living ring is hidden inside them.</span>
+    <span><i>Press feedback is router-stamped</i> — a one-shot <i>pressed</i> class (~120ms) brightens dark slabs / dims accent controls. :hover/:active never fire in the device.</span>
     <span><i>Scroll:</i> wheel over the phone scrolls the ACTIVE app's list (build fix: today only chat's list is wired).</span>
   </div>
 </div>
@@ -170,7 +251,10 @@ its accent blooms from the icon out to fill the screen → the bloom settles int
 bloom back into the tile. <b>Lineage:</b> this is the launcher's original liquid-expansion launch (the Liquid-flag era),
 retired for full-screen destinations when the accent swipe won — coming home to the in-phone apps at the scale it
 always wanted. Engine form: pre-mounted circle + bg layer, one-shot class-toggle transitions (~240ms) — never
-ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fallback).</div>
+ongoing transforms in the device. <b>The clip:</b> on the real screen the 54px circle needs ~scale(30) and spills far past
+the bezel — PRIMARY clip = <b>mask-image</b> rect on .pl-surface (the menu featured-card recipe; squared corners for ~200ms are
+accepted), FALLBACK = opacity cross-fade of the two pre-sized layers. The screen never gains overflow:hidden. Full layer
+laws in ENGINE NOTES.</div>
 <div class="wrap">
   <div>
     <div class="cap" style="margin-bottom:6px">Live — hover the tile</div>
@@ -187,7 +271,7 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
         <div style="margin-top:18px;display:flex;flex-direction:column;align-items:center">
           <span style="font-size:8px;font-weight:800;letter-spacing:1.6px;color:#c26bff">CHILL FM</span>
           <span style="margin-top:4px;font-style:italic;font-size:14px;font-weight:900;color:#fff">Fireside Tales</span>
-          <div style="margin-top:12px;width:180px;height:4px;border-radius:2px;background:#221B33"><div style="width:78px;height:4px;border-radius:2px;background:#c26bff"></div></div>
+          <div style="margin-top:12px;width:180px;height:4px;border-radius:2px;background:#412859"><div style="width:78px;height:4px;border-radius:2px;background:#c26bff"></div></div>
         </div>
       </div>
       <div class="hint">HOVER = TAP · Q REVERSES</div>
@@ -213,10 +297,10 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
           <div class="sbt" style="left:64px;top:114px;background:#d9a054;opacity:.35"></div><div class="sbt" style="left:112px;top:114px;background:#4aa8ff;opacity:.35"></div>
           <div style="position:absolute;left:-62px;top:84px;width:196px;height:196px;border-radius:50%;background:#c26bff"></div>
         </div>
-        <div class="sbc">2 · BLOOM ~240MS<br>accent circle scales once<br>(one-shot class toggle)</div>
+        <div class="sbc">2 · BLOOM ~240MS<br>circle scales once, mask-clipped<br>to the screen (corners square briefly)</div>
       </div>
       <div>
-        <div class="sbf" style="background:linear-gradient(rgba(194,107,255,.11),rgba(194,107,255,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
+        <div class="sbf" style="background:linear-gradient(to bottom,rgba(194,107,255,.11),rgba(194,107,255,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
           <div style="position:absolute;left:12px;top:14px;display:flex;align-items:center">
             <div style="width:20px;height:18px;border-radius:6px;background:#1a1c23;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#9b6cff">‹</div>
             <div style="width:18px;height:18px;border-radius:5px;background:#c26bff;margin-left:6px"></div>
@@ -225,7 +309,7 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
           <div style="position:absolute;left:0;right:0;top:74px;display:flex;flex-direction:column;align-items:center">
             <span style="font-size:7px;font-weight:800;letter-spacing:1.4px;color:#c26bff">CHILL FM</span>
             <span style="margin-top:3px;font-style:italic;font-size:12px;font-weight:900;color:#fff">Fireside Tales</span>
-            <div style="margin-top:10px;width:110px;height:3px;border-radius:2px;background:#221B33"><div style="width:48px;height:3px;border-radius:2px;background:#c26bff"></div></div>
+            <div style="margin-top:10px;width:110px;height:3px;border-radius:2px;background:#412859"><div style="width:48px;height:3px;border-radius:2px;background:#c26bff"></div></div>
           </div>
         </div>
         <div class="sbc">3 · LANDED<br>bloom settles to derived bg #251935<br>full accent → header + controls</div>
@@ -239,69 +323,71 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
 <div class="wrap">
   <div class="phone">
     <div class="bez"><div class="spk"></div><div class="cam"></div></div>
-    <div class="scr" style="height:700px;background:linear-gradient(rgba(74,168,255,.10),rgba(74,168,255,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
+    <div class="scr" style="height:700px;background:linear-gradient(to bottom,rgba(74,168,255,.10),rgba(74,168,255,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
       <div class="st"><span class="clock">21:47</span><div class="sp"></div><div class="sig"><i style="height:6px"></i><i style="height:9px"></i><i style="height:12px"></i><i style="height:15px;opacity:.3"></i></div><div class="bat"><i></i></div><span class="tn">RIN</span><div class="ava"></div></div>
+      <!-- header: 40 + 12 + 34 + 12 + title 90 — no util slot on chat -->
       <div class="ah">
-        <div class="back">‹</div><span class="qcap">Q</span>
+        <div class="back">‹</div>
         <div class="aglyph" style="background:#4aa8ff"><svg viewBox="0 0 24 24" fill="#071523"><path d="M12 3C7 3 3 6.6 3 11c0 2.2 1 4.1 2.7 5.5L5 21l4.1-2.1c.9.2 1.9.4 2.9.4 5 0 9-3.6 9-8.3S17 3 12 3z"/></svg></div>
-        <span class="atitle" style="color:#4aa8ff">CHAT</span>
+        <span class="atitle" style="width:90px;color:#4aa8ff">CHAT</span>
       </div>
-      <!-- channel bar: 3 × 164 + 2 × 10 = 512 -->
+      <!-- channel bar: 3 × 164 + 2 × 10 = 512. Lit = .pl-chan.on (accent fill + dark ink); off = row tone -->
       <div style="display:flex;gap:10px;margin-bottom:10px">
-        <div style="position:relative;width:164px;height:30px;border-radius:8px;background:#4aa8ff;display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:#071523">GLOBAL</span></div>
-        <div style="position:relative;width:164px;height:30px;border-radius:8px;background:#1a1c23;display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:rgba(255,255,255,.6)">GUILD</span>
+        <div style="position:relative;width:164px;height:30px;border-radius:10px;background:#4aa8ff;display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:#071523">GLOBAL</span></div>
+        <div style="position:relative;width:164px;height:30px;border-radius:10px;background:#222a45;display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:rgba(255,255,255,.6)">GUILD</span>
           <div style="position:absolute;top:-4px;right:-3px;width:16px;height:16px;border-radius:8px;background:#4aa8ff;border:2px solid #14101f;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:#071523">2</div>
         </div>
-        <div style="width:164px;height:30px;border-radius:8px;background:#1a1c23;display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:rgba(255,255,255,.6)">TRADE</span></div>
+        <div style="width:164px;height:30px;border-radius:10px;background:#222a45;display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:rgba(255,255,255,.6)">TRADE</span></div>
       </div>
-      <!-- message scroll -->
+      <!-- message scroll — author box 200 · +244 computed · time box 48 (inner 492) -->
       <div class="rows" style="flex:1">
-        <div style="width:488px;padding:6px 10px;border-radius:8px">
-          <div style="display:flex;align-items:baseline"><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#9b6cff">MOSSVANE</span><span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">21:29</span></div>
+        <div style="width:512px;padding:6px 10px;border-radius:12px">
+          <div style="display:flex;align-items:baseline"><span style="width:200px;font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(244,241,234,.6);white-space:nowrap">MOSSVANE</span><span class="meta" style="margin-left:244px">21:29</span></div>
           <span style="font-size:13px;font-weight:500;color:rgba(244,241,234,.88);line-height:17px">anyone running Old Saltmoor tonight?</span>
         </div>
-        <div style="width:488px;padding:6px 10px;border-radius:8px;background:rgba(74,168,255,.10)">
-          <div style="display:flex;align-items:baseline"><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#4aa8ff">RIN</span><span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">21:31</span></div>
+        <div style="width:512px;padding:6px 10px;border-radius:12px;background:rgba(74,168,255,.10)">
+          <div style="display:flex;align-items:baseline"><span style="width:200px;font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#4aa8ff;white-space:nowrap">RIN</span><span class="meta" style="margin-left:244px">21:31</span></div>
           <span style="font-size:13px;font-weight:500;color:rgba(244,241,234,.88);line-height:17px">give me 10, finishing a hard run</span>
         </div>
-        <!-- beast showcase embed -->
-        <div style="width:488px;padding:6px 10px;border-radius:8px">
-          <div style="display:flex;align-items:baseline"><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#9b6cff">KESTREL</span><span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">21:33</span></div>
-          <div style="position:relative;margin-top:5px;width:468px;height:58px;border-radius:9px;background:#161022;border:1px solid #2A2340;display:flex;align-items:center;overflow:hidden">
-            <div style="width:4px;height:58px;background:#4AA8FF"></div>
-            <div style="width:44px;height:44px;margin:0 10px;border-radius:8px;background:#1E3A8A;display:flex;align-items:center;justify-content:center;font-size:20px">🐟</div>
-            <div>
+        <!-- beast showcase embed — row-flex 56: edge 4 (in-flow first child, own left radii) · tile 34 · text 300 · +20 · TAP box 100 -->
+        <div style="width:512px;padding:6px 10px;border-radius:12px">
+          <div style="display:flex;align-items:baseline"><span style="width:200px;font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(244,241,234,.6);white-space:nowrap">KESTREL</span><span class="meta" style="margin-left:244px">21:33</span></div>
+          <div style="margin-top:5px;width:492px;height:56px;border-radius:12px;background:#222a45;display:flex;align-items:center">
+            <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#4AA8FF;flex:0 0 auto"></div>
+            <div class="tile" style="margin:0 10px;font-size:18px">🐟</div>
+            <div style="width:300px">
               <span style="display:block;font-style:italic;font-size:13px;font-weight:900;color:#EFEAF7">WISPRYN</span>
               <span style="font-size:10px;font-weight:700;color:#A79DBE">LV 24 · PWR 812 · <span style="color:#3b82f6">RARE</span></span>
             </div>
-            <span style="margin-left:auto;margin-right:12px;font-size:9px;font-weight:800;letter-spacing:1px;color:#7C7295">TAP TO VIEW ›</span>
+            <span style="width:100px;margin-left:20px;font-size:9px;font-weight:800;letter-spacing:1px;color:#7C7295;white-space:nowrap">TAP TO VIEW ›</span>
           </div>
         </div>
-        <div style="width:488px;padding:6px 10px;border-radius:8px">
-          <div style="display:flex;align-items:baseline"><span style="font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:#9b6cff">VEX</span><span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">21:34</span></div>
+        <div style="width:512px;padding:6px 10px;border-radius:12px">
+          <div style="display:flex;align-items:baseline"><span style="width:200px;font-style:italic;font-size:11px;font-weight:800;letter-spacing:.8px;color:rgba(244,241,234,.6);white-space:nowrap">VEX</span><span class="meta" style="margin-left:244px">21:34</span></div>
           <span style="font-size:13px;font-weight:500;color:rgba(244,241,234,.88);line-height:17px">clean contract. ok inviting both</span>
         </div>
       </div>
-      <!-- input row -->
+      <!-- input row: 426 + 8 + 78 = 512. Input = darker fill, NO border; focus = violet ring (2px #9b6cff border value-swapped from rgba(0,0,0,0)) -->
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
-        <div style="width:424px;height:38px;border-radius:10px;background:#0d0a16;border:1px solid #2A2340;display:flex;align-items:center;padding:0 12px"><span style="font-size:12px;font-weight:500;color:#5E5678">Message global…</span></div>
-        <div style="width:78px;height:38px;border-radius:10px;background:#4aa8ff;display:flex;align-items:center;justify-content:center"><span style="font-style:italic;font-size:12px;font-weight:900;letter-spacing:1px;color:#071523">SEND</span></div>
+        <div style="width:426px;height:38px;border-radius:16px;background:#0d0a16;border:2px solid rgba(0,0,0,0);display:flex;align-items:center;padding:0 12px"><span style="font-size:12px;font-weight:500;color:#5E5678">Message global…</span></div>
+        <div style="width:78px;height:38px;border-radius:16px;background:#4aa8ff;display:flex;align-items:center;justify-content:center"><span style="font-style:italic;font-size:12px;font-weight:900;letter-spacing:1px;color:#071523">SEND</span></div>
       </div>
       <!-- callouts -->
-      <div class="co" style="background:#4aa8ff;left:186px;top:112px">1</div>
-      <div class="co" style="background:#4aa8ff;left:352px;top:96px">2</div>
-      <div class="co" style="background:#4aa8ff;left:482px;top:322px">3</div>
-      <div class="co" style="background:#4aa8ff;left:482px;top:562px">4</div>
+      <div class="co" style="background:#4aa8ff;left:186px;top:118px">1</div>
+      <div class="co" style="background:#4aa8ff;left:352px;top:102px">2</div>
+      <div class="co" style="background:#4aa8ff;left:506px;top:306px">3</div>
+      <div class="co" style="background:#4aa8ff;left:506px;top:652px">4</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
   <div>
     <div class="leg">
-      <span><b style="background:#4aa8ff">1</b><i>Full-width channel bar</i> — 3 × 164px segments (sums 512 exactly). Active = accent fill + dark ink. Tap = hit-chan-*.</span>
+      <span><b style="background:#4aa8ff">1</b><i>Full-width channel bar</i> — 3 × 164px segments (sums 512 exactly). Lit = the shipped <i>.pl-chan.on</i> recipe (accent fill + dark ink); off = row tone #222a45. Tap = hit-chan-*.</span>
       <span><b style="background:#4aa8ff">2</b><i>Per-channel unread dot</i> — count of arrivals in channels you're not looking at; clears on switch. New field → BuildHash.</span>
-      <span><b style="background:#4aa8ff">3</b><i>Showcase embeds render on the phone</i> — beast card (element edge + sprite + LV/PWR/rarity) and tamer card. Tap (hit-embed) opens the existing full-screen showcase popup OVER the phone.</span>
-      <span><b style="background:#4aa8ff">4</b><i>Input + SEND</i> (hit-input focuses, hit-send sends, Enter sends). Placeholder names the channel — plain words. While typing, all phone keys stand down (IsChatFocused gate, already shipped).</span>
-      <span>Timestamps use the shipped <i>ChatMessage.FormattedTime</i>. Own messages keep the accent-tint row.</span>
+      <span><b style="background:#4aa8ff">3</b><i>Showcase embeds render on the phone</i> — beast card (4px element left edge as in-flow first child + neutral 34px tile holding the beast sprite as a pixelated <i>&lt;img&gt;</i> + LV/PWR/rarity) and tamer card. Fill + edge only, no border. Tap (hit-embed) opens the existing full-screen showcase popup OVER the phone.</span>
+      <span><b style="background:#4aa8ff">4</b><i>Input + SEND</i> (hit-input focuses, hit-send sends, Enter sends). Input is the darker fill #0d0a16 with no border; focus = the violet ring only (2px #9b6cff, value-swapped from a zero-alpha border so geometry never shifts). Placeholder names the channel — plain words. While typing, all phone keys stand down (IsChatFocused gate, already shipped).</span>
+      <span><i>Names:</i> other players' names are dim cream rgba(244,241,234,.6); YOUR name is the app accent #4aa8ff (own messages also keep the accent-tint row). No violet in the log — violet is the cursor. Timestamps use the shipped <i>ChatMessage.FormattedTime</i> in a 48px meta box.</span>
+      <span><i>Empty states:</i> no messages at all → paw watermark + "NOTHING YET" + "Say hi — global is everyone online."; a channel with no messages since you joined → "GUILD IS QUIET" + "Messages land here as they arrive." Same recipe as Effects' empty state; never a bare string in a void.</span>
       <span><i>Derived bg #191F35</i> — the landed state of the blue bloom (accent 10% over #14101F).</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">ENTER</span><span class="klab">send</span><span class="kcap">WHEEL</span><span class="klab">scroll log</span></div>
@@ -320,20 +406,20 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
 <div class="wrap">
   <div class="phone">
     <div class="bez"><div class="spk"></div><div class="cam"></div></div>
-    <div class="scr" style="height:700px;background:linear-gradient(rgba(194,107,255,.11),rgba(194,107,255,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
+    <div class="scr" style="height:700px;background:linear-gradient(to bottom,rgba(194,107,255,.11),rgba(194,107,255,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
       <div class="st"><span class="clock">21:47</span><div class="sp"></div><div class="sig"><i style="height:6px"></i><i style="height:9px"></i><i style="height:12px"></i><i style="height:15px;opacity:.3"></i></div><div class="bat"><i></i></div><span class="tn">RIN</span><div class="ava"></div></div>
+      <!-- header: 40 + 12 + 34 + 12 + title 110 + 204 computed + station chip 100 = 512 -->
       <div class="ah">
-        <div class="back">‹</div><span class="qcap">Q</span>
+        <div class="back">‹</div>
         <div class="aglyph" style="background:#c26bff"><svg viewBox="0 0 24 24" fill="none" stroke="#1d0433" stroke-width="2.4"><circle cx="12" cy="12" r="2"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg></div>
-        <span class="atitle" style="color:#c26bff">RADIO</span>
-        <div class="autil" style="display:flex;align-items:center;gap:6px">
-          <span style="font-size:9px;font-weight:800;letter-spacing:1px;color:#7C7295">STATION</span>
-          <div style="height:24px;padding:0 10px;border-radius:7px;background:#1a1c23;border:1px solid rgba(194,107,255,.4);display:flex;align-items:center"><span style="font-size:10px;font-weight:800;letter-spacing:1px;color:#c26bff">CHILL FM ›</span></div>
+        <span class="atitle" style="width:110px;color:#c26bff">RADIO</span>
+        <div class="autil" style="width:100px;margin-left:204px">
+          <div class="uchip" style="width:100px;background:#c26bff;color:#1d0433">CHILL FM ›</div>
         </div>
       </div>
       <!-- now playing hero -->
       <div style="display:flex;flex-direction:column;align-items:center;margin-top:34px">
-        <!-- visualizer (baked animated webp) -->
+        <!-- visualizer (baked LOSSLESS animated webp) -->
         <div style="display:flex;align-items:flex-end;gap:5px;height:46px;margin-bottom:22px;opacity:.85">
           <i style="width:7px;height:12px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:30px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:20px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:42px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:26px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:38px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:16px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:34px;background:#c26bff;border-radius:3px;display:block"></i><i style="width:7px;height:10px;background:#c26bff;border-radius:3px;display:block"></i>
         </div>
@@ -341,49 +427,49 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
         <span style="margin-top:8px;font-style:italic;font-size:24px;font-weight:900;color:#fff">Fireside Tales</span>
         <span style="margin-top:6px;font-size:10px;font-weight:600;color:#7C7295">Track 3 of 5 · switches to BATTLE FM in battle</span>
       </div>
-      <!-- progress -->
+      <!-- progress: track 476 · time boxes 48 + 380 computed + 48 -->
       <div style="margin:26px 18px 0">
-        <div style="width:476px;height:6px;border-radius:3px;background:#221B33"><div style="width:204px;height:6px;border-radius:3px;background:#c26bff"></div></div>
-        <div style="display:flex;margin-top:6px"><span style="font-size:10px;font-weight:700;color:#A79DBE">1:12</span><span style="margin-left:auto;font-size:10px;font-weight:700;color:#7C7295">2:46</span></div>
+        <div style="width:476px;height:6px;border-radius:3px;background:#412859"><div style="width:204px;height:6px;border-radius:3px;background:#c26bff"></div></div>
+        <div style="display:flex;margin-top:6px"><span style="width:48px;font-size:10px;font-weight:700;color:#A79DBE">1:12</span><span style="width:48px;margin-left:380px;font-size:10px;font-weight:700;color:#7C7295">2:46</span></div>
       </div>
-      <!-- transport -->
+      <!-- transport: 64 + 54 + 72 + 54 + 64 + 4×22 = 396, centered (all children explicit) -->
       <div style="display:flex;align-items:center;justify-content:center;gap:22px;margin-top:26px">
-        <div style="width:48px;height:48px;border-radius:14px;background:#1a1c23;display:flex;align-items:center;justify-content:center"><span style="color:#7C7295;font-size:13px;font-weight:800">SHFL</span></div>
-        <div style="width:54px;height:54px;border-radius:16px;background:#1a1c23;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f4f1ea"><path d="M6 5h2v14H6zM20 5l-11 7 11 7z"/></svg></div>
-        <div style="width:72px;height:72px;border-radius:21px;background:#c26bff;display:flex;align-items:center;justify-content:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="#1d0433"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg></div>
-        <div style="width:54px;height:54px;border-radius:16px;background:#1a1c23;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f4f1ea"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg></div>
-        <div style="width:48px;height:48px;border-radius:14px;background:#1a1c23;border:1px solid rgba(194,107,255,.55);display:flex;align-items:center;justify-content:center"><span style="color:#c26bff;font-size:13px;font-weight:800">RPT</span></div>
+        <div style="width:64px;height:48px;border-radius:16px;background:#31224a;display:flex;align-items:center;justify-content:center"><span style="color:#7C7295;font-size:10px;font-weight:800;letter-spacing:1px">SHUFFLE</span></div>
+        <div style="width:54px;height:54px;border-radius:16px;background:#31224a;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f4f1ea"><path d="M6 5h2v14H6zM20 5l-11 7 11 7z"/></svg></div>
+        <div style="width:72px;height:72px;border-radius:20px;background:#c26bff;display:flex;align-items:center;justify-content:center"><svg width="26" height="26" viewBox="0 0 24 24" fill="#1d0433"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg></div>
+        <div style="width:54px;height:54px;border-radius:16px;background:#31224a;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f4f1ea"><path d="M16 5h2v14h-2zM4 5l11 7-11 7z"/></svg></div>
+        <div style="width:64px;height:48px;border-radius:16px;background:#c26bff;display:flex;align-items:center;justify-content:center"><span style="color:#1d0433;font-size:10px;font-weight:800;letter-spacing:1px">REPEAT</span></div>
       </div>
-      <!-- volume -->
+      <!-- volume: kicker chip 96 + 28 computed + 5×64 + 4×8 = 476 -->
       <div style="margin:34px 18px 0">
         <div style="display:flex;align-items:center">
-          <span style="font-size:11px;font-weight:800;letter-spacing:2px;color:#7C7295">VOLUME</span>
-          <div style="display:flex;gap:8px;margin-left:auto">
-            <div style="width:64px;height:16px;border-radius:5px;background:#c26bff"></div>
-            <div style="width:64px;height:16px;border-radius:5px;background:#c26bff"></div>
-            <div style="width:64px;height:16px;border-radius:5px;background:#221B33"></div>
-            <div style="width:64px;height:16px;border-radius:5px;background:#221B33"></div>
-            <div style="width:64px;height:16px;border-radius:5px;background:#221B33"></div>
+          <div class="sect" style="width:96px;margin:0;justify-content:center;padding:0;background:#c26bff;color:#1d0433"><span>VOLUME</span></div>
+          <div style="display:flex;gap:8px;margin-left:28px">
+            <div style="width:64px;height:16px;border-radius:10px;background:#c26bff"></div>
+            <div style="width:64px;height:16px;border-radius:10px;background:#c26bff"></div>
+            <div style="width:64px;height:16px;border-radius:10px;background:#412859"></div>
+            <div style="width:64px;height:16px;border-radius:10px;background:#412859"></div>
+            <div style="width:64px;height:16px;border-radius:10px;background:#412859"></div>
           </div>
         </div>
       </div>
       <!-- callouts -->
-      <div class="co" style="background:#c26bff;right:6px;top:96px">1</div>
-      <div class="co" style="background:#c26bff;left:246px;top:150px">2</div>
-      <div class="co" style="background:#c26bff;left:6px;top:388px">3</div>
-      <div class="co" style="background:#c26bff;left:246px;top:452px">4</div>
-      <div class="co" style="background:#c26bff;right:6px;top:560px">5</div>
+      <div class="co" style="background:#c26bff;right:6px;top:102px">1</div>
+      <div class="co" style="background:#c26bff;left:258px;top:156px">2</div>
+      <div class="co" style="background:#c26bff;left:6px;top:306px">3</div>
+      <div class="co" style="background:#c26bff;left:258px;top:386px">4</div>
+      <div class="co" style="background:#c26bff;right:6px;top:476px">5</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
   <div>
     <div class="leg">
-      <span><b style="background:#c26bff">1</b><i>Station chip</i> (hit-radio-station) — taps cycle NextStation (Chill FM ↔ Battle FM). The caption line states the auto-switch honestly.</span>
-      <span><b style="background:#c26bff">2</b><i>Visualizer = baked animated WebP</i>, ~476×46, purple bars on transparent. Plays only while IsPlaying: SRC value-swap to a single-frame static (the launcher glyph pattern — verified engine-legal, no CSS animation, no per-frame writes).</span>
-      <span><b style="background:#c26bff">3</b><i>Progress bar</i> — fill width in PX from TrackPosition/TrackDuration, refreshed 1 Hz via a cached string (ClockText pattern). Not seekable — no drag through the hit router; plain display.</span>
-      <span><b style="background:#c26bff">4</b><i>Transport</i> — prev/play/next (shipped hits) + SHFL/RPT toggles (hit-radio-shuffle / -repeat; lit = accent border + accent text). Plain words on the toggles, not icons-only.</span>
-      <span><b style="background:#c26bff">5</b><i>Stepped volume</i> — 5 × 64px tap segments (hit-vol-1..5 → SetVolume 0.2–1.0). A drag slider through the inverse-projection router is a project; steps are free and readable.</span>
-      <span><i>Derived bg #251935</i> — the landed state of the purple bloom (accent 11% over #14101F).</span>
+      <span><b style="background:#c26bff">1</b><i>Station chip</i> (hit-radio-station) — the header utility slot's chip recipe: solid accent fill + dark ink, 100 × 24, r10, no border. Taps cycle NextStation (Chill FM ↔ Battle FM). The STATION word is dropped — the hero's kicker already names the station; the caption line states the auto-switch honestly.</span>
+      <span><b style="background:#c26bff">2</b><i>Visualizer = baked animated WebP</i>, ~476×46, purple bars on transparent — <i>LOSSLESS</i> (lossy drops alpha in-engine). Plays only while IsPlaying: SRC value-swap to a single-frame static (the launcher glyph pattern — verified engine-legal, no CSS animation, no per-frame writes). This is the apps' one ambient flourish.</span>
+      <span><b style="background:#c26bff">3</b><i>Progress bar</i> — fill width in PX from TrackPosition/TrackDuration, refreshed 1 Hz via a cached string (ClockText pattern). Track = the radio track tone #412859. Not seekable — no drag through the hit router; plain display.</span>
+      <span><b style="background:#c26bff">4</b><i>Transport</i> — prev/play/next (shipped hits) + SHUFFLE / REPEAT toggles (hit-radio-shuffle / -repeat; 64px wide at 10px, plain words — or a lucide icon + the word). Lit = the <i>.pl-chan.on</i> recipe: accent FILL + dark ink; off = row tone #31224a + dim text. Play is the 20px-radius hero; the rest are 16.</span>
+      <span><b style="background:#c26bff">5</b><i>Stepped volume</i> — VOLUME kicker chip (96px) + 5 × 64px tap segments (hit-vol-1..5 → SetVolume 0.2–1.0), unlit segments in the track tone. A drag slider through the inverse-projection router is a project; steps are free and readable.</span>
+      <span><i>Derived bg #251935</i> — the landed state of the purple bloom (accent 11% over #14101F). Rows/idle buttons #31224a, tracks #412859.</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">SPACE</span><span class="klab">play / pause</span><span class="kcap">A / D</span><span class="klab">prev / next track</span></div>
     <div class="chg">
@@ -401,76 +487,79 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
 <div class="wrap">
   <div class="phone">
     <div class="bez"><div class="spk"></div><div class="cam"></div></div>
-    <div class="scr" style="height:700px;background:linear-gradient(rgba(247,224,36,.08),rgba(247,224,36,.04)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
+    <div class="scr" style="height:700px;background:linear-gradient(to bottom,rgba(247,224,36,.08),rgba(247,224,36,.04)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
       <div class="st"><span class="clock">21:47</span><div class="sp"></div><div class="sig"><i style="height:6px"></i><i style="height:9px"></i><i style="height:12px"></i><i style="height:15px;opacity:.3"></i></div><div class="bat"><i></i></div><span class="tn">RIN</span><div class="ava"></div></div>
+      <!-- header: 40 + 12 + 34 + 12 + title 140 + 198 computed + stamp 76 = 512 -->
       <div class="ah">
-        <div class="back">‹</div><span class="qcap">Q</span>
+        <div class="back">‹</div>
         <div class="aglyph" style="background:#f7e024"><svg viewBox="0 0 24 24" fill="#241a00"><path d="M12 2l1.9 6.1L20 10l-6.1 1.9L12 18l-1.9-6.1L4 10l6.1-1.9z"/><circle cx="19" cy="17" r="2"/><circle cx="5" cy="19" r="1.5"/></svg></div>
-        <span class="atitle" style="color:#f7e024">EFFECTS</span>
-        <div class="autil"><span style="font-size:10px;font-weight:800;letter-spacing:1px;color:#7C7295">4 ACTIVE</span></div>
+        <span class="atitle" style="width:140px;color:#f7e024">EFFECTS</span>
+        <div class="autil" style="width:76px;margin-left:198px"><div class="stamp" style="width:76px;background:#f7e024;color:#241a00">4 ACTIVE</div></div>
       </div>
-      <span class="sect">TIMED BOOSTS</span>
+      <div class="sect" style="background:#f7e024;color:#241a00"><span>TIMED BOOSTS</span></div>
+      <!-- rows: column-flex 56 = content 53 + strip holder 3. Inner 484: tile 46 · text 300 · +66 computed · value 72 -->
       <div class="rows">
-        <div style="position:relative;width:488px;height:56px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:0 14px;overflow:hidden">
-          <div style="width:34px;height:34px;border-radius:9px;background:#f7e024;display:flex;align-items:center;justify-content:center;margin-right:12px"><span style="font-size:11px;font-weight:900;color:#241a00">XP</span></div>
-          <div><span style="display:block;font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">XP BOOST ×2</span><span style="font-size:10px;font-weight:600;color:#7C7295">server boost</span></div>
-          <span style="margin-left:auto;font-style:italic;font-size:13px;font-weight:800;color:#f7e024">42m 10s</span>
-          <div style="position:absolute;left:0;bottom:0;width:488px;height:3px;background:#221B33"></div>
-          <div style="position:absolute;left:0;bottom:0;width:342px;height:3px;background:#f7e024"></div>
+        <div class="row56" style="background:#332c22">
+          <div class="rc">
+            <div class="tile"><span style="font-size:11px;font-weight:900;color:#f7e024">XP</span></div>
+            <div style="width:300px"><span style="display:block;font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">XP BOOST ×2</span><span style="font-size:10px;font-weight:600;color:#7C7295">server boost</span></div>
+            <span style="width:72px;margin-left:66px;font-style:italic;font-size:13px;font-weight:800;color:#f7e024;white-space:nowrap">42m 10s</span>
+          </div>
+          <div class="sh" style="background:#413a20"><i style="width:359px;background:#f7e024"></i></div>
         </div>
-        <div style="position:relative;width:488px;height:56px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:0 14px;overflow:hidden">
-          <div style="width:34px;height:34px;border-radius:9px;background:#f7e024;display:flex;align-items:center;justify-content:center;margin-right:12px"><span style="font-size:11px;font-weight:900;color:#241a00">G</span></div>
-          <div><span style="display:block;font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">GOLD BOOST ×1.5</span><span style="font-size:10px;font-weight:600;color:#7C7295">server boost</span></div>
-          <span style="margin-left:auto;font-style:italic;font-size:13px;font-weight:800;color:#f7e024">1h 12m</span>
-          <div style="position:absolute;left:0;bottom:0;width:488px;height:3px;background:#221B33"></div>
-          <div style="position:absolute;left:0;bottom:0;width:436px;height:3px;background:#f7e024"></div>
+        <div class="row56" style="background:#332c22">
+          <div class="rc">
+            <div class="tile"><span style="font-size:11px;font-weight:900;color:#f7e024">G</span></div>
+            <div style="width:300px"><span style="display:block;font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">GOLD BOOST ×1.5</span><span style="font-size:10px;font-weight:600;color:#7C7295">server boost</span></div>
+            <span style="width:72px;margin-left:66px;font-style:italic;font-size:13px;font-weight:800;color:#f7e024;white-space:nowrap">1h 12m</span>
+          </div>
+          <div class="sh" style="background:#413a20"><i style="width:457px;background:#f7e024"></i></div>
         </div>
       </div>
-      <span class="sect" style="margin-top:14px">SKILL BONUSES · ALWAYS ON</span>
+      <div class="sect" style="margin-top:14px;background:#f7e024;color:#241a00"><span>SKILL BONUSES · ALWAYS ON</span></div>
       <div class="rows">
-        <div style="width:488px;height:48px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:0 14px">
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px"><span style="font-size:13px">👁</span></div>
-          <span style="font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">KEEN EYE</span>
-          <span style="margin-left:auto;font-size:11px;font-weight:800;letter-spacing:1px;color:#A78BFA">RANK 3</span>
+        <div style="width:512px;height:56px;border-radius:12px;background:#332c22;display:flex;align-items:center;padding:0 14px">
+          <div class="tile"><span style="font-size:13px">👁</span></div>
+          <span style="width:300px;font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">KEEN EYE</span>
+          <span style="width:72px;margin-left:66px;font-size:11px;font-weight:800;letter-spacing:1px;color:#F4F1EA;white-space:nowrap">RANK 3</span>
         </div>
-        <div style="width:488px;height:48px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:0 14px">
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px"><span style="font-size:13px">🐾</span></div>
-          <span style="font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">PACK LEADER</span>
-          <span style="margin-left:auto;font-size:11px;font-weight:800;letter-spacing:1px;color:#A78BFA">RANK 1</span>
+        <div style="width:512px;height:56px;border-radius:12px;background:#332c22;display:flex;align-items:center;padding:0 14px">
+          <div class="tile"><span style="font-size:13px">🐾</span></div>
+          <span style="width:300px;font-size:13px;font-weight:700;color:rgba(255,255,255,.9)">PACK LEADER</span>
+          <span style="width:72px;margin-left:66px;font-size:11px;font-weight:800;letter-spacing:1px;color:#F4F1EA;white-space:nowrap">RANK 1</span>
         </div>
       </div>
-      <!-- empty state (drawn in-place as the alternate) -->
+      <!-- empty state (drawn in-place as the alternate) — no divider: the gap is the separation -->
       <div style="margin-top:auto;display:flex;flex-direction:column;align-items:center;padding-bottom:24px;opacity:.9">
-        <div style="width:488px;height:1px;background:#262038;margin-bottom:18px"></div>
         <span style="font-size:9px;font-weight:800;letter-spacing:2px;color:#5E5678;margin-bottom:12px">EMPTY STATE (WHEN NOTHING IS ACTIVE)</span>
         <svg width="44" height="44" viewBox="0 0 24 24" fill="#221B33"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg>
         <span style="margin-top:10px;font-size:13px;font-weight:700;color:#7C7295">NO ACTIVE EFFECTS</span>
         <span style="margin-top:4px;font-size:11px;font-weight:500;color:#5E5678">Boosts from the shop and your skill bonuses show up here.</span>
       </div>
       <!-- callouts -->
-      <div class="co" style="background:#f7e024;left:6px;top:150px">1</div>
-      <div class="co" style="background:#f7e024;left:482px;top:186px">2</div>
-      <div class="co" style="background:#f7e024;left:6px;top:322px">3</div>
-      <div class="co" style="background:#f7e024;left:482px;top:560px">4</div>
+      <div class="co" style="background:#f7e024;left:6px;top:110px">1</div>
+      <div class="co" style="background:#f7e024;left:506px;top:186px">2</div>
+      <div class="co" style="background:#f7e024;left:6px;top:330px">3</div>
+      <div class="co" style="background:#f7e024;left:506px;top:566px">4</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
   <div>
     <div class="leg">
-      <span><b style="background:#f7e024;color:#241a00">1</b><i>Two sections, plain names</i> — TIMED BOOSTS (things that end) vs SKILL BONUSES · ALWAYS ON (things that don't). Today they render as one undifferentiated list.</span>
-      <span><b style="background:#f7e024;color:#241a00">2</b><i>Time remaining + depletion strip</i> — the 3px bottom bar drains with TimeRemaining. PX widths, 1 Hz cached refresh (ClockText pattern). Yellow wears DARK ink (#241a00) on every accent chip — the shop-gold law.</span>
-      <span><b style="background:#f7e024;color:#241a00">3</b><i>Skill bonuses stay quiet</i> — neutral tile, violet RANK value (skills are progression, violet family). No timers, no bars: nothing to watch.</span>
-      <span><b style="background:#f7e024;color:#241a00">4</b><i>Empty state</i> — dark paw watermark (WebP asset — no CSS pattern) + plain sentence saying where effects come from. Never a bare "NO ACTIVE EFFECTS" string in a void.</span>
+      <span><b style="background:#f7e024;color:#241a00">1</b><i>Two sections, plain names</i> — TIMED BOOSTS (things that end) vs SKILL BONUSES · ALWAYS ON (things that don't), each a skewX(−8°) yellow kicker chip with dark ink. Today they render as one undifferentiated list.</span>
+      <span><b style="background:#f7e024;color:#241a00">2</b><i>Time remaining + depletion strip</i> — rows are column-flex at a fixed 56px: 53px content + a 3px strip holder (track tone #413a20, own bottom radii) with the fill as an explicit-px child. PX widths, 1 Hz cached refresh (ClockText pattern). No overflow:hidden anywhere. Yellow wears DARK ink (#241a00) on every accent chip — the shop-gold law; the boost glyph sits in yellow INK on the neutral tile, never a yellow tile flood.</span>
+      <span><b style="background:#f7e024;color:#241a00">3</b><i>Skill bonuses stay quiet</i> — neutral tile holding the skill's icon (pixelated <i>&lt;img&gt;</i>), CREAM rank value (#F4F1EA — Skills is pink, not violet, and violet is the cursor). No timers, no bars: nothing to watch.</span>
+      <span><b style="background:#f7e024;color:#241a00">4</b><i>Empty state</i> — dark paw watermark (WebP asset — no CSS pattern) + plain sentence saying where effects come from. No divider line above it (vector rule) — the gap is the separation. Never a bare "NO ACTIVE EFFECTS" string in a void.</span>
       <span>Rows are read-only — no taps beyond scroll. This is the phone's glance app; restraint is the design.</span>
-      <span><i>Derived bg #26211F</i> — yellow blooms at only 8% (it runs hot); the warm cast is the mood, never the text ground.</span>
+      <span><i>Derived bg #26211F</i> — yellow blooms at only 8% (it runs hot); rows #332c22 (yellow ~14%), tracks #413a20. The warm cast is the mood, never the text ground.</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">WHEEL</span><span class="klab">scroll (build fix needed)</span></div>
     <div class="chg">
       <div class="t">What changes vs today</div>
       <span><i>Sections split timed vs permanent</i> — the port mixes "XP ×2 — 42m" and "KEEN EYE — RANK 3" in one list.</span>
-      <span><i>Depletion strips + type chips added</i>; source line ("server boost") names where it came from.</span>
+      <span><i>Depletion strips + type glyphs added</i>; source line ("server boost") names where it came from.</span>
       <span><i>Empty state designed</i> — today it's a floating uppercase string.</span>
-      <span><i>Header count chip</i> ("4 ACTIVE") mirrors the launcher badge.</span>
+      <span><i>Header count stamp</i> ("4 ACTIVE", tilted −3°) mirrors the launcher badge.</span>
     </div>
   </div>
 </div>
@@ -480,88 +569,94 @@ ongoing transforms in the device (see ENGINE NOTES for the opacity-crossfade fal
 <div class="wrap">
   <div class="phone">
     <div class="bez"><div class="spk"></div><div class="cam"></div></div>
-    <div class="scr" style="height:700px;background:linear-gradient(rgba(224,65,74,.10),rgba(224,65,74,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
+    <div class="scr" style="height:700px;background:linear-gradient(to bottom,rgba(224,65,74,.10),rgba(224,65,74,.05)),linear-gradient(160deg,#1e1933 0%,#14101f 45%,#0d0a18 100%)">
       <div class="st"><span class="clock">21:47</span><div class="sp"></div><div class="sig"><i style="height:6px"></i><i style="height:9px"></i><i style="height:12px"></i><i style="height:15px;opacity:.3"></i></div><div class="bat"><i></i></div><span class="tn">RIN</span><div class="ava"></div></div>
+      <!-- header: 40 + 12 + 34 + 12 + title 120 + 224 computed + stamp 70 = 512 -->
       <div class="ah">
-        <div class="back">‹</div><span class="qcap">Q</span>
+        <div class="back">‹</div>
         <div class="aglyph" style="background:#e0414a"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3a6 6 0 0 0-6 6v3.5L4.5 16h15L18 12.5V9a6 6 0 0 0-6-6zM10 18a2 2 0 0 0 4 0z"/></svg></div>
-        <span class="atitle" style="color:#e0414a">ALERTS</span>
-        <div class="autil"><span style="font-size:10px;font-weight:800;letter-spacing:1px;color:#7C7295">LAST 50</span></div>
+        <span class="atitle" style="width:120px;color:#e0414a">ALERTS</span>
+        <div class="autil" style="width:70px;margin-left:224px"><div class="stamp" style="width:70px;background:#e0414a;color:#fff">LAST 50</div></div>
       </div>
-      <span class="sect">TODAY</span>
+      <div class="sect" style="background:#e0414a;color:#fff"><span>TODAY</span></div>
+      <!-- rows: row-flex 56, padding 0: tick 4 (in-flow first child, ALWAYS emitted, colour value-swapped) · +10 tile 34 +12 · text 330 · +60 computed · time 48 -->
       <div class="rows" style="flex:1">
-        <div style="position:relative;width:488px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:9px 14px;overflow:hidden">
-          <div style="position:absolute;left:0;top:0;width:4px;height:64px;background:#e0414a"></div>
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px;font-size:15px">🏆</div>
+        <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
+          <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#e0414a;flex:0 0 auto"></div>
+          <div class="tile" style="margin-left:10px;font-size:15px;color:#fcd34d">★</div>
           <div style="width:330px">
-            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#ffce3a">ACHIEVEMENT</span>
+            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">ACHIEVEMENT</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">First Fusion — fuse two beasts into one.</span>
           </div>
-          <span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">2m</span>
+          <span class="meta" style="margin-left:60px">2m</span>
         </div>
-        <div style="position:relative;width:488px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:9px 14px;overflow:hidden">
-          <div style="position:absolute;left:0;top:0;width:4px;height:64px;background:#e0414a"></div>
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px;font-size:15px">🐟</div>
+        <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
+          <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#e0414a;flex:0 0 auto"></div>
+          <div class="tile" style="margin-left:10px;font-size:15px;color:#60a5fa">◆</div>
           <div style="width:330px">
-            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#4ade80">CONTRACTED</span>
+            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">CONTRACTED</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">Wispryn joined your roster.</span>
           </div>
-          <span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">18m</span>
+          <span class="meta" style="margin-left:60px">18m</span>
         </div>
-        <div style="width:488px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:9px 14px">
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px;font-size:15px">⬆</div>
+        <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
+          <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#3a1a28;flex:0 0 auto"></div>
+          <div class="tile" style="margin-left:10px;font-size:15px;color:#fbbf24">▲</div>
           <div style="width:330px">
-            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#9b6cff">LEVEL UP</span>
+            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">LEVEL UP</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">Tamer level 12 reached.</span>
           </div>
-          <span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">1h</span>
+          <span class="meta" style="margin-left:60px">1h</span>
         </div>
-        <div style="width:488px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:9px 14px">
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px;font-size:15px">🗺</div>
+        <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
+          <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#3a1a28;flex:0 0 auto"></div>
+          <div class="tile" style="margin-left:10px;font-size:15px;color:#34d399">✦</div>
           <div style="width:330px">
-            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#ee5421">NEW ZONE</span>
+            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">NEW ZONE</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">Saltmoor Forest unlocked.</span>
           </div>
-          <span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">3h</span>
+          <span class="meta" style="margin-left:60px">3h</span>
         </div>
-        <span class="sect" style="margin-top:6px">EARLIER</span>
-        <div style="width:488px;border-radius:12px;background:#1a1c23;display:flex;align-items:center;padding:9px 14px;opacity:.6">
-          <div style="width:34px;height:34px;border-radius:9px;background:#262040;display:flex;align-items:center;justify-content:center;margin-right:12px;font-size:15px">⚡</div>
+        <div class="sect" style="margin-top:6px;background:#e0414a;color:#fff"><span>EARLIER</span></div>
+        <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center;opacity:.6">
+          <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#3a1a28;flex:0 0 auto"></div>
+          <div class="tile" style="margin-left:10px;font-size:15px;color:#4ade80">↯</div>
           <div style="width:330px">
-            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#4aa8ff">SERVER BOOST</span>
+            <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">SERVER BOOST</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">KESTREL activated ×2 XP for everyone.</span>
           </div>
-          <span style="margin-left:auto;font-size:10px;font-weight:600;color:#7C7295">1d</span>
+          <span class="meta" style="margin-left:60px">1d</span>
         </div>
       </div>
-      <!-- clear all -->
-      <div style="display:flex;justify-content:center;margin-top:10px">
-        <div style="width:200px;height:38px;border-radius:10px;background:#1a1c23;border:1px solid rgba(224,65,74,.55);display:flex;align-items:center;justify-content:center"><span style="font-style:italic;font-size:12px;font-weight:900;letter-spacing:1.2px;color:#e0414a">CLEAR ALL</span></div>
+      <!-- clear all — danger-tier slab: rgba(224,65,74,.18) fill, red italic text, no border. 200 × 38, centered by computed margin (512 − 200) / 2 = 156 -->
+      <div style="display:flex;margin-top:10px">
+        <div style="width:200px;height:38px;margin-left:156px;border-radius:16px;background:rgba(224,65,74,.18);display:flex;align-items:center;justify-content:center"><span style="font-style:italic;font-size:12px;font-weight:900;letter-spacing:1.2px;color:#e0414a">CLEAR ALL</span></div>
       </div>
       <!-- callouts -->
-      <div class="co" style="background:#e0414a;left:6px;top:152px">1</div>
-      <div class="co" style="background:#e0414a;left:6px;top:230px">2</div>
-      <div class="co" style="background:#e0414a;left:482px;top:158px">3</div>
-      <div class="co" style="background:#e0414a;left:482px;top:614px">4</div>
+      <div class="co" style="background:#e0414a;left:6px;top:156px">1</div>
+      <div class="co" style="background:#e0414a;left:6px;top:232px">2</div>
+      <div class="co" style="background:#e0414a;left:506px;top:164px">3</div>
+      <div class="co" style="background:#e0414a;left:506px;top:656px">4</div>
     </div>
     <div class="chin"><svg width="26" height="26" viewBox="0 0 24 24" fill="#191b20"><ellipse cx="12" cy="15" rx="4.4" ry="3.6"/><circle cx="6.2" cy="10.6" r="2"/><circle cx="10" cy="7.8" r="2.1"/><circle cx="14" cy="7.8" r="2.1"/><circle cx="17.8" cy="10.6" r="2"/></svg></div>
   </div>
   <div>
     <div class="leg">
-      <span><b style="background:#e0414a">1</b><i>Category color on the TITLE, red only on chrome</i> — each row's title wears its type color (the shipped GetNotificationIconColor map: achievement gold, contract green, level-up violet, zone orange, boost blue). The app accent #e0414a marks the app, not every row.</span>
-      <span><b style="background:#e0414a">2</b><i>Unread tick</i> — 4px red left edge on rows that arrived since the app was last opened. ⚠ Needs a read-watermark (LastOpenedAt) on NotificationManager — Core code, user's call; without it, ship the design minus ticks (opening already clears the launcher badge).</span>
-      <span><b style="background:#e0414a">3</b><i>TODAY / EARLIER dividers + relative times</i> from CreatedAt. Icon tile uses the notification's Icon/IconPath — pixel-art icons render at 34px.</span>
-      <span><b style="background:#e0414a">4</b><i>CLEAR ALL</i> (hit-clear, shipped) — outlined red, centered, plain words. Destructive stays an outline, never a filled slab.</span>
+      <span><b style="background:#e0414a">1</b><i>Titles are CREAM; identity lives in the icon tile</i> — every row's title is #F4F1EA, and the type reads from the glyph in the neutral 34px tile (the notification's Icon / IconPath). Where a per-type color survives it is the glyph color, from the SHIPPED NotificationPanel map: Achievement #fcd34d · Catch #60a5fa (blue) · ServerBoost #4ade80 (green) · TamerLevelUp #fbbf24 (gold) · ExpeditionUnlock #34d399 (green) · Warning #f87171; the map's violet entries (Evolution, default) render CREAM here — violet is the cursor. The app accent #e0414a marks the app (header, kickers, unread tick), not every row.</span>
+      <span><b style="background:#e0414a">2</b><i>Unread tick</i> — the in-flow 4×56 first child of every row, always emitted; red on rows that arrived since the app was last opened, row-toned otherwise (value swap — never conditionally added). ⚠ Needs a read-watermark (LastOpenedAt) on NotificationManager — Core code, user's call; without it, ship the design minus ticks (opening already clears the launcher badge).</span>
+      <span><b style="background:#e0414a">3</b><i>TODAY / EARLIER kicker chips + relative times</i> from CreatedAt, in a 48px meta box. Rows are a fixed 56px (no overflow:hidden); pixel-art IconPath icons render at 24px inside the tile.</span>
+      <span><b style="background:#e0414a">4</b><i>CLEAR ALL</i> (hit-clear, shipped) — the DANGER-tier slab: rgba(224,65,74,.18) fill + red italic text, no border, r16. TWO-TAP confirm: the first tap arms it and the label value-swaps to "SURE?" (one span, interpolated text — no @if child swap); a second tap within ~2s clears (PlayBack), otherwise it disarms back to CLEAR ALL. The router is tap-only, so two-tap stands in for the guiding-star's hold-to-confirm. Armed flag → BuildHash.</span>
+      <span><i>Empty state ("ALL CAUGHT UP" — shipped):</i> keep the string, give it the Effects empty-state recipe — paw watermark + "ALL CAUGHT UP" + "Contracts, level-ups and unlocks land here." CLEAR ALL hides when the list is empty.</span>
       <span><i>Peek relationship:</i> peeks (max 3, 3.6s) slide from the right edge toward the phone chip; tapping any peek opens THIS app. Every peek is already in this record — the app is the paper trail, the peek is the knock.</span>
-      <span><i>Derived bg #281523</i> — red blooms to a dim ember, not an alarm (accent 10% over #14101F).</span>
+      <span><i>Derived bg #281523</i> — red blooms to a dim ember, not an alarm (accent 10% over #14101F). Rows #3a1a28.</span>
     </div>
     <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">WHEEL</span><span class="klab">scroll (build fix needed)</span></div>
     <div class="chg">
       <div class="t">What changes vs today</div>
-      <span><i>Category identity added</i> — the port paints every title #e0414a regardless of type and drops the icons the peeks already show.</span>
+      <span><i>Type identity added via the icon tile</i> — the port paints every title #e0414a regardless of type and drops the icons the peeks already show. Titles go cream; the glyph carries the type.</span>
       <span><i>Timestamps + TODAY/EARLIER grouping added</i> — today the record has no time anchor at all.</span>
       <span><i>Unread ticks</i> (pending the Core watermark ask).</span>
-      <span><i>CLEAR ALL restyled</i> from a text row to the outlined destructive button.</span>
+      <span><i>CLEAR ALL restyled</i> from a text row to the danger-tier slab with two-tap confirm.</span>
     </div>
   </div>
 </div>
