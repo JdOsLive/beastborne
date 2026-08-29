@@ -253,7 +253,11 @@
 						   z-top and UNFILTERED (silhouette excepted). *@
 						@if (stageDiscovered)
 						{
-							<img class="bb-stage-plate" src="ui/beastbook/field-specimen-v1.png" />
+							@* Split field (2026-08-28): static base (glass disc +
+							   scale ruler) under a slowly-rotating dial ring —
+							   the live-scanner read. Ruler never orbits. *@
+							<img class="bb-stage-plate" src="ui/beastbook/field-specimen-base-v2.png" />
+							<img class="bb-stage-ring" src="ui/beastbook/field-specimen-ring-v2.png" />
 							<div class="bb-plate-glint"></div>
 							<div class="bb-stage-glow"></div>
 						}
@@ -871,15 +875,17 @@
 	@if (showBeastPopup && selectedSpecies != null && HasSprite(selectedSpecies) && IsDiscovered(selectedSpecies.Id))
 	{
 		<div class="bb-beast-popup-root">
-			<div class="bb-beast-popup-overlay" onclick=@CloseBeastPopup></div>
-			<div class="bb-beast-popup">
+			<div class="bb-beast-popup-overlay @(beastPopupClosing ? "closing" : "")" onclick=@CloseBeastPopup></div>
+			<div class="bb-beast-popup @(beastPopupClosing ? "closing" : "")">
 				<div class="bb-beast-popup-header">
-					<div class="bb-beast-popup-title-col">
-						<span class="bb-beast-popup-number">#@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
-						<span class="bb-beast-popup-name">@selectedSpecies.Name</span>
+					<div class="bb-beast-popup-chip">
+						<div class="bb-beast-popup-chip-inner">
+							<span class="bb-beast-popup-number">@selectedSpecies.BeastiaryNumber.ToString("D3")</span>
+							<span class="bb-beast-popup-name">@selectedSpecies.Name</span>
+						</div>
 					</div>
-					<button class="bb-beast-popup-close" onclick=@CloseBeastPopup onmouseover=@(() => SoundManager.PlayHover())>
-						<iconify icon="lucide:x" Size=@(18) Color="rgba(255,255,255,0.85)" />
+					<button class="bb-beast-popup-close @(IsPopupActionFocused("close") ? "kb-focused" : "")" onclick=@CloseBeastPopup onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify class="bb-pop-glyph" icon="lucide:x" Size=@(18) Color="rgba(255,255,255,0.85)" />
 					</button>
 				</div>
 
@@ -889,25 +895,30 @@
 					 onmouseup=@OnBeastStageUp
 					 onmouseover=@OnBeastStageEnter
 					 onmouseout=@OnBeastStageLeave>
+					@* The hall's own baked specimen disc — the popup is a close-up
+					   of the stage, so the beast stands on the same pedestal.
+					   Split layers: static base (ruler stays down), spinning ring. *@
+					<img class="bb-beast-popup-plate" src="ui/beastbook/field-specimen-base-v2.png" />
+					<img class="bb-beast-popup-ring" src="ui/beastbook/field-specimen-ring-v2.png" />
 					<img class="bb-beast-popup-sprite" src="@GetAnimatedIcon(selectedSpecies)" style="@BeastPopupSpriteStyle()" />
 					<div class="bb-beast-popup-hint">
 						<iconify icon="lucide:move" Size=@(11) Color="rgba(143, 232, 220, 0.6)" />
-						<span>Drag to pan · Scroll to zoom</span>
+						<span>Drag to pan · Scroll or Z/X to zoom · R reset · Q close</span>
 					</div>
 				</div>
 
 				<div class="bb-beast-popup-controls">
-					<button class="bb-beast-popup-ctrl" onclick=@BeastPopupZoomOut onmouseover=@(() => SoundManager.PlayHover())>
-						<iconify icon="lucide:zoom-out" Size=@(16) Color="rgba(255,255,255,0.85)" />
+					<button class="bb-beast-popup-ctrl @(IsPopupActionFocused("zoomout") ? "kb-focused" : "")" onclick=@BeastPopupZoomOut onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify class="bb-pop-glyph" icon="lucide:zoom-out" Size=@(16) Color="rgba(255,255,255,0.85)" />
 					</button>
 					<div class="bb-beast-popup-zoom-readout">
 						<span>@((int)(beastPopupZoom * 100))%</span>
 					</div>
-					<button class="bb-beast-popup-ctrl" onclick=@BeastPopupZoomIn onmouseover=@(() => SoundManager.PlayHover())>
-						<iconify icon="lucide:zoom-in" Size=@(16) Color="rgba(255,255,255,0.85)" />
+					<button class="bb-beast-popup-ctrl @(IsPopupActionFocused("zoomin") ? "kb-focused" : "")" onclick=@BeastPopupZoomIn onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify class="bb-pop-glyph" icon="lucide:zoom-in" Size=@(16) Color="rgba(255,255,255,0.85)" />
 					</button>
-					<button class="bb-beast-popup-ctrl reset" onclick=@BeastPopupResetZoom onmouseover=@(() => SoundManager.PlayHover())>
-						<iconify icon="lucide:refresh-ccw" Size=@(14) Color="rgba(255,255,255,0.7)" />
+					<button class="bb-beast-popup-ctrl reset @(IsPopupActionFocused("reset") ? "kb-focused" : "")" onclick=@BeastPopupResetZoom onmouseover=@(() => SoundManager.PlayHover())>
+						<iconify class="bb-pop-glyph" icon="lucide:refresh-ccw" Size=@(14) Color="rgba(255,255,255,0.7)" />
 					</button>
 				</div>
 			</div>
@@ -1803,6 +1814,10 @@
 				detailView = arg;
 				detailFreshSelect = false;
 			}
+			else if ( arg == "popup" )
+			{
+				OnPortraitClick();
+			}
 		}
 
 		// ONE-CURSOR dwell commit — hover-armed selection lands after 110ms.
@@ -1943,6 +1958,55 @@
 			_inputDevice = "kb";
 			pendingHoverSpeciesId = null;
 			lastHoveredCardId = null;
+		}
+
+		// ---- ART-VIEWER POPUP: owns every key while open (2026-08-28) ----
+		// Q/Tab close (claim the back key — GameHUD ticks after us), Z/X =
+		// zoom out/in (the universal silent cycle pair), R = reset (the
+		// page power-action key). WASD walks the control rail and the
+		// focused button wears .kb-focused (one-cursor: kb focus fires the
+		// FULL hover payload). Early-return so the grid never navigates
+		// underneath the modal.
+		if ( showBeastPopup )
+		{
+			if ( Input.Pressed( "Menu" ) || Input.Pressed( "Score" ) )
+			{
+				CloseBeastPopup();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			else if ( Input.Pressed( "CyclePrev" ) ) BeastPopupZoomOut();
+			else if ( Input.Pressed( "CycleNext" ) ) BeastPopupZoomIn();
+			else if ( Input.Pressed( "Reload" ) ) BeastPopupResetZoom();
+			else if ( Input.Pressed( "Left" ) )
+			{
+				// A/D walk the BOTTOM rail only (zoomout · zoomin · reset).
+				if ( popupActionIndex < 3 ) { popupActionIndex = ( popupActionIndex + 2 ) % 3; SoundManager.PlayHover(); }
+			}
+			else if ( Input.Pressed( "Right" ) )
+			{
+				if ( popupActionIndex < 3 ) { popupActionIndex = ( popupActionIndex + 1 ) % 3; SoundManager.PlayHover(); }
+			}
+			else if ( Input.Pressed( "Up" ) )
+			{
+				// W climbs to the X (it lives top-right — spatial nav, user
+				// ruling 2026-08-28); S drops back to the remembered slot.
+				if ( popupActionIndex < 3 ) { popupRailMemory = popupActionIndex; popupActionIndex = 3; SoundManager.PlayHover(); }
+			}
+			else if ( Input.Pressed( "Down" ) )
+			{
+				if ( popupActionIndex == 3 ) { popupActionIndex = popupRailMemory; SoundManager.PlayHover(); }
+			}
+			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
+			{
+				switch ( PopupActions[Math.Clamp( popupActionIndex, 0, PopupActions.Length - 1 )] )
+				{
+					case "zoomout": BeastPopupZoomOut(); break;
+					case "zoomin": BeastPopupZoomIn(); break;
+					case "reset": BeastPopupResetZoom(); break;
+					case "close": CloseBeastPopup(); GameHUD.PanelHandledBackKey = true; break;
+				}
+			}
+			return;
 		}
 
 		// Element filter cycle — R is the SHOWN cycle key (page grammar,
@@ -2339,6 +2403,21 @@
 	// Mouse-wheel zoom step — smaller than button step for finer control.
 	private const float BEAST_POPUP_WHEEL_ZOOM_STEP = 0.1f;
 
+	// Keyboard focus rail over the popup's controls (one-cursor model:
+	// WASD walks, .kb-focused = the hover payload, Enter/Space activates).
+	// Order matches the visual layout left→right, close last.
+	private static readonly string[] PopupActions = { "zoomout", "zoomin", "reset", "close" };
+	private int popupActionIndex = 1;
+	// Last bottom-rail slot — restored when S drops back down from the X.
+	private int popupRailMemory = 1;
+
+	private bool IsPopupActionFocused( string id )
+	{
+		if ( !showBeastPopup || _inputDevice != "kb" ) return false;
+		int idx = Math.Clamp( popupActionIndex, 0, PopupActions.Length - 1 );
+		return PopupActions[idx] == id;
+	}
+
 	private void OnPortraitClick()
 	{
 		if ( selectedSpecies == null ) return;
@@ -2349,16 +2428,26 @@
 		beastPopupZoom = 1f;
 		beastPopupPanX = 0f;
 		beastPopupPanY = 0f;
+		popupActionIndex = 1;   // land on zoom-in — the likeliest first act
 		showBeastPopup = true;
 		SoundManager.PlayClick();
 	}
 
-	private void CloseBeastPopup()
+	// Closing runs a short exit transition (.closing class) before the
+	// actual unmount — CSS transitions re-fire on class toggles (the
+	// @keyframes-only-on-mount law), so the exit lives on a transition.
+	private bool beastPopupClosing = false;
+
+	private async void CloseBeastPopup()
 	{
-		showBeastPopup = false;
+		if ( beastPopupClosing ) return;
+		beastPopupClosing = true;
 		_isDraggingBeast = false;
 		_isMouseOverBeastStage = false;
 		SoundManager.PlayBack();
+		await Task.Delay( 170 );
+		showBeastPopup = false;
+		beastPopupClosing = false;
 	}
 
 	private void BeastPopupZoomIn()
@@ -2516,6 +2605,9 @@
 		// so the popup opens, closes, and scales smoothly in response to
 		// clicks/zoom controls.
 		hash.Add( showBeastPopup );
+		hash.Add( beastPopupClosing );
+		hash.Add( popupActionIndex );
+		hash.Add( _inputDevice );
 		hash.Add( beastPopupZoom );
 		hash.Add( beastPopupPanX );
 		hash.Add( beastPopupPanY );

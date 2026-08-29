@@ -28,7 +28,8 @@ import os
 from PIL import Image, ImageDraw
 
 SS = 4  # supersample factor
-OUT = r"c:\Users\jscho\OneDrive\Documents\s&box projects\beastborne\Assets\ui\beastbook"
+# Desktop repo path (2026-08-28 — the old laptop OneDrive path is gone)
+OUT = r"c:\users\jscho\documents\s&box projects\megarougelite\Assets\ui\beastbook"
 os.makedirs(OUT, exist_ok=True)
 
 
@@ -94,6 +95,62 @@ def bake_field():
         d.line([x, ry, x, ry - h], fill=(150, 232, 218, 95 if major else 50), width=max(1, int(1.0 * SS)))
 
     ship(img, W, H, "field-specimen-v1.png")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# 1b. THE DISPLAY FIELD, SPLIT (2026-08-28) — the beast-popup art
+# viewer spins the dial as a live scanner, but the base scale ruler
+# must NOT orbit (user ruling: "that should always be at the bottom").
+# Same geometry as bake_field, shipped as two stacked layers:
+#   field-specimen-base-v2.png — glass disc + edge + base ruler (static)
+#   field-specimen-ring-v2.png — teal ring + echo + dial ticks (rotates)
+# -v2 names per the texture-cache law (never overwrite a live texture).
+# ─────────────────────────────────────────────────────────────────────
+def bake_field_split():
+    W = H = 480
+
+    # BASE — static layer
+    img = canvas(W, H)
+    d = ImageDraw.Draw(img)
+    cx = cy = W * SS / 2.0
+
+    def ring_on(dd, r_disp, w_disp, col):
+        r = r_disp * SS
+        w = max(1, int(w_disp * SS))
+        dd.ellipse([cx - r, cy - r, cx + r, cy + r], outline=col, width=w)
+
+    R = 226 * SS
+    d.ellipse([cx - R, cy - R, cx + R, cy + R], fill=(20, 24, 33, 175))
+    ring_on(d, 226, 1.0, (5, 7, 10, 220))      # crisp dark edge
+
+    ry = cy + 156 * SS
+    rx0, rx1 = cx - 130 * SS, cx + 130 * SS
+    d.line([rx0, ry, rx1, ry], fill=(45, 212, 191, 85), width=max(1, int(1.0 * SS)))
+    n_ticks = 12
+    for i in range(n_ticks + 1):
+        x = rx0 + (rx1 - rx0) * i / n_ticks
+        major = (i % 3 == 0)
+        h = (9 if major else 5) * SS
+        d.line([x, ry, x, ry - h], fill=(150, 232, 218, 95 if major else 50), width=max(1, int(1.0 * SS)))
+
+    ship(img, W, H, "field-specimen-base-v2.png")
+
+    # RING — rotating layer (transparent outside the dial hardware)
+    img2 = canvas(W, H)
+    d2 = ImageDraw.Draw(img2)
+    ring_on(d2, 222, 1.5, (45, 212, 191, 135))
+    ring_on(d2, 176, 1.0, (45, 212, 191, 38))
+    for i in range(72):
+        a = math.radians(i * 5.0)
+        major = (i % 6 == 0)
+        r0 = (208 if major else 213) * SS
+        r1 = 219 * SS
+        alpha = 130 if major else 55
+        x0, y0 = cx + r0 * math.cos(a), cy + r0 * math.sin(a)
+        x1, y1 = cx + r1 * math.cos(a), cy + r1 * math.sin(a)
+        d2.line([x0, y0, x1, y1], fill=(150, 232, 218, alpha), width=max(1, int(1.0 * SS)))
+
+    ship(img2, W, H, "field-specimen-ring-v2.png")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -307,5 +364,6 @@ def bake_medal(name, light, mid, dark):
 if __name__ == "__main__":
     bake_field()
     bake_case()
+    bake_field_split()
     # RETIRED (off-brand skeuomorphism — see banner): bake_plate(),
     # bake_tag(), bake_medal(...). Kept as code for the record.
