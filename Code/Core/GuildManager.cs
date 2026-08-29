@@ -315,6 +315,11 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			OnMembersUpdated?.Invoke();
 
 			Log.Info( $"GuildManager loaded from API: InGuild={IsInGuild}, Members={Members.Count}" );
+
+			// Weekly goals were only ever fetched by RefreshGuildData (post-mutation) -
+			// on a fresh boot nothing triggered that, so goal bars stayed empty until the
+			// player did something guild-related. Fetch them with the startup load too.
+			_ = RefreshWeeklyGoals();
 		}
 		catch ( Exception e )
 		{
