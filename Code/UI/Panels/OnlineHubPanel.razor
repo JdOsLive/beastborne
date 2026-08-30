@@ -1063,21 +1063,31 @@
 	{
 		@{
 			// ═══ TRADE BOARD TAKEOVER (2026-08-29: "a button to view the full
-			// trade list") — an INLINE section (no child panel; the hub's chrome
-			// band stays). Same source as the zone, ALL of it, newest first.
-			// Presence is refreshed here too so the live dots stay honest and a
-			// row click can route to an online poster.
+			// trade list"; CARD GRID rebuild the same day — user: "the poster
+			// is stranded far right… should we have multiple columns?" → the
+			// house pattern for lists-of-things-with-art is the card grid).
+			// An INLINE section (no child panel; the hub's chrome band stays).
+			// Same source as the zone, ALL of it, newest first, through the
+			// active FILTER (ALL · I CAN FILL · I NEED · MINE). Presence is
+			// refreshed here too so the live dots stay honest and a card
+			// click can route to an online poster.
 			var boardOthers = IsConnected() ? GetOnlinePlayers().Where( p => !p.IsLocal ).ToList() : new();
 			_others = boardOthers;
 			_othersCount = boardOthers.Count;
 			var allOffers = CurrentOffers();
-			_boardOffers = allOffers;
+			var ownedSet = OwnedSpeciesSet();
+			var boardCounts = new int[BoardFilterCount];
+			for ( int fi = 0; fi < BoardFilterCount; fi++ )
+				boardCounts[fi] = allOffers.Count( o => BoardFilterMatches( o, fi, ownedSet ) );
+			var shownBoard = allOffers.Where( o => BoardFilterMatches( o, _boardFilter, ownedSet ) ).ToList(); // newest first within the filter
+			_boardOffers = shownBoard;
 			_shownOffers = allOffers.Take( MaxTradeSlips ).ToList();
 		}
 		<div class="hub-board">
 			<div class="hz hb-slab">
 				<!-- Band: TRADE BOARD chip · count · ····· · BACK TO HUB (Q) ·
-				     resting sub-line · POST OFFER (board kb 0, ring host). -->
+				     resting sub-line · POST OFFER (board kb 0, ring host).
+				     OPAQUE — it sits above the scroll grid (scroll-leak law). -->
 				<div class="hb-band">
 					<div class="oh-chip"><span>TRADE BOARD</span></div>
 					<div class="chip"><span class="chip-text">@($"{allOffers.Count} {( allOffers.Count == 1 ? "OFFER" : "OFFERS" )}")</span></div>
@@ -1095,81 +1105,105 @@
 						<BbButton @ref="boardPostRef" Tier="secondary" Size=@(44) Label="POST OFFER" Icon="lucide:plus" IconTint="#3f8fe0" HoverSound=@false Class="hb-post-btn" />
 					</div>
 				</div>
-				<!-- The list — the ONE scroll child; rows (or the empty-state
-				     lines) are its DIRECT children (flat-children scroll law).
-				     Rows are border/bg-only on focus — nothing transforms or
-				     glows inside a scroll clip. Same slip anatomy as the zone,
-				     roomier: 56 tall, 48px crop tiles, 180 meta lanes, poster
-				     + time-ago inline on the right. -->
-				<div class="hb-list">
-					@if ( allOffers.Count == 0 )
+				<!-- FILTER ROW — four flat segments (the boards column's
+				     .lb-seg recipe: blue active / dim rest, no outline), each
+				     with its count. Board kb 1..4 (slab cursor); R cycles.
+				     OPAQUE, gap 0 to the grid below. -->
+				<div class="hb-filters">
+					@for ( int fi = 0; fi < BoardFilterCount; fi++ )
 					{
-						<span class="tz-empty-main">No offers on the board yet</span>
-						<span class="tz-empty-sub">Tamers who post offers appear here</span>
-						<span class="tz-empty-note hb-empty-note">Standing offers — post a WANT / FOR and let anyone accept later — are coming with the trade board.</span>
+						int segIdx = fi;
+						int segKb = BoardFilterKbBase + fi;
+						<div class="hb-seg @(fi == _boardFilter ? "on" : "") @(IsHubKb("board", segKb) ? "kb-focused" : "")"
+							 onmouseover=@(() => HoverHubCursor( "board", segKb ))
+							 onclick=@(() => SelectBoardFilter( segIdx ))>
+							<span class="hb-seg-text">@BoardFilterLabels[fi]</span>
+							<span class="hb-seg-count">@boardCounts[fi]</span>
+						</div>
+					}
+					<div class="hb-filter-hint">
+						<span class="hb-back-cap">R</span>
+						<span class="hb-filter-hint-text">CYCLE</span>
+					</div>
+				</div>
+				<!-- THE GRID — the ONE scroll child; cards (or the empty-state
+				     lines) are its DIRECT children (flat-children scroll law).
+				     3 × 600 cards per row (see .hb-grid for the padding-box
+				     math). Cards are border/bg-only on focus — nothing
+				     transforms or glows inside a scroll clip. -->
+				<div @ref="boardGridRef" class="hb-grid @(shownBoard.Count == 0 ? "empty" : "")">
+					@if ( shownBoard.Count == 0 )
+					{
+						<span class="hb-empty-main">@BoardEmptyMain( _boardFilter, allOffers.Count )</span>
+						<span class="hb-empty-sub">@BoardEmptySub( _boardFilter, allOffers.Count )</span>
 					}
 					else
 					{
-						@for ( int bi = 0; bi < allOffers.Count; bi++ )
+						@for ( int bi = 0; bi < shownBoard.Count; bi++ )
 						{
-							var o = allOffers[bi];
-							int rowIdx = bi + 1; // board kb 0 is POST OFFER
+							var o = shownBoard[bi];
+							int cardKb = BoardCardKbBase + bi;
 							var wantS = Species( o.WantSpeciesId );
 							var forS = Species( o.ForSpeciesId );
 							var wantC = SpriteCrop( wantS, TradeTileBoard );
 							var forC = SpriteCrop( forS, TradeTileBoard );
 							bool live = IsOfferLive( o );
-							<div class="trade-slip board @(bi % 2 == 1 ? "alt" : "") @(IsHubKb("board", rowIdx) ? "kb-focused" : "")"
-								 onmouseover=@(() => HoverHubCursor( "board", rowIdx ))
+							bool mine = IsMineOffer( o );
+							<div class="hb-card @(bi % 2 == 1 ? "alt" : "") @(IsHubKb("board", cardKb) ? "kb-focused" : "")"
+								 onmouseover=@(() => HoverHubCursor( "board", cardKb ))
 								 onclick=@(() => AcceptOffer( o ))>
-								<div class="ts-avatar" style="border-color: @PageTitleColor( o.PosterTitleColor )">
-									@if ( o.PosterSteamId > 0 )
-									{
-										<img class="ts-avatar-img steam" src="avatar:@o.PosterSteamId" />
-									}
-									else
-									{
-										<img class="ts-avatar-img cartoon" src="@o.PosterAvatarPath" />
-									}
+								<!-- Top row (72): WANT tile 56 · kicker/name · arrow · FOR tile 56 · kicker/name -->
+								<div class="hb-card-top">
+									<div class="ts-tile @(wantS == null ? "empty" : "")">
+										@if ( wantS != null )
+										{
+											<img class="ts-tile-img" src="@wantS.IconPath" style="@CropStyle( wantC )" />
+										}
+										else
+										{
+											<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(22) Color="rgba(214, 206, 236, 0.4)" />
+										}
+									</div>
+									<div class="ts-meta">
+										<span class="ts-kicker">WANT</span>
+										<span class="ts-beast-name">@(wantS?.Name ?? "Any beast")</span>
+									</div>
+									<iconify class="ts-arrow" icon="lucide:arrow-right" Size=@(20) Color="#6fb1f0" />
+									<div class="ts-tile @(forS == null ? "empty" : "")">
+										@if ( forS != null )
+										{
+											<img class="ts-tile-img" src="@forS.IconPath" style="@CropStyle( forC )" />
+										}
+										else
+										{
+											<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(22) Color="rgba(214, 206, 236, 0.4)" />
+										}
+									</div>
+									<div class="ts-meta">
+										<span class="ts-kicker">FOR</span>
+										<span class="ts-beast-name">@(forS?.Name ?? "Any beast")</span>
+									</div>
 								</div>
-								<div class="ts-tile @(wantS == null ? "empty" : "")">
-									@if ( wantS != null )
-									{
-										<img class="ts-tile-img" src="@wantS.IconPath" style="@CropStyle( wantC )" />
-									}
-									else
-									{
-										<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(20) Color="rgba(214, 206, 236, 0.4)" />
-									}
-								</div>
-								<div class="ts-meta">
-									<span class="ts-kicker">WANT</span>
-									<span class="ts-beast-name">@(wantS?.Name ?? "Any beast")</span>
-								</div>
-								<iconify class="ts-arrow" icon="lucide:arrow-right" Size=@(16) Color="#6fb1f0" />
-								<div class="ts-tile @(forS == null ? "empty" : "")">
-									@if ( forS != null )
-									{
-										<img class="ts-tile-img" src="@forS.IconPath" style="@CropStyle( forC )" />
-									}
-									else
-									{
-										<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(20) Color="rgba(214, 206, 236, 0.4)" />
-									}
-								</div>
-								<div class="ts-meta">
-									<span class="ts-kicker">FOR</span>
-									<span class="ts-beast-name">@(forS?.Name ?? "Any beast")</span>
-								</div>
-								<div class="ts-spacer"></div>
-								<div class="ts-poster inline">
+								<!-- Bottom row (28): head 24 · name (green dot if live) ···· time-ago · ACCEPT · SPACE / OFFLINE / YOURS -->
+								<div class="hb-card-bot">
+									<div class="ts-avatar" style="border-color: @PageTitleColor( o.PosterTitleColor )">
+										@if ( o.PosterSteamId > 0 )
+										{
+											<img class="ts-avatar-img steam" src="avatar:@o.PosterSteamId" />
+										}
+										else
+										{
+											<img class="ts-avatar-img cartoon" src="@o.PosterAvatarPath" />
+										}
+									</div>
 									@if ( live )
 									{
 										<div class="ts-live-dot"></div>
 									}
 									<span class="ts-name">@o.PosterName</span>
-									<span class="ts-sep">·</span>
+									<div class="hb-card-spacer"></div>
 									<span class="ts-time">@TimeAgo( o.PostedAt )</span>
+									<span class="hb-card-accept @(mine ? "mine" : ( live ? "live" : "off" ))">@(mine ? "YOURS" : ( live ? "ACCEPT · SPACE" : "OFFLINE" ))</span>
 								</div>
 							</div>
 						}
@@ -1221,7 +1255,13 @@
 	private const int MaxTradeSlips = 3;   // newest offers shown in the zone (3 × 52 fits the 244 body)
 	private const int TradeSlipKbBase = 2; // trades kb: 0 POST OFFER · 1 VIEW ALL OFFERS · 2+ slips
 	private const int TradeTileZone = 40;  // beast viewport tile in the zone slips
-	private const int TradeTileBoard = 48; // beast viewport tile on the board rows
+	private const int TradeTileBoard = 56; // beast viewport tile on the board CARDS (2026-08-29 card grid)
+	// Board kb space: 0 POST OFFER (ring host) · 1..4 the filter segments ·
+	// 5+ the offer cards (3 per row — W/S = ±BoardCols).
+	private const int BoardFilterKbBase = 1;
+	private const int BoardFilterCount = 4;
+	private const int BoardCardKbBase = BoardFilterKbBase + BoardFilterCount;
+	private const int BoardCols = 3;
 	private const int MaxHeads = 7;
 	private const int MaxGuildHeads = 6;   // the 790-wide guild card's 582 lane (v3.3)
 
@@ -1239,6 +1279,8 @@
 	// The three battle refs land on the IN-TILE BbButtons (2026-08-29 —
 	// the ring wraps a button inside each tile, never the whole tile).
 	private Panel ctaFindRef, ctaPracticeRef, ctaRankedRef, guildCtaRef, onlineRowRef, postOfferRef, viewAllRef, boardPostRef, voiceRef, micRef;
+	// The board's scroll grid (.hb-grid) — imperative ScrollOffset scroll-follow target.
+	private Panel boardGridRef;
 
 	// POST OFFER note — the tile is inert until the standing-offer board
 	// ships; a press swaps its sub-line to a quiet note for 3s (no dead
@@ -1324,7 +1366,148 @@
 	private static readonly List<TradeOffer> HubOffers = new();
 	private static int _offersVersion = 0;          // bump on any HubOffers change (initialised so CS0649 stays quiet until the fetch lands)
 	private List<TradeOffer> _shownOffers = new();  // render-cached: zone (newest MaxTradeSlips)
-	private List<TradeOffer> _boardOffers = new();  // render-cached: board (all, newest first)
+	private List<TradeOffer> _boardOffers = new();  // render-cached: board (the ACTIVE FILTER's offers, newest first)
+
+	// ── TRADE BOARD FILTERS (2026-08-29 addendum) ─────────────────────────
+	// Four flat segments under the band: ALL · I CAN FILL (the WANT species
+	// is in your owned roster — you hold what they're asking for) · I NEED
+	// (the FOR species is NOT in your owned roster — "beasts you're
+	// missing"; see IsNeededSpecies for why "not discovered OR not owned"
+	// collapses to "not owned") · MINE (poster == you). R cycles, click /
+	// Space selects. Counts are computed per render from the full list.
+	private int _boardFilter = 0;
+	private static readonly string[] BoardFilterLabels = { "ALL", "I CAN FILL", "I NEED", "MINE" };
+
+	// Owned species ids — one HashSet per render (the render prologue calls
+	// this once and threads it through BoardFilterMatches).
+	private static HashSet<string> OwnedSpeciesSet()
+	{
+		var set = new HashSet<string>( StringComparer.OrdinalIgnoreCase );
+		var owned = MonsterManager.Instance?.OwnedMonsters;
+		if ( owned == null ) return set;
+		foreach ( var m in owned )
+			if ( !string.IsNullOrEmpty( m.SpeciesId ) ) set.Add( m.SpeciesId );
+		return set;
+	}
+
+	// I NEED = the FOR species is not in your roster. Beastbook discovery
+	// (BeastiaryManager.Instance.IsDiscovered — "caught or owned") is
+	// cheaply readable, but "not discovered OR not owned" is the same set as
+	// "not owned" (owning implies discovered), so the roster check alone is
+	// the honest test. An offer whose FOR side is "Any beast" (null) can't
+	// be something you need.
+	private static bool IsNeededSpecies( string speciesId, HashSet<string> owned )
+		=> !string.IsNullOrEmpty( speciesId ) && !owned.Contains( speciesId );
+
+	// I CAN FILL = you own the WANT species (a null WANT = "Any beast" is
+	// fillable by anyone with a roster).
+	private static bool CanFillOffer( TradeOffer o, HashSet<string> owned )
+		=> string.IsNullOrEmpty( o.WantSpeciesId ) ? owned.Count > 0 : owned.Contains( o.WantSpeciesId );
+
+	// MINE = the poster is you: Steam id when both sides have one, else the
+	// display name / tamer name (the BuildAvatarByName identity sources).
+	private bool IsMineOffer( TradeOffer o )
+	{
+		if ( o == null ) return false;
+		long me = GetLocalSteamId();
+		if ( o.PosterSteamId > 0 && me > 0 ) return o.PosterSteamId == me;
+		var steamName = Connection.Local?.DisplayName;
+		var tamerName = TamerManager.Instance?.CurrentTamer?.Name;
+		return ( !string.IsNullOrEmpty( steamName ) && string.Equals( o.PosterName, steamName, StringComparison.OrdinalIgnoreCase ) )
+			|| ( !string.IsNullOrEmpty( tamerName ) && string.Equals( o.PosterName, tamerName, StringComparison.OrdinalIgnoreCase ) );
+	}
+
+	private bool BoardFilterMatches( TradeOffer o, int filter, HashSet<string> owned )
+		=> filter switch
+		{
+			1 => CanFillOffer( o, owned ),
+			2 => IsNeededSpecies( o.ForSpeciesId, owned ),
+			3 => IsMineOffer( o ),
+			_ => true,
+		};
+
+	// Honest per-filter empty state (main line · sub line).
+	private static string BoardEmptyMain( int filter, int total )
+		=> filter switch
+		{
+			1 => "No offers you can fill right now",
+			2 => "Nothing you need is up right now",
+			3 => "You haven't posted an offer",
+			_ => "No offers on the board yet",
+		};
+
+	private static string BoardEmptySub( int filter, int total )
+		=> filter switch
+		{
+			1 => total > 0 ? "Offers asking for a beast you own appear here" : "Tamers who post offers appear here",
+			2 => total > 0 ? "Offers giving a beast you don't own appear here" : "Tamers who post offers appear here",
+			3 => "Post one from the band above once the board is live",
+			_ => "Tamers who post offers appear here",
+		};
+
+	// Select a filter (click / Space on a segment). The cursor stays on the
+	// segment; the grid re-renders through the new filter.
+	private void SelectBoardFilter( int idx )
+	{
+		idx = Math.Clamp( idx, 0, BoardFilterCount - 1 );
+		if ( idx == _boardFilter ) return;
+		SoundManager.PlayClick();
+		_boardFilter = idx;
+		StateHasChanged();
+	}
+
+	// R — the page's cycle key — steps the filter; the cursor follows onto
+	// the new active segment so the slab cursor and the blue fill agree.
+	private void CycleBoardFilter()
+	{
+		SoundManager.PlayClick();
+		_boardFilter = ( _boardFilter + 1 ) % BoardFilterCount;
+		_kbZone = "board";
+		_kbIndex = BoardFilterKbBase + _boardFilter;
+		_kbActive = true;
+		StateHasChanged();
+	}
+
+	// ── Board scroll-follow (the roster ScrollFocusedIntoView pattern) ───
+	// Set when the cursor moves onto a card; Tick() consumes it one frame
+	// later (layout has placed the new focused card by then), computes the
+	// UiGridScroll offset and GLIDES the grid's ScrollOffset toward it.
+	private bool _boardFollowPending = false;
+	private float _boardScrollGlideTarget = -1f;
+
+	private void UpdateBoardScrollFollow()
+	{
+		if ( boardGridRef == null ) { _boardFollowPending = false; _boardScrollGlideTarget = -1f; return; }
+		if ( _boardFollowPending && _kbZone == "board" )
+		{
+			int card = _kbIndex - BoardCardKbBase;
+			if ( card < 0 )
+			{
+				// Cursor on the band / filters: show the grid from the top.
+				_boardFollowPending = false;
+				if ( boardGridRef.ScrollOffset.y > 0.5f ) _boardScrollGlideTarget = 0f;
+			}
+			else
+			{
+				var off = UiGridScroll.ComputeIndexOffset( boardGridRef, card, "hb-card", null, 12f );
+				// null = already visible OR not laid out yet; only clear the
+				// pending flag once the card has a rect (retry next tick otherwise).
+				var focused = boardGridRef.Children.FirstOrDefault( c => c.HasClass( "kb-focused" ) );
+				if ( focused != null && focused.Box.Rect.Height > 0f ) _boardFollowPending = false;
+				if ( off.HasValue ) _boardScrollGlideTarget = off.Value;
+			}
+		}
+		if ( _boardScrollGlideTarget < 0f ) return;
+		float cur = boardGridRef.ScrollOffset.y;
+		float delta = _boardScrollGlideTarget - cur;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			boardGridRef.ScrollOffset = new Vector2( boardGridRef.ScrollOffset.x, _boardScrollGlideTarget );
+			_boardScrollGlideTarget = -1f;
+			return;
+		}
+		boardGridRef.ScrollOffset = new Vector2( boardGridRef.ScrollOffset.x, cur + delta * 0.30f ); // ~90% in 7 frames (roster glide)
+	}
 
 	private List<TradeOffer> CurrentOffers()
 	{
@@ -1403,11 +1586,21 @@
 		return new List<TradeOffer>
 		{
 			new( "dev-1", "Mossvane",    0, "#3fb45e", male,   Pick( 0, "pagefin" ),  Pick( 1, "cherune" ),    now.AddMinutes( -2 ),  true ),
-			new( "dev-2", "Rin",         0, "#ffce3a", female, Pick( 2, "embrik" ),   Pick( 3, "skunkape" ),   now.AddMinutes( -12 ), false ),
+			new( "dev-2", Connection.Local?.DisplayName ?? "Rin", 0, "#ffce3a", female, Pick( 2, "embrik" ), Pick( 3, "skunkape" ), now.AddMinutes( -12 ), false ), // posted by YOU → exercises the MINE filter
 			new( "dev-3", "Kestrel",     0, "#3f8fe0", male,   Pick( 4, "sheepot" ),  Pick( 0, "loomweaver" ), now.AddHours( -1 ),    true ),
 			new( "dev-4", "Bramblewick", 0, "#e8a33c", male,   "dawnmote",            Pick( 2, "wishlift" ),   now.AddHours( -3 ),    false ),
 			new( "dev-5", "Sable",       0, "#f87171", female, Pick( 1, "twincoil" ), "heartwell",             now.AddDays( -1 ),     false ),
 		};
+	}
+
+	// TEMP dev instrument (2026-08-29): open the Trade Board takeover from the console.
+	[ConCmd( "dev_hubboard" )]
+	public static void DevHubBoard( string section = "board" )
+	{
+		var p = _devHub;
+		if ( p == null ) { Log.Warning( "[dev_hubboard] Online hub not mounted." ); return; }
+		p.SwitchTab( section );
+		Log.Info( $"[dev_hubboard] -> {section}" );
 	}
 
 	[ConCmd( "dev_hubring" )]
@@ -1535,6 +1728,7 @@
 		base.Tick();
 		UpdateHubRing();
 		ApplyRingWave();
+		if ( currentSection == "board" ) UpdateBoardScrollFollow();
 
 		bool noteLive = Time.Now < _postNoteUntil;
 		if ( noteLive != _postNoteLive )
@@ -1547,7 +1741,7 @@
 	// Ring costume hosts: the three in-tile battle BUTTONS, the guild CTA,
 	// the presence heads, POST OFFER + VIEW ALL OFFERS (trades kb 0 / 1)
 	// and the board's POST OFFER (board kb 0). Trade slips (kb 2+), board
-	// rows (kb 1+) and leaderboard rows wear the slab cursor instead.
+	// filters + cards (kb 1+) and leaderboard rows wear the slab cursor instead.
 	private bool IsRingCursor()
 		=> _kbZone == "battle" || _kbZone == "guild" || _kbZone == "online"
 		|| ( _kbZone == "trades" && _kbIndex < TradeSlipKbBase )
@@ -1710,10 +1904,17 @@
 			return;
 		}
 
-		// TRADE BOARD takeover — an inline section (no child panel): kb 0 =
-		// POST OFFER (ring host), 1..n = the rows (slab cursor). W/S walk,
-		// Space / Enter / E act (a row = its click), R does nothing here,
-		// Q returns to the landing (the unclaimed-Q rule, explicit).
+		// TRADE BOARD takeover — an inline section (no child panel). Board kb
+		// space: 0 = POST OFFER (ring host) · 1..4 = the filter segments ·
+		// 5+ = the offer CARDS, a 3-column grid. Nav map:
+		//   POST OFFER  — S → the active filter segment
+		//   filters     — A/D between segments · W → POST OFFER · S → card 0
+		//                 · Space/Enter/E = select that filter
+		//   cards       — A/D within the row · W/S = ±3 (W off row 0 → the
+		//                 active filter) · Space/Enter/E = accept
+		// R cycles the filter from anywhere on the board (the page cycle key);
+		// Q returns to the landing (the unclaimed-Q rule, explicit). A cursor
+		// move onto a card arms the scroll-follow (consumed in Tick).
 		if ( currentSection == "board" )
 		{
 			if ( Input.Pressed( "Menu" ) && !GameHUD.PanelHandledBackKey )
@@ -1723,28 +1924,66 @@
 				StateHasChanged();
 				return;
 			}
-			int boardCount = 1 + _boardOffers.Count;
+			if ( Input.Pressed( "Reload" ) ) { CycleBoardFilter(); _boardFollowPending = true; return; }
+			int cardCount = _boardOffers.Count;
+			int boardCount = BoardCardKbBase + cardCount;
 			_kbZone = "board";
 			_kbIndex = Math.Clamp( _kbIndex, 0, boardCount - 1 );
+			if ( _kbIndex >= BoardCardKbBase && cardCount == 0 ) _kbIndex = BoardFilterKbBase + _boardFilter;
 			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
 			{
 				if ( _kbIndex == 0 ) OnPostOffer();
-				else if ( _kbIndex - 1 < _boardOffers.Count ) AcceptOffer( _boardOffers[_kbIndex - 1] );
+				else if ( _kbIndex < BoardCardKbBase ) SelectBoardFilter( _kbIndex - BoardFilterKbBase );
+				else if ( _kbIndex - BoardCardKbBase < cardCount ) AcceptOffer( _boardOffers[_kbIndex - BoardCardKbBase] );
 				return;
 			}
-			int bdy = 0;
+			int bdx = 0, bdy = 0;
 			if ( Input.Pressed( "Up" ) ) bdy = -1;
 			else if ( Input.Pressed( "Down" ) ) bdy = 1;
-			if ( bdy != 0 )
+			else if ( Input.Pressed( "Left" ) ) bdx = -1;
+			else if ( Input.Pressed( "Right" ) ) bdx = 1;
+			if ( bdx == 0 && bdy == 0 ) return;
+			int t = _kbIndex;
+			if ( _kbIndex == 0 )
 			{
-				int t = Math.Clamp( _kbIndex + bdy, 0, boardCount - 1 );
-				if ( t != _kbIndex || !_kbActive )
+				// POST OFFER: S lands on the active filter segment.
+				if ( bdy > 0 ) t = BoardFilterKbBase + _boardFilter;
+			}
+			else if ( _kbIndex < BoardCardKbBase )
+			{
+				int seg = _kbIndex - BoardFilterKbBase;
+				if ( bdx != 0 ) t = BoardFilterKbBase + Math.Clamp( seg + bdx, 0, BoardFilterCount - 1 );
+				else if ( bdy < 0 ) t = 0;
+				else if ( cardCount > 0 ) t = BoardCardKbBase;
+			}
+			else
+			{
+				int c = _kbIndex - BoardCardKbBase;
+				int row = c / BoardCols, col = c % BoardCols;
+				if ( bdx != 0 )
 				{
-					_kbIndex = t;
-					_kbActive = true;
-					SoundManager.PlayHover();
-					StateHasChanged();
+					int nc = Math.Clamp( col + bdx, 0, BoardCols - 1 );
+					int nt = row * BoardCols + nc;
+					if ( nt < cardCount ) t = BoardCardKbBase + nt;
 				}
+				else if ( bdy < 0 )
+				{
+					t = row == 0 ? BoardFilterKbBase + _boardFilter : BoardCardKbBase + ( c - BoardCols );
+				}
+				else
+				{
+					int nt = c + BoardCols;
+					if ( nt < cardCount ) t = BoardCardKbBase + nt;
+					else if ( row < ( cardCount - 1 ) / BoardCols ) t = BoardCardKbBase + cardCount - 1; // a short last row: land on its last card
+				}
+			}
+			if ( t != _kbIndex || !_kbActive )
+			{
+				_kbIndex = t;
+				_kbActive = true;
+				_boardFollowPending = true;
+				SoundManager.PlayHover();
+				StateHasChanged();
 			}
 			return;
 		}
@@ -1842,7 +2081,7 @@
 		{
 			case "battle": return 3;
 			case "trades": return TradeSlipKbBase + _shownOffers.Count;   // POST OFFER + VIEW ALL + shown offers
-			case "board": return 1 + _boardOffers.Count;                  // POST OFFER + rows (not a landing zone; here for clamp safety)
+			case "board": return BoardCardKbBase + _boardOffers.Count;    // POST OFFER + filters + cards (not a landing zone; here for clamp safety)
 			case "guild": return GuildManager.UiEnabled ? 1 : 0;
 			case "online": return 1 + Math.Min( others, MaxHeads ) + VoiceSlotCount();
 			case "boards": return HubBoardsCount();
@@ -2101,12 +2340,14 @@
 		SoundManager.PlayClick();
 		currentSection = section;
 		ResetSelection();
-		// The board's cursor lands on the first row (else POST OFFER) — the
+		// The board's cursor lands on the first CARD (else POST OFFER) — the
 		// slab cursor is the board's one costume until W reaches the button.
 		if ( section == "board" )
 		{
+			_boardFilter = 0; // the board opens on ALL
 			_kbZone = "board";
-			_kbIndex = CurrentOffers().Count > 0 ? 1 : 0;
+			_kbIndex = CurrentOffers().Count > 0 ? BoardCardKbBase : 0;
+			_boardFollowPending = true;
 		}
 	}
 
@@ -2536,6 +2777,7 @@
 				_devFakeTrades ? ( _fakeOffers?.Count ?? -1 ) : -2,
 				_shownOffers.Count,
 				_boardOffers.Count,
+				_boardFilter,                     // board filter segment (2026-08-29)
 				(int)( Time.Now / 60f )
 			),
 			// v3 beast art: hero idle frames (multi-frame species only), the

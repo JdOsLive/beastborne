@@ -635,6 +635,22 @@
                                 <div class="pl-alert-clear pl-hit hit-clear @(IsPressed( "hit-clear" ) ? "pressed" : "") @(ClearArmed ? "armed" : "")"><span>@(ClearArmed ? "SURE?" : "CLEAR ALL")</span></div>
                             }
                         }
+
+                        @* OVERLAY SCROLLBAR (rev 7.1, 2026-08-29 — user: "shouldn't we have a
+                           side scrollbar?") — the Beastbook dossier recipe ported: a 4px track
+                           at the app view's right edge (x 508) + a 4px thumb, geometry written
+                           in px ONLY when it changes (UpdateAppScrollbar) on wheel / the 1 Hz
+                           tick / once after the cascade. Lives in the APP VIEW, never inside
+                           the scroller (flat-children law); the view paints no fill, so the
+                           absolute child stacks ABOVE the list by DOM order. .on is markup-
+                           driven (hashed) — hidden entirely when the content fits. No pl-hit:
+                           the backdrop router never sees it; wheel is the input. *@
+                        @if ( _appView != "radio" )
+                        {
+                            <div class="pl-sb-track @(_sbOn ? "on" : "")" @ref="_sbTrackRef">
+                                <div class="pl-sb-thumb" @ref="_sbThumbRef"></div>
+                            </div>
+                        }
                     </div>
                 }
                 else
@@ -1442,6 +1458,64 @@
     private Panel _listScrollRef;        // effects / alerts scroller — the wheel routes to the ACTIVE app's ref
     private ChatInputBox _phoneChatBox;
 
+    // ── Overlay scrollbar (rev 7.1) — the Beastbook dossier recipe. Track +
+    // thumb geometry is written imperatively in px, only when a value
+    // changes; the writes are gated to wheel / 1 Hz / post-cascade so the
+    // leaned subtree is never dirtied per frame (the 7fps law). ──
+    private Panel _sbTrackRef, _sbThumbRef;
+    private Panel _sbSeenTrack;                 // ReferenceEquals guard — a remount invalidates the caches
+    private int _sbTrackTop = -1, _sbTrackH = -1, _sbThumbTop = -1, _sbThumbH = -1;
+    private bool _sbOn;                         // markup-driven .on (hashed) — false when the content fits
+    private int _sbDirtyFrames;                 // frames left to re-measure (wheel / auto-scroll / open)
+    private float _sbRefreshAt = -1f;           // one-shot re-measure after the cascade settles
+
+    private Panel ActiveScroller() => _appView == "chat" ? _chatScrollRef : ( _appView is "effects" or "alerts" ? _listScrollRef : null );
+
+    private void ArmScrollbar( int frames = 2 ) => _sbDirtyFrames = Math.Max( _sbDirtyFrames, frames );
+
+    // Thumb math (proven ratio recipe): rect px and scroll px are commensurate,
+    // so viewH / (viewH + maxOff) and offset / maxOff are unit-free — only the
+    // track length is converted to style px (× ScaleFromScreen). Box.Rect is
+    // LAYOUT space (pre-transform, log-proven in v5), and the track lives in
+    // the same leaned subtree as the list, so the flat delta needs no projection.
+    private void UpdateAppScrollbar()
+    {
+        var sref = ActiveScroller();
+        if ( _sbTrackRef == null || _sbThumbRef == null || sref == null || _appviewRef == null ) return;
+
+        if ( !ReferenceEquals( _sbSeenTrack, _sbTrackRef ) )
+        {
+            // Fresh mount (app switch re-keyed the view) — the caches describe a dead panel.
+            _sbSeenTrack = _sbTrackRef;
+            _sbTrackTop = _sbTrackH = _sbThumbTop = _sbThumbH = -1;
+        }
+
+        float maxOff = sref.ScrollSize.y;
+        if ( maxOff < 2f ) { _sbOn = false; return; }
+
+        var ar = _appviewRef.Box.Rect;
+        var sr = sref.Box.Rect;
+        if ( ar.Height < 1f || sr.Height < 1f ) return;
+
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+        int trackTop = (int)( ( sr.Top - ar.Top ) * sc );
+        int trackH = (int)( sr.Height * sc );
+        if ( trackH < 30 ) return;
+        float viewH = sr.Height;
+        float contentH = viewH + maxOff;
+        int thumbH = Math.Max( 24, (int)( trackH * ( viewH / contentH ) ) );
+        int thumbTop = (int)( ( trackH - thumbH ) * ( sref.ScrollOffset.y / maxOff ) );
+        thumbTop = Math.Clamp( thumbTop, 0, Math.Max( 0, trackH - thumbH ) ); // a wheel write can overshoot until the engine clamps
+
+        if ( trackTop != _sbTrackTop ) { _sbTrackRef.Style.Top = Length.Pixels( trackTop ); _sbTrackTop = trackTop; }
+        if ( trackH != _sbTrackH ) { _sbTrackRef.Style.Height = Length.Pixels( trackH ); _sbTrackH = trackH; }
+        if ( thumbH != _sbThumbH ) { _sbThumbRef.Style.Height = Length.Pixels( thumbH ); _sbThumbH = thumbH; }
+        if ( thumbTop != _sbThumbTop ) { _sbThumbRef.Style.Top = Length.Pixels( thumbTop ); _sbThumbTop = thumbTop; }
+        _sbOn = true;
+    }
+
     // ── Identity — accent / derived bg / kicker / title box per app ──────
     private string AppViewTitle() => _appView switch { "chat" => "CHAT", "radio" => "RADIO", "effects" => "EFFECTS", _ => "ALERTS" };
     private string AppViewKicker() => _appView switch { "chat" => "MESSAGES", "radio" => "MUSIC", "effects" => "BOOSTS", _ => "ALERTS" };
@@ -1520,6 +1594,13 @@
         _clearArmedAt = -1f;
         _clearingAt = -1f;
         _volLadderUntil = -1f;
+        // Overlay scrollbar: forget the previous app's geometry, measure over the
+        // first frames of the new view, and once more after the cascade (0.7s).
+        _sbOn = false;
+        _sbSeenTrack = null;
+        _sbTrackTop = _sbTrackH = _sbThumbTop = _sbThumbH = -1;
+        _sbDirtyFrames = 4;
+        _sbRefreshAt = Time.Now + 0.8f;
         if ( !switching )
         {
             _bloomLive = false;
@@ -1673,7 +1754,8 @@
         if ( _pressedHit != null && Time.Now - _pressedAt > 0.12f ) { _pressedHit = null; dirty = true; }
 
         float tdt = Time.Now - _tickAt;
-        if ( tdt < 0f || tdt >= 1f )
+        bool ticked = tdt < 0f || tdt >= 1f;
+        if ( ticked )
         {
             _tickAt = Time.Now;
             _tick++;
@@ -1697,6 +1779,7 @@
             {
                 _chatScrollRef.ScrollOffset = new Vector2( 0f, _chatScrollRef.ScrollSize.y );
                 _chatScrollPending--;
+                ArmScrollbar(); // the thumb rides the auto-scroll to newest
             }
         }
         else if ( _appView == "effects" )
@@ -1712,6 +1795,22 @@
                 Beastborne.Core.NotificationManager.Instance?.ClearHistory();
                 _readIds.Clear();
                 dirty = true;
+                ArmScrollbar(); // the list empties — the track hides on the next measure
+            }
+        }
+
+        // Overlay scrollbar upkeep — measured on the 1 Hz tick, on armed
+        // frames (wheel / auto-scroll / open), and once after the cascade has
+        // settled (+0.8s). Never every frame. _sbOn flips are picked up by
+        // BuildHash; the px writes go straight to the refs.
+        if ( _appView is "chat" or "effects" or "alerts" )
+        {
+            if ( _sbRefreshAt > Time.Now + 2f ) _sbRefreshAt = -1f;   // stale stamp from a prior session
+            if ( _sbRefreshAt > 0f && Time.Now >= _sbRefreshAt ) { _sbRefreshAt = -1f; ArmScrollbar( 1 ); }
+            if ( ticked || _sbDirtyFrames > 0 )
+            {
+                if ( _sbDirtyFrames > 0 ) _sbDirtyFrames--;
+                UpdateAppScrollbar();
             }
         }
 
@@ -2571,7 +2670,7 @@
             if ( _appView != null )
             {
                 var sref = _appView == "chat" ? _chatScrollRef : _listScrollRef;
-                if ( sref != null ) sref.ScrollOffset += new Vector2( 0f, delta.y * 40f );
+                if ( sref != null ) { sref.ScrollOffset += new Vector2( 0f, delta.y * 40f ); ArmScrollbar(); }
             }
             return; // consumed either way
         }
@@ -2613,6 +2712,6 @@
                 Beastborne.Systems.RadioManager.CurrentStationIndex,
                 _progFillPx ),
             HashCode.Combine( _appView == "chat" ? ChanCounts() : default, _seenGlobal, _seenGuild, _seenTrade, ChatPanel.IsChatFocused ),
-            HashCode.Combine( ClearArmed, _clearingAt > 0f, _readIds.Count, _fxExpired.Count, ActiveEffectsPanel.TotalEffectCount, _alertsSeenBefore ) );
+            HashCode.Combine( ClearArmed, _clearingAt > 0f, _readIds.Count, _fxExpired.Count, ActiveEffectsPanel.TotalEffectCount, _alertsSeenBefore, _sbOn ) );
     }
 }
