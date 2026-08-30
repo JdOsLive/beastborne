@@ -3,7 +3,14 @@
 <html><head><meta charset="utf-8"><title>Beastborne — PawPad Apps: Chat · Radio · Effects · Alerts</title>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
 <!--
-  PAWPAD IN-PHONE APPS — DESIGN BRIEF (rev 6 — HEADERS ONLY, 2026-08-29. User verdict on rev 5:
+  PAWPAD IN-PHONE APPS — DESIGN BRIEF (rev 7 — ACTIONS, 2026-08-29. User asked "is anything missing?"
+  Answer: the apps were read-only LOGS — nothing in Alerts or Chat led anywhere. rev 7 adds two actions and
+  nothing else: (1) every ALERTS row is a tap that deep-links to its subject (hit-alert-N → NavManager /
+  in-phone switch), with a dim › at the row's right so the tap is visible; (2) CHAT author names tap into the
+  tamer card (hit-chat-author-N → the existing TamerCardShowcasePopup over the phone). Headers (rev 6) and
+  everything before them stand untouched. Routing + code asks: ENGINE NOTES · ACTIONS.
+  DENSITY VERDICT: reviewed 2026-08-29 — density is right for 512px; the gaps were actions, not information (rev 7).
+  rev 6 — HEADERS ONLY, 2026-08-29. User verdict on rev 5:
   "the headers feel a bit off for chat, radio, effects, alerts." Diagnosis from the renders: rev 5
   built the header as a BOX — a #0d0a16 base one step DARKER than the app's derived bg (a black card
   floating on the tint, hard edges), wave strips at .16/.24 on near-black (smudges, cut by the band's
@@ -164,9 +171,47 @@
     `pl-hit hit-<action>` class + an entry in PhoneLauncher's HitActions[] + a RunAppAction case,
     resolved by the backdrop router (ActionAtScreen inverse-projection). New controls in this brief
     that need registering: hit-chan dots ride existing chips; hit-embed-N (chat showcase tap),
-    hit-radio-shuffle, hit-radio-repeat, hit-radio-station, hit-vol-1..5, hit-alert-clear (exists as
-    hit-clear — now TWO-TAP, see ALERTS). Volume is STEPPED (5 tap segments), not a drag slider —
+    hit-chat-author-N (rev 7 — the author name box), hit-radio-shuffle, hit-radio-repeat,
+    hit-radio-station, hit-vol-1..5, hit-alert-N (rev 7 — the whole alerts row), hit-alert-clear (exists
+    as hit-clear — now TWO-TAP, see ALERTS). Volume is STEPPED (5 tap segments), not a drag slider —
     continuous drag through the hit router is a project; taps are free.
+    ROUTER LAWS the new hits lean on: (1) WalkHits is POST-ORDER (shipped 2026-08-28, PhoneLauncher.razor
+    L1182 — children first, innermost wins), which is what lets a name INSIDE a chat row resolve; the rule
+    stays "a row that IS a hit contains no hit (alerts), a row that CONTAINS a hit is not one (chat)".
+    (2) HitActions[] is an exact HasClass list — the indexed families (hit-embed-N, hit-vol-N, hit-alert-N,
+    hit-chat-author-N) need a prefix scan in the walk (class starts-with → id + index), not N entries.
+    (3) LayoutContains tests the panel's own rect only — a row scrolled out of the list viewport still has
+    a rect under the header; the walk must ALSO require the point inside the scroller's rect, or a
+    scrolled-off alert is tappable through the wave band.
+  · ACTIONS (rev 7) — the apps stop being read-only. ALERTS: tapping a row marks it read (UI-side
+    `_readIds` HashSet<Guid> → BuildHash; its tick value-swaps to row tone — no Core change) and routes to
+    its subject: Achievement → AchievementPanel.Show() (a popup: dock discipline — Close() the phone,
+    NavManager.MarkRouted(), open) · Catch (CONTRACTED) / Evolution → NavManager.GoTo("monsters") + select
+    that beast · TamerLevelUp → GoTo("skills") · ExpeditionUnlock → GoTo("expedition") · RankedBattle →
+    GoTo("online") · ServerBoost → OpenApp("effects") (in-phone) · guild events → GoTo("online") landing on
+    the hub's guild section · no route → the tap only marks read (the › value-swaps to row tone).
+    LEAVING THE PHONE = the launch grammar in reverse order: the bloom collapses (CloseApp, the ~240ms
+    reverse toggle) → the DESTINATION tile's accent swipe (StartSwipe(i, app): phone hides under full cover,
+    RouteApp fires — exactly a home-grid launch) → destination. Nothing new is animated. IN-PHONE targets
+    (effects) keep the phone open: alerts' derived bg cross-fades to effects' (one class toggle on the
+    bloom's own layers), the header re-keys; Q still goes to the home grid (apps have no back-stack).
+    CHAT: an author name is a hit (hit-chat-author-N, the 200px name box) → TamerCardShowcasePopup over the
+    phone, the route the embeds already use (ChatPanel.razor L170 ShowTamerCardPopup). Own name = no class.
+    CODE ASKS (none in this brief's scope; user's call):
+      (a) Notification needs a ROUTE — Core: `Notification.Route` (string: "monsters:{guid}" · "skills" ·
+          "expedition" · "online:guild" · "effects" · "achievements" · null) set at each Add/Notify* site;
+          the phone dispatches on Route, NOT Type — guild events fire as Success/Info/Warning today
+          (GuildManager.cs L604/650/685/831), so Type can't reach guild. NotifyCatch(string) has NO live
+          caller (only the NotificationPanel dev test, L186) — when contracts fire it, pass the Guid.
+      (b) MonsterRosterPanel has no public select-by-id (TrySelectMonster is private, L4602; no static
+          Instance) — UI-scope: `public static Guid PendingSelectId`, consumed on its next
+          OnAfterTreeRender; the phone sets it before GoTo("monsters").
+      (c) OnlineHubPanel.SwitchTab is private (L1692) — same latch: `public static string PendingSection`.
+      (d) TamerCardShowcasePopup.Show(ChatMessage) reads Card* fields only a TamerCardShowcase message
+          carries — a plain author tap needs a card for a SteamId (TamerCardSnapshot exists; a
+          request-by-SteamId does not). Until it does: cache the last card each SteamId posted this
+          session and open that; authors with no cached card are INERT (name stays dim, no .pressed
+          brighten — an honest no-op beats a dead-looking button).
   · PRESS FEEDBACK (router-driven) — CSS :hover/:active NEVER fire inside the device (no pointer
     events reach it), so press feedback is stamped by the router: `RunAppAction` records
     `_pressedHit = act` + `_pressedAt = RealTime.Now`; the matching element renders
@@ -711,6 +756,7 @@ laws in ENGINE NOTES.</div>
       <div class="co" style="background:#4aa8ff;left:318px;top:192px">2</div>
       <div class="co" style="background:#4aa8ff;left:506px;top:370px">3</div>
       <div class="co" style="background:#4aa8ff;left:506px;top:656px">4</div>
+      <div class="co" style="background:#4aa8ff;left:98px;top:214px">5</div>
       <div class="co lf" style="left:6px;top:436px">A</div>
       <div class="co lf" style="left:6px;top:364px">B</div>
     </div>
@@ -722,7 +768,8 @@ laws in ENGINE NOTES.</div>
       <span><b style="background:#4aa8ff">2</b><i>Per-channel unread dot</i> — count of arrivals in channels you're not looking at; clears on switch. New field → BuildHash.</span>
       <span><b style="background:#4aa8ff">3</b><i>Showcase embeds render on the phone</i> — beast card (4px element left edge as in-flow first child + neutral 34px tile holding the beast sprite as a pixelated <i>&lt;img&gt;</i> + LV/PWR/rarity) and tamer card. Fill + edge only, no border. Tap (hit-embed) opens the existing full-screen showcase popup OVER the phone.</span>
       <span><b style="background:#4aa8ff">4</b><i>Input + SEND</i> (hit-input focuses, hit-send sends, Enter sends). Input is the darker fill #0d0a16 with no border; focus = the violet ring only (2px #9b6cff, value-swapped from a zero-alpha border so geometry never shifts). Placeholder names the channel — plain words. While typing, all phone keys stand down (IsChatFocused gate, already shipped).</span>
-      <span><i>Names:</i> other players' names are dim cream rgba(244,241,234,.6); YOUR name is the app accent #4aa8ff (own messages also keep the accent-tint row). No violet in the log — violet is the cursor. Timestamps use the shipped <i>ChatMessage.FormattedTime</i> in a 48px meta box.</span>
+      <span><b style="background:#4aa8ff">5</b><i>Author names open the tamer card</i> (hit-chat-author-N on the 200px name box) — the existing TamerCardShowcasePopup over the phone, the same route the embeds use. No underline, no chevron: the name is the affordance, as in every chat app; press = the name value-swaps to full cream for the 120ms <i>.pressed</i> stamp. Your own name is not a target (no class, no stamp). Card-by-SteamId ask: ENGINE NOTES · ACTIONS (d).</span>
+      <span><i>Names:</i> other players' names are dim cream rgba(244,241,234,.6); YOUR name is the app accent #4aa8ff (own messages also keep the accent-tint row) and is the one name that is not a tap. No violet in the log — violet is the cursor. Timestamps use the shipped <i>ChatMessage.FormattedTime</i> in a 48px meta box.</span>
       <span><i>Empty states:</i> no messages at all → paw watermark + "NOTHING YET" + "Say hi — global is everyone online."; a channel with no messages since you joined → "GUILD IS QUIET" + "Messages land here as they arrive." Same recipe as Effects' empty state; never a bare string in a void.</span>
       <span><i>Derived bg #191F35</i> — the landed state of the blue bloom (accent 10% over #14101F). <i>rev 4:</i> every message row is now a FILLED slab (#222a45 theirs, the accent tint yours) so the log never sits on the ghost glyph (§ 1b legibility law); the showcase embed inside a row steps one tone lighter (#2b3554 — chat's track tone).</span>
       <span><b class="lf">A</b><i>LIFE — arrivals:</i> a new message slides in from the bottom (<i>pl-arrive</i>, 220ms fade + 8px rise) and the log follows it; your own lands one step lighter and settles (<i>pl-arrive-own</i>, 300ms). Launch = the shared cascade. § 6.</span>
@@ -735,6 +782,7 @@ laws in ENGINE NOTES.</div>
       <span><i>Showcase messages stop rendering blank</i> — today the phone draws only PlayerName + Content, so beast/tamer-card posts are empty rows.</span>
       <span><i>Timestamps + per-channel unread dots added</i> — neither exists on the phone port.</span>
       <span><i>Input placeholder names the channel</i>; SEND stays. Everything else keeps shipped geometry.</span>
+      <span><i>rev 7 · Names become taps</i> — today nothing in the log leads anywhere; a name opens the tamer card.</span>
     </div>
   </div>
 </div>
@@ -946,7 +994,7 @@ laws in ENGINE NOTES.</div>
         </div>
       </div>
       <div class="sect" style="background:#e0414a;color:#fff"><span>TODAY</span></div>
-      <!-- rows: row-flex 56, padding 0: tick 4 (in-flow first child, ALWAYS emitted, colour value-swapped) · +10 tile 34 +12 · text 330 · +60 computed · time 48 -->
+      <!-- rows: row-flex 56, padding 0: tick 4 (in-flow first child, ALWAYS emitted, colour value-swapped) · +10 tile 34 +12 · text 330 · +42 computed · time 48 · +4 · chevron 14 (rev 7, always emitted; row-toned when the row has no route) · 14 edge = 512. The ROW is the hit (hit-alert-N); nothing inside it is. -->
       <div class="rows" style="flex:1">
         <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
           <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#e0414a;flex:0 0 auto"></div>
@@ -955,7 +1003,7 @@ laws in ENGINE NOTES.</div>
             <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">ACHIEVEMENT</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">First Fusion — fuse two beasts into one.</span>
           </div>
-          <span class="meta" style="margin-left:60px">2m</span>
+          <span class="meta" style="margin-left:42px">2m</span><span style="width:14px;margin-left:4px;font-size:14px;font-weight:800;color:rgba(244,241,234,.35);flex:0 0 auto">›</span>
         </div>
         <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
           <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#e0414a;flex:0 0 auto"></div>
@@ -964,7 +1012,7 @@ laws in ENGINE NOTES.</div>
             <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">CONTRACTED</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">Wispryn joined your roster.</span>
           </div>
-          <span class="meta" style="margin-left:60px">18m</span>
+          <span class="meta" style="margin-left:42px">18m</span><span style="width:14px;margin-left:4px;font-size:14px;font-weight:800;color:rgba(244,241,234,.35);flex:0 0 auto">›</span>
         </div>
         <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
           <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#3a1a28;flex:0 0 auto"></div>
@@ -973,7 +1021,7 @@ laws in ENGINE NOTES.</div>
             <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">LEVEL UP</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">Tamer level 12 reached.</span>
           </div>
-          <span class="meta" style="margin-left:60px">1h</span>
+          <span class="meta" style="margin-left:42px">1h</span><span style="width:14px;margin-left:4px;font-size:14px;font-weight:800;color:rgba(244,241,234,.35);flex:0 0 auto">›</span>
         </div>
         <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center">
           <div style="width:4px;height:56px;border-radius:12px 0 0 12px;background:#3a1a28;flex:0 0 auto"></div>
@@ -982,7 +1030,7 @@ laws in ENGINE NOTES.</div>
             <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">NEW ZONE</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">Saltmoor Forest unlocked.</span>
           </div>
-          <span class="meta" style="margin-left:60px">3h</span>
+          <span class="meta" style="margin-left:42px">3h</span><span style="width:14px;margin-left:4px;font-size:14px;font-weight:800;color:rgba(244,241,234,.35);flex:0 0 auto">›</span>
         </div>
         <div class="sect" style="margin-top:6px;background:#e0414a;color:#fff"><span>EARLIER</span></div>
         <div style="width:512px;height:56px;border-radius:12px;background:#3a1a28;display:flex;align-items:center;opacity:.6">
@@ -992,7 +1040,7 @@ laws in ENGINE NOTES.</div>
             <span style="display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.8px;color:#F4F1EA">SERVER BOOST</span>
             <span style="font-size:12px;font-weight:500;color:rgba(244,241,234,.85);line-height:16px">KESTREL activated ×2 XP for everyone.</span>
           </div>
-          <span class="meta" style="margin-left:60px">1d</span>
+          <span class="meta" style="margin-left:42px">1d</span><span style="width:14px;margin-left:4px;font-size:14px;font-weight:800;color:rgba(244,241,234,.35);flex:0 0 auto">›</span>
         </div>
       </div>
       <!-- clear all — danger-tier slab: rgba(224,65,74,.18) fill, red italic text, no border. 200 × 38, centered by computed margin (512 − 200) / 2 = 156 -->
@@ -1004,6 +1052,7 @@ laws in ENGINE NOTES.</div>
       <div class="co" style="background:#e0414a;left:6px;top:296px">2</div>
       <div class="co" style="background:#e0414a;left:506px;top:228px">3</div>
       <div class="co" style="background:#e0414a;left:506px;top:660px">4</div>
+      <div class="co" style="background:#e0414a;left:470px;top:350px">5</div>
       <div class="co lf" style="left:506px;top:274px">A</div>
       <div class="co lf" style="left:6px;top:652px">B</div>
     </div>
@@ -1015,15 +1064,17 @@ laws in ENGINE NOTES.</div>
       <span><b style="background:#e0414a">2</b><i>Unread tick</i> — the in-flow 4×56 first child of every row, always emitted; red on rows that arrived since the app was last opened, row-toned otherwise (value swap — never conditionally added). ⚠ Needs a read-watermark (LastOpenedAt) on NotificationManager — Core code, user's call; without it, ship the design minus ticks (opening already clears the launcher badge).</span>
       <span><b style="background:#e0414a">3</b><i>TODAY / EARLIER kicker chips + relative times</i> from CreatedAt, in a 48px meta box. Rows are a fixed 56px (no overflow:hidden); pixel-art IconPath icons render at 24px inside the tile.</span>
       <span><b style="background:#e0414a">4</b><i>CLEAR ALL</i> (hit-clear, shipped) — the DANGER-tier slab: rgba(224,65,74,.18) fill + red italic text, no border, r16. TWO-TAP confirm: the first tap arms it and the label value-swaps to "SURE?" (one span, interpolated text — no @if child swap); a second tap within ~2s clears (PlayBack), otherwise it disarms back to CLEAR ALL. The router is tap-only, so two-tap stands in for the guiding-star's hold-to-confirm. Armed flag → BuildHash.</span>
+      <span><b style="background:#e0414a">5</b><i>Every row is a tap</i> (hit-alert-N — the row is the hit, nothing inside it is): it marks the row read (tick → row tone) and deep-links to its subject — ACHIEVEMENT → achievements · CONTRACTED → that beast in the roster · LEVEL UP → skills · NEW ZONE → expedition · SERVER BOOST → the Effects app (stays in the phone) · guild events → guild. The 14px <i>›</i> at the right (cream .35, always emitted; row-toned when a row has nowhere to go) says so. Leaving the phone = the bloom collapses, then the destination's accent swipe — the launch grammar in reverse. Press = the row brightens one step (row → track tone) for the 120ms stamp. Routing + asks: ENGINE NOTES · ACTIONS.</span>
       <span><i>Empty state ("ALL CAUGHT UP" — shipped):</i> keep the string, give it the Effects empty-state recipe — paw watermark + "ALL CAUGHT UP" + "Contracts, level-ups and unlocks land here." CLEAR ALL hides when the list is empty.</span>
       <span><i>Peek relationship:</i> peeks (max 3, 3.6s) slide from the right edge toward the phone chip; tapping any peek opens THIS app. Every peek is already in this record — the app is the paper trail, the peek is the knock.</span>
       <span><i>Derived bg #281523</i> — red blooms to a dim ember, not an alarm (accent 10% over #14101F). Rows #3a1a28.</span>
       <span><b class="lf">A</b><i>LIFE — a new alert while open:</i> the row inserts at the top of TODAY (<i>pl-arrive</i> 220ms), then its tick lights red 200ms after it lands (<i>plTickIn</i> 0.5s on the always-emitted tick child). The knock is outside: the shipped chip pop + peek. § 6.</span>
       <span><b class="lf">B</b><i>LIFE — CLEAR ALL commit:</i> rows fade bottom-up 40ms apart (<i>pl-clr-N</i> counted from the bottom, opacity-only ladder 400ms), the +500ms one-shot empties the list, ALL CAUGHT UP fades in 300ms and the slab hides.</span>
     </div>
-    <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">WHEEL</span><span class="klab">scroll (build fix needed)</span></div>
+    <div class="kb"><span class="kcap">Q</span><span class="klab">home grid</span><span class="kcap">TAP ROW</span><span class="klab">open its subject</span><span class="kcap">WHEEL</span><span class="klab">scroll (build fix needed)</span></div>
     <div class="chg">
       <div class="t">What changes vs today</div>
+      <span><i>rev 7 · Rows deep-link</i> — today a row is a dead slab; a tap opens what the alert is about (needs <i>Notification.Route</i> — Core ask).</span>
       <span><i>Type identity added via the icon tile</i> — the port paints every title #e0414a regardless of type and drops the icons the peeks already show. Titles go cream; the glyph carries the type.</span>
       <span><i>Timestamps + TODAY/EARLIER grouping added</i> — today the record has no time anchor at all.</span>
       <span><i>Unread ticks</i> (pending the Core watermark ask).</span>
