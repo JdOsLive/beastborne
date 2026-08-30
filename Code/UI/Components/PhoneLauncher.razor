@@ -160,13 +160,27 @@
     code): one cursor per app view (`_appKb`, an action string) stamped as
     `.kb-focused`; mouse hover resolves through the click router on movement
     and stamps `.hovered` (and moves the cursor — last-input-wins).
-      CHAT    W/S walk messages → input · A/D channel · Space/E/Enter = the
-              row's tap (embed / author card) or, on the input stop, type ·
-              while typing the phone stands down; Esc blurs back to it.
-      RADIO   Space = PLAY (or the mouse-parked control) · A/D skip · W/S
-              volume ladder · R next station · Z shuffle · X repeat.
+    POLISH PASS 2026-08-30 (user playtest of e8733e0): the cursor is a ROW
+    HIGHLIGHT (slab step + 4px violet left edge) on rows and a violet border
+    value-swap on controls — the spread-shadow ring read as nothing.
+      CHAT    opens ON the input (one press from typing) · W climbs into the
+              log newest-first, S walks back down to the input · A/D channel
+              (caps printed on the bar) · Space/E = the row's tap (embed /
+              author card) · Enter ANYWHERE = focus the input · while typing
+              the phone stands down; Esc blurs back to it, a second Esc backs
+              out to the grid.
+      RADIO   the cursor walks EVERY control on a 3-row grid — station chip /
+              transport / volume: A/D within a row, W/S between rows (column-
+              mapped: PLAY ↔ seg 3, station ↔ PLAY) · Space/Enter = tap the
+              focused control (on a volume segment: commit that level) ·
+              direct keys R tune · Z shuffle · X repeat (they do NOT move the
+              cursor).
       EFFECTS W/S walk boost rows then skill rows (reading focus).
       ALERTS  W/S walk rows → CLEAR ALL · Space = tap · R jumps to CLEAR ALL.
+    BACK = the accent circle + a Q cap, ONE always-mounted group in the status
+    row that grows/shrinks with the app chrome (AppChrome) so the row never
+    pops; the reverse bloom keeps the app view mounted until the collapse
+    ends and the home grid FADES in (mount keyframe) instead of popping.
 *@
 
 <root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "") @(_fx != FxPhase.Idle ? "fx-live" : "")">
@@ -229,13 +243,19 @@
                      chrome — a 28px app-accent circle with a cream ‹ FIRST in
                      the row (hit-back rides with it; Q stays); the right group
                      shrinks 438 → 406 and the row's mb 20 → 12. -->
-                <div class="pl-top @(_appView != null ? "app" : "")">
-                    @if ( _appView != null )
-                    {
-                        <div class="pl-av-back pl-hit hit-back @HitState( "hit-back" ) @(_appView == "effects" ? "ink" : "")" style="background-color: @AppViewAccent();"><span>‹</span></div>
-                    }
+                <div class="pl-top @(AppChrome ? "app" : "")">
+                    <!-- BACK GROUP (polish pass 2026-08-30) — ALWAYS mounted: the 28px
+                         accent circle + the house Q cap in one box that transitions
+                         0 ↔ 60px with AppChrome (width/margin/opacity class-toggle)
+                         so the clock and right group GLIDE instead of popping when
+                         the reverse bloom lands. The GROUP is the hit (hit-back);
+                         nothing inside it is. -->
+                    <div class="pl-av-backgrp pl-hit hit-back @HitState( "hit-back" ) @(AppChrome ? "on" : "") @(_appView == "effects" ? "ink" : "")">
+                        <div class="pl-av-back" style="background-color: @AppViewAccent();"><span>‹</span></div>
+                        <div class="pl-akey backq"><span>Q</span></div>
+                    </div>
                     <span class="pl-clock">@ClockText</span>
-                    <div class="pl-right @(_appView != null ? "app" : "")">
+                    <div class="pl-right @(AppChrome ? "app" : "")">
                         <div class="pl-sig" style="margin-left: @(RightPadPx())px;">
                             <div class="pl-sig-bar b1"></div>
                             <div class="pl-sig-bar b2"></div>
@@ -298,9 +318,20 @@
                                     <div class="pl-av-util stamp @("pl-stamp-" + ( EffectsCount() % 2 ))" style="margin-left: 204px; background-color: @AppViewAccent();"><span>@EffectsCount() ACTIVE</span></div>
                                 }
                             </div>
+                            <!-- WAVE BAND — the strips DRIFT (polish pass 2026-08-30, the brief's
+                                 VERIFY-LIVE item switched on): imperative background-position-x
+                                 writes per frame from TickApps, counter-flowing A/B at the page
+                                 headers' period timing (not a transform — lean-law legal). The
+                                 two END FADES are absolute siblings AFTER the strips under this
+                                 UNFILLED band (DOM order = paint order; the paint-behind law
+                                 only bites under a filled parent): a 48px gradient from the
+                                 surface tone at band height to zero alpha, so the band dissolves
+                                 into the room at both sides. -->
                             <div class="pl-av-waves @(_appView == "effects" ? "hot" : "")">
-                                <div class="pl-av-wave a" style="background-image: url( @WaveUrlA() );"></div>
-                                <div class="pl-av-wave b" style="background-image: url( @WaveUrlB() );"></div>
+                                <div class="pl-av-wave a" @ref="_waveARef" style="background-image: url( @WaveUrlA() );"></div>
+                                <div class="pl-av-wave b" @ref="_waveBRef" style="background-image: url( @WaveUrlB() );"></div>
+                                <div class="pl-av-fade l" style="background-image: @BandFade( true );"></div>
+                                <div class="pl-av-fade r" style="background-image: @BandFade( false );"></div>
                             </div>
                         </div>
 
@@ -314,31 +345,35 @@
                                 var msgs = PhoneMessages();
                                 RebuildStops( "chat", msgs.Count );
                             }
-                            <!-- channel bar: 3 × 164 + 2 × 10 = 512. Lit = .pl-chan.on
-                                 (accent fill + dark ink); unread dot = a fresh element
-                                 per count (render-key parity → plDotPop). -->
+                            <!-- channel bar (polish pass 2026-08-30): A cap 22 + 8 + 3 × 144
+                                 (140 declared + 2px cursor border) + 2 × 10 + 8 + D cap 22 = 512
+                                 — the A/D keys are printed ON the bar. Lit = .pl-chan.on
+                                 (accent fill + dark ink); unread dot = a fresh element per
+                                 count (render-key parity → plDotPop). -->
                             <div class="pl-chan-row">
-                                <div class="pl-chan pl-hit hit-chan-global @(_phoneChan == "global" ? "on" : "") @HitState( "hit-chan-global" )">
+                                <div class="pl-akey chan-cap a"><span>A</span></div>
+                                <div class="pl-chan c1 pl-hit hit-chan-global @(_phoneChan == "global" ? "on" : "") @HitState( "hit-chan-global" )">
                                     <span>GLOBAL</span>
                                     @if ( unreadGlobal > 0 )
                                     {
                                         <div class="pl-chan-dot @("pl-dot-" + ( unreadGlobal % 2 ))"><span>@FormatBadge( unreadGlobal )</span></div>
                                     }
                                 </div>
-                                <div class="pl-chan pl-hit hit-chan-guild @(_phoneChan == "guild" ? "on" : "") @HitState( "hit-chan-guild" )">
+                                <div class="pl-chan c2 pl-hit hit-chan-guild @(_phoneChan == "guild" ? "on" : "") @HitState( "hit-chan-guild" )">
                                     <span>GUILD</span>
                                     @if ( unreadGuild > 0 )
                                     {
                                         <div class="pl-chan-dot @("pl-dot-" + ( unreadGuild % 2 ))"><span>@FormatBadge( unreadGuild )</span></div>
                                     }
                                 </div>
-                                <div class="pl-chan pl-hit hit-chan-trade @(_phoneChan == "trade" ? "on" : "") @HitState( "hit-chan-trade" )">
+                                <div class="pl-chan c3 pl-hit hit-chan-trade @(_phoneChan == "trade" ? "on" : "") @HitState( "hit-chan-trade" )">
                                     <span>TRADE</span>
                                     @if ( unreadTrade > 0 )
                                     {
                                         <div class="pl-chan-dot @("pl-dot-" + ( unreadTrade % 2 ))"><span>@FormatBadge( unreadTrade )</span></div>
                                     }
                                 </div>
+                                <div class="pl-akey chan-cap d"><span>D</span></div>
                             </div>
                             <div class="pl-chat-scroll pl-scroll-clip" @ref="_chatScrollRef">
                                 @if ( msgs.Count == 0 )
@@ -556,7 +591,7 @@
                                             </div>
                                             <span class="pl-fx-val @(lastMin ? "last-min pl-pulse-" + ( _tick % 2 ) : "")">@FormatRemaining( b.Remaining )</span>
                                         </div>
-                                        <div class="pl-fx-strip"><div class="pl-fx-fill @(lastMin ? "amber" : "") @(fillPx >= 512 ? "full" : "")" style="width: @(fillPx)px;"></div></div>
+                                        <div class="pl-fx-strip"><div class="pl-fx-fill @(lastMin ? "amber" : "") @(fillPx >= 508 ? "full" : "")" style="width: @(fillPx)px;"></div></div>
                                     </div>
                                 }
                                 @foreach ( var g in ghosts )
@@ -762,7 +797,9 @@
                                         }
                                         else if ( badge > 0 )
                                         {
-                                            <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "")" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
+                                            <!-- § 6 LIFE: the badge POPS on every count change — parity
+                                                 render-key (pl-badge-0/1 → plDotPop A/B twins). -->
+                                            <span class="pl-badge @(app.DarkGlyph ? "dark-ink" : "") @("pl-badge-" + ( badge % 2 ))" style="background-color: @app.Accent;">@FormatBadge( badge )</span>
                                         }
                                     </div>
                                     <!-- v4.1: centering BY CONSTRUCTION. Live capture proved
@@ -991,6 +1028,7 @@
     {
         var gm = Beastborne.Core.GameManager.Instance;
         if ( gm != null && !gm.IsInGame ) gm.StartGame();
+        if ( id == "close" ) { Close(); Log.Info( "[dev_pawpad] closed" ); return; }
         OpenToApp( id );
         Log.Info( $"[dev_pawpad] -> {id}" );
     }
@@ -1472,8 +1510,17 @@
     // avatar 32 (v7.2: bigger, user call) + four 10px gaps = 121.
     // rev 6 (2026-08-29): in app views the back circle (4 + 28) sits before the
     // clock, so the right group's budget drops 32 (438 → 406 declared).
+    // Polish pass 2026-08-30: the back GROUP (circle 28 + 6 + Q cap 22 = 56,
+    // ml 4 = 60) is always mounted and transitions with AppChrome; the budget
+    // drops 60 (438 → 378 declared) and the margin GLIDES (transition on
+    // .pl-sig) so the row never pops.
     private int RightPadPx() =>
-        (int)Math.Max( 0f, ( _appView != null ? 388f : 420f ) - 121f - TamerLine.Length * NameCharPx );
+        (int)Math.Max( 0f, ( AppChrome ? 360f : 420f ) - 121f - TamerLine.Length * NameCharPx );
+
+    // The app chrome (back group, status-row geometry) flips at OpenApp and at
+    // CloseApp — the same instants the bloom / reverse bloom start — so every
+    // width transition in the status row runs in lockstep with the fade.
+    private bool AppChrome => _appView != null && _appClosingUntil < 0f;
 
     // Avatar — the command bar's exact house pattern (GameHUD): Steam
     // avatar via the avatar: URL when connected, gendered portrait PNG
@@ -1553,8 +1600,11 @@
             // the keyboard back from the TextEntry — nothing else ever would.
             if ( act != "hit-input" && act != "hit-send" ) BlurPhoneInput();
             if ( act != null ) { RunAppAction( act ); return; }
-            Close(); // clicked outside the phone = close entirely
-            ResetAppState();
+            // Clicked outside the phone = close entirely. The app view STAYS
+            // mounted for the 180ms slide-out (polish pass 2026-08-30: resetting
+            // here mounted the home grid under the departing phone — the "goes
+            // into one form" flash); ResetForOpen resets on the next Show().
+            Close();
             return;
         }
         int idx = TileAtScreen( Mouse.Position );
@@ -1671,9 +1721,46 @@
     private string AppViewAccent() => AccentOf( _appView );
     // Title boxes measured at 34px Exo2Italic-900 (rev-6 playwright render).
     private int TitleBoxPx() => _appView switch { "chat" => 94, "radio" => 113, "effects" => 151, _ => 136 };
-    // PHONE-PERIOD wave tiles (512×36 / 512×28, 256px crest period) — native tile, static.
+    // PHONE-PERIOD wave tiles (512×36 / 512×28, 256px crest period) — native tile.
     private string WaveUrlA() => "ui/wave-" + ( _appView ?? "chat" ) + "-phone-a.png";
     private string WaveUrlB() => "ui/wave-" + ( _appView ?? "chat" ) + "-phone-b.png";
+
+    // ── WAVE DRIFT (polish pass 2026-08-30) — the brief's VERIFY-LIVE item,
+    // switched on (user: "the wave animation should also be playing"). Mirrors
+    // BbHeaderWaves' timing at the phone tile's period: one full tile (512px)
+    // in 30s leftward (A) / 18s rightward (B), ROUNDED to whole px (seam law),
+    // B holding its −128px half-period phase. Written as background-position-x
+    // — not a transform, so nothing composites and no derived width is poisoned
+    // — every frame while an app view is mounted (per-frame re-assert is what
+    // survives the 1 Hz re-render; a one-shot write would be wiped). ──
+    private Panel _waveARef, _waveBRef;
+    private const float WavePeriodPx = 512f;
+
+    private void DriftWaves()
+    {
+        if ( _waveARef == null || _waveBRef == null ) return;
+        float offA = MathF.Round( ( Time.Now * ( WavePeriodPx / 30f ) ) % WavePeriodPx );
+        float offB = MathF.Round( ( Time.Now * ( WavePeriodPx / 18f ) ) % WavePeriodPx );
+        _waveARef.Style.BackgroundPositionX = Length.Pixels( -offA );
+        _waveBRef.Style.BackgroundPositionX = Length.Pixels( offB - 128f );
+    }
+
+    // ── BAND END FADES — the surface tone AT BAND HEIGHT, not the bare tint: the
+    // corner wash (linear, .12 / effects .10, 400 tall) still covers the band
+    // (y ≈ 130–170), so the fade must land on tint ⊕ wash or it reads as a
+    // darker patch at each end. Sampled at the band's mid-line (wash alpha
+    // .075 / .0625, colour accent × .625 — the non-premultiplied interpolation
+    // toward rgba(0,0,0,0)). Keyword gradient form, zero-alpha rgba — never the
+    // `transparent` keyword. ──
+    private static string BandBgOf( string id ) => id switch { "chat" => "#1b253d", "radio" => "#2b1c3d", "effects" => "#2d281e", _ => "#301624" };
+
+    private string BandFade( bool left )
+    {
+        var bg = BandBgOf( _appView ?? "chat" );
+        var clear = AccentRgba( bg, 0f );
+        return left ? "linear-gradient(to right, " + bg + ", " + clear + ")"
+                    : "linear-gradient(to right, " + clear + ", " + bg + ")";
+    }
     // Corner wash (keyword gradient — the radial + mask clip is the VERIFY-LIVE upgrade); effects .10, others .12.
     private string WashGradient() => "linear-gradient(to bottom, " + AccentRgba( BloomAccent(), BloomApp() == "effects" ? 0.10f : 0.12f ) + ", rgba(0, 0, 0, 0))";
     private static string AccentOf( string id ) => id switch { "chat" => "#4aa8ff", "radio" => "#c26bff", "effects" => "#f7e024", "alerts" => "#e0414a", _ => "#9b6cff" };
@@ -1915,6 +2002,10 @@
 
         // The press stamp clears at +120ms — this IS the one-shot (a ≤1 Hz tick is not enough).
         if ( _pressedHit != null && Time.Now - _pressedAt > 0.12f ) { _pressedHit = null; dirty = true; }
+
+        // The header's wave band drifts while an app view is mounted (including
+        // the reverse bloom — it fades out mid-drift, never freezes first).
+        if ( _appView != null ) DriftWaves();
 
         // Keyboard walk: bring the focused row fully into the scroller (two frames —
         // the stamped row must have laid out under its new class first).
@@ -2262,8 +2353,9 @@
         return rows;
     }
 
+    // 508 = the row's declared width (512 occupied − the 4px cursor edge border).
     private static int FillPx( TimeSpan remaining, float totalSeconds ) =>
-        (int)Math.Clamp( 512f * (float)remaining.TotalSeconds / Math.Max( 1f, totalSeconds ), 0f, 512f );
+        (int)Math.Clamp( 508f * (float)remaining.TotalSeconds / Math.Max( 1f, totalSeconds ), 0f, 508f );
 
     private static string FormatRemaining( TimeSpan t )
     {
@@ -2768,7 +2860,7 @@
             // frame — it must not also read as "back" (the RoutedThisFrame lesson).
             if ( Time.Now - ChatInputBox.LastBlurAt < 0.05f ) return;
             if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) ) { CloseApp(); return; }
-            if ( Input.Pressed( "Slot8" ) ) { Close(); ResetAppState(); return; }
+            if ( Input.Pressed( "Slot8" ) ) { Close(); return; } // view stays mounted through the slide-out (see OnBackdropClicked)
             HandleAppKeys();
             return; // app views own the rest of the keys (input typing etc.)
         }
@@ -3017,24 +3109,31 @@
         switch ( _appView )
         {
             case "chat":
-                // A/D channel · W/S walk messages → input · Space = the row's tap
-                // (embed / author card) or, on the input stop, start typing.
+                // Typing is ONE press away: the input is the landing stop, and
+                // ENTER from ANYWHERE in chat focuses it (the Enter twin). A/D
+                // channel · W climbs into the log newest-first, S walks back down
+                // to the input · Space/E = the row's tap (embed / author card) or,
+                // on the input stop, start typing.
+                if ( Input.Pressed( "Enter" ) ) { _appKb = "hit-input"; RunAppAction( "hit-input" ); return; }
                 if ( left || right ) { CycleChannel( right ? 1 : -1 ); return; }
                 if ( up || down ) { WalkStops( up ? -1 : 1 ); return; }
                 if ( confirm && _appKb != null ) { RunAppAction( _appKb ); return; }
                 break;
             case "radio":
-                // Space taps the focused control (PLAY unless the mouse parked
-                // the cursor elsewhere); every direct key re-parks it on PLAY so
-                // the keyboard always has one home. W/S = volume ladder, R = next
-                // station, Z/X = shuffle / repeat.
+                // Polish pass 2026-08-30 (user: "I should be able to go through
+                // ALL of the buttons"): the cursor walks a 3-row GRID — station /
+                // transport / volume — A/D within a row, W/S between rows (column-
+                // mapped). Space/Enter taps the focused control (a volume segment
+                // COMMITS that level — A/D on the row only move). The direct keys
+                // R tune · Z shuffle · X repeat fire without moving the cursor;
+                // "A/D = skip" and "W/S = volume" are RETIRED (they hijacked the
+                // cursor).
                 if ( confirm ) { RunAppAction( _appKb ?? "hit-radio-play" ); return; }
-                if ( left ) { ParkRadioCursor(); RunAppAction( "hit-radio-prev" ); return; }
-                if ( right ) { ParkRadioCursor(); RunAppAction( "hit-radio-next" ); return; }
-                if ( up || down ) { ParkRadioCursor(); StepVolume( up ? 1 : -1 ); return; }
-                if ( cycle ) { ParkRadioCursor(); RunAppAction( "hit-radio-station" ); return; }
-                if ( Input.Pressed( "CyclePrev" ) ) { ParkRadioCursor(); RunAppAction( "hit-radio-shuffle" ); return; }
-                if ( Input.Pressed( "CycleNext" ) ) { ParkRadioCursor(); RunAppAction( "hit-radio-repeat" ); return; }
+                if ( left || right ) { MoveRadioCursor( 0, right ? 1 : -1 ); return; }
+                if ( up || down ) { MoveRadioCursor( up ? -1 : 1, 0 ); return; }
+                if ( cycle ) { RunAppAction( "hit-radio-station" ); return; }
+                if ( Input.Pressed( "CyclePrev" ) ) { RunAppAction( "hit-radio-shuffle" ); return; }
+                if ( Input.Pressed( "CycleNext" ) ) { RunAppAction( "hit-radio-repeat" ); return; }
                 break;
             case "effects":
                 // Reading stops only — Space is a no-op by design.
@@ -3054,9 +3153,39 @@
         }
     }
 
-    private void ParkRadioCursor()
+    // ── The radio cursor GRID — row 0 = station chip · row 1 = transport ·
+    // row 2 = volume. A/D move within a row (clamped, silent at the ends like
+    // every list); W/S move between rows column-mapped: transport col i ↔
+    // volume seg i+1 (PLAY ↔ seg 3), station ↔ PLAY. ──
+    private static readonly string[][] RadioGrid =
     {
-        if ( _appKb != "hit-radio-play" ) _appKb = "hit-radio-play";
+        new[] { "hit-radio-station" },
+        new[] { "hit-radio-shuffle", "hit-radio-prev", "hit-radio-play", "hit-radio-next", "hit-radio-repeat" },
+        new[] { "hit-vol-1", "hit-vol-2", "hit-vol-3", "hit-vol-4", "hit-vol-5" },
+    };
+
+    private void MoveRadioCursor( int dr, int dc )
+    {
+        int r = 1, c = 2; // PLAY is home
+        for ( int i = 0; i < RadioGrid.Length; i++ )
+        {
+            int j = Array.IndexOf( RadioGrid[i], _appKb );
+            if ( j >= 0 ) { r = i; c = j; break; }
+        }
+        int nr = Math.Clamp( r + dr, 0, RadioGrid.Length - 1 );
+        int nc;
+        if ( dr != 0 )
+        {
+            if ( nr == 0 ) nc = 0;                 // up into the station chip
+            else if ( r == 0 ) nc = 2;             // down from the chip lands on PLAY
+            else nc = Math.Clamp( c, 0, RadioGrid[nr].Length - 1 ); // transport ↔ volume share columns
+        }
+        else nc = Math.Clamp( c + dc, 0, RadioGrid[nr].Length - 1 );
+        var next = RadioGrid[nr][nc];
+        if ( next == _appKb ) return;
+        _appKb = next;
+        SoundManager.PlayHover();
+        StateHasChanged();
     }
 
     private void CycleChannel( int dir )
@@ -3068,16 +3197,6 @@
             _ => dir > 0 ? "global" : "guild",
         };
         RunAppAction( "hit-chan-" + next ); // the tap path — press stamp on the pill, scroll to newest
-    }
-
-    // W/S volume: rides the segment tap (ladder on a raise); 0 = mute (below the ladder).
-    private void StepVolume( int dir )
-    {
-        int cur = VolStep();
-        int k = Math.Clamp( cur + dir, 0, 5 );
-        if ( k == cur ) return;
-        if ( k == 0 ) { Beastborne.Systems.RadioManager.SetVolume( 0f ); SoundManager.PlayClick(); StateHasChanged(); return; }
-        RunAppAction( "hit-vol-" + k );
     }
 
     // Takes the keyboard back from the phone's TextEntry. Safe when nothing is focused.
@@ -3101,8 +3220,9 @@
         if ( _hintCache.TryGetValue( app, out var cached ) ) return cached;
         (string Cap, string Label)[] src = app switch
         {
-            "chat" => new[] { ( "W/S", "MESSAGES" ), ( "A/D", "CHANNEL" ), ( "SPACE", "SELECT" ) },
-            "radio" => new[] { ( "SPACE", "PLAY" ), ( "A/D", "SKIP" ), ( "W/S", "VOL" ), ( "R", "TUNE" ), ( "Z", "SHUFFLE" ), ( "X", "REPEAT" ) },
+            // (A/D are printed on the channel bar itself — not repeated here.)
+            "chat" => new[] { ( "W/S", "MESSAGES" ), ( "ENTER", "TYPE" ), ( "SPACE", "SELECT" ) },
+            "radio" => new[] { ( "SPACE", "TAP" ), ( "WASD", "MOVE" ), ( "R", "TUNE" ), ( "Z", "SHUFFLE" ), ( "X", "REPEAT" ) },
             "effects" => new[] { ( "W/S", "BROWSE" ) },
             _ => new[] { ( "W/S", "BROWSE" ), ( "SPACE", "OPEN" ), ( "R", "CLEAR ALL" ) },
         };
