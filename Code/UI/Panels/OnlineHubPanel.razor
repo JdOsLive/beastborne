@@ -111,20 +111,22 @@
 			// Hero sprites: QUICKPLAY = your beast; RANKED = Loomweaver (the
 			// Epic mini-boss that never forgets a word); PRACTICE = Cherune
 			// (the starter cherub). Alternates dodge a duplicate of yours.
+			// Boxes = the largest integer scale that stays clear of the text
+			// (2026-08-29 ruling: never over the label): 200 → 2× on QUICKPLAY,
+			// 112 → 1× on the side tiles. Geometry lives in the scss banner.
 			var heroQuick = GetHeroQuickSpecies();
 			var heroRanked = GetHeroFixedSpecies( "loomweaver", "skunkape", heroQuick );
 			var heroPractice = GetHeroFixedSpecies( "cherune", "sheepot", heroQuick );
-			var quickBox = SpriteBox( heroQuick, 320 );
-			var rankedBox = SpriteBox( heroRanked, 224 );
-			var practiceBox = SpriteBox( heroPractice, 224 );
+			var quickBox = SpriteBox( heroQuick, 200 );
+			var rankedBox = SpriteBox( heroRanked, 112 );
+			var practiceBox = SpriteBox( heroPractice, 112 );
 			int bPoints = hubTamer?.ArenaPoints ?? 0;
 			var (rankFloor, rankNext) = RankBand( bPoints );
 			int rankBarPx = rankNext > rankFloor
 				? (int)Math.Round( RankBarWidth * Math.Clamp( (bPoints - rankFloor) / (float)(rankNext - rankFloor), 0f, 1f ) )
 				: RankBarWidth;
-			var favByName = BuildFavoriteByName( otherPlayers );
 			var guildBeast = GetGuildEmblemBeast();
-			var youBeast = favBeastSpecies ?? heroQuick;
+			var lbSteam = GetLocalSteamId();   // boards YOU row — Steam avatar
 			var lbNextCat = HubLbCats[( hubLbCatIndex + 1 ) % HubLbCats.Length];
 		}
 
@@ -133,25 +135,35 @@
 
 				<div class="hub-main">
 
-					<!-- ═══ BATTLE HERO — THE BEASTS ARE THE HEROES (2026-08-28 v3).
-					     Three mode TILES share the full hero width: QUICKPLAY (gold,
-					     flex 1) · RANKED 340 · PRACTICE 340. No rank strip — rank
-					     identity lives in RANKED's bottom block. Every tile carries a
-					     beast sprite (integer-scaled, pixelated, never filtered/
-					     scaled). Tiles are ring hosts (kb 0/1/2); the Smash pop is
-					     on the small glyphs only. Locked tiles stay BIG and dim. ═══ -->
+					<!-- ═══ BATTLE HERO — THE BEASTS ARE THE HEROES (2026-08-28 v3 ·
+					     polish pass 2026-08-29). Three mode TILES share the full hero
+					     width: QUICKPLAY (gold, flex 1) · RANKED 340 · PRACTICE 340.
+					     Tile anatomy, bottom→top: slab layer · location art (clipped
+					     right column, dissolving into the slab through the fade
+					     layer) · beast sprite (right column, below the label row —
+					     never over text) · text column · the in-tile BUTTON (ring
+					     host + kb target 0/1/2) · chips · cut. Tiles keep only the
+					     hover fill step; the Smash pop stays on the corner glyphs; the
+					     button owns the press-down. The tile's onclick is the ONE
+					     click handler — a button click bubbles up to it (BbButton
+					     OnClick stays unset so nothing fires twice). ═══ -->
 					<div class="hz hz-battle">
 						<div class="oh-head">
 							<div class="oh-chip"><span>BATTLE</span></div>
 						</div>
 						<div class="bz-body">
-							<!-- QUICKPLAY — the dominant tile. The hero image is YOUR
-							     beast: profile favorite → lead (starred) beast → first
-							     owned → Embrik. -->
-							<div @ref="ctaFindRef"
-								 class="mode-tile mode-quick @(BattleEnabled ? "" : "locked") @(IsHubKb("battle", 0) ? "kb-lit" : "")"
+							<!-- QUICKPLAY — the dominant tile. Hero image = YOUR beast
+							     (profile favorite → lead → first owned → Embrik) at 2×,
+							     below the label row. Art: the Elemental Nexus sunburst as a
+							     gold-tinted texture under the primary ramp (not a photo). -->
+							<div class="mode-tile mode-quick @(BattleEnabled ? "" : "locked") @(IsHubKb("battle", 0) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "battle", 0 ))
 								 onclick=@OnFindBattle>
+								<div class="mode-slab"></div>
+								<div class="mode-art-clip mode-art-clip-quick">
+									<img class="mode-art mode-art-quick" src="ui/locations/elemental_nexus_background.png" />
+								</div>
+								<div class="mode-fade"></div>
 								@if ( heroQuick != null )
 								{
 									<img class="mode-beast" src="@GetAnimatedIcon( heroQuick )" style="width: @(quickBox.w)px; height: @(quickBox.h)px" />
@@ -160,22 +172,29 @@
 								{
 									<div class="mode-soon"><span class="mode-soon-text">OPENS SOON</span></div>
 								}
-								<div class="mode-text">
+								<div class="mode-text mode-text-quick">
 									<iconify class="mode-glyph" icon="lucide:swords" Size=@(48) Color="#2a1605" />
 									<span class="mode-label mode-label-quick">QUICKPLAY</span>
-									<span class="mode-sub mode-sub-quick">Find a match.</span>
-									<iconify class="mode-arrow" icon="lucide:arrow-right" Size=@(22) Color="#2a1605" />
+									<span class="mode-sub mode-sub-quick">Best-of-3 · levels matched fair</span>
 								</div>
+								<BbButton @ref="ctaFindRef" Tier="primary" Size=@(56) Label="FIND A MATCH" HoverSound=@false Class="mode-cta mode-cta-quick" />
+								<iconify class="mode-cta-arrow" icon="lucide:arrow-right" Size=@(22) Color="#2a1605" />
 								<div class="mode-cut"></div>
 							</div>
 
-							<!-- RANKED — interactive-looking always; presses deny while
-							     RankedEnabled is false (COMING SOON chip). Bottom: the
-							     RANK BLOCK (tier badge · tier · record / points bar /
-							     N / M toward the next tier). -->
-							<div @ref="ctaRankedRef" class="mode-tile mode-ranked @(IsHubKb("battle", 1) ? "kb-lit" : "")"
+							<!-- RANKED — interactive-looking always; the button denies
+							     (PlayDeny) while RankedEnabled is false (COMING SOON chip).
+							     Loomweaver at 1× in the right column above the rank block.
+							     Art: Ember Cavern lava. Bottom: the RANK BLOCK (tier badge ·
+							     tier · record / points bar / N / M toward the next tier). -->
+							<div class="mode-tile mode-ranked @(IsHubKb("battle", 1) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "battle", 1 ))
 								 onclick=@OnRankedChip>
+								<div class="mode-slab"></div>
+								<div class="mode-art-clip">
+									<img class="mode-art" src="ui/locations/ember_cavern_background.png" />
+								</div>
+								<div class="mode-fade"></div>
 								@if ( heroRanked != null )
 								{
 									<img class="mode-beast" src="@GetAnimatedIcon( heroRanked )" style="width: @(rankedBox.w)px; height: @(rankedBox.h)px" />
@@ -188,8 +207,8 @@
 									<iconify class="mode-glyph" icon="lucide:shield" Size=@(48) Color="rgba(244, 241, 234, 0.85)" />
 									<span class="mode-label mode-label-cream">RANKED</span>
 									<span class="mode-sub mode-sub-cream">Play ranked matches.</span>
-									<iconify class="mode-arrow" icon="lucide:arrow-right" Size=@(20) Color="rgba(244, 241, 234, 0.7)" />
 								</div>
+								<BbButton @ref="ctaRankedRef" Tier="secondary" Size=@(44) Label="PLAY RANKED" HoverSound=@false Class="mode-cta mode-cta-side" />
 								<div class="mode-spacer"></div>
 								<div class="rank-block">
 									<div class="rank-block-top">
@@ -212,11 +231,16 @@
 								</div>
 							</div>
 
-							<!-- PRACTICE VS AI — secondary tile; same ArenaPanel route. -->
-							<div @ref="ctaPracticeRef"
-								 class="mode-tile mode-practice @(BattleEnabled ? "" : "locked") @(IsHubKb("battle", 2) ? "kb-lit" : "")"
+							<!-- PRACTICE VS AI — secondary tile; same ArenaPanel route.
+							     Cherune at 1× bottom-right. Art: Garden of Origins. -->
+							<div class="mode-tile mode-practice @(BattleEnabled ? "" : "locked") @(IsHubKb("battle", 2) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "battle", 2 ))
 								 onclick=@OnPracticeAI>
+								<div class="mode-slab"></div>
+								<div class="mode-art-clip">
+									<img class="mode-art" src="ui/locations/garden_of_origins_background.png" />
+								</div>
+								<div class="mode-fade"></div>
 								@if ( heroPractice != null )
 								{
 									<img class="mode-beast" src="@GetAnimatedIcon( heroPractice )" style="width: @(practiceBox.w)px; height: @(practiceBox.h)px" />
@@ -224,9 +248,9 @@
 								<div class="mode-text">
 									<iconify class="mode-glyph" icon="lucide:target" Size=@(48) Color="rgba(244, 241, 234, 0.85)" />
 									<span class="mode-label mode-label-cream">PRACTICE VS AI</span>
-									<span class="mode-sub mode-sub-cream">Battle the AI.</span>
-									<iconify class="mode-arrow" icon="lucide:arrow-right" Size=@(20) Color="rgba(244, 241, 234, 0.7)" />
+									<span class="mode-sub mode-sub-cream">Practice against the AI.</span>
 								</div>
+								<BbButton @ref="ctaPracticeRef" Tier="secondary" Size=@(44) Label="BATTLE THE AI" HoverSound=@false Class="mode-cta mode-cta-side" />
 							</div>
 						</div>
 						<div class="oh-cut"></div>
@@ -454,32 +478,24 @@
 							@{
 								var localSteam = GetLocalSteamId();
 							}
-							<!-- YOU head — a BEAST PORTRAIT (your favorite / lead beast)
-							     under the gold YOU chip; falls back to the tamer avatar
-							     only when there is no beast at all. Violet is the
-							     cursor's alone on this page (blue rim). -->
+							<!-- YOU head — your STEAM avatar under the gold YOU chip (user
+							     ruling 2026-08-29: people are Steam avatars; beast portraits
+							     only where the beast is the subject). Cartoon tamer only when
+							     there is no Steam id. Violet is the cursor's alone on this
+							     page (blue rim). -->
 							<div class="oz-seat @(IsHubKb("online", 0) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "online", 0 ))
 								 onclick=@OpenRailSelf>
-								@if ( youBeast != null && !string.IsNullOrEmpty( youBeast.IconPath ) )
-								{
-									<div class="oz-avatar you beast">
-										<img class="oz-beast-img" src="@youBeast.IconPath" />
-									</div>
-								}
-								else
-								{
-									<div class="oz-avatar you @(localSteam > 0 ? "steam" : "cartoon") @GetTamerGender()">
-										@if ( localSteam > 0 )
-										{
-											<img class="oz-avatar-img" src="avatar:@localSteam" />
-										}
-										else
-										{
-											<img class="oz-avatar-img cartoon-img" src="@GetGenderAvatar()" />
-										}
-									</div>
-								}
+								<div class="oz-avatar you @(localSteam > 0 ? "steam" : "cartoon") @GetTamerGender()">
+									@if ( localSteam > 0 )
+									{
+										<img class="oz-avatar-img" src="avatar:@localSteam" />
+									}
+									else
+									{
+										<img class="oz-avatar-img cartoon-img" src="@GetGenderAvatar()" />
+									}
+								</div>
 								<div class="oz-you-chip"><span class="oz-you-chip-text">YOU</span></div>
 								<span class="oz-name">@GetPlayerName().ToUpper() <span class="oz-name-lv">@($"LV {GetPlayerLevel()}")</span></span>
 							</div>
@@ -527,10 +543,11 @@
 					</div>
 				</div>
 
-				<!-- ═══ LEADERBOARDS COLUMN — rank · beast portrait · NAME · score.
+				<!-- ═══ LEADERBOARDS COLUMN — rank · Steam avatar · NAME · score.
 				     Category = two SEGMENTS (current blue / next dim); R or a click
-				     on the dim segment cycles. Portraits: the tamer's favorite beast
-				     when their session profile is known, else a neutral diamond. ═══ -->
+				     on the dim segment cycles. Avatars: the entry's SteamId (Board2
+				     entries carry it), else a neutral diamond — people are Steam
+				     avatars, beasts stay where the beast is the subject. ═══ -->
 				<div class="hz hz-boards">
 					<div class="lb-head">
 						<div class="oh-chip"><span>LEADERBOARDS</span></div>
@@ -560,17 +577,14 @@
 							{
 								var entry = lbEntries[li];
 								int rowIdx = li;
-								MonsterSpecies rowBeast = null;
-								if ( favByName.TryGetValue( entry.Name ?? "", out var rowFavId ) )
-									rowBeast = MonsterManager.Instance?.GetSpecies( rowFavId );
 								<div class="lb-row @(li % 2 == 1 ? "alt" : "") @(IsHubKb("boards", rowIdx) ? "kb-focused" : "")"
 									 onmouseover=@(() => HoverHubCursor( "boards", rowIdx ))
 									 onclick=@(() => SwitchTab( "leaderboards" ))>
 									<span class="lb-row-rank @(entry.Rank == 1 ? "gold" : "")">@entry.Rank</span>
 									<div class="lb-row-portrait">
-										@if ( rowBeast != null && !string.IsNullOrEmpty( rowBeast.IconPath ) )
+										@if ( entry.SteamId > 0 )
 										{
-											<img class="lb-row-beast" src="@rowBeast.IconPath" />
+											<img class="lb-row-avatar" src="avatar:@entry.SteamId" />
 										}
 										else
 										{
@@ -586,9 +600,9 @@
 								 onclick=@(() => SwitchTab( "leaderboards" ))>
 								<span class="lb-row-rank">@(lbSelf != null && lbSelf.Rank > 0 ? lbSelf.Rank.ToString() : "—")</span>
 								<div class="lb-row-portrait">
-									@if ( youBeast != null && !string.IsNullOrEmpty( youBeast.IconPath ) )
+									@if ( lbSteam > 0 )
 									{
-										<img class="lb-row-beast" src="@youBeast.IconPath" />
+										<img class="lb-row-avatar" src="avatar:@lbSteam" />
 									}
 									else
 									{
@@ -997,6 +1011,8 @@
 
 	// Ring hosts (fixed) — resolved per tick; presence heads resolve by
 	// walking the online row's children.
+	// The three battle refs land on the IN-TILE BbButtons (2026-08-29 —
+	// the ring wraps a button inside each tile, never the whole tile).
 	private Panel ctaFindRef, ctaPracticeRef, ctaRankedRef, guildCtaRef, onlineRowRef, postOfferRef;
 
 	// POST OFFER note — the tile is inert until the standing-offer board
@@ -1028,6 +1044,7 @@
 		public int Rank { get; set; }
 		public string Name { get; set; }
 		public long Score { get; set; }
+		public long SteamId { get; set; }   // Board2.Entry.SteamId — drives the row's Steam avatar
 	}
 
 	private int hubLbCatIndex = 0;
@@ -1058,20 +1075,24 @@
 				board.MaxEntries = 100;
 				await board.Refresh();
 
+				var localSteam = GetLocalSteamId();
 				var entries = board.Entries.Select( e => new HubLbEntry
 				{
 					Rank = (int)e.Rank,
 					Name = e.DisplayName,
-					Score = (long)e.Value
+					Score = (long)e.Value,
+					SteamId = (long)e.SteamId
 				} ).ToList();
 
+				// Self match by SteamId first (exact), display name as the fallback.
 				var myName = Connection.Local?.DisplayName;
-				var mine = entries.FirstOrDefault( x => x.Name == myName );
+				var mine = ( localSteam > 0 ? entries.FirstOrDefault( x => x.SteamId == localSteam ) : null )
+					?? entries.FirstOrDefault( x => x.Name == myName );
 
 				lock ( hubLbEntries )
 				{
 					hubLbEntries[cat.Key] = entries;
-					hubLbSelf[cat.Key] = mine ?? new HubLbEntry { Rank = 0, Name = myName, Score = 0 };
+					hubLbSelf[cat.Key] = mine ?? new HubLbEntry { Rank = 0, Name = myName, Score = 0, SteamId = localSteam };
 				}
 			}
 			catch ( Exception e )
@@ -1136,9 +1157,9 @@
 		}
 	}
 
-	// Ring costume hosts: the three mode tiles, the guild CTA, the presence
-	// heads, and the POST OFFER tile (trades kb 0). Trade slips (kb 1+)
-	// and leaderboard rows wear the slab cursor instead.
+	// Ring costume hosts: the three in-tile battle BUTTONS, the guild CTA,
+	// the presence heads, and the POST OFFER tile (trades kb 0). Trade
+	// slips (kb 1+) and leaderboard rows wear the slab cursor instead.
 	private bool IsRingCursor()
 		=> _kbZone == "battle" || _kbZone == "guild" || _kbZone == "online"
 		|| ( _kbZone == "trades" && _kbIndex == 0 );
@@ -1148,7 +1169,8 @@
 		switch ( _kbZone )
 		{
 			case "battle":
-				// 0 = QUICKPLAY (rest) · 1 = RANKED · 2 = PRACTICE — one row, left to right
+				// 0 = FIND A MATCH (rest) · 1 = PLAY RANKED · 2 = BATTLE THE AI —
+				// the in-tile buttons, one row, left to right
 				return _kbIndex switch { 0 => ctaFindRef, 1 => ctaRankedRef, _ => ctaPracticeRef };
 			case "trades":
 				return _kbIndex == 0 ? postOfferRef : null;
@@ -1219,10 +1241,11 @@
 		tamerRingRef.SetClass( "on", _ringVisible );
 		tamerRingRef.SetClass( "snap", _ringWarm < 2 );
 		// Costumes — the ring's radius follows its host: circle on presence
-		// heads, near-square on the radius-0 slab tiles (mode tiles, the POST
-		// OFFER bar) and the skewed OPEN GUILD chip.
+		// heads, near-square on the radius-0 slabs (the POST OFFER bar, the
+		// skewed OPEN GUILD chip). The battle buttons are 16px-radius
+		// BbButtons — they take the default r24 costume.
 		tamerRingRef.SetClass( "round", _ringVisible && _kbZone == "online" );
-		tamerRingRef.SetClass( "square", _ringVisible && ( _kbZone == "battle" || _kbZone == "trades" || _kbZone == "guild" ) );
+		tamerRingRef.SetClass( "square", _ringVisible && ( _kbZone == "trades" || _kbZone == "guild" ) );
 	}
 
 	// The liquid ink-lean — the menu cursor's multi-sine at the PawPad's
@@ -2004,7 +2027,7 @@
 					_postNoteLive )                                // POST OFFER note swap
 			),
 			// v3 beast art: hero idle frames (multi-frame species only), the
-			// portraits' favorite ids, the banner emblem, the lead-beast fallback.
+			// trade slips' favorite ids, the banner emblem, the lead-beast fallback.
 			HashCode.Combine(
 				_heroAnimated ? SpriteAnimator.GlobalFrame : 0,
 				GetOnlineFavHash(),
@@ -2107,25 +2130,6 @@
 			next = i + 1 < RankSteps.Length ? RankSteps[i + 1] : RankSteps[i];
 		}
 		return (floor, next);
-	}
-
-	// Leaderboard portraits — Steam entries carry only a display name, so
-	// the favorite beast comes from the session profile broadcast
-	// (ChatManager.PlayerProfiles → OnlinePlayerInfo.FavoriteMonsterSpeciesId)
-	// matched by name, plus the local tamer. Unknown tamers get the neutral
-	// diamond; nothing is ever faked.
-	private Dictionary<string, string> BuildFavoriteByName( List<OnlinePlayerInfo> others )
-	{
-		var map = new Dictionary<string, string>();
-		foreach ( var p in others )
-		{
-			if ( !string.IsNullOrEmpty( p.Name ) && !string.IsNullOrEmpty( p.FavoriteMonsterSpeciesId ) )
-				map[p.Name] = p.FavoriteMonsterSpeciesId;
-		}
-		var myName = Connection.Local?.DisplayName;
-		var myFav = TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId;
-		if ( !string.IsNullOrEmpty( myName ) && !string.IsNullOrEmpty( myFav ) ) map[myName] = myFav;
-		return map;
 	}
 
 	// BuildHash ingredient — the online tamers' favorite ids (a profile

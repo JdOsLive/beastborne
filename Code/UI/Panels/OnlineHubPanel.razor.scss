@@ -325,17 +325,47 @@ GuildPanel,
 }
 
 // ═══════════════════════════════════════
-// BATTLE HERO — THE BEASTS ARE THE HEROES (2026-08-28 v3 build)
+// BATTLE HERO — THE BEASTS ARE THE HEROES (2026-08-28 v3 build · polish
+// pass 2026-08-29: in-tile buttons, bigger type, location art, sprite
+// columns)
 // 420 tall = 16 pad + 23 chip row + 13 gap + 352 body + 16 pad.
 // Body: THREE tiles share the full hero width — QUICKPLAY (flex 1,
-// ~666 at 1920) · RANKED 340 · PRACTICE 340 — all 352 tall, radius 0.
-// The 220px rank strip is GONE: rank identity lives in the RANKED
-// tile's bottom rank block. Every tile carries a BEAST SPRITE —
-// integer-scaled pixel art (width/height arrive inline from SpriteBox),
-// anchored bottom-right, facing left into the label. Sprites never
-// react to hover — the Smash pop stays on the small glyphs.
-// Type floor inside the hero: 12px. Locked tiles dim to 0.55, never
-// shrink.
+// ~663 at 1920) · RANKED 340 · PRACTICE 340 — all 352 tall, radius 0.
+//
+// TILE ANATOMY — flat z ladder inside each tile, bottom → top. The tile
+// itself paints NO fill: the slab is its own absolute layer, so no
+// sibling can fall into the "absolute layer paints behind the parent
+// fill" trap; every layer is explicit-px + explicit z.
+//   0 .mode-slab     the fill (gold ramp / dark slab). The hover + kb-lit
+//                    fill step lives here — hue locked, no transform.
+//   1 .mode-art-clip location art: an IN-FLOW explicit-px <img> inside a
+//                    clipped right column (60% of the tile), centered by
+//                    negative margin (the .oz-avatar face-crop precedent
+//                    — overflow:hidden clips in-flow children, never
+//                    absolute ones). Low opacity, NO filter (compositor
+//                    law) — the image choice does the desaturating.
+//   2 .mode-fade     gradient overlay in the slab tone: opaque 0–40% →
+//                    rgba(slab, 0) at 100% (`to right` keyword form, no
+//                    `transparent` keyword). Swaps with the slab on
+//                    hover / kb-lit / press so the seam never shows.
+//   3 .mode-beast    integer-scaled sprite, right column, bottom-anchored,
+//                    its top never above the label row's bottom.
+//   4 .mode-text     label column (explicit width; the sprite owns the
+//                    rest) · .mode-cta (the in-tile BbButton = ring host
+//                    + kb target) · .rank-block
+//   5 .mode-soon     chips · .mode-cta-arrow
+//   6 .mode-cut      corner cut
+//
+// GEOMETRY (padding-box: declared width INCLUDES padding):
+//   QUICKPLAY 663×352 — text col 356 (pad 24/16 → 316 content; the 56px
+//     label measures 313) · label row bottom 136 · sprite 2× = 192 at
+//     right 24 / bottom 16 (top 144 > 136) · button 260×56 at 24 / 20.
+//   RANKED 340×352 — full-width label row (bottom 118) · rank block 104
+//     · sprite 1× = 96 at right 20 / bottom 116 (top 140 > 118) ·
+//     button 196×44 at 20 / 20 (ends 216 < sprite left 224).
+//   PRACTICE 340×352 — same rows · sprite 1× = 96 at right 20 / bottom
+//     16 (2× would need 192 + the 196 button + margins = 424 > 340).
+// Type floor in the hero: 14px — only the SOON chips sit below (11–12).
 // ═══════════════════════════════════════
 
 .hz-battle {
@@ -359,12 +389,11 @@ GuildPanel,
 
 // ── Mode tiles ──
 // Payload grammar (motion spec §2): gold darkens toward press, dim slabs
-// lighten toward focus, hue never changes. Ring-bearing hosts never
-// transform.
-
-// Tile anatomy shared by all three: text block TOP-LEFT (glyph → label →
-// sub → arrow), sprite absolute bottom-right, radius 0. Padding lives on
-// the text block (not the tile) so RANKED's rank block runs full-bleed.
+// lighten toward focus, hue never changes. The tile is the ONE click
+// target (button clicks bubble up to it) and the hover-cursor host; it
+// carries no fill of its own (see the z ladder above). Tile surfaces
+// never transform — the ring lives on the button, the Smash pop on the
+// corner glyph.
 .mode-tile {
 	position: relative;
 	display: flex;
@@ -376,34 +405,104 @@ GuildPanel,
 	pointer-events: all;
 }
 
-.mode-text {
-	// Above the sprite (z 0 absolute) — text always wins.
-	position: relative;
+// z0 — the slab fill
+.mode-slab {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 352px;
+	z-index: 0;
+	pointer-events: none;
+	transition: background-color 0.14s ease-out;
+}
+
+// z1 — location art, clipped to the right column. The <img> is IN-FLOW
+// (overflow:hidden does not clip absolute descendants in s&box) at its
+// true 16:9 size for a 352 height (2304×1296 → 626×352), pulled left by
+// margin so the frame's middle shows. Never `image-rendering: pixelated`
+// here — a 0.27× non-integer downscale of pixel art wants the smooth
+// path; it's a soft texture, not a sprite.
+.mode-art-clip {
+	position: absolute;
+	top: 0;
+	right: 0;
+	width: 204px;
+	height: 352px;
+	display: flex;
+	flex-direction: row;
+	overflow: hidden;
 	z-index: 1;
+	pointer-events: none;
+}
+
+.mode-art-clip-quick {
+	width: 400px;
+}
+
+.mode-art {
+	flex: 0 0 626px;
+	width: 626px;
+	min-width: 626px;
+	height: 352px;
+	margin-left: -211px;
+	opacity: 0.42;
+	background-repeat: no-repeat;
+	pointer-events: none;
+}
+
+.mode-art-quick {
+	margin-left: -113px;
+	opacity: 0.25;
+}
+
+// z2 — the fade: slab tone → clear, left to right. Per-tile gradients
+// live with each tile below (they swap with the slab's fill step).
+.mode-fade {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	height: 352px;
+	z-index: 2;
+	pointer-events: none;
+}
+
+// z4 — the text column: glyph → label → sub. Explicit width on QUICKPLAY
+// (the sprite column is what's left); full width on the side tiles
+// (PRACTICE VS AI at 38px measures 292 — it needs the whole 300).
+.mode-text {
+	position: relative;
+	z-index: 4;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
 	gap: 6px;
-	padding: 20px 24px;
+	padding: 16px 20px 0 20px;
 	pointer-events: none;
+}
+
+.mode-text-quick {
+	width: 356px;
+	padding: 16px 16px 0 24px;
 }
 
 .mode-label {
 	font-family: Exo2Italic;
 	font-style: italic;
-	font-size: 30px;
+	font-size: 38px;
 	font-weight: 900;
 	letter-spacing: 1.5px;
 	text-transform: uppercase;
-	line-height: 34px;
+	line-height: 44px;
 	white-space: nowrap;
 	pointer-events: none;
 }
 
 .mode-label-quick {
-	font-size: 44px;
+	font-size: 56px;
 	letter-spacing: 2px;
-	line-height: 50px;
+	line-height: 62px;
 	color: #2a1605;
 }
 
@@ -413,17 +512,12 @@ GuildPanel,
 // Smash Bros" + "the hover should be OF the icon"). The small top-left
 // glyph overshoots + tilts and rocks while hovered / kb-lit; text stays
 // put; press snaps the glyph back in 0.08s. Transitions only (they
-// re-fire on every toggle). Never on the beast sprites (compositor blur).
+// re-fire on every toggle). Never on the beast sprites (compositor blur),
+// never on the button (ring-bearing controls don't transform).
 .mode-glyph {
 	pointer-events: none;
 	margin-bottom: 4px;
 	transform-origin: center center;
-	transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.mode-arrow {
-	pointer-events: none;
-	margin-top: 2px;
 	transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -449,42 +543,27 @@ GuildPanel,
 	transition: transform 0.08s ease-out;
 }
 
-// The arrow pops in place (no slide — icon-only motion ruling).
-.mode-tile:hover .mode-arrow,
-.mode-tile.kb-lit .mode-arrow {
-	transform: scale(1.16);
-}
-
-.mode-tile:active .mode-arrow {
-	transform: scale(0.94);
-	transition: transform 0.08s ease-out;
-}
-
 .mode-sub {
-	font-size: 14px;
+	font-size: 18px;
 	font-weight: 600;
-	line-height: 18px;
+	line-height: 22px;
 	white-space: nowrap;
 	pointer-events: none;
 }
 
-.mode-sub-quick {
-	font-size: 16px;
-	line-height: 20px;
-	color: rgba(42, 22, 5, 0.82);
-}
+.mode-sub-quick { color: rgba(42, 22, 5, 0.82); }
 
 .mode-sub-cream { color: rgba(244, 241, 234, 0.62); }
 
-// THE BEAST — the tile's hero image. Integer-scaled sprite (size arrives
-// inline), pixelated, NO filter and NO scale transform ever (either
-// rasterizes through the compositor and blurs the pixels). z 0 under the
-// text; anchored bottom-right so it faces LEFT into the label.
+// z3 — THE BEAST. Integer-scaled sprite (size arrives inline), pixelated,
+// NO filter and NO scale transform ever (either rasterizes through the
+// compositor and blurs the pixels). Confined to the right column, bottom-
+// anchored, facing LEFT into the label. Never over the text.
 .mode-beast {
 	position: absolute;
 	right: 24px;
 	bottom: 16px;
-	z-index: 0;
+	z-index: 3;
 	image-rendering: pixelated;
 	background-repeat: no-repeat;
 	pointer-events: none;
@@ -492,30 +571,71 @@ GuildPanel,
 
 // RANKED's beast sits above the 104px rank block; PRACTICE hugs the corner.
 .mode-ranked .mode-beast {
-	right: 16px;
-	bottom: 112px;
+	right: 20px;
+	bottom: 116px;
 }
 
 .mode-practice .mode-beast {
-	right: 16px;
+	right: 20px;
 	bottom: 16px;
 }
 
-// QUICKPLAY — BbButton PRIMARY tier surface (3-stop gold gradient, ink
-// text) at tile scale. Hover / press DARKEN via gradient swap — NOT a
-// filter: a filter on the tile would rasterize the sprite child through
-// the compositor and soften the pixel art. Locked = dimmed, still the
-// biggest thing on the page.
+// ── THE IN-TILE BUTTON — a BbButton at fixed tile coordinates (layout
+// only; the primitive owns its chrome: hover brighten / press dim, hue
+// locked, no transform). It is the ring host + kb target; the living
+// ring wears its default r24 costume on the 16px-radius slab. OnClick
+// stays unset — the click bubbles to the tile's one handler.
+.mode-cta {
+	position: absolute;
+	bottom: 20px;
+	z-index: 4;
+}
+
+.mode-cta-quick {
+	left: 24px;
+	width: 260px;
+}
+
+.mode-cta-side {
+	left: 20px;
+	width: 196px;
+}
+
+// Trailing arrow on FIND A MATCH — Exo2 has no U+2192, so the glyph is a
+// lucide iconify pinned to the button's right end (x = 24 + 260 − 28 pad
+// − 22; y centers on the 56px button). Static: the button is the press
+// feedback, the arrow just points.
+.mode-cta-arrow {
+	position: absolute;
+	left: 234px;
+	bottom: 37px;
+	z-index: 5;
+	pointer-events: none;
+}
+
+// QUICKPLAY — BbButton PRIMARY tier surface at tile scale, as a LEFT→
+// RIGHT ramp (light at the text, deep under the art) so the fade layer
+// can carry the identical ramp and dissolve seamlessly — a vertical ramp
+// under a horizontal fade shows a seam at the 40% mark. Hover / press
+// DARKEN via gradient swap on the slab AND the fade — never a filter (a
+// filter on the tile would rasterize the sprite through the compositor).
+// Locked = dimmed, still the biggest thing on the page. The art is a
+// texture under the gold (0.25), never a photo.
 .mode-quick {
 	flex: 1 1 0;
 	min-width: 0;
 	height: 352px;
-	background-image: linear-gradient(to bottom, #ffd95a 0%, #ffb330 55%, #f59312 100%);
 
-	&:hover,
-	&.kb-lit { background-image: linear-gradient(to bottom, #f6d054 0%, #f5ab2d 55%, #ea8c11 100%); }
+	.mode-slab { background-image: linear-gradient(to right, #ffd95a 0%, #ffb330 45%, #f59312 100%); }
+	.mode-fade { background-image: linear-gradient(to right, rgba(255, 217, 90, 1) 0%, rgba(255, 179, 48, 1) 45%, rgba(245, 147, 18, 0) 100%); }
 
-	&:active { background-image: linear-gradient(to bottom, #e2bf4b 0%, #e19e28 55%, #d6800e 100%); }
+	&:hover .mode-slab,
+	&.kb-lit .mode-slab { background-image: linear-gradient(to right, #f6d054 0%, #f5ab2d 45%, #ea8c11 100%); }
+	&:hover .mode-fade,
+	&.kb-lit .mode-fade { background-image: linear-gradient(to right, rgba(246, 208, 84, 1) 0%, rgba(245, 171, 45, 1) 45%, rgba(234, 140, 17, 0) 100%); }
+
+	&:active .mode-slab { background-image: linear-gradient(to right, #e2bf4b 0%, #e19e28 45%, #d6800e 100%); }
+	&:active .mode-fade { background-image: linear-gradient(to right, rgba(226, 191, 75, 1) 0%, rgba(225, 158, 40, 1) 45%, rgba(214, 128, 14, 0) 100%); }
 
 	&.locked {
 		opacity: 0.55;
@@ -524,7 +644,7 @@ GuildPanel,
 
 // OPENS SOON / COMING SOON — small filled chip, top-right, clear of the
 // cut. Ink slab with gold text on the gold tile; blue text on the dark
-// RANKED slab.
+// RANKED slab. The ONE thing in the hero under 14px.
 .mode-soon {
 	position: absolute;
 	top: 16px;
@@ -537,7 +657,7 @@ GuildPanel,
 	background-color: rgba(42, 22, 5, 0.85);
 	border-radius: 6px;
 	pointer-events: none;
-	z-index: 1;
+	z-index: 5;
 
 	&.dark {
 		right: 12px;
@@ -557,7 +677,6 @@ GuildPanel,
 	line-height: 14px;
 	white-space: nowrap;
 	pointer-events: none;
-
 }
 
 .mode-soon.dark .mode-soon-text {
@@ -575,24 +694,29 @@ GuildPanel,
 	height: 20px;
 	background-color: #13192a;
 	transform: rotate(45deg);
-	z-index: 2;
+	z-index: 6;
 	pointer-events: none;
 }
 
-// RANKED — dark violet-black slab. Interactive-looking always (hover
-// lifts, hue locked); presses deny while RankedEnabled is false. The
-// rank block below carries tier · bar · points · record.
+// RANKED — dark violet-black slab. Interactive-looking always (fill
+// lifts, hue locked); presses deny while RankedEnabled is false. Art:
+// Ember Cavern at 0.42. The rank block below carries tier · bar ·
+// points · record.
 .mode-ranked {
 	width: 340px;
 	flex: 0 0 340px;
 	height: 352px;
-	background-color: #17102a;
-	transition: background-color 0.14s ease-out;
 
-	&:hover,
-	&.kb-lit { background-color: #1e1637; }
+	.mode-slab { background-color: #17102a; }
+	.mode-fade { background-image: linear-gradient(to right, rgba(23, 16, 42, 1) 0%, rgba(23, 16, 42, 1) 40%, rgba(23, 16, 42, 0) 100%); }
 
-	&:active { background-color: #120c21; }
+	&:hover .mode-slab,
+	&.kb-lit .mode-slab { background-color: #1e1637; }
+	&:hover .mode-fade,
+	&.kb-lit .mode-fade { background-image: linear-gradient(to right, rgba(30, 22, 55, 1) 0%, rgba(30, 22, 55, 1) 40%, rgba(30, 22, 55, 0) 100%); }
+
+	&:active .mode-slab { background-color: #120c21; }
+	&:active .mode-fade { background-image: linear-gradient(to right, rgba(18, 12, 33, 1) 0%, rgba(18, 12, 33, 1) 40%, rgba(18, 12, 33, 0) 100%); }
 }
 
 // Spacer pushes the rank block to the tile's floor (in-flow, not
@@ -605,9 +729,12 @@ GuildPanel,
 
 // ── RANK BLOCK — full-bleed recessed band at the bottom of RANKED:
 // [tier diamond] TIER NAME ······ RECORD W – L / points bar / N / M.
+// 104 = 14 pad + 28 row + 8 + 8 bar + 8 + 16 pts + 12 pad (padding-box).
+// Widest row: 28 + 8 + LEGENDARY@20 (~110) + 8 + RECORD@14 (~60) + 8 +
+// record@16 (~45) = 267 < the 300 lane.
 .rank-block {
 	position: relative;
-	z-index: 1;
+	z-index: 4;
 	width: 100%;
 	height: 104px;
 	flex: 0 0 104px;
@@ -662,10 +789,10 @@ GuildPanel,
 .rank-tier {
 	font-family: Exo2Italic;
 	font-style: italic;
-	font-size: 16px;
+	font-size: 20px;
 	font-weight: 900;
 	letter-spacing: 1px;
-	line-height: 20px;
+	line-height: 24px;
 	white-space: nowrap;
 }
 
@@ -674,19 +801,19 @@ GuildPanel,
 }
 
 .rank-record-label {
-	font-size: 11px;
+	font-size: 14px;
 	font-weight: 800;
 	letter-spacing: 1.5px;
 	color: #7c7295;
-	line-height: 13px;
+	line-height: 16px;
 	white-space: nowrap;
 }
 
 .rank-record {
-	font-size: 14px;
+	font-size: 16px;
 	font-weight: 800;
 	color: #efeaf7;
-	line-height: 18px;
+	line-height: 20px;
 	white-space: nowrap;
 }
 
@@ -712,26 +839,31 @@ GuildPanel,
 }
 
 .rank-pts {
-	font-size: 12px;
+	font-size: 14px;
 	font-weight: 700;
 	color: #a79dbe;
-	line-height: 14px;
+	line-height: 16px;
 	white-space: nowrap;
 }
 
 // PRACTICE VS AI — dark blue-black slab (BbButton SECONDARY tier in the
-// page's blue). Hover brighten / press dim, hue locked.
+// page's blue). Fill lift on hover / dim on press, hue locked. Art:
+// Garden of Origins at 0.42.
 .mode-practice {
 	width: 340px;
 	flex: 0 0 340px;
 	height: 352px;
-	background-color: #101a30;
-	transition: background-color 0.14s ease-out;
 
-	&:hover,
-	&.kb-lit { background-color: #172440; }
+	.mode-slab { background-color: #101a30; }
+	.mode-fade { background-image: linear-gradient(to right, rgba(16, 26, 48, 1) 0%, rgba(16, 26, 48, 1) 40%, rgba(16, 26, 48, 0) 100%); }
 
-	&:active { background-color: #0c1424; }
+	&:hover .mode-slab,
+	&.kb-lit .mode-slab { background-color: #172440; }
+	&:hover .mode-fade,
+	&.kb-lit .mode-fade { background-image: linear-gradient(to right, rgba(23, 36, 64, 1) 0%, rgba(23, 36, 64, 1) 40%, rgba(23, 36, 64, 0) 100%); }
+
+	&:active .mode-slab { background-color: #0c1424; }
+	&:active .mode-fade { background-image: linear-gradient(to right, rgba(12, 20, 36, 1) 0%, rgba(12, 20, 36, 1) 40%, rgba(12, 20, 36, 0) 100%); }
 
 	&.locked { opacity: 0.55; }
 }
@@ -1773,7 +1905,7 @@ GuildPanel,
 // Standings row — filled slab, TWO-TONE alternation (.alt every other
 // row, set in razor — nth-child(odd) is unverified in-engine). Slab
 // cursor = 3px left seam (transparent → violet) + fill lift. Anatomy:
-// rank · beast portrait tile · NAME ······ score.
+// rank · Steam avatar tile · NAME ······ score.
 .lb-row {
 	height: 52px;
 	flex: 0 0 52px;
@@ -1814,9 +1946,9 @@ GuildPanel,
 	&.gold { color: #ffce3a; }
 }
 
-// Beast portrait tile — the tamer's favorite beast when their profile is
-// known (session broadcast), else a neutral diamond. Static frame,
-// pixelated, no filter.
+// Avatar tile — the tamer's STEAM avatar (people are Steam avatars —
+// user ruling 2026-08-29; beast portraits only where the beast is the
+// subject). Entries without a SteamId keep the neutral diamond.
 .lb-row-portrait {
 	width: 40px;
 	height: 40px;
@@ -1829,13 +1961,12 @@ GuildPanel,
 	pointer-events: none;
 }
 
-.lb-row-beast {
+.lb-row-avatar {
 	width: 36px;
 	height: 36px;
 	flex: 0 0 36px;
-	image-rendering: pixelated;
-	object-fit: contain;
-	background-repeat: no-repeat;
+	border-radius: 4px;
+	object-fit: cover;
 	pointer-events: none;
 }
 
@@ -1872,7 +2003,7 @@ GuildPanel,
 
 // Pinned YOU row — always visible above the foot (never lose yourself).
 // Blue-tinted fill + 3px BLUE left seam + gold YOU chip; same anatomy as
-// the rows (your portrait = your favorite / lead beast).
+// the rows (your Steam avatar, or the diamond with no Steam id).
 .lb-you {
 	height: 52px;
 	flex: 0 0 52px;
@@ -2020,8 +2151,9 @@ GuildPanel,
 		border-radius: 999px;
 	}
 
-	// Near-square costume on the radius-0 slab tiles (mode tiles, POST
-	// OFFER) — a 24px ring around a hard corner reads as a mismatch.
+	// Near-square costume on the radius-0 slabs (POST OFFER, OPEN GUILD)
+	// — a 24px ring around a hard corner reads as a mismatch. The battle
+	// buttons are 16px-radius BbButtons and take the default r24.
 	&.square {
 		border-radius: 10px;
 	}
@@ -2627,47 +2759,4 @@ GuildPanel,
 	font-weight: 700;
 	color: rgba(244, 241, 234, 0.88);
 	line-height: 14px;
-}
-
-
-// ═══════════════════════════════════════
-// ONLINE NOW — the YOU head as a BEAST PORTRAIT (v3, 2026-08-28)
-// 52px circle (the other heads stay 44px tamer avatars), the favorite /
-// lead beast's static frame inside at 44px — pixelated, no filter, no
-// scale transform (the head's Smash pop is on the wrapper, which is a
-// transform... so the beast head opts OUT of it: scale would soften the
-// pixels). Ring wears its .round costume as before.
-// ═══════════════════════════════════════
-
-.oz-avatar.you.beast {
-	left: 14px;
-	top: 2px;
-	width: 52px;
-	height: 52px;
-	justify-content: center;
-	align-items: center;
-	background-color: #110d1a;
-	transition: background-color 0.14s ease-out;
-}
-
-.oz-beast-img {
-	width: 44px;
-	height: 44px;
-	flex: 0 0 44px;
-	image-rendering: pixelated;
-	object-fit: contain;
-	background-repeat: no-repeat;
-	pointer-events: none;
-}
-
-// Beast head feedback = fill lift, not scale (compositor blur law).
-.oz-seat:hover .oz-avatar.beast,
-.oz-seat.kb-lit .oz-avatar.beast {
-	transform: none;
-	background-color: #1c1830;
-}
-
-.oz-seat:active .oz-avatar.beast {
-	transform: none;
-	background-color: #0a0714;
 }
