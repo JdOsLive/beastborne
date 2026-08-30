@@ -22,9 +22,10 @@
 
 	Zones: BATTLE hero (rank/record/CTAs — gated dark behind
 	QuickplayEnabled) · LEADERBOARDS column (Steam-fed compact list, R
-	cycles category) · TRADE OFFERS (session-live lane only — the server
-	standing-offer board is a later milestone) · GUILD corner · ONLINE
-	NOW head row. The activity crawl band is NOT pre-reserved (user
+	cycles category) · TRADE OFFERS (posted WANT → FOR offers, newest
+	three + VIEW ALL OFFERS → the inline TRADE BOARD takeover; the
+	server standing-offer board that fills HubOffers is a later
+	milestone) · GUILD corner · ONLINE NOW head row. The activity crawl band is NOT pre-reserved (user
 	ruling 2026-08-28) — the ticker milestone carves its own 60px
 	bottom strip when it ships.
 
@@ -108,10 +109,15 @@
 			bool inGuild = IsInGuild();
 			var goal = inGuild ? (gm?.WeeklyGoals?.FirstOrDefault( g => !g.Claimed ) ?? gm?.WeeklyGoals?.FirstOrDefault()) : null;
 
-			// TRADE OFFERS — session-live lane: online tamers you can trade
-			// with right now. The server standing-offer board is a later
-			// milestone; nothing fake renders in its place.
-			var tradables = _devFakeTrades ? BuildFakeTradables() : otherPlayers.Take( MaxTradeSlips ).ToList();
+			// TRADE OFFERS — POSTED offers (WANT → FOR), newest first, the top
+			// MaxTradeSlips in the zone. Source: HubOffers (the server standing-
+			// offer board, a later milestone — empty in production today) or the
+			// dev sample set (dev_hubtrades). The presence-derived live-tamer lane
+			// is RETIRED here — live tamers live in ONLINE NOW. Cached for the
+			// input path (activation reads _shownOffers, never re-sorts).
+			var offers = CurrentOffers();
+			var shownOffers = offers.Take( MaxTradeSlips ).ToList();
+			_shownOffers = shownOffers;
 			var shownHeads = otherPlayers.Take( MaxHeads ).ToList();
 			// ONLINE NOW kb indices: YOU 0 · heads 1..n · JOIN VOICE · mic
 			// (the voice chips are the zone's LAST indices — WASD reaches
@@ -290,87 +296,128 @@
 					<div class="hub-mid-row">
 
 						<div class="hz hz-trades">
-							<div class="tz-band">
-								<div class="oh-chip"><span>TRADE OFFERS</span></div>
-								@if ( tradables.Count > 0 )
+						<div class="tz-band">
+							<div class="oh-chip"><span>TRADE OFFERS</span></div>
+							@if ( offers.Count > 0 )
+							{
+								<div class="chip"><span class="chip-text">@($"{offers.Count} OPEN")</span></div>
+							}
+						</div>
+						<div class="tz-body">
+							<!-- Slips — POSTED offers (user ruling 2026-08-29: "instead of
+							     LIVE it should show the predetermined ones"). Anatomy:
+							     [poster head] [WANT tile] WANT/name → [FOR tile] FOR/name
+							     ······ [live dot] poster / time-ago. The beast tiles are
+							     VIEWPORT CROPS onto the native sprite (SpriteCrop — the
+							     .mode-art-clip precedent: explicit-px tile + overflow
+							     hidden, IN-FLOW img at source size pulled by negative
+							     margins; no scaling, no filter, no transform). Newest
+							     MaxTradeSlips here; VIEW ALL OFFERS opens the board. -->
+							<div class="tz-slips">
+								@if ( shownOffers.Count == 0 )
 								{
-									<div class="chip"><span class="chip-text">@($"{otherPlayers.Count} LIVE")</span></div>
+									<span class="tz-empty-main">No open offers right now</span>
+									<span class="tz-empty-sub">Tamers who post offers appear here</span>
+									<span class="tz-empty-note">Standing offers — post a WANT / FOR and let anyone accept later — are coming with the trade board.</span>
 								}
-							</div>
-							<div class="tz-body">
-								<!-- Slips — session-live lane. A live tamer has no posted
-								     WANT/FOR yet, so the slip reads "Open to trade" on the
-								     WANT side and their favorite beast on the FOR side. -->
-								<div class="tz-slips">
-									@if ( tradables.Count == 0 )
+								else
+								{
+									@for ( int ti = 0; ti < shownOffers.Count; ti++ )
 									{
-										<span class="tz-empty-main">No open offers right now</span>
-										<span class="tz-empty-sub">Tamers who are online can trade live — they'll appear here</span>
-										<span class="tz-empty-note">Standing offers — post a WANT / FOR and let anyone accept later — are coming with the trade board.</span>
-									}
-									else
-									{
-										@for ( int ti = 0; ti < tradables.Count; ti++ )
-										{
-											var t = tradables[ti];
-											int slipIdx = ti + 1; // kb 0 is POST OFFER
-											var forSpecies = !string.IsNullOrEmpty( t.FavoriteMonsterSpeciesId ) ? MonsterManager.Instance?.GetSpecies( t.FavoriteMonsterSpeciesId ) : null;
-											<div class="trade-slip @(IsHubKb("trades", slipIdx) ? "kb-focused" : "")"
-												 onmouseover=@(() => HoverHubCursor( "trades", slipIdx ))
-												 onclick=@(() => RequestTrade( t ))>
-												<div class="ts-avatar" style="border-color: @PageTitleColor( t.TitleColor )">
-													@if ( t.SteamId > 0 )
-													{
-														<img class="ts-avatar-img" src="avatar:@t.SteamId" />
-													}
-													else
-													{
-														<img class="ts-avatar-img" src="@t.AvatarPath" />
-													}
-												</div>
-												<span class="ts-side-label">WANT</span>
-												<span class="ts-open">Open to trade</span>
-												<iconify class="ts-arrow" icon="lucide:arrow-right" Size=@(16) Color="#6fb1f0" />
-												<span class="ts-side-label">FOR</span>
-												@if ( forSpecies != null )
+										var o = shownOffers[ti];
+										int slipIdx = ti + TradeSlipKbBase; // kb 0 POST OFFER · 1 VIEW ALL · 2+ slips
+										var wantS = Species( o.WantSpeciesId );
+										var forS = Species( o.ForSpeciesId );
+										var wantC = SpriteCrop( wantS, TradeTileZone );
+										var forC = SpriteCrop( forS, TradeTileZone );
+										bool live = IsOfferLive( o );
+										<div class="trade-slip @(ti % 2 == 1 ? "alt" : "") @(IsHubKb("trades", slipIdx) ? "kb-focused" : "")"
+											 onmouseover=@(() => HoverHubCursor( "trades", slipIdx ))
+											 onclick=@(() => AcceptOffer( o ))>
+											<div class="ts-avatar" style="border-color: @PageTitleColor( o.PosterTitleColor )">
+												@if ( o.PosterSteamId > 0 )
 												{
-													<img class="ts-beast" src="@forSpecies.IconPath" />
-													<span class="ts-beast-name">@forSpecies.Name</span>
+													<img class="ts-avatar-img steam" src="avatar:@o.PosterSteamId" />
 												}
 												else
 												{
-													<span class="ts-open">Any beast</span>
+													<img class="ts-avatar-img cartoon" src="@o.PosterAvatarPath" />
 												}
-												<div class="ts-spacer"></div>
-												<span class="ts-name">@t.Name</span>
-												@if ( t.Level > 0 )
-												{
-													<span class="ts-lv">@($"LV {t.Level}")</span>
-												}
-												<div class="pill-live"><span class="pill-live-text">LIVE</span></div>
 											</div>
-										}
+											<div class="ts-tile @(wantS == null ? "empty" : "")">
+												@if ( wantS != null )
+												{
+													<img class="ts-tile-img" src="@wantS.IconPath" style="@CropStyle( wantC )" />
+												}
+												else
+												{
+													<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(18) Color="rgba(214, 206, 236, 0.4)" />
+												}
+											</div>
+											<div class="ts-meta">
+												<span class="ts-kicker">WANT</span>
+												<span class="ts-beast-name">@(wantS?.Name ?? "Any beast")</span>
+											</div>
+											<iconify class="ts-arrow" icon="lucide:arrow-right" Size=@(16) Color="#6fb1f0" />
+											<div class="ts-tile @(forS == null ? "empty" : "")">
+												@if ( forS != null )
+												{
+													<img class="ts-tile-img" src="@forS.IconPath" style="@CropStyle( forC )" />
+												}
+												else
+												{
+													<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(18) Color="rgba(214, 206, 236, 0.4)" />
+												}
+											</div>
+											<div class="ts-meta">
+												<span class="ts-kicker">FOR</span>
+												<span class="ts-beast-name">@(forS?.Name ?? "Any beast")</span>
+											</div>
+											<div class="ts-spacer"></div>
+											<div class="ts-poster">
+												<div class="ts-poster-row">
+													@if ( live )
+													{
+														<div class="ts-live-dot"></div>
+													}
+													<span class="ts-name">@o.PosterName</span>
+												</div>
+												<span class="ts-time">@TimeAgo( o.PostedAt )</span>
+											</div>
+										</div>
 									}
+								}
+							</div>
+							<!-- Button row — the zone's floor. LEFT: POST OFFER, a normal
+							     secondary BbButton (user ruling 2026-08-29: not a full-width
+							     bar) + the honest resting sub-line; inert until the standing-
+							     offer board ships (a press swaps the sub-line for 3s — click,
+							     never deny). RIGHT: VIEW ALL OFFERS → the board takeover —
+							     the boards column's .lb-foot recipe (44px r11 slab, italic
+							     14px, the → glyph proven there); a BbButton with the label
+							     + diamond measures ~256 and would not fit beside POST OFFER.
+							     Both are ring hosts (trades kb 0 / 1; the r16 button wears
+							     the default r24 ring, the r11 slab the .small r19). Holders
+							     own hover + click; the BbButton's OnClick stays unset so the
+							     click bubbles once. -->
+							<div class="tz-post-row">
+								<div class="tz-post-host"
+									 onmouseover=@(() => HoverHubCursor( "trades", 0 ))
+									 onclick=@OnPostOffer>
+									<BbButton @ref="postOfferRef" Tier="secondary" Size=@(44) Label="POST OFFER" Icon="lucide:plus" IconTint="#3f8fe0" HoverSound=@false Class="tz-post-btn" />
 								</div>
-								<!-- POST OFFER — a NORMAL secondary-tier button (user ruling
-								     2026-08-29: not a full-width bar) at the zone's bottom-left,
-								     the honest resting sub-line beside it. Ring host (trades kb
-								     0, default r24 costume). The holder owns hover + click; the
-								     BbButton's OnClick stays unset so the click bubbles once.
-								     Inert until the standing-offer board ships: a press swaps
-								     the sub-line for 3s (click, never deny). -->
-								<div class="tz-post-row">
-									<div class="tz-post-host"
-										 onmouseover=@(() => HoverHubCursor( "trades", 0 ))
-										 onclick=@OnPostOffer>
-										<BbButton @ref="postOfferRef" Tier="secondary" Size=@(44) Label="POST OFFER" Icon="lucide:plus" IconTint="#3f8fe0" HoverSound=@false Class="tz-post-btn" />
-									</div>
-									<span class="tz-post-sub @(_postNoteLive ? "note" : "")">@(_postNoteLive ? "Not open yet" : "Trade board coming soon")</span>
+								<span class="tz-post-sub @(_postNoteLive ? "note" : "")">@(_postNoteLive ? "Not open yet" : "Trade board coming soon")</span>
+								<div class="tz-post-spacer"></div>
+								<div @ref="viewAllRef" class="tz-viewall @(IsHubKb("trades", 1) ? "kb-focused" : "")"
+									 onmouseover=@(() => HoverHubCursor( "trades", 1 ))
+									 onclick=@(() => SwitchTab( "board" ))>
+									<span class="tz-viewall-label">VIEW ALL OFFERS →</span>
 								</div>
 							</div>
 						</div>
+					</div>
 
-						<div class="hz hz-guild">
+					<div class="hz hz-guild">
 							@if ( !GuildManager.UiEnabled )
 							{
 								<div class="oh-head"><div class="oh-chip"><span>GUILD</span></div></div>
@@ -1012,6 +1059,126 @@
 			<GuildPanel @ref="guildRef" OnBack=@BackToHub />
 		</div>
 	}
+	else if ( currentSection == "board" )
+	{
+		@{
+			// ═══ TRADE BOARD TAKEOVER (2026-08-29: "a button to view the full
+			// trade list") — an INLINE section (no child panel; the hub's chrome
+			// band stays). Same source as the zone, ALL of it, newest first.
+			// Presence is refreshed here too so the live dots stay honest and a
+			// row click can route to an online poster.
+			var boardOthers = IsConnected() ? GetOnlinePlayers().Where( p => !p.IsLocal ).ToList() : new();
+			_others = boardOthers;
+			_othersCount = boardOthers.Count;
+			var allOffers = CurrentOffers();
+			_boardOffers = allOffers;
+			_shownOffers = allOffers.Take( MaxTradeSlips ).ToList();
+		}
+		<div class="hub-board">
+			<div class="hz hb-slab">
+				<!-- Band: TRADE BOARD chip · count · ····· · BACK TO HUB (Q) ·
+				     resting sub-line · POST OFFER (board kb 0, ring host). -->
+				<div class="hb-band">
+					<div class="oh-chip"><span>TRADE BOARD</span></div>
+					<div class="chip"><span class="chip-text">@($"{allOffers.Count} {( allOffers.Count == 1 ? "OFFER" : "OFFERS" )}")</span></div>
+					<div class="hb-band-spacer"></div>
+					<div class="hb-back"
+						 onmouseover=@(() => SoundManager.PlayHover())
+						 onclick=@BackToHub>
+						<span class="hb-back-label">BACK TO HUB</span>
+						<span class="hb-back-cap">Q</span>
+					</div>
+					<span class="tz-post-sub hb-post-sub @(_postNoteLive ? "note" : "")">@(_postNoteLive ? "Not open yet" : "Trade board coming soon")</span>
+					<div class="hb-post-host"
+						 onmouseover=@(() => HoverHubCursor( "board", 0 ))
+						 onclick=@OnPostOffer>
+						<BbButton @ref="boardPostRef" Tier="secondary" Size=@(44) Label="POST OFFER" Icon="lucide:plus" IconTint="#3f8fe0" HoverSound=@false Class="hb-post-btn" />
+					</div>
+				</div>
+				<!-- The list — the ONE scroll child; rows (or the empty-state
+				     lines) are its DIRECT children (flat-children scroll law).
+				     Rows are border/bg-only on focus — nothing transforms or
+				     glows inside a scroll clip. Same slip anatomy as the zone,
+				     roomier: 56 tall, 48px crop tiles, 180 meta lanes, poster
+				     + time-ago inline on the right. -->
+				<div class="hb-list">
+					@if ( allOffers.Count == 0 )
+					{
+						<span class="tz-empty-main">No offers on the board yet</span>
+						<span class="tz-empty-sub">Tamers who post offers appear here</span>
+						<span class="tz-empty-note hb-empty-note">Standing offers — post a WANT / FOR and let anyone accept later — are coming with the trade board.</span>
+					}
+					else
+					{
+						@for ( int bi = 0; bi < allOffers.Count; bi++ )
+						{
+							var o = allOffers[bi];
+							int rowIdx = bi + 1; // board kb 0 is POST OFFER
+							var wantS = Species( o.WantSpeciesId );
+							var forS = Species( o.ForSpeciesId );
+							var wantC = SpriteCrop( wantS, TradeTileBoard );
+							var forC = SpriteCrop( forS, TradeTileBoard );
+							bool live = IsOfferLive( o );
+							<div class="trade-slip board @(bi % 2 == 1 ? "alt" : "") @(IsHubKb("board", rowIdx) ? "kb-focused" : "")"
+								 onmouseover=@(() => HoverHubCursor( "board", rowIdx ))
+								 onclick=@(() => AcceptOffer( o ))>
+								<div class="ts-avatar" style="border-color: @PageTitleColor( o.PosterTitleColor )">
+									@if ( o.PosterSteamId > 0 )
+									{
+										<img class="ts-avatar-img steam" src="avatar:@o.PosterSteamId" />
+									}
+									else
+									{
+										<img class="ts-avatar-img cartoon" src="@o.PosterAvatarPath" />
+									}
+								</div>
+								<div class="ts-tile @(wantS == null ? "empty" : "")">
+									@if ( wantS != null )
+									{
+										<img class="ts-tile-img" src="@wantS.IconPath" style="@CropStyle( wantC )" />
+									}
+									else
+									{
+										<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(20) Color="rgba(214, 206, 236, 0.4)" />
+									}
+								</div>
+								<div class="ts-meta">
+									<span class="ts-kicker">WANT</span>
+									<span class="ts-beast-name">@(wantS?.Name ?? "Any beast")</span>
+								</div>
+								<iconify class="ts-arrow" icon="lucide:arrow-right" Size=@(16) Color="#6fb1f0" />
+								<div class="ts-tile @(forS == null ? "empty" : "")">
+									@if ( forS != null )
+									{
+										<img class="ts-tile-img" src="@forS.IconPath" style="@CropStyle( forC )" />
+									}
+									else
+									{
+										<iconify class="ts-tile-glyph" icon="lucide:circle-help" Size=@(20) Color="rgba(214, 206, 236, 0.4)" />
+									}
+								</div>
+								<div class="ts-meta">
+									<span class="ts-kicker">FOR</span>
+									<span class="ts-beast-name">@(forS?.Name ?? "Any beast")</span>
+								</div>
+								<div class="ts-spacer"></div>
+								<div class="ts-poster inline">
+									@if ( live )
+									{
+										<div class="ts-live-dot"></div>
+									}
+									<span class="ts-name">@o.PosterName</span>
+									<span class="ts-sep">·</span>
+									<span class="ts-time">@TimeAgo( o.PostedAt )</span>
+								</div>
+							</div>
+						}
+					}
+				</div>
+				<div class="oh-cut"></div>
+			</div>
+		</div>
+	}
 
 	<!-- THE LIVING VIOLET RING — the one waving cursor. Root-level
 	     absolute; position written imperatively per tick from live rects,
@@ -1051,7 +1218,10 @@
 	private int _kbIndex = 0;
 	private bool _kbActive = true;
 
-	private const int MaxTradeSlips = 3;
+	private const int MaxTradeSlips = 3;   // newest offers shown in the zone (3 × 52 fits the 244 body)
+	private const int TradeSlipKbBase = 2; // trades kb: 0 POST OFFER · 1 VIEW ALL OFFERS · 2+ slips
+	private const int TradeTileZone = 40;  // beast viewport tile in the zone slips
+	private const int TradeTileBoard = 48; // beast viewport tile on the board rows
 	private const int MaxHeads = 7;
 	private const int MaxGuildHeads = 6;   // the 790-wide guild card's 582 lane (v3.3)
 
@@ -1068,7 +1238,7 @@
 	// walking the online row's children.
 	// The three battle refs land on the IN-TILE BbButtons (2026-08-29 —
 	// the ring wraps a button inside each tile, never the whole tile).
-	private Panel ctaFindRef, ctaPracticeRef, ctaRankedRef, guildCtaRef, onlineRowRef, postOfferRef, voiceRef, micRef;
+	private Panel ctaFindRef, ctaPracticeRef, ctaRankedRef, guildCtaRef, onlineRowRef, postOfferRef, viewAllRef, boardPostRef, voiceRef, micRef;
 
 	// POST OFFER note — the tile is inert until the standing-offer board
 	// ships; a press swaps its sub-line to a quiet note for 3s (no dead
@@ -1124,26 +1294,119 @@
 	// call (multi-line Log.Info truncates — hence one Log.Info per line).
 	private static OnlineHubPanel _devHub;
 
-	// TEMP dev instrument (2026-08-29): render three SAMPLE trade slips so the
-	// zone can be reviewed without other tamers online. `dev_hubtrades` toggles.
+	// ── TRADE OFFERS — the offer model (2026-08-29) ────────────────────────
+	// User rulings (live review): "instead of LIVE it should show the
+	// predetermined ones" + "a button to view the full trade list". A
+	// TradeOffer is a POSTED standing offer — WANT this species FOR that one
+	// — by a poster who may or may not be online right now. Client-side,
+	// server-ready: HubOffers is the ONE source the zone and the board read.
+	//
+	// TODAY it is empty in production — the standing-offer server board is a
+	// later milestone. FUTURE FETCH POINT: fill HubOffers from the board
+	// service in a LoadHubOffers() awaited from OnAfterTreeRender(firstTime)
+	// beside LoadHubLeaderboards(), then bump _offersVersion (BuildHash
+	// ingredient) so the panel re-renders. Posting (OnPostOffer) appends
+	// here the same way once the board is live.
+	//
+	// The presence-derived "live tamers" lane is RETIRED from the trade zone
+	// — live tamers live in ONLINE NOW.
+	private record TradeOffer(
+		string Id,
+		string PosterName,
+		long PosterSteamId,        // 0 = no Steam id (dev samples) → PosterAvatarPath
+		string PosterTitleColor,   // rims go through PageTitleColor at render
+		string PosterAvatarPath,
+		string WantSpeciesId,
+		string ForSpeciesId,
+		DateTime PostedAt,         // UTC
+		bool IsLive );             // poster online when fetched; presence is ALSO checked at render
+
+	private static readonly List<TradeOffer> HubOffers = new();
+	private static int _offersVersion = 0;          // bump on any HubOffers change (initialised so CS0649 stays quiet until the fetch lands)
+	private List<TradeOffer> _shownOffers = new();  // render-cached: zone (newest MaxTradeSlips)
+	private List<TradeOffer> _boardOffers = new();  // render-cached: board (all, newest first)
+
+	private List<TradeOffer> CurrentOffers()
+	{
+		var src = _devFakeTrades ? ( _fakeOffers ??= BuildFakeOffers() ) : HubOffers;
+		return src.OrderByDescending( o => o.PostedAt ).ToList();
+	}
+
+	// "2m ago" / "1h ago" / "1d ago" — plain words, no seconds.
+	private static string TimeAgo( DateTime postedUtc )
+	{
+		var span = DateTime.UtcNow - postedUtc;
+		if ( span.TotalMinutes < 1 ) return "just now";
+		if ( span.TotalHours < 1 ) return $"{(int)span.TotalMinutes}m ago";
+		if ( span.TotalDays < 1 ) return $"{(int)span.TotalHours}h ago";
+		return $"{(int)span.TotalDays}d ago";
+	}
+
+	private static MonsterSpecies Species( string id )
+		=> string.IsNullOrEmpty( id ) ? null : MonsterManager.Instance?.GetSpecies( id );
+
+	// The poster, if they are online right now — Steam id first (exact),
+	// display name second. Reads the render-cached presence list.
+	private OnlinePlayerInfo FindOnlinePoster( TradeOffer o )
+	{
+		if ( o == null ) return null;
+		if ( o.PosterSteamId > 0 )
+		{
+			var bySteam = _others.FirstOrDefault( p => p.SteamId == o.PosterSteamId );
+			if ( bySteam != null ) return bySteam;
+		}
+		return _others.FirstOrDefault( p => string.Equals( p.Name, o.PosterName, StringComparison.OrdinalIgnoreCase ) );
+	}
+
+	private bool IsOfferLive( TradeOffer o ) => o != null && ( o.IsLive || FindOnlinePoster( o ) != null );
+
+	// Slip / row click. An online poster → the existing live trade request
+	// (RequestTrade by connection). Offline → an honest deny: accepting a
+	// standing offer needs the trade board, which isn't live yet.
+	private void AcceptOffer( TradeOffer o )
+	{
+		if ( o == null ) return;
+		var poster = FindOnlinePoster( o );
+		if ( poster != null ) { RequestTrade( poster ); return; }
+		SoundManager.PlayDeny();
+		NotificationManager.Instance?.AddNotification(
+			NotificationType.Info,
+			"Trade board coming soon",
+			$"{o.PosterName} isn't online right now. Accepting standing offers arrives with the trade board.",
+			3f
+		);
+	}
+
+	// DEV instrument: `dev_hubtrades` toggles five SAMPLE offers so the zone
+	// and the board can be reviewed without a live server board. Species come
+	// from the player's own roster (launch-roster fallbacks); two posters are
+	// "online" so the live dot shows; posted 2m / 12m / 1h / 3h / 1d ago.
+	// Built once per toggle so the time-agos don't drift per render.
 	private static bool _devFakeTrades;
+	private static List<TradeOffer> _fakeOffers;
 
 	[ConCmd( "dev_hubtrades" )]
 	public static void DevToggleFakeTrades()
 	{
 		_devFakeTrades = !_devFakeTrades;
-		Log.Info( $"[dev_hubtrades] sample slips {( _devFakeTrades ? "ON" : "OFF" )}" );
+		_fakeOffers = null;
+		Log.Info( $"[dev_hubtrades] sample offers {( _devFakeTrades ? "ON" : "OFF" )}" );
 	}
 
-	private List<OnlinePlayerInfo> BuildFakeTradables()
+	private List<TradeOffer> BuildFakeOffers()
 	{
 		var owned = MonsterManager.Instance?.OwnedMonsters?.Select( m => m.SpeciesId ).Distinct().ToList() ?? new List<string>();
 		string Pick( int i, string fallback ) => i < owned.Count ? owned[i] : fallback;
-		return new List<OnlinePlayerInfo>
+		const string male = "ui/characters/male/male_tamer.png";
+		const string female = "ui/characters/female/female_tamer.png";
+		var now = DateTime.UtcNow;
+		return new List<TradeOffer>
 		{
-			new() { Name = "Mossvane", TitleColor = "#3fb45e", FavoriteMonsterSpeciesId = Pick( 0, "pagefin" ), HasProfile = true },
-			new() { Name = "Rin",      TitleColor = "#ffce3a", FavoriteMonsterSpeciesId = Pick( 1, "cherune" ), HasProfile = true },
-			new() { Name = "Kestrel",  TitleColor = "#3f8fe0", FavoriteMonsterSpeciesId = Pick( 2, "embrik" ), HasProfile = true },
+			new( "dev-1", "Mossvane",    0, "#3fb45e", male,   Pick( 0, "pagefin" ),  Pick( 1, "cherune" ),    now.AddMinutes( -2 ),  true ),
+			new( "dev-2", "Rin",         0, "#ffce3a", female, Pick( 2, "embrik" ),   Pick( 3, "skunkape" ),   now.AddMinutes( -12 ), false ),
+			new( "dev-3", "Kestrel",     0, "#3f8fe0", male,   Pick( 4, "sheepot" ),  Pick( 0, "loomweaver" ), now.AddHours( -1 ),    true ),
+			new( "dev-4", "Bramblewick", 0, "#e8a33c", male,   "dawnmote",            Pick( 2, "wishlift" ),   now.AddHours( -3 ),    false ),
+			new( "dev-5", "Sable",       0, "#f87171", female, Pick( 1, "twincoil" ), "heartwell",             now.AddDays( -1 ),     false ),
 		};
 	}
 
@@ -1158,6 +1421,8 @@
 		p.DevDumpHost( "PLAY RANKED", p.ctaRankedRef, rr );
 		p.DevDumpHost( "BATTLE THE AI", p.ctaPracticeRef, rr );
 		p.DevDumpHost( "POST OFFER", p.postOfferRef, rr );
+		p.DevDumpHost( "VIEW ALL OFFERS", p.viewAllRef, rr );
+		p.DevDumpHost( "board POST OFFER", p.boardPostRef, rr );
 		p.DevDumpHost( "OPEN GUILD", p.guildCtaRef, rr );
 		p.DevDumpHost( "JOIN VOICE", p.voiceRef, rr );
 		p.DevDumpHost( "mic", p.micRef, rr );
@@ -1280,11 +1545,13 @@
 	}
 
 	// Ring costume hosts: the three in-tile battle BUTTONS, the guild CTA,
-	// the presence heads, and the POST OFFER tile (trades kb 0). Trade
-	// slips (kb 1+) and leaderboard rows wear the slab cursor instead.
+	// the presence heads, POST OFFER + VIEW ALL OFFERS (trades kb 0 / 1)
+	// and the board's POST OFFER (board kb 0). Trade slips (kb 2+), board
+	// rows (kb 1+) and leaderboard rows wear the slab cursor instead.
 	private bool IsRingCursor()
 		=> _kbZone == "battle" || _kbZone == "guild" || _kbZone == "online"
-		|| ( _kbZone == "trades" && _kbIndex == 0 );
+		|| ( _kbZone == "trades" && _kbIndex < TradeSlipKbBase )
+		|| ( _kbZone == "board" && _kbIndex == 0 );
 
 	private Panel ResolveRingTarget()
 	{
@@ -1295,7 +1562,9 @@
 				// the in-tile buttons, one row, left to right
 				return _kbIndex switch { 0 => ctaFindRef, 1 => ctaRankedRef, _ => ctaPracticeRef };
 			case "trades":
-				return _kbIndex == 0 ? postOfferRef : null;
+				return _kbIndex switch { 0 => postOfferRef, 1 => viewAllRef, _ => null };
+			case "board":
+				return _kbIndex == 0 ? boardPostRef : null;
 			case "guild":
 				return guildCtaRef;
 			case "online":
@@ -1339,7 +1608,8 @@
 		_ringVisible = false;
 		bool onHead = false;
 
-		if ( currentSection == "players" && !IsArenaActive() && _kbActive && !railOpen && IsRingCursor() )
+		bool ringSection = currentSection == "players" || currentSection == "board";
+		if ( ringSection && !IsArenaActive() && _kbActive && !railOpen && IsRingCursor() )
 		{
 			var target = ResolveRingTarget();
 			if ( target != null )
@@ -1393,7 +1663,8 @@
 		// buttons AND POST OFFER, a secondary BbButton since v3.3).
 		tamerRingRef.SetClass( "round", _ringVisible && onHead );
 		tamerRingRef.SetClass( "square", _ringVisible && _kbZone == "guild" );
-		tamerRingRef.SetClass( "small", _ringVisible && _kbZone == "online" && !onHead );
+		// .small also dresses VIEW ALL OFFERS (an r11 .lb-foot-recipe slab, trades kb 1).
+		tamerRingRef.SetClass( "small", _ringVisible && ( ( _kbZone == "online" && !onHead ) || ( _kbZone == "trades" && _kbIndex == 1 ) ) );
 	}
 
 	// The liquid ink-lean — the menu cursor's multi-sine at the PawPad's
@@ -1436,6 +1707,45 @@
 		if ( BattleEnabled && (currentSection == "ranked" || IsArenaActive()) )
 		{
 			arenaPanel?.TickInput();
+			return;
+		}
+
+		// TRADE BOARD takeover — an inline section (no child panel): kb 0 =
+		// POST OFFER (ring host), 1..n = the rows (slab cursor). W/S walk,
+		// Space / Enter / E act (a row = its click), R does nothing here,
+		// Q returns to the landing (the unclaimed-Q rule, explicit).
+		if ( currentSection == "board" )
+		{
+			if ( Input.Pressed( "Menu" ) && !GameHUD.PanelHandledBackKey )
+			{
+				BackToHub();
+				GameHUD.PanelHandledBackKey = true;
+				StateHasChanged();
+				return;
+			}
+			int boardCount = 1 + _boardOffers.Count;
+			_kbZone = "board";
+			_kbIndex = Math.Clamp( _kbIndex, 0, boardCount - 1 );
+			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
+			{
+				if ( _kbIndex == 0 ) OnPostOffer();
+				else if ( _kbIndex - 1 < _boardOffers.Count ) AcceptOffer( _boardOffers[_kbIndex - 1] );
+				return;
+			}
+			int bdy = 0;
+			if ( Input.Pressed( "Up" ) ) bdy = -1;
+			else if ( Input.Pressed( "Down" ) ) bdy = 1;
+			if ( bdy != 0 )
+			{
+				int t = Math.Clamp( _kbIndex + bdy, 0, boardCount - 1 );
+				if ( t != _kbIndex || !_kbActive )
+				{
+					_kbIndex = t;
+					_kbActive = true;
+					SoundManager.PlayHover();
+					StateHasChanged();
+				}
+			}
 			return;
 		}
 
@@ -1531,7 +1841,8 @@
 		switch ( zone )
 		{
 			case "battle": return 3;
-			case "trades": return 1 + Math.Min( others, MaxTradeSlips ); // POST OFFER + live slips
+			case "trades": return TradeSlipKbBase + _shownOffers.Count;   // POST OFFER + VIEW ALL + shown offers
+			case "board": return 1 + _boardOffers.Count;                  // POST OFFER + rows (not a landing zone; here for clamp safety)
 			case "guild": return GuildManager.UiEnabled ? 1 : 0;
 			case "online": return 1 + Math.Min( others, MaxHeads ) + VoiceSlotCount();
 			case "boards": return HubBoardsCount();
@@ -1576,14 +1887,15 @@
 	// the page's spatial seams:
 	//   battle: QUICKPLAY(0) → RANKED(1) → PRACTICE(2) → boards (one row);
 	//           QUICKPLAY / RANKED ↓ trades · PRACTICE ↓ guild
-	//   trades: slips(1..n) stacked above POST OFFER(0); → guild; ↑ battle; ↓ heads
+	//   trades: slips(2..n+1) stacked above the button row POST OFFER(0) →
+	//           VIEW ALL(1); → guild; ↑ battle; ↓ heads
 	//   guild ← trades · guild ↑ PRACTICE · guild ↓ heads · guild → boards (YOU)
 	//   heads ↑ trades · heads → JOIN VOICE → mic → boards (YOU)
 	private void MoveHubCursor( int dx, int dy, int others )
 	{
 		string z = _kbZone; int i = _kbIndex;
 		string nz = z; int ni = i;
-		int tradeCount = Math.Min( others, MaxTradeSlips );
+		int tradeCount = _shownOffers.Count;
 		int headCount = 1 + Math.Min( others, MaxHeads ) + VoiceSlotCount(); // seats + the voice chips
 		int guildCount = GuildManager.UiEnabled ? 1 : 0;
 		int boardsCount = HubBoardsCount();
@@ -1603,30 +1915,36 @@
 				else if ( dy > 0 )
 				{
 					if ( i == 2 && guildCount > 0 ) { nz = "guild"; ni = 0; }
-					else { nz = "trades"; ni = tradeCount > 0 ? 1 : 0; }
+					else { nz = "trades"; ni = tradeCount > 0 ? TradeSlipKbBase : 0; }
 				}
 				break;
 
 			case "trades":
-				// Slips (1..n) stack ABOVE the POST OFFER bar (0).
-				if ( i == 0 )
+				// Slips (2..n+1) stack ABOVE the button row: POST OFFER (0) · VIEW
+				// ALL OFFERS (1), left to right.
 				{
-					if ( dy < 0 ) { if ( tradeCount > 0 ) ni = tradeCount; else { nz = "battle"; ni = 0; } }
-					else if ( dy > 0 ) { nz = "online"; ni = 0; }
-					else if ( dx > 0 )
+					int firstSlip = TradeSlipKbBase, lastSlip = TradeSlipKbBase + tradeCount - 1;
+					if ( i < TradeSlipKbBase )
 					{
-						if ( guildCount > 0 ) { nz = "guild"; ni = 0; }
-						else { nz = "boards"; ni = 0; }
+						if ( dx > 0 )
+						{
+							if ( i == 0 ) ni = 1;
+							else if ( guildCount > 0 ) { nz = "guild"; ni = 0; }
+							else { nz = "boards"; ni = 0; }
+						}
+						else if ( dx < 0 ) { if ( i == 1 ) ni = 0; }
+						else if ( dy < 0 ) { if ( tradeCount > 0 ) ni = lastSlip; else { nz = "battle"; ni = 0; } }
+						else if ( dy > 0 ) { nz = "online"; ni = 0; }
 					}
-				}
-				else
-				{
-					if ( dy < 0 ) { if ( i > 1 ) ni = i - 1; else { nz = "battle"; ni = 0; } }
-					else if ( dy > 0 ) { if ( i < tradeCount ) ni = i + 1; else ni = 0; }
-					else if ( dx > 0 )
+					else
 					{
-						if ( guildCount > 0 ) { nz = "guild"; ni = 0; }
-						else { nz = "boards"; ni = 0; }
+						if ( dy < 0 ) { if ( i > firstSlip ) ni = i - 1; else { nz = "battle"; ni = 0; } }
+						else if ( dy > 0 ) { if ( i < lastSlip ) ni = i + 1; else ni = 0; }
+						else if ( dx > 0 )
+						{
+							if ( guildCount > 0 ) { nz = "guild"; ni = 0; }
+							else { nz = "boards"; ni = 0; }
+						}
 					}
 				}
 				break;
@@ -1634,7 +1952,7 @@
 			case "guild":
 				if ( dy < 0 ) { nz = "battle"; ni = 2; }
 				else if ( dy > 0 ) { nz = "online"; ni = 0; }
-				else if ( dx < 0 ) { nz = "trades"; ni = tradeCount > 0 ? 1 : 0; }
+				else if ( dx < 0 ) { nz = "trades"; ni = tradeCount > 0 ? TradeSlipKbBase : 0; }
 				else if ( dx > 0 ) { nz = "boards"; ni = Math.Min( HubBoardsYouIndex(), boardsCount - 1 ); }
 				break;
 
@@ -1684,9 +2002,10 @@
 				return;
 			case "trades":
 				if ( _kbIndex == 0 ) { OnPostOffer(); return; }
+				if ( _kbIndex == 1 ) { SwitchTab( "board" ); return; }
 				// The render-cached list — the same one the slips were drawn from.
-				int slip = _kbIndex - 1;
-				if ( slip >= 0 && slip < Math.Min( _others.Count, MaxTradeSlips ) ) RequestTrade( _others[slip] );
+				int slip = _kbIndex - TradeSlipKbBase;
+				if ( slip >= 0 && slip < _shownOffers.Count ) AcceptOffer( _shownOffers[slip] );
 				return;
 			case "guild":
 				SwitchTab( "guild" );
@@ -1782,6 +2101,13 @@
 		SoundManager.PlayClick();
 		currentSection = section;
 		ResetSelection();
+		// The board's cursor lands on the first row (else POST OFFER) — the
+		// slab cursor is the board's one costume until W reaches the button.
+		if ( section == "board" )
+		{
+			_kbZone = "board";
+			_kbIndex = CurrentOffers().Count > 0 ? 1 : 0;
+		}
 	}
 
 	private void BackToHub()
@@ -1968,7 +2294,7 @@
 	// Trading
 	private void RequestTrade( OnlinePlayerInfo player )
 	{
-		if ( _devFakeTrades && string.IsNullOrEmpty( player?.ConnectionId ) ) { SoundManager.PlayDeny(); return; }   // sample slip
+		if ( string.IsNullOrEmpty( player?.ConnectionId ) ) { SoundManager.PlayDeny(); return; }   // no live connection to route to
 		SoundManager.PlayClick();
 		if ( player == null ) return;
 
@@ -2201,6 +2527,17 @@
 					gm?.Members?.Count( m => m.IsOnline ) ?? 0,   // member head dots
 					_postNoteLive )                                // POST OFFER note swap
 			),
+			// Trade offers: the source (count + version bump on server fills, the
+			// dev sample toggle's own list), the render-cached zone/board counts,
+			// and a once-a-minute salt so "2m ago" keeps honest time.
+			HashCode.Combine(
+				_offersVersion,
+				HubOffers.Count,
+				_devFakeTrades ? ( _fakeOffers?.Count ?? -1 ) : -2,
+				_shownOffers.Count,
+				_boardOffers.Count,
+				(int)( Time.Now / 60f )
+			),
 			// v3 beast art: hero idle frames (multi-frame species only), the
 			// trade slips' favorite ids, the banner emblem, the lead-beast fallback.
 			HashCode.Combine(
@@ -2253,9 +2590,9 @@
 	// precedent).
 	private static readonly Dictionary<string, (int w, int h)> _spriteDims = new();
 
-	private static (int w, int h) SpriteBox( MonsterSpecies s, int box )
+	private static (int w, int h) SpriteDims( MonsterSpecies s )
 	{
-		if ( s == null || string.IsNullOrEmpty( s.IconPath ) ) return (box, box);
+		if ( s == null || string.IsNullOrEmpty( s.IconPath ) ) return (96, 96);
 		if ( !_spriteDims.TryGetValue( s.IconPath, out var d ) )
 		{
 			d = (96, 96);
@@ -2267,9 +2604,39 @@
 			catch { }
 			_spriteDims[s.IconPath] = d;
 		}
+		return d;
+	}
+
+	private static (int w, int h) SpriteBox( MonsterSpecies s, int box )
+	{
+		if ( s == null || string.IsNullOrEmpty( s.IconPath ) ) return (box, box);
+		var d = SpriteDims( s );
 		int k = Math.Max( 1, box / Math.Max( d.w, d.h ) );
 		return (d.w * k, d.h * k);
 	}
+
+	// VIEWPORT CROP for the trade-slip beast tiles (2026-08-29 user ask:
+	// "make the beasts bigger on the trade offers — like cut off part of its
+	// body"). The tile is a T×T window onto the NATIVE sprite: the <img>
+	// renders at its source size (80 / 96 / 128 across the roster — read
+	// once via SpriteDims), IN-FLOW, pulled up/left by negative margins so
+	// the head + upper body fill the square. No scaling ever, no filter, no
+	// transform — the compositor never touches the pixels. Bias: 45% of the
+	// horizontal overflow (a hair left of centre — sprites face LEFT, the
+	// head sits upper-left/centre) and 22% of the vertical (the head band,
+	// not the belly). 96 in 40 → −25 / −12 · 96 in 48 → −22 / −11 · 80 in 40
+	// → −18 / −9 · 128 in 48 → −36 / −18.
+	private static (int w, int h, int ml, int mt) SpriteCrop( MonsterSpecies s, int tile )
+	{
+		var d = SpriteDims( s );
+		int ml = -(int)Math.Round( Math.Max( 0, d.w - tile ) * 0.45f );
+		int mt = -(int)Math.Round( Math.Max( 0, d.h - tile ) * 0.22f );
+		return (d.w, d.h, ml, mt);
+	}
+
+	// Inline style for the crop — whole pixels, so no culture formatting risk.
+	private static string CropStyle( (int w, int h, int ml, int mt) c )
+		=> $"width: {c.w}px; height: {c.h}px; min-width: {c.w}px; margin-left: {c.ml}px; margin-top: {c.mt}px";
 
 	// Idle-animated frame for the three hero sprites (BeastiaryPanel's
 	// GetAnimatedIcon precedent). Flags _heroAnimated so BuildHash only
