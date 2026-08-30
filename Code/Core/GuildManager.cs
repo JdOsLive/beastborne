@@ -601,7 +601,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		BroadcastPresence();
 
 		SoundManager.PlaySuccess();
-		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Guild Created!", $"Welcome to {name} [{tag}]!", 5f );
+		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Guild Created!", $"Welcome to {name} [{tag}]!", 5f , route: "online:guild" );
 		OnGuildJoined?.Invoke();
 		OnGuildUpdated?.Invoke();
 		OnMembersUpdated?.Invoke();
@@ -647,7 +647,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		SetHopCooldown();
 
 		SoundManager.PlayBack();
-		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Left Guild", "You have left the guild.", 5f );
+		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Left Guild", "You have left the guild.", 5f , route: "online:guild" );
 		OnGuildLeft?.Invoke();
 		ChatManager.Instance?.SendPlayerProfile();
 	}
@@ -682,7 +682,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		ClearGuildData();
 
 		SoundManager.PlayBack();
-		NotificationManager.Instance?.AddNotification( NotificationType.Warning, "Guild Disbanded", $"{guildName} has been disbanded.", 5f );
+		NotificationManager.Instance?.AddNotification( NotificationType.Warning, "Guild Disbanded", $"{guildName} has been disbanded.", 5f , route: "online:guild" );
 		OnGuildLeft?.Invoke();
 		ChatManager.Instance?.SendPlayerProfile();
 	}
@@ -829,7 +829,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 			SoundManager.PlaySuccess();
 			NotificationManager.Instance?.AddNotification( NotificationType.Success, "Joined Guild!",
-				$"Welcome to [{Guild.Tag}] {Guild.Name}!", 5f );
+				$"Welcome to [{Guild.Tag}] {Guild.Name}!", 5f , route: "online:guild" );
 			OnGuildJoined?.Invoke();
 			OnGuildUpdated?.Invoke();
 			OnMembersUpdated?.Invoke();
@@ -913,7 +913,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 			SoundManager.PlaySuccess();
 			NotificationManager.Instance?.AddNotification( NotificationType.Success, "Joined Guild!",
-				$"Welcome to [{guildTag}] {guildName}!", 5f );
+				$"Welcome to [{guildTag}] {guildName}!", 5f , route: "online:guild" );
 			OnGuildJoined?.Invoke();
 			OnGuildUpdated?.Invoke();
 			OnMembersUpdated?.Invoke();
@@ -947,7 +947,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			guildId );
 
 		SoundManager.PlayForward();
-		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Request Sent", $"Join request sent to {guildName}.", 5f );
+		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Request Sent", $"Join request sent to {guildName}.", 5f , route: "online:guild" );
 	}
 
 	public void ApproveJoinRequest( GuildJoinRequest request )
@@ -977,7 +977,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 		SoundManager.PlaySuccess();
 		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Request Approved",
-			$"{request.PlayerName} has joined the guild!", 5f );
+			$"{request.PlayerName} has joined the guild!", 5f , route: "online:guild" );
 	}
 
 	public void DenyJoinRequest( GuildJoinRequest request )
@@ -1097,7 +1097,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 		SoundManager.PlaySuccess();
 		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Ownership Transferred",
-			$"{targetName} is now the Beastlord.", 5f );
+			$"{targetName} is now the Beastlord.", 5f , route: "online:guild" );
 	}
 
 	public void ClaimLeadership()
@@ -1145,7 +1145,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 		SoundManager.PlaySuccess();
 		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Leadership Claimed",
-			$"You are now the Beastlord!", 5f );
+			$"You are now the Beastlord!", 5f , route: "online:guild" );
 	}
 
 	public bool CanClaimLeadership()
@@ -1318,7 +1318,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		{
 			SoundManager.PlaySuccess();
 			NotificationManager.Instance?.AddNotification( NotificationType.Success, "Guild Level Up!",
-				$"Your guild is now Level {result.Level}!", 5f );
+				$"Your guild is now Level {result.Level}!", 5f , route: "online:guild" );
 		}
 
 		// Update local state from API response
@@ -1432,7 +1432,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		{
 			SoundManager.PlaySuccess();
 			NotificationManager.Instance?.AddNotification( NotificationType.Success,
-				"Guild Goal Complete!", $"{goal.Title} — claim {goal.XpReward:N0} XP in Quests", 5f );
+				"Guild Goal Complete!", $"{goal.Title} — claim {goal.XpReward:N0} XP in Quests", 5f , route: "online:guild" );
 		}
 
 		OnGuildUpdated?.Invoke();
@@ -2030,12 +2030,12 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		SoundManager.PlaySuccess();
 		string rewardLine = goldReward > 0 ? $" · +{goldReward:N0}g" : "";
 		NotificationManager.Instance?.AddNotification( NotificationType.Success, "Raid Complete!",
-			$"Score: {totalScore:N0} ({comboName} {comboMultiplier:F1}x){rewardLine}", 5f );
+			$"Score: {totalScore:N0} ({comboName} {comboMultiplier:F1}x){rewardLine}", 5f , route: "online:guild" );
 
 		foreach ( var titleId in newTitles )
 		{
 			NotificationManager.Instance?.AddNotification( NotificationType.Success, "Title Unlocked!",
-				$"\"{titleId}\" — equip in Tamer profile.", 6f );
+				$"\"{titleId}\" — equip in Tamer profile.", 6f , route: "online:guild" );
 		}
 	}
 
@@ -2213,7 +2213,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 		SoundManager.PlayNotification();
 		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Guild Invite",
-			$"{inviterName} invited you to [{guildTag}] {guildName}", 8f );
+			$"{inviterName} invited you to [{guildTag}] {guildName}", 8f , route: "online:guild" );
 	}
 
 	[Rpc.Broadcast]
@@ -2228,7 +2228,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 		SoundManager.PlayNotification();
 		NotificationManager.Instance?.AddNotification( NotificationType.Info, "Join Request",
-			$"{name} wants to join your guild", 5f );
+			$"{name} wants to join your guild", 5f , route: "online:guild" );
 	}
 
 	[Rpc.Broadcast]
@@ -2311,7 +2311,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			SetHopCooldown();
 			SoundManager.PlayDeny();
 			NotificationManager.Instance?.AddNotification( NotificationType.Warning, "Kicked",
-				$"You were removed from the guild by {kickerName}.", 8f );
+				$"You were removed from the guild by {kickerName}.", 8f , route: "online:guild" );
 			OnGuildLeft?.Invoke();
 			ChatManager.Instance?.SendPlayerProfile();
 			return;

@@ -62,6 +62,11 @@ public static class UIModalState
 			// Phone launcher — the experimental nav router. Can only open
 			// when no other modal is up (GameHUD's hotkey handler is gated
 			// on AnyModalOpen), so it never fights the panels below.
+			// Showcase popups sit ABOVE the phone (2026-08-29): the PawPad chat
+			// opens them over the device (author name / embed taps), so they
+			// must win the key gate while both are up (z 9900 > phone 9500).
+			if ( BeastShowcasePopup.Instance?.IsVisible == true ) return "BeastShowcasePopup";
+			if ( TamerCardShowcasePopup.Instance?.IsVisible == true ) return "TamerCardShowcasePopup";
 			if ( PhoneLauncher.IsVisible ) return "PhoneLauncher";
 
 			// ── Team picker — blocking modal opened from the world map ──
@@ -69,8 +74,6 @@ public static class UIModalState
 
 			// ── Reward / showcase popups ──
 			if ( ExpeditionResultPopup.IsVisible ) return "ExpeditionResultPopup";
-			if ( BeastShowcasePopup.Instance?.IsVisible == true ) return "BeastShowcasePopup";
-			if ( TamerCardShowcasePopup.Instance?.IsVisible == true ) return "TamerCardShowcasePopup";
 
 			// ── Fullscreen info / collection panels ──
 			if ( InventoryPanel.IsVisible ) return "InventoryPanel";

@@ -1915,6 +1915,13 @@ public sealed class ExpeditionManager : Component
 		tamer.TotalMonstersCaught++;
 		Stats.SetValue( "monsters-caught-launch", tamer.TotalMonstersCaught );
 
+		// CONTRACTED alert (2026-08-29): NotifyCatch had no live caller — the
+		// PawPad ALERTS app deep-links this row to the beast in the roster.
+		var caughtName = string.IsNullOrEmpty( caughtMonster.Nickname )
+			? ( MonsterManager.Instance?.GetSpecies( caughtMonster.SpeciesId )?.Name ?? "Beast" )
+			: caughtMonster.Nickname;
+		NotificationManager.Instance?.NotifyCatch( caughtName, caughtMonster.Id );
+
 		// Guild XP for monster catch
 		GuildManager.Instance?.AddGuildXP( 10 );
 		GuildManager.Instance?.IncrementAchievement( "catch" );

@@ -41,6 +41,15 @@ public class Notification
 	public bool IsExpired => (DateTime.UtcNow - CreatedAt).TotalSeconds >= Duration;
 	public float Progress => Math.Clamp( 1f - (float)(DateTime.UtcNow - CreatedAt).TotalSeconds / Duration, 0f, 1f );
 	public bool HasImageIcon => !string.IsNullOrEmpty( IconPath );
+
+	/// <summary>
+	/// Deep-link target for the PawPad ALERTS app (2026-08-29): "monsters" /
+	/// "monsters:{guid}" · "skills" · "expedition" · "online" · "online:guild" ·
+	/// "effects" · "achievements" · null (no route — the tap only marks read).
+	/// Set at the fire site; defaults per Type via NotificationManager.DefaultRoute.
+	/// Guild events fire as plain Success/Info/Warning, so they pass it explicitly.
+	/// </summary>
+	public string Route { get; set; }
 }
 
 /// <summary>
@@ -264,7 +273,7 @@ public sealed class NotificationManager : Component
 	/// <summary>
 	/// Add a new notification
 	/// </summary>
-	public void AddNotification( NotificationType type, string title, string message, float duration = 5f, string iconPath = null )
+	public void AddNotification( NotificationType type, string title, string message, float duration = 5f, string iconPath = null, string route = null )
 	{
 		var notification = new Notification
 		{
@@ -273,7 +282,10 @@ public sealed class NotificationManager : Component
 			Message = message,
 			Icon = GetIconForType( type ),
 			IconPath = iconPath,
-			Duration = duration
+			Duration = duration,
+			// PawPad deep-link (2026-08-29): explicit route wins; otherwise the
+			// per-type default (null for Info/Success/Warning — no subject).
+			Route = route ?? DefaultRoute( type )
 		};
 
 		// Remove oldest if at max capacity
@@ -349,13 +361,14 @@ public sealed class NotificationManager : Component
 	/// <summary>
 	/// Notify that a monster is ready to evolve
 	/// </summary>
-	public void NotifyEvolutionReady( string monsterName, string evolvesTo )
+	public void NotifyEvolutionReady( string monsterName, string evolvesTo, Guid monsterId = default )
 	{
 		AddNotification(
 			NotificationType.Evolution,
 			LocalizationManager.Get( "notify.evolution_ready" ),
 			LocalizationManager.Get( "notify.can_evolve", monsterName, evolvesTo ),
-			8f
+			8f,
+			route: monsterId == Guid.Empty ? "monsters" : $"monsters:{monsterId}"
 		);
 	}
 
@@ -389,13 +402,14 @@ public sealed class NotificationManager : Component
 	/// <summary>
 	/// Notify that a monster was caught
 	/// </summary>
-	public void NotifyCatch( string monsterName )
+	public void NotifyCatch( string monsterName, Guid monsterId = default )
 	{
 		AddNotification(
 			NotificationType.Catch,
 			LocalizationManager.Get( "notify.monster_caught" ),
 			LocalizationManager.Get( "notify.you_caught", monsterName ),
-			5f
+			5f,
+			route: monsterId == Guid.Empty ? "monsters" : $"monsters:{monsterId}"
 		);
 	}
 
@@ -470,6 +484,27 @@ public sealed class NotificationManager : Component
 	{
 		_history.Clear();
 		UnreadCount = 0;
+	}
+
+	/// <summary>
+	/// Per-type deep-link default for the PawPad ALERTS app. Types whose
+	/// subject is implied by the type route without a fire-site argument;
+	/// the generic Info/Success/Warning carry no route unless the caller
+	/// passes one (guild events do).
+	/// </summary>
+	public static string DefaultRoute( NotificationType type )
+	{
+		return type switch
+		{
+			NotificationType.Achievement => "achievements",
+			NotificationType.Catch => "monsters",
+			NotificationType.Evolution => "monsters",
+			NotificationType.TamerLevelUp => "skills",
+			NotificationType.ExpeditionUnlock => "expedition",
+			NotificationType.ServerBoost => "effects",
+			NotificationType.RankedBattle => "online",
+			_ => null
+		};
 	}
 
 	private string GetIconForType( NotificationType type )

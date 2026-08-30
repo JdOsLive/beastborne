@@ -304,6 +304,82 @@
 		return rows;
 	}
 
+	/// <summary>
+	/// PawPad EFFECTS app (2026-08-29): TIMED BOOSTS with everything the row
+	/// needs — a stable key, label, source line, remaining time, the strip's
+	/// denominator (largest catalog duration for the type; Elite Ink = its own
+	/// window), glyph text + icon path. Shop boosts + Elite Ink; the flat
+	/// event flags (double XP / launch week) ride as "ALWAYS ON" skill rows.
+	/// </summary>
+	public static List<(string Key, string Label, string Source, TimeSpan Remaining, float TotalSeconds, string Glyph, string IconPath)> GetPhoneBoosts()
+	{
+		var rows = new List<(string, string, string, TimeSpan, float, string, string)>();
+		var inst = Instance;
+		if ( inst == null ) return rows;
+		foreach ( var b in inst.GetActiveBoosts() )
+		{
+			var label = $"{inst.GetBoostLabel( b.Type ).ToUpperInvariant()} ×{b.Multiplier:0.#}";
+			var source = b.IsServer ? ( string.IsNullOrEmpty( b.ActivatedBy ) ? "server boost" : $"server boost · {b.ActivatedBy}" ) : "shop boost";
+			var glyph = b.Type switch
+			{
+				ShopItemType.GoldBoost => "G",
+				ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost or ShopItemType.XPBoost => "XP",
+				ShopItemType.RareEncounter => "RR",
+				ShopItemType.LuckyCharm => "LK",
+				_ => "B"
+			};
+			rows.Add( ($"{b.Type}:{( b.IsServer ? "srv" : "own" )}", label, source, b.TimeRemaining, PhoneBoostDenominator( b.Type, b.TimeRemaining ), glyph, inst.GetBoostIconPath( b.Type )) );
+		}
+		if ( inst.HasEliteInk() )
+			rows.Add( ("elite-ink", "ELITE INK", "contract bonus", inst.GetEliteInkRemaining(), MathF.Max( 3600f, (float)inst.GetEliteInkRemaining().TotalSeconds ), "INK", "ui/items/boosts/lucky_clover.png") );
+		return rows;
+	}
+
+	// Largest catalog duration for the type (boost stacking extends past it,
+	// so the fill clamps at full); 60 min if the catalog has none.
+	private static float PhoneBoostDenominator( ShopItemType type, TimeSpan remaining )
+	{
+		float maxMin = 0f;
+		var items = ShopManager.Instance?.ShopItems;
+		if ( items != null )
+			foreach ( var it in items )
+				if ( it.Type == type && it.BoostDurationMinutes > maxMin ) maxMin = it.BoostDurationMinutes;
+		if ( maxMin <= 0f ) maxMin = 60f;
+		return MathF.Max( maxMin * 60f, (float)remaining.TotalSeconds );
+	}
+
+	/// <summary>
+	/// PawPad EFFECTS app (2026-08-29): SKILL BONUSES · ALWAYS ON — name, rank,
+	/// the node's icon path (pixel art) — plus the flat event XP flags.
+	/// </summary>
+	public static List<(string Name, int Rank, string IconPath, string Glyph)> GetPhoneSkills()
+	{
+		var rows = new List<(string, int, string, string)>();
+		var inst = Instance;
+		if ( inst == null ) return rows;
+		var skillTree = TamerManager.Instance?.SkillTree;
+		foreach ( var s in inst.GetActiveSkillBonuses() )
+			rows.Add( (s.Name.ToUpperInvariant(), s.Rank, null, s.Icon) );
+		// Node icon paths — resolve by name once (GetActiveSkillBonuses returns names).
+		if ( skillTree != null && TamerManager.Instance?.CurrentTamer?.SkillRanks != null )
+		{
+			foreach ( var (skillId, rank) in TamerManager.Instance.CurrentTamer.SkillRanks )
+			{
+				var node = skillTree.GetNode( skillId );
+				if ( node == null || string.IsNullOrEmpty( node.IconPath ) ) continue;
+				for ( int i = 0; i < rows.Count; i++ )
+					if ( rows[i].Item1 == node.Name.ToUpperInvariant() && rows[i].Item3 == null )
+					{
+						rows[i] = (rows[i].Item1, rows[i].Item2, node.IconPath, rows[i].Item4);
+						break;
+					}
+			}
+		}
+		if ( TamerManager.IsDoubleXPActive ) rows.Add( ("DOUBLE XP EVENT", 0, null, "XP") );
+		if ( LiveEventManager.IsLaunchWeekXPActive ) rows.Add( ("LAUNCH WEEK XP", 0, null, "XP") );
+		return rows;
+	}
+
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
 		if ( firstTime )
