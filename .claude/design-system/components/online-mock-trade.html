@@ -3,38 +3,63 @@
 <html><head><meta charset="utf-8"><title>Online Mock — Trade Offers</title>
 <link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
 <!--
-  ONLINE MOCK 6/6 — TRADE OFFERS. Plain words (v3): WANT / FOR, POST OFFER, LIVE, "41H LEFT", ACCEPT.
-  TWO LANES:
-  (1) LIVE — tamers online right now. The slip routes into the shipped TradingManager P2P session
-      (SendTradeRequest, window pre-seeded) — that flow is off-limits here. SHIPPED on the hub
-      2026-08-28: ≤3 slips × 46px beside the POST OFFER tile.
-  (2) STANDING — the board. USER RULING 2026-08-28: ASYNC WITH ESCROW. The poster's side is held
-      server-side at post time; the acceptor's side is held at accept; both sides are delivered
-      through the EXISTING gift-claim pipeline on each party's next login. No live handshake, no
-      "interested" list — an accept is final. Endpoints (new build work; the API-client pattern
-      exists from guilds/gifts): POST /board (post + escrow poster side) · GET /board (list,
-      server-filtered for expiry) · DELETE /board/{id} (retract → escrow returned via gift-claim)
-      · POST /board/{id}/accept (validate ownership + escrow acceptor side + queue both deliveries).
-      Anti-abuse caps: one active offer per tamer (posting again replaces) · 48h expiry, auto-return
-      · N accepts per day · post rate-limit · no self-accept · both sides validated server-side
-      before escrow · client filters unresolvable species/items (the bag ghost-item lesson).
-  HUB STATE TODAY: the POST OFFER tile ships INERT — press → sub-line "Coming with the trade
-  board" for 3s (click sound, not deny). Nothing fake renders in the board's place.
+  ONLINE MOCK 6/6 — TRADE OFFERS. RENDERED TWIN OF THE SHIPPED MODEL, commit f3558b8 (HEAD 2026-08-30).
+  Plain words (v3): WANT / FOR, POST OFFER, VIEW ALL OFFERS, ACCEPT · SPACE / OFFLINE / YOURS.
 
-  ENGINE NOTES:
-  · Offer cards live in a 2-col scroll grid: hover/selected = border+fill only, no transform/glow;
-    the header band (title + count + POST OFFER) is opaque, gap 0.
-  · Left rarity edge = 4px solid div keyed to the WANT species' rarity (rarity ladder tokens).
-  · Composer = modal takeover; FLEX-CENTER the root (never absolute+translate — the transform
-    poisons descendant flex-grow widths). Structured pickers reuse the trade-window picker anatomy —
-    no free-text field anywhere (nothing to moderate, uniform slips).
-  · Qty steppers = bordered divs; corner cut = rotated square under overflow:hidden.
-  · Expiry countdown is per-tick text; server timestamps are truth (client clocks lie).
-  · NO border-style:dashed in-engine — the dashed empty-state slip and the "+ ADD ITEM OR BEAST"
-    row build as a dim solid border (~35% alpha) + darker fill, or a baked dash PNG. Browser
-    dashes here are reading clarity only.
-  · All glyphs (● live dots, ⇄ trade arrows, −/+ steppers) = iconify (lucide) swaps in-engine;
-    emoji/UTF glyphs are mock stand-ins only.
+  WHAT SHIPPED (user rulings 2026-08-29: "instead of LIVE it should show the predetermined ones" ·
+  "a button to view the full trade list" · "make the beasts bigger — like cut off part of its body" ·
+  "the poster is stranded far right… should we have multiple columns?"):
+  · THE OFFERS MODEL — the hub zone renders POSTED offers. `TradeOffer` record (Id · PosterName ·
+    PosterSteamId · PosterTitleColor · PosterAvatarPath · WantSpeciesId · ForSpeciesId · PostedAt UTC ·
+    IsLive) from the static `HubOffers` list — EMPTY in production (the server standing-offer board is
+    a later milestone; fetch point = LoadHubOffers() from OnAfterTreeRender(firstTime) + bump
+    _offersVersion) — or the dev sample (`dev_hubtrades` → 5 offers, owned-roster species, 2m / 12m /
+    1h / 3h / 1d ago, two posters live, #2 posted by YOU so MINE has a hit). The presence-derived
+    LIVE-tamer lane is RETIRED from the zone — live tamers live in ONLINE NOW.
+  · THE HUB ZONE — newest 3 as 52px slips + a button row: POST OFFER (200×44 secondary BbButton,
+    inert — press swaps the sub-line to "Not open yet" for 3s, click not deny) + "Trade board coming
+    soon" + VIEW ALL OFFERS → (the .lb-foot recipe at 180) → the TRADE BOARD takeover.
+  · THE TRADE BOARD — an INLINE section (hub chrome stays): the four FILTER chips (ALL · I CAN FILL ·
+    I NEED · MINE, with counts; R cycles) live in the PAGE HEADER's right slot (`.oh-toolbar` = the
+    roster `.rh-toolbar` / My Beasts FilterBar position, rendered only on the board section — user
+    ruling 2026-08-30, f3558b8; the body filter row is GONE) · band 60 · a 3-column CARD GRID of
+    600×112 cards rising straight under the band (the house pattern for lists-of-things-with-art —
+    roster / bag / shop — never a 1845px row).
+  · ACCEPT — click / Space / E on a slip or card: poster online (SteamId, else name, from the render-
+    cached presence list) → the EXISTING TradingManager P2P window (RequestTrade — off-limits,
+    unchanged); poster offline → PlayDeny + "Trade board coming soon" notification. YOURS is inert.
+  · BEAST TILES = VIEWPORT CROPS: an explicit-px tile (40 in the zone, 56 on the board) with overflow
+    hidden; the <img> is IN-FLOW at its SOURCE size with negative margins pulling the head into the
+    window (45% of the horizontal overflow, 22% of the vertical — sprites face left). No object-fit,
+    no filter, no transform (anything that resamples blurs the pixels). Never oversize a clip radius.
+  · PEOPLE ARE ROUNDED SQUARES (poster heads 28 r7 / 24 r6, Steam avatar or cartoon fallback),
+    BEASTS ARE SQUARE TILES.
+
+  ENGINE NOTES (browser CSS here → in-engine):
+  · The grid is the ONE scroll child of the slab (`flex: 1 1 0; min-height: 0; overflow-y: scroll;
+    flex-wrap: wrap; align-content: flex-start`) with width AND max-width pinned 1872 (an unpinned
+    wrap grid under flex 1 1 0 packs an extra item per row). Cards are DIRECT children; the empty
+    state toggles `.empty` (grid → centered column, two spans) — no wrapper div. The band is OPAQUE,
+    gap 0 to the grid (scroll-leak law).
+  · The header renders BEFORE the section's `@{ }` prologue, so the toolbar reads its chip counts from
+    its own helper (ComputeBoardCounts()), never the body's locals. The chips wear the slab cursor
+    (skew holder: violet rim + #262040 on hover/kb; active = #1c3f72 / #3f8fe0 rim two-tone) and are
+    NOT ring hosts — a future ring host inside the z-500 header would need the ring above 500. The
+    kb graph encodes GEOMETRY: chips ↑ · POST OFFER · cards ↓ (the old POST OFFER → S → filters route
+    inverted the screen once the chips moved up, so it was re-routed).
+  · Padding-box row math: lane 1872 − 24 = 1848; a card occupies 600 + its 3px seam = 603; 3 × 603 +
+    2 × 16 = 1841 → 7px slack; a 4th needs 2460. Inside a padded parent never `width: 100%`.
+  · Slab cursor on slips / segments / cards (.kb-focused: 3px seam → violet + fill #282246) — border /
+    bg only, no transform, no shadow. The ring lives ONLY on POST OFFER (board kb 0, default r24).
+  · Kb scroll-follow: UiGridScroll.ComputeIndexOffset(gridRef, card, "hb-card", null, 12) + a 0.30
+    per-frame glide behind a pending flag (kept armed until the focused card has a laid-out rect); a
+    cursor on the band / filters glides the grid to 0.
+  · Rows inside a scroll list get PINNED widths; spacer lanes get a real flex-BASIS (`flex: 1 1 112px`)
+    so the right-aligned cluster lands even if grow fails.
+  · Two side-by-side CTAs in a 596 lane can't both be secondary BbButtons — VIEW ALL OFFERS + diamond
+    measures ~256; the in-panel .lb-foot recipe (44 r11 slab, Exo2Italic 14, → proven) fits at 180.
+  · Time-ago = "2m ago" / "1h ago" / "1d ago" from server UTC; BuildHash salts once a minute so the
+    text stays honest. NO border-style:dashed in-engine. Glyphs = iconify (lucide) swaps.
 -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -44,13 +69,14 @@ h1{font-style:italic;font-weight:900;font-size:24px;text-transform:uppercase;let
 .sub b{color:#EFEAF7}
 h2{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#0A0712;background:#3F8FE0;display:inline-block;padding:5px 14px;border-radius:4px;transform:skewX(-12deg);margin:26px 0 12px}
 h2 span{display:inline-block;transform:skewX(12deg)}
+h2.fut{background:#2A2340;color:#A79DBE}
 .cap{font-size:9px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:#7C7295;line-height:13px;max-width:960px;margin:6px 0 4px}
 .cap b{color:#6FB1F0}
 .mini{font-size:7.5px;font-weight:600;letter-spacing:.8px;color:#7C7295}
 .kick{font-size:6.5px;font-weight:900;letter-spacing:1.4px;color:#3F8FE0;text-transform:uppercase}
 .chip{display:inline-block;padding:1px 6px;border-radius:5px;background:#1c1830;color:#A79DBE;font-size:6.5px;font-weight:700;letter-spacing:.8px}
-.pillg{display:inline-block;padding:1px 6px;border-radius:99px;background-color:rgba(63,180,94,.16);border:1px solid rgba(63,180,94,.55);color:#4ade80;font-size:6.5px;font-weight:800;letter-spacing:1px}
 .kcapm{display:inline-block;background:#262038;color:#EFEAF7;font-size:6.5px;font-weight:900;padding:1px 4px;border-radius:3px}
+.it{font-style:italic;font-weight:900}
 .co{position:absolute;width:16px;height:16px;border-radius:8px;background:#3F8FE0;color:#0A0712;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;z-index:9;border:2px solid #0A0712}
 .leg{display:flex;flex-direction:column;gap:4px;max-width:960px;margin:10px 0 2px}
 .leg span{font-size:11px;font-weight:500;color:#A79DBE;line-height:15px}
@@ -59,196 +85,187 @@ h2 span{display:inline-block;transform:skewX(12deg)}
 .kb{display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap}
 .kb .kcap{background:#221C38;border:1px solid #2A2340;border-radius:4px;padding:2px 8px;font-size:9px;font-weight:800;color:#EFEAF7;letter-spacing:.5px}
 .kb .klab{font-size:9px;font-weight:600;color:#7C7295;letter-spacing:1px;text-transform:uppercase;margin-left:-9px}
+/* board chrome (1:2) */
+.board{position:relative;width:960px;height:540px;background:#0a0912;border:1px solid #2A2340;overflow:hidden}
+.chipb{display:inline-flex;align-items:center;height:12px;padding:0 6px;background:#3f8fe0;border-radius:2px;transform:skewX(-12deg);box-shadow:1.5px 1.5px 0 rgba(0,0,0,.45)}
+.chipb span{display:inline-block;transform:skewX(12deg);font-size:5.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#0a0912;white-space:nowrap}
+.cut{position:absolute;top:-5px;right:-5px;width:10px;height:10px;background:#0a0912;transform:rotate(45deg);z-index:2}
+.bbs{position:absolute;height:22px;border-radius:8px;background:#1c1830;display:flex;align-items:center;justify-content:flex-start;padding-left:6px;gap:5px}
+.bbs span{font-style:italic;font-weight:900;font-size:8px;letter-spacing:.5px;color:#f4f1ea}
+.dia{width:11px;height:11px;background:#3f8fe0;border-radius:2px;transform:rotate(45deg);display:flex;align-items:center;justify-content:center;flex:0 0 11px}
+.dia i{transform:rotate(-45deg);color:#0a0912;font-size:9px;font-weight:900;line-height:9px;font-style:normal}
+.head{position:absolute;background:#0a0912;border-radius:3.5px;border:1px solid #6b7280}
+.btile{position:absolute;background:#110d1a;border-radius:4px;overflow:hidden}
+.btile i{position:absolute;left:-6px;top:-4px;width:34px;height:34px;background:repeating-linear-gradient(45deg,rgba(214,206,236,.25) 0 3px,rgba(214,206,236,.06) 3px 6px);border-radius:2px}
+.slip{position:absolute;left:6px;width:298px;height:26px;background:#1c1830;border-left:1.5px solid rgba(0,0,0,0);border-radius:3px}
+.slip.alt{background:#181429}
+.slip .k{position:absolute;top:5px;font-size:5.5px;font-weight:800;letter-spacing:.5px;color:#7c7295}
+.slip .bn{position:absolute;top:12px;font-size:6.5px;font-weight:800;color:#efeaf7;white-space:nowrap}
+.seg{position:absolute;top:0;width:88px;height:18px;border-radius:5.5px;background:#1c1830;border-left:1.5px solid rgba(0,0,0,0);display:flex;align-items:center;justify-content:center;gap:3px}
+.seg span{font-size:6px;font-weight:800;letter-spacing:.75px;color:#a79dbe}
+.seg small{font-size:5.5px;font-weight:700;color:#7c7295}
+.seg.on{background:#3f8fe0}.seg.on span{color:#0a0912}.seg.on small{color:rgba(10,9,18,.6)}
+/* board card (600×112 → 300×56) */
+.card{position:absolute;width:300px;height:56px;background:#1c1830;border-left:1.5px solid #3f8fe0;border-radius:3px;padding:3px 7px}
+.card.alt{background:#181429}
+.card.kb{border-left-color:#9b6cff;background:#282246}
+.card .top{position:relative;width:286px;height:36px}
+.card .bot{position:relative;width:286px;height:14px}
+.card .k{position:absolute;top:7px;font-size:5.5px;font-weight:800;letter-spacing:.5px;color:#7c7295}
+.card .bn{position:absolute;top:16px;font-size:7.5px;font-weight:800;color:#efeaf7;white-space:nowrap}
+.card .ar{position:absolute;left:135px;top:12px;font-size:10px;color:#6fb1f0}
+.card .nm{position:absolute;left:20px;top:3px;font-size:6.5px;font-weight:700;color:#a79dbe;white-space:nowrap}
+.card .tm{position:absolute;right:66px;top:4px;font-size:5.5px;font-weight:600;color:#7c7295}
+.card .ac{position:absolute;right:0;top:3px;width:60px;text-align:right;font-size:5.5px;font-weight:900;letter-spacing:.5px}
+.card .ac.live{color:#3f8fe0}.card .ac.off{color:#5e5678}.card .ac.mine{color:#7c7295}
+.dot{display:inline-block;width:4px;height:4px;border-radius:2px;background:#4ade80;position:absolute;left:14px;top:5px}
 /* flow beats */
 .tl{display:flex;gap:8px;max-width:960px;margin:6px 0}
 .beat{flex:1;background:#1A1428;border:1px solid #2A2340;padding:10px 12px;position:relative}
 .beat b{display:block;font-style:italic;font-size:12px;font-weight:900;letter-spacing:.6px;color:#6FB1F0}
 .beat i{display:block;font-style:normal;font-size:10px;font-weight:500;color:#A79DBE;line-height:14px;margin-top:3px}
 .beat u{display:block;text-decoration:none;font-size:8px;font-weight:700;letter-spacing:1.2px;color:#7C7295;margin-top:6px}
+.box{background:#161022;border:1px solid #262038;padding:12px 14px;max-width:820px;position:relative;margin-bottom:10px}
+.box li{font-size:11px;font-weight:500;color:#A79DBE;line-height:17px;margin:0 0 3px 16px}
+.box li b{color:#EFEAF7}
 </style></head><body>
 
-<h1>Online mock — trade offers</h1>
-<div class="sub"><b>An offer card says everything in two lines: what they WANT, what they'll give FOR it.</b>
-Live tamers trade in the existing trade window. Standing offers are async with escrow: post yours and your side is
-held right away; it stays up for 48 hours while you're offline, and whoever accepts gets it on their next login —
-you get theirs on yours. No free text anywhere; everything is picked, so every card reads the same.</div>
+<h1>Online mock — trade offers <span style="color:#3F8FE0">as shipped</span></h1>
+<div class="sub"><b>An offer says everything in one line: the beast they WANT, the beast they'll give FOR it, who posted it, when.</b>
+The hub zone shows the newest three; VIEW ALL OFFERS opens the board — a filterable card grid of every posted offer.
+Accepting an offer whose poster is online opens the existing trade window; offline posters wait for the server board
+(async with escrow — the future section below). No free text anywhere; every slip reads the same.</div>
+<div class="cap" style="margin:-10px 0 14px;color:#6FB1F0"><b>BASELINE f3558b8 (HEAD 2026-08-30)</b> · OnlineHubPanel.razor trade zone + `currentSection == "board"` (+ the header's board-only `.oh-toolbar`) · HubOffers is EMPTY in production — the drawings use the dev_hubtrades sample</div>
 
-<h2><span>The hub tile — as shipped 2026-08-28 (1:2)</span></h2>
-<div style="position:relative;width:433px;height:140px;background:#15121f">
+<h2><span>The hub zone — as shipped (620×280, 1:2)</span></h2>
+<div style="position:relative;width:310px;height:140px;background:#15121f">
   <div style="position:absolute;left:0;top:0;right:0;height:18px;background:#110d1a;display:flex;align-items:center;padding:0 7px;gap:6px">
-    <span style="display:inline-block;height:12px;padding:0 6px;background:#3f8fe0;border-radius:2px;transform:skewX(-12deg);box-shadow:1.5px 1.5px 0 rgba(0,0,0,.45);font-size:5.5px;font-weight:700;letter-spacing:1.5px;color:#0a0912;line-height:12px">TRADE OFFERS</span>
-    <span class="chip">2 LIVE</span>
+    <span class="chipb"><span>TRADE OFFERS</span></span><span class="chip">5 OPEN</span>
   </div>
-  <div style="position:absolute;left:8px;top:26px;width:100px;height:100px;background:#1c1830;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px">
-    <div style="width:22px;height:22px;background:#3f8fe0;border-radius:4px;transform:rotate(45deg);display:flex;align-items:center;justify-content:center;margin-bottom:6px"><span style="transform:rotate(-45deg);color:#0a0912;font-size:14px;font-weight:900;line-height:14px">+</span></div>
-    <span style="font-style:italic;font-weight:900;font-size:11px;line-height:13px;letter-spacing:.5px;color:#f4f1ea">POST OFFER</span>
-    <span style="font-size:6.5px;font-weight:600;color:#7c7295">48h standing offer</span>
-  </div>
-  <div style="position:absolute;left:116px;top:34px;right:8px;height:23px;background:#1c1830;border-left:1.5px solid rgba(0,0,0,0);border-radius:3px"><div style="position:absolute;left:6px;top:5px;width:13px;height:13px;border-radius:7px;background:#0a0912;border:1px solid #67e8f9"></div><span style="position:absolute;left:24px;top:4px;font-size:6.5px;font-weight:800;color:#EFEAF7">MOSSVANE <span style="font-style:italic;font-weight:900;font-size:6px;color:#ffce3a">LV 41</span></span><span style="position:absolute;left:24px;top:13px;font-size:6px;font-weight:600;color:#7c7295">Open a live trade</span><span style="position:absolute;right:44px;top:7px" class="pillg">LIVE</span><span style="position:absolute;right:6px;top:8px;font-size:6px;font-weight:900;letter-spacing:.5px;color:#6fb1f0;opacity:.55">TRADE · E</span></div>
-  <div style="position:absolute;left:116px;top:61px;right:8px;height:23px;background:#1c1830;border-left:1.5px solid #9b6cff;border-radius:3px"><div style="position:absolute;left:6px;top:5px;width:13px;height:13px;border-radius:7px;background:#0a0912;border:1px solid #f472b6"></div><span style="position:absolute;left:24px;top:4px;font-size:6.5px;font-weight:800;color:#EFEAF7">VEX <span style="font-style:italic;font-weight:900;font-size:6px;color:#ffce3a">LV 38</span></span><span style="position:absolute;left:24px;top:13px;font-size:6px;font-weight:600;color:#7c7295">Open a live trade</span><span style="position:absolute;right:44px;top:7px" class="pillg">LIVE</span><span style="position:absolute;right:6px;top:8px;font-size:6px;font-weight:900;letter-spacing:.5px;color:#6fb1f0">TRADE · E</span></div>
-  <div style="position:absolute;left:116px;top:92px" class="mini">↑ second slip wears the slab cursor (3px left seam → violet + fill lift)</div>
-  <div style="position:absolute;left:116px;top:118px" class="mini">standing offers (escrow board) join this lane when the board ships · empty: "No open offers right now"</div>
+  <div class="slip" style="top:23px"><div class="head" style="left:6px;top:6px;width:14px;height:14px;border-color:#67e8f9"></div><div class="btile" style="left:26px;top:3px;width:20px;height:20px"><i></i></div><span class="k" style="left:50px">WANT</span><span class="bn" style="left:50px">Emberhide</span><span style="position:absolute;left:112px;top:8px;font-size:8px;color:#6fb1f0">→</span><div class="btile" style="left:126px;top:3px;width:20px;height:20px"><i></i></div><span class="k" style="left:150px">FOR</span><span class="bn" style="left:150px">Tidewisp</span><span style="position:absolute;right:6px;top:5px;font-size:6px;font-weight:700;color:#a79dbe"><span style="display:inline-block;width:4px;height:4px;border-radius:2px;background:#4ade80;margin-right:3px"></span>MOSSVANE</span><span style="position:absolute;right:6px;top:14px;font-size:5.5px;font-weight:600;color:#7c7295">2m ago</span></div>
+  <div class="slip alt" style="top:52px;border-left-color:#9b6cff;background:#282246"><div class="head" style="left:6px;top:6px;width:14px;height:14px;border-color:#ffce3a"></div><div class="btile" style="left:26px;top:3px;width:20px;height:20px"><i></i></div><span class="k" style="left:50px">WANT</span><span class="bn" style="left:50px">Twincoil</span><span style="position:absolute;left:112px;top:8px;font-size:8px;color:#6fb1f0">→</span><div class="btile" style="left:126px;top:3px;width:20px;height:20px"><i></i></div><span class="k" style="left:150px">FOR</span><span class="bn" style="left:150px">Skunkape</span><span style="position:absolute;right:6px;top:5px;font-size:6px;font-weight:700;color:#a79dbe">RIN</span><span style="position:absolute;right:6px;top:14px;font-size:5.5px;font-weight:600;color:#7c7295">12m ago</span></div>
+  <div class="slip" style="top:81px"><div class="head" style="left:6px;top:6px;width:14px;height:14px;border-color:#f472b6"></div><div class="btile" style="left:26px;top:3px;width:20px;height:20px"><i></i></div><span class="k" style="left:50px">WANT</span><span class="bn" style="left:50px">Wishlift</span><span style="position:absolute;left:112px;top:8px;font-size:8px;color:#6fb1f0">→</span><div class="btile" style="left:126px;top:3px;width:20px;height:20px"><i></i></div><span class="k" style="left:150px">FOR</span><span class="bn" style="left:150px">Heartwell</span><span style="position:absolute;right:6px;top:5px;font-size:6px;font-weight:700;color:#a79dbe"><span style="display:inline-block;width:4px;height:4px;border-radius:2px;background:#4ade80;margin-right:3px"></span>VEX</span><span style="position:absolute;right:6px;top:14px;font-size:5.5px;font-weight:600;color:#7c7295">1h ago</span></div>
+  <div class="bbs" style="left:6px;top:112px;width:100px"><div class="dia"><i>+</i></div><span>POST OFFER</span></div>
+  <span style="position:absolute;left:112px;top:119px;font-size:6.5px;font-weight:600;color:#7c7295">Trade board coming soon</span>
+  <div style="position:absolute;right:6px;top:112px;width:90px;height:22px;border-radius:5.5px;background:#1c1830;display:flex;align-items:center;justify-content:center"><span class="it" style="font-size:7px;letter-spacing:.3px;color:#f4f1ea">VIEW ALL OFFERS →</span></div>
 </div>
-<div class="cap">HUB TILE · POST OFFER 200×200 secondary slab (#1c1830, radius 0, <b>.square</b> ring costume, trades kb 0 — the zone is never empty) · 44px blue action diamond + counter-rotated plus · 22px italic label · 13px sub · press today → sub swaps to "Coming with the trade board" for 3s (click, not deny) · live slips 46px ≤3 at kb 1+ · Smash pop on the diamond only (hubSmashWiggle while hovered / kb-lit, fallback rotate(39deg) scale(1.16)); the label is static ("the hover is OF the icon", bd2955e); slips get no pop (scroll-grid law)</div>
+<div class="cap">HUB ZONE · band 36 (#110d1a: chip + "N OPEN") · body pad 10/12 → slips 3 × 52 (gap 6; 56 × 3 did not fit the 244 body) + 10 + button row 44 · the second slip wears the slab cursor (3px seam → violet + fill #282246) · POST OFFER = trades kb 0 (default r24 ring; press → "Not open yet" 3s) · VIEW ALL OFFERS → = kb 1 (.small r19 ring) · slips kb 2+ stack ABOVE the button row · empty: "No open offers right now" 18 / "Tamers who post offers appear here" 14 / a third dim 14px line about standing offers — the two buttons stay</div>
 
-<h2><span>The offer card — anatomy at full scale (430×118)</span></h2>
-<div class="cap"><b>SCALE</b> · this anatomy drawing is the card's one FULL-SCALE drawing — 430×118, r16 (aligned to the v2 slip spec) · the board and composer sections below draw at 1:2</div>
-<div style="position:relative;width:430px;height:118px;background:#161022;border:1px solid #262038;border-radius:16px;overflow:hidden;margin-bottom:6px">
-  <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#a855f7"></div>
-  <div style="position:absolute;top:-10px;right:-10px;width:20px;height:20px;background:#0A0712;border-bottom:1px solid #262038;transform:rotate(45deg)"></div>
-  <div style="position:absolute;left:16px;top:10px;font-size:9px;font-weight:900;letter-spacing:1.5px;color:#6FB1F0">WANT</div>
-  <div style="position:absolute;left:64px;top:6px;width:22px;height:22px;background:#1c1830;border-radius:4px"></div>
-  <div style="position:absolute;left:94px;top:9px;font-size:13px;font-weight:800;color:#EFEAF7">Emberhide <span style="color:#7C7295;font-weight:600">×1</span> <span style="font-size:9px;color:#a855f7;font-weight:800">EPIC</span></div>
-  <div style="position:absolute;left:16px;top:40px;font-size:9px;font-weight:900;letter-spacing:1.5px;color:#7C7295">FOR</div>
-  <div style="position:absolute;left:64px;top:36px;width:22px;height:22px;background:#1c1830;border-radius:4px"></div>
-  <div style="position:absolute;left:94px;top:39px;font-size:12px;font-weight:700;color:#A79DBE">Tidewisp Pearl ×3 + Wavecrest Shard ×1</div>
-  <div style="position:absolute;left:16px;bottom:10px;display:flex;align-items:center;gap:8px">
-    <div style="width:18px;height:18px;border-radius:10px;background:#1c1830;border:1px solid #67e8f9"></div>
-    <span style="font-size:10px;font-weight:700;color:#A79DBE">MOSSVANE · LV 41</span>
-    <span class="pillg">● LIVE — ONLINE NOW</span>
-  </div>
-  <div style="position:absolute;right:14px;bottom:10px;display:flex;align-items:center;gap:6px"><span style="font-size:10px;font-weight:900;letter-spacing:1px;color:#6FB1F0">TRADE</span><span class="kcapm">SPACE</span></div>
-  <!-- callouts -->
-  <div class="co" style="left:-6px;top:48px">1</div>
-  <div class="co" style="left:40px;top:6px">2</div>
-  <div class="co" style="left:40px;top:36px">3</div>
-  <div class="co" style="left:250px;bottom:6px;top:auto">4</div>
-  <div class="co" style="right:64px;bottom:6px;top:auto">5</div>
+<h2><span>The slip — anatomy at full scale (596×52)</span></h2>
+<div style="position:relative;width:596px;height:52px;background:#1c1830;border-left:3px solid rgba(0,0,0,0);border-radius:6px;margin-bottom:6px">
+  <div style="position:absolute;left:12px;top:10px;width:28px;height:28px;border-radius:7px;background:#0a0912;border:2px solid #67e8f9"></div>
+  <div style="position:absolute;left:48px;top:6px;width:40px;height:40px;border-radius:8px;background:#110d1a;overflow:hidden"><div style="position:absolute;left:-25px;top:-12px;width:96px;height:96px;background:repeating-linear-gradient(45deg,rgba(214,206,236,.25) 0 6px,rgba(214,206,236,.06) 6px 12px)"></div></div>
+  <div style="position:absolute;left:96px;top:10px;font-size:11px;font-weight:800;letter-spacing:1px;color:#7c7295">WANT</div>
+  <div style="position:absolute;left:96px;top:25px;font-size:13px;font-weight:800;color:#efeaf7">Emberhide</div>
+  <div style="position:absolute;left:220px;top:17px;font-size:16px;color:#6fb1f0">→</div>
+  <div style="position:absolute;left:244px;top:6px;width:40px;height:40px;border-radius:8px;background:#110d1a;overflow:hidden"><div style="position:absolute;left:-18px;top:-9px;width:80px;height:80px;background:repeating-linear-gradient(-45deg,rgba(214,206,236,.25) 0 6px,rgba(214,206,236,.06) 6px 12px)"></div></div>
+  <div style="position:absolute;left:292px;top:10px;font-size:11px;font-weight:800;letter-spacing:1px;color:#7c7295">FOR</div>
+  <div style="position:absolute;left:292px;top:25px;font-size:13px;font-weight:800;color:#efeaf7">Tidewisp</div>
+  <div style="position:absolute;right:12px;top:11px;width:108px;height:14px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:4px;background:#4ade80"></span><span style="font-size:12px;font-weight:700;color:#a79dbe">MOSSVANE</span></div>
+  <div style="position:absolute;right:12px;top:28px;width:108px;font-size:11px;font-weight:600;color:#7c7295">2m ago</div>
+  <div class="co" style="left:4px;top:18px">1</div>
+  <div class="co" style="left:40px;top:-8px">2</div>
+  <div class="co" style="left:180px;top:-8px">3</div>
+  <div class="co" style="left:236px;top:36px">4</div>
+  <div class="co" style="right:130px;top:18px">5</div>
 </div>
 <div class="leg" style="margin-top:2px">
-  <span><b>1</b><i>Rarity edge</i> — 4px strip keyed to the WANT species' rarity (here Epic). The board scans by color before you read a word.</span>
-  <span><b>2</b><i>WANT row</i> — species icon + name + qty + rarity chip, 14px/800. One line, one ask.</span>
-  <span><b>3</b><i>FOR row</i> — the full payment, 13px/700. Multi-item offers list inline, never truncated to "…and more".</span>
-  <span><b>4</b><i>Poster + status</i> — mini avatar in title color, name, level. Green LIVE pill on a live slip; gray "41H LEFT" countdown on a standing offer (server timestamps are truth).</span>
-  <span><b>5</b><i>TRADE / ACCEPT (SPACE)</i> — live slip → opens the real trade window, pre-seeded with both sides. Standing offer → <b>ACCEPT</b>: your FOR side goes into escrow now, their side is delivered to you on your next login (gift-claim pipeline) and yours to them on theirs. One confirm dialog, then final.</span>
+  <span><b>1</b><i>Poster head</i> — 28px ROUNDED SQUARE (r7), Steam avatar (`avatar:{SteamId}`) or the cartoon fallback, 2px rim in the poster's title color mapped through PageTitleColor (the #a78bfa profile default becomes page blue — violet is the cursor's alone).</span>
+  <span><b>2</b><i>WANT tile</i> — 40px SQUARE viewport crop (r8, #110d1a): the native sprite in-flow, pulled −25/−12 for a 96 source (−18/−9 for 80, −36/−18 for 128 → 48). A null WANT reads "Any beast" over a dim help glyph.</span>
+  <span><b>3</b><i>Meta + arrow</i> — 116px column: 11px kicker (WANT / FOR, chip floor) over the 13px beast name; a 16px lucide arrow in a 24px lane between the two pairs.</span>
+  <span><b>4</b><i>FOR tile</i> — the beast they'll give; same crop recipe. Beasts are square everywhere on this page.</span>
+  <span><b>5</b><i>Poster + time-ago</i> — 108px right column: static green dot when the poster is online now (presence set) · name 12px · "2m ago" 11px (server UTC → m / h / d, no seconds). No LIVE pill, no LV.</span>
 </div>
 
-<h2><span>The board — 2-col grid (hub zone, expands in place)</span></h2>
-<div style="position:relative;width:700px;height:262px;background:#120d1e;border:1px solid #2A2340;border-radius:11px;overflow:hidden">
-  <div style="position:absolute;left:0;top:0;right:0;height:28px;background:#161022;border-bottom:1px solid #1d1730;display:flex;align-items:center;padding:0 12px;gap:8px;z-index:2">
-    <span style="font-style:italic;font-weight:900;font-size:11px;letter-spacing:.8px;color:#EFEAF7">TRADE OFFERS</span><span class="chip">6 OPEN</span>
-    <span class="chip">LIVE FIRST · THEN NEWEST</span>
-    <span style="margin-left:auto;background:#3F8FE0;color:#0A0712;font-size:8px;font-weight:900;letter-spacing:1px;padding:3px 10px;border-radius:5px">+ POST OFFER</span>
-  </div>
-  <!-- YOURS -->
-  <div style="position:absolute;left:10px;top:36px;width:330px;height:64px;background:#161022;border:1px solid rgba(255,206,58,.5);border-radius:6px">
-    <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#ffce3a"></div>
-    <span style="position:absolute;left:12px;top:6px;font-size:7px;font-weight:900;color:#6FB1F0;letter-spacing:1px">WANT</span>
-    <span style="position:absolute;left:46px;top:5px;font-size:10px;font-weight:800;color:#EFEAF7">Twincoil ×1</span>
-    <span style="position:absolute;left:12px;top:22px;font-size:7px;font-weight:900;color:#7C7295;letter-spacing:1px">FOR</span>
-    <span style="position:absolute;left:46px;top:21px;font-size:9.5px;font-weight:700;color:#A79DBE">Saltmoor Relic ×1</span>
-    <span style="position:absolute;left:12px;bottom:6px;background:#ffce3a;color:#241A00;font-size:6.5px;font-weight:900;padding:1px 5px;border-radius:3px">YOURS</span>
-    <span style="position:absolute;left:58px;bottom:6px" class="chip">46H LEFT · YOUR SIDE IN ESCROW</span>
-    <span style="position:absolute;right:10px;bottom:6px;font-size:8px;font-weight:900;letter-spacing:1px;color:#f87171">REMOVE</span>
-  </div>
-  <div class="co" style="left:4px;top:32px;border-color:#120d1e">6</div>
-  <!-- live offer -->
-  <div style="position:absolute;left:350px;top:36px;width:330px;height:64px;background:#161022;border:1px solid #262038;border-radius:6px">
-    <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#a855f7"></div>
-    <span style="position:absolute;left:12px;top:6px;font-size:7px;font-weight:900;color:#6FB1F0;letter-spacing:1px">WANT</span>
-    <span style="position:absolute;left:46px;top:5px;font-size:10px;font-weight:800;color:#EFEAF7">Emberhide ×1</span>
-    <span style="position:absolute;left:12px;top:22px;font-size:7px;font-weight:900;color:#7C7295;letter-spacing:1px">FOR</span>
-    <span style="position:absolute;left:46px;top:21px;font-size:9.5px;font-weight:700;color:#A79DBE">Tidewisp Pearl ×3</span>
-    <span style="position:absolute;left:12px;bottom:6px;font-size:8px;color:#7C7295">MOSSVANE · LV 41</span>
-    <span style="position:absolute;right:10px;bottom:6px" class="pillg">LIVE</span>
-  </div>
-  <!-- standing offers -->
-  <div style="position:absolute;left:10px;top:108px;width:330px;height:64px;background:#161022;border:1px solid #262038;border-radius:6px">
-    <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#3b82f6"></div>
-    <span style="position:absolute;left:12px;top:6px;font-size:7px;font-weight:900;color:#6FB1F0;letter-spacing:1px">WANT</span>
-    <span style="position:absolute;left:46px;top:5px;font-size:10px;font-weight:800;color:#EFEAF7">Wishlift ×1</span>
-    <span style="position:absolute;left:12px;top:22px;font-size:7px;font-weight:900;color:#7C7295;letter-spacing:1px">FOR</span>
-    <span style="position:absolute;left:46px;top:21px;font-size:9.5px;font-weight:700;color:#A79DBE">Heartwell ×1</span>
-    <span style="position:absolute;left:12px;bottom:6px;font-size:8px;color:#7C7295">VEX · LV 38</span>
-    <span style="position:absolute;right:10px;bottom:6px" class="chip">41H LEFT</span>
-    <span style="position:absolute;right:70px;bottom:6px;font-size:8px;font-weight:900;letter-spacing:1px;color:#6FB1F0">ACCEPT</span>
-  </div>
-  <div class="co" style="left:4px;top:104px;border-color:#120d1e">7</div>
-  <div style="position:absolute;left:350px;top:108px;width:330px;height:64px;background:#161022;border:1px solid #262038;border-radius:6px;opacity:.6">
-    <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#22c55e"></div>
-  </div>
-  <!-- empty state strip -->
-  <div style="position:absolute;left:10px;top:180px;width:330px;height:64px;border:1px dashed #2A2340;border-radius:6px;display:flex;align-items:center;justify-content:center"><span class="mini">empty state: "The board is open. Post the first offer." — never a fake example</span></div>
-  <div style="position:absolute;left:350px;top:196px;right:12px" class="mini">sort: LIVE first, then standing by freshness · expired + unresolvable items filtered · one offer per tamer · escrowed items leave your bag at post</div>
-</div>
-<div class="cap">BOARD DRAWN 1:2 (full-scale slips 430×118 r16; header band opaque, gap 0) · <b>OFFER GONE MID-VIEW</b> — a slip that expired or was fulfilled while you're looking flips to a dim "Offer no longer available" state on interact (border+fill only), then the board refreshes</div>
-
-<h2><span>Post offer — the composer (structured, no free text)</span></h2>
-<div style="position:relative;width:640px;height:300px;background:#15121f;border:1px solid #2A2340;border-radius:15px;overflow:hidden">
-  <div style="position:absolute;top:-12px;right:-12px;width:24px;height:24px;background:#0A0712;border-bottom:1px solid #2A2340;transform:rotate(45deg)"></div>
-  <div style="position:absolute;left:16px;top:12px;font-style:italic;font-weight:900;font-size:14px;letter-spacing:.5px;color:#EFEAF7">POST OFFER</div>
-  <div style="position:absolute;right:16px;top:14px" class="chip">Q — CANCEL</div>
-  <!-- LEFT: you give -->
-  <div style="position:absolute;left:16px;top:44px;width:296px;height:196px;background:#120d1e;border:1px solid #262038;border-radius:8px">
-    <div style="position:absolute;left:12px;top:8px" class="kick">YOU GIVE — pick from your bag &amp; roster</div>
-    <div style="position:absolute;left:10px;top:26px;right:10px;height:34px;background:#1c1830;border:1px solid #2A2340;border-radius:5px">
-      <div style="position:absolute;left:8px;top:6px;width:22px;height:22px;background:#221C38;border-radius:4px"></div>
-      <span style="position:absolute;left:38px;top:9px;font-size:10px;font-weight:800;color:#EFEAF7">Tidewisp Pearl</span>
-      <span style="position:absolute;right:64px;top:9px;font-size:10px;font-weight:800;color:#A79DBE">×3</span>
-      <span style="position:absolute;right:34px;top:8px" class="kcapm">−</span>
-      <span style="position:absolute;right:10px;top:8px" class="kcapm">+</span>
+<h2><span>The trade board — takeover, 1:2</span></h2>
+<div class="board">
+  <!-- hub chrome stays (header 90) -->
+  <div style="position:absolute;left:0;top:0;width:960px;height:45px;background:#0a0912;border-bottom:1px solid rgba(63,143,224,.55);z-index:3">
+    <div style="position:absolute;left:14px;top:8px" class="kick">TAMERLINK</div>
+    <div style="position:absolute;left:14px;top:15px;font-style:italic;font-weight:900;font-size:19px;line-height:22px;letter-spacing:.5px;color:#f4f1ea">ONLINE</div>
+    <div style="position:absolute;left:100px;top:26px;width:21px;height:6px;background:#3f8fe0;transform:skewX(-24deg)"></div>
+    <div style="position:absolute;left:119px;top:26px;width:8px;height:6px;background:rgba(63,143,224,.45);transform:skewX(-24deg)"></div>
+    <!-- .oh-toolbar — the roster .rh-toolbar slot, right-aligned, centred on the band (header right pad 32): four skew-slab chips (36 tall, pad 16, r8, 2px violet .4 rim; skewX(-8°); label 12 + count 11) + R CYCLE · rendered ONLY on the board section -->
+    <div style="position:absolute;right:16px;top:13px;height:18px;display:flex;align-items:center;gap:6px">
+      <div style="height:18px;padding:0 8px;border-radius:4px;background:#1c3f72;border:1px solid #3f8fe0;transform:skewX(-8deg);display:flex;align-items:center;gap:4px"><span style="display:inline-block;transform:skewX(8deg);font-size:6px;font-weight:800;letter-spacing:.75px;color:rgba(244,241,234,.85)">ALL</span><span style="display:inline-block;transform:skewX(8deg);font-size:5.5px;font-weight:700;color:#9ecdf5">5</span></div>
+      <div style="height:18px;padding:0 8px;border-radius:4px;background:#1c1830;border:1px solid rgba(123,77,219,.4);transform:skewX(-8deg);display:flex;align-items:center;gap:4px"><span style="display:inline-block;transform:skewX(8deg);font-size:6px;font-weight:800;letter-spacing:.75px;color:rgba(244,241,234,.85)">I CAN FILL</span><span style="display:inline-block;transform:skewX(8deg);font-size:5.5px;font-weight:700;color:#7c7295">2</span></div>
+      <div style="height:18px;padding:0 8px;border-radius:4px;background:#262040;border:1px solid #9b6cff;transform:skewX(-8deg);display:flex;align-items:center;gap:4px"><span style="display:inline-block;transform:skewX(8deg);font-size:6px;font-weight:800;letter-spacing:.75px;color:rgba(244,241,234,.85)">I NEED</span><span style="display:inline-block;transform:skewX(8deg);font-size:5.5px;font-weight:700;color:#7c7295">3</span></div>
+      <div style="height:18px;padding:0 8px;border-radius:4px;background:#1c1830;border:1px solid rgba(123,77,219,.4);transform:skewX(-8deg);display:flex;align-items:center;gap:4px"><span style="display:inline-block;transform:skewX(8deg);font-size:6px;font-weight:800;letter-spacing:.75px;color:rgba(244,241,234,.85)">MINE</span><span style="display:inline-block;transform:skewX(8deg);font-size:5.5px;font-weight:700;color:#7c7295">1</span></div>
+      <span class="kcapm" style="font-size:5.5px;padding:0 3px">R</span><span style="font-size:5.5px;font-weight:800;letter-spacing:.75px;color:#5e5678">CYCLE</span>
     </div>
-    <div style="position:absolute;left:10px;top:66px;right:10px;height:34px;background:#1c1830;border:1px solid #2A2340;border-radius:5px">
-      <div style="position:absolute;left:8px;top:6px;width:22px;height:22px;background:#221C38;border-radius:4px"></div>
-      <span style="position:absolute;left:38px;top:9px;font-size:10px;font-weight:800;color:#EFEAF7">Wavecrest Shard</span>
-      <span style="position:absolute;right:64px;top:9px;font-size:10px;font-weight:800;color:#A79DBE">×1</span>
-      <span style="position:absolute;right:34px;top:8px" class="kcapm">−</span>
-      <span style="position:absolute;right:10px;top:8px" class="kcapm">+</span>
-    </div>
-    <div style="position:absolute;left:10px;top:106px;right:10px;height:34px;border:1px dashed #2A2340;border-radius:5px;display:flex;align-items:center;justify-content:center"><span class="mini">+ ADD ITEM OR BEAST</span></div>
-    <div style="position:absolute;left:10px;bottom:8px" class="mini">the shipped trade-window picker, reused — beasts, materials, held items</div>
+    <div class="co" style="right:150px;top:-4px">8</div>
   </div>
-  <div class="co" style="left:8px;top:38px;border-color:#15121f">8</div>
-  <!-- RIGHT: you want -->
-  <div style="position:absolute;left:328px;top:44px;width:296px;height:196px;background:#120d1e;border:1px solid #262038;border-radius:8px">
-    <div style="position:absolute;left:12px;top:8px" class="kick">YOU WANT — one ask, picked not typed</div>
-    <div style="position:absolute;left:10px;top:26px;right:10px;height:34px;background:#1c1830;border:1px solid rgba(168,85,247,.5);border-radius:5px">
-      <div style="position:absolute;left:8px;top:6px;width:22px;height:22px;background:#221C38;border-radius:4px"></div>
-      <span style="position:absolute;left:38px;top:9px;font-size:10px;font-weight:800;color:#EFEAF7">Emberhide <span style="font-size:8px;color:#a855f7;font-weight:800">EPIC</span></span>
-      <span style="position:absolute;right:64px;top:9px;font-size:10px;font-weight:800;color:#A79DBE">×1</span>
-      <span style="position:absolute;right:34px;top:8px" class="kcapm">−</span>
-      <span style="position:absolute;right:10px;top:8px" class="kcapm">+</span>
+  <!-- .hub-board pads 16/24/40 → .hb-slab 1872 × 934 · band 60 · grid straight under the band (the filter row is gone — f3558b8) -->
+  <div style="position:absolute;left:12px;top:53px;width:936px;height:467px;background:#15121f">
+    <div style="position:absolute;left:0;top:0;right:0;height:30px;background:#110d1a;display:flex;align-items:center;padding:0 8px;gap:6px">
+      <span class="chipb"><span>TRADE BOARD</span></span><span class="chip">5 OFFERS</span>
+      <span style="margin-left:auto;height:15px;padding:0 6px;border-radius:5.5px;background:#1c1830;display:inline-flex;align-items:center;gap:4px"><span class="it" style="font-size:6.5px;color:#f4f1ea">BACK TO HUB</span><span class="kcapm" style="font-size:5.5px;padding:0 3px">Q</span></span>
+      <span style="font-size:6.5px;font-weight:600;color:#7c7295;margin-left:6px">Trade board coming soon</span>
+      <div class="bbs" style="position:relative;width:100px;margin-left:6px"><div class="dia"><i>+</i></div><span>POST OFFER</span></div>
     </div>
-    <div style="position:absolute;left:10px;top:66px;right:10px;height:110px;background:#0f0b18;border:1px solid #221c33;border-radius:5px">
-      <span style="position:absolute;left:8px;top:6px" class="mini">species / material picker — searchable grid, same FilterBar anatomy as the roster</span>
+    <div class="co" style="right:4px;top:24px">7</div>
+    <!-- GRID pad 12/12/24 gap 16 · 3 × (600 + 3 seam) + 2 × 16 = 1841 in the 1848 lane -->
+    <div class="card" style="left:6px;top:36px">
+      <div class="top"><div class="btile" style="left:0;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:36px">WANT</span><span class="bn" style="left:36px">Emberhide</span><span class="ar">→</span><div class="btile" style="left:150px;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:186px">FOR</span><span class="bn" style="left:186px">Tidewisp</span></div>
+      <div class="bot"><div class="head" style="left:0;top:1px;width:12px;height:12px;border-radius:3px;border-color:#67e8f9"></div><span class="dot"></span><span class="nm">MOSSVANE</span><span class="tm">2m ago</span><span class="ac live">ACCEPT · SPACE</span></div>
     </div>
-    <div style="position:absolute;left:10px;bottom:8px" class="mini">no free text = nothing to moderate, every card renders uniform</div>
+    <div class="co" style="left:0;top:32px">9</div>
+    <div class="card alt kb" style="left:315.5px;top:36px">
+      <div class="top"><div class="btile" style="left:0;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:36px">WANT</span><span class="bn" style="left:36px">Twincoil</span><span class="ar">→</span><div class="btile" style="left:150px;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:186px">FOR</span><span class="bn" style="left:186px">Skunkape</span></div>
+      <div class="bot"><div class="head" style="left:0;top:1px;width:12px;height:12px;border-radius:3px;border-color:#ffce3a"></div><span class="nm" style="left:16px">RIN</span><span class="tm">12m ago</span><span class="ac mine">YOURS</span></div>
+    </div>
+    <div class="card" style="left:625px;top:36px">
+      <div class="top"><div class="btile" style="left:0;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:36px">WANT</span><span class="bn" style="left:36px">Wishlift</span><span class="ar">→</span><div class="btile" style="left:150px;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:186px">FOR</span><span class="bn" style="left:186px">Heartwell</span></div>
+      <div class="bot"><div class="head" style="left:0;top:1px;width:12px;height:12px;border-radius:3px;border-color:#f472b6"></div><span class="dot"></span><span class="nm">VEX</span><span class="tm">1h ago</span><span class="ac live">ACCEPT · SPACE</span></div>
+    </div>
+    <div class="co" style="right:-6px;top:58px">10</div>
+    <div class="card alt" style="left:6px;top:100px">
+      <div class="top"><div class="btile" style="left:0;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:36px">WANT</span><span class="bn" style="left:36px">Pagefin</span><span class="ar">→</span><div class="btile" style="left:150px;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:186px">FOR</span><span class="bn" style="left:186px">Lochmaw</span></div>
+      <div class="bot"><div class="head" style="left:0;top:1px;width:12px;height:12px;border-radius:3px;border-color:#4ade80"></div><span class="nm" style="left:16px">BRANNOCK</span><span class="tm">3h ago</span><span class="ac off">OFFLINE</span></div>
+    </div>
+    <div class="card" style="left:315.5px;top:100px">
+      <div class="top"><div class="btile" style="left:0;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:36px">WANT</span><span class="bn" style="left:36px">Any beast</span><span class="ar">→</span><div class="btile" style="left:150px;top:4px;width:28px;height:28px;border-radius:5px"><i style="left:-8px;top:-5px;width:48px;height:48px"></i></div><span class="k" style="left:186px">FOR</span><span class="bn" style="left:186px">Sheepot</span></div>
+      <div class="bot"><div class="head" style="left:0;top:1px;width:12px;height:12px;border-radius:3px;border-color:#a78bfa"></div><span class="nm" style="left:16px">SORREL</span><span class="tm">1d ago</span><span class="ac off">OFFLINE</span></div>
+    </div>
+    <div style="position:absolute;left:8px;top:170px;width:900px" class="mini">newest first within the active filter · empty: "No open offers right now" 20 / per-filter sub-line ("Offers asking for a beast you own appear here" · "Offers giving a beast you don't own appear here" · "Tamers who post offers appear here") — grid flips to a centered column, no wrapper</div>
+    <div style="position:absolute;left:8px;top:202px" class="mini">cards never transform or glow inside the scroll clip; the band is opaque, gap 0 to the grid (scroll-leak law); the filter chips live up in the z-500 header</div>
+    <div class="cut"></div>
   </div>
-  <div class="co" style="left:320px;top:38px;border-color:#15121f">9</div>
-  <!-- footer -->
-  <div style="position:absolute;left:16px;bottom:12px;display:flex;align-items:center;gap:10px">
-    <span class="mini">Offers last 48h · one at a time — posting again replaces your old one · your FOR items are held in escrow the moment you post (returned on remove / expiry)</span>
-  </div>
-  <div style="position:absolute;right:16px;bottom:10px;width:150px;height:32px;border-radius:8px;background:linear-gradient(to bottom,#ffd95a,#f5a912);display:flex;align-items:center;justify-content:center"><span style="font-style:italic;font-weight:900;font-size:12px;color:#2a1605;letter-spacing:.5px">POST OFFER</span></div>
 </div>
-<div class="cap">COMPOSER DRAWN 1:2 · modal takeover, flex-centered root (transform-centering poisons flex widths — engine law) · POST OFFER gets the QUIET press — no gold snap (ruling 2026-08-28: the gold snap stays rationed to consequence-tier commits — QUICKPLAY-confirm · READY · REMATCH)</div>
-
-<h2><span>Lane 1 — live slips (shipped): the trade window disposes</span></h2>
-<div class="tl">
-  <div class="beat"><b>OPEN (SPACE)</b><i>Press TRADE · E on a LIVE slip (a tamer online right now).</i><u>SendTradeRequest</u></div>
-  <div class="beat"><b>LIVE TRADE</b><i>The EXISTING trade window opens; both sides pick and ready-confirm.</i><u>TradingManager P2P — OFF-LIMITS, unchanged</u></div>
-</div>
-
-<h2><span>Lane 2 — standing offers: async with escrow (ruling 2026-08-28)</span></h2>
-<div class="tl">
-  <div class="beat"><b>POST</b><i>Composer → POST OFFER. Your FOR items leave your bag into server escrow immediately. Offer lists for 48h whether or not you stay online.</i><u>POST /board · escrow poster side</u></div>
-  <div class="beat"><b>ACCEPT</b><i>Any tamer presses ACCEPT (confirm dialog). Their WANT-side items go into escrow at that moment. The offer leaves the board — an accept is final.</i><u>POST /board/{id}/accept · validate + escrow acceptor side</u></div>
-  <div class="beat"><b>DELIVER</b><i>Both deliveries queue through the EXISTING gift-claim pipeline: the acceptor gets the poster's items on their next login; the poster gets the acceptor's on theirs.</i><u>gift-claim pipeline, unchanged</u></div>
-  <div class="beat" style="border-color:rgba(63,143,224,.35)"><b>RETRACT / EXPIRE</b><i>REMOVE, or 48h passes with no accept → escrow returns to the poster via the same gift-claim route. No orphaned items, ever.</i><u>DELETE /board/{id} · server expiry sweep</u></div>
-</div>
-<div class="cap"><b>ANTI-ABUSE CAPS</b> · one active offer per tamer (posting again replaces) · 48h expiry auto-return · N accepts per day · post rate-limit · no self-accept · both sides ownership-validated server-side before escrow · GET /board is server-filtered for expiry, client-filtered for unresolvable species/items</div>
+<div class="cap">1:2 SCALE · slab 1872 × 934 (page pads 16/24/40) · filters = the HEADER's right slot (`.oh-toolbar`): four skewX(-8°) chips 36 tall (pad 16, r8, 2px violet .4 rim; label 12 + count 11; active = #1c3f72 / blue rim; hover/kb = violet rim) + R CYCLE cap, gap 12 · band 60 (#110d1a): TRADE BOARD chip · N OFFERS · spacer · BACK TO HUB + Q cap (30 r11) · sub-line · POST OFFER (board kb 0, the board's only ring host) · grid pad 12/12/24, gap 16: cards 600×112 r6 (pad 6/14 → 572 lane; 3px BLUE seam; `.alt` two-tone; hover/kb = violet seam + #282246) · top row 72: WANT tile 56 (r10) · meta 200 · arrow 20 (+4) · FOR tile 56 · meta 200 · bottom row 28: head 24 r6 · dot · name 13 · spacer (flex 1 1 112) · time 80 · affordance 120</div>
 
 <div class="leg">
-  <span><b>6</b><i>Your offer</i> — gold YOURS edge, "your side in escrow" chip, REMOVE (DELETE /board/{id} → escrow returned through gift-claim). Posting a new one replaces it.</span>
-  <span><b>7</b><i>Standing offer</i> — poster may be offline; countdown chip; ACCEPT instead of TRADE (escrow — no handshake needed). This is what keeps the board full at population one.</span>
-  <span><b>8</b><i>YOU GIVE</i> — structured multi-item picker with qty steppers; reuses the shipped trade-window picker.</span>
-  <span><b>9</b><i>YOU WANT</i> — exactly one ask (species or material + qty) so the WANT line always fits one row on the board.</span>
+  <span><b>7</b><i>Band</i> — the hub chrome stays above (an inline section, not a child panel). BACK TO HUB (Q) → BackToHub; the resting sub-line + POST OFFER repeat the zone's floor so posting is one press from either place.</span>
+  <span><b>8</b><i>Filters — in the page header</i> — the same position as My Beasts' FilterBar (the roster `.rh-toolbar` slot; f3558b8, user ruling 2026-08-30), rendered only on the board section and fading in with it. Skew-slab chips from the header-filter family (FilterBar dropdown / roster sort-btn): ALL · I CAN FILL (the WANT species is in your OwnedMonsters — you hold what they ask; a null WANT is fillable if you own anything) · I NEED (the FOR species is NOT in your roster — Beastbook IsDiscovered is caught-or-owned, so "not discovered or not owned" collapses to "not owned") · MINE (poster == you: Steam id when both sides have one, else name). Counts from the full list; per-filter honest empties. R cycles anywhere on the board and the cursor follows onto the new segment.</span>
+  <span><b>9</b><i>Card</i> — the roster tile-plus-stacked-meta shape twice, arrow between; the second card wears the slab cursor. Cards are direct children of the scroll grid; kb A/D within the row, W/S ±3 (W off row 0 → the active filter; S onto a short last row → its last card), the grid glides to keep the focused card in view (0.30/frame).</span>
+  <span><b>10</b><i>Affordance</i> — ACCEPT · SPACE (blue) when the poster is online → the existing trade window pre-seeded by the shipped P2P flow; OFFLINE (dim) → press = deny + "Trade board coming soon" (the server board is what makes an offline accept possible); YOURS (dim) on your own offer — inert.</span>
 </div>
 
+<h2><span>Keyboard — the board's cursor space</span></h2>
+<div class="box"><ul>
+<li><b>0 POST OFFER</b> (ring host, default r24) · <b>1..4 filter chips</b> (in the header — slab cursor) · <b>5+ cards</b> (slab cursor, BoardCols 3). Lands on the first card (else POST OFFER) on open.</li>
+<li>Vertical order on screen = <b>chips ↑ · POST OFFER · cards ↓</b> (re-routed when the chips moved into the header — a route that contradicts the screen is a bug). POST OFFER: <b>W</b> → the active chip · <b>S</b> → card 0. Chips: <b>A/D</b> between chips · <b>S</b> → POST OFFER · Space selects. Cards: <b>A/D</b> within the row · <b>W/S</b> ±3 · W off row 0 → POST OFFER · <b>Space / Enter / E</b> accept.</li>
+<li><b>R</b> cycles the filter anywhere · <b>Q</b> → BackToHub (PanelHandledBackKey claimed; the board branch runs BEFORE the generic takeover block in TickInput).</li>
+<li>Scroll-follow: every cursor move arms `_boardFollowPending`; Tick consumes it via UiGridScroll.ComputeIndexOffset + the roster 0.30 glide; a cursor on the band / filters glides the grid to the top.</li>
+</ul></div>
+
+<h2 class="fut"><span>Future — the server board: async with escrow (NOT shipped)</span></h2>
+<div class="cap" style="color:#A79DBE">USER RULING 2026-08-28, unchanged: standing offers are ASYNC WITH ESCROW. The poster's side is held server-side at post time; the acceptor's side at accept; both delivered through the EXISTING gift-claim pipeline on next login. No live handshake — an accept is final. This is what fills `HubOffers` in production and what makes an OFFLINE accept possible. Everything below is spec, not code.</div>
+<div class="tl">
+  <div class="beat"><b>POST</b><i>Composer → POST OFFER. Your FOR beast leaves your roster into server escrow immediately. Offer lists for 48h whether or not you stay online.</i><u>POST /board · escrow poster side</u></div>
+  <div class="beat"><b>ACCEPT</b><i>Any tamer presses ACCEPT (confirm dialog). Their WANT-side beast goes into escrow at that moment. The offer leaves the board — an accept is final.</i><u>POST /board/{id}/accept · validate + escrow acceptor side</u></div>
+  <div class="beat"><b>DELIVER</b><i>Both deliveries queue through the EXISTING gift-claim pipeline: the acceptor gets the poster's beast on their next login; the poster gets the acceptor's on theirs.</i><u>gift-claim pipeline, unchanged</u></div>
+  <div class="beat" style="border-color:rgba(63,143,224,.35)"><b>RETRACT / EXPIRE</b><i>REMOVE, or 48h passes with no accept → escrow returns to the poster via the same gift-claim route. No orphaned beasts, ever.</i><u>DELETE /board/{id} · server expiry sweep</u></div>
+</div>
+<div class="cap"><b>ANTI-ABUSE CAPS</b> · one active offer per tamer (posting again replaces) · 48h expiry auto-return · N accepts per day · post rate-limit · no self-accept · both sides ownership-validated server-side before escrow · GET /board is server-filtered for expiry, client-filtered for unresolvable species (the bag ghost-item lesson) · client-side additions when it lands: a "46H LEFT" time chip beside time-ago, REMOVE on YOURS cards, "Offer no longer available" dim state on a card that resolved mid-view</div>
+
+<div class="cap"><b>THE COMPOSER (future)</b> · modal takeover, FLEX-CENTERED root (never absolute + translate — the transform poisons descendant flex-grow widths) · two structured pickers (YOU GIVE — a beast from your roster · YOU WANT — one species, picked not typed) reusing the trade-window picker anatomy · no free text anywhere (nothing to moderate, uniform slips) · POST OFFER gets the QUIET press — no gold snap (the snap stays rationed to QUICKPLAY-confirm · READY · REMATCH) · NO border-style:dashed in-engine — empty picker rows build as a dim solid border (~35% alpha) + darker fill</div>
+
 <div class="kb">
-  <span class="kcap">WASD</span><span class="klab">move cursor over offers</span>
-  <span class="kcap">SPACE</span><span class="klab">trade / accept / post (E = silent alternate)</span>
-  <span class="kcap">Q</span><span class="klab">back / cancel composer</span>
+  <span class="kcap">WASD</span><span class="klab">move cursor — header chips ↑ · POST OFFER · cards ↓</span>
+  <span class="kcap">SPACE</span><span class="klab">accept (E = silent alternate) · open the board via VIEW ALL OFFERS</span>
+  <span class="kcap">R</span><span class="klab">cycle filter (board)</span>
+  <span class="kcap">Q</span><span class="klab">back to hub</span>
 </div>
 
 </body></html>
