@@ -158,9 +158,9 @@
 *@
 
 <root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "") @(_fx != FxPhase.Idle ? "fx-live" : "")">
-    <div class="pl-backdrop" onclick=@OnBackdropClicked></div>
+    <div class="pl-backdrop" @ref="_backdropRef" onclick=@OnBackdropClicked></div>
 
-    <div class="pl-wrap">
+    <div class="pl-wrap" @ref="_wrapRef">
         <div class="pl-device" @ref="_deviceRef">
 
             <!-- THE SHELL — the physical device: near-black bezel frame,
@@ -840,6 +840,91 @@
     /// T and every chat entry point land here instead.</summary>
     // TEMP dev instrument (2026-08-29): `dev_pawpad chat|radio|effects|alerts` opens the
     // phone straight into an app for MCP screenshot verification. Remove after review.
+    // TEMP diagnostic (2026-08-29, "can't scroll the phone / input goes to the
+    // page behind"): `dev_phonefocus` arms 60s of state logging — modal top,
+    // which panel actually holds the hover, and every wheel event this panel
+    // receives (with the scroller it routed to). Logs on CHANGE only, so the
+    // console stays readable while the user hovers/scrolls the device.
+    private static float _diagUntil = -1f;
+    private static string _diagLast = "";
+    private static int _diagWheel = 0;
+    private Panel _backdropRef;
+    private Panel _wrapRef;
+
+    [ConCmd( "dev_phonefocus" )]
+    public static void DevPhoneFocus( string arg = "on" )
+    {
+        _diagUntil = arg == "off" ? -1f : Time.Now + 600f;
+        _diagLast = "";
+        _diagWheel = 0;
+        Log.Info( $"[phonefocus] {( _diagUntil > 0 ? "armed 10 min" : "off" )}" );
+    }
+
+    private static float _diagNextAt = 0f;
+    private static int _diagScrollerId = 0;
+    private static int _diagScrollerSwaps = 0;
+
+    private static string HoveredLeafPath( Panel root )
+    {
+        if ( root == null ) return "-";
+        var sb = new System.Text.StringBuilder();
+        var p = root;
+        int guard = 0;
+        while ( p != null && guard++ < 40 )
+        {
+            Panel next = null;
+            foreach ( var c in p.Children ) { if ( c.HasHovered ) { next = c; break; } }
+            if ( next == null ) break;
+            sb.Append( '>' ).Append( next.ElementName ).Append( '.' ).Append( string.Join( '.', next.Class ) );
+            p = next;
+        }
+        return sb.Length == 0 ? "(none)" : sb.ToString();
+    }
+
+    private static string ChainInfo( Panel p )
+    {
+        if ( p == null ) return "-";
+        var parts = new List<string>();
+        int guard = 0;
+        for ( var q = p; q != null && guard++ < 12; q = q.Parent )
+            parts.Add( $"{q.ElementName}.{string.Join( '.', q.Class )}[z={q.ComputedStyle?.ZIndex?.ToString() ?? "-"} vis={q.IsVisible} pe={q.ComputedStyle?.PointerEvents?.ToString() ?? "-"} sib={q.SiblingIndex}]" );
+        parts.Reverse();
+        return string.Join( " > ", parts );
+    }
+
+    [ConCmd( "dev_phonechain" )]
+    public static void DevPhoneChain()
+    {
+        var me = Instance;
+        Log.Info( $"[phonechain] PHONE: {ChainInfo( me )}" );
+        Log.Info( $"[phonechain] BACKDROP: {ChainInfo( me?._backdropRef )}" );
+        Log.Info( $"[phonechain] HUB: {ChainInfo( Beastborne.UI.Panels.OnlineHubPanel.DevInstance )}" );
+        var root = me?.FindRootPanel();
+        var gh = root?.Children?.FirstOrDefault();
+        if ( gh != null )
+            foreach ( var c in gh.Children )
+                Log.Info( $"[phonechain] gamehud child #{c.SiblingIndex}: {c.ElementName}.{string.Join( '.', c.Class )} z={c.ComputedStyle?.ZIndex?.ToString() ?? "-"} vis={c.IsVisible} pe={c.ComputedStyle?.PointerEvents?.ToString() ?? "-"} rect={c.Box.Rect.Width:F0}x{c.Box.Rect.Height:F0} hov={c.HasHovered}" );
+    }
+
+    private void DiagTick()
+    {
+        if ( _diagUntil < 0f || Time.Now > _diagUntil ) return;
+        var sc = ActiveScroller();
+        int scId = sc?.GetHashCode() ?? 0;
+        if ( scId != _diagScrollerId ) { _diagScrollerSwaps++; _diagScrollerId = scId; }
+        if ( Time.Now < _diagNextAt ) return;
+        _diagNextAt = Time.Now + 0.5f;
+        var hub = Beastborne.UI.Panels.OnlineHubPanel.DevInstance;
+        var gameRoot = FindRootPanel();
+        string state =
+            $"vis={IsVisible} app={_appView ?? "-"} top={UIModalState.TopModal ?? "-"} chatfocus={ChatPanel.IsChatFocused} " +
+            $"mouse={Mouse.Position.x:F0},{Mouse.Position.y:F0} rootRect={Box.Rect.Left:F0},{Box.Rect.Top:F0} {Box.Rect.Width:F0}x{Box.Rect.Height:F0} " +
+            $"backdropRect={( _backdropRef == null ? "null" : $"{_backdropRef.Box.Rect.Width:F0}x{_backdropRef.Box.Rect.Height:F0}" )} " +
+            $"hov: phone={HasHovered} backdrop={_backdropRef?.HasHovered} hub={hub?.HasHovered} leaf={HoveredLeafPath( gameRoot )} " +
+            $"scroller={( sc == null ? "null" : $"{sc.ScrollOffset.y:F0}/{sc.ScrollSize.y:F0} h={sc.Box.Rect.Height:F0} kids={sc.ChildrenCount}" )} swaps={_diagScrollerSwaps} wheel#={_diagWheel}";
+        Log.Info( $"[phonefocus] {state}" );
+    }
+
     [ConCmd( "dev_pawpad" )]
     public static void DevOpenApp( string id = "chat" )
     {
@@ -2468,6 +2553,7 @@
     {
         base.Tick();
         Instance = this;   // re-asserted every frame — hotload can never strand a stale instance
+        DiagTick();        // TEMP dev_phonefocus probe (no-op unless armed)
 
         // Session-restart sanity (the RoutedThisFrame lesson): statics survive
         // across editor play sessions while Time.Now resets to ~0, so a stale
@@ -2662,6 +2748,12 @@
     // backdrop catches the wheel, it bubbles here; NOT calling base eats it.
     public override void OnMouseWheel( Vector2 delta )
     {
+        if ( _diagUntil > 0f && Time.Now < _diagUntil )
+        {
+            _diagWheel++;
+            var sc = ActiveScroller();
+            Log.Info( $"[phonefocus] WHEEL dy={delta.y:F1} vis={IsVisible} app={_appView ?? "-"} scroller={( sc == null ? "null" : $"{sc.ScrollOffset.y:F0}/{sc.ScrollSize.y:F0} h={sc.Box.Rect.Height:F0}" )}" );
+        }
         if ( IsVisible || _fx != FxPhase.Idle )
         {
             // v9: in-phone scrollables still scroll — routed to the ACTIVE app's
