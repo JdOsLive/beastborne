@@ -155,6 +155,18 @@
     Keyboard (registered with UIModalState as "PhoneLauncher"):
     WASD walk the grid · Enter/Space launch · number keys + T/R/C/N route
     directly to their app · Q/Esc/Slot8 close. Hover == focus (one cursor).
+
+    IN-PHONE APPS — keyboard + hover (2026-08-30, see the CURSOR block in
+    code): one cursor per app view (`_appKb`, an action string) stamped as
+    `.kb-focused`; mouse hover resolves through the click router on movement
+    and stamps `.hovered` (and moves the cursor — last-input-wins).
+      CHAT    W/S walk messages → input · A/D channel · Space/E/Enter = the
+              row's tap (embed / author card) or, on the input stop, type ·
+              while typing the phone stands down; Esc blurs back to it.
+      RADIO   Space = PLAY (or the mouse-parked control) · A/D skip · W/S
+              volume ladder · R next station · Z shuffle · X repeat.
+      EFFECTS W/S walk boost rows then skill rows (reading focus).
+      ALERTS  W/S walk rows → CLEAR ALL · Space = tap · R jumps to CLEAR ALL.
 *@
 
 <root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "") @(_fx != FxPhase.Idle ? "fx-live" : "")">
@@ -220,7 +232,7 @@
                 <div class="pl-top @(_appView != null ? "app" : "")">
                     @if ( _appView != null )
                     {
-                        <div class="pl-av-back pl-hit hit-back @(IsPressed( "hit-back" ) ? "pressed" : "") @(_appView == "effects" ? "ink" : "")" style="background-color: @AppViewAccent();"><span>‹</span></div>
+                        <div class="pl-av-back pl-hit hit-back @HitState( "hit-back" ) @(_appView == "effects" ? "ink" : "")" style="background-color: @AppViewAccent();"><span>‹</span></div>
                     }
                     <span class="pl-clock">@ClockText</span>
                     <div class="pl-right @(_appView != null ? "app" : "")">
@@ -279,7 +291,7 @@
                                 <div class="pl-av-seam tail" style="background-color: @AccentRgba( AppViewAccent(), 0.45f );"></div>
                                 @if ( _appView == "radio" )
                                 {
-                                    <div class="pl-av-util chip pl-hit hit-radio-station @(IsPressed( "hit-radio-station" ) ? "pressed" : "")" style="margin-left: 218px; background-color: @AppViewAccent();"><span>@StationChipLabel()</span></div>
+                                    <div class="pl-av-util chip pl-hit hit-radio-station @HitState( "hit-radio-station" )" style="margin-left: 218px; background-color: @AppViewAccent();"><span>@StationChipLabel()</span></div>
                                 }
                                 else if ( _appView == "effects" )
                                 {
@@ -300,26 +312,27 @@
                                 var unreadGuild = ChanUnread( "guild", chanCounts );
                                 var unreadTrade = ChanUnread( "trade", chanCounts );
                                 var msgs = PhoneMessages();
+                                RebuildStops( "chat", msgs.Count );
                             }
                             <!-- channel bar: 3 × 164 + 2 × 10 = 512. Lit = .pl-chan.on
                                  (accent fill + dark ink); unread dot = a fresh element
                                  per count (render-key parity → plDotPop). -->
                             <div class="pl-chan-row">
-                                <div class="pl-chan pl-hit hit-chan-global @(_phoneChan == "global" ? "on" : "") @(IsPressed( "hit-chan-global" ) ? "pressed" : "")">
+                                <div class="pl-chan pl-hit hit-chan-global @(_phoneChan == "global" ? "on" : "") @HitState( "hit-chan-global" )">
                                     <span>GLOBAL</span>
                                     @if ( unreadGlobal > 0 )
                                     {
                                         <div class="pl-chan-dot @("pl-dot-" + ( unreadGlobal % 2 ))"><span>@FormatBadge( unreadGlobal )</span></div>
                                     }
                                 </div>
-                                <div class="pl-chan pl-hit hit-chan-guild @(_phoneChan == "guild" ? "on" : "") @(IsPressed( "hit-chan-guild" ) ? "pressed" : "")">
+                                <div class="pl-chan pl-hit hit-chan-guild @(_phoneChan == "guild" ? "on" : "") @HitState( "hit-chan-guild" )">
                                     <span>GUILD</span>
                                     @if ( unreadGuild > 0 )
                                     {
                                         <div class="pl-chan-dot @("pl-dot-" + ( unreadGuild % 2 ))"><span>@FormatBadge( unreadGuild )</span></div>
                                     }
                                 </div>
-                                <div class="pl-chan pl-hit hit-chan-trade @(_phoneChan == "trade" ? "on" : "") @(IsPressed( "hit-chan-trade" ) ? "pressed" : "")">
+                                <div class="pl-chan pl-hit hit-chan-trade @(_phoneChan == "trade" ? "on" : "") @HitState( "hit-chan-trade" )">
                                     <span>TRADE</span>
                                     @if ( unreadTrade > 0 )
                                     {
@@ -342,8 +355,8 @@
                                     var own = IsOwnPhoneMsg( m );
                                     var motion = RowMotion( m.Id, mi, own );
                                     var authorHit = ( !own && HasCardFor( m.SteamId ) ) ? "pl-hit hit-chat-author-" + mi : "";
-                                    var authorPressed = IsPressed( "hit-chat-author-" + mi ) ? "pressed" : "";
-                                    <div class="pl-msg @(own ? "own" : "") @motion">
+                                    var authorPressed = HitState( "hit-chat-author-" + mi );
+                                    <div class="pl-msg pl-hit @("hit-msg-" + mi) @(own ? "own" : "") @motion @HitState( "hit-msg-" + mi )">
                                         <div class="pl-msg-top">
                                             <span class="pl-msg-author @authorHit @authorPressed">@m.PlayerName</span>
                                             <span class="pl-msg-time">@m.FormattedTime</span>
@@ -354,7 +367,7 @@
                                                  first child) · neutral 34 tile with the pixelated sprite ·
                                                  text 300 · TAP TO VIEW 100. Tap (hit-embed-N) opens the
                                                  full-screen showcase popup OVER the phone. -->
-                                            <div class="pl-embed pl-hit @("hit-embed-" + mi) @(IsPressed( "hit-embed-" + mi ) ? "pressed" : "")">
+                                            <div class="pl-embed pl-hit @("hit-embed-" + mi) @HitState( "hit-embed-" + mi )">
                                                 <div class="pl-embed-edge" style="background-color: @ElementRim( m.ShowcaseElement );"></div>
                                                 <div class="pl-tile">
                                                     @if ( !string.IsNullOrEmpty( ShowcaseSprite( m ) ) )
@@ -374,7 +387,7 @@
                                         }
                                         else if ( m.Type == Beastborne.Data.ChatMessageType.TamerCardShowcase )
                                         {
-                                            <div class="pl-embed pl-hit @("hit-embed-" + mi) @(IsPressed( "hit-embed-" + mi ) ? "pressed" : "")">
+                                            <div class="pl-embed pl-hit @("hit-embed-" + mi) @HitState( "hit-embed-" + mi )">
                                                 <div class="pl-embed-edge" style="background-color: #4aa8ff;"></div>
                                                 <div class="pl-tile">
                                                     <img class="pl-tile-avatar" src="avatar:@m.SteamId" />
@@ -399,14 +412,25 @@
                                  (focus); SEND is its sibling — a row that contains a hit
                                  is never one itself (post-order law). -->
                             <div class="pl-chat-inputrow">
-                                <div class="pl-chat-inputbox pl-hit hit-input">
+                                <div class="pl-chat-inputbox pl-hit hit-input @HitState( "hit-input" )">
                                     <ChatInputBox @ref="_phoneChatBox" OnSubmit=@OnPhoneChatSend Placeholder="@InputPlaceholder()" />
                                 </div>
-                                <div class="pl-send pl-hit hit-send @(IsPressed( "hit-send" ) ? "pressed" : "")"><span>SEND</span></div>
+                                <div class="pl-send pl-hit hit-send @HitState( "hit-send" )"><span>SEND</span></div>
+                            </div>
+                            <!-- KEY HINTS (2026-08-30) — the cap recipe (.pl-key dialect) at the
+                                 12px floor; every cap AND its span carry explicit widths (the
+                                 zero-width-anchor law). Only the keys this app INTRODUCES. -->
+                            <div class="pl-av-hints">
+                                @foreach ( var h in AppHints() )
+                                {
+                                    <div class="pl-akey" style="width: @(h.CapW)px;"><span style="width: @(h.CapW - 10)px;">@h.Cap</span></div>
+                                    <span class="pl-ahint" style="width: @(h.LabelW)px;">@h.Label</span>
+                                }
                             </div>
                         }
                         else if ( _appView == "radio" )
                         {
+                            @{ RebuildStops( "radio", 0 ); }
                             <!-- now-playing hero — visualizer (baked animated WebP <img>,
                                  src value-swapped on IsPlaying; until the asset lands, nine
                                  STATIC bars) · station kicker · track title (re-keyed on
@@ -449,11 +473,11 @@
                                  (every child explicit → justify-content is legal). Play is
                                  ONE iconify whose name value-swaps (never an if-swap). -->
                             <div class="pl-radio-ctls">
-                                <div class="pl-rtog pl-hit hit-radio-shuffle @(Beastborne.Systems.RadioManager.IsShuffle ? "on" : "") @(IsPressed( "hit-radio-shuffle" ) ? "pressed" : "")"><span>SHUFFLE</span></div>
-                                <div class="pl-rctl pl-hit hit-radio-prev @(IsPressed( "hit-radio-prev" ) ? "pressed" : "")"><iconify class="pl-rctl-icon" icon="lucide:skip-back" Size=@(20) Color="#f4f1ea" /></div>
-                                <div class="pl-rctl big pl-hit hit-radio-play @(IsPressed( "hit-radio-play" ) ? "pressed" : "")"><iconify class="pl-rctl-icon" icon="@(Beastborne.Systems.RadioManager.IsPlaying ? "lucide:pause" : "lucide:play")" Size=@(26) Color="#1d0433" /></div>
-                                <div class="pl-rctl pl-hit hit-radio-next @(IsPressed( "hit-radio-next" ) ? "pressed" : "")"><iconify class="pl-rctl-icon" icon="lucide:skip-forward" Size=@(20) Color="#f4f1ea" /></div>
-                                <div class="pl-rtog pl-hit hit-radio-repeat @(Beastborne.Systems.RadioManager.IsRepeat ? "on" : "") @(IsPressed( "hit-radio-repeat" ) ? "pressed" : "")"><span>REPEAT</span></div>
+                                <div class="pl-rtog pl-hit hit-radio-shuffle @(Beastborne.Systems.RadioManager.IsShuffle ? "on" : "") @HitState( "hit-radio-shuffle" )"><span>SHUFFLE</span></div>
+                                <div class="pl-rctl pl-hit hit-radio-prev @HitState( "hit-radio-prev" )"><iconify class="pl-rctl-icon" icon="lucide:skip-back" Size=@(20) Color="#f4f1ea" /></div>
+                                <div class="pl-rctl big pl-hit hit-radio-play @HitState( "hit-radio-play" )"><iconify class="pl-rctl-icon" icon="@(Beastborne.Systems.RadioManager.IsPlaying ? "lucide:pause" : "lucide:play")" Size=@(26) Color="#1d0433" /></div>
+                                <div class="pl-rctl pl-hit hit-radio-next @HitState( "hit-radio-next" )"><iconify class="pl-rctl-icon" icon="lucide:skip-forward" Size=@(20) Color="#f4f1ea" /></div>
+                                <div class="pl-rtog pl-hit hit-radio-repeat @(Beastborne.Systems.RadioManager.IsRepeat ? "on" : "") @HitState( "hit-radio-repeat" )"><span>REPEAT</span></div>
                             </div>
                             <!-- stepped volume: VOLUME chip 96 + 28 computed + 5 × 64 + 4 × 8 =
                                  476 (ml 18). hit-vol-1..5 → SetVolume .2–1.0; raising lights the
@@ -466,9 +490,19 @@
                                     {
                                         var lit = k <= VolStep();
                                         var ladder = ( lit && VolLadderActive() ) ? "pl-voln-" + k + "-" + ( _volKey % 2 ) : "";
-                                        <div class="pl-vol-seg pl-hit @("hit-vol-" + k) @(lit ? "lit" : "") @ladder"></div>
+                                        <div class="pl-vol-seg pl-hit @("hit-vol-" + k) @(lit ? "lit" : "") @ladder @HitState( "hit-vol-" + k )"></div>
                                     }
                                 </div>
+                            </div>
+                            <!-- KEY HINTS (2026-08-30) — the cap recipe (.pl-key dialect) at the
+                                 12px floor; every cap AND its span carry explicit widths (the
+                                 zero-width-anchor law). Only the keys this app INTRODUCES. -->
+                            <div class="pl-av-hints radio">
+                                @foreach ( var h in AppHints() )
+                                {
+                                    <div class="pl-akey" style="width: @(h.CapW)px;"><span style="width: @(h.CapW - 10)px;">@h.Cap</span></div>
+                                    <span class="pl-ahint" style="width: @(h.LabelW)px;">@h.Label</span>
+                                }
                             </div>
                         }
                         else if ( _appView == "effects" )
@@ -478,6 +512,9 @@
                                 var skills = PhoneSkills();
                                 var ghosts = FxGhosts();
                                 int fxRow = 0;
+                                int fxHit = 0;
+                                int skHit = 0;
+                                RebuildEffectsStops( boosts.Count, skills.Count );
                             }
                             <div class="pl-list-scroll pl-scroll-clip" @ref="_listScrollRef">
                                 @if ( boosts.Count == 0 && skills.Count == 0 && ghosts.Count == 0 )
@@ -495,12 +532,13 @@
                                 @foreach ( var b in boosts )
                                 {
                                     var motion = RowMotion( b.Key, fxRow++ );
+                                    var fxAct = "hit-fx-" + ( fxHit++ );
                                     var secs = (int)b.Remaining.TotalSeconds;
                                     var lastMin = secs < 60;
                                     var fillPx = FillPx( b.Remaining, b.TotalSeconds );
                                     <!-- column-flex fixed 56 = 53 content + 3px strip HOLDER
                                          (explicit-px fill child). Never overflow:hidden. -->
-                                    <div class="pl-fx-row @motion">
+                                    <div class="pl-fx-row pl-hit @fxAct @motion @HitState( fxAct )">
                                         <div class="pl-fx-content">
                                             <div class="pl-tile">
                                                 @if ( !string.IsNullOrEmpty( b.IconPath ) )
@@ -551,7 +589,8 @@
                                 @foreach ( var sk in skills )
                                 {
                                     var motion = RowMotion( "sk:" + sk.Name, fxRow++ );
-                                    <div class="pl-sk-row @motion">
+                                    var skAct = "hit-sk-" + ( skHit++ );
+                                    <div class="pl-sk-row pl-hit @skAct @motion @HitState( skAct )">
                                         <div class="pl-tile">
                                             @if ( !string.IsNullOrEmpty( sk.IconPath ) )
                                             {
@@ -567,6 +606,16 @@
                                     </div>
                                 }
                             </div>
+                            <!-- KEY HINTS (2026-08-30) — the cap recipe (.pl-key dialect) at the
+                                 12px floor; every cap AND its span carry explicit widths (the
+                                 zero-width-anchor law). Only the keys this app INTRODUCES. -->
+                            <div class="pl-av-hints">
+                                @foreach ( var h in AppHints() )
+                                {
+                                    <div class="pl-akey" style="width: @(h.CapW)px;"><span style="width: @(h.CapW - 10)px;">@h.Cap</span></div>
+                                    <span class="pl-ahint" style="width: @(h.LabelW)px;">@h.Label</span>
+                                }
+                            </div>
                         }
                         else
                         {
@@ -574,6 +623,7 @@
                                 var alerts = PhoneNotifications();
                                 bool todayShown = false;
                                 bool earlierShown = false;
+                                RebuildAlertStops( alerts.Count, alerts.Count > 0 && _clearingAt <= 0f );
                             }
                             <div class="pl-list-scroll pl-scroll-clip" @ref="_listScrollRef">
                                 @if ( alerts.Count == 0 )
@@ -606,7 +656,7 @@
                                          value-swapped) · +10 tile 34 · +12 text 330 · +42 time 48 ·
                                          +4 chevron 14 · 14 edge. The ROW is the hit (hit-alert-N);
                                          nothing inside it is. -->
-                                    <div class="pl-alert-row pl-hit @("hit-alert-" + ai) @motion @clr @(IsPressed( "hit-alert-" + ai ) ? "pressed" : "") @(isToday ? "" : "earlier")">
+                                    <div class="pl-alert-row pl-hit @("hit-alert-" + ai) @motion @clr @HitState( "hit-alert-" + ai ) @(isToday ? "" : "earlier")">
                                         <div class="pl-alert-tick @(unread ? "unread" : "") @(( unread && motion == "pl-arrive" ) ? "tick-in" : "")"></div>
                                         <div class="pl-tile">
                                             @if ( n.HasImageIcon )
@@ -632,8 +682,18 @@
                                pl-clr-N ladder, the +500ms one-shot empties the record). *@
                             @if ( alerts.Count > 0 && _clearingAt <= 0f )
                             {
-                                <div class="pl-alert-clear pl-hit hit-clear @(IsPressed( "hit-clear" ) ? "pressed" : "") @(ClearArmed ? "armed" : "")"><span>@(ClearArmed ? "SURE?" : "CLEAR ALL")</span></div>
+                                <div class="pl-alert-clear pl-hit hit-clear @HitState( "hit-clear" ) @(ClearArmed ? "armed" : "")"><span>@(ClearArmed ? "SURE?" : "CLEAR ALL")</span></div>
                             }
+                            <!-- KEY HINTS (2026-08-30) — the cap recipe (.pl-key dialect) at the
+                                 12px floor; every cap AND its span carry explicit widths (the
+                                 zero-width-anchor law). Only the keys this app INTRODUCES. -->
+                            <div class="pl-av-hints">
+                                @foreach ( var h in AppHints() )
+                                {
+                                    <div class="pl-akey" style="width: @(h.CapW)px;"><span style="width: @(h.CapW - 10)px;">@h.Cap</span></div>
+                                    <span class="pl-ahint" style="width: @(h.LabelW)px;">@h.Label</span>
+                                }
+                            </div>
                         }
 
                         @* OVERLAY SCROLLBAR (rev 7.1, 2026-08-29 — user: "shouldn't we have a
@@ -826,6 +886,7 @@
         if ( !IsVisible ) return;
         IsVisible = false;
         _closingUntil = Time.Now + 0.18f;
+        Instance?.BlurPhoneInput(); // 2026-08-30: a parked phone must never keep keyboard focus (dead game keys)
         SoundManager.PlayPopdown();
     }
 
@@ -1488,6 +1549,9 @@
             if ( _appClosingUntil > 0f ) return; // reverse bloom in flight — taps wait
             var act = ActionAtScreen( Mouse.Position );
             if ( WALK_DEBUG ) Log.Info( $"[walkdbg] appview click -> {act ?? "none"}" );
+            // Any tap that isn't the input (or SEND, which keeps you typing) takes
+            // the keyboard back from the TextEntry — nothing else ever would.
+            if ( act != "hit-input" && act != "hit-send" ) BlurPhoneInput();
             if ( act != null ) { RunAppAction( act ); return; }
             Close(); // clicked outside the phone = close entirely
             ResetAppState();
@@ -1679,6 +1743,13 @@
         _clearArmedAt = -1f;
         _clearingAt = -1f;
         _volLadderUntil = -1f;
+        // Cursor + hover start clean per view; a lingering input focus from the
+        // previous view would eat every key (the stuck-IsChatFocused trap).
+        _appKb = null;
+        _hoverHit = null;
+        _stops.Clear();
+        _kbScrollPending = 0;
+        BlurPhoneInput();
         // Overlay scrollbar: forget the previous app's geometry, measure over the
         // first frames of the new view, and once more after the cascade (0.7s).
         _sbOn = false;
@@ -1723,6 +1794,8 @@
         _bloomCircleGrow = false;
         _bloomCircleFade = false;
         _appClosingUntil = Time.Now + 0.24f;
+        _hoverHit = null;
+        BlurPhoneInput(); // the view unmounts — an unmounted TextEntry never fires onblur
         SoundManager.PlayBack();
         StateHasChanged();
     }
@@ -1765,6 +1838,11 @@
         _bloomCircleGrow = false;
         _bloomCircleFade = false;
         _bloomCircleFadeAt = -1f;
+        _appKb = null;
+        _hoverHit = null;
+        _stops.Clear();
+        _kbScrollPending = 0;
+        BlurPhoneInput();
     }
 
     private void SeedBloomCircle()
@@ -1837,6 +1915,10 @@
 
         // The press stamp clears at +120ms — this IS the one-shot (a ≤1 Hz tick is not enough).
         if ( _pressedHit != null && Time.Now - _pressedAt > 0.12f ) { _pressedHit = null; dirty = true; }
+
+        // Keyboard walk: bring the focused row fully into the scroller (two frames —
+        // the stamped row must have laid out under its new class first).
+        if ( _kbScrollPending > 0 ) { _kbScrollPending--; ScrollFocusedIntoView(); }
 
         float tdt = Time.Now - _tickAt;
         bool ticked = tdt < 0f || tdt >= 1f;
@@ -2276,7 +2358,7 @@
     };
 
     // Indexed families resolve by PREFIX (class starts-with → the whole class is the action).
-    private static readonly string[] HitPrefixes = { "hit-alert-", "hit-chat-author-", "hit-embed-", "hit-vol-" };
+    private static readonly string[] HitPrefixes = { "hit-alert-", "hit-chat-author-", "hit-embed-", "hit-vol-", "hit-msg-", "hit-fx-", "hit-sk-" };
 
     private string ActionAtScreen( Vector2 screenPx )
     {
@@ -2336,7 +2418,19 @@
     private void RunAppAction( string act )
     {
         if ( _appClosingUntil > 0f ) return;
-        // Press stamp — brighten / dim for ~120ms (SNAP layer). Focus has no visual.
+        // Info rows (effects) are reading stops only — no press flash on a slab
+        // that leads nowhere (a flash promises a button).
+        if ( act.StartsWith( "hit-fx-" ) || act.StartsWith( "hit-sk-" ) ) return;
+        // A whole chat message is a stop; its ACTION is the embed (showcase) or
+        // the author (tamer card) inside it — the same thing a tap on those
+        // resolves to. A plain message with no card is inert.
+        if ( act.StartsWith( "hit-msg-" ) )
+        {
+            var sub = MsgActionOf( HitIndex( act ) );
+            if ( sub != null ) RunAppAction( sub );
+            return;
+        }
+        // Press stamp — brighten / dim for ~120ms (SNAP layer).
         if ( act != "hit-input" ) { _pressedHit = act; _pressedAt = Time.Now; }
 
         if ( act.StartsWith( "hit-alert-" ) ) TapAlert( HitIndex( act ) );
@@ -2352,7 +2446,7 @@
                 case "hit-chan-guild": _phoneChan = "guild"; _chatScrollPending = 3; SoundManager.PlayClick(); break;
                 case "hit-chan-trade": _phoneChan = "trade"; _chatScrollPending = 3; SoundManager.PlayClick(); break;
                 case "hit-send": OnPhoneChatSend(); break;
-                case "hit-input": _phoneChatBox?.FocusInput(); break;
+                case "hit-input": _appKb = "hit-input"; _phoneChatBox?.FocusInput(); break;
                 case "hit-radio-prev": Beastborne.Systems.RadioManager.PreviousTrack(); break;
                 case "hit-radio-play": Beastborne.Systems.RadioManager.TogglePlay(); SoundManager.PlayClick(); break;
                 case "hit-radio-next": Beastborne.Systems.RadioManager.NextTrack(); break;
@@ -2610,7 +2704,13 @@
         if ( WALK_DEBUG && ( Input.Pressed( "Backward" ) || Input.Pressed( "Forward" ) ) )
             Log.Info( $"[walkdbg] tick gate: top={UIModalState.IsTopModal( "PhoneLauncher" )} chatfocus={ChatPanel.IsChatFocused}" );
         if ( !UIModalState.IsTopModal( "PhoneLauncher" ) ) return;
-        if ( ChatPanel.IsChatFocused ) return;
+
+        // 2026-08-30: Esc while TYPING in the phone's chat input blurs back to
+        // the phone (the text stays) — it must not back out of the app. Polled
+        // here because the TextEntry owns the keys while focused; ChatInputBox
+        // also listens for the entry's own cancel event (belt and braces —
+        // VERIFY LIVE which path fires; either one stamps the same-frame latch).
+        if ( ChatPanel.IsChatFocused && _appView == "chat" && Input.Pressed( "Escape" ) ) { BlurPhoneInput(); return; }
 
         // v7.2 mouse hover — per-frame poll + inverse projection (pure
         // math + rect walks; NO style writes, so the 7fps law is safe).
@@ -2619,10 +2719,19 @@
         // LAST-INPUT-WINS (the Beasts-tab house pattern, user call):
         // hover only reasserts when the mouse actually MOVES, so keyboard
         // navigation isn't snapped back to the hovered tile every frame.
+        // 2026-08-30: in an APP VIEW the same poll resolves the pl-hit under
+        // the mouse (ActionAtScreen — the click router's walk, only on
+        // movement) → `_hoverHit` (.hovered stamp) and moves the one cursor.
+        // Runs even while typing so SEND/rows still light under the mouse.
         var mp = Mouse.Position;
-        if ( _appView == null && ( mp - _lastMousePos ).Length > 2f )
+        bool mouseMoved = ( mp - _lastMousePos ).Length > 2f;
+        if ( mouseMoved ) _lastMousePos = mp;
+        if ( _appView != null && mouseMoved ) PollAppHover( mp );
+
+        if ( ChatPanel.IsChatFocused ) return;
+
+        if ( _appView == null && mouseMoved )
         {
-            _lastMousePos = mp;
             int hover = TileAtScreen( mp );
             if ( hover >= 0 && hover != _kb )
             {
@@ -2655,15 +2764,12 @@
         if ( _appView != null )
         {
             if ( _appClosingUntil > 0f ) return; // reverse bloom in flight
+            // The Esc that just BLURRED the chat input is still edge-true this
+            // frame — it must not also read as "back" (the RoutedThisFrame lesson).
+            if ( Time.Now - ChatInputBox.LastBlurAt < 0.05f ) return;
             if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) ) { CloseApp(); return; }
             if ( Input.Pressed( "Slot8" ) ) { Close(); ResetAppState(); return; }
-            // Radio hotkeys (brief KEYBOARD REACH): Space play/pause, A/D prev/next.
-            if ( _appView == "radio" )
-            {
-                if ( Input.Pressed( "Jump" ) ) { Beastborne.Systems.RadioManager.TogglePlay(); SoundManager.PlayClick(); StateHasChanged(); return; }
-                if ( Input.Pressed( "Left" ) ) { Beastborne.Systems.RadioManager.PreviousTrack(); return; }
-                if ( Input.Pressed( "Right" ) ) { Beastborne.Systems.RadioManager.NextTrack(); return; }
-            }
+            HandleAppKeys();
             return; // app views own the rest of the keys (input typing etc.)
         }
 
@@ -2743,6 +2849,274 @@
         }
     }
 
+    // ═══ KEYBOARD CURSOR + MOUSE HOVER for the in-phone apps (2026-08-30) ═══
+    // House grammar: WASD move · Space confirm (E silent twin, Enter too) · Q
+    // back · R cycle · Z/X pair · last-input-wins ONE cursor.
+    //
+    // `_appKb` holds the ACTION STRING of the focused stop, not an index — a
+    // chat message arriving must not shove the cursor off the input stop, and
+    // an alert clearing must not re-target by number. Stops are rebuilt at
+    // RENDER time from the very lists the view draws (RebuildStops in each
+    // app's razor block), so DOM order == walk order by construction.
+    //
+    // VISUAL = the hashed `.kb-focused` class stamp on the pl-hit element,
+    // NOT the living ring. The ring lives at ROOT level, outside the scroll
+    // clip: on a half-visible row it would overhang the header/input row (the
+    // documented scroll-leak class), and the five control silhouettes (row /
+    // pill / circle / segment / slab) can't share one fixed-radius ring. The
+    // stamp needs zero geometry and zero per-frame writes (7fps law) and stays
+    // correct through scrolling. It reads as a 2px violet SPREAD ring (hard-
+    // edged, the flat-panel cousin of the ring — "violet is the cursor") plus
+    // one slab step; the scss carries the recipe.
+    //
+    // `_hoverHit` = the pl-hit under the mouse (hashed → `.hovered`); a hover
+    // also MOVES the cursor (last-input-wins). Polled only on mouse movement
+    // (>2px) through the click router's own walk — no per-frame cost at rest.
+    private string _appKb;
+    private string _hoverHit;
+    private readonly List<string> _stops = new();
+    private int _kbScrollPending;
+
+    // The three router-stamped states, joined for the class attribute.
+    private string HitState( string act )
+    {
+        if ( act == null ) return "";
+        bool p = _pressedHit == act, h = _hoverHit == act, k = _appKb == act;
+        if ( !p && !h && !k ) return "";
+        return ( p ? "pressed " : "" ) + ( h ? "hovered " : "" ) + ( k ? "kb-focused" : "" );
+    }
+
+    // Stop lists — DOM order. chat: every message then the input; radio: the
+    // transport row, the station chip, the five volume segments.
+    private void RebuildStops( string app, int count )
+    {
+        _stops.Clear();
+        switch ( app )
+        {
+            case "chat":
+                for ( int i = 0; i < count; i++ ) _stops.Add( "hit-msg-" + i );
+                _stops.Add( "hit-input" );
+                break;
+            case "radio":
+                _stops.Add( "hit-radio-shuffle" );
+                _stops.Add( "hit-radio-prev" );
+                _stops.Add( "hit-radio-play" );
+                _stops.Add( "hit-radio-next" );
+                _stops.Add( "hit-radio-repeat" );
+                _stops.Add( "hit-radio-station" );
+                for ( int k = 1; k <= 5; k++ ) _stops.Add( "hit-vol-" + k );
+                break;
+        }
+        SettleCursor( app );
+    }
+
+    private void RebuildEffectsStops( int boosts, int skills )
+    {
+        _stops.Clear();
+        for ( int i = 0; i < boosts; i++ ) _stops.Add( "hit-fx-" + i );
+        for ( int i = 0; i < skills; i++ ) _stops.Add( "hit-sk-" + i );
+        SettleCursor( "effects" );
+    }
+
+    private void RebuildAlertStops( int alerts, bool clearVisible )
+    {
+        _stops.Clear();
+        for ( int i = 0; i < alerts; i++ ) _stops.Add( "hit-alert-" + i );
+        if ( clearVisible ) _stops.Add( "hit-clear" );
+        SettleCursor( "alerts" );
+    }
+
+    // Landing per app: chat = the input (you open chat to type), radio = PLAY
+    // (the hero — Space lands there), lists = the top row. Re-settles whenever
+    // the focused stop vanishes (alert cleared, boost expired).
+    private void SettleCursor( string app )
+    {
+        if ( _appKb != null && _stops.Contains( _appKb ) ) return;
+        _appKb = _stops.Count == 0 ? null : app switch { "chat" => "hit-input", "radio" => "hit-radio-play", _ => _stops[0] };
+    }
+
+    // Which stop a hovered hit belongs to — the author name / embed inside a
+    // message map to the message; chrome (back, channels, SEND) moves nothing.
+    private string StopOf( string act )
+    {
+        if ( act == null ) return null;
+        if ( act.StartsWith( "hit-chat-author-" ) || act.StartsWith( "hit-embed-" ) ) act = "hit-msg-" + HitIndex( act );
+        return _stops.Contains( act ) ? act : null;
+    }
+
+    // A message's action: the showcase embed, else the author's tamer card, else none.
+    private string MsgActionOf( int idx )
+    {
+        var msgs = PhoneMessages();
+        if ( idx < 0 || idx >= msgs.Count ) return null;
+        var m = msgs[idx];
+        if ( m.Type == Beastborne.Data.ChatMessageType.BeastShowcase || m.Type == Beastborne.Data.ChatMessageType.TamerCardShowcase ) return "hit-embed-" + idx;
+        if ( !IsOwnPhoneMsg( m ) && HasCardFor( m.SteamId ) ) return "hit-chat-author-" + idx;
+        return null;
+    }
+
+    // W/S on a list — clamped, no wrap (a reading list that jumps from the
+    // newest message to the oldest is disorienting); the edge is silent.
+    private void WalkStops( int dir )
+    {
+        if ( _stops.Count == 0 ) return;
+        int idx = _appKb == null ? -1 : _stops.IndexOf( _appKb );
+        int next = idx < 0 ? ( dir > 0 ? 0 : _stops.Count - 1 ) : Math.Clamp( idx + dir, 0, _stops.Count - 1 );
+        if ( next == idx ) return;
+        _appKb = _stops[next];
+        _kbScrollPending = 2;
+        SoundManager.PlayHover();
+        StateHasChanged();
+    }
+
+    // The focused row rides into the scroller's viewport (rect px and scroll
+    // px are commensurate — the scrollbar recipe's proven ratio). Stops that
+    // live OUTSIDE the scroller (CLEAR ALL, the input) need no scroll.
+    private void ScrollFocusedIntoView()
+    {
+        var sc = ActiveScroller();
+        if ( sc == null || _appKb == null ) return;
+        Panel row = null;
+        foreach ( var c in sc.Children ) if ( c.HasClass( _appKb ) ) { row = c; break; }
+        if ( row == null ) return;
+        var sr = sc.Box.Rect;
+        var rr = row.Box.Rect;
+        if ( sr.Height < 1f || rr.Height < 1f ) return;
+        const float pad = 8f;
+        float dy = 0f;
+        if ( rr.Top < sr.Top + pad ) dy = rr.Top - ( sr.Top + pad );
+        else if ( rr.Bottom > sr.Bottom - pad ) dy = rr.Bottom - ( sr.Bottom - pad );
+        if ( MathF.Abs( dy ) < 0.5f ) return;
+        sc.ScrollOffset = new Vector2( 0f, MathF.Max( 0f, sc.ScrollOffset.y + dy ) );
+        ArmScrollbar();
+    }
+
+    // Mouse over an app view (movement-gated from Tick).
+    private void PollAppHover( Vector2 mp )
+    {
+        if ( _appClosingUntil > 0f ) return;
+        var act = ActionAtScreen( mp );
+        if ( act == _hoverHit ) return;
+        _hoverHit = act;
+        if ( act != null )
+        {
+            SoundManager.PlayHover();
+            var stop = StopOf( act );
+            if ( stop != null ) _appKb = stop; // last-input-wins: the mouse moves the one cursor
+        }
+        StateHasChanged();
+    }
+
+    // Keyboard, per app (Q/Esc/Slot8 are handled by the caller).
+    private void HandleAppKeys()
+    {
+        bool up = Input.Pressed( "Forward" ), down = Input.Pressed( "Backward" );
+        bool left = Input.Pressed( "Left" ), right = Input.Pressed( "Right" );
+        bool confirm = Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" );
+        bool cycle = Input.Pressed( "Reload" );
+        switch ( _appView )
+        {
+            case "chat":
+                // A/D channel · W/S walk messages → input · Space = the row's tap
+                // (embed / author card) or, on the input stop, start typing.
+                if ( left || right ) { CycleChannel( right ? 1 : -1 ); return; }
+                if ( up || down ) { WalkStops( up ? -1 : 1 ); return; }
+                if ( confirm && _appKb != null ) { RunAppAction( _appKb ); return; }
+                break;
+            case "radio":
+                // Space taps the focused control (PLAY unless the mouse parked
+                // the cursor elsewhere); every direct key re-parks it on PLAY so
+                // the keyboard always has one home. W/S = volume ladder, R = next
+                // station, Z/X = shuffle / repeat.
+                if ( confirm ) { RunAppAction( _appKb ?? "hit-radio-play" ); return; }
+                if ( left ) { ParkRadioCursor(); RunAppAction( "hit-radio-prev" ); return; }
+                if ( right ) { ParkRadioCursor(); RunAppAction( "hit-radio-next" ); return; }
+                if ( up || down ) { ParkRadioCursor(); StepVolume( up ? 1 : -1 ); return; }
+                if ( cycle ) { ParkRadioCursor(); RunAppAction( "hit-radio-station" ); return; }
+                if ( Input.Pressed( "CyclePrev" ) ) { ParkRadioCursor(); RunAppAction( "hit-radio-shuffle" ); return; }
+                if ( Input.Pressed( "CycleNext" ) ) { ParkRadioCursor(); RunAppAction( "hit-radio-repeat" ); return; }
+                break;
+            case "effects":
+                // Reading stops only — Space is a no-op by design.
+                if ( up || down ) { WalkStops( up ? -1 : 1 ); return; }
+                break;
+            case "alerts":
+                // W/S rows → CLEAR ALL · Space = the tap (deep-link / two-tap clear)
+                // · R jumps the cursor to CLEAR ALL (then Space, Space).
+                if ( up || down ) { WalkStops( up ? -1 : 1 ); return; }
+                if ( confirm && _appKb != null ) { RunAppAction( _appKb ); return; }
+                if ( cycle && _stops.Contains( "hit-clear" ) )
+                {
+                    if ( _appKb != "hit-clear" ) { _appKb = "hit-clear"; SoundManager.PlayHover(); StateHasChanged(); }
+                    return;
+                }
+                break;
+        }
+    }
+
+    private void ParkRadioCursor()
+    {
+        if ( _appKb != "hit-radio-play" ) _appKb = "hit-radio-play";
+    }
+
+    private void CycleChannel( int dir )
+    {
+        string next = _phoneChan switch
+        {
+            "global" => dir > 0 ? "guild" : "trade",
+            "guild" => dir > 0 ? "trade" : "global",
+            _ => dir > 0 ? "global" : "guild",
+        };
+        RunAppAction( "hit-chan-" + next ); // the tap path — press stamp on the pill, scroll to newest
+    }
+
+    // W/S volume: rides the segment tap (ladder on a raise); 0 = mute (below the ladder).
+    private void StepVolume( int dir )
+    {
+        int cur = VolStep();
+        int k = Math.Clamp( cur + dir, 0, 5 );
+        if ( k == cur ) return;
+        if ( k == 0 ) { Beastborne.Systems.RadioManager.SetVolume( 0f ); SoundManager.PlayClick(); StateHasChanged(); return; }
+        RunAppAction( "hit-vol-" + k );
+    }
+
+    // Takes the keyboard back from the phone's TextEntry. Safe when nothing is focused.
+    private void BlurPhoneInput()
+    {
+        if ( _phoneChatBox == null ) return;
+        _phoneChatBox.BlurInput();
+    }
+
+    // ── Key hints per app — only the keys the app INTRODUCES (Q rides the OS
+    // back circle). Cap = 12px/900 (the floor), label = 10px/700; widths are
+    // COMPUTED (explicit-px law) from calibrated glyph estimates, cached per app.
+    private record PhoneHint( string Cap, string Label, int CapW, int LabelW );
+    private readonly Dictionary<string, PhoneHint[]> _hintCache = new();
+    private const float HintCapCharPx = 7.6f;   // 12px/900 Exo2 caps
+    private const float HintLabelCharPx = 6.9f; // 10px/700 caps + 1px tracking
+
+    private PhoneHint[] AppHints()
+    {
+        var app = _appView ?? "chat";
+        if ( _hintCache.TryGetValue( app, out var cached ) ) return cached;
+        (string Cap, string Label)[] src = app switch
+        {
+            "chat" => new[] { ( "W/S", "MESSAGES" ), ( "A/D", "CHANNEL" ), ( "SPACE", "SELECT" ) },
+            "radio" => new[] { ( "SPACE", "PLAY" ), ( "A/D", "SKIP" ), ( "W/S", "VOL" ), ( "R", "TUNE" ), ( "Z", "SHUFFLE" ), ( "X", "REPEAT" ) },
+            "effects" => new[] { ( "W/S", "BROWSE" ) },
+            _ => new[] { ( "W/S", "BROWSE" ), ( "SPACE", "OPEN" ), ( "R", "CLEAR ALL" ) },
+        };
+        var arr = new PhoneHint[src.Length];
+        for ( int i = 0; i < src.Length; i++ )
+        {
+            int capText = Math.Max( 8, (int)MathF.Ceiling( src[i].Cap.Length * HintCapCharPx ) );
+            int labelW = (int)MathF.Ceiling( src[i].Label.Length * HintLabelCharPx ) + 2;
+            arr[i] = new PhoneHint( src[i].Cap, src[i].Label, capText + 10, labelW ); // +10 = the cap's 5px side padding (padding-box)
+        }
+        _hintCache[app] = arr;
+        return arr;
+    }
+
     // v7.5: consume the mouse wheel while the phone is open — wheel events
     // fell through to the scrollable panel behind it (user report). The
     // backdrop catches the wheel, it bubbles here; NOT calling base eats it.
@@ -2803,7 +3177,8 @@
                 Beastborne.Systems.RadioManager.IsRepeat,
                 Beastborne.Systems.RadioManager.CurrentStationIndex,
                 _progFillPx ),
-            HashCode.Combine( _appView == "chat" ? ChanCounts() : default, _seenGlobal, _seenGuild, _seenTrade, ChatPanel.IsChatFocused ),
+            // + the one cursor and the hovered hit (2026-08-30; both are class stamps) — HashCode.Combine caps at 8 args.
+            HashCode.Combine( _appView == "chat" ? ChanCounts() : default, _seenGlobal, _seenGuild, _seenTrade, ChatPanel.IsChatFocused, _appKb, _hoverHit ),
             HashCode.Combine( ClearArmed, _clearingAt > 0f, _readIds.Count, _fxExpired.Count, ActiveEffectsPanel.TotalEffectCount, _alertsSeenBefore, _sbOn ) );
     }
 }
