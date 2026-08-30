@@ -66,6 +66,13 @@
 	{
 		@{
 			var otherPlayers = IsConnected() ? GetOnlinePlayers().Where( p => !p.IsLocal ).ToList() : new();
+			// Cached for the per-frame input path (TickInput / zone counts /
+			// activation read THIS list, never GetOnlinePlayers again — that
+			// call allocates a HashSet + LINQ chain every frame). BuildHash
+			// hashes Connection.All.Count, so a join/leave re-renders and
+			// refreshes the cache before the cursor can go stale.
+			_others = otherPlayers;
+			_othersCount = otherPlayers.Count;
 			var vcm = VoiceChatManager.Instance;
 			var inLobbyVoice = vcm?.IsInLobby ?? false;
 			var lobbyMembers = vcm?.Rooms?.FirstOrDefault( r => r.IsLobby )?.Members?.Count ?? 0;
@@ -106,11 +113,18 @@
 			// milestone; nothing fake renders in its place.
 			var tradables = otherPlayers.Take( MaxTradeSlips ).ToList();
 			var shownHeads = otherPlayers.Take( MaxHeads ).ToList();
+			// ONLINE NOW kb indices: YOU 0 · heads 1..n · JOIN VOICE · mic
+			// (the voice chips are the zone's LAST indices — WASD reaches
+			// them; HubZoneCount/MoveHubCursor mirror this via VoiceSlotCount).
+			int voiceIdx = 1 + shownHeads.Count;
+			int micIdx = voiceIdx + 1;
 
 			// THE BEASTS ARE THE HEROES (v3) — every zone carries beast art.
 			// Hero sprites: QUICKPLAY = your beast; RANKED = Loomweaver (the
 			// Epic mini-boss that never forgets a word); PRACTICE = Cherune
 			// (the starter cherub). Alternates dodge a duplicate of yours.
+			// (Loomweaver stays 1× on RANKED — 2× = 192px would ride over the
+			// 38px label, and the 144px rank band can't spare more height.)
 			// Boxes = the largest integer scale that stays clear of the text
 			// (2026-08-29 ruling: never over the label): 200 → 2× on QUICKPLAY,
 			// 112 → 1× on the side tiles. Geometry lives in the scss banner.
@@ -141,7 +155,7 @@
 
 					<!-- ═══ BATTLE HERO — THE BEASTS ARE THE HEROES (2026-08-28 v3 ·
 					     polish pass 2026-08-29). Three mode TILES share the full hero
-					     width: QUICKPLAY (gold, flex 1) · RANKED 340 · PRACTICE 340.
+					     width: QUICKPLAY (gold, 663) · RANKED 340 · PRACTICE 340.
 					     Tile anatomy, bottom→top: slab layer · location art (clipped
 					     right column, dissolving into the slab through the fade
 					     layer) · beast sprite (right column, below the label row —
@@ -160,7 +174,7 @@
 							     (profile favorite → lead → first owned → Embrik) at 2×,
 							     below the label row. Art: the Elemental Nexus sunburst as a
 							     gold-tinted texture under the primary ramp (not a photo). -->
-							<div class="mode-tile mode-quick @(BattleEnabled ? "" : "locked") @(IsHubKb("battle", 0) ? "kb-lit" : "")"
+							<div class="mode-tile mode-quick @(IsHubKb("battle", 0) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "battle", 0 ))
 								 onclick=@OnFindBattle>
 								<div class="mode-slab"></div>
@@ -172,17 +186,19 @@
 								{
 									<img class="mode-beast" src="@GetAnimatedIcon( heroQuick )" style="width: @(quickBox.w)px; height: @(quickBox.h)px" />
 								}
-								@if ( !BattleEnabled )
-								{
-									<div class="mode-soon"><span class="mode-soon-text">OPENS SOON</span></div>
-								}
 								<div class="mode-text mode-text-quick">
 									<iconify class="mode-glyph" icon="lucide:swords" Size=@(48) Color="#2a1605" />
 									<span class="mode-label mode-label-quick">QUICKPLAY</span>
 									<span class="mode-sub mode-sub-quick">Best-of-3 · levels matched fair</span>
 								</div>
+								<!-- The arrow rides INSIDE the button as child content (in-flow
+								     after the label). v3.3: as a pinned absolute iconify with no
+								     explicit box it mis-resolved and a stray copy landed beside
+								     the sub-line live. -->
+								@* No trailing-arrow child: BbButton has no ChildContent slot (child markup becomes
+								   a property set -> CS1061, caught live 2026-08-29). The gold tier + ring are
+								   the primary signal; the Icon param renders LEADING, so no arrow here. *@
 								<BbButton @ref="ctaFindRef" Tier="primary" Size=@(56) Label="FIND A MATCH" HoverSound=@false Class="mode-cta mode-cta-quick" />
-								<iconify class="mode-cta-arrow" icon="lucide:arrow-right" Size=@(22) Color="#2a1605" />
 								<div class="mode-cut"></div>
 							</div>
 
@@ -213,7 +229,7 @@
 								<div class="mode-text">
 									<iconify class="mode-glyph" icon="lucide:shield" Size=@(48) Color="rgba(244, 241, 234, 0.85)" />
 									<span class="mode-label mode-label-cream">RANKED</span>
-									<span class="mode-sub mode-sub-cream">Play ranked matches.</span>
+									<span class="mode-sub mode-sub-cream">Points on the line.</span>
 								</div>
 								<div class="mode-spacer"></div>
 								<div class="rank-block">
@@ -243,9 +259,12 @@
 								<BbButton @ref="ctaRankedRef" Tier="secondary" Size=@(44) Label="PLAY RANKED" HoverSound=@false Class="mode-cta mode-cta-side" />
 							</div>
 
-							<!-- PRACTICE VS AI — secondary tile; same ArenaPanel route.
-							     Cherune at 1× bottom-right. Art: Garden of Origins. -->
-							<div class="mode-tile mode-practice @(BattleEnabled ? "" : "locked") @(IsHubKb("battle", 2) ? "kb-lit" : "")"
+							<!-- PRACTICE — secondary tile; same ArenaPanel route. Cherune
+							     at 1× bottom-right. Art: Garden of Origins. Label is the
+							     one word (user ruling 2026-08-29 — PRACTICE VS AI at 38px
+							     measured 292 and touched the tile edge); the sub-line and
+							     BATTLE THE AI carry the "vs AI" meaning. -->
+							<div class="mode-tile mode-practice @(IsHubKb("battle", 2) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "battle", 2 ))
 								 onclick=@OnPracticeAI>
 								<div class="mode-slab"></div>
@@ -259,7 +278,7 @@
 								}
 								<div class="mode-text">
 									<iconify class="mode-glyph" icon="lucide:target" Size=@(48) Color="rgba(244, 241, 234, 0.85)" />
-									<span class="mode-label mode-label-cream">PRACTICE VS AI</span>
+									<span class="mode-label mode-label-cream">PRACTICE</span>
 									<span class="mode-sub mode-sub-cream">Practice against the AI.</span>
 								</div>
 								<BbButton @ref="ctaPracticeRef" Tier="secondary" Size=@(44) Label="BATTLE THE AI" HoverSound=@false Class="mode-cta mode-cta-side" />
@@ -288,6 +307,7 @@
 									{
 										<span class="tz-empty-main">No open offers right now</span>
 										<span class="tz-empty-sub">Tamers who are online can trade live — they'll appear here</span>
+										<span class="tz-empty-note">Standing offers — post a WANT / FOR and let anyone accept later — are coming with the trade board.</span>
 									}
 									else
 									{
@@ -299,7 +319,7 @@
 											<div class="trade-slip @(IsHubKb("trades", slipIdx) ? "kb-focused" : "")"
 												 onmouseover=@(() => HoverHubCursor( "trades", slipIdx ))
 												 onclick=@(() => RequestTrade( t ))>
-												<div class="ts-avatar" style="border-color: @t.TitleColor">
+												<div class="ts-avatar" style="border-color: @PageTitleColor( t.TitleColor )">
 													@if ( t.SteamId > 0 )
 													{
 														<img class="ts-avatar-img" src="avatar:@t.SteamId" />
@@ -333,20 +353,20 @@
 										}
 									}
 								</div>
-								<!-- POST OFFER — full-width blue bar, the zone's always-visible
-								     action (ring host, trades kb 0). Inert until the standing-
-								     offer board ships: pressing swaps the sub-line for 3s. -->
-								<div @ref="postOfferRef" class="tz-post @(IsHubKb("trades", 0) ? "kb-lit" : "")"
-									 onmouseover=@(() => HoverHubCursor( "trades", 0 ))
-									 onclick=@OnPostOffer>
-									<div class="tz-post-diamond">
-										<div class="tz-post-glyph-holder">
-											<iconify class="tz-post-glyph" icon="lucide:plus" Size=@(14) Color="#3f8fe0" />
-										</div>
+								<!-- POST OFFER — a NORMAL secondary-tier button (user ruling
+								     2026-08-29: not a full-width bar) at the zone's bottom-left,
+								     the honest resting sub-line beside it. Ring host (trades kb
+								     0, default r24 costume). The holder owns hover + click; the
+								     BbButton's OnClick stays unset so the click bubbles once.
+								     Inert until the standing-offer board ships: a press swaps
+								     the sub-line for 3s (click, never deny). -->
+								<div class="tz-post-row">
+									<div class="tz-post-host"
+										 onmouseover=@(() => HoverHubCursor( "trades", 0 ))
+										 onclick=@OnPostOffer>
+										<BbButton @ref="postOfferRef" Tier="secondary" Size=@(44) Label="POST OFFER" Icon="lucide:plus" IconTint="#3f8fe0" HoverSound=@false Class="tz-post-btn" />
 									</div>
-									<span class="tz-post-label">POST OFFER</span>
-									<div class="tz-post-spacer"></div>
-									<span class="tz-post-sub @(_postNoteLive ? "note" : "")">@(_postNoteLive ? "Coming with the trade board" : "48h standing offer")</span>
+									<span class="tz-post-sub @(_postNoteLive ? "note" : "")">@(_postNoteLive ? "Not open yet" : "Trade board coming soon")</span>
 								</div>
 							</div>
 						</div>
@@ -372,10 +392,16 @@
 								}
 								<div class="oh-head"><div class="oh-chip"><span>GUILD</span></div></div>
 								<div class="gz-body">
-									<!-- THE BANNER — hanging pennant in the guild color; the
-									     emblem is a beast sprite when EmblemIcon = "beast:<id>". -->
+									<!-- THE BANNER — hanging pennant in the guild color: a filled
+									     rect + an ADDITIVE point (a same-fill rotated square hung
+									     off the rect's bottom edge, FIRST in DOM so it paints under
+									     the emblem). v3.3 — the old subtractive cut squares leaked
+									     slab tone into the gap beside the trade zone. The emblem is
+									     a beast sprite (SQUARE — beasts are square) when EmblemIcon
+									     = "beast:<id>". -->
 									<div class="gz-banner-col">
 										<div class="gz-banner" style="background-color: @gzFill">
+											<div class="gz-banner-point" style="background-color: @gzFill"></div>
 											@if ( guildBeast != null )
 											{
 												<img class="gz-banner-beast" src="@guildBeast.IconPath" />
@@ -384,13 +410,9 @@
 											{
 												<iconify class="gz-banner-glyph" icon="@GetGuildEmblemIcon()" Size=@(64) Color="#ffffff" />
 											}
-											<div class="gz-banner-cut left"></div>
-											<div class="gz-banner-cut right"></div>
-											<!-- N MEMBERS lives INSIDE the banner as a z3 sibling of the
-											     z2 cut squares (the cuts extend 60px below the banner and
-											     were painting over a label that hung as a col sibling —
-											     "MEMBEH"). Sibling z-order is deterministic; the holder
-											     is an explicit 140×14 box parked 8px under the tip. -->
+											<!-- N MEMBERS lives INSIDE the banner (explicit 160×14 box,
+											     z3) parked 8px under the tip — sibling z-order is
+											     deterministic, a column sibling once lost to the cuts. -->
 											<div class="gz-members-holder"><span class="gz-members-label">@($"{gzMembers.Count} MEMBERS")</span></div>
 										</div>
 									</div>
@@ -405,7 +427,7 @@
 										{
 											<span class="gz-kick">@($"WEEKLY GOAL — {goal.Title?.ToUpper()}")</span>
 											<div class="gz-bar">
-												<div class="gz-fill" style="width: @(GoalPctStr( goal ))%"></div>
+												<div class="gz-fill" style="width: @(GoalBarPx( goal ))px"></div>
 											</div>
 											<span class="gz-progress">@($"{goal.Progress:N0} / {goal.Target:N0}")</span>
 										}
@@ -480,16 +502,18 @@
 							}
 							@if ( IsConnected() && vcm != null )
 							{
-								<div class="oz-voice @(inLobbyVoice ? "active" : "")"
-									 onmouseover=@(() => SoundManager.PlayHover())
+								<!-- JOIN VOICE + mic — ring hosts at the online zone's last
+								     indices (v3.3: keyboard reach; .small r19 ring costume). -->
+								<div @ref="voiceRef" class="oz-voice @(inLobbyVoice ? "active" : "") @(IsHubKb("online", voiceIdx) ? "kb-lit" : "")"
+									 onmouseover=@(() => HoverHubCursor( "online", voiceIdx ))
 									 onclick=@ToggleLobbyVoice>
 									<iconify class="oz-voice-glyph" icon="lucide:volume-2" Size=@(13) Color="@(inLobbyVoice ? "#4ade80" : "#9ecdf5")" />
 									<span class="oz-voice-label">@(inLobbyVoice ? $"VOICE · {lobbyMembers}" : "JOIN VOICE")</span>
 								</div>
 								@if ( inLobbyVoice )
 								{
-									<div class="oz-voice mic"
-										 onmouseover=@(() => SoundManager.PlayHover())
+									<div @ref="micRef" class="oz-voice mic @(IsHubKb("online", micIdx) ? "kb-lit" : "")"
+										 onmouseover=@(() => HoverHubCursor( "online", micIdx ))
 										 onclick=@ToggleMic>
 										<iconify class="oz-voice-glyph" icon="@(vcm.IsMicActive ? "lucide:mic" : "lucide:mic-off")" Size=@(13) Color="@(vcm.IsMicActive ? "#4ade80" : "rgba(255,255,255,0.5)")" />
 									</div>
@@ -531,13 +555,13 @@
 									 onclick=@(() => OpenRailOnline( head ))>
 									@if ( head.SteamId > 0 )
 									{
-										<div class="oz-avatar steam" style="border-color: @head.TitleColor">
+										<div class="oz-avatar steam" style="border-color: @PageTitleColor( head.TitleColor )">
 											<img class="oz-avatar-img" src="avatar:@head.SteamId" />
 										</div>
 									}
 									else
 									{
-										<div class="oz-avatar cartoon @head.GenderClass" style="border-color: @head.TitleColor">
+										<div class="oz-avatar cartoon @head.GenderClass" style="border-color: @PageTitleColor( head.TitleColor )">
 											<img class="oz-avatar-img cartoon-img" src="@head.AvatarPath" />
 										</div>
 									}
@@ -551,25 +575,27 @@
 								<div class="oz-more"><span class="oz-more-text">@($"+{otherPlayers.Count - MaxHeads}")</span></div>
 							}
 
-							@if ( shownHeads.Count < MaxHeads )
-							{
-								<div class="oz-empty-seat"></div>
-								<div class="oz-empty-seat dim2"></div>
-							}
-
+							<!-- Alone: ONE dim seat + a two-line note (v3.3 — two empty
+							     discs read as broken placeholders). With anyone else online
+							     there are no empty seats at all. -->
 							@if ( otherPlayers.Count == 0 )
 							{
-								<span class="oz-alone">Just you right now</span>
+								<div class="oz-empty-seat"></div>
+								<div class="oz-alone-col">
+									<span class="oz-alone">Just you right now</span>
+									<span class="oz-alone-note">Tamers who come online appear here</span>
+								</div>
 							}
 						</div>
 					</div>
 				</div>
 
-				<!-- ═══ LEADERBOARDS COLUMN — rank · Steam avatar · NAME · score.
-				     Category = two SEGMENTS (current blue / next dim); R or a click
-				     on the dim segment cycles. Avatars: the entry's SteamId (Board2
-				     entries carry it), else a neutral diamond — people are Steam
-				     avatars, beasts stay where the beast is the subject. ═══ -->
+				<!-- ═══ LEADERBOARDS COLUMN — rank · Steam avatar CIRCLE · NAME ·
+				     score. Category = two SEGMENTS (current blue / next dim); R or
+				     a click on the dim segment cycles. Avatars: the entry's SteamId,
+				     else the by-name map, else a dim circle with the neutral
+				     diamond — people are ROUND Steam avatars, beasts stay square
+				     where the beast is the subject. ═══ -->
 				<div class="hz hz-boards">
 					<div class="lb-head">
 						<div class="oh-chip"><span>LEADERBOARDS</span></div>
@@ -623,7 +649,7 @@
 								 onmouseover=@(() => HoverHubCursor( "boards", lbYouIdx ))
 								 onclick=@(() => SwitchTab( "leaderboards" ))>
 								<span class="lb-row-rank">@(lbSelf != null && lbSelf.Rank > 0 ? lbSelf.Rank.ToString() : "—")</span>
-								<div class="lb-row-portrait">
+								<div class="lb-row-portrait you">
 									@if ( lbSteam > 0 )
 									{
 										<img class="lb-row-avatar" src="avatar:@lbSteam" />
@@ -675,8 +701,8 @@
 							@{
 								var heroSteam = GetLocalSteamId();
 								var localTitleColor = GetLocalTitleColor();
-								var xpPct = GetXpPercent();
-								var xpPctStr = (xpPct * 100f).ToString( "F1", System.Globalization.CultureInfo.InvariantCulture );
+								// XP fill in PX (a % width on an absolute child paints full-width).
+								int xpPx = (int)Math.Round( RailXpBarWidth * GetXpPercent() );
 							}
 
 							<!-- Hero / Portrait section -->
@@ -708,12 +734,12 @@
 									@if ( IsInGuild() )
 									{
 										<div class="tamer-guild-row">
-											<iconify icon="lucide:shield" Size=@(11) Color="@(GuildManager.Instance?.Guild?.EmblemColor ?? "#7c3aed")" />
-											<span class="tamer-guild-text" style="color: @(GuildManager.Instance?.Guild?.EmblemColor ?? "#7c3aed")">@($"[{GuildManager.Instance?.Guild?.Tag}] {GuildManager.Instance?.Guild?.Name}")</span>
+											<iconify icon="lucide:shield" Size=@(11) Color="@(GuildManager.Instance?.Guild?.EmblemColor ?? "#3f8fe0")" />
+											<span class="tamer-guild-text" style="color: @(GuildManager.Instance?.Guild?.EmblemColor ?? "#3f8fe0")">@($"[{GuildManager.Instance?.Guild?.Tag}] {GuildManager.Instance?.Guild?.Name}")</span>
 										</div>
 									}
 									<div class="tamer-xp-bar">
-										<div class="tamer-xp-fill" style="width: @(xpPctStr)%"></div>
+										<div class="tamer-xp-fill" style="width: @(xpPx)px"></div>
 									</div>
 								</div>
 							</div>
@@ -726,7 +752,7 @@
 								<div class="tamer-action primary"
 									 onmouseover=@(() => SoundManager.PlayHover())
 									 onclick=@ShowcaseCard>
-									<iconify icon="lucide:share-2" Size=@(14) Color="#d4bfff" />
+									<iconify icon="lucide:share-2" Size=@(14) Color="#9ecdf5" />
 									<span class="tamer-action-label">Share to Chat</span>
 								</div>
 							</div>
@@ -801,7 +827,7 @@
 							@{
 								var p = selectedOnlinePlayer;
 								var isMutedFlag = vcm?.IsPlayerMuted( p.ConnectionId ) ?? false;
-								var pTitleColor = !string.IsNullOrEmpty( p.TitleColor ) ? p.TitleColor : "#a78bfa";
+								var pTitleColor = PageTitleColor( p.TitleColor );
 								var pFavSpecies = !string.IsNullOrEmpty( p.FavoriteMonsterSpeciesId )
 									? MonsterManager.Instance?.GetSpecies( p.FavoriteMonsterSpeciesId )
 									: null;
@@ -847,7 +873,7 @@
 									@if ( GuildManager.UiEnabled && !string.IsNullOrEmpty( p.GuildTag ) )
 									{
 										<div class="tamer-guild-row">
-											<iconify icon="lucide:shield" Size=@(11) Color="#c084fc" />
+											<iconify icon="lucide:shield" Size=@(11) Color="#9ecdf5" />
 											<span class="tamer-guild-text">@($"[{p.GuildTag}] {p.GuildName ?? ""}")</span>
 										</div>
 									}
@@ -872,7 +898,7 @@
 								<div class="tamer-action @(inLobbyVoice ? "active" : "")"
 									 onmouseover=@(() => SoundManager.PlayHover())
 									 onclick=@JoinLobbyVoice>
-									<iconify icon="lucide:volume-2" Size=@(14) Color="#a78bfa" />
+									<iconify icon="lucide:volume-2" Size=@(14) Color="#9ecdf5" />
 									<span class="tamer-action-label">Voice</span>
 								</div>
 								<div class="tamer-action @(isMutedFlag ? "muted" : "")"
@@ -1027,7 +1053,12 @@
 
 	private const int MaxTradeSlips = 3;
 	private const int MaxHeads = 7;
-	private const int MaxGuildHeads = 4;
+	private const int MaxGuildHeads = 6;   // the 790-wide guild card's 582 lane (v3.3)
+
+	// Per-render cache of the other tamers (see the render prologue) —
+	// the input path reads these instead of re-walking Connection.All.
+	private List<OnlinePlayerInfo> _others = new();
+	private int _othersCount;
 	// 12 rows × 52px (+ the segment row, YOU and the foot) fills the 882px
 	// column beside the 420/280/150 zones — see .hz-boards for the math.
 	private const int HubLbMaxRows = 12;
@@ -1037,7 +1068,7 @@
 	// walking the online row's children.
 	// The three battle refs land on the IN-TILE BbButtons (2026-08-29 —
 	// the ring wraps a button inside each tile, never the whole tile).
-	private Panel ctaFindRef, ctaPracticeRef, ctaRankedRef, guildCtaRef, onlineRowRef, postOfferRef;
+	private Panel ctaFindRef, ctaPracticeRef, ctaRankedRef, guildCtaRef, onlineRowRef, postOfferRef, voiceRef, micRef;
 
 	// POST OFFER note — the tile is inert until the standing-offer board
 	// ships; a press swaps its sub-line to a quiet note for 3s (no dead
@@ -1105,6 +1136,8 @@
 		p.DevDumpHost( "BATTLE THE AI", p.ctaPracticeRef, rr );
 		p.DevDumpHost( "POST OFFER", p.postOfferRef, rr );
 		p.DevDumpHost( "OPEN GUILD", p.guildCtaRef, rr );
+		p.DevDumpHost( "JOIN VOICE", p.voiceRef, rr );
+		p.DevDumpHost( "mic", p.micRef, rr );
 		if ( p.onlineRowRef != null )
 		{
 			int n = 0;
@@ -1251,10 +1284,18 @@
 					if ( n == _kbIndex ) return FindDescendantByClass( seat, "oz-avatar" ) ?? seat;
 					n++;
 				}
+				// Past the seats: JOIN VOICE, then the mic (v3.3 keyboard reach).
+				if ( _kbIndex == n ) return voiceRef;
+				if ( _kbIndex == n + 1 ) return micRef;
 				return null;
 		}
 		return null;
 	}
+
+	// True while the online-zone cursor sits on a presence HEAD (circle
+	// costume + the scale(1.14) pop mirror), false on the voice chips.
+	private bool IsOnlineHeadTarget( Panel target )
+		=> _kbZone == "online" && target != null && target != voiceRef && target != micRef;
 
 	private static Panel FindDescendantByClass( Panel root, string cls )
 	{
@@ -1273,6 +1314,7 @@
 
 		bool wasVisible = _ringVisible;
 		_ringVisible = false;
+		bool onHead = false;
 
 		if ( currentSection == "players" && !IsArenaActive() && _kbActive && !railOpen && IsRingCursor() )
 		{
@@ -1281,12 +1323,13 @@
 			{
 				var rr = Box.Rect;
 				var cr = target.Box.Rect;
+				onHead = IsOnlineHeadTarget( target );
 
 				// Presence heads pop scale(1.14) while kb-lit and CSS transforms
 				// don't move Box.Rect — mirror the pop into the target rect so the
 				// ring keeps its 8px gap around the popped head instead of
 				// grazing it (the PawPad focus-pop lockstep rule).
-				if ( _kbZone == "online" && cr.Width > 1f )
+				if ( onHead && cr.Width > 1f )
 				{
 					const float grow = 0.14f;
 					cr = new Rect( cr.Left - cr.Width * grow * 0.5f, cr.Top - cr.Height * grow * 0.5f,
@@ -1321,12 +1364,13 @@
 
 		tamerRingRef.SetClass( "on", _ringVisible );
 		tamerRingRef.SetClass( "snap", _ringWarm < 2 );
-		// Costumes — the ring's radius follows its host: circle on presence
-		// heads, near-square on the radius-0 slabs (the POST OFFER bar, the
-		// skewed OPEN GUILD chip). The battle buttons are 16px-radius
-		// BbButtons — they take the default r24 costume.
-		tamerRingRef.SetClass( "round", _ringVisible && _kbZone == "online" );
-		tamerRingRef.SetClass( "square", _ringVisible && ( _kbZone == "trades" || _kbZone == "guild" ) );
+		// Costumes — ring radius = host radius + 8, always concentric: circle
+		// on presence heads · r14 on the r6 OPEN GUILD chip · r19 on the r11
+		// voice chips · default r24 on the r16 BbButtons (the three battle
+		// buttons AND POST OFFER, a secondary BbButton since v3.3).
+		tamerRingRef.SetClass( "round", _ringVisible && onHead );
+		tamerRingRef.SetClass( "square", _ringVisible && _kbZone == "guild" );
+		tamerRingRef.SetClass( "small", _ringVisible && _kbZone == "online" && !onHead );
 	}
 
 	// The liquid ink-lean — the menu cursor's multi-sine at the PawPad's
@@ -1347,6 +1391,10 @@
 		// wears the same base skew there — both skew about their shared
 		// centre, so the ring hugs the parallelogram at the usual 8px gap.
 		// The wave rides on top of it.
+		// SIGN NOT VERIFIED LIVE (2026-08-29): PanelTransform.AddSkew(x,y,z)
+		// is undocumented and no other panel pairs it with a CSS skewX host;
+		// the assumption is AddSkew(-12) == skewX(-12deg). If the ring leans
+		// AGAINST the chip on screen, flip to `skX += 12f`.
 		if ( _kbZone == "guild" ) skX -= 12f;
 
 		var t = new PanelTransform();
@@ -1435,8 +1483,16 @@
 		if ( dx != 0 || dy != 0 ) MoveHubCursor( dx, dy, others );
 	}
 
-	private int OnlineOthersCount()
-		=> IsConnected() ? GetOnlinePlayers().Count( p => !p.IsLocal ) : 0;
+	// Render-cached (no per-frame Connection.All walk — F1, 2026-08-29 audit).
+	private int OnlineOthersCount() => IsConnected() ? _othersCount : 0;
+
+	// JOIN VOICE (+ mic while in voice) — the online zone's trailing kb slots.
+	private int VoiceSlotCount()
+	{
+		var vcm = VoiceChatManager.Instance;
+		if ( !IsConnected() || vcm == null ) return 0;
+		return vcm.IsInLobby ? 2 : 1;
+	}
 
 	private int HubBoardsCount()
 	{
@@ -1454,7 +1510,7 @@
 			case "battle": return 3;
 			case "trades": return 1 + Math.Min( others, MaxTradeSlips ); // POST OFFER + live slips
 			case "guild": return GuildManager.UiEnabled ? 1 : 0;
-			case "online": return 1 + Math.Min( others, MaxHeads );
+			case "online": return 1 + Math.Min( others, MaxHeads ) + VoiceSlotCount();
 			case "boards": return HubBoardsCount();
 		}
 		return 0;
@@ -1499,13 +1555,13 @@
 	//           QUICKPLAY / RANKED ↓ trades · PRACTICE ↓ guild
 	//   trades: slips(1..n) stacked above POST OFFER(0); → guild; ↑ battle; ↓ heads
 	//   guild ← trades · guild ↑ PRACTICE · guild ↓ heads · guild → boards (YOU)
-	//   heads ↑ trades · heads → boards (YOU)
+	//   heads ↑ trades · heads → JOIN VOICE → mic → boards (YOU)
 	private void MoveHubCursor( int dx, int dy, int others )
 	{
 		string z = _kbZone; int i = _kbIndex;
 		string nz = z; int ni = i;
 		int tradeCount = Math.Min( others, MaxTradeSlips );
-		int headCount = 1 + Math.Min( others, MaxHeads );
+		int headCount = 1 + Math.Min( others, MaxHeads ) + VoiceSlotCount(); // seats + the voice chips
 		int guildCount = GuildManager.UiEnabled ? 1 : 0;
 		int boardsCount = HubBoardsCount();
 
@@ -1605,18 +1661,20 @@
 				return;
 			case "trades":
 				if ( _kbIndex == 0 ) { OnPostOffer(); return; }
-				var tradables = GetOnlinePlayers().Where( p => !p.IsLocal ).Take( MaxTradeSlips ).ToList();
+				// The render-cached list — the same one the slips were drawn from.
 				int slip = _kbIndex - 1;
-				if ( slip >= 0 && slip < tradables.Count ) RequestTrade( tradables[slip] );
+				if ( slip >= 0 && slip < Math.Min( _others.Count, MaxTradeSlips ) ) RequestTrade( _others[slip] );
 				return;
 			case "guild":
 				SwitchTab( "guild" );
 				return;
 			case "online":
 				if ( _kbIndex == 0 ) { OpenRailSelf(); StateHasChanged(); return; }
-				var heads = GetOnlinePlayers().Where( p => !p.IsLocal ).Take( MaxHeads ).ToList();
+				int seats = 1 + Math.Min( _others.Count, MaxHeads );
+				if ( _kbIndex == seats ) { ToggleLobbyVoice(); StateHasChanged(); return; }       // JOIN VOICE / leave
+				if ( _kbIndex == seats + 1 ) { ToggleMic(); StateHasChanged(); return; }         // mic
 				int hi = _kbIndex - 1;
-				if ( hi >= 0 && hi < heads.Count ) { OpenRailOnline( heads[hi] ); StateHasChanged(); }
+				if ( hi >= 0 && hi < Math.Min( _others.Count, MaxHeads ) ) { OpenRailOnline( _others[hi] ); StateHasChanged(); }
 				return;
 			case "boards":
 				SwitchTab( "leaderboards" );
@@ -1725,11 +1783,12 @@
 	private bool IsConnected() => GameNetworkSystem.IsActive;
 	private long GetLocalSteamId() => Connection.Local?.SteamId ?? 0L;
 
-	private string GetConnectionStatus()
-	{
-		if ( !IsConnected() ) return "Offline";
-		return $"{Connection.All.Count} player{(Connection.All.Count != 1 ? "s" : "")} online";
-	}
+	// Title-color rims on THIS page: a real chosen title color passes
+	// through; the profile DEFAULT (#a78bfa — a violet) maps to the page
+	// accent, because violet is the living ring's alone here (F2, 2026-08-29).
+	private const string DefaultTitleColor = "#a78bfa";
+	private static string PageTitleColor( string c )
+		=> string.IsNullOrEmpty( c ) || string.Equals( c, DefaultTitleColor, StringComparison.OrdinalIgnoreCase ) ? "#3f8fe0" : c;
 
 	private bool IsArenaActive()
 	{
@@ -1761,18 +1820,16 @@
 		return HubEmblemIcons.TryGetValue( key, out var icon ) ? icon : "lucide:shield";
 	}
 
-	private string GoalPctStr( GuildWeeklyGoal goal )
-	{
-		var pct = goal?.PercentComplete ?? 0f;
-		return pct.ToString( "F1", System.Globalization.CultureInfo.InvariantCulture );
-	}
+	// Progress fills arrive in PX — a percent width on an absolute child
+	// paints full-width in s&box (the rank-bar precedent). Bar widths are
+	// pinned in the scss (.gz-bar 582 / .tamer-xp-bar 230).
+	private const int GuildGoalBarWidth = 582;
+	private const int RailXpBarWidth = 230;
 
-	private string GetGoalResetString()
+	private static int GoalBarPx( GuildWeeklyGoal goal )
 	{
-		var resetAt = GuildManager.Instance?.WeeklyGoalsResetAt ?? DateTime.UtcNow;
-		var span = resetAt - DateTime.UtcNow;
-		if ( span.TotalDays >= 1 ) return $"{(int)span.TotalDays}d";
-		return $"{Math.Max( 1, (int)span.TotalHours )}h";
+		var pct = Math.Clamp( ( goal?.PercentComplete ?? 0f ) / 100f, 0f, 1f );
+		return (int)Math.Round( GuildGoalBarWidth * pct );
 	}
 
 	// Local player helpers
@@ -1809,8 +1866,8 @@
 	{
 		var connId = ChatManager.Instance?.LocalConnectionId.ToString();
 		if ( connId != null && ChatManager.Instance?.PlayerProfiles?.TryGetValue( connId, out var profile ) == true )
-			return profile.TitleColor;
-		return "#a78bfa";
+			return PageTitleColor( profile.TitleColor );
+		return "#3f8fe0";
 	}
 
 	private string GetTamerGender() => (TamerManager.Instance?.CurrentTamer?.Gender ?? TamerGender.Male) == TamerGender.Female ? "female" : "male";
@@ -1861,7 +1918,7 @@
 						FavoriteExpeditionId = profile?.FavoriteExpeditionId,
 						FavoriteMonsterSpeciesId = profile?.FavoriteMonsterSpeciesId,
 						Title = profile?.Title ?? "Tamer",
-						TitleColor = profile?.TitleColor ?? "#a78bfa",
+						TitleColor = profile?.TitleColor ?? DefaultTitleColor, // rims go through PageTitleColor at render
 						GuildTag = profile?.GuildTag,
 						GuildName = profile?.GuildName,
 						Level = profile?.Level ?? 0,
@@ -2091,7 +2148,12 @@
 				railOpen,
 				IsConnected() ? Connection.All.Count : 0,
 				ChatManager.Instance?.PlayerProfiles?.Count ?? 0,
-				HashCode.Combine( _kbZone, _kbIndex, _kbActive )
+				HashCode.Combine( _kbZone, _kbIndex, _kbActive,
+					// The landing is gated on IsArenaActive — hash the state it reads
+					// (F5, 2026-08-29 audit), plus the identity bits the rail/heads show.
+					CompetitiveManager.Instance?.CurrentState ?? CompetitiveManager.ArenaState.Idle,
+					tamer?.Level ?? 0,
+					gm?.Guild?.Name, gm?.Guild?.Tag, gm?.Guild?.Level ?? 0 )
 			),
 			HashCode.Combine(
 				vcm?.IsInLobby ?? false,
@@ -2280,15 +2342,16 @@
 		}
 	}
 
-	// BuildHash ingredient — the online tamers' favorite ids (a profile
-	// broadcast can change a favorite without changing the profile count).
+	// BuildHash ingredient — the online tamers' favorite ids, levels and
+	// title colors (a profile broadcast can change any of these without
+	// changing the profile count).
 	private int GetOnlineFavHash()
 	{
 		var profiles = ChatManager.Instance?.PlayerProfiles;
 		if ( profiles == null ) return 0;
 		int h = 17;
 		foreach ( var kv in profiles )
-			h = HashCode.Combine( h, kv.Value?.FavoriteMonsterSpeciesId );
+			h = HashCode.Combine( h, kv.Value?.FavoriteMonsterSpeciesId, kv.Value?.Level ?? 0, kv.Value?.TitleColor );
 		return h;
 	}
 
@@ -2316,7 +2379,7 @@
 		public string FavoriteExpeditionId { get; set; }
 		public string FavoriteMonsterSpeciesId { get; set; }
 		public string Title { get; set; } = "Tamer";
-		public string TitleColor { get; set; } = "#a78bfa";
+		public string TitleColor { get; set; } = DefaultTitleColor;
 		public string GuildTag { get; set; }
 		public string GuildName { get; set; }
 		// Surfaced from BroadcastPlayerProfile so the heads + profile rail
