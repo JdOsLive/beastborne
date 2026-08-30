@@ -35,7 +35,10 @@ def svg(inner, w=24):
     # width/height = the RASTER hint: s&box rasterizes an SVG at its declared size and
     # stretches it, so 24 made every badge a mushy 24px texture (roster cards looked
     # "low quality", 2026-08-30). 256 gives the 14px chips and 72px heroes clean edges.
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {w}" width="256" height="256">{inner}</svg>\n'
+    # The 256 width/height hint alone still rasterized soft in-engine (2026-08-30): the
+    # rasterizer follows the VIEWBOX units (the old set was 200 units), so the 24-unit glyph
+    # space is scaled x10 into a 240-unit viewBox.
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240"><g transform="scale(10)">{inner}</g></svg>\n'
 
 for name, fill, rim, body in EL:
     # BADGE — the card's 40px tile: r9 corners (5.4 of 24), 1.5px rim (0.9); glyph at 0.62
