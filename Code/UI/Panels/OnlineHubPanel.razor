@@ -128,6 +128,10 @@
 			var guildBeast = GetGuildEmblemBeast();
 			var lbSteam = GetLocalSteamId();   // boards YOU row — Steam avatar
 			var lbNextCat = HubLbCats[( hubLbCatIndex + 1 ) % HubLbCats.Length];
+			// Board2 entries carry SteamId = 0 in practice — resolve row
+			// avatars by display name from the people we DO know the id of
+			// (presence set · collected TamerCards · you). Built once per render.
+			var avatarByName = BuildAvatarByName( otherPlayers );
 		}
 
 		<div class="hub-body">
@@ -185,8 +189,11 @@
 							<!-- RANKED — interactive-looking always; the button denies
 							     (PlayDeny) while RankedEnabled is false (COMING SOON chip).
 							     Loomweaver at 1× in the right column above the rank block.
-							     Art: Ember Cavern lava. Bottom: the RANK BLOCK (tier badge ·
-							     tier · record / points bar / N / M toward the next tier). -->
+							     Art: Ember Cavern lava. Bottom: the RANK BLOCK footer band
+							     (two rows: [tier diamond] TIER · RECORD W – L / points bar ·
+							     N / M) with PLAY RANKED seated INSIDE its lower half — 12px
+							     under row 2, 20px off the floor, nothing overlapping
+							     (2026-08-29 fix: the button used to sit over the block). -->
 							<div class="mode-tile mode-ranked @(IsHubKb("battle", 1) ? "kb-lit" : "")"
 								 onmouseover=@(() => HoverHubCursor( "battle", 1 ))
 								 onclick=@OnRankedChip>
@@ -208,7 +215,6 @@
 									<span class="mode-label mode-label-cream">RANKED</span>
 									<span class="mode-sub mode-sub-cream">Play ranked matches.</span>
 								</div>
-								<BbButton @ref="ctaRankedRef" Tier="secondary" Size=@(44) Label="PLAY RANKED" HoverSound=@false Class="mode-cta mode-cta-side" />
 								<div class="mode-spacer"></div>
 								<div class="rank-block">
 									<div class="rank-block-top">
@@ -224,11 +230,17 @@
 										<span class="rank-record-label">RECORD</span>
 										<span class="rank-record">@($"{bWins} – {bLosses}")</span>
 									</div>
-									<div class="rank-bar">
-										<div class="rank-bar-fill" style="width: @(rankBarPx)px; background-color: @rankColor"></div>
+									<div class="rank-block-row2">
+										<div class="rank-bar">
+											<div class="rank-bar-fill" style="width: @(rankBarPx)px; background-color: @rankColor"></div>
+										</div>
+										<div class="rank-block-spacer"></div>
+										<span class="rank-pts">@(rankNext > rankFloor ? $"{bPoints:N0} / {rankNext:N0}" : $"{bPoints:N0} · TOP TIER")</span>
 									</div>
-									<span class="rank-pts">@(rankNext > rankFloor ? $"{bPoints:N0} / {rankNext:N0}" : $"{bPoints:N0} · TOP TIER")</span>
 								</div>
+								<!-- The button comes AFTER the block in DOM (+ z 5) so it paints
+								     over the band it sits in, never under it. -->
+								<BbButton @ref="ctaRankedRef" Tier="secondary" Size=@(44) Label="PLAY RANKED" HoverSound=@false Class="mode-cta mode-cta-side" />
 							</div>
 
 							<!-- PRACTICE VS AI — secondary tile; same ArenaPanel route.
@@ -349,6 +361,11 @@
 							{
 								@{
 									var gzColor = gm?.Guild?.EmblemColor ?? "#3f8fe0";
+									// Pennant FILL = the emblem color pulled 70% toward the slab
+									// tone — a hand-sized flood of the default #7c3aed read as the
+									// violet cursor (violet is the cursor's alone). The name keeps
+									// the full color; text can carry it, a slab can't.
+									var gzFill = BlendTowardSlab( gzColor, 0.70f );
 									var gzMembers = (gm?.Members ?? new List<GuildMemberInfo>())
 										.OrderByDescending( m => m.IsOnline ).ThenByDescending( m => (int)m.Role ).ToList();
 									var gzShown = gzMembers.Take( MaxGuildHeads ).ToList();
@@ -358,7 +375,7 @@
 									<!-- THE BANNER — hanging pennant in the guild color; the
 									     emblem is a beast sprite when EmblemIcon = "beast:<id>". -->
 									<div class="gz-banner-col">
-										<div class="gz-banner" style="background-color: @gzColor">
+										<div class="gz-banner" style="background-color: @gzFill">
 											@if ( guildBeast != null )
 											{
 												<img class="gz-banner-beast" src="@guildBeast.IconPath" />
@@ -369,8 +386,13 @@
 											}
 											<div class="gz-banner-cut left"></div>
 											<div class="gz-banner-cut right"></div>
+											<!-- N MEMBERS lives INSIDE the banner as a z3 sibling of the
+											     z2 cut squares (the cuts extend 60px below the banner and
+											     were painting over a label that hung as a col sibling —
+											     "MEMBEH"). Sibling z-order is deterministic; the holder
+											     is an explicit 140×14 box parked 8px under the tip. -->
+											<div class="gz-members-holder"><span class="gz-members-label">@($"{gzMembers.Count} MEMBERS")</span></div>
 										</div>
-										<span class="gz-members-label">@($"{gzMembers.Count} MEMBERS")</span>
 									</div>
 									<div class="gz-info">
 										<span class="gz-name" style="color: @gzColor">@($"[{gm?.Guild?.Tag}] {gm?.Guild?.Name}")</span>
@@ -577,14 +599,16 @@
 							{
 								var entry = lbEntries[li];
 								int rowIdx = li;
+								// Entry id first (exact), by-name lookup second, diamond otherwise (honest).
+								long rowSteam = entry.SteamId > 0 ? entry.SteamId : ( avatarByName.TryGetValue( entry.Name ?? "", out var byNameId ) ? byNameId : 0L );
 								<div class="lb-row @(li % 2 == 1 ? "alt" : "") @(IsHubKb("boards", rowIdx) ? "kb-focused" : "")"
 									 onmouseover=@(() => HoverHubCursor( "boards", rowIdx ))
 									 onclick=@(() => SwitchTab( "leaderboards" ))>
 									<span class="lb-row-rank @(entry.Rank == 1 ? "gold" : "")">@entry.Rank</span>
 									<div class="lb-row-portrait">
-										@if ( entry.SteamId > 0 )
+										@if ( rowSteam > 0 )
 										{
-											<img class="lb-row-avatar" src="avatar:@entry.SteamId" />
+											<img class="lb-row-avatar" src="avatar:@rowSteam" />
 										}
 										else
 										{
@@ -1054,10 +1078,52 @@
 
 	protected override async void OnAfterTreeRender( bool firstTime )
 	{
+		_devHub = this;
 		if ( firstTime )
 		{
 			await LoadHubLeaderboards();
 		}
+	}
+
+	// ── DEV: ring-host rect probe ────────────────────────────────────────
+	// dev_hubring — one line per ring host: its Box.Rect, its offset from
+	// the hub root, element + classes; plus the root rect, ScaleFromScreen,
+	// the current cursor and the ring's own rect. Compare "local" against
+	// where the button PAINTS to settle a measured-vs-visual drift in one
+	// call (multi-line Log.Info truncates — hence one Log.Info per line).
+	private static OnlineHubPanel _devHub;
+
+	[ConCmd( "dev_hubring" )]
+	public static void DevHubRing()
+	{
+		var p = _devHub;
+		if ( p == null ) { Log.Warning( "[dev_hubring] Online hub not mounted." ); return; }
+		var rr = p.Box.Rect;
+		Log.Info( $"[dev_hubring] root={rr} scale={p.ScaleFromScreen} cursor={p._kbZone}/{p._kbIndex} active={p._kbActive} ringVisible={p._ringVisible}" );
+		p.DevDumpHost( "FIND A MATCH", p.ctaFindRef, rr );
+		p.DevDumpHost( "PLAY RANKED", p.ctaRankedRef, rr );
+		p.DevDumpHost( "BATTLE THE AI", p.ctaPracticeRef, rr );
+		p.DevDumpHost( "POST OFFER", p.postOfferRef, rr );
+		p.DevDumpHost( "OPEN GUILD", p.guildCtaRef, rr );
+		if ( p.onlineRowRef != null )
+		{
+			int n = 0;
+			foreach ( var seat in p.onlineRowRef.Children )
+			{
+				if ( !seat.HasClass( "oz-seat" ) ) continue;
+				p.DevDumpHost( $"head {n}", FindDescendantByClass( seat, "oz-avatar" ) ?? seat, rr );
+				n++;
+			}
+		}
+		p.DevDumpHost( "ring", p.tamerRingRef, rr );
+		Log.Info( $"[dev_hubring] ring style L/T/W/H = {p._ringL}/{p._ringT}/{p._ringW}/{p._ringH}" );
+	}
+
+	private void DevDumpHost( string name, Panel h, Rect rr )
+	{
+		if ( h == null ) { Log.Info( $"[dev_hubring] {name}: null ref" ); return; }
+		var r = h.Box.Rect;
+		Log.Info( $"[dev_hubring] {name}: rect={r} local=({r.Left - rr.Left:0.#},{r.Top - rr.Top:0.#}) size=({r.Width:0.#}x{r.Height:0.#}) el={h.ElementName} classes={h.Classes}" );
 	}
 
 	private async Task LoadHubLeaderboards()
@@ -1216,6 +1282,17 @@
 				var rr = Box.Rect;
 				var cr = target.Box.Rect;
 
+				// Presence heads pop scale(1.14) while kb-lit and CSS transforms
+				// don't move Box.Rect — mirror the pop into the target rect so the
+				// ring keeps its 8px gap around the popped head instead of
+				// grazing it (the PawPad focus-pop lockstep rule).
+				if ( _kbZone == "online" && cr.Width > 1f )
+				{
+					const float grow = 0.14f;
+					cr = new Rect( cr.Left - cr.Width * grow * 0.5f, cr.Top - cr.Height * grow * 0.5f,
+						cr.Width * ( 1f + grow ), cr.Height * ( 1f + grow ) );
+				}
+
 				if ( rr.Width > 1f && cr.Width > 1f )
 				{
 					float sc = ScaleFromScreen;
@@ -1260,6 +1337,13 @@
 		float rotZ = ( 1.1f * MathF.Sin( wt * 1.0f ) + 0.5f * MathF.Sin( wt * 2.4f + 0.5f ) ) * 0.6f;
 		float brX = 1f + 0.013f * MathF.Sin( wt * 1.35f + 0.7f ) + 0.006f * MathF.Sin( wt * 2.7f );
 		float brY = 1f + 0.013f * MathF.Sin( wt * 1.15f + 2.6f ) + 0.006f * MathF.Sin( wt * 2.3f + 1.4f );
+
+		// OPEN GUILD is a skewX(-12°) chip: its layout box (what the ring
+		// measures) and its visual parallelogram don't coincide, so the ring
+		// wears the same base skew there — both skew about their shared
+		// centre, so the ring hugs the parallelogram at the usual 8px gap.
+		// The wave rides on top of it.
+		if ( _kbZone == "guild" ) skX -= 12f;
 
 		var t = new PanelTransform();
 		t.AddRotation( 0f, 0f, rotZ );
@@ -2034,7 +2118,8 @@
 				gm?.Guild?.EmblemIcon,
 				gm?.Guild?.EmblemColor,
 				MonsterManager.Instance?.OwnedMonsters?.Count ?? 0,
-				MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault( m => m.IsFavorite )?.SpeciesId
+				MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault( m => m.IsFavorite )?.SpeciesId,
+				tamer?.CollectedCards?.Count ?? 0   // by-name avatar map input (the online set is hashed above)
 			)
 		);
 	}
@@ -2118,7 +2203,7 @@
 	// thresholds). Returns the current tier's floor and the next tier's
 	// threshold; at Mythic floor == next (bar full).
 	private static readonly int[] RankSteps = { 0, 200, 400, 700, 1000, 1500, 2000, 3000, 5000 };
-	private const int RankBarWidth = 300; // 340 tile − 2 × 20 padding
+	private const int RankBarWidth = 180; // row 2 of the rank block: bar 180 · spacer · N / M (300 lane)
 
 	private static (int floor, int next) RankBand( int points )
 	{
@@ -2130,6 +2215,65 @@
 			next = i + 1 < RankSteps.Length ? RankSteps[i + 1] : RankSteps[i];
 		}
 		return (floor, next);
+	}
+
+	// Leaderboard row avatars — Board2.Entry.SteamId arrives as 0 from the
+	// service in practice, so rows resolve a Steam id BY DISPLAY NAME from
+	// the people we do know: (b) collected TamerCards (offline-friendly,
+	// lowest authority — written first so live data overwrites), (a) the
+	// online presence set, (c) you (Steam display name AND tamer name).
+	// Case-insensitive. Rows with no hit keep the neutral diamond — honest.
+	private Dictionary<string, long> BuildAvatarByName( List<OnlinePlayerInfo> others )
+	{
+		var map = new Dictionary<string, long>( StringComparer.OrdinalIgnoreCase );
+
+		var cards = TamerManager.Instance?.CurrentTamer?.CollectedCards;
+		if ( cards != null )
+		{
+			foreach ( var c in cards )
+			{
+				if ( c == null || c.SteamId <= 0 || string.IsNullOrEmpty( c.Name ) ) continue;
+				map[c.Name] = c.SteamId;
+			}
+		}
+
+		foreach ( var p in others )
+		{
+			if ( p.SteamId <= 0 || string.IsNullOrEmpty( p.Name ) ) continue;
+			map[p.Name] = p.SteamId;
+		}
+
+		long mine = GetLocalSteamId();
+		if ( mine > 0 )
+		{
+			var steamName = Connection.Local?.DisplayName;
+			if ( !string.IsNullOrEmpty( steamName ) ) map[steamName] = mine;
+			var tamerName = TamerManager.Instance?.CurrentTamer?.Name;
+			if ( !string.IsNullOrEmpty( tamerName ) ) map[tamerName] = mine;
+		}
+		return map;
+	}
+
+	// Pull a "#rrggbb" color t of the way toward the zone slab tone
+	// (#15121f). Anything that isn't a 6-digit hex passes through untouched.
+	private static string BlendTowardSlab( string hex, float t )
+	{
+		const int sr = 0x15, sg = 0x12, sb = 0x1f;
+		if ( string.IsNullOrEmpty( hex ) || hex.Length != 7 || hex[0] != '#' ) return hex;
+		try
+		{
+			int r = Convert.ToInt32( hex.Substring( 1, 2 ), 16 );
+			int g = Convert.ToInt32( hex.Substring( 3, 2 ), 16 );
+			int b = Convert.ToInt32( hex.Substring( 5, 2 ), 16 );
+			r = Math.Clamp( (int)Math.Round( r + (sr - r) * t ), 0, 255 );
+			g = Math.Clamp( (int)Math.Round( g + (sg - g) * t ), 0, 255 );
+			b = Math.Clamp( (int)Math.Round( b + (sb - b) * t ), 0, 255 );
+			return $"#{r:x2}{g:x2}{b:x2}";
+		}
+		catch
+		{
+			return hex;
+		}
 	}
 
 	// BuildHash ingredient — the online tamers' favorite ids (a profile
