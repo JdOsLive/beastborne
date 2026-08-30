@@ -201,7 +201,7 @@
                     <div class="pl-camera"><div class="pl-camera-lens"></div></div>
                 </div>
 
-                <div class="pl-surface @(BloomCircleOn ? "masked" : "")" @ref="_surfaceRef">
+                <div class="pl-surface" @ref="_surfaceRef">
                 <!-- v7.2: the LOOPING wallpaper (spec animations, retimed to
                      a seamless 16s master loop, baked to animated WebP) —
                      an absolute img so the texture animates; the surface
@@ -216,22 +216,28 @@
                      origin by negative margins, bottom margin cancels the height so
                      later siblings reflow on top; DOM order = paint order — never
                      absolute overlays, which paint BEHIND a filled parent). All
-                     PRE-MOUNTED and opacity 0 on the home grid; the bloom is the
-                     .on class-toggle (fallback cross-fade — the mask-clipped circle
-                     is the BloomCircle opt-in below, VERIFY LIVE). Effects wears
+                     PRE-MOUNTED and opacity 0 on the home grid; they rise on the
+                     .on class-toggle UNDER the bloom disc (next block). Effects wears
                      the "hot" opacities (yellow runs hot). -->
                 <div class="pl-app-tint @(_bloomLive ? "on" : "")" style="background-color: @BloomTint();"></div>
                 <div class="pl-app-wash @(_bloomLive ? "on" : "")" style="background-image: @WashGradient();"></div>
                 <div class="pl-app-ghost @(_bloomLive ? "on" : "") @(BloomApp() == "effects" ? "hot" : "")">
                     <iconify class="pl-app-ghost-icon" icon="@GhostIconOf( BloomApp() )" Size=@(260) Color="@BloomAccent()" />
                 </div>
-                <!-- The bloom CIRCLE — pre-mounted accent disc parked scale(0) at the
-                     tapped tile; grows on the .grow class-toggle, fades on .fade.
-                     Opt-in (BloomCircle const): needs the mask-image rect clip on
-                     .pl-surface (.masked) to be honored live, else it overhangs the
-                     bezel. left/top ALWAYS emitted + value-swapped (never-cleared
-                     inline-style law). -->
-                <div class="pl-bloom-circle @(_bloomCircleGrow ? "grow" : "") @(_bloomCircleFade ? "fade" : "")" style="left: @(_bloomCx)px; top: @(_bloomCy)px; background-color: @BloomAccent();"></div>
+                <!-- THE BLOOM DISC (live 2026-08-30) — an accent disc that grows out of
+                     the tapped tile's centre until it covers the screen, then fades
+                     onto the landed tint; the reverse bloom collapses it back into the
+                     tile. Growth = class-toggle TRANSITION on width/height + left/top
+                     (explicit px, no transform — device law). It lives in its OWN clip
+                     host: a zero-footprint explicit-px 538x692 box at the padding-box
+                     origin (the .pl-wall placement trick) with overflow hidden, so the
+                     disc never overhangs the bezel and the SCREEN never gains overflow
+                     hidden (flex-child collapse law). DOM order = paint order: above
+                     the tint/wash/ghost, under the status row + the app view. left/top
+                     ALWAYS emitted + value-swapped (never-cleared inline-style law). -->
+                <div class="pl-bloom-clip">
+                    <div class="pl-bloom-circle @(_bloomCircleGrow ? "grow" : "") @(_bloomCircleFade ? "fade" : "")" style="left: @(DiscLeft())px; top: @(DiscTop())px; background-color: @BloomAccent();"></div>
+                </div>
                 <!-- v7 "3a Graphite" status row (design handoff spec): clock
                      left; right group = GOLD signal bars · battery · divider
                      · name · gold-ringed avatar. NO title header anymore —
@@ -278,7 +284,7 @@
                          explicit px (lean law); rows in scroll lists never carry
                          overflow:hidden; meta boxes are placed by computed
                          margins, never margin-left:auto. -->
-                    <div class="pl-appview @(_bloomLive ? "on" : "") app-@(_appView)" @ref="_appviewRef">
+                    <div class="pl-appview @(_appUiOn ? "on" : "") app-@(_appView)" @ref="_appviewRef">
                         <!-- THE HEADER (rev 6, NO BOX) — title row · wave band, straight
                              on the derived bg (the one-word kicker was cut 2026-08-30:
                              the title already says it). Title box measured at
@@ -1001,7 +1007,67 @@
         Show();
         // rev-7 apps: the same OpenApp path the grid uses (bloom + per-app
         // open hooks); Show() already played the popup sound.
-        Instance?.OpenApp( id, playSound: false );
+        Instance?.OpenApp( id, playSound: false, fromTile: false ); // no tile under the cursor — the disc blooms from the screen centre
+    }
+
+    // ── DEV: bloom-disc inspector (the dev_fusefx pattern) ───────────────
+    // dev_bloom hold   — freeze the launch bloom at the FULL opaque disc (opens
+    //                    Chat if no app is up) so a screenshot can inspect the
+    //                    clip host + the disc geometry at leisure
+    // dev_bloom play   — replay the launch bloom on the current app (last seed)
+    // dev_bloom off    — release a hold (the disc fade proceeds)
+    // dev_bloom close  — run the reverse bloom (CloseApp)
+    [ConCmd( "dev_bloom" )]
+    public static void DevBloom( string mode = "hold" )
+    {
+        var me = Instance;
+        if ( me == null ) { Log.Warning( "[dev_bloom] PhoneLauncher not mounted." ); return; }
+        switch ( mode )
+        {
+            case "hold":
+                if ( me._appView == null || !IsVisible ) { DevOpenApp( "chat" ); me = Instance; if ( me == null ) return; }
+                me._devBloomHold = true;
+                if ( me._bloomArmFrames <= 0 && me._appView != null )
+                {
+                    // Already landed: re-raise the disc and hold it there.
+                    me._bloomCircleGrow = true;
+                    me._bloomCircleFade = false;
+                    me._bloomCircleFadeAt = -1f;
+                    me._appUiOn = true;
+                    me._appUiAt = -1f;
+                }
+                me.StateHasChanged();
+                Log.Info( "[dev_bloom] HOLD — disc full + opaque (dev_bloom off releases it)." );
+                break;
+            case "play":
+                if ( me._appView == null || !IsVisible ) { DevOpenApp( "chat" ); Log.Info( "[dev_bloom] PLAY — opened Chat (launch bloom from the screen centre)." ); return; }
+                me._devBloomHold = false;
+                me._bloomLive = false;
+                me._appUiOn = false;
+                me._appUiAt = -1f;
+                me._bloomCircleGrow = false;
+                me._bloomCircleFade = false;
+                me._bloomCircleFadeAt = -1f;
+                me._appClosingUntil = -1f;
+                me._appUnmountAt = -1f;
+                me._bloomArmFrames = 2;
+                me.StateHasChanged();
+                Log.Info( "[dev_bloom] PLAY — replaying the launch bloom from the last seed." );
+                break;
+            case "off":
+                me._devBloomHold = false;
+                if ( me._bloomCircleGrow && !me._bloomCircleFade ) me._bloomCircleFadeAt = Time.Now;
+                Log.Info( "[dev_bloom] released." );
+                break;
+            case "close":
+                me._devBloomHold = false;
+                me.CloseApp();
+                Log.Info( "[dev_bloom] CLOSE — reverse bloom." );
+                break;
+            default:
+                Log.Warning( "[dev_bloom] modes: hold | play | off | close" );
+                break;
+        }
     }
 
     // ── App registry — grid order (3 cols × 4 rows) ─────────────────────
@@ -1589,6 +1655,7 @@
     private void LaunchIndex( int i )
     {
         if ( i < 0 || i >= GridCount + DockCount ) return;
+        if ( _appClosingUntil > 0f ) return; // reverse bloom in flight — the disc is still collapsing into its tile
         if ( i >= GridCount ) { LaunchDock( i - GridCount ); return; }
         var app = Apps[i];
         _kb = i;
@@ -1741,30 +1808,49 @@
     }
 
     // ── THE ACCENT BLOOM — launch/return transition + the bg model ────────
-    // Fallback form ships by DEFAULT: the pre-mounted tint/wash/ghost layers
-    // and the app UI cross-fade on one class toggle (~240ms). The circle that
-    // grows out of the tapped tile is the BloomCircle opt-in — it needs the
-    // mask-image rect clip on .pl-surface to be honored live (VERIFY LIVE),
-    // else it overhangs the bezel while it grows.
-    private const bool BloomCircle = false;
-    private static bool BloomCircleOn => BloomCircle; // property read — a const in markup trips CS0162
+    // LIVE (2026-08-30). LAUNCH (t = the arm, two frames after the tap):
+    //   t0     tint/wash/ghost rise (240ms) UNDER the disc, which grows out of
+    //          the tile centre 0 -> 1440px on the glide ease (260ms)
+    //   +140   the app UI fades in over the disc's last 120ms (lands +260)
+    //   +260   the disc fades onto the landed tint (180ms; parked full at +440)
+    // REVERSE (CloseApp, t = the tap):
+    //   t0     the app UI drops out (120ms) while the disc fades back to a
+    //          solid accent cover (120ms) — the UI dissolves INTO the accent
+    //   +120   app view unmounts, home grid mounts UNDER the disc (its mount
+    //          fade), the layers fade out (240ms) and the disc COLLAPSES back
+    //          into the tile (240ms)
+    //   +360   landed: accent released, taps unblock, deferred deep-links fire
+    // Everything is class-toggle transitions on explicit px — no transforms,
+    // no animation-delay; the beats are Time stamps compared in TickApps.
     private string _bloomApp;            // the app whose accent/tint the layers wear (held through the reverse bloom)
-    private bool _bloomLive;             // the class toggle: layers + app UI shown
+    private bool _bloomLive;             // the class toggle: tint/wash/ghost shown
+    private bool _appUiOn;               // the app view's own .on (rides the disc's last 120ms; drops first on close)
+    private float _appUiAt = -1f;        // stamp: when the app UI fades in (arm + 140ms)
     private int _bloomArmFrames;         // mount hidden, toggle .on two frames later (the transition needs the rest state laid out)
-    private float _appClosingUntil = -1f;
+    private float _appClosingUntil = -1f; // the reverse bloom LANDS (disc parked on the tile, taps unblock)
+    private float _appUnmountAt = -1f;   // the reverse bloom's mid-beat: app view out, home grid in, collapse starts
     private int _pendingRoute = -1;      // tile index to swipe to once the reverse bloom lands (alerts deep-links)
     private string _pendingPopup;        // "achievements" — dock-discipline popup after the reverse bloom
     private bool _swipeNextFrame;        // the grid renders once before StartSwipe grabs its icon
     private float _appOpenedAt = -999f;
     private bool _bloomCircleGrow, _bloomCircleFade;
     private float _bloomCircleFadeAt = -1f;
-    private int _bloomCx = 24, _bloomCy = 24;
+    private bool _devBloomHold;          // dev_bloom hold — the disc stays full + opaque (screenshot freeze)
+    private int _bloomCx = ScreenCx, _bloomCy = ScreenCy; // disc CENTRE in surface padding-box px
+    private const int DiscRadius = 720;  // 1440px disc: covers the 538x692 screen from any tile centre (corner tile to the far corner is ~712)
+    private const int ScreenCx = 269, ScreenCy = 346; // the screen's centre (538x692 padding box)
+
+    // The disc's inline box origin: at rest a 0x0 point ON the centre; grown,
+    // the centre minus the radius (width/height come from the .grow class, so
+    // all four glide together and the disc stays centred on the tile).
+    private int DiscLeft() => _bloomCircleGrow ? _bloomCx - DiscRadius : _bloomCx;
+    private int DiscTop() => _bloomCircleGrow ? _bloomCy - DiscRadius : _bloomCy;
 
     private string BloomApp() => _bloomApp ?? _appView ?? "chat";
     private string BloomTint() => DerivedOf( BloomApp() );
     private string BloomAccent() => AccentOf( BloomApp() );
 
-    private void OpenApp( string id, bool playSound = true )
+    private void OpenApp( string id, bool playSound = true, bool fromTile = true )
     {
         // An in-phone hop (alerts → effects) cross-fades the tint + re-keys the
         // header; only a launch from the grid (or a re-open) blooms.
@@ -1772,6 +1858,7 @@
         _appView = id;
         _bloomApp = id;
         _appClosingUntil = -1f;
+        _appUnmountAt = -1f;
         _pendingRoute = -1;
         _pendingPopup = null;
         _swipeNextFrame = false;
@@ -1801,8 +1888,10 @@
         if ( !switching )
         {
             _bloomLive = false;
+            _appUiOn = false;
+            _appUiAt = -1f;
             _bloomArmFrames = 2;
-            SeedBloomCircle();
+            SeedBloomCircle( fromTile );
         }
         switch ( id )
         {
@@ -1826,28 +1915,53 @@
         StateHasChanged();
     }
 
-    // Q / back: the reverse bloom — layers + app UI fade over 240ms, then the
-    // home grid (plus any deferred deep-link) lands in FinishCloseApp.
+    // Q / back / the chin paw: the reverse bloom (timeline in the field block).
+    // Beat 1 (0-120ms): the app UI drops out while the disc fades back to a
+    // solid accent cover (leaving .fade rides the .grow rule's 120ms opacity).
+    // The disc must be full for this — a close mid-launch holds .grow (the
+    // width transition simply continues toward full). Beat 2 = UnmountApp at
+    // +120, beat 3 = LandCloseApp at +360 (both from TickApps).
     private void CloseApp()
     {
         if ( _appView == null || _appClosingUntil > 0f ) return;
-        _bloomLive = false;
-        _bloomCircleGrow = false;
+        _appUiOn = false;
+        _appUiAt = -1f;
+        _bloomArmFrames = 0;
+        _bloomLive = true;           // the layers stay landed under the solid disc until the collapse starts
+        _bloomCircleGrow = true;
         _bloomCircleFade = false;
-        _appClosingUntil = Time.Now + 0.24f;
+        _bloomCircleFadeAt = -1f;
+        _devBloomHold = false;
+        _appUnmountAt = Time.Now + 0.12f;
+        _appClosingUntil = Time.Now + 0.36f;
         _hoverHit = null;
         BlurPhoneInput(); // the view unmounts — an unmounted TextEntry never fires onblur
         SoundManager.PlayBack();
         StateHasChanged();
     }
 
-    private void FinishCloseApp()
+    // Beat 2 (+120ms): the app UI is gone and the disc is a solid cover — swap
+    // the views UNDER it (app view out, home grid in with its mount fade) and
+    // start the collapse: the disc back into the tile + the layers out (240ms).
+    private void UnmountApp()
     {
-        _appClosingUntil = -1f;
         _appView = null;
-        _bloomApp = null;
         _ringWarmup = 0;
         _ringDirty = true; // the home grid's ring re-locks
+        if ( _pendingRoute >= 0 ) _kb = _pendingRoute; // the grid mounts with the cursor already on the destination
+        _bloomLive = false;
+        _bloomCircleGrow = false;
+        _bloomCircleFade = false;
+        StateHasChanged();
+    }
+
+    // Beat 3 (+360ms): the disc is parked 0x0 on the tile — release the accent
+    // (the tint/disc colours may now swap invisibly), then any deferred deep-link.
+    private void LandCloseApp()
+    {
+        _appClosingUntil = -1f;
+        _appUnmountAt = -1f;
+        _bloomApp = null;
         if ( _pendingPopup == "achievements" )
         {
             // Dock discipline: popups open OVER the game, not through a swipe.
@@ -1858,8 +1972,7 @@
         }
         else if ( _pendingRoute >= 0 )
         {
-            _kb = _pendingRoute;
-            _swipeNextFrame = true; // grid renders this frame; the accent swipe launches next — exactly a home-grid launch
+            _swipeNextFrame = true; // the grid is up; the accent swipe launches next frame — exactly a home-grid launch
         }
         StateHasChanged();
     }
@@ -1879,6 +1992,10 @@
         _bloomCircleGrow = false;
         _bloomCircleFade = false;
         _bloomCircleFadeAt = -1f;
+        _appUiOn = false;
+        _appUiAt = -1f;
+        _appUnmountAt = -1f;
+        _devBloomHold = false;
         _appKb = null;
         _hoverHit = null;
         _stops.Clear();
@@ -1886,9 +2003,17 @@
         BlurPhoneInput();
     }
 
-    private void SeedBloomCircle()
+    // Park the disc (0x0) on the launch origin: the focused tile's icon centre
+    // (mouse tap and keyboard Space both set _kb before OpenApp, so both seed
+    // from the tile); OpenToApp / deep-links have no tile — the screen centre.
+    private void SeedBloomCircle( bool fromTile )
     {
-        if ( !BloomCircleOn ) return;
+        _bloomCircleGrow = false;
+        _bloomCircleFade = false;
+        _bloomCircleFadeAt = -1f;
+        _bloomCx = ScreenCx;
+        _bloomCy = ScreenCy;
+        if ( !fromTile ) return;
         var icon = FocusedIconEl();
         if ( icon == null || _surfaceRef == null ) return;
         var ir = icon.Box.Rect;
@@ -1896,11 +2021,13 @@
         if ( ir.Width < 1f || sr.Width < 1f ) return;
         float sc = ScaleFromScreen;
         if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-        _bloomCx = (int)( ( ir.Left + ir.Width / 2f - sr.Left ) * sc ) - 27;
-        _bloomCy = (int)( ( ir.Top + ir.Height / 2f - sr.Top ) * sc ) - 27;
-        _bloomCircleGrow = false;
-        _bloomCircleFade = false;
-        _bloomCircleFadeAt = -1f;
+        // Icon centre in the surface's box space = the padding-box space the clip
+        // host occupies (the surface's 1px border is below a pixel of care).
+        int cx = (int)( ( ir.Left + ir.Width / 2f - sr.Left ) * sc );
+        int cy = (int)( ( ir.Top + ir.Height / 2f - sr.Top ) * sc );
+        if ( cx < 0 || cy < 0 || cx > 538 || cy > 692 ) return; // stale / unlaid-out rect — keep the centre
+        _bloomCx = cx;
+        _bloomCy = cy;
     }
 
     // ── Press feedback — router-stamped (no :hover/:active reaches the device) ──
@@ -1919,6 +2046,9 @@
     {
         // Stale-stamp hygiene: Time.Now resets per session while fields survive hotload.
         if ( _appClosingUntil > Time.Now + 1f ) _appClosingUntil = -1f;
+        if ( _appUnmountAt > Time.Now + 1f ) _appUnmountAt = -1f;
+        if ( _appUiAt > Time.Now + 1f ) _appUiAt = -1f;
+        if ( _bloomCircleFadeAt > Time.Now + 1f ) _bloomCircleFadeAt = -1f;
         if ( _clearArmedAt > Time.Now + 3f ) _clearArmedAt = -1f;
         if ( _clearingAt > Time.Now + 1f ) _clearingAt = -1f;
         if ( _volLadderUntil > Time.Now + 1f ) _volLadderUntil = -1f;
@@ -1931,20 +2061,27 @@
             _bloomArmFrames--;
             if ( _bloomArmFrames == 0 )
             {
+                // t0: the layers rise (240ms) under the disc growing out of the tile (260ms).
                 _bloomLive = true;
-                if ( BloomCircleOn ) { _bloomCircleGrow = true; _bloomCircleFadeAt = Time.Now + 0.24f; }
+                _bloomCircleGrow = true;
+                _appUiAt = Time.Now + 0.14f;           // the app UI fades in over the disc's last 120ms
+                _bloomCircleFadeAt = Time.Now + 0.26f; // disc full -> fade onto the landed tint (180ms)
                 dirty = true;
             }
         }
-        if ( BloomCircleOn && _bloomCircleFadeAt > 0f && Time.Now >= _bloomCircleFadeAt )
+        if ( _appUiAt > 0f && Time.Now >= _appUiAt ) { _appUiAt = -1f; _appUiOn = true; dirty = true; }
+        // dev_bloom hold parks this stamp (the disc stays full); off lets it fire.
+        if ( _bloomCircleFadeAt > 0f && Time.Now >= _bloomCircleFadeAt && !_devBloomHold )
         {
             _bloomCircleFadeAt = -1f;
             _bloomCircleFade = true;
             dirty = true;
         }
 
-        // Reverse bloom landed → home grid (+ any deferred deep-link).
-        if ( _appClosingUntil > 0f && Time.Now >= _appClosingUntil ) { FinishCloseApp(); return; }
+        // Reverse bloom: +120ms swap the views under the solid disc and start the
+        // collapse; +360ms the disc has parked on its tile — release + deep-link.
+        if ( _appUnmountAt > 0f && Time.Now >= _appUnmountAt ) { _appUnmountAt = -1f; UnmountApp(); }
+        if ( _appClosingUntil > 0f && Time.Now >= _appClosingUntil ) { LandCloseApp(); return; }
         if ( _swipeNextFrame )
         {
             _swipeNextFrame = false;
@@ -3216,7 +3353,7 @@
                 NotificationPanel.UnreadCount,
                 Beastborne.Core.NotificationManager.Instance?.NotificationHistory?.Count ?? 0 ),
             // rev-7 apps (2026-08-29): bloom + press stamp + the 1 Hz tick + per-app state.
-            HashCode.Combine( _bloomApp, _bloomLive, _appClosingUntil > 0f, _pressedHit, _bloomCircleGrow, _bloomCircleFade, _bloomCx, _bloomCy ),
+            HashCode.Combine( _bloomApp, _bloomLive, _appClosingUntil > 0f, _pressedHit, _bloomCircleGrow, _bloomCircleFade, HashCode.Combine( _bloomCx, _bloomCy ), _appUiOn ),
             HashCode.Combine(
                 ( _appView is "radio" or "effects" or "alerts" ) ? _tick : 0,
                 _trackKey, _volKey, VolLadderActive(),
