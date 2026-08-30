@@ -32,12 +32,16 @@ def glyph(name, body, color, vein):
     return f'<g fill="{color}" stroke="{color}" stroke-width="{sw}" stroke-linecap="round" stroke-linejoin="round">{body}</g>'
 
 def svg(inner, w=24):
-    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {w}" width="{w}" height="{w}">{inner}</svg>\n'
+    # width/height = the RASTER hint: s&box rasterizes an SVG at its declared size and
+    # stretches it, so 24 made every badge a mushy 24px texture (roster cards looked
+    # "low quality", 2026-08-30). 256 gives the 14px chips and 72px heroes clean edges.
+    return f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {w}" width="256" height="256">{inner}</svg>\n'
 
 for name, fill, rim, body in EL:
-    # BADGE — the card's 40px tile: r9 corners (5.4 of 24), 1.5px rim (0.9), glyph 22/40 (0.55) centred.
+    # BADGE — the card's 40px tile: r9 corners (5.4 of 24), 1.5px rim (0.9); glyph at 0.62
+    # (the card says 22/40 = .55; plumped so it still reads on the roster's 14px chips) centred.
     inner = (f'<rect x="0.45" y="0.45" width="23.1" height="23.1" rx="5.4" fill="{fill}" stroke="{rim}" stroke-width="0.9"/>'
-             f'<g transform="translate(5.4 5.4) scale(0.55)">{glyph(name, body, rim, fill)}</g>')
+             f'<g transform="translate(4.56 4.56) scale(0.62)">{glyph(name, body, rim, fill)}</g>')
     open(os.path.join(OUT, "background", f"{name}.svg"), "w", encoding="utf-8").write(svg(inner))
     # INK — parchment glyph; the vein knocks out to a dark surface tone.
     open(os.path.join(OUT, "element_white", f"{name}.svg"), "w", encoding="utf-8").write(svg(glyph(name, body, "#f4f1ea", "#1a1026")))
