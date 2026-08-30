@@ -111,7 +111,7 @@
 			// TRADE OFFERS — session-live lane: online tamers you can trade
 			// with right now. The server standing-offer board is a later
 			// milestone; nothing fake renders in its place.
-			var tradables = otherPlayers.Take( MaxTradeSlips ).ToList();
+			var tradables = _devFakeTrades ? BuildFakeTradables() : otherPlayers.Take( MaxTradeSlips ).ToList();
 			var shownHeads = otherPlayers.Take( MaxHeads ).ToList();
 			// ONLINE NOW kb indices: YOU 0 · heads 1..n · JOIN VOICE · mic
 			// (the voice chips are the zone's LAST indices — WASD reaches
@@ -542,7 +542,8 @@
 									}
 								</div>
 								<div class="oz-you-chip"><span class="oz-you-chip-text">YOU</span></div>
-								<span class="oz-name">@GetPlayerName().ToUpper() <span class="oz-name-lv">@($"LV {GetPlayerLevel()}")</span></span>
+								<span class="oz-name">@GetPlayerName().ToUpper()</span>
+								<span class="oz-name-lv">@($"LV {GetPlayerLevel()}")</span>
 							</div>
 
 							@for ( int hi = 0; hi < shownHeads.Count; hi++ )
@@ -1122,6 +1123,29 @@
 	// where the button PAINTS to settle a measured-vs-visual drift in one
 	// call (multi-line Log.Info truncates — hence one Log.Info per line).
 	private static OnlineHubPanel _devHub;
+
+	// TEMP dev instrument (2026-08-29): render three SAMPLE trade slips so the
+	// zone can be reviewed without other tamers online. `dev_hubtrades` toggles.
+	private static bool _devFakeTrades;
+
+	[ConCmd( "dev_hubtrades" )]
+	public static void DevToggleFakeTrades()
+	{
+		_devFakeTrades = !_devFakeTrades;
+		Log.Info( $"[dev_hubtrades] sample slips {( _devFakeTrades ? "ON" : "OFF" )}" );
+	}
+
+	private List<OnlinePlayerInfo> BuildFakeTradables()
+	{
+		var owned = MonsterManager.Instance?.OwnedMonsters?.Select( m => m.SpeciesId ).Distinct().ToList() ?? new List<string>();
+		string Pick( int i, string fallback ) => i < owned.Count ? owned[i] : fallback;
+		return new List<OnlinePlayerInfo>
+		{
+			new() { Name = "Mossvane", TitleColor = "#3fb45e", FavoriteMonsterSpeciesId = Pick( 0, "pagefin" ), HasProfile = true },
+			new() { Name = "Rin",      TitleColor = "#ffce3a", FavoriteMonsterSpeciesId = Pick( 1, "cherune" ), HasProfile = true },
+			new() { Name = "Kestrel",  TitleColor = "#3f8fe0", FavoriteMonsterSpeciesId = Pick( 2, "embrik" ), HasProfile = true },
+		};
+	}
 
 	[ConCmd( "dev_hubring" )]
 	public static void DevHubRing()
@@ -1944,6 +1968,7 @@
 	// Trading
 	private void RequestTrade( OnlinePlayerInfo player )
 	{
+		if ( _devFakeTrades && string.IsNullOrEmpty( player?.ConnectionId ) ) { SoundManager.PlayDeny(); return; }   // sample slip
 		SoundManager.PlayClick();
 		if ( player == null ) return;
 
@@ -2138,7 +2163,8 @@
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		var gm = GuildManager.Instance;
 		var goal = gm?.WeeklyGoals?.FirstOrDefault( g => !g.Claimed );
-		return System.HashCode.Combine(
+		int devSalt = _devFakeTrades ? 1 : 0;   // dev sample-slips toggle must re-render
+		return devSalt + System.HashCode.Combine(
 			HashCode.Combine(
 				currentSection,
 				selectedKind,
