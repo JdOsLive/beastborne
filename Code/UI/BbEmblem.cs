@@ -156,4 +156,21 @@ public static class BbEmblem
 	// TW×TH framed tile.
 	public static string CropStyleFor( MonsterSpecies s, int tw, int th, float hBias = 0.45f, float vBias = 0.22f )
 		=> CropStyle( CropRect( s, tw, th, hBias, vBias ) );
+	/// <summary>Pull a "#rrggbb" color t of the way toward the zone slab tone (#15121f)
+	/// — the framed emblem tile's fill recipe. Non-hex strings pass through untouched.
+	/// Promoted from OnlineHubPanel 2026-09-01 (GuildPanel's rebuild needed it too).</summary>
+	public static string BlendTowardSlab( string hex, float t )
+	{
+		const int sr = 0x15, sg = 0x12, sb = 0x1f;
+		if ( string.IsNullOrEmpty( hex ) || hex.Length != 7 || hex[0] != '#' ) return hex;
+		try
+		{
+			int r = Math.Clamp( (int)Math.Round( Convert.ToInt32( hex.Substring( 1, 2 ), 16 ) + ( sr - Convert.ToInt32( hex.Substring( 1, 2 ), 16 ) ) * t ), 0, 255 );
+			int g = Math.Clamp( (int)Math.Round( Convert.ToInt32( hex.Substring( 3, 2 ), 16 ) + ( sg - Convert.ToInt32( hex.Substring( 3, 2 ), 16 ) ) * t ), 0, 255 );
+			int b = Math.Clamp( (int)Math.Round( Convert.ToInt32( hex.Substring( 5, 2 ), 16 ) + ( sb - Convert.ToInt32( hex.Substring( 5, 2 ), 16 ) ) * t ), 0, 255 );
+			return $"#{r:x2}{g:x2}{b:x2}";
+		}
+		catch { return hex; }
+	}
+
 }

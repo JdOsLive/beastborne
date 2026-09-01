@@ -8,6 +8,7 @@
 @using Beastborne.Data
 @using Beastborne.Systems
 @using Beastborne.UI.Components
+@using Beastborne.UI.Primitives
 @inherits Panel
 
 <div class="guild-panel">
@@ -644,7 +645,8 @@ else if ( guildView == "myguild" )
 			var members = gm?.Members ?? new List<GuildMemberInfo>();
 			var pendingRequests = gm.IsOfficer ? (gm.JoinRequests ?? new List<GuildJoinRequest>()) : new List<GuildJoinRequest>();
 			var raid = gm?.CurrentRaidBoss;
-			var rankColor = GuildManager.GetGuildRankColor( gm.GuildRankTier );
+			// rankColor CUT — GuildRankTier reads "Bronze" forever while the
+			// arena is dormant (guild-systems-review + brief cuts ledger).
 		}
 
 		@if ( raidViewOpen && raid != null && !showRaidTeamSelect && !showRaidBattle )
@@ -919,314 +921,450 @@ else if ( guildView == "myguild" )
 		}
 		else
 		{
-			<!-- THE PLAZA — guild-as-a-place. One scene, no tabs.
-			     Halftone paper texture removed — clean dark stage backdrop. -->
-			<div class="guild-plaza">
-				<!-- ACTION TILES — pinned absolutely top-right of the plaza.
-				     Sits OUTSIDE the header row so flex math doesn't fight with
-				     the banner's full-width layout. No back button on hub. -->
-				<div class="plaza-action-grid">
-					<button class="plaza-action-tile @(IsPlazaTileKb( 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; viewingGuild = null; LoadGuildsFromApi(); })>
-						<iconify icon="lucide:search" Size=@(22) Color="#a78bfa" />
-						<span>Browse</span>
-					</button>
-					@if ( gm.IsOfficer )
-					{
-						<button class="plaza-action-tile officer @(IsPlazaTileKb( 1 ) ? "guild-kb-selected" : "")" onclick=@(() => { OnInviteClicked(); })>
-							<iconify icon="lucide:user-plus" Size=@(22) Color="#4ade80" />
-							<span>Invite</span>
-							@if ( pendingRequests.Count > 0 )
-							{
-								<div class="plaza-action-badge">@pendingRequests.Count</div>
-							}
-						</button>
-						<button class="plaza-action-tile officer @(IsPlazaTileKb( 2 ) ? "guild-kb-selected" : "")" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
-							<iconify icon="lucide:settings" Size=@(22) Color="#fbbf24" />
-							<span>Settings</span>
-						</button>
-					}
+			<!-- ═══════════════════════════════════════════════════════════════
+			     THE GUILD PAGE (2026-08-31 rebuild — guild-mock-page.html).
+			     Kin to the hub: ONLINE BLUE chrome, filled #15121f slabs,
+			     recessed 36px bands, radius 0 zones, NO hairlines. Guild
+			     personality (EmblemColor) lives inside the emblem tile +
+			     the [TAG] whisper only.
+
+			     ZONE MAP (1920×1080 design, PADDING-BOX — declared sizes
+			     INCLUDE padding, borders add on top):
+			       HEADER   1920×110 declared + 2px seam border = 112 visual
+			       BODY     pad 16/24/24/24, gap 16 → lanes: 1920−48 = 1872
+			         TOP BAND  160: IDENTITY 1088 + 16 gap + ANNOUNCEMENT 768 = 1872 ✓
+			         COLUMNS   752: ROSTER 1088 + 16 + right col 768 = 1872 ✓
+			                   right col: THE WEEK 336 + 16 + THE LOG 400 = 752 ✓
+			       column check: 112 + 16 + 160 + 16 + 752 + 24 = 1080 ✓
+			     NOTE (cross-file, reported): OnlineHubPanel renders its own
+			     .oh-header above this section — it must be suppressed for
+			     currentSection == "guild" or the page double-headers. -->
+			@{
+				// ── Precomputed zone data (nested calls / ternaries are
+				//    Razor-attribute hazards — compute everything up front).
+				var gpColor = guild.EmblemColor ?? "#3f8fe0";
+				var gpFill = BbEmblem.BlendTowardSlab( gpColor, 0.70f );
+				var gpEmblemBeast = BbEmblem.ResolveBeast( guild.EmblemIcon, guild.OwnerSteamId, members );
+				var gpEmblemCrop = gpEmblemBeast != null ? BbEmblem.CropStyleFor( gpEmblemBeast, 112, 112 ) : "";
+				var gpMembers = GetPlazaRosterMembers( members );
+				int gpHere = gm.OnlineCount;
+				var gpHereClass = gpHere > 0 ? "gp-here on" : "gp-here";
+				// Weekly-XP bars scale to the WEEK'S MAX (honest zeroes render
+				// an empty track + "0" — never a fake sliver).
+				int gpWeekMax = gpMembers.Count > 0 ? Math.Max( 1, gpMembers.Max( mm => mm.WeeklyGuildXP ) ) : 1;
+				var gpTop = GetTopContributor( gpMembers );
+				long gpLocalId = (long)(Connection.Local?.SteamId ?? 0);
+				bool gpDense = gpMembers.Count >= 12;   // roomy 120px rows → 64px scroll stop at 12+
+				var gpGoals = gm.WeeklyGoals ?? new List<GuildWeeklyGoal>();
+				var gpLog = (gm.ActivityLog ?? new List<GuildLogEntry>()).OrderByDescending( e => e.Timestamp ).ToList();
+				var gpNext = GetNextUnlockPerk();
+				int gpActivePerks = GetActivePerkCount();
+				long gpXpToNext = Math.Max( 0L, GetGuildXPNeededForNext() - GetGuildXPInLevel() );
+				var gpXpLine = gpXpToNext > 0 ? $"{gpXpToNext:N0} XP TO LV {guild.Level + 1}" : "MAX LEVEL";
+				// Announcement stone: officers always see it (edit / write-row);
+				// plain members only when a MOTD exists — else IDENTITY spans
+				// the full 1872 top band.
+				bool gpAnnVisible = gm.IsOfficer || !string.IsNullOrEmpty( guild.Motd );
+				var gpUnlockName = gpNext != null ? $"{gpNext.Name.ToUpper()} — {gpNext.Short.ToUpper()}" : "EVERY WIRED PERK ACTIVE";
+				var gpUnlockKick = gpNext != null ? $"NEXT · LV {gpNext.Level}" : "GUILD PERKS";
+				var gpLadderChip = $"LV {guild.Level} · {gpActivePerks} ACTIVE";
+			}
+			<div class="gp-page">
+
+				<!-- ── HEADER — the hub's .oh-header anatomy wearing the GUILD'S
+				     NAME (kicker GUILD → 64px italic-900 title → [TAG] whisper →
+				     blue seam slabs → BbHeaderWaves blue → 2px seam strip).
+				     Host recipe: waves first child, host paints NO fill.
+				     LANE: motion — opacity-only entrance attaches here. -->
+				<div class="gp-header">
+					<BbHeaderWaves Accent=@("blue") />
+					<div class="gp-h-identity">
+						<span class="gp-kicker">GUILD</span>
+						<div class="gp-title-row">
+							<span class="gp-title">@guild.Name</span>
+							<div class="gp-tag"><span style="color: @gpColor">[@guild.Tag]</span></div>
+							<div class="gp-seam"></div>
+							<div class="gp-seam dim"></div>
+						</div>
+					</div>
+					<!-- Right slot — the house header-chip family (rounded r11
+					     slabs; ACTIONS NEVER SKEW). REQUESTS·N only when N>0;
+					     officers keep an INVITE chip otherwise so the invite
+					     picker stays reachable. SETTINGS for every member —
+					     LEAVE lives in the drawer's danger section now.
+					     LANE: input — header chips are the kb walk's first stops. -->
+					<div class="gp-toolbar">
+						@if ( pendingRequests.Count > 0 )
+						{
+							<div class="gp-chip @(IsPlazaKb( "chips", 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { showRequestsModal = true; SoundManager.PlayForward(); })>
+								<span class="gp-chip-label">REQUESTS</span>
+								<div class="gp-chip-n"><span class="gp-chip-nt">@pendingRequests.Count</span></div>
+							</div>
+						}
+						else if ( gm.IsOfficer )
+						{
+							<div class="gp-chip @(IsPlazaKb( "chips", 0 ) ? "guild-kb-selected" : "")" onclick=@(() => OnInviteClicked())>
+								<iconify class="gp-chip-glyph" icon="lucide:user-plus" Size=@(13) Color="#a79dbe" />
+								<span class="gp-chip-label">INVITE</span>
+							</div>
+						}
+						@{ int gpSettingsChipIdx = gm.IsOfficer ? 1 : 0; }
+						<div class="gp-chip @(IsPlazaKb( "chips", gpSettingsChipIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { showSettingsModal = true; SoundManager.PlayClick(); })>
+							<iconify class="gp-chip-glyph" icon="lucide:settings" Size=@(13) Color="#a79dbe" />
+							<span class="gp-chip-label">SETTINGS</span>
+						</div>
+					</div>
 				</div>
 
-				<!-- HEADER ROW — compact banner on the left, action tiles float
-				     in via absolute positioning. -->
-				<div class="plaza-header-row">
-					<!-- BANNER — compact slab. Emblem + name + tag/level +
-					     XP bar all stacked tight. -->
-					<div class="plaza-banner">
-						<div class="banner-row">
-							<!-- Beast emblems render the species sprite (BbEmblem: beast:
-							     pick → leader-favorite default → lucide glyph). 80×80
-							     window — the flat-redesign .banner-emblem-slab wins over
-							     the earlier 96 rule. -->
-							@{
-								var bannerEmblemBeast = BbEmblem.ResolveBeast( guild.EmblemIcon, guild.OwnerSteamId, GuildManager.Instance?.Members );
-								var bannerEmblemCrop = bannerEmblemBeast != null ? BbEmblem.CropStyleFor( bannerEmblemBeast, 80, 80 ) : "";
-							}
-							<div class="banner-emblem-slab @(bannerEmblemBeast != null ? "beast-tile" : "") shape-@guild.EmblemShape" style="background-color: @guild.EmblemColor">
-								@if ( bannerEmblemBeast != null )
+				<div class="gp-body">
+
+					<!-- ── TOP BAND 1872×160 — IDENTITY left, ANNOUNCEMENT right.
+					     IDENTITY row math (1088, pad 16 L/R): 16 + emblem 112 +
+					     gap 20 + mid 560 + spacer(≥28) + chip 336 + 16 = 1088 ✓
+					     When the stone hides, .full = 1872 and the spacer grows. -->
+					<div class="gp-top-band">
+						<div class="gp-ident @(gpAnnVisible ? "" : "full")">
+							<!-- HERO emblem — the framed-tile recipe (112×112 r12,
+							     fill = BlendTowardSlab(EmblemColor, .70), native-px
+							     sprite crop; no filter / transform / object-fit). -->
+							<div class="gp-emblem @(gpEmblemBeast != null ? "beast-tile" : "")" style="background-color: @gpFill">
+								@if ( gpEmblemBeast != null )
 								{
-									<img class="emblem-beast-img" src="@bannerEmblemBeast.IconPath" style="@bannerEmblemCrop" />
+									<img class="emblem-beast-img" src="@gpEmblemBeast.IconPath" style="@gpEmblemCrop" />
 								}
 								else
 								{
-									<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(56) Color="#ffffff" />
+									<iconify class="gp-emblem-glyph" icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(64) Color="#ffffff" />
 								}
 							</div>
-							<div class="banner-stack">
-								<span class="banner-name">@guild.Name</span>
-								<div class="banner-stamps">
-									<div class="banner-stamp tag-stamp">
-										<span>[@guild.Tag]</span>
-									</div>
-									<div class="banner-stamp lv-stamp">
-										<span>LV @guild.Level</span>
-									</div>
-									@* Rank tier stamp removed — guilds don't have ranking
-									   tiers like Bronze/Silver/Gold in this game. *@
+							<div class="gp-ident-mid">
+								<div class="gp-ident-row">
+									<!-- LV stamp — non-interactive identity mark (skew OK) -->
+									<div class="gp-lv-stamp"><span>@($"LV {guild.Level}")</span></div>
+									<span class="gp-members-line">@($"{members.Count} MEMBERS ·")</span>
+									<span class="@gpHereClass">@($"{gpHere} HERE")</span>
+								</div>
+								<!-- ONE XP bar (440×10) + ONE rounded number — the
+								     shipped "92.64909%" double readout dies here. -->
+								<div class="gp-xp-bar"><div class="gp-xp-fill" style="width: @(GuildXpBarPx())px"></div></div>
+								<span class="gp-xp-line">@gpXpLine</span>
+							</div>
+							<div class="gp-ident-spacer"></div>
+							<!-- NEXT-UNLOCK chip 336×92 r11 — PRESSABLE, opens the
+							     PERK LADDER. Names only perks that WORK (honesty
+							     rule — Lv20 unwired / Lv25+45 raid-gated / Lv40+50
+							     copy-only are absent from WiredPerks).
+							     LANE: input — Space/E opens; a W/S stop (zone "unlock"). -->
+							<div class="gp-unlock @(IsPlazaKb( "unlock", 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { showPerkLadder = true; SoundManager.PlayForward(); })>
+								<span class="gp-unlock-kick">@gpUnlockKick</span>
+								<span class="gp-unlock-name">@gpUnlockName</span>
+								<div class="gp-unlock-foot">
+									<span class="gp-unlock-count">@($"{gpActivePerks} PERKS ACTIVE ·")</span>
+									<span class="gp-unlock-view">VIEW ALL</span>
+									<iconify class="gp-unlock-arrow" icon="lucide:chevron-right" Size=@(12) Color="#6fb1f0" />
 								</div>
 							</div>
 						</div>
 
-						<div class="banner-xp-slab">
-							<div class="banner-xp-bar">
-								<div class="banner-xp-fill" style="width: @GetGuildXPPercent()%"></div>
-								<div class="banner-xp-overlay">
-									<span class="banner-xp-pct">@GetGuildXPPercent()%</span>
-									<span class="banner-xp-text">@($"{GetGuildXPInLevel():N0}") / @($"{GetGuildXPNeededForNext():N0}") XP</span>
+						@if ( gpAnnVisible )
+						{
+							<!-- ── ANNOUNCEMENT 768×160 — the officer's voice.
+							     Existing MOTD edit plumbing, inline pencil. No
+							     byline: the server stores neither author nor
+							     write-time for the MOTD (render nothing, honest). -->
+							<div class="gp-ann">
+								<div class="gp-band">
+									<div class="gp-chipstamp"><span>ANNOUNCEMENT</span></div>
+									<div class="gp-band-spacer"></div>
+									@if ( gm.IsOfficer && !editingMotd && !string.IsNullOrEmpty( guild.Motd ) )
+									{
+										<!-- LANE: input — the "info" zone's one stop -->
+										<div class="gp-ann-edit @(IsPlazaKb( "info", 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })>
+											<iconify class="gp-pi" icon="lucide:pencil" Size=@(12) Color="rgba(244, 241, 234, 0.6)" />
+										</div>
+									}
+								</div>
+								<div class="gp-ann-body">
+									@if ( editingMotd )
+									{
+										<TextEntry class="gp-ann-input" @ref="motdDraftInput" Text=@motdDraft />
+										<div class="gp-ann-actions">
+											<div class="guild-btn accept-btn" onclick=@(() => { SaveMotd(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
+											<div class="guild-btn deny-btn" onclick=@CancelMotd><span>@L("ui.common.cancel")</span></div>
+										</div>
+									}
+									else if ( !string.IsNullOrEmpty( guild.Motd ) )
+									{
+										<span class="gp-ann-text">@guild.Motd</span>
+									}
+									else
+									{
+										<!-- officer empty state — the slim write-row
+										     (plain members never see the stone) -->
+										<div class="gp-ann-empty @(IsPlazaKb( "info", 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })>
+											<iconify class="gp-pi" icon="lucide:pencil" Size=@(12) Color="#7c7295" />
+											<span class="gp-ann-empty-t">Write an announcement</span>
+										</div>
+									}
 								</div>
 							</div>
-						</div>
-					</div>
-
-				</div>
-
-				<!-- MONUMENTS — Announcement + Description side by side (+ Raid card
-				     as a third column when raids active). Clean Persona-stamp slab
-				     vocabulary; no corner-cut / halftone / index. Splitting the
-				     announcement into two equal cards kills the "super long strip"
-				     problem and gives officers a place to edit the long-form
-				     description without diving into Settings. -->
-				@{
-					// Plaza "info" zone kb indices — match GetPlazaInfoPencils'
-					// live list (motd pencil first when shown, then desc pencil).
-					var infoMotdKbIdx = 0;
-					var infoDescKbIdx = ( gm.IsOfficer && !editingMotd ) ? 1 : 0;
-				}
-				<div class="plaza-monuments">
-					<!-- Announcement card -->
-					<div class="motd-stone">
-						<div class="motd-stone-header">
-							<iconify icon="lucide:megaphone" Size=@(13) Color="#fbbf24" />
-							<span class="motd-stone-title">Announcement</span>
-							@if ( gm.IsOfficer && !editingMotd )
-							{
-								<button class="motd-edit-inline @(IsPlazaInfoKb( infoMotdKbIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { StartEditMotd(); SoundManager.PlayClick(); })>
-									<iconify icon="lucide:pencil" Size=@(10) Color="rgba(255,255,255,0.55)" />
-								</button>
-							}
-						</div>
-						@if ( editingMotd )
-						{
-							<TextEntry class="motd-input" @ref="motdDraftInput" Text=@motdDraft />
-							<div class="motd-actions">
-								<div class="guild-btn accept-btn" onclick=@(() => { SaveMotd(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
-								<div class="guild-btn deny-btn" onclick=@CancelMotd><span>@L("ui.common.cancel")</span></div>
-							</div>
-						}
-						else
-						{
-							<span class="motd-text">@(string.IsNullOrEmpty( guild.Motd ) ? L("ui.guild.no_announcement") : guild.Motd)</span>
-						}
-					</div>
-
-					<!-- Description card — long-form pitch shown to browsers and
-					     members. Lives next to Announcement (not inside Settings)
-					     so officers can iterate on it without opening a drawer. -->
-					<div class="desc-stone">
-						<div class="motd-stone-header">
-							<iconify icon="lucide:file-text" Size=@(13) Color="#a78bfa" />
-							<span class="motd-stone-title">Description</span>
-							@if ( gm.IsOfficer && !editingDescription )
-							{
-								<button class="motd-edit-inline @(IsPlazaInfoKb( infoDescKbIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { StartEditDescription(); SoundManager.PlayClick(); })>
-									<iconify icon="lucide:pencil" Size=@(10) Color="rgba(255,255,255,0.55)" />
-								</button>
-							}
-						</div>
-						@if ( editingDescription )
-						{
-							<TextEntry class="motd-input" @ref="descriptionDraftInput" Text=@descriptionDraft />
-							<div class="motd-actions">
-								<div class="guild-btn accept-btn" onclick=@(() => { SaveDescription(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
-								<div class="guild-btn deny-btn" onclick=@CancelDescription><span>@L("ui.common.cancel")</span></div>
-							</div>
-						}
-						else
-						{
-							<span class="motd-text">@(string.IsNullOrEmpty( guild.Description ) ? "No description yet — pitch your guild to recruits." : guild.Description)</span>
 						}
 					</div>
 
-					<!-- Raid monument (gated via GuildManager.RaidsEnabled — raid == null when off) -->
-					@if ( raid != null )
-					{
-						<div class="raid-monument" onclick=@(() => { SoundManager.PlayForward(); raidViewOpen = true; })>
-							<div class="raid-monument-header">
-								<iconify icon="lucide:swords" Size=@(13) Color="#fca5a5" />
-								<span class="raid-monument-title">RAID</span>
-							</div>
-							<div class="raid-monument-content">
-								<div class="raid-monument-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
-								<div class="raid-monument-info">
-									<span class="raid-monument-name">@raid.BossName</span>
-									<span class="raid-monument-element">@raid.BossElement · Lv @raid.BossLevel</span>
-									<div class="raid-monument-row">
-										<iconify icon="lucide:target" Size=@(11) Color="rgba(255,255,255,0.55)" />
-										<span>@(gm.GetRaidAttemptsPerDay() - gm.GetRaidAttemptsToday()) attempts left</span>
-									</div>
-									<div class="raid-monument-row">
-										<iconify icon="lucide:hourglass" Size=@(11) Color="rgba(255,255,255,0.55)" />
-										<span>@FormatRaidTimer() until rotation</span>
-									</div>
-								</div>
-							</div>
-							<div class="raid-monument-cta">
-								<span>ENTER</span>
-								<iconify icon="lucide:arrow-right" Size=@(13) Color="#ffffff" />
-							</div>
-						</div>
-					}
-				</div>
+					<!-- ── COLUMNS 1872×752 ── -->
+					<div class="gp-cols">
 
-				<!-- BOTTOM ROW — members (left, wider) + perks (right). Both
-				     stretch to fill remaining vertical space so the plaza
-				     stops floating in dead pixels. -->
-				<div class="plaza-bottom-row">
-					<!-- MEMBERS -->
-					<div class="plaza-members">
-						<div class="plaza-members-row">
-							<!-- Plain gold section header + dark count chip — no stamp tag, no halftone -->
-							<div class="plaza-box-header">
-								<span class="plaza-box-section-title">ROSTER</span>
-								<div class="plaza-box-count">
-									<span>@gm.OnlineCount / @members.Count ONLINE</span>
-								</div>
+						<!-- ROSTER 1088×752 — the heart, expanded. Band 36 (opaque,
+						     gap 0 to the list — scroll-leak law). Rows are DIRECT
+						     children of the scroll child. Row math (roomy): band 36
+						     + pad 18 + 5×120 + 4×20 + pad 18 = 752 ✓ at 5 members.
+						     Row lane: list pad 12 L/R → 1064; row 1060 declared +
+						     4px left seam border = 1064 ✓.
+						     LANE: motion — list entrance + scrollbar arming/fade. -->
+						<div class="gp-roster">
+							<div class="gp-band">
+								<div class="gp-chipstamp"><span>ROSTER</span></div>
+								<div class="gp-band-spacer"></div>
+								<div class="gp-darkchip"><span>@($"{members.Count} / {gm.GetMaxMembers()}")</span></div>
 							</div>
-
-							<div class="plaza-portraits-grid">
-								@{ var rosterKbIdx = 0; }
-								@foreach ( var member in members.OrderByDescending( m => m.IsOnline ).ThenByDescending( m => m.Role ).ThenByDescending( m => m.ArenaPoints ) )
+							<div class="gp-roster-list @(gpDense ? "dense" : "")" @ref="rosterScrollRef">
+								@{ int gpRosterIdx = 0; }
+								@foreach ( var member in gpMembers )
 								{
 									var m = member;
-									var memberKbIdx = rosterKbIdx;
-									rosterKbIdx++;
-									<div class="member-portrait @(m.IsOnline ? "online" : "offline") @(IsInactive( m ) ? "inactive" : "") @(IsPlazaRosterKb( memberKbIdx ) ? "guild-kb-selected" : "")"
-										 onmouseover=@(() => { if (hoveredMember != m.SteamId.ToString()) { hoveredMember = m.SteamId.ToString(); SoundManager.PlayHover(); } })
+									var mIdx = gpRosterIdx; gpRosterIdx++;
+									var mRoleColor = GuildManager.GetRoleColor( m.Role );
+									var mIsYou = m.SteamId == gpLocalId && gpLocalId > 0;
+									var mNew = (DateTime.UtcNow - m.JoinedAt).TotalDays < 7.0;
+									var mGone = !m.IsOnline && (DateTime.UtcNow - m.LastSeen).TotalDays >= 30.0;
+									var mTopContrib = gpTop != null && m.SteamId == gpTop.SteamId && m.WeeklyGuildXP > 0;
+									var mVoice = IsMemberInVoice( m );
+									var mWeekPx = RosterWeekBarPx( m.WeeklyGuildXP, gpWeekMax );
+									var mRoleText = m.Role >= GuildRole.Warden ? GuildManager.GetRoleDisplayName( m.Role ).ToUpper() : "";
+									<!-- LANE: input — row click/Space = member action modal (kept) -->
+									<div class="gp-mrow @(mGone ? "faded" : "") @(IsPlazaKb( "roster", mIdx ) ? "guild-kb-selected" : "")"
+										 onmouseover=@(() => { if ( hoveredMember != m.SteamId.ToString() ) { hoveredMember = m.SteamId.ToString(); SoundManager.PlayHover(); } })
 										 onmouseout=@(() => hoveredMember = null)
 										 onclick=@(() => { selectedMember = m; showMemberMenu = true; SoundManager.PlayClick(); })>
-										<div class="member-portrait-frame" style="border-color: @GuildManager.GetRoleColor( m.Role )">
+										<div class="gp-head" style="border-color: @mRoleColor">
 											@if ( m.SteamId > 0 )
 											{
-												<img class="member-portrait-avatar" src="@($"avatar:{m.SteamId}")" />
+												<img class="gp-head-img" src="@($"avatar:{m.SteamId}")" />
 											}
 											else
 											{
-												<iconify icon="@GetAvatarIcon( m )" Size=@(28) Color="@GuildManager.GetRoleColor( m.Role )" />
+												<iconify class="gp-head-glyph" icon="lucide:user-round" Size=@(18) Color="rgba(214, 206, 236, 0.55)" />
 											}
-											<div class="member-portrait-status @(m.IsOnline ? "dot-online" : "dot-offline")"></div>
 										</div>
-										<span class="member-portrait-name">@m.Name</span>
-										<!-- Role-color underline stripe (P5 accent under name) -->
-										<div class="member-portrait-stripe" style="background-color: @GuildManager.GetRoleColor( m.Role )"></div>
-										<span class="member-portrait-role" style="color: @GuildManager.GetRoleColor( m.Role )">@GuildManager.GetRoleDisplayName( m.Role )</span>
-									</div>
-								}
-							</div>
-						</div>
-					</div>
-
-					<!-- PERKS shrine -->
-					<div class="plaza-perks">
-						<div class="plaza-perks-list">
-							<!-- Plain gold section header — no stamp tag, no halftone -->
-							<div class="plaza-box-header">
-								<span class="plaza-box-section-title">PERKS</span>
-							</div>
-
-							<div class="plaza-perks-rows" @ref="perksScrollRef">
-								@{ var perkKbIdx = 0; }
-								@foreach ( var perk in GetPerkList() )
-								{
-									var p = perk;
-									var unlocked = guild.Level >= p.Level;
-									var thisPerkKbIdx = perkKbIdx;
-									perkKbIdx++;
-									<div class="perk-row @(unlocked ? "unlocked" : "locked") @(IsPlazaPerkKb( thisPerkKbIdx ) ? "guild-kb-selected" : "")">
-										<!-- Yellow LEFT-edge accent strip on unlocked rows (per-side
-										     borders with style word are rejected, so use a child div) -->
-										@if ( unlocked )
-										{
-											<div class="perk-row-edge"></div>
-										}
-										@* LOCKED stamp removed — the dimmed row + grey body
-										   already conveys "locked" without a separate badge. *@
-
-										<div class="perk-row-disc">
-											<iconify icon="@GetPerkIcon( p.Level )" Size=@(18) Color="@(unlocked ? "#1a1100" : "rgba(255,255,255,0.28)")" />
-										</div>
-										<div class="perk-row-info">
-											<div class="perk-row-titlerow">
-												<span class="perk-row-name">@p.Name</span>
-												<div class="perk-row-level-stamp @(unlocked ? "unlocked" : "locked")">
-													<span>LV @p.Level</span>
-												</div>
+										<div class="gp-mname-col">
+											<div class="gp-mname-row">
+												<span class="gp-mname">@m.Name</span>
+												@if ( mIsYou )
+												{
+													<div class="gp-you"><span class="gp-you-t">YOU</span></div>
+												}
+												@if ( mNew )
+												{
+													<div class="gp-newtag"><span class="gp-new-t">NEW</span></div>
+												}
+												@if ( mVoice )
+												{
+													<iconify class="gp-voice" icon="lucide:volume-2" Size=@(14) Color="#4ade80" />
+												}
 											</div>
-											<span class="perk-row-desc">@p.Description</span>
+											@if ( mRoleText != "" )
+											{
+												<span class="gp-mrole" style="color: @mRoleColor">@mRoleText</span>
+											}
+										</div>
+										<div class="gp-mweek-col">
+											<span class="gp-mweek-cap">WEEKLY GUILD XP</span>
+											<div class="gp-mweek-row">
+												<span class="gp-mweek-val @(m.WeeklyGuildXP == 0 ? "zero" : "")">@($"{m.WeeklyGuildXP:N0}")</span>
+												@if ( mTopContrib )
+												{
+													<iconify class="gp-crown" icon="lucide:crown" Size=@(13) Color="#fbbf24" />
+												}
+											</div>
+											<div class="gp-mweek-bar"><div class="gp-mweek-fill" style="width: @(mWeekPx)px"></div></div>
+										</div>
+										<div class="gp-mrow-spacer"></div>
+										@if ( m.IsOnline )
+										{
+											<div class="gp-presence on"><div class="gp-dot"></div><span class="gp-presence-t">HERE</span></div>
+										}
+										else
+										{
+											<div class="gp-presence"><span class="gp-presence-t">@FormatLastSeenShort( m.LastSeen )</span></div>
+										}
+									</div>
+								}
+							</div>
+							<!-- slim overlay scrollbar — imperative px thumb (the
+							     Beastbook recipe); geometry written per tick. -->
+							<div @ref="rosterSbTrackRef" class="gp-sb"><div @ref="rosterSbThumbRef" class="gp-sb-thumb"></div></div>
+						</div>
+
+						<!-- RIGHT COLUMN 768×752 -->
+						<div class="gp-right">
+
+							@if ( raid != null )
+							{
+								<!-- RAID MONUMENT — kept coded, renders NOTHING while
+								     RaidsEnabled=false (raid is null). When raids flip
+								     on, this block re-appears above THE WEEK and the
+								     column compresses (a future pass re-derives the
+								     752 split). -->
+								<div class="raid-monument" onclick=@(() => { SoundManager.PlayForward(); raidViewOpen = true; })>
+									<div class="raid-monument-header">
+										<iconify icon="lucide:swords" Size=@(13) Color="#fca5a5" />
+										<span class="raid-monument-title">RAID</span>
+									</div>
+									<div class="raid-monument-content">
+										<div class="raid-monument-sprite" style="background-image: url(@GetRaidBossSpritePath())"></div>
+										<div class="raid-monument-info">
+											<span class="raid-monument-name">@raid.BossName</span>
+											<span class="raid-monument-element">@raid.BossElement · Lv @raid.BossLevel</span>
 										</div>
 									</div>
+									<div class="raid-monument-cta">
+										<span>ENTER</span>
+										<iconify icon="lucide:arrow-right" Size=@(13) Color="#ffffff" />
+									</div>
+								</div>
+							}
+
+							<!-- THE WEEK 768×336 — unmissable. Band 36 (big chip) +
+							     3 goal rows. Row math: band 36 + pad 12 + 3×82 +
+							     2×8 + pad 26 = 336 ✓. Goal lane: 768 − 32 = 736;
+							     bar 480×8 px-fill (GoalBarPx pattern — percent
+							     widths on absolute children paint full-width). -->
+							<div class="gp-week">
+								<div class="gp-band">
+									<div class="gp-chipstamp big"><span>THE WEEK</span></div>
+									<div class="gp-band-spacer"></div>
+									<div class="gp-darkchip"><span>@FormatGoalReset()</span></div>
+								</div>
+								<div class="gp-week-body">
+									@if ( gpGoals.Count == 0 )
+									{
+										<span class="gp-week-empty">No goals this week.</span>
+									}
+									@{ int gpGoalIdx = 0; }
+									@foreach ( var goal in gpGoals )
+									{
+										var g = goal;
+										var gIdx = gpGoalIdx; gpGoalIdx++;
+										var gClaimable = g.Completed && !g.Claimed;
+										<div class="gp-goal @(IsPlazaKb( "week", gIdx ) ? "guild-kb-selected" : "")">
+											<div class="gp-goal-top">
+												<span class="gp-goal-name">@(g.Title?.ToUpper())</span>
+												<div class="gp-goal-spacer"></div>
+												<span class="gp-goal-count">@($"{g.Progress:N0} / {g.Target:N0}")</span>
+											</div>
+											<span class="gp-goal-blurb">@GoalBlurb( g )</span>
+											<div class="gp-goal-foot">
+												<div class="gp-goal-bar"><div class="gp-goal-fill" style="width: @(WeekGoalBarPx( g ))px"></div></div>
+												<div class="gp-goal-spacer"></div>
+												@if ( gClaimable )
+												{
+													<span class="gp-goal-xp gold">@($"+{g.XpReward:N0} XP")</span>
+													<!-- gold = the page's ONLY gold (primary law).
+													     LANE: motion — Tier 2 claim pop (≤300ms).
+													     LANE: input — Space claims on the focused row. -->
+													<div class="gp-claim" onclick=@(() => { GuildManager.Instance?.ClaimWeeklyGoal( g.Id ); })><span class="gp-claim-t">CLAIM</span></div>
+												}
+												else if ( g.Claimed )
+												{
+													<span class="gp-goal-xp done">CLAIMED</span>
+												}
+												else
+												{
+													<span class="gp-goal-xp">@($"+{g.XpReward:N0} XP")</span>
+												}
+											</div>
+										</div>
+									}
+								</div>
+							</div>
+
+							<!-- THE LOG 768×400 — GuildManager.ActivityLog rendered
+							     at last (parsed on every fetch, cap 50). Newest
+							     first; ~8 rows visible (band 36 + pad 10 + 8×38 +
+							     7×2 = 364 ≤ 400), the rest scroll. OnLogUpdated →
+							     OnRefresh → StateHasChanged (already subscribed).
+							     LANE: motion — scrollbar arming/fade. -->
+							<div class="gp-log">
+								<div class="gp-band">
+									<div class="gp-chipstamp"><span>THE LOG</span></div>
+								</div>
+								@if ( gpLog.Count == 0 )
+								{
+									<div class="gp-log-empty"><span>Nothing logged yet — the week is young.</span></div>
+								}
+								else
+								{
+									<div class="gp-log-list" @ref="logScrollRef">
+										@foreach ( var entry in gpLog )
+										{
+											var e = entry;
+											<div class="gp-lrow">
+												@if ( !string.IsNullOrEmpty( e.PlayerName ) )
+												{
+													<span class="gp-log-actor">@e.PlayerName</span>
+												}
+												<span class="gp-log-text">@LogActionText( e )</span>
+												<div class="gp-lrow-spacer"></div>
+												<span class="gp-log-time">@FormatLogTimeShort( e.Timestamp )</span>
+											</div>
+										}
+									</div>
+									<div @ref="logSbTrackRef" class="gp-sb"><div @ref="logSbThumbRef" class="gp-sb-thumb"></div></div>
 								}
 							</div>
 						</div>
 					</div>
 				</div>
 
-				<!-- DANGER ZONE — small label + slab buttons (P5 stamp). -->
-				<div class="plaza-danger-bar">
-					<div class="plaza-danger-label"><span>DANGER ZONE</span></div>
-					<div class="plaza-danger-buttons">
-						@{ var dangerKbIdx = 0; }
-						@if ( gm.CanClaimLeadership() )
-						{
-							var claimIdx = dangerKbIdx; dangerKbIdx++;
-							<button class="plaza-slab-btn claim @(IsPlazaDangerKb( claimIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })>
-								<iconify icon="lucide:crown" Size=@(13) Color="#1a1100" />
-								<span>@L("ui.guild.claim_leadership")</span>
-							</button>
-						}
-						@if ( gm.IsLeader && members.Count > 1 )
-						{
-							var transferIdx = dangerKbIdx; dangerKbIdx++;
-							<button class="plaza-slab-btn neutral @(IsPlazaDangerKb( transferIdx ) ? "guild-kb-selected" : "")" onclick=@OnTransferOwnership>
-								<iconify icon="lucide:repeat" Size=@(13) Color="rgba(255,255,255,0.85)" />
-								<span>@L("ui.guild.transfer_ownership")</span>
-							</button>
-						}
-						@{ var leaveIdx = dangerKbIdx; dangerKbIdx++; }
-						<button class="plaza-slab-btn leave @(IsPlazaDangerKb( leaveIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })>
-							<iconify icon="lucide:log-out" Size=@(13) Color="#ffffff" />
-							<span>@L("ui.guild.leave")</span>
-						</button>
-						@if ( gm.IsLeader )
-						{
-							var disbandIdx = dangerKbIdx; dangerKbIdx++;
-							<button class="plaza-slab-btn disband @(IsPlazaDangerKb( disbandIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })>
-								<iconify icon="lucide:trash-2" Size=@(13) Color="#ffffff" />
-								<span>@L("ui.guild.disband")</span>
-							</button>
-						}
+				@if ( showPerkLadder )
+				{
+					<!-- ── PERK LADDER — the next-unlock chip, pressed. Centered
+					     via FLEX on the root (never translate(-50%) — transform
+					     poisons descendant flex). Lists every WIRED stop only:
+					     LV 5/10/15/30/35 — LV 20/25/40/45/50 render NOTHING
+					     (honesty rule). Modal math: band 36 + pad 16 + 5×56 +
+					     4×8 + pad 16 = 380 tall, 560 wide (rows 528).
+					     LANE: input — Q closes (wired below); W/S walk = info
+					     rows, no press stamp. LANE: motion — modal entrance. -->
+					<div class="gp-ladder-root" onclick=@(() => { showPerkLadder = false; SoundManager.PlayBack(); })>
+						<div class="gp-ladder" onclick:stopPropagation>
+							<div class="gp-band">
+								<div class="gp-chipstamp"><span>GUILD PERKS</span></div>
+								<div class="gp-band-spacer"></div>
+								<div class="gp-darkchip"><span>@gpLadderChip</span></div>
+							</div>
+							<div class="gp-ladder-body">
+								@foreach ( var wp in WiredPerks )
+								{
+									var wpUnlocked = guild.Level >= wp.Level;
+									var wpNext = gpNext != null && wp.Level == gpNext.Level;
+									<div class="gp-pk @(wpUnlocked ? "" : "dim")">
+										<span class="gp-pk-lv">@($"LV {wp.Level}")</span>
+										<div class="gp-pk-col">
+											<span class="gp-pk-name">@wp.Name.ToUpper()</span>
+											<span class="gp-pk-effect">@wp.Effect</span>
+										</div>
+										<div class="gp-pk-spacer"></div>
+										@if ( wpNext )
+										{
+											<div class="gp-pk-next"><span>NEXT</span></div>
+										}
+									</div>
+								}
+							</div>
+						</div>
 					</div>
-				</div>
-
+				}
 			</div>
 		}
 
@@ -1263,6 +1401,20 @@ else if ( guildView == "myguild" )
 				</div>
 
 				<div class="settings-drawer-body" @ref="settingsScrollRef">
+
+					<!-- Description block — moved off the plaza (guild-mock ruling:
+					     description is recruiting copy for browsers, not a daily
+					     stone). Polled in Tick while the drawer is open; saved by
+					     the footer's Save Changes via SaveSettings. -->
+					<div class="settings-drawer-section">
+						<div class="settings-drawer-section-label">
+							<iconify icon="lucide:file-text" Size=@(12) Color="#a78bfa" />
+							<span>Description</span>
+						</div>
+						<div class="settings-row @(IsSettingsRowKb( "description" ) ? "guild-kb-selected" : "")">
+							<TextEntry class="settings-desc-input" @ref="settingsDescInput" Text=@settingsDescription Placeholder="Pitch your guild to recruits…" />
+						</div>
+					</div>
 
 					<!-- Emblem block -->
 					<div class="settings-drawer-section">
@@ -1307,15 +1459,10 @@ else if ( guildView == "myguild" )
 										</div>
 									}
 								</div>
-								<span class="settings-pick-caption">Shape</span>
-								<div class="settings-pick-row @(IsSettingsRowKb( "shape" ) ? "guild-kb-selected" : "")">
-									@foreach ( var shape in EmblemShapes )
-									{
-										<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
-											<iconify icon="@shape.Value" Size=@(14) Color="#ffffff" />
-										</div>
-									}
-								</div>
+								@* Shape picker CUT (guild-redesign brief §2 — beast
+								   emblems are square; three near-identical squares
+								   were a dead picker row). emblemShape persists
+								   unchanged through SaveEmblem. *@
 							</div>
 						</div>
 					</div>
@@ -1348,35 +1495,45 @@ else if ( guildView == "myguild" )
 								}
 							</div>
 						</div>
-						<div class="settings-row @(IsSettingsRowKb( "minrank" ) ? "guild-kb-selected" : "")">
-							<span class="settings-row-label">@L("ui.guild.min_rank")</span>
-							<div class="settings-row-options">
-								@foreach ( var rank in new[] { "Unranked", "Bronze", "Silver", "Gold" } )
-								{
-									<div class="setting-option @(settingsMinRank == rank ? "selected" : "")" onclick=@(() => { settingsMinRank = rank; SoundManager.PlayClick(); })>
-										<span>@rank</span>
-									</div>
-								}
-							</div>
+						@* Min-Rank + auto-kick rows CUT (brief §2 — min-rank gates
+						   on the dormant arena; auto-kick was never enforced).
+						   Their fields persist unchanged through SaveSettings. *@
+					</div>
+
+					<!-- Danger section — the old plaza DANGER ZONE bar, moved to
+					     the drawer's bottom (once-per-lifetime actions don't earn
+					     a permanent strip). CLAIM stays conditional (time-
+					     sensitive). Rounded slab buttons — actions never skew.
+					     LANE: input — drawer W/S rows include these (see
+					     GetSettingsDrawerRows). -->
+					<div class="settings-drawer-section danger">
+						<div class="settings-drawer-section-label">
+							<iconify icon="lucide:triangle-alert" Size=@(12) Color="#f87171" />
+							<span>Danger</span>
 						</div>
-						<div class="settings-row @(IsSettingsRowKb( "autokick" ) ? "guild-kb-selected" : "")">
-							<span class="settings-row-label">@L("ui.guild.auto_kick")</span>
-							<div class="setting-toggle @(settingsAutoKick ? "active" : "")" onclick=@(() => { settingsAutoKick = !settingsAutoKick; SoundManager.PlayClick(); })>
-								<span>@(settingsAutoKick ? "ON" : "OFF")</span>
-							</div>
-						</div>
-						@if ( settingsAutoKick )
+						@if ( gm.CanClaimLeadership() )
 						{
-							<div class="settings-row @(IsSettingsRowKb( "inactivedays" ) ? "guild-kb-selected" : "")">
-								<span class="settings-row-label">@L("ui.guild.inactive_days")</span>
-								<div class="settings-row-options">
-									@foreach ( var days in new[] { 3, 7, 14, 30 } )
-									{
-										<div class="setting-option @(settingsInactiveDays == days ? "selected" : "")" onclick=@(() => { settingsInactiveDays = days; SoundManager.PlayClick(); })>
-											<span>@days days</span>
-										</div>
-									}
-								</div>
+							<div class="settings-danger-row claim @(IsSettingsRowKb( "claim" ) ? "guild-kb-selected" : "")" onclick=@(() => { OnClaimLeadership(); SoundManager.PlayPopup(); })>
+								<iconify class="sdr-i" icon="lucide:crown" Size=@(13) Color="#fbbf24" />
+								<span class="sdr-t">@L("ui.guild.claim_leadership")</span>
+							</div>
+						}
+						@if ( gm.IsLeader && members.Count > 1 )
+						{
+							<div class="settings-danger-row @(IsSettingsRowKb( "transfer" ) ? "guild-kb-selected" : "")" onclick=@OnTransferOwnership>
+								<iconify class="sdr-i" icon="lucide:repeat" Size=@(13) Color="rgba(244, 241, 234, 0.85)" />
+								<span class="sdr-t">@L("ui.guild.transfer_ownership")</span>
+							</div>
+						}
+						<div class="settings-danger-row leave @(IsSettingsRowKb( "leave" ) ? "guild-kb-selected" : "")" onclick=@(() => { OnLeaveGuild(); SoundManager.PlayPopup(); })>
+							<iconify class="sdr-i" icon="lucide:log-out" Size=@(13) Color="#fca5a5" />
+							<span class="sdr-t">@L("ui.guild.leave")</span>
+						</div>
+						@if ( gm.IsLeader )
+						{
+							<div class="settings-danger-row disband @(IsSettingsRowKb( "disband" ) ? "guild-kb-selected" : "")" onclick=@(() => { OnDisbandGuild(); SoundManager.PlayPopup(); })>
+								<iconify class="sdr-i" icon="lucide:trash-2" Size=@(13) Color="#fca5a5" />
+								<span class="sdr-t">@L("ui.guild.disband")</span>
 							</div>
 						}
 					</div>
@@ -1637,18 +1794,18 @@ else if ( guildView == "myguild" )
 	// State
 	private string guildView = "landing"; // "landing", "browse", "myguild"
 	private string hoveredLandingCard = null;
-	private string activeTab = "members";
-	private string memberSearch = "";
-	private bool showPermissionMatrix = false;
+	// (dead tab system / member search / permission matrix CUT — guild
+	// rebuild 2026-08-31, guild-systems-review §2 dead code.)
 
-	// Plaza state — replaces the old tab system. Guild interior is one scene.
+	// Plaza state — one scene, no tabs.
 	private bool showSettingsModal = false;
 	private bool showMemberMenu = false;
 	private GuildMemberInfo selectedMember = null;
 	private string hoveredMember = null;
-	private string hoveredPerk = null;
 	private bool showRequestsModal = false;
 	private bool raidViewOpen = false;
+	// PERK LADDER overlay — opened by the identity band's next-unlock chip.
+	private bool showPerkLadder = false;
 	private string createName = "";
 	private string createTag = "";
 	private string errorMessage = "";
@@ -1657,7 +1814,8 @@ else if ( guildView == "myguild" )
 	private TextEntry createNameInput;
 	private TextEntry createTagInput;
 	private TextEntry motdDraftInput;
-	private TextEntry memberSearchInput;
+	// Drawer description editor (moved off the plaza) — polled in Tick.
+	private TextEntry settingsDescInput;
 
 	// Browse detail
 	private GuildAdvertisement viewingGuild = null;
@@ -1665,12 +1823,8 @@ else if ( guildView == "myguild" )
 	// MOTD editing
 	private bool editingMotd = false;
 	private string motdDraft = "";
-
-	// Description editing — pulled out of Settings so officers can edit
-	// the long-form pitch right from the plaza, next to Announcement.
-	private bool editingDescription = false;
-	private string descriptionDraft = "";
-	private TextEntry descriptionDraftInput;
+	// (Plaza description stone CUT — description lives in the settings
+	// drawer now; see the drawer's Description block + settingsDescInput.)
 
 	// Emblem editing
 	private string emblemColor = "#7c3aed";
@@ -1706,9 +1860,21 @@ else if ( guildView == "myguild" )
 	private bool _settingsScrollPending = false;
 	// Scroll containers for keyboard scroll-follow (UiGridScroll).
 	private Panel browseScrollRef;   // .guild-content-card — browse guild list
-	private Panel perksScrollRef;    // .plaza-perks-rows — plaza perk list
 	private Panel requestsScrollRef; // .requests-modal-body — join requests
 	private Panel settingsScrollRef; // .settings-drawer-body — settings rows
+	private Panel rosterScrollRef;   // .gp-roster-list — roster rows
+	private Panel logScrollRef;      // .gp-log-list — activity log rows
+
+	// ── Overlay scrollbars (roster + log) — the Beastbook hand-rolled
+	//    recipe: scrollbar-color/-width don't parse, so track/thumb geometry
+	//    is written imperatively per tick (ratio math, style-space px).
+	//    LANE: motion — arming/fade polish attaches to .gp-sb transitions.
+	private Panel rosterSbTrackRef;
+	private Panel rosterSbThumbRef;
+	private Panel logSbTrackRef;
+	private Panel logSbThumbRef;
+	private int _rsbTrackH = -1, _rsbThumbH = -1, _rsbThumbTop = -1;
+	private int _lsbTrackH = -1, _lsbThumbH = -1, _lsbThumbTop = -1;
 
 	// Confirm dialog state moved to shared ConfirmDialog component (mounted globally in GameHUD)
 
@@ -1779,6 +1945,11 @@ else if ( guildView == "myguild" )
 				GuildManager.Instance.OnLogUpdated += OnRefresh;
 				GuildManager.Instance.OnGuildError += OnError;
 
+				// THE WEEK renders here now (QuestPanel's guild block is cut) —
+				// seed instantly, then pull the authoritative server list.
+				GuildManager.Instance.EnsureWeeklyGoalsSeeded();
+				_ = GuildManager.Instance.RefreshWeeklyGoals();
+
 				// Init emblem editor with current values
 				if ( GuildManager.Instance.Guild != null )
 				{
@@ -1813,15 +1984,22 @@ else if ( guildView == "myguild" )
 			}
 		}
 
-		// Poll plaza description editor while open — keeps draft in sync so
-		// SaveDescription() picks up the latest text (TextEntry has no onchange).
-		if ( editingDescription && descriptionDraftInput != null )
+		// Poll the drawer's description editor while open — keeps the draft
+		// in sync so SaveSettings() picks up the latest text (no onchange).
+		if ( showSettingsModal && settingsDescInput != null )
 		{
-			var t = descriptionDraftInput.Text ?? "";
-			if ( t != descriptionDraft )
+			var t = settingsDescInput.Text ?? "";
+			if ( t != settingsDescription )
 			{
-				descriptionDraft = t;
+				settingsDescription = t;
 			}
+		}
+
+		// Overlay scrollbars — imperative geometry (no BuildHash pollution).
+		if ( guildView == "myguild" && (GuildManager.Instance?.IsInGuild ?? false) )
+		{
+			UpdateOverlayScrollbar( rosterSbTrackRef, rosterSbThumbRef, rosterScrollRef, ref _rsbTrackH, ref _rsbThumbH, ref _rsbThumbTop );
+			UpdateOverlayScrollbar( logSbTrackRef, logSbThumbRef, logScrollRef, ref _lsbTrackH, ref _lsbThumbH, ref _lsbThumbTop );
 		}
 
 		// Settings drawer open edge — reset the keyboard row cursor to the
@@ -1846,21 +2024,18 @@ else if ( guildView == "myguild" )
 		var hash = new HashCode();
 		hash.Add( SpriteAnimator.GlobalFrame );
 		hash.Add( guildView );
-		hash.Add( activeTab );
 		hash.Add( showRaidTeamSelect );
 		hash.Add( showRaidBattle );
 		hash.Add( showRaidResults );
 		hash.Add( showPicker );
-		hash.Add( showPermissionMatrix );
 		hash.Add( showSettingsModal );
 		hash.Add( showMemberMenu );
 		hash.Add( showRequestsModal );
 		hash.Add( raidViewOpen );
+		hash.Add( showPerkLadder );
 		hash.Add( hoveredMember );
-		hash.Add( hoveredPerk );
 		hash.Add( browseSearchQuery );
 		hash.Add( editingMotd );
-		hash.Add( editingDescription );
 		// ── Keyboard nav state — every field that drives a kb-selected cursor
 		//    must be in the hash or the panel won't re-render on key presses.
 		hash.Add( _kbActive );
@@ -1878,6 +2053,25 @@ else if ( guildView == "myguild" )
 		hash.Add( gmH?.Members?.Count ?? 0 );
 		hash.Add( TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId );
 		hash.Add( ChatManager.Instance?.PlayerProfiles?.Count ?? 0 );
+		// ── Guild page zones (rebuild 2026-08-31) — every rendered fact:
+		//    identity (level/XP/MOTD), roster rows (presence, weekly XP,
+		//    last-seen day bucket, voice), THE WEEK (progress/claimed),
+		//    THE LOG (count + newest stamp), header chips (request count).
+		hash.Add( gmH?.Guild?.Level ?? 0 );
+		hash.Add( gmH?.Guild?.GuildXP ?? 0 );
+		hash.Add( gmH?.Guild?.Motd );
+		hash.Add( gmH?.IsOfficer == true ? (gmH.JoinRequests?.Count ?? 0) : 0 );
+		foreach ( var mh in gmH?.Members ?? new List<GuildMemberInfo>() )
+		{
+			hash.Add( mh.IsOnline );
+			hash.Add( mh.WeeklyGuildXP );
+			hash.Add( (int)(DateTime.UtcNow - mh.LastSeen).TotalHours );
+			hash.Add( IsMemberInVoice( mh ) );
+		}
+		foreach ( var gh in gmH?.WeeklyGoals ?? new List<GuildWeeklyGoal>() )
+			hash.Add( gh.Progress + (gh.Claimed ? 1_000_000 : 0) );
+		hash.Add( gmH?.ActivityLog?.Count ?? 0 );
+		hash.Add( gmH?.ActivityLog?.Count > 0 ? gmH.ActivityLog[0].Timestamp : default );
 		return hash.ToHashCode();
 	}
 
@@ -1914,11 +2108,12 @@ else if ( guildView == "myguild" )
 			return;
 		}
 
+		if ( showPerkLadder ) { TickPerkLadderInput(); return; }
 		if ( showPicker ) { TickPickerInput(); return; }
 		if ( showMemberMenu && selectedMember != null ) { TickMemberMenuInput(); return; }
 		if ( showRequestsModal ) { TickRequestsInput(); return; }
 		if ( showSettingsModal ) { TickSettingsDrawerInput(); return; }
-		if ( editingMotd || editingDescription ) { TickEditorInput(); return; }
+		if ( editingMotd ) { TickEditorInput(); return; }
 
 		// ---- View dispatch ----
 		switch ( guildView )
@@ -2145,14 +2340,17 @@ else if ( guildView == "myguild" )
 		TickPlazaInput();
 	}
 
-	// Plaza zones in visual top-to-bottom order: action tiles → info cards
-	// (announcement/description edit pencils) → roster grid → perks list →
-	// danger bar. W/S flow VERTICALLY through the whole plaza as one continuous
-	// cursor, crossing zone boundaries automatically; A/D move horizontally
-	// WITHIN the current zone. There is NO Tab zone-switch — playtest found it
-	// undiscoverable. The "info" zone is officer-only at runtime; when it has
-	// no pencils a vertical crossing passes straight through tiles↔roster.
-	private static readonly string[] _plazaZones = { "tiles", "info", "roster", "perks", "danger" };
+	// Guild-page zones in visual top-to-bottom order (rebuild 2026-08-31):
+	// header chips → next-unlock chip → announcement pencil → roster rows →
+	// THE WEEK's goal rows. W/S flow VERTICALLY as one continuous cursor,
+	// crossing zone boundaries automatically; A/D move WITHIN a zone. No Tab
+	// (playtest ruling), no AcceptsFocus. Empty zones are skipped on cross.
+	// LANE: input — re-sequencing pass: the mock's target order is
+	//   chips → unlock → announcement → ROSTER (left col) → WEEK → LOG,
+	// with A/D hopping columns (roster ⇄ week at matching height) and the
+	// log joining as read-only stops. This linear order approximates it;
+	// the column-hop grammar + log walk are yours.
+	private static readonly string[] _plazaZones = { "chips", "unlock", "info", "roster", "week" };
 
 	private void TickPlazaInput()
 	{
@@ -2166,8 +2364,17 @@ else if ( guildView == "myguild" )
 		bool zoneIsPlaza = Array.IndexOf( _plazaZones, _kbZone ) >= 0;
 		if ( !_kbActive || !zoneIsPlaza )
 		{
-			// First nav keypress just lights the cursor on tiles[0].
-			if ( NavPressed() ) { _kbActive = true; _kbZone = "tiles"; _kbIndex = 0; SoundManager.PlayHover(); StateHasChanged(); }
+			// First nav keypress just lights the cursor on the first
+			// non-empty zone (chips are officer-conditional).
+			if ( NavPressed() )
+			{
+				_kbActive = true;
+				_kbZone = "chips";
+				_kbIndex = 0;
+				if ( PlazaZoneCount( "chips", gm, members ) <= 0 ) _kbZone = "unlock";
+				SoundManager.PlayHover();
+				StateHasChanged();
+			}
 			return;
 		}
 
@@ -2192,31 +2399,32 @@ else if ( guildView == "myguild" )
 	{
 		switch ( zone )
 		{
-			case "tiles":  return 1 + (gm.IsOfficer ? 2 : 0);          // browse + invite + settings
-			case "info":   return GetPlazaInfoPencils( gm ).Count;     // 0..2 edit pencils
+			// requests/invite chip (officer) + settings chip (everyone —
+			// LEAVE lives in the drawer's danger section now).
+			case "chips":  return (gm.IsOfficer ? 1 : 0) + 1;
+			case "unlock": return 1;                                   // the next-unlock chip
+			case "info":   return GetPlazaInfoPencils( gm ).Count;     // announcement pencil / write-row
 			case "roster": return GetPlazaRosterMembers( members ).Count;
-			case "perks":  return GetPerkList().Count;
-			case "danger": return GetPlazaDangerActions( gm, members ).Count;
+			case "week":   return gm.WeeklyGoals?.Count ?? 0;          // goal rows (claim when claimable)
 		}
 		return 0;
 	}
 
-	// Vertical move. `dir` = -1 up / +1 down. Inside the roster grid this steps
-	// one grid row; everywhere else (single-row zones) it crosses to the next
-	// non-empty zone, landing on that zone's first (down) or last (up) item.
+	// Vertical move. `dir` = -1 up / +1 down. The roster list steps one row
+	// and only crosses out at its true top/bottom edge; every other zone is a
+	// single row, so any W/S there immediately crosses zones.
 	private void PlazaVertical( GuildManager gm, List<GuildMemberInfo> members, int dir )
 	{
 		int count = PlazaZoneCount( _kbZone, gm, members );
 
-		// Roster grid — W/S move by a row; only cross out at the grid edge.
-		if ( _kbZone == "roster" && count > 0 )
+		if ( (_kbZone == "roster" || _kbZone == "week") && count > 0 )
 		{
-			int cols = GetRosterColumns();
-			int next = _kbIndex + dir * cols;
+			int next = _kbIndex + dir;
 			if ( next >= 0 && next < count )
 			{
 				_kbIndex = next;
 				SoundManager.PlayHover();
+				if ( _kbZone == "roster" ) UiGridScroll.ScrollIndexIntoView( rosterScrollRef, _kbIndex, "gp-mrow" );
 				StateHasChanged();
 				return;
 			}
@@ -2235,31 +2443,32 @@ else if ( guildView == "myguild" )
 		for ( int step = 0; step < _plazaZones.Length; step++ )
 		{
 			int ni = zi + dir * ( step + 1 );
-			if ( ni < 0 || ni >= _plazaZones.Length ) return; // top/bottom of plaza — no-op
+			if ( ni < 0 || ni >= _plazaZones.Length ) return; // top/bottom of page — no-op
 			var zone = _plazaZones[ni];
 			int c = PlazaZoneCount( zone, gm, members );
 			if ( c <= 0 ) continue;                            // empty zone — skip through
 			_kbZone = zone;
 			_kbIndex = dir > 0 ? 0 : c - 1;                    // down→first item, up→last
 			SoundManager.PlayHover();
-			// Perks live in an overflow:scroll list — keep the focused row on
-			// screen. (Roster grid is overflow:hidden — no scroll-follow.)
-			if ( zone == "perks" ) UiGridScroll.ScrollIndexIntoView( perksScrollRef, _kbIndex, "perk-row" );
+			// Roster rows live in an overflow:scroll list — keep the focused
+			// row on screen (deferred-scroll not needed: rows pre-exist).
+			if ( zone == "roster" ) UiGridScroll.ScrollIndexIntoView( rosterScrollRef, _kbIndex, "gp-mrow" );
 			StateHasChanged();
 			return;
 		}
 	}
 
-	// Horizontal move within the current zone. A/D wrap inside the zone — they
-	// never cross zones. For the roster grid, A/D step one card.
+	// Horizontal move within the current zone. A/D step inside the zone —
+	// they never cross zones. LANE: input — the mock wants A/D to hop
+	// COLUMNS (roster ⇄ the week at matching height); that grammar is yours.
 	private void PlazaHorizontal( GuildManager gm, List<GuildMemberInfo> members, int dir )
 	{
 		int count = PlazaZoneCount( _kbZone, gm, members );
 		if ( count <= 0 ) return;
 		_kbIndex = Math.Clamp( _kbIndex + dir, 0, count - 1 );
 		SoundManager.PlayHover();
-		if ( _kbZone == "perks" )
-			UiGridScroll.ScrollIndexIntoView( perksScrollRef, _kbIndex, "perk-row" );
+		if ( _kbZone == "roster" )
+			UiGridScroll.ScrollIndexIntoView( rosterScrollRef, _kbIndex, "gp-mrow" );
 		StateHasChanged();
 	}
 
@@ -2268,18 +2477,20 @@ else if ( guildView == "myguild" )
 	{
 		switch ( _kbZone )
 		{
-			case "tiles":
+			case "chips":
 			{
-				int count = PlazaZoneCount( "tiles", gm, members );
+				int count = PlazaZoneCount( "chips", gm, members );
 				int i = Math.Clamp( _kbIndex, 0, count - 1 );
-				if ( i == 0 )
-				{
-					SoundManager.PlayForward();
-					guildView = "browse"; viewingGuild = null; LoadGuildsFromApi();
-					ResetKb();
-				}
-				else if ( i == 1 ) OnInviteClicked();
+				bool hasPeopleChip = gm.IsOfficer;
+				if ( hasPeopleChip && i == 0 ) OnInviteClicked(); // requests modal when N>0, else picker
 				else { showSettingsModal = true; SoundManager.PlayClick(); }
+				StateHasChanged();
+				break;
+			}
+			case "unlock":
+			{
+				showPerkLadder = true;
+				SoundManager.PlayForward();
 				StateHasChanged();
 				break;
 			}
@@ -2287,9 +2498,7 @@ else if ( guildView == "myguild" )
 			{
 				var pencils = GetPlazaInfoPencils( gm );
 				if ( pencils.Count == 0 ) return;
-				int i = Math.Clamp( _kbIndex, 0, pencils.Count - 1 );
-				if ( pencils[i] == "motd" ) StartEditMotd();
-				else StartEditDescription();
+				StartEditMotd();
 				SoundManager.PlayClick();
 				StateHasChanged();
 				break;
@@ -2305,22 +2514,18 @@ else if ( guildView == "myguild" )
 				StateHasChanged();
 				break;
 			}
-			case "perks":
-				// Perks are display-only — Space is intentionally a no-op.
-				break;
-			case "danger":
+			case "week":
 			{
-				var actions = GetPlazaDangerActions( gm, members );
-				if ( actions.Count == 0 ) return;
-				int i = Math.Clamp( _kbIndex, 0, actions.Count - 1 );
-				switch ( actions[i] )
+				// Goal rows are info stops; Space claims only when claimable.
+				var goals = gm.WeeklyGoals ?? new List<GuildWeeklyGoal>();
+				if ( goals.Count == 0 ) return;
+				int i = Math.Clamp( _kbIndex, 0, goals.Count - 1 );
+				var g = goals[i];
+				if ( g.Completed && !g.Claimed )
 				{
-					case "claim":    OnClaimLeadership(); SoundManager.PlayPopup(); break;
-					case "transfer": OnTransferOwnership(); break;
-					case "leave":    OnLeaveGuild(); SoundManager.PlayPopup(); break;
-					case "disband":  OnDisbandGuild(); SoundManager.PlayPopup(); break;
+					GuildManager.Instance?.ClaimWeeklyGoal( g.Id );
+					StateHasChanged();
 				}
-				StateHasChanged();
 				break;
 			}
 		}
@@ -2329,17 +2534,16 @@ else if ( guildView == "myguild" )
 	// ── Live focusable-item lists per zone — rebuilt each call so conditional
 	//    controls match the markup exactly. ──
 
-	// Announcement / Description edit pencils — both officer-only AND hidden
-	// while their editor is open.
+	// The announcement's one "info" stop: the officer pencil (MOTD set) or
+	// the write-row (MOTD empty). Hidden while the editor is open.
 	private List<string> GetPlazaInfoPencils( GuildManager gm )
 	{
 		var pencils = new List<string>();
 		if ( gm.IsOfficer && !editingMotd ) pencils.Add( "motd" );
-		if ( gm.IsOfficer && !editingDescription ) pencils.Add( "desc" );
 		return pencils;
 	}
 
-	// Roster portraits in render order (online → role → arena points).
+	// Roster rows in render order (online → role → arena points).
 	private List<GuildMemberInfo> GetPlazaRosterMembers( List<GuildMemberInfo> members )
 	{
 		return members
@@ -2349,25 +2553,18 @@ else if ( guildView == "myguild" )
 			.ToList();
 	}
 
-	// Danger-bar buttons in render order.
-	private List<string> GetPlazaDangerActions( GuildManager gm, List<GuildMemberInfo> members )
+	// ── PERK LADDER overlay — Q/Space/click close. Rows are info-only
+	//    (no press stamp). LANE: input — W/S walk inside the ladder if the
+	//    re-sequencing pass wants it; today the overlay is read-and-close.
+	private void TickPerkLadderInput()
 	{
-		var actions = new List<string>();
-		if ( gm.CanClaimLeadership() ) actions.Add( "claim" );
-		if ( gm.IsLeader && members.Count > 1 ) actions.Add( "transfer" );
-		actions.Add( "leave" );
-		if ( gm.IsLeader ) actions.Add( "disband" );
-		return actions;
-	}
-
-	private int GetRosterColumns()
-	{
-		var grid = FindKbPanel( "plaza-portraits-grid" );
-		var card = FindKbPanel( "member-portrait" );
-		float gw = grid?.Box.Rect.Width ?? 0f;
-		float cw = card?.Box.Rect.Width ?? 0f;
-		if ( gw <= 0f || cw <= 0f ) return 6;
-		return Math.Max( 1, (int)(gw / (cw + 12f)) ); // +12 = grid gap
+		if ( Input.Pressed( "Menu" ) || Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		{
+			showPerkLadder = false;
+			SoundManager.PlayBack();
+			if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+			StateHasChanged();
+		}
 	}
 
 	// ── RAID ENCOUNTER VIEW ──────────────────────────────────────────────────
@@ -2515,19 +2712,24 @@ else if ( guildView == "myguild" )
 
 	// ── SETTINGS DRAWER ──────────────────────────────────────────────────────
 	// Live ordered list of focusable drawer rows. Rebuilt each frame so the
-	// conditional rows (inactive-days only when auto-kick is on; Save only for
-	// officers) line up with the markup. Row ids:
-	//   color · icon · shape · joinmode · minlevel · minrank · autokick
-	//   · inactivedays (conditional) · cancel · save (conditional)
+	// conditional rows (danger actions by role; Save for officers) line up
+	// with the markup. Row ids (rebuild 2026-08-31 — shape/minrank/autokick
+	// rows are CUT; description + the danger section joined):
+	//   description · color · icon · joinmode · minlevel
+	//   · claim? · transfer? · leave · disband? · cancel · save?
 	private List<string> GetSettingsDrawerRows()
 	{
+		var gm = GuildManager.Instance;
 		var rows = new List<string>
 		{
-			"color", "icon", "shape", "joinmode", "minlevel", "minrank", "autokick"
+			"description", "color", "icon", "joinmode", "minlevel"
 		};
-		if ( settingsAutoKick ) rows.Add( "inactivedays" );
+		if ( gm?.CanClaimLeadership() ?? false ) rows.Add( "claim" );
+		if ( (gm?.IsLeader ?? false) && (gm?.Members?.Count ?? 0) > 1 ) rows.Add( "transfer" );
+		rows.Add( "leave" );
+		if ( gm?.IsLeader ?? false ) rows.Add( "disband" );
 		rows.Add( "cancel" );
-		if ( GuildManager.Instance?.IsOfficer ?? false ) rows.Add( "save" );
+		if ( gm?.IsOfficer ?? false ) rows.Add( "save" );
 		return rows;
 	}
 
@@ -2578,8 +2780,10 @@ else if ( guildView == "myguild" )
 			return;
 		}
 
-		// Space/Enter — activate. Buttons fire; toggle flips; a radio row
-		// steps forward (so the keyboard works even without Left/Right).
+		// Space/Enter — activate. Buttons fire; danger rows open their
+		// confirm dialogs; a radio row steps forward (so the keyboard works
+		// even without Left/Right). The description row is a TextEntry —
+		// Space types into it, so it's not activated here.
 		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
 		{
 			if ( row == "cancel" )
@@ -2597,13 +2801,11 @@ else if ( guildView == "myguild" )
 				ResetKb();
 				StateHasChanged();
 			}
-			else if ( row == "autokick" )
-			{
-				settingsAutoKick = !settingsAutoKick;
-				SoundManager.PlayClick();
-				StateHasChanged();
-			}
-			else
+			else if ( row == "claim" )    { OnClaimLeadership(); SoundManager.PlayPopup(); }
+			else if ( row == "transfer" ) { OnTransferOwnership(); }
+			else if ( row == "leave" )    { OnLeaveGuild(); SoundManager.PlayPopup(); }
+			else if ( row == "disband" )  { OnDisbandGuild(); SoundManager.PlayPopup(); }
+			else if ( row != "description" )
 			{
 				CycleSettingsRow( row, 1 );
 			}
@@ -2632,15 +2834,6 @@ else if ( guildView == "myguild" )
 				emblemIcon = keys[i];
 				break;
 			}
-			case "shape":
-			{
-				var keys = EmblemShapes.Keys.ToList();
-				int i = keys.IndexOf( emblemShape );
-				if ( i < 0 ) i = 0;
-				i = ( i + dir + keys.Count ) % keys.Count;
-				emblemShape = keys[i];
-				break;
-			}
 			case "joinmode":
 			{
 				var modes = Enum.GetValues( typeof( GuildJoinMode ) ).Cast<GuildJoinMode>().ToList();
@@ -2659,29 +2852,8 @@ else if ( guildView == "myguild" )
 				settingsMinLevel = lvls[i];
 				break;
 			}
-			case "minrank":
-			{
-				var ranks = new[] { "Unranked", "Bronze", "Silver", "Gold" };
-				int i = Array.IndexOf( ranks, settingsMinRank );
-				if ( i < 0 ) i = 0;
-				i = ( i + dir + ranks.Length ) % ranks.Length;
-				settingsMinRank = ranks[i];
-				break;
-			}
-			case "autokick":
-				settingsAutoKick = !settingsAutoKick;
-				break;
-			case "inactivedays":
-			{
-				var days = new[] { 3, 7, 14, 30 };
-				int i = Array.IndexOf( days, settingsInactiveDays );
-				if ( i < 0 ) i = 0;
-				i = ( i + dir + days.Length ) % days.Length;
-				settingsInactiveDays = days[i];
-				break;
-			}
 			default:
-				return; // cancel / save — not cyclable
+				return; // description / danger rows / cancel / save — not cyclable
 		}
 		SoundManager.PlayClick();
 		StateHasChanged();
@@ -2834,15 +3006,14 @@ else if ( guildView == "myguild" )
 		}
 	}
 
-	// ── INLINE EDITORS (MOTD / Description) ──────────────────────────────────
+	// ── INLINE EDITOR (MOTD) ─────────────────────────────────────────────────
 	private void TickEditorInput()
 	{
-		// The TextEntry has typing focus; Q cancels, Enter saves. Arrows pass
-		// through to the text field (caret movement) — don't consume them.
+		// The TextEntry has typing focus; Q cancels. Arrows pass through to
+		// the text field (caret movement) — don't consume them.
 		if ( Input.Pressed( "Menu" ) )
 		{
 			if ( editingMotd ) CancelMotd();
-			if ( editingDescription ) CancelDescription();
 			SoundManager.PlayBack();
 			GameHUD.PanelHandledBackKey = true;
 			StateHasChanged();
@@ -2855,11 +3026,9 @@ else if ( guildView == "myguild" )
 	private bool IsLandingKb( int idx ) => _kbActive && _kbZone == "landing" && _kbIndex == idx;
 	private bool IsBrowseGridKb( int idx ) => _kbActive && _kbZone == "browse-grid" && _kbIndex == idx;
 	private bool IsBrowseDetailKb( int idx ) => _kbActive && _kbZone == "browse-detail" && _kbIndex == idx;
-	private bool IsPlazaTileKb( int idx ) => _kbActive && _kbZone == "tiles" && _kbIndex == idx;
-	private bool IsPlazaInfoKb( int idx ) => _kbActive && _kbZone == "info" && _kbIndex == idx;
-	private bool IsPlazaRosterKb( int idx ) => _kbActive && _kbZone == "roster" && _kbIndex == idx;
-	private bool IsPlazaPerkKb( int idx ) => _kbActive && _kbZone == "perks" && _kbIndex == idx;
-	private bool IsPlazaDangerKb( int idx ) => _kbActive && _kbZone == "danger" && _kbIndex == idx;
+	// One generic predicate for the rebuilt guild page's zones
+	// (chips / unlock / info / roster / week).
+	private bool IsPlazaKb( string zone, int idx ) => _kbActive && _kbZone == zone && _kbIndex == idx;
 	private bool IsCreateKb( int idx ) => _kbActive && _kbZone == "create" && _kbIndex == idx;
 	private bool IsRaidSelectKb( int idx ) => _kbActive && _kbZone == "raid-select" && _kbIndex == idx;
 	// Modals own the keyboard whenever open, so their cursor shows immediately.
@@ -2948,13 +3117,6 @@ else if ( guildView == "myguild" )
 		OnBack?.Invoke();
 	}
 
-	private void SetTab( string tab )
-	{
-		activeTab = tab;
-		errorMessage = "";
-		SoundManager.PlayClick();
-	}
-
 	// Helpers
 	private int GetTamerLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 0;
 
@@ -3033,21 +3195,6 @@ else if ( guildView == "myguild" )
 		isLoadingGuilds = false;
 	}
 
-	private List<GuildMemberInfo> GetFilteredMembers()
-	{
-		var members = GuildManager.Instance?.Members ?? new List<GuildMemberInfo>();
-		memberSearch = memberSearchInput?.Text ?? "";
-		if ( string.IsNullOrWhiteSpace( memberSearch ) )
-			return members;
-		return members.Where( m => m.Name.Contains( memberSearch, StringComparison.OrdinalIgnoreCase ) ).ToList();
-	}
-
-	private bool IsInactive( GuildMemberInfo member )
-	{
-		var days = GuildManager.Instance?.Guild?.InactiveDays ?? 7;
-		return !member.IsOnline && (DateTime.UtcNow - member.LastSeen).TotalDays >= days;
-	}
-
 	// Create guild
 	private void OnCreateGuild()
 	{
@@ -3112,25 +3259,9 @@ else if ( guildView == "myguild" )
 		editingMotd = false;
 	}
 
-	// Description (long-form pitch, lives next to Announcement on the plaza)
-	private void StartEditDescription()
-	{
-		descriptionDraft = GuildManager.Instance?.Guild?.Description ?? "";
-		editingDescription = true;
-	}
-
-	private void SaveDescription()
-	{
-		descriptionDraft = descriptionDraftInput?.Text ?? "";
-		GuildManager.Instance?.UpdateDescription( descriptionDraft );
-		settingsDescription = descriptionDraft;
-		editingDescription = false;
-	}
-
-	private void CancelDescription()
-	{
-		editingDescription = false;
-	}
+	// (Description editing moved into the settings drawer — the plaza stone
+	// is CUT. The drawer's TextEntry drives settingsDescription; SaveSettings
+	// persists it.)
 
 	// Emblem
 	private void SaveEmblem()
@@ -3139,14 +3270,14 @@ else if ( guildView == "myguild" )
 		SoundManager.PlaySuccess();
 	}
 
-	// Settings
+	// Settings — the drawer owns the description now. Min-rank / auto-kick /
+	// inactive-days lost their UI rows (brief §2 cuts) but keep round-tripping
+	// their stored values so the manager call signature is untouched.
 	private void SaveSettings()
 	{
-		// Description editing moved to the plaza card; pull the live value
-		// from the Guild so a Settings save doesn't clobber a fresh edit.
-		var liveDesc = GuildManager.Instance?.Guild?.Description ?? settingsDescription;
+		settingsDescription = settingsDescInput?.Text ?? settingsDescription;
 		GuildManager.Instance?.UpdateGuildSettings( settingsJoinMode, settingsMinLevel, settingsMinRank, settingsAutoKick, settingsInactiveDays,
-			liveDesc );
+			settingsDescription );
 		SoundManager.PlaySuccess();
 	}
 
@@ -3367,20 +3498,51 @@ else if ( guildView == "myguild" )
 		return $"{remaining.Minutes}m {remaining.Seconds}s";
 	}
 
-	private string FormatLastSeen( DateTime lastSeen )
+	// Honest presence copy — the 60s heartbeat keeps last_seen fresh.
+	// "HERE" (same lobby) is rendered by the caller; this is the elsewhere
+	// half. 30+ days also dims the whole row (.faded in the markup).
+	private static string FormatLastSeenShort( DateTime lastSeen )
 	{
-		var days = (int)(DateTime.UtcNow - lastSeen).TotalDays;
-		if ( days == 0 ) return "today";
-		if ( days == 1 ) return "1d ago";
-		return $"{days}d ago";
+		var diff = DateTime.UtcNow - lastSeen;
+		if ( diff.TotalMinutes < 60 ) return "just now";
+		if ( diff.TotalHours < 24 ) return $"{(int)diff.TotalHours}h ago";
+		if ( diff.TotalDays < 7 ) return $"{(int)diff.TotalDays}d ago";
+		if ( diff.TotalDays < 30 ) return $"{(int)(diff.TotalDays / 7)}w ago";
+		return $"last seen in {lastSeen.ToString( "MMMM" )}";
 	}
 
-	private string FormatLogTime( DateTime timestamp )
+	// Log time — the terse feed form ("2h" · "3d" · "2w"), dim right column.
+	private static string FormatLogTimeShort( DateTime timestamp )
 	{
 		var diff = DateTime.UtcNow - timestamp;
-		if ( diff.TotalMinutes < 60 ) return $"{(int)diff.TotalMinutes}m ago";
-		if ( diff.TotalHours < 24 ) return $"{(int)diff.TotalHours}h ago";
-		return $"{(int)diff.TotalDays}d ago";
+		if ( diff.TotalMinutes < 60 ) return $"{Math.Max( 1, (int)diff.TotalMinutes )}m";
+		if ( diff.TotalHours < 24 ) return $"{(int)diff.TotalHours}h";
+		if ( diff.TotalDays < 7 ) return $"{(int)diff.TotalDays}d";
+		return $"{(int)(diff.TotalDays / 7)}w";
+	}
+
+	// Feed v1 row copy — actor bold (caller), verb plain. Details wins when
+	// the server wrote one; the Action switch covers today's server verbs.
+	// Feed-v2 gameplay rows ("contracted Wishstar") arrive as Details and
+	// render with zero client changes.
+	private static string LogActionText( GuildLogEntry e )
+	{
+		if ( e == null ) return "";
+		if ( !string.IsNullOrEmpty( e.Details ) ) return e.Details;
+		return e.Action switch
+		{
+			"joined" => "joined",
+			"left" => "left",
+			"kicked" => "was kicked",
+			"promoted" => "was promoted",
+			"demoted" => "was demoted",
+			"created" => "founded the guild",
+			"updated" => "updated the guild",
+			"invited" => "sent an invite",
+			"approved" => "approved a join request",
+			"succession" => "claimed leadership",
+			_ => e.Action ?? ""
+		};
 	}
 
 	private float GetGuildXPPercent()
@@ -3438,94 +3600,132 @@ else if ( guildView == "myguild" )
 		};
 	}
 
-	private string GetLogIcon( string action )
+	// ════════════════════════════════════════════════════════════════════════
+	// PERKS — the WIRED list only (honesty rule, brief §5). The old 10-row
+	// shrine + GetPerkList are CUT: LV 20 (Beast Trainer) is unwired, LV 25 +
+	// LV 45 are raid-gated, LV 40 + LV 50 are copy-only cosmetics — none may
+	// render. When a dormant perk gets wired, add its row here and it appears
+	// in the ladder + next-unlock chip with zero other changes.
+	//   Short = the identity-band chip's one-liner · Effect = the ladder row.
+	// ════════════════════════════════════════════════════════════════════════
+	private record WiredPerk( int Level, string Name, string Short, string Effect );
+
+	private static readonly List<WiredPerk> WiredPerks = new()
 	{
-		return action switch
-		{
-			"joined" => "lucide:user-plus",
-			"left" => "lucide:user-minus",
-			"promoted" => "lucide:arrow-up",
-			"kicked" => "lucide:user-x",
-			"created" => "lucide:landmark",
-			"updated" => "lucide:pencil",
-			"invited" => "lucide:mail",
-			"approved" => "lucide:check-circle-2",
-			"succession" => "lucide:crown",
-			_ => "lucide:clipboard-list"
-		};
+		new( 5,  "Coffer Cut",      "+5% expedition gold",  "+5% gold from every expedition reward" ),
+		new( 10, "Pack Mentor",     "+10% Tamer XP",        "+10% Tamer XP for every member, from every source" ),
+		new( 15, "Wider Banner",    "roster cap 35",        "Roster cap raised from 30 to 35 members" ),
+		new( 30, "Sharper Eye",     "+10% contract rate",   "+10% contract rate on every wild encounter" ),
+		new( 35, "Halls of Renown", "roster cap 40",        "Roster cap raised to 40 members" )
+	};
+
+	// First wired perk above the guild's level — null when everything wired
+	// is already active (LV 35+).
+	private WiredPerk GetNextUnlockPerk()
+	{
+		int lvl = GuildManager.Instance?.Guild?.Level ?? 1;
+		return WiredPerks.FirstOrDefault( p => p.Level > lvl );
 	}
 
-	private string GetLogColor( string action )
+	private int GetActivePerkCount()
 	{
-		return action switch
-		{
-			"joined" => "#4ade80",
-			"left" => "#94a3b8",
-			"promoted" => "#fbbf24",
-			"kicked" => "#f87171",
-			"created" => "#a78bfa",
-			"approved" => "#4ade80",
-			"succession" => "#fbbf24",
-			_ => "rgba(255,255,255,0.7)"
-		};
+		int lvl = GuildManager.Instance?.Guild?.Level ?? 1;
+		return WiredPerks.Count( p => p.Level <= lvl );
 	}
 
-	// Perk list — 10 perks across the 1-50 climb. Mix of tactical buffs and identity unlocks.
-	// Trophy at L50 ("Eternal Beastlord") replaces the old L20 "Exclusive Title".
-	private record PerkInfo( int Level, string Name, string Description );
+	// ── Bar fills — px widths written from code (the GoalBarPx pattern:
+	//    percent widths on absolute children paint full-width in s&box).
+	//    Widths mirror the scss tracks: identity XP 440 · goal 480 ·
+	//    roster weekly 260.
+	private const int IdentXpBarW = 440;
+	private const int WeekGoalBarW = 480;
+	private const int RosterWeekBarW = 260;
 
-	private List<PerkInfo> GetPerkList()
+	private int GuildXpBarPx()
+		=> (int)Math.Round( IdentXpBarW * Math.Clamp( GetGuildXPPercent() / 100f, 0f, 1f ) );
+
+	private static int WeekGoalBarPx( GuildWeeklyGoal g )
+		=> (int)Math.Round( WeekGoalBarW * Math.Clamp( ( g?.PercentComplete ?? 0f ) / 100f, 0f, 1f ) );
+
+	// Scaled to the WEEK'S MAX contributor — zero renders an empty track.
+	private static int RosterWeekBarPx( int weeklyXp, int weekMax )
+		=> weekMax <= 0 ? 0 : (int)Math.Round( RosterWeekBarW * Math.Clamp( weeklyXp / (float)weekMax, 0f, 1f ) );
+
+	// The goal explains itself — every pool entry ships a Description
+	// ("Clear 75 expeditions as a guild"); same string family the hub's
+	// guild zone renders (OnlineHubPanel.GoalBlurb — promote to a shared
+	// util when a pass may touch that file; its Type-switch fallback only
+	// fires for a server goal without a Description).
+	private static string GoalBlurb( GuildWeeklyGoal g ) => g?.Description ?? "";
+
+	private string FormatGoalReset()
 	{
-		return new List<PerkInfo>
-		{
-			new( 5,  "Coffer Cut",         "+5% gold from every expedition reward" ),
-			new( 10, "Pack Mentor",        "+10% Tamer XP for every guild member, from every source" ),
-			new( 15, "Wider Banner",       "Roster cap raised from 30 to 35 members" ),
-			new( 20, "Beast Trainer",      "+10% Beast XP gain for every monster owned by a guild member" ),
-			new( 25, "Raid Vigor",         "+1 raid attempt per day for every member (3 → 4)" ),
-			new( 30, "Sharper Eye",        "+10% contract rate bonus on every wild encounter" ),
-			new( 35, "Halls of Renown",    "Roster cap raised to 40 and unlock animated guild banner FX" ),
-			new( 40, "Crested Emblem",     "Unlock animated emblem frames and custom rank titles" ),
-			new( 45, "Boss Hunter's Cut",  "+15% raw damage on every guild raid boss attempt" ),
-			new( 50, "Eternal Beastlord",  "Hall-of-fame slot, golden master title, and an exclusive emblem ring" )
-		};
+		var ts = (GuildManager.Instance?.WeeklyGoalsResetAt ?? DateTime.UtcNow) - DateTime.UtcNow;
+		if ( ts <= TimeSpan.Zero ) return "RESETS SOON";
+		if ( ts.TotalDays >= 1 ) return $"RESETS MON · {(int)ts.TotalDays}D {ts.Hours}H";
+		return $"RESETS MON · {ts.Hours}H {ts.Minutes}M";
 	}
 
-	// Plaza perks shrine — pick an iconify glyph per perk level (matches the perk's flavor).
-	private string GetPerkIcon( int level )
+	// TOP CONTRIBUTOR — the week's highest guild XP; ties break to the
+	// earliest join date (main-session ruling). Null when nobody scored.
+	private static GuildMemberInfo GetTopContributor( List<GuildMemberInfo> members )
 	{
-		return level switch
-		{
-			5  => "lucide:coins",
-			10 => "lucide:graduation-cap",
-			15 => "lucide:users",
-			20 => "lucide:paw-print",
-			25 => "lucide:swords",
-			30 => "lucide:target",
-			35 => "lucide:landmark",
-			40 => "lucide:sparkles",
-			45 => "lucide:flame",
-			50 => "lucide:crown",
-			_  => "lucide:zap"
-		};
+		if ( members == null || members.Count == 0 ) return null;
+		var top = members
+			.Where( m => m.WeeklyGuildXP > 0 )
+			.OrderByDescending( m => m.WeeklyGuildXP )
+			.ThenBy( m => m.JoinedAt )
+			.FirstOrDefault();
+		return top;
 	}
 
-	// Permission matrix
-	private record PermissionInfo( string Action, bool Beastlord, bool Warden, bool Tamer, bool Wanderer );
-
-	private List<PermissionInfo> GetPermissionMatrix()
+	// In-voice glyph — guild voice ROOMS don't exist yet (VoiceChatManager
+	// has zero guild references), so "in voice" = the member sits in ANY
+	// voice room this lobby can see. When guild rooms land, tighten this to
+	// the guild's own room.
+	private static bool IsMemberInVoice( GuildMemberInfo m )
 	{
-		return new List<PermissionInfo>
+		if ( m == null || m.SteamId <= 0 ) return false;
+		var rooms = VoiceChatManager.Instance?.Rooms;
+		if ( rooms == null ) return false;
+		foreach ( var room in rooms )
 		{
-			new( "Invite players", true, true, false, false ),
-			new( "Approve requests", true, true, false, false ),
-			new( "Kick members", true, true, false, false ),
-			new( "Promote/Demote", true, false, false, false ),
-			new( "Edit MOTD", true, true, false, false ),
-			new( "Edit Settings", true, true, false, false ),
-			new( "Edit Emblem", true, true, false, false ),
-			new( "Transfer Ownership", true, false, false, false ),
-			new( "Disband Guild", true, false, false, false )
-		};
+			if ( room?.Members == null ) continue;
+			foreach ( var rm in room.Members )
+				if ( rm != null && rm.SteamId == m.SteamId ) return true;
+		}
+		return false;
+	}
+
+	// ── Overlay scrollbar geometry (the Beastbook UpdateDossierScrollbar
+	//    recipe, generalized for the roster + log lists). Track top/height
+	//    are pinned in the scss (the bands are fixed); only thumb geometry
+	//    and the .on arming class are written per tick. Ratio math: rect px
+	//    and scroll px are commensurate, so viewH/contentH and offset/maxOff
+	//    are unit-free — only the track length needs style-space px.
+	private void UpdateOverlayScrollbar( Panel track, Panel thumb, Panel scroll, ref int trackHCache, ref int thumbHCache, ref int thumbTopCache )
+	{
+		if ( track == null || thumb == null || scroll == null ) return;
+
+		float maxOff = scroll.ScrollSize.y;
+		if ( maxOff < 2f ) { track.SetClass( "on", false ); return; }
+
+		var sr = scroll.Box.Rect;
+		if ( sr.Height < 1f ) return;
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		int trackH = (int)(sr.Height * sc) - 4;
+		if ( trackH < 30 ) return;
+		float viewH = sr.Height;
+		float contentH = viewH + maxOff;
+		int thumbH = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
+		int thumbTop = (int)((trackH - thumbH) * (scroll.ScrollOffset.y / maxOff));
+
+		if ( trackH != trackHCache ) { track.Style.Height = Length.Pixels( trackH ); trackHCache = trackH; }
+		if ( thumbH != thumbHCache ) { thumb.Style.Height = Length.Pixels( thumbH ); thumbHCache = thumbH; }
+		if ( thumbTop != thumbTopCache ) { thumb.Style.Top = Length.Pixels( thumbTop ); thumbTopCache = thumbTop; }
+		track.SetClass( "on", true );
 	}
 }

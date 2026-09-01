@@ -107,10 +107,7 @@
 				case "monthly":
 					@RenderMonthly()
 					break;
-				case "guild":
-					@RenderGuild()
-					break;
-			}
+				}
 		</div>
 	</div>
 </root>
@@ -151,7 +148,8 @@
 		new QuestTab("daily",   "lucide:sun",            "Daily",   "Resets in 24h"),
 		new QuestTab("weekly",  "lucide:calendar-days",  "Weekly",  "Resets Monday"),
 		new QuestTab("monthly", "lucide:trophy",         "Monthly", "Big challenge"),
-		new QuestTab("guild",   "lucide:shield",         "Guild",   "Community goals"),
+		// Guild tab CUT (2026-08-31 guild rebuild) — weekly guild goals render
+		// in ONE place now: the Guild page's THE WEEK zone (GuildPanel.razor).
 	};
 
 	// Board-slip geometry constants — content-box inner widths used for the
@@ -166,7 +164,6 @@
 		"daily" => "FIELD JOURNAL",
 		"weekly" => "STANDING CONTRACTS",
 		"monthly" => "THE BIG GAME",
-		"guild" => "COMMUNITY LEDGER",
 		_ => "FIELD JOURNAL",
 	};
 
@@ -175,7 +172,6 @@
 		"daily" => GetDailyTimer(),
 		"weekly" => GetWeeklyTimer(),
 		"monthly" => GetMonthlyTimer(),
-		"guild" => (GuildManager.Instance?.IsInGuild ?? false) ? GetGuildGoalsTimer() : null,
 		_ => null,
 	};
 
@@ -202,9 +198,6 @@
 	{
 		IsVisible = true;
 		if ( Instance != null ) Instance._hoveredKey = null;
-		// Lazy-seed guild goals so the Guild tab never opens to "Loading…".
-		// Idempotent — no-op if already seeded or not in a guild.
-		GuildManager.Instance?.EnsureWeeklyGoalsSeeded();
 		SoundManager.PlayPopup();
 	}
 
@@ -231,15 +224,6 @@
 			&& ( Input.Pressed( "Escape" ) || Input.Pressed( "Menu" ) || Input.Pressed( "run" ) ) )
 			Close();
 
-		// Safety net: if the user is sitting on the Guild tab with an empty
-		// goals list (panel mounted before guild data loaded, hot-reload edge,
-		// stale instance), seed locally so the loader resolves.
-		if ( IsVisible && _currentTab == "guild" )
-		{
-			var gm = GuildManager.Instance;
-			if ( gm != null && gm.IsInGuild && gm.WeeklyGoals.Count == 0 )
-				gm.EnsureWeeklyGoalsSeeded();
-		}
 	}
 
 	private void SelectTab( string tabId )
@@ -251,16 +235,11 @@
 		if ( ContentInner != null )
 			ContentInner.ScrollOffset = new Vector2( 0, 0 );
 
-		// Tab-specific lazy-load. Guild goals seed locally if the cache is
-		// empty so the Guild tab is never blank.
-		if ( tabId == "guild" )
-			GuildManager.Instance?.EnsureWeeklyGoalsSeeded();
 	}
 
 	private int GetBadgeCount( string tabId )
 	{
 		var m = MissionManager.Instance;
-		var gm = GuildManager.Instance;
 		return tabId switch
 		{
 			"daily" => (m?.ActiveDailyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0)
@@ -268,9 +247,6 @@
 			"weekly" => m?.ActiveWeeklyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0,
 			"monthly" => (m?.ActiveMonthlyChallenge is { Completed: true, Claimed: false }) ? 1 : 0,
 			"side" => SideQuestManager.Instance?.ActiveQuests?.Count( q => q.Completed && !q.RewardClaimed ) ?? 0,
-			"guild" => (gm?.IsInGuild ?? false)
-				? gm.WeeklyGoals.Count( g => g.Completed && !g.Claimed )
-				: 0,
 			_ => 0,
 		};
 	}
@@ -313,12 +289,6 @@
 		// Side quest state — re-render on accept/progress/claim.
 		foreach ( var sq in SideQuestManager.Instance?.ActiveQuests ?? new List<SideQuestState>() )
 			h.Add( sq.Progress + (sq.Completed ? 1_000_000 : 0) + (sq.RewardClaimed ? 2_000_000 : 0) );
-
-		// Guild weekly goals — refresh card progress when any member contributes.
-		var gm = GuildManager.Instance;
-		h.Add( gm?.IsInGuild ?? false );
-		foreach ( var g in gm?.WeeklyGoals ?? new List<GuildWeeklyGoal>() )
-			h.Add( g.Progress + (g.Claimed ? 1_000_000 : 0) );
 
 		return h.ToHashCode();
 	}
@@ -1015,153 +985,9 @@
 		</div>
 	};
 
-	private RenderFragment RenderGuild() => __builder =>
-	{
-		var gm = GuildManager.Instance;
-		var inGuild = gm?.IsInGuild ?? false;
-
-		<div class="tab-content">
-			@if ( !inGuild )
-			{
-				<div class="board-row single">
-					<div class="slip empty-note rot-a">
-						<div class="pin"></div>
-						<div class="empty-illus">
-							<iconify icon="lucide:shield" Size=@(64) Color="#2e7d46" />
-						</div>
-						<div class="note-row"><span class="empty-title">No guild yet</span></div>
-						<div class="note-row"><span class="empty-body">Open the Guild panel to join one — every member contributes to weekly community goals that pour XP into your guild's level.</span></div>
-					</div>
-				</div>
-			}
-			else
-			{
-				var goals = gm.WeeklyGoals
-					.OrderBy( g => (g.Completed && !g.Claimed) ? 0 : g.Claimed ? 2 : 1 ).ToList();
-				<div class="section-label-row">
-					<div class="section-label-left">
-						<div class="section-chip"><span>COMMUNITY GOALS</span></div>
-					</div>
-					<span class="section-count">@goals.Count( g => g.Claimed ) / @goals.Count</span>
-				</div>
-
-				@if ( goals.Count == 0 )
-				{
-					<div class="empty-state small">
-						<iconify icon="lucide:loader" Size=@(32) Color="#2e7d46" />
-						<span class="empty-title">Loading goals…</span>
-					</div>
-				}
-				else
-				{
-					<div class="rowset">
-						@for ( int i = 0; i < goals.Count; i += 2 )
-						{
-							var i0 = i;
-							var i1 = i + 1;
-							<div class="board-row">
-								@GuildGoalCard( goals[i0], i0 )
-								@if ( i1 < goals.Count )
-								{
-									@GuildGoalCard( goals[i1], i1 )
-								}
-							</div>
-						}
-					</div>
-				}
-			}
-		</div>
-	};
-
-	private RenderFragment GuildGoalCard( GuildWeeklyGoal g, int idx ) => __builder =>
-	{
-		var pct = g.PercentComplete;
-		var claimable = g.Completed && !g.Claimed;
-		var cardClass = "cat-guild"
-			+ (g.Claimed ? " claimed" : "")
-			+ (claimable ? " completed" : "")
-			+ " " + GetSlipRot( idx, g.Claimed || claimable );
-		var pinClass = g.Claimed ? "done" : claimable ? "gold" : "";
-
-		<div class="slip @cardClass" onmouseover=@(() => OnHover("guildgoal-" + g.Id))>
-			<div class="pin @pinClass"></div>
-			<div class="slip-head">
-				<div class="mission-icon-wrap">
-					<iconify icon="@GetGuildGoalIcon(g.Type)" Size=@(22) Color="@GetGuildGoalColor(g.Type)" />
-				</div>
-				<div class="mission-name-row">
-					<span class="mission-name">@g.Title</span>
-					<span class="mission-cat-chip">GUILD</span>
-				</div>
-			</div>
-			<div class="slip-descrow"><span class="mission-desc">@g.Description</span></div>
-			<div class="slip-barrow">
-				<div class="mission-progress-bar">
-					<div class="mission-progress-fill" style="width: @(GetPctFillPx(pct))px"></div>
-				</div>
-			</div>
-			<div class="slip-foot">
-				@if ( g.Claimed )
-				{
-					<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
-				}
-				else if ( g.Completed )
-				{
-					<button class="claim-btn" onclick=@(() => ClaimGuildGoal(g.Id)) onmouseover=@(() => OnHover("claim-guildgoal-" + g.Id))>
-						<span>CLAIM</span>
-					</button>
-				}
-				else
-				{
-					<span class="mission-target">@($"{g.Progress:N0}") / @($"{g.Target:N0}")</span>
-				}
-			</div>
-			<div class="slip-tags">
-				<div class="q-reward xp">
-					<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:shield" Size=@(11) Color="#ffffff" /></div></div>
-					<span class="q-amt">@($"{g.XpReward:N0} XP")</span>
-				</div>
-			</div>
-			<div class="q-ring"></div>
-		</div>
-	};
-
-	private void ClaimGuildGoal( string id )
-	{
-		SoundManager.PlaySuccess();
-		GuildManager.Instance?.ClaimWeeklyGoal( id );
-	}
-
-	private string GetGuildGoalsTimer()
-	{
-		var gm = GuildManager.Instance;
-		if ( gm == null ) return "—";
-		var ts = gm.WeeklyGoalsResetAt - DateTime.UtcNow;
-		if ( ts.TotalSeconds <= 0 ) return "soon";
-		return FormatDuration( ts );
-	}
-
-	private static string GetGuildGoalIcon( GuildGoalType type ) => type switch
-	{
-		GuildGoalType.WildBeastsKO => "lucide:swords",
-		GuildGoalType.BeastsContracted => "lucide:scroll",
-		GuildGoalType.GoldEarned => "lucide:coins",
-		GuildGoalType.ExpeditionsCleared => "lucide:compass",
-		GuildGoalType.BossesDefeated => "lucide:skull",
-		GuildGoalType.FusionsCompleted => "lucide:atom",
-		_ => "lucide:shield"
-	};
-
-	private static string GetGuildGoalColor( GuildGoalType type ) => type switch
-	{
-		GuildGoalType.WildBeastsKO => "#fca5a5",
-		GuildGoalType.BeastsContracted => "#7dd3fc",
-		GuildGoalType.GoldEarned => "#fde047",
-		GuildGoalType.ExpeditionsCleared => "#fcd34d",
-		GuildGoalType.BossesDefeated => "#f0abfc",
-		GuildGoalType.FusionsCompleted => "#a78bfa",
-		_ => "#c4b5fd"
-	};
+	// (RenderGuild / GuildGoalCard / ClaimGuildGoal / guild timer + icon +
+	// color helpers CUT 2026-08-31 — guild weekly goals render in ONE place:
+	// the Guild page's THE WEEK zone, GuildPanel.razor.)
 
 	// ══════════════════════════════════════════════
 	// MISSION SLIP (shared)
