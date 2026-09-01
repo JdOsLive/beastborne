@@ -1,0 +1,198 @@
+<!-- @dsCard group="Guild Redesign" name="Guild Redesign Brief" subtitle="The plaza becomes a room with a pulse — identity · announcement · the week · roster · the log. Cuts outnumber adds." viewport="900x1400" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Beastborne — Guild Redesign Brief</title>
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@0,500;0,600;0,700;0,800;0,900;1,700;1,900&display=swap" rel="stylesheet">
+<!--
+  GUILD REDESIGN BRIEF (2026-08-31) — the review doc before any build. Sources of truth:
+  · Facts + 18-verdict ledger: .claude/ui-knowledge/guild-systems-review.md (code-verified, HEAD 18cd3c4)
+  · Emblem treatment: guild-emblem.html (framed tile family, HERO/TILE/CHIP; hub pennant REJECTED —
+    its eviction sweep checklist is carried in §3 below)
+  · Dialect: guiding-star.md + online-simple-v3.html (plain words, no theater nouns — v3 law)
+  MANDATES (user rulings): LESS IS MORE — cut at least as much as is added; every zone earns its
+  place for a 5-member friend guild with 1-2 online. Raids invisible while RaidsEnabled=false.
+  Lv-50 curve untouched. Gold = primary only. Violet = the cursor only.
+
+  FEED FEASIBILITY (verified): the server ALREADY returns a guild activity log on every fetch
+  (guild_logs → GuildManager.ActivityLog, cap 50, OnLogUpdated fires) — parsed, NEVER rendered.
+  Per-member last_seen refreshes via the 60s heartbeat — never rendered. Per-member WeeklyGuildXP/
+  WeeklyRP arrive on every fetch — never rendered. Gameplay events (contracts/evolutions) are NOT
+  in the log until the server writes them (client never writes entries) — that's feed v2, a server
+  milestone. DONATIONS DO NOT EXIST (no endpoint) — not proposed anywhere in this brief.
+  Presence is same-lobby only → "online" always pairs with last-seen for honesty.
+
+  ENGINE NOTES (browser CSS here → in-engine):
+  · Roster + log are scroll containers: hover/selected = border-color + bg fill ONLY (no transform,
+    no colored shadow — leak laws); badges/dots inside card bounds; OPAQUE band above each list,
+    gap 0 to the list. Items = direct children of the scroll child (no nested flex wrappers).
+  · Bars (XP, goals, contribution) = px-width fills written from code (GoalBarPx pattern —
+    percent widths on absolute children paint full-width). No percent fills.
+  · Emblem = native-px viewport crop (SpriteCropRect) in a BlendTowardSlab(EmblemColor, .70) slab —
+    no object-fit / filter / transform on the sprite (compositor blur law); background-repeat:
+    no-repeat. GuildPanel's GetEmblemIcon must learn "beast:" keys (today it falls back to a shield).
+  · pointer-events: all (never `auto` — parses as None). No AcceptsFocus on the panel — input rides
+    GameHUD's TickInput routing, as shipped.
+  · Entrances = class-toggle transitions driven by opacity. NO animation-delay staggers (killed by
+    re-renders); if a ladder is ever wanted, bake holds into keyframe percentages.
+  · @keyframes fire on first mount only — state reveals (claim, level-up) use transitions.
+-->
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0A0712;font-family:'Exo 2',system-ui,sans-serif;color:#f4f1ea;padding:26px 26px;width:900px}
+h1{font-style:italic;font-weight:900;font-size:24px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.sub{font-size:12px;font-weight:500;color:#A79DBE;margin-bottom:16px;max-width:800px;line-height:17px}
+.sub b{color:#EFEAF7}
+h2{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#0A0712;background:#3F8FE0;display:inline-block;padding:5px 14px;border-radius:4px;transform:skewX(-12deg);margin:20px 0 10px}
+h2 span{display:inline-block;transform:skewX(12deg)}
+.rule{font-size:12px;font-weight:500;color:#A79DBE;line-height:18px;max-width:820px}
+.rule b{color:#6FB1F0}
+.gold{color:#ffce3a;font-weight:800}
+.box{background:#161022;border:1px solid #262038;padding:12px 14px;max-width:848px;position:relative;margin-bottom:8px}
+.box .cut{position:absolute;top:-10px;right:-10px;width:20px;height:20px;background:#0A0712;border-bottom:1px solid #262038;transform:rotate(45deg)}
+.box p{font-size:12px;font-weight:500;color:#A79DBE;line-height:18px}
+.box p b{color:#EFEAF7}
+.box ul{margin:4px 0 0 16px}
+.box li{font-size:12px;font-weight:500;color:#A79DBE;line-height:18px;margin-bottom:2px}
+.box li b{color:#EFEAF7}
+.box li i{color:#7C7295;font-style:normal;font-size:11px}
+/* cuts two-col */
+.cuts{display:flex;gap:10px;max-width:848px;margin-bottom:8px}
+.cutcol{flex:1;background:#161022;border:1px solid #262038;padding:10px 12px}
+.cutcol h3{font-size:10px;font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px}
+.cutcol h3.die{color:#E0414A}.cutcol h3.mrg{color:#FBBF24}.cutcol h3.park{color:#7C7295}
+.cutcol div{font-size:11px;font-weight:500;color:#A79DBE;line-height:16px;margin-bottom:4px}
+.cutcol div b{color:#EFEAF7}
+.cutcol div i{color:#7C7295;font-style:normal}
+/* zone board */
+.board{position:relative;width:848px;height:480px;background:#0D0916;border:1px solid #262038;border-radius:8px;margin-bottom:6px}
+.z{position:absolute;background:#161022;border:1px solid #2A3A55;border-radius:6px;padding:7px 9px}
+.z .zl{font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#6FB1F0;display:block}
+.z .zc{font-size:10px;font-weight:500;color:#A79DBE;line-height:14px;margin-top:3px;display:block}
+.z .zc b{color:#EFEAF7}
+.z.hero{border-color:#3F8FE0}
+.cap{display:block;font-size:10px;font-weight:600;color:#5E5678;letter-spacing:1px;margin-bottom:16px}
+/* adds */
+.feat{display:flex;align-items:flex-start;gap:12px;background:#161022;border:1px solid #262038;border-left:3px solid #3F8FE0;padding:8px 12px;max-width:848px;margin-bottom:5px}
+.feat .rank{font-style:italic;font-weight:900;font-size:16px;color:#6FB1F0;flex:0 0 20px;line-height:20px}
+.feat .fbody{flex:1}
+.feat .fbody b{display:block;font-size:12px;font-weight:800;letter-spacing:.8px;text-transform:uppercase;color:#EFEAF7}
+.feat .fbody span{font-size:11px;font-weight:500;color:#A79DBE;line-height:16px;display:block;margin-top:1px}
+.feat .fbody span i{color:#7C7295;font-style:normal}
+.chips{display:flex;gap:5px;flex:0 0 auto;margin-top:2px}
+.fc{padding:2px 8px;border-radius:3px;font-size:9px;font-weight:800;letter-spacing:1px;transform:skewX(-10deg)}
+.fc span{display:inline-block;transform:skewX(10deg)}
+.fc.hi{background:#3FB45E;color:#04160a}
+.fc.med{background:#FBBF24;color:#241A00}
+.fc.lo{background:#2A2340;color:#A79DBE}
+.qs li{margin-bottom:7px}
+</style></head><body>
+
+<h1>Guild — Redesign Brief</h1>
+<div class="sub"><b>One room, five friends, and finally a reason to open the door.</b> This brief starts from the cuts (the 18-verdict ledger in guild-systems-review.md), then rebuilds the in-guild page as five zones fed almost entirely by data the server <b>already sends and we never rendered</b>. Landing / browse / create keep their bones; the plaza is the redesign target.</div>
+
+<h2><span>1 · Diagnosis</span></h2>
+<div class="rule" style="margin-bottom:4px">The Guild page is a statue. Between visits, nothing on it changes but the XP bar — while the three things that DO move daily live elsewhere (weekly goals in QuestPanel, chat in the dock/PawPad) or arrive on every fetch and are thrown away unrendered (the server's activity log, per-member last-seen, per-member weekly contribution). Meanwhile the page spends its pixels on a shrine of 10 mostly-locked perks (4 of them mis-wired or pure copy), a permanent DANGER ZONE strip for once-per-lifetime actions, and a rank tier that reads "Bronze" forever. For a 5-member friend guild the fix isn't more chrome — it's rendering the pulse we already have and deleting everything that isn't the room.</div>
+
+<h2><span>2 · The cuts — decided, not debated</span></h2>
+<div class="cuts">
+  <div class="cutcol"><h3 class="die">Dies</h3>
+    <div><b>Perks shrine</b> (10 rows) <i>— see MERGE →</i></div>
+    <div><b>Role text under every portrait</b> <i>— rim color stays; text only for Warden / Beastlord</i></div>
+    <div><b>Browse tile on your own plaza</b> <i>— landing keeps Browse</i></div>
+    <div><b>Landing "Invites · none" placeholder card</b></div>
+    <div><b>Landing in-guild hero view</b> <i>— Q now exits the plaza straight to the hub</i></div>
+    <div><b>GuildRankTier remnants</b> <i>— "Bronze forever" (arena dormant)</i></div>
+    <div><b>Emblem SHAPE picker</b> ×2 surfaces <i>— beast emblems are square</i></div>
+    <div><b>Min-Rank requirement</b> <i>— gates on dormant arena</i></div>
+    <div><b>Auto-kick toggle + days</b> <i>— never enforced; friend guilds don't auto-kick</i></div>
+    <div><b>Total RP on browse detail</b> <i>— API never populates it; reads 0</i></div>
+    <div><b>Browse refresh button</b> <i>— loads on open already</i></div>
+    <div><b>Dead code:</b> tab system, member search, permission matrix, RPC VisibleGuilds merge, ~700-line legacy MEMBERS-TAB scss</div>
+  </div>
+  <div class="cutcol"><h3 class="mrg">Merges</h3>
+    <div><b>Perks →</b> one <b>next-unlock chip</b> + unlocked count on the identity band. <i>Never render a perk that doesn't work (Lv20 unwired; Lv35/40/50 copy-only).</i></div>
+    <div><b>Danger bar →</b> bottom of the settings drawer. <i>CLAIM leadership stays a conditional surface (time-sensitive).</i></div>
+    <div><b>Description stone →</b> settings drawer. <i>It's recruiting copy for browsers; Announcement stays — it's the officer's voice.</i></div>
+    <div><b>XP % + raw numbers →</b> one bar, one number.</div>
+    <div><b>Requests modal + invite picker →</b> one people overlay <i>(requests atop, candidates below)</i>.</div>
+    <h3 class="park" style="margin-top:8px">Parked</h3>
+    <div><b>All raid markup + scss stays coded, renders NOTHING</b> while RaidsEnabled=false. No placeholder, no teaser, no reserved pixel a player can see.</div>
+  </div>
+</div>
+<div class="rule" style="max-width:848px;margin-bottom:4px"><b>The ledger:</b> 12 deaths + 5 merges against 4 adds (§4). Cuts win.</div>
+
+<h2><span>3 · The new page — five zones</span></h2>
+<div class="board">
+  <div style="position:absolute;left:8px;top:8px;width:832px;height:34px;background:#0A0912;border-bottom:1px solid rgba(63,143,224,.55);border-radius:6px 6px 0 0">
+    <span style="position:absolute;left:10px;top:4px;font-size:7px;font-weight:900;letter-spacing:1.5px;color:#3F8FE0">TAMERLINK</span>
+    <span style="position:absolute;left:10px;top:11px;font-style:italic;font-weight:900;font-size:13px;color:#EFEAF7">GUILD</span>
+    <span style="position:absolute;left:58px;top:18px;width:18px;height:5px;background:#3F8FE0;transform:skewX(-24deg)"></span>
+    <span style="position:absolute;left:74px;top:18px;width:7px;height:5px;background:rgba(63,143,224,.45);transform:skewX(-24deg)"></span>
+    <span style="position:absolute;right:10px;top:9px;font-size:9px;font-weight:500;color:#A79DBE">wave band under · right slot: SETTINGS (officer) + REQUESTS · N chip only when N&gt;0 · Q = back to hub</span>
+  </div>
+  <div class="z hero" style="left:8px;top:46px;width:832px;height:72px">
+    <span class="zl">Identity — one object</span>
+    <span class="zc"><b>HERO emblem 112×128</b> (framed beast tile, guild-emblem.html recipe) · <b>italic-900 NAME</b> + [TAG] stamp · <b>LV 7</b> + one thin XP bar (px fill), one number ("12,400 to Lv 8") · <b>next-unlock chip:</b> "NEXT · LV 10 — +10 roster slots · 2 perks active". No banner/XP/description stones — this band is the whole identity.</span>
+  </div>
+  <div class="z" style="left:8px;top:124px;width:486px;height:50px">
+    <span class="zl">Announcement</span>
+    <span class="zc">One stone, officer pencil-edit inline (shipped pattern). Empty → slim officer-only "Write an announcement" row; hidden for members.</span>
+  </div>
+  <div class="z" style="left:8px;top:180px;width:486px;height:292px">
+    <span class="zl">Roster — the heart</span>
+    <span class="zc"><b>Portrait ROWS</b> (rounded-square head + role-rim, name, honest presence): <b>"HERE"</b> green (same lobby) · <b>"online 2h ago"</b> · <b>"last seen in June"</b> — last_seen finally rendered, so 4 friends never read as identical gray offline. Role text only where it differs from Member (WARDEN / BEASTLORD). Click = member action modal (kept). Rows are roomy at 5 members; scrolls at 30. Scroll-clip laws apply.</span>
+  </div>
+  <div class="z" style="left:502px;top:124px;width:338px;height:166px">
+    <span class="zl">The week</span>
+    <span class="zc">Weekly goals ON the guild page at last: 3 rows — name · bar (px fill) · n/m · <b>CLAIM</b> (gold) when done. Under them, <b>contribution bars:</b> one thin bar per member (head + WeeklyGuildXP share) — the data already arrives on every fetch. Resets Monday UTC (shipped logic).</span>
+  </div>
+  <div class="z" style="left:502px;top:296px;width:338px;height:176px">
+    <span class="zl">The log</span>
+    <span class="zc">The server's activity log rendered at last. Plain rows, newest first: <b>"Alex joined · 2d"</b> · "Guild reached Lv 7 · 5d". No icons circus, no colors per type — name bold, time dim. Empty state honest: <b>"Nothing yet — guild events appear here."</b> v1 shows exactly what the server writes; richer rows are feed v2 (§4).</span>
+  </div>
+</div>
+<span class="cap">≈1:2 · 1920×1080 takeover · W/S flow: ANNOUNCEMENT → ROSTER (rows, W/S within) → THE WEEK (goal rows) → THE LOG — left column top-to-bottom, then right; A/D hops columns; continuous, no Tab (shipped model). Raids, when RaidsEnabled flips: THE WEEK's column gains a block above it and compresses — zero pixels today.</span>
+<div class="box"><div class="cut"></div>
+<p><b>What does NOT get a zone:</b> Browse / Create stay on the no-guild landing view · Description, membership rules, emblem picker, and Leave / Transfer / Disband live in the <b>settings drawer</b> (danger at its bottom) · Invites/requests appear only when non-empty (header chip → one people overlay) · Chat stays in the dock/PawPad — no duplicate chat here.</p>
+<p style="margin-top:6px"><b>Emblem eviction sweep rides along</b> (from guild-emblem.html — the hub pennant/flag is dead everywhere): hub guild zone → HERO (delete pennant + point) · this identity band → HERO · browse detail → TILE · browser rows → TILE-S · create/edit → one-surface picker (beast grid + color swatches, lucide tab cut, legacy keys still resolve) · ProfilePanel + chat/leaderboard tags → CHIP (swatch + [TAG]) · <b>GuildPanel's GetEmblemIcon learns "beast:" keys</b> (today a beast emblem renders as a fallback shield across this whole page).</p>
+</div>
+
+<h2><span>4 · The adds — four, priced</span></h2>
+<div class="feat"><div class="rank">1</div><div class="fbody"><b>Feed v1 — render the log</b><span>ActivityLog is parsed on every fetch and rendered nowhere; OnLogUpdated already fires. THE LOG zone is markup + scss only. <i>v2 — server writes gameplay events (contracts, evolutions, goal claims) into the log: a SERVER milestone (client never writes entries; no endpoint exists). Design the row format now so v2 rows just appear.</i></span></div><div class="chips"><div class="fc hi"><span>IMPACT HI</span></div><div class="fc lo"><span>CLIENT-ONLY</span></div></div></div>
+<div class="feat"><div class="rank">2</div><div class="fbody"><b>Last-seen honesty</b><span>last_seen arrives via the 60s heartbeat, never rendered; the FormatLastSeen helper already exists (dead). "Online" is same-lobby only, so it always pairs with last-seen — no fake bustle.</span></div><div class="chips"><div class="fc hi"><span>IMPACT HI</span></div><div class="fc lo"><span>CLIENT-ONLY</span></div></div></div>
+<div class="feat"><div class="rank">3</div><div class="fbody"><b>Contribution bars</b><span>Per-member WeeklyGuildXP/WeeklyRP arrive on every fetch, never rendered. Five thin bars answer "who's pulling this week" — the friend-guild question.</span></div><div class="chips"><div class="fc med"><span>IMPACT MED</span></div><div class="fc lo"><span>CLIENT-ONLY</span></div></div></div>
+<div class="feat"><div class="rank">4</div><div class="fbody"><b>Claim goals here</b><span>ClaimGoal is shipped; the verb just lives in QuestPanel. THE WEEK zone gives the 1-2 friends online something to actually DO on the guild page. <i>Pairs with a cut — see open decision №4.</i></span></div><div class="chips"><div class="fc med"><span>IMPACT MED</span></div><div class="fc lo"><span>CLIENT-ONLY</span></div></div></div>
+<div class="rule" style="margin-bottom:2px"><b>Not proposed:</b> donations (no endpoint — not a near-term design input) · guild chat on this page (same-lobby RPC only; history is a server milestone) · achievements wall (less-is-more; revisit with raids).</div>
+
+<h2><span>5 · Mechanical fixes rider — ship with the redesign, no design needed</span></h2>
+<div class="box"><div class="cut"></div>
+<ul>
+<li><b>Normal-expedition guild XP bug:</b> CompleteExpedition never calls AddGuildXP(20) / IncrementAchievement("expedition") — only the RetryExpedition path does. Wire the normal path.</li>
+<li><b>Gold perk copy honesty:</b> Lv5 "Coffer Cut" is dead code; the live behavior is an inline +5% at guild Lv≥2 in ExpeditionManager. Make copy and wiring agree (whichever way — but agree).</li>
+<li><b>Never render unimplemented perks:</b> the next-unlock chip may only name perks that actually work (Lv20 beast-XP is unwired; Lv35/40/50 cosmetics are copy-only).</li>
+<li><b>Guild leaderboard population:</b> only writes behind the raid gate — deferred WITH raids, not fixed now.</li>
+</ul>
+</div>
+
+<h2><span>6 · Keyboard + motion — house grammar</span></h2>
+<div class="box"><div class="cut"></div>
+<ul>
+<li><b>Keep the shipped W/S continuous flow</b> (sequence in §3 caption) + all five modal handlers; the settings drawer's row cursor + deferred scroll-follow stays. <b>Q = back to hub</b> (the in-guild landing detour dies). No Tab (removed after playtest); no AcceptsFocus.</li>
+<li><b>One alive element:</b> the violet ring, imperative, on the focused row/tile — the only perpetual motion. Smash-pop icon hover on the header action tiles (shipped pattern).</li>
+<li><b>Entrance:</b> class-toggle transitions, opacity-driven (transforms poison flex widths). No animation-delay ladders — re-renders kill them; if a stagger is ever wanted, keyframe-percentage holds.</li>
+<li><b>Scroll-clip laws on roster + log:</b> hover/selected = border + bg only; no transform, no colored shadow; dots/badges in-bounds; opaque band above each list, gap 0; rows as direct children of the scroll child.</li>
+<li><b>Restraint:</b> goal CLAIM = Tier 2 (≤300ms pop + sound); guild LEVEL-UP = Tier 3 at most (gold stamp snap on the identity band, one sound) — no setpiece; the log absorbs the history.</li>
+</ul>
+</div>
+
+<h2><span>7 · Open decisions — yours</span></h2>
+<div class="box"><div class="cut"></div>
+<ul class="qs">
+<li><b>1 · Page accent (USER DECISION).</b> Proposal: <b>inherit ONLINE BLUE #3F8FE0</b> — the guild is a room inside Online, the takeover already ruled "chrome stays blue," and the guild's own EmblemColor (blended) supplies per-guild personality inside the identity band, capped there. Zero new tokens; the hub zone's purple dies with the pennant. <i>Alternative if you want the room to feel like its own place: a dedicated guild teal (#3FB8B0 — clear of cursor violet, Wind teal, and stat cyan) as a new BbTokens entry.</i></li>
+<li><b>2 · Which leads the right column</b> — THE WEEK on top (the shared push; my lean) or THE LOG on top (the pulse)? Both fit; one gets the eye.</li>
+<li><b>3 · Next-unlock chip home</b> — on the identity band beside the level bar (my call — it's level context, not a destination), or its own slim strip? On the band it is NOT a W/S stop.</li>
+<li><b>4 · Goals now render in three places</b> (QuestPanel, hub guild zone, THE WEEK). Less-is-more says cut one: proposal — QuestPanel's guild-goals block becomes a one-line pointer ("Guild goals → GUILD") or is removed; hub zone keeps its single summary bar. Your call.</li>
+<li><b>5 · Feed v2 timing</b> — is the server log-write milestone (gameplay events in the feed) worth scheduling alongside this redesign, or does v1 ship alone and v2 waits for the next server window?</li>
+</ul>
+</div>
+
+</body></html>
