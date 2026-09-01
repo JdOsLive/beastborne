@@ -40,3 +40,4 @@ NOTES). Shared primitives ARE the token mechanism (tokens.md Path B) — reuse, 
 Zone math and slab construction → **DOC-1**. Token values the primitives paint → **DOC-2**.
 Label copy on the components → **DOC-3**. The motion the primitives carry → **DOC-4**. The
 cursor that visits them → **DOC-5**. Why the engine forces these shapes → **DOC-7**.
+- **ACTIONS NEVER SKEW (user-affirmed 2026-08-31):** every pressable is a ROUNDED BbButton-family slab (r16 / r11 small); skew (−12° chips / −24° seams / ±3° stamps) is reserved for NON-interactive identity marks (kickers, seams, stamps). The hub's skewed OPEN GUILD chip was the violation that minted this rule — it also forced a special ring costume, the retrofit tell. [learnings 2026-08-31 entry lands with the hub fix]
