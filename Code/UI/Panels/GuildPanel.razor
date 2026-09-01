@@ -968,6 +968,11 @@ else if ( guildView == "myguild" )
 				var gpUnlockName = gpNext != null ? $"{gpNext.Name.ToUpper()} — {gpNext.Short.ToUpper()}" : "EVERY WIRED PERK ACTIVE";
 				var gpUnlockKick = gpNext != null ? $"NEXT · LV {gpNext.Level}" : "GUILD PERKS";
 				var gpLadderChip = $"LV {guild.Level} · {gpActivePerks} ACTIVE";
+				// LANE: motion — windowed pop classes (level-up stamp snap /
+				// claim flash). Present only inside their ~0.6s windows so
+				// kb-remounts and page re-opens replay nothing.
+				var gpLvPop = RealTime.Now < _lvPopUntil ? "gp-pop" : "";
+				var gpLadderOpen = showPerkLadder ? "open" : "";
 			}
 			<div class="gp-page">
 
@@ -975,7 +980,8 @@ else if ( guildView == "myguild" )
 				     NAME (kicker GUILD → 64px italic-900 title → [TAG] whisper →
 				     blue seam slabs → BbHeaderWaves blue → 2px seam strip).
 				     Host recipe: waves first child, host paints NO fill.
-				     LANE: motion — opacity-only entrance attaches here. -->
+				     LANE: motion (attached) — gpZoneHeader mount fade, rung 0
+				     of the zone cascade (plaza branch mounts fresh per open). -->
 				<div class="gp-header">
 					<BbHeaderWaves Accent=@("blue") />
 					<div class="gp-h-identity">
@@ -1039,8 +1045,10 @@ else if ( guildView == "myguild" )
 							</div>
 							<div class="gp-ident-mid">
 								<div class="gp-ident-row">
-									<!-- LV stamp — non-interactive identity mark (skew OK) -->
-									<div class="gp-lv-stamp"><span>@($"LV {guild.Level}")</span></div>
+									<!-- LV stamp — non-interactive identity mark (skew OK).
+									     LANE: motion — gp-pop = Tier-3 gold stamp snap on a
+									     GuildLevel edge (windowed in Tick). -->
+									<div class="gp-lv-stamp @gpLvPop"><span>@($"LV {guild.Level}")</span></div>
 									<span class="gp-members-line">@($"{members.Count} MEMBERS ·")</span>
 									<span class="@gpHereClass">@($"{gpHere} HERE")</span>
 								</div>
@@ -1120,7 +1128,11 @@ else if ( guildView == "myguild" )
 						     + pad 18 + 5×120 + 4×20 + pad 18 = 752 ✓ at 5 members.
 						     Row lane: list pad 12 L/R → 1064; row 1060 declared +
 						     4px left seam border = 1064 ✓.
-						     LANE: motion — list entrance + scrollbar arming/fade. -->
+						     LANE: motion (attached) — zone fade rung 2 (gpZoneRoster);
+					     rows get NO per-row cascade: guild-kb-selected is
+					     volatile → class change = remount = the entrance would
+					     replay on every cursor hop (DOC-4 §14). Scrollbar =
+					     .gp-sb opacity arm/fade + hover thumb brighten. -->
 						<div class="gp-roster">
 							<div class="gp-band">
 								<div class="gp-chipstamp"><span>ROSTER</span></div>
@@ -1256,7 +1268,10 @@ else if ( guildView == "myguild" )
 										var g = goal;
 										var gIdx = gpGoalIdx; gpGoalIdx++;
 										var gClaimable = g.Completed && !g.Claimed;
-										<div class="gp-goal @(IsPlazaKb( "week", gIdx ) ? "guild-kb-selected" : "")">
+										// LANE: motion — windowed claim-flash class (set by
+										// ClaimGoalWithPop; absent outside the window).
+										var gPop = (_claimPopGoalId != null && g.Id == _claimPopGoalId && RealTime.Now < _claimPopUntil) ? "gp-pop" : "";
+										<div class="gp-goal @gPop @(IsPlazaKb( "week", gIdx ) ? "guild-kb-selected" : "")">
 											<div class="gp-goal-top">
 												<span class="gp-goal-name">@(g.Title?.ToUpper())</span>
 												<div class="gp-goal-spacer"></div>
@@ -1270,9 +1285,12 @@ else if ( guildView == "myguild" )
 												{
 													<span class="gp-goal-xp gold">@($"+{g.XpReward:N0} XP")</span>
 													<!-- gold = the page's ONLY gold (primary law).
-													     LANE: motion — Tier 2 claim pop (≤300ms).
+													     LANE: motion (attached) — ClaimGoalWithPop keys the
+													     row's Tier-2 flash (0.3s) + success sound; press =
+													     darker gradient (:active). CLAIM is a sanctioned
+													     gold moment (claiming the reward IS the commit).
 													     LANE: input — Space claims on the focused row. -->
-													<div class="gp-claim" onclick=@(() => { GuildManager.Instance?.ClaimWeeklyGoal( g.Id ); })><span class="gp-claim-t">CLAIM</span></div>
+													<div class="gp-claim" onclick=@(() => ClaimGoalWithPop( g ))><span class="gp-claim-t">CLAIM</span></div>
 												}
 												else if ( g.Claimed )
 												{
@@ -1293,7 +1311,10 @@ else if ( guildView == "myguild" )
 							     first; ~8 rows visible (band 36 + pad 10 + 8×38 +
 							     7×2 = 364 ≤ 400), the rest scroll. OnLogUpdated →
 							     OnRefresh → StateHasChanged (already subscribed).
-							     LANE: motion — scrollbar arming/fade. -->
+							     LANE: motion (attached) — zone fade rung 4 +
+							     gpLogRow0–7 percentage-ladder row cascade (log rows
+							     carry no volatile classes, so mount keyframes are
+							     safe); scrollbar arm/fade + hover thumb brighten. -->
 							<div class="gp-log">
 								<div class="gp-band">
 									<div class="gp-chipstamp"><span>THE LOG</span></div>
@@ -1326,17 +1347,19 @@ else if ( guildView == "myguild" )
 					</div>
 				</div>
 
-				@if ( showPerkLadder )
-				{
-					<!-- ── PERK LADDER — the next-unlock chip, pressed. Centered
-					     via FLEX on the root (never translate(-50%) — transform
-					     poisons descendant flex). Lists every WIRED stop only:
-					     LV 5/10/15/30/35 — LV 20/25/40/45/50 render NOTHING
-					     (honesty rule). Modal math: band 36 + pad 16 + 5×56 +
-					     4×8 + pad 16 = 380 tall, 560 wide (rows 528).
-					     LANE: input — Q closes (wired below); W/S walk = info
-					     rows, no press stamp. LANE: motion — modal entrance. -->
-					<div class="gp-ladder-root" onclick=@(() => { showPerkLadder = false; SoundManager.PlayBack(); })>
+				<!-- ── PERK LADDER — the next-unlock chip, pressed. Centered
+				     via FLEX on the root (never translate(-50%) — transform
+				     poisons descendant flex). Lists every WIRED stop only:
+				     LV 5/10/15/30/35 — LV 20/25/40/45/50 render NOTHING
+				     (honesty rule). Modal math: band 36 + pad 16 + 5×56 +
+				     4×8 + pad 16 = 380 tall, 560 wide (rows 528).
+				     LANE: input — Q closes (wired below); W/S walk = info
+				     rows, no press stamp. LANE: motion (attached) — ALWAYS
+				     MOUNTED + .open class toggle (settings-drawer recipe) so
+				     the opacity fade replays every open AND close animates
+				     (0.2s in / 0.12s out; a fresh if-mount can't animate its
+				     exit). Closed = opacity 0 + pointer-events none. -->
+				<div class="gp-ladder-root @gpLadderOpen" onclick=@(() => { showPerkLadder = false; SoundManager.PlayBack(); })>
 						<div class="gp-ladder" onclick:stopPropagation>
 							<div class="gp-band">
 								<div class="gp-chipstamp"><span>GUILD PERKS</span></div>
@@ -1364,7 +1387,6 @@ else if ( guildView == "myguild" )
 							</div>
 						</div>
 					</div>
-				}
 			</div>
 		}
 
@@ -1797,6 +1819,16 @@ else if ( guildView == "myguild" )
 	// (dead tab system / member search / permission matrix CUT — guild
 	// rebuild 2026-08-31, guild-systems-review §2 dead code.)
 
+	// ── Motion state (LANE: motion, attached 2026-09-01) — windowed
+	//    render-keys for the two one-shot beats. The gp-pop class renders
+	//    only while RealTime.Now < *_Until, so it is ABSENT on later
+	//    kb-cursor remounts / page re-opens and the keyframe can't replay
+	//    (volatile-class law). Both windows are in BuildHash.
+	private string _claimPopGoalId = null;
+	private float _claimPopUntil = -1f;
+	private int _lastSeenGuildLevel = -1;
+	private float _lvPopUntil = -1f;
+
 	// Plaza state — one scene, no tabs.
 	private bool showSettingsModal = false;
 	private bool showMemberMenu = false;
@@ -1868,7 +1900,8 @@ else if ( guildView == "myguild" )
 	// ── Overlay scrollbars (roster + log) — the Beastbook hand-rolled
 	//    recipe: scrollbar-color/-width don't parse, so track/thumb geometry
 	//    is written imperatively per tick (ratio math, style-space px).
-	//    LANE: motion — arming/fade polish attaches to .gp-sb transitions.
+	//    LANE: motion (attached) — .gp-sb opacity 0↔.on 0.2s arm/fade +
+	//    column-hover thumb brighten (the full Beastbook recipe).
 	private Panel rosterSbTrackRef;
 	private Panel rosterSbThumbRef;
 	private Panel logSbTrackRef;
@@ -2000,6 +2033,16 @@ else if ( guildView == "myguild" )
 		{
 			UpdateOverlayScrollbar( rosterSbTrackRef, rosterSbThumbRef, rosterScrollRef, ref _rsbTrackH, ref _rsbThumbH, ref _rsbThumbTop );
 			UpdateOverlayScrollbar( logSbTrackRef, logSbThumbRef, logScrollRef, ref _lsbTrackH, ref _lsbThumbH, ref _lsbThumbTop );
+
+			// LANE: motion — GuildLevel edge → the LV stamp's Tier-3 gold
+			// snap. First sighting only records (no pop on page open).
+			var gpLvNow = GuildManager.Instance?.Guild?.Level ?? 0;
+			if ( gpLvNow > 0 )
+			{
+				if ( _lastSeenGuildLevel > 0 && gpLvNow > _lastSeenGuildLevel )
+					_lvPopUntil = RealTime.Now + 0.6f;
+				_lastSeenGuildLevel = gpLvNow;
+			}
 		}
 
 		// Settings drawer open edge — reset the keyboard row cursor to the
@@ -2042,6 +2085,11 @@ else if ( guildView == "myguild" )
 		hash.Add( _kbZone );
 		hash.Add( _kbIndex );
 		hash.Add( _kbSearchFocused );
+		// ── Motion render-keys — the windowed pop classes must attach AND
+		//    drop on time (the booleans flip when the windows expire).
+		hash.Add( _claimPopGoalId );
+		hash.Add( RealTime.Now < _claimPopUntil );
+		hash.Add( RealTime.Now < _lvPopUntil );
 		// ── Emblem resolve inputs (BbEmblem.ResolveBeast) — icon/color/owner
 		//    plus everything the leader-favorite default chain reads: your own
 		//    favorite, the member list (owner ConnectionId), and the online
@@ -2523,8 +2571,9 @@ else if ( guildView == "myguild" )
 				var g = goals[i];
 				if ( g.Completed && !g.Claimed )
 				{
-					GuildManager.Instance?.ClaimWeeklyGoal( g.Id );
-					StateHasChanged();
+					// LANE: motion — routes through the pop helper so the kb
+					// claim gets the same Tier-2 flash + sound as the click.
+					ClaimGoalWithPop( g );
 				}
 				break;
 			}
@@ -3703,6 +3752,22 @@ else if ( guildView == "myguild" )
 	//    and the .on arming class are written per tick. Ratio math: rect px
 	//    and scroll px are commensurate, so viewH/contentH and offset/maxOff
 	//    are unit-free — only the track length needs style-space px.
+	// LANE: motion — the CLAIM commit with its Tier-2 payload: keys the
+	// goal row's windowed gold flash (gp-pop, 0.6s window > 0.3s anim)
+	// and plays the success cue. Both the click and the kb Space route
+	// here so the beat is identical. Sanctioned gold moment (the mock's
+	// Tier-2 CLAIM ruling); the ration holds — no other gp control
+	// plays a gold/success beat.
+	private void ClaimGoalWithPop( GuildWeeklyGoal g )
+	{
+		if ( g == null || !g.Completed || g.Claimed ) return;
+		_claimPopGoalId = g.Id;
+		_claimPopUntil = RealTime.Now + 0.6f;
+		GuildManager.Instance?.ClaimWeeklyGoal( g.Id );
+		SoundManager.PlaySuccess();
+		StateHasChanged();
+	}
+
 	private void UpdateOverlayScrollbar( Panel track, Panel thumb, Panel scroll, ref int trackHCache, ref int thumbHCache, ref int thumbTopCache )
 	{
 		if ( track == null || thumb == null || scroll == null ) return;
