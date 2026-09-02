@@ -1046,7 +1046,7 @@ else if ( guildView == "myguild" )
 							}
 							@if ( gpRequestsIdx >= 0 )
 							{
-								<div class="gp-chip @(IsPlazaKb( "chips", gpRequestsIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => PlazaHover( "chips", gpRequestsIdx )) onclick=@(() => { ScrollRosterToPending(); SoundManager.PlayForward(); })>
+								<div class="gp-chip @(IsPlazaKb( "chips", gpRequestsIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => PlazaHover( "chips", gpRequestsIdx )) onclick=@(() => { GoToPending(); SoundManager.PlayForward(); })>
 									<span class="gp-chip-label">REQUESTS</span>
 									<div class="gp-chip-n"><span class="gp-chip-nt">@pendingRequests.Count</span></div>
 								</div>
@@ -1506,7 +1506,8 @@ else if ( guildView == "myguild" )
 										var r = request;
 										var pIdx = gpPendIdx; gpPendIdx++;
 										var pSub = $"LV {r.Level} · asked {FormatAskedAgo( r.RequestedAt )}";
-										<div class="gp-prow @(pIdx % 2 == 1 ? "alt" : "") @ProwLeavingClass( r )">
+										<div class="gp-prow @(pIdx % 2 == 1 ? "alt" : "") @ProwLeavingClass( r ) @(IsPlazaKb( "pending", pIdx ) ? "guild-kb-selected" : "")"
+											 onmouseover=@(( e ) => PendingRowHover( pIdx, e ))>
 											<div class="gp-head">
 												@if ( r.SteamId > 0 )
 												{
@@ -1522,8 +1523,11 @@ else if ( guildView == "myguild" )
 												<span class="gp-prow-sub">@pSub</span>
 											</div>
 											<div class="gp-prow-spacer"></div>
-											<BbButton Tier="secondary" Size=@(34) Label="ACCEPT" Class="gp-pacc" HoverSound=@false OnClick=@(() => AcceptPendingWithFold( r )) />
-											<BbButton Tier="ghost" Size=@(34) Label="DENY" Class="gp-pdeny" HoverSound=@false OnClick=@(() => DenyPendingWithCollapse( r )) />
+											<!-- LANE: input — Focused = the row is the cursor AND this
+											     button is the A/D sub-cursor (BbButton's size-34 ring:
+											     -7px/3px, inside the 72px row — no scroll-clip overhang). -->
+											<BbButton Tier="secondary" Size=@(34) Label="ACCEPT" Class="gp-pacc" HoverSound=@false Focused=@(IsPlazaKb( "pending", pIdx ) && _kbPendBtn == 0) OnClick=@(() => AcceptPendingWithFold( r )) />
+											<BbButton Tier="ghost" Size=@(34) Label="DENY" Class="gp-pdeny" HoverSound=@false Focused=@(IsPlazaKb( "pending", pIdx ) && _kbPendBtn == 1) OnClick=@(() => DenyPendingWithCollapse( r )) />
 										</div>
 									}
 									<div class="gp-rkick dim">
@@ -1802,7 +1806,11 @@ else if ( guildView == "myguild" )
 				var sm = selectedMember;
 				var canManage = gm.IsOfficer && sm.SteamId != (Connection.Local?.SteamId ?? 0) && sm.Role < gm.Membership.Role;
 			}
-			<div class="confirm-overlay" onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
+			<!-- LANE: input (run-2 closeout S-A) — the overlay is a SIBLING of
+			     .gp-page, so it wears the device class itself (its hover rules
+			     are gated under .confirm-overlay.mouse-mode) and carries the
+			     same real-movement flip-back edge. -->
+			<div class="confirm-overlay @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
 				<div class="member-menu" onclick:stopPropagation>
 					<div class="member-menu-header">
 						<div class="member-menu-portrait" style="border-color: @GuildManager.GetRoleColor( sm.Role )">
@@ -1819,7 +1827,7 @@ else if ( guildView == "myguild" )
 						@if ( canManage && gm.IsLeader && sm.Role < GuildRole.Warden )
 						{
 							var promoteIdx = menuKbIdx; menuKbIdx++;
-							<button class="member-menu-action @(IsMemberMenuKb( promoteIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { gm.PromoteMember( sm.SteamId ); SoundManager.PlaySelect(); showMemberMenu = false; selectedMember = null; })>
+							<button class="member-menu-action @(IsMemberMenuKb( promoteIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => MemberMenuHover( promoteIdx )) onclick=@(() => { gm.PromoteMember( sm.SteamId ); SoundManager.PlaySelect(); showMemberMenu = false; selectedMember = null; })>
 								<iconify icon="lucide:chevron-up" Size=@(14) Color="#4ade80" />
 								<span>Promote</span>
 							</button>
@@ -1827,7 +1835,7 @@ else if ( guildView == "myguild" )
 						@if ( canManage && gm.IsLeader && sm.Role > GuildRole.Wanderer && sm.Role < GuildRole.Beastlord )
 						{
 							var demoteIdx = menuKbIdx; menuKbIdx++;
-							<button class="member-menu-action @(IsMemberMenuKb( demoteIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { gm.DemoteMember( sm.SteamId ); SoundManager.PlayClick(); showMemberMenu = false; selectedMember = null; })>
+							<button class="member-menu-action @(IsMemberMenuKb( demoteIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => MemberMenuHover( demoteIdx )) onclick=@(() => { gm.DemoteMember( sm.SteamId ); SoundManager.PlayClick(); showMemberMenu = false; selectedMember = null; })>
 								<iconify icon="lucide:chevron-down" Size=@(14) Color="#a79dbe" />
 								<span>Demote</span>
 							</button>
@@ -1835,13 +1843,13 @@ else if ( guildView == "myguild" )
 						@if ( canManage )
 						{
 							var kickIdx = menuKbIdx; menuKbIdx++;
-							<button class="member-menu-action danger @(IsMemberMenuKb( kickIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { ConfirmKick( sm ); SoundManager.PlayPopup(); showMemberMenu = false; selectedMember = null; })>
+							<button class="member-menu-action danger @(IsMemberMenuKb( kickIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => MemberMenuHover( kickIdx )) onclick=@(() => { ConfirmKick( sm ); SoundManager.PlayPopup(); showMemberMenu = false; selectedMember = null; })>
 								<iconify icon="lucide:user-x" Size=@(14) Color="#ff8a92" />
 								<span>Kick</span>
 							</button>
 						}
 						@{ var closeIdx = menuKbIdx; menuKbIdx++; }
-						<button class="member-menu-action @(IsMemberMenuKb( closeIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
+						<button class="member-menu-action @(IsMemberMenuKb( closeIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => MemberMenuHover( closeIdx )) onclick=@(() => { showMemberMenu = false; selectedMember = null; })>
 							<iconify icon="lucide:x" Size=@(14) Color="rgba(214, 206, 236, 0.6)" />
 							<span>Close</span>
 						</button>
@@ -1890,7 +1898,9 @@ else if ( guildView == "myguild" )
 		<!-- Picker Overlay -->
 		@if ( showPicker )
 		{
-			<div class="confirm-overlay" onclick=@(() => { ClosePicker(); })>
+			<!-- LANE: input (S-A) — device class + flip-back edge on the overlay
+			     root (sibling of .gp-page; see the member menu above). -->
+			<div class="confirm-overlay @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove onclick=@(() => { ClosePicker(); })>
 				<div class="picker-dialog" onclick:stopPropagation>
 					<div class="picker-header-row">
 						@{ var pickerIcon = pickerMode == "invite" ? "lucide:user-plus" : "lucide:shield-check"; }
@@ -1915,7 +1925,7 @@ else if ( guildView == "myguild" )
 							{
 								var cRef = c;
 								var thisPickerIdx = pickerKbIdx; pickerKbIdx++;
-								<div class="picker-item @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
+								<div class="picker-item @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => PickerHover( thisPickerIdx )) onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
 									<img class="picker-avatar" src="avatar:@cRef.SteamId" />
 									<span class="picker-name">@cRef.Name</span>
 									@if ( cRef.IsOnline )
@@ -1942,7 +1952,7 @@ else if ( guildView == "myguild" )
 							@foreach ( var member in eligibleMembers )
 							{
 								var thisTransferIdx = transferKbIdx; transferKbIdx++;
-								<div class="picker-item @(IsPickerKb( thisTransferIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
+								<div class="picker-item @(IsPickerKb( thisTransferIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => PickerHover( thisTransferIdx )) onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
 									<span class="picker-name">@member.Name</span>
 									<span class="picker-role">@member.Role</span>
 								</div>
@@ -2104,6 +2114,11 @@ else if ( guildView == "myguild" )
 	private string _kbZone = "";
 	private int _kbIndex = 0;
 	private bool _kbSearchFocused = false;
+	// LANE: input (run-2 closeout B-1) — the PENDING row's button sub-cursor:
+	// 0 = ACCEPT (default — the row's verb), 1 = DENY. A/D step it (the MOTD
+	// Save/Cancel grammar); W/S keep the column while walking rows; entering
+	// the zone from above/below/the REQUESTS chip re-seats on ACCEPT.
+	private int _kbPendBtn = 0;
 	// Tracks the settings sub-view open edge so the row cursor resets to the
 	// first row whenever the drawer opens — by keyboard OR by mouse click.
 	private bool _settingsWasOpen = false;
@@ -2316,6 +2331,12 @@ else if ( guildView == "myguild" )
 		if ( showPicker && !_pickerWasOpen ) _kbIndex = 0;
 		_pickerWasOpen = showPicker;
 
+		// LANE: input (B-1) — the PENDING zone is volatile (rows fold, the
+		// server removes them, another officer may act first): keep the
+		// cursor on a standing row or slide it into the roster when the zone
+		// empties. Cheap no-op unless the cursor is in the zone.
+		PlazaValidatePendingCursor();
+
 		// Deferred TextEntry focus (S3/S5) — one frame after the confirm key.
 		if ( _focusEntryPending != null )
 		{
@@ -2382,6 +2403,7 @@ else if ( guildView == "myguild" )
 		hash.Add( _kbActive );
 		hash.Add( _kbZone );
 		hash.Add( _kbIndex );
+		hash.Add( _kbPendBtn );     // PENDING row ACCEPT/DENY sub-cursor (BbButton Focused)
 		hash.Add( _kbSearchFocused );
 		hash.Add( _gpKbdMode );     // .kbd-mode/.mouse-mode root class
 		hash.Add( _ladderKbIndex ); // perk-ladder row cursor
@@ -2703,15 +2725,19 @@ else if ( guildView == "myguild" )
 
 	// Guild-page zones in the mock's documented walk order (LANE: input,
 	// wired 2026-09-01): header chips → next-unlock chip → announcement
-	// (pencil / write-row) → ROSTER rows → THE WEEK's goal rows → THE LOG
-	// rows (info stops, Space no-op). W/S flow VERTICALLY as one continuous
-	// cursor, crossing zone boundaries automatically; A/D HOP COLUMNS
-	// (unlock ⇄ announcement in the top band; roster ⇄ week/log at the
-	// spatially nearest row — rect-measured) and step within the chip pair.
+	// (pencil / write-row) → PENDING request rows (officers, pinned at the
+	// roster's top; A/D = ACCEPT ↔ DENY, Space fires the focused button) →
+	// ROSTER rows → THE WEEK's goal rows → THE LOG rows (info stops, Space
+	// no-op). W/S flow VERTICALLY as one continuous cursor, crossing zone
+	// boundaries automatically; A/D HOP COLUMNS (unlock ⇄ announcement in
+	// the top band; pending/roster ⇄ week/log at the spatially nearest row —
+	// rect-measured) and step within the chip pair / the ACCEPT-DENY pair.
 	// No Tab (playtest ruling), no AcceptsFocus. Empty zones skip on cross.
 	// Every conditional stop is counted from the SAME live logic as the
-	// markup's if-chain (stale-map law, DOC-5 §12).
-	private static readonly string[] _plazaZones = { "chips", "unlock", "info", "roster", "week", "log" };
+	// markup's if-chain (stale-map law, DOC-5 §12). PENDING is volatile:
+	// folding rows (_prowLeaving) are not stops, and the zone vanishes
+	// cleanly when the list empties (PlazaValidatePendingCursor, in Tick).
+	private static readonly string[] _plazaZones = { "chips", "unlock", "info", "pending", "roster", "week", "log" };
 
 	private void TickPlazaInput()
 	{
@@ -2769,6 +2795,7 @@ else if ( guildView == "myguild" )
 			case "chips":  return GetPlazaChips( gm ).Count;
 			case "unlock": return 1;                                   // the next-unlock chip
 			case "info":   return GetPlazaInfoPencils( gm ).Count;     // announcement pencil / write-row
+			case "pending": return PlazaPendingLiveCount( gm );        // join-request rows still standing (folding rows excluded)
 			case "roster": return GetPlazaRosterMembers( members ).Count;
 			case "week":   return gm.WeeklyGoals?.Count ?? 0;          // goal rows (claim when claimable)
 			case "log":    return gm.ActivityLog?.Count ?? 0;          // feed rows (info stops, Space no-op)
@@ -2783,7 +2810,22 @@ else if ( guildView == "myguild" )
 	{
 		int count = PlazaZoneCount( _kbZone, gm, members );
 
-		if ( (_kbZone == "roster" || _kbZone == "week" || _kbZone == "log") && count > 0 )
+		if ( _kbZone == "pending" )
+		{
+			// PENDING rows — step to the next row still standing (folding rows
+			// are skipped); the ACCEPT/DENY column is kept (grid-honest).
+			int next = PlazaPendingStep( gm, _kbIndex, dir );
+			if ( next >= 0 )
+			{
+				_kbIndex = next;
+				SoundManager.PlayHover();
+				PlazaScrollFollow();
+				StateHasChanged();
+				return;
+			}
+			// Off the top/bottom edge — fall through to the zone cross.
+		}
+		else if ( (_kbZone == "roster" || _kbZone == "week" || _kbZone == "log") && count > 0 )
 		{
 			int next = _kbIndex + dir;
 			if ( next >= 0 && next < count )
@@ -2806,32 +2848,47 @@ else if ( guildView == "myguild" )
 	{
 		if ( _kbZone == "roster" )
 			UiGridScroll.ScrollIndexIntoView( rosterScrollRef, _kbIndex, "gp-mrow" );
+		else if ( _kbZone == "pending" )
+			UiGridScroll.ScrollIndexIntoView( rosterScrollRef, _kbIndex, "gp-prow" ); // same scroller, pinned at its top
 		else if ( _kbZone == "log" )
 			UiGridScroll.ScrollIndexIntoView( logScrollRef, _kbIndex, "gp-lrow" );
 	}
 
 	// Cross to the next/previous non-empty plaza zone. Going DOWN lands on the
 	// new zone's FIRST item; going UP lands on its LAST item.
-	private void PlazaCrossZone( GuildManager gm, List<GuildMemberInfo> members, int dir )
+	// `quiet` = no hover cue (the automatic slide after a pending row folds —
+	// the ACCEPT/DENY cue already played). Returns false when no zone in that
+	// direction has a stop.
+	private bool PlazaCrossZone( GuildManager gm, List<GuildMemberInfo> members, int dir, bool quiet = false )
 	{
 		int zi = Array.IndexOf( _plazaZones, _kbZone );
 		if ( zi < 0 ) zi = 0;
 		for ( int step = 0; step < _plazaZones.Length; step++ )
 		{
 			int ni = zi + dir * ( step + 1 );
-			if ( ni < 0 || ni >= _plazaZones.Length ) return; // top/bottom of page — no-op
+			if ( ni < 0 || ni >= _plazaZones.Length ) return false; // top/bottom of page — no-op
 			var zone = _plazaZones[ni];
 			int c = PlazaZoneCount( zone, gm, members );
 			if ( c <= 0 ) continue;                            // empty zone — skip through
 			_kbZone = zone;
-			_kbIndex = dir > 0 ? 0 : c - 1;                    // down→first item, up→last
-			SoundManager.PlayHover();
-			// Roster/log rows live in overflow:scroll lists — keep the focused
-			// row on screen (deferred-scroll not needed: rows pre-exist).
+			if ( zone == "pending" )
+			{
+				// Index is a position in the FULL request list (markup order);
+				// land on the first / last row still standing, on ACCEPT.
+				var list = GetPlazaPendingRequests( gm );
+				_kbIndex = dir > 0 ? PlazaPendingStep( gm, -1, 1 ) : PlazaPendingStep( gm, list.Count, -1 );
+				_kbPendBtn = 0;
+			}
+			else
+				_kbIndex = dir > 0 ? 0 : c - 1;                // down→first item, up→last
+			if ( !quiet ) SoundManager.PlayHover();
+			// Pending/roster/log rows live in overflow:scroll lists — keep the
+			// focused row on screen (deferred-scroll not needed: rows pre-exist).
 			PlazaScrollFollow();
 			StateHasChanged();
-			return;
+			return true;
 		}
+		return false;
 	}
 
 	// Horizontal move (A/D) — the COLUMN-HOP grammar (LANE: input): the page
@@ -2880,6 +2937,30 @@ else if ( guildView == "myguild" )
 				}
 				return;
 			}
+			case "pending":
+			{
+				// A/D step ACCEPT ↔ DENY inside the row (the MOTD Save/Cancel
+				// grammar). DENY is the roster column's right edge, so D from
+				// DENY hops to the right column (geometry law, DOC-5 §21); A
+				// from ACCEPT is a no-op (the row's text is not a stop).
+				if ( dir < 0 )
+				{
+					if ( _kbPendBtn == 0 ) return;
+					_kbPendBtn = 0;
+					SoundManager.PlayHover();
+					StateHasChanged();
+					return;
+				}
+				if ( _kbPendBtn == 0 )
+				{
+					_kbPendBtn = 1;
+					SoundManager.PlayHover();
+					StateHasChanged();
+					return;
+				}
+				PlazaHopRight( gm, members );
+				return;
+			}
 			case "roster":
 			{
 				// D → the right column (week goal or log row nearest in Y).
@@ -2889,7 +2970,7 @@ else if ( guildView == "myguild" )
 			case "week":
 			case "log":
 			{
-				// A → back to the roster at the nearest row.
+				// A → back to the left column (pending or roster) at the nearest row.
 				if ( dir < 0 ) PlazaHopLeft( gm, members );
 				return;
 			}
@@ -2923,15 +3004,17 @@ else if ( guildView == "myguild" )
 		return r.Top + r.Height * 0.5f;
 	}
 
-	// Roster → right column: pick the week goal / log row whose center is
-	// nearest the focused roster row's center.
+	// Pending/roster → right column: pick the week goal / log row whose center
+	// is nearest the focused row's center.
 	private void PlazaHopRight( GuildManager gm, List<GuildMemberInfo> members )
 	{
 		int goalCount = PlazaZoneCount( "week", gm, members );
 		int logCount = PlazaZoneCount( "log", gm, members );
 		if ( goalCount <= 0 && logCount <= 0 ) return;
 
-		float curY = RowCenterY( rosterScrollRef, "gp-mrow", _kbIndex );
+		float curY = _kbZone == "pending"
+			? RowCenterY( rosterScrollRef, "gp-prow", _kbIndex )
+			: RowCenterY( rosterScrollRef, "gp-mrow", _kbIndex );
 		string bestZone = null;
 		int bestIdx = 0;
 		float bestD = float.MaxValue;
@@ -2957,27 +3040,40 @@ else if ( guildView == "myguild" )
 		StateHasChanged();
 	}
 
-	// Week/log → roster: nearest roster row by center Y.
+	// Week/log → left column: nearest PENDING (still standing) or roster row
+	// by center Y. Landing on a pending row seats DENY — the button nearest
+	// the column the cursor came from (geometry law).
 	private void PlazaHopLeft( GuildManager gm, List<GuildMemberInfo> members )
 	{
 		int rosterCount = PlazaZoneCount( "roster", gm, members );
-		if ( rosterCount <= 0 ) return;
+		var pending = GetPlazaPendingRequests( gm );
+		if ( rosterCount <= 0 && PlazaPendingLiveCount( gm ) <= 0 ) return;
 
 		float curY = _kbZone == "week"
 			? RowCenterY( weekBodyRef, "gp-goal", _kbIndex )
 			: RowCenterY( logScrollRef, "gp-lrow", _kbIndex );
 
+		string bestZone = null;
 		int best = 0;
 		float bestD = float.MaxValue;
+		for ( int p = 0; p < pending.Count; p++ )
+		{
+			if ( IsProwLeaving( pending[p] ) ) continue;
+			float y = RowCenterY( rosterScrollRef, "gp-prow", p );
+			float d = (float.IsNaN( y ) || float.IsNaN( curY )) ? float.MaxValue * 0.5f : Math.Abs( y - curY );
+			if ( d < bestD ) { bestD = d; bestZone = "pending"; best = p; }
+		}
 		for ( int i = 0; i < rosterCount; i++ )
 		{
 			float y = RowCenterY( rosterScrollRef, "gp-mrow", i );
 			float d = (float.IsNaN( y ) || float.IsNaN( curY )) ? float.MaxValue * 0.5f : Math.Abs( y - curY );
-			if ( d < bestD ) { bestD = d; best = i; }
+			if ( d < bestD ) { bestD = d; bestZone = "roster"; best = i; }
 		}
+		if ( bestZone == null ) { bestZone = rosterCount > 0 ? "roster" : "pending"; best = rosterCount > 0 ? 0 : PlazaPendingStep( gm, -1, 1 ); }
 
-		_kbZone = "roster";
+		_kbZone = bestZone;
 		_kbIndex = best;
+		if ( bestZone == "pending" ) _kbPendBtn = 1;
 		SoundManager.PlayHover();
 		PlazaScrollFollow();
 		StateHasChanged();
@@ -2996,7 +3092,7 @@ else if ( guildView == "myguild" )
 				switch ( chips[i] )
 				{
 					case "invite":   OnInviteClicked(); break;
-					case "requests": ScrollRosterToPending(); SoundManager.PlayForward(); break;
+					case "requests": GoToPending(); SoundManager.PlayForward(); break;
 					default:         OpenSettingsView(); SoundManager.PlayClick(); break;
 				}
 				StateHasChanged();
@@ -3016,6 +3112,19 @@ else if ( guildView == "myguild" )
 				StartEditMotd();
 				SoundManager.PlayClick();
 				StateHasChanged();
+				break;
+			}
+			case "pending":
+			{
+				// Space/Enter/E fire the FOCUSED button (ACCEPT by default). The
+				// fold/collapse helpers own the beat + the server call and then
+				// slide the cursor off the leaving row (PlazaValidatePendingCursor).
+				var list = GetPlazaPendingRequests( gm );
+				if ( _kbIndex < 0 || _kbIndex >= list.Count ) return;
+				var r = list[_kbIndex];
+				if ( IsProwLeaving( r ) ) return;
+				if ( _kbPendBtn == 1 ) DenyPendingWithCollapse( r );
+				else AcceptPendingWithFold( r );
 				break;
 			}
 			case "roster":
@@ -3119,6 +3228,131 @@ else if ( guildView == "myguild" )
 			.ThenByDescending( m => m.Role )
 			.ThenByDescending( m => m.ArenaPoints )
 			.ToList();
+	}
+
+	// ── PENDING zone (LANE: input, run-2 closeout B-1) ──────────────────────
+	// The request list in MARKUP order — the same `pendingRequests` the
+	// roster renders (officers only; everyone else sees no PENDING block).
+	// _kbIndex in this zone is a position in THIS list (folding rows
+	// included, so it matches the Nth .gp-prow child the scroller measures);
+	// folding rows (_prowLeaving) are simply never stops.
+	private List<GuildJoinRequest> GetPlazaPendingRequests( GuildManager gm )
+	{
+		if ( gm == null || !gm.IsOfficer ) return new List<GuildJoinRequest>();
+		return gm.JoinRequests ?? new List<GuildJoinRequest>();
+	}
+
+	// Rows still standing = the zone's stop count (0 → the zone is skipped).
+	private int PlazaPendingLiveCount( GuildManager gm )
+	{
+		int n = 0;
+		foreach ( var r in GetPlazaPendingRequests( gm ) ) if ( !IsProwLeaving( r ) ) n++;
+		return n;
+	}
+
+	// Next standing row from `from` (exclusive) in `dir`; -1 when none.
+	// PlazaPendingStep( gm, -1, 1 ) = first standing row · ( gm, count, -1 ) = last.
+	private int PlazaPendingStep( GuildManager gm, int from, int dir )
+	{
+		var list = GetPlazaPendingRequests( gm );
+		for ( int i = from + dir; i >= 0 && i < list.Count; i += dir )
+			if ( !IsProwLeaving( list[i] ) ) return i;
+		return -1;
+	}
+
+	// The zone is VOLATILE (rows fold on ACCEPT/DENY, the server removes
+	// them, other officers may act first). Called every Tick while the cursor
+	// sits in the zone and right after a fold: a cursor on a folding /
+	// vanished row moves to the next standing row (down, else up); when the
+	// zone has emptied it slides into the first member row (or the nearest
+	// non-empty zone below, else above) — so the zone vanishes cleanly.
+	private void PlazaValidatePendingCursor()
+	{
+		if ( !_kbActive || _kbZone != "pending" ) return;
+		// Blocking sub-states borrow _kbIndex for their own cursor while the
+		// plaza's _kbZone sits idle — never touch it under them.
+		if ( guildView != "myguild" || showSettingsView || showMemberMenu || showPicker || showPerkLadder || editingMotd || raidViewOpen ) return;
+		var gm = GuildManager.Instance;
+		if ( gm == null ) { ResetKb(); return; }
+		var list = GetPlazaPendingRequests( gm );
+		if ( _kbIndex >= 0 && _kbIndex < list.Count && !IsProwLeaving( list[_kbIndex] ) ) return;
+
+		int from = Math.Clamp( _kbIndex, -1, list.Count );
+		int next = PlazaPendingStep( gm, from, 1 );
+		if ( next < 0 ) next = PlazaPendingStep( gm, Math.Min( from, list.Count ), -1 );
+		if ( next >= 0 )
+		{
+			_kbIndex = next;
+			_kbPendBtn = 0;
+			PlazaScrollFollow();
+			StateHasChanged();
+			return;
+		}
+
+		// Zone empty — slide to the first member row / next stop (quiet: the
+		// ACCEPT/DENY cue already played). Falls back upward, then to a reset.
+		var members = gm.Members ?? new List<GuildMemberInfo>();
+		if ( PlazaCrossZone( gm, members, 1, quiet: true ) ) return;
+		if ( PlazaCrossZone( gm, members, -1, quiet: true ) ) return;
+		ResetKb();
+		StateHasChanged();
+	}
+
+	// REQUESTS·N chip (click or Space): scroll the roster to its top AND seat
+	// the cursor on the first standing pending row, ACCEPT focused — the chip
+	// hands the player straight to the verb. (In mouse mode the pointer is
+	// still on the chip, so its next hover re-takes the cursor — last input
+	// wins; the scroll is the mouse user's payoff.)
+	private void GoToPending()
+	{
+		ScrollRosterToPending();
+		var gm = GuildManager.Instance;
+		int first = PlazaPendingStep( gm, -1, 1 );
+		if ( first < 0 ) return;
+		_kbActive = true;
+		_kbZone = "pending";
+		_kbIndex = first;
+		_kbPendBtn = 0;
+		StateHasChanged();
+	}
+
+	// Hover on a pending row moves the ONE cursor onto it (DOC-5 §6) and, when
+	// the pointer is over ACCEPT or DENY, seats the button sub-cursor there
+	// (e.Target → up to the row; the BbButton root carries gp-pacc/gp-pdeny
+	// via Class). Over the row's text the sub-cursor keeps its seat (ACCEPT
+	// on a fresh row). Ignored in kb mode (synthetic hovers under a parked
+	// pointer during scroll-follow) and while a sub-state owns the keys.
+	private void PendingRowHover( int idx, PanelEvent e )
+	{
+		if ( _gpKbdMode ) return;
+		if ( editingMotd || showPerkLadder || showSettingsView || showMemberMenu || showPicker ) return;
+		var gm = GuildManager.Instance;
+		var list = GetPlazaPendingRequests( gm );
+		if ( idx < 0 || idx >= list.Count || IsProwLeaving( list[idx] ) ) return; // folding row — inert
+
+		int btn = -1;
+		for ( var p = e?.Target; p != null; p = p.Parent )
+		{
+			if ( p.HasClass( "gp-prow" ) ) break;
+			if ( p.HasClass( "gp-pacc" ) ) { btn = 0; break; }
+			if ( p.HasClass( "gp-pdeny" ) ) { btn = 1; break; }
+		}
+
+		bool rowChanged = !( _kbActive && _kbZone == "pending" && _kbIndex == idx );
+		if ( rowChanged )
+		{
+			_kbActive = true;
+			_kbZone = "pending";
+			_kbIndex = idx;
+			_kbPendBtn = btn < 0 ? 0 : btn;
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+		if ( btn < 0 || btn == _kbPendBtn ) return;
+		_kbPendBtn = btn;
+		SoundManager.PlayHover();
+		StateHasChanged();
 	}
 
 	// ── PERK LADDER overlay (LANE: input) — W/S walk the perk rows (info
@@ -3364,7 +3598,14 @@ else if ( guildView == "myguild" )
 	private void TickSettingsDrawerInput()
 	{
 		// LANE: motion — the view is fading out; nothing takes input mid-exit.
-		if ( SettingsClosing ) return;
+		// LANE: input (run-2 closeout S-H, DOC-5 §1) — Q is still OURS during
+		// the 0.12s latch: a fast double-tap must not fall to the hub's
+		// BackToHub and leave the guild page. Claim it, act on nothing.
+		if ( SettingsClosing )
+		{
+			if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+			return;
+		}
 
 		// S3 — typing owns the keyboard while the description entry has focus
 		// (Tab hands it back here; Enter/Esc via the entry's own events). Q
@@ -3538,6 +3779,10 @@ else if ( guildView == "myguild" )
 		var sm = selectedMember;
 		var actions = GetMemberMenuActions( gm, sm );
 
+		// Device contract leg 1 (S-A): a nav key = the keyboard drove last, so
+		// the overlay's hover rules drop and MemberMenuHover ignores hovers.
+		if ( NavPressed() ) StampKb();
+
 		if ( Input.Pressed( "Menu" ) )
 		{
 			showMemberMenu = false;
@@ -3570,6 +3815,8 @@ else if ( guildView == "myguild" )
 	// ── PICKER MODAL (invite / transfer) ─────────────────────────────────────
 	private void TickPickerInput()
 	{
+		if ( NavPressed() ) StampKb(); // S-A — see TickMemberMenuInput
+
 		if ( Input.Pressed( "Menu" ) )
 		{
 			ClosePicker(); // B2 — returns to the drawer when opened from it
@@ -3673,6 +3920,28 @@ else if ( guildView == "myguild" )
 		StateHasChanged();
 	}
 
+	// ── Overlay one-cursor hovers (run-2 closeout S-A, DOC-5 §5/§6) — the
+	//    member menu and the invite/transfer picker are siblings of .gp-page,
+	//    so their hover moves the SAME _kbIndex the keyboard walks and
+	//    guild-kb-selected stays the one lit row. Mouse mode only. ──
+	private void MemberMenuHover( int idx )
+	{
+		if ( !showMemberMenu || _gpKbdMode ) return;
+		if ( _kbIndex == idx ) return;
+		_kbIndex = idx;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void PickerHover( int idx )
+	{
+		if ( !showPicker || _gpKbdMode ) return;
+		if ( _kbIndex == idx ) return;
+		_kbIndex = idx;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
 	// ── TEXT-ENTRY GRAMMAR (LANE: input — S3/S5, DOC-5 §11/§18) ─────────────
 	// Every TextEntry on this page is a kb STOP on its row:
 	//   Space/Enter/E on the row → the box takes focus (deferred one frame so
@@ -3737,7 +4006,7 @@ else if ( guildView == "myguild" )
 	private bool IsBrowseGridKb( int idx ) => _kbActive && _kbZone == "browse-grid" && _kbIndex == idx;
 	private bool IsBrowseDetailKb( int idx ) => _kbActive && _kbZone == "browse-detail" && _kbIndex == idx;
 	// One generic predicate for the rebuilt guild page's zones
-	// (chips / unlock / info / roster / week / log).
+	// (chips / unlock / info / pending / roster / week / log).
 	private bool IsPlazaKb( string zone, int idx ) => _kbActive && _kbZone == zone && _kbIndex == idx;
 	// Perk-ladder rows — the overlay owns the keyboard whenever open, so its
 	// cursor shows immediately (modal predicate family below).
@@ -4717,6 +4986,7 @@ else if ( guildView == "myguild" )
 		if ( r.SteamId > 0 ) { _joinWatchSteamId = r.SteamId; _joinWatchUntil = RealTime.Now + 8f; }
 		gm.ApproveJoinRequest( r );
 		SoundManager.PlaySelect();
+		PlazaValidatePendingCursor(); // LANE: input — the cursor never rides a folding row
 		StateHasChanged();
 	}
 
@@ -4728,6 +4998,7 @@ else if ( guildView == "myguild" )
 		_prowLeaving[ProwKey( r )] = (false, RealTime.Now);
 		gm.DenyJoinRequest( r );
 		SoundManager.PlayDeny();
+		PlazaValidatePendingCursor(); // LANE: input — the cursor never rides a folding row
 		StateHasChanged();
 	}
 
