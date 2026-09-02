@@ -1200,17 +1200,21 @@ else if ( guildView == "myguild" )
 											</div>
 											<span class="gs-kick gs-kick-beast">BEAST</span>
 											<!-- BEAST — THE emblem (EmblemIcon = "beast:<speciesId>").
-											     8 species tiles 44×44 r9 (declared 40 + 2px rim), the
-											     species sprite as a native-px 40×40 crop (no filter /
-											     transform / object-fit). Sources: your roster first,
-											     then the members' favorites (GetEmblemBeastChoices). -->
+											     8 species tiles 44×44 r9 (declared 40 + 2px rim). The
+											     tile shows the WHOLE beast centred (object-fit: contain
+											     into the 40 box — run 3 fix: the 45/22 face crop showed a
+											     40px slice of a 128 sprite and read "cut off"). This is a
+											     PICKER — recognising the species beats pixel sharpness;
+											     the emblem's real renders (hero 112 / twin 44 / hub) keep
+											     the native-px face crop. Sources: the saved emblem, your
+											     roster, then the members' favorites (GetEmblemBeastChoices);
+											     A/D cycle the SAME list (CycleSettingsRow "beast"). -->
 											<div class="gs-chips tiles @(IsSettingsRowKb( "beast" ) ? "guild-kb-selected" : "")">
 												@foreach ( var species in gsChoices )
 												{
 													var s = species;
-													var sCrop = BbEmblem.CropStyleFor( s, 40, 40 );
 													<div class="gs-btile @(gsActiveBeastId == s.Id ? "on" : "")" onclick=@(() => { emblemIcon = "beast:" + s.Id; SoundManager.PlayClick(); })>
-														<img class="emblem-beast-img" src="@s.IconPath" style="@sCrop" />
+														<img class="gs-btile-img" src="@s.IconPath" />
 													</div>
 												}
 												@if ( gsChoices.Count == 0 )
@@ -4488,8 +4492,15 @@ else if ( guildView == "myguild" )
 		return $"{(int)diff.TotalDays}d ago";
 	}
 
-	// BEAST tile sources — the first 8, deduped, every one with a sprite:
-	//   0. the SAVED pick (so the active tile is always on the row)
+	// BEAST tile sources — the first 8, deduped, every one with a sprite.
+	// The ORDER IS STABLE while the form is open (run 3 fix): it hoists the
+	// guild's SAVED emblem (Guild.EmblemIcon), never the PENDING pick — the
+	// old version hoisted `emblemIcon`, so every A/D rebuilt the list with
+	// the new pick at index 0 and the cycle ping-ponged between two beasts
+	// ("I can only switch between two"). Tiles and CycleSettingsRow share
+	// this one list; the pending pick is guaranteed present (appended into
+	// the last slot if the sources ever push it past the cap).
+	//   0. the SAVED emblem (so the live tile is always on the row)
 	//   1. your favorite, then your roster (MonsterManager.OwnedMonsters,
 	//      in roster order)
 	//   2. the members' favorites — online broadcast profiles first
@@ -4509,7 +4520,8 @@ else if ( guildView == "myguild" )
 			if ( s != null && !string.IsNullOrEmpty( s.IconPath ) ) result.Add( s );
 		}
 
-		if ( ( emblemIcon ?? "" ).StartsWith( "beast:" ) ) Add( emblemIcon.Substring( 6 ) );
+		var savedIcon = GuildManager.Instance?.Guild?.EmblemIcon ?? "";
+		if ( savedIcon.StartsWith( "beast:" ) ) Add( savedIcon.Substring( 6 ) );
 		Add( TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId );
 		foreach ( var m in mm.OwnedMonsters ?? new List<Monster>() )
 			Add( m?.SpeciesId );
@@ -4526,6 +4538,19 @@ else if ( guildView == "myguild" )
 					&& profiles.TryGetValue( member.ConnectionId, out var profile ) )
 					Add( profile?.FavoriteMonsterSpeciesId );
 				Add( cards?.FirstOrDefault( c => c != null && c.SteamId == member.SteamId )?.FavoriteMonsterSpeciesId );
+			}
+		}
+
+		// The PENDING pick must be a tile (the cycle indexes this list). It
+		// came from this list, so this only fires if a source churned it out.
+		var pendingId = ( emblemIcon ?? "" ).StartsWith( "beast:" ) ? emblemIcon.Substring( 6 ) : "";
+		if ( pendingId != "" && !result.Any( s => s.Id == pendingId ) )
+		{
+			var ps = mm.GetSpecies( pendingId );
+			if ( ps != null && !string.IsNullOrEmpty( ps.IconPath ) )
+			{
+				if ( result.Count >= 8 ) result.RemoveAt( result.Count - 1 );
+				result.Add( ps );
 			}
 		}
 		return result;
