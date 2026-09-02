@@ -1378,6 +1378,7 @@
             return null;
         }
 
+        if ( _gridRef == null ) return null; // grid unmounted (an app view is up — the in-app direct keys reach here via StartSwipe)
         int row = _kb / Cols, col = _kb % Cols;
         int ri = 0;
         foreach ( var child in _gridRef.Children )
@@ -1623,13 +1624,25 @@
         // v9: in an app view, hit-test the app controls instead of tiles.
         if ( _appView != null )
         {
-            if ( _appClosingUntil > 0f ) return; // reverse bloom in flight — taps wait
+            if ( _appClosingUntil > 0f )
+            {
+                // Reverse bloom in flight (the view stays mounted for its first
+                // 120ms): taps ON the phone wait, a tap OUTSIDE it still closes.
+                if ( !IsOnDevice( Mouse.Position ) ) Close();
+                return;
+            }
             var act = ActionAtScreen( Mouse.Position );
             if ( WALK_DEBUG ) Log.Info( $"[walkdbg] appview click -> {act ?? "none"}" );
-            // Any tap that isn't the input (or SEND, which keeps you typing) takes
-            // the keyboard back from the TextEntry — nothing else ever would.
-            if ( act != "hit-input" && act != "hit-send" ) BlurPhoneInput();
+            // Any tap that isn't the input, SEND or a channel pill (all three keep
+            // you typing — 2026-09-01: switching channel mid-sentence used to drop
+            // the keyboard) takes it back from the TextEntry — nothing else would.
+            bool keepsTyping = act == "hit-input" || act == "hit-send" || ( act != null && act.StartsWith( "hit-chan-" ) );
+            if ( !keepsTyping ) BlurPhoneInput();
             if ( act != null ) { RunAppAction( act ); return; }
+            // 2026-09-01 (usability audit): a tap on the phone BODY that hits no
+            // control (header, wallpaper, the gap between rows) is inert — it used
+            // to close the whole phone, so a misclick threw the player out.
+            if ( IsOnDevice( Mouse.Position ) ) return;
             // Clicked outside the phone = close entirely. The app view STAYS
             // mounted for the 180ms slide-out (polish pass 2026-08-30: resetting
             // here mounted the home grid under the departing phone — the "goes
@@ -1640,7 +1653,19 @@
         int idx = TileAtScreen( Mouse.Position );
         if ( WALK_DEBUG ) Log.Info( $"[walkdbg] backdrop click at {Mouse.Position} -> tile {idx}" );
         if ( idx >= 0 ) { LaunchIndex( idx ); return; }
+        if ( IsOnDevice( Mouse.Position ) ) return; // a miss between tiles is inert, not a close (2026-09-01)
         Close();
+    }
+
+    // Is a SCREEN-px point on the device (bezel included)? The lean is zero
+    // (v9 FLAT), so the layout rect IS the paint; if the lean ever returns,
+    // inverse-project first (TileAtScreen shows the recipe).
+    private bool IsOnDevice( Vector2 screenPx )
+    {
+        if ( _deviceRef == null ) return false;
+        var r = _deviceRef.Box.Rect;
+        if ( r.Width < 1f ) return false;
+        return screenPx.x >= r.Left && screenPx.x <= r.Right && screenPx.y >= r.Top && screenPx.y <= r.Bottom;
     }
 
     private void HoverTile( int i )
@@ -1655,7 +1680,12 @@
     private void LaunchIndex( int i )
     {
         if ( i < 0 || i >= GridCount + DockCount ) return;
-        if ( _appClosingUntil > 0f ) return; // reverse bloom in flight — the disc is still collapsing into its tile
+        // Reverse bloom: only the first 120ms (old view still mounted) block a
+        // launch. 2026-09-01 (usability audit): once the grid is up (+120ms) the
+        // disc is merely collapsing — a launch re-seeds it on the new tile and it
+        // blooms from wherever it is. Before, Enter/click were SWALLOWED for the
+        // whole 360ms, which read as "the phone ignored me".
+        if ( _appView != null && _appClosingUntil > 0f ) return;
         if ( i >= GridCount ) { LaunchDock( i - GridCount ); return; }
         var app = Apps[i];
         _kb = i;
@@ -2300,7 +2330,15 @@
     private void OnPhoneChatSend()
     {
         var text = _phoneChatBox?.GetText()?.Trim();
-        if ( string.IsNullOrEmpty( text ) ) return;
+        // 2026-09-01 (usability audit): Enter SENDS AND HANDS THE KEYBOARD BACK
+        // (the game-chat convention). Before, the entry kept focus after a send,
+        // so the next Q typed a "q" instead of backing out and W/S/A/D were dead
+        // until an Esc nobody was told about. The cursor stays parked ON the
+        // input, so Enter (or Space) is one press back into typing; Enter on an
+        // empty entry = just stop typing. LastBlurAt latches this same frame.
+        _appKb = "hit-input";
+        BlurPhoneInput();
+        if ( string.IsNullOrEmpty( text ) ) { StateHasChanged(); return; }
         switch ( _phoneChan )
         {
             case "guild": Beastborne.Core.ChatManager.Instance?.SendGuildMessage( text ); break;
@@ -2309,6 +2347,7 @@
         }
         _phoneChatBox?.ClearText();
         _chatScrollPending = 3;
+        StateHasChanged();
     }
 
     private void TapAuthor( int idx )
@@ -2909,8 +2948,11 @@
         // the mouse (ActionAtScreen — the click router's walk, only on
         // movement) → `_hoverHit` (.hovered stamp) and moves the one cursor.
         // Runs even while typing so SEND/rows still light under the mouse.
+        // 2026-09-01: 3px travel (the My Beasts synthetic-move guard's figure) —
+        // KbTakeover() re-stamps _lastMousePos on every keyboard cursor move, so a
+        // parked mouse must REALLY travel to win the cursor back.
         var mp = Mouse.Position;
-        bool mouseMoved = ( mp - _lastMousePos ).Length > 2f;
+        bool mouseMoved = ( mp - _lastMousePos ).Length > 3f;
         if ( mouseMoved ) _lastMousePos = mp;
         if ( _appView != null && mouseMoved ) PollAppHover( mp );
 
@@ -2949,20 +2991,33 @@
         // this covers the phone's own ChatInputBox).
         if ( _appView != null )
         {
-            if ( _appClosingUntil > 0f ) return; // reverse bloom in flight
             // The Esc that just BLURRED the chat input is still edge-true this
             // frame — it must not also read as "back" (the RoutedThisFrame lesson).
             if ( Time.Now - ChatInputBox.LastBlurAt < 0.05f ) return;
+            // 2026-09-01 (usability audit): M ("Phone" — the key that OPENED the
+            // phone) and 8 close it from ANY depth, reverse bloom included. Only
+            // Slot8 was read before, so M did nothing inside the phone — the
+            // "true toggle" never worked with the key the player actually uses.
+            // MarkRouted: GameHUD's modal gate releases the frame IsVisible drops,
+            // and it must not re-open the phone on this same edge.
+            if ( Input.Pressed( "Phone" ) || Input.Pressed( "Slot8" ) ) { Close(); NavManager.MarkRouted(); return; }
+            if ( _appClosingUntil > 0f )
+            {
+                // Reverse bloom in flight (360ms): a second Q/Esc inside it means
+                // "get out" — close the phone instead of swallowing the press.
+                if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) ) { Close(); NavManager.MarkRouted(); }
+                return;
+            }
             if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) ) { CloseApp(); return; }
-            if ( Input.Pressed( "Slot8" ) ) { Close(); return; } // view stays mounted through the slide-out (see OnBackdropClicked)
             HandleAppKeys();
             return; // app views own the rest of the keys (input typing etc.)
         }
 
-        // Close — Q ("Menu"), Escape, or Slot8 (the key that opened it: true toggle).
-        if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) || Input.Pressed( "Slot8" ) )
+        // Close — Q ("Menu"), Escape, M ("Phone" — the opener: true toggle) or 8.
+        if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) || Input.Pressed( "Phone" ) || Input.Pressed( "Slot8" ) )
         {
             Close();
+            NavManager.MarkRouted(); // same-frame re-open / tab-nav guard for GameHUD (see above)
             return;
         }
 
@@ -3018,6 +3073,7 @@
             if ( WALK_DEBUG ) Log.Info( $"[walkdbg] moved {_kb} -> {next}" );
             _kb = next;
             _ringDirty = true;
+            KbTakeover();
             SoundManager.PlayHover();
             return;
         }
@@ -3028,8 +3084,9 @@
         static int DockColToGridCol( int d ) => d switch { 0 => 0, 1 => 1, 2 => 1, _ => 2 };
         static int GridColToGridIndexRow0( int d ) => DockColToGridCol( d );
 
-        // Launch — Enter or Space (the canonical confirm pair).
-        if ( Input.Pressed( "Enter" ) || Input.Pressed( "Jump" ) )
+        // Launch — Space (advertised) · Enter / E silent twins (UiInput house pair;
+        // E was missing here, 2026-09-01).
+        if ( UiInput.ConfirmPressed() )
         {
             LaunchIndex( _kb );
         }
@@ -3151,7 +3208,23 @@
         if ( next == idx ) return;
         _appKb = _stops[next];
         _kbScrollPending = 2;
+        KbTakeover();
         SoundManager.PlayHover();
+        StateHasChanged();
+    }
+
+    // Keyboard takeover (2026-09-01, the My Beasts travel-guard law adapted to a
+    // polled router): the `.hovered` stamp under a PARKED mouse is dropped the
+    // moment a key moves the cursor — otherwise the parked row stayed lit beside
+    // the cursor row (two highlights, the kb/mouse style fight). The mouse only
+    // reclaims the cursor after REAL travel (> 3px from where it sat at
+    // takeover); the hover poll is movement-gated, so a re-render under the
+    // parked cursor can never re-stamp it by itself.
+    private void KbTakeover()
+    {
+        _lastMousePos = Mouse.Position;
+        if ( _hoverHit == null ) return;
+        _hoverHit = null;
         StateHasChanged();
     }
 
@@ -3162,18 +3235,36 @@
     {
         var sc = ActiveScroller();
         if ( sc == null || _appKb == null ) return;
-        Panel row = null;
-        foreach ( var c in sc.Children ) if ( c.HasClass( _appKb ) ) { row = c; break; }
+        Panel row = null, firstHit = null, lastHit = null;
+        foreach ( var c in sc.Children )
+        {
+            if ( !c.HasClass( "pl-hit" ) ) continue;
+            firstHit ??= c;
+            lastHit = c;
+            if ( c.HasClass( _appKb ) ) row = c;
+        }
         if ( row == null ) return;
         var sr = sc.Box.Rect;
         var rr = row.Box.Rect;
         if ( sr.Height < 1f || rr.Height < 1f ) return;
-        const float pad = 8f;
-        float dy = 0f;
-        if ( rr.Top < sr.Top + pad ) dy = rr.Top - ( sr.Top + pad );
-        else if ( rr.Bottom > sr.Bottom - pad ) dy = rr.Bottom - ( sr.Bottom - pad );
-        if ( MathF.Abs( dy ) < 0.5f ) return;
-        sc.ScrollOffset = new Vector2( 0f, MathF.Max( 0f, sc.ScrollOffset.y + dy ) );
+        // Endpoint semantics (DOC-5 §13, 2026-09-01): the FIRST row scrolls the
+        // list fully to the top so its section header ("TIMED BOOSTS" / "TODAY")
+        // is in view; the LAST row lands fully at the bottom. Rows between ride
+        // in with an 8px pad.
+        float target;
+        if ( ReferenceEquals( row, firstHit ) ) target = 0f;
+        else if ( ReferenceEquals( row, lastHit ) ) target = sc.ScrollSize.y;
+        else
+        {
+            const float pad = 8f;
+            float dy = 0f;
+            if ( rr.Top < sr.Top + pad ) dy = rr.Top - ( sr.Top + pad );
+            else if ( rr.Bottom > sr.Bottom - pad ) dy = rr.Bottom - ( sr.Bottom - pad );
+            if ( MathF.Abs( dy ) < 0.5f ) return;
+            target = MathF.Max( 0f, sc.ScrollOffset.y + dy );
+        }
+        if ( MathF.Abs( target - sc.ScrollOffset.y ) < 0.5f ) return;
+        sc.ScrollOffset = new Vector2( 0f, target );
         ArmScrollbar();
     }
 
@@ -3200,6 +3291,25 @@
         bool left = Input.Pressed( "Left" ), right = Input.Pressed( "Right" );
         bool confirm = Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" );
         bool cycle = Input.Pressed( "Reload" );
+
+        // 2026-09-01 (usability audit): the grid's direct keys were DEAD inside an
+        // app — leaving RADIO for ALERTS was Q, wait 360ms, N. Now T/C/N hop
+        // between apps in place (OpenApp's `switching` cross-fade, the proven
+        // alerts→effects path) and 1-7/9 swipe straight to their destination
+        // (the slab covers the phone; the next Show() lands on the grid). R is
+        // NOT a hop: it is the radio's tune key and the alerts' CLEAR ALL jump.
+        if ( Input.Pressed( "Chat" ) )
+        {
+            if ( _appView != "chat" ) { OpenApp( "chat" ); return; }
+            _appKb = "hit-input"; RunAppAction( "hit-input" ); return; // T in chat = talk
+        }
+        if ( Input.Pressed( "View" ) && _appView != "effects" ) { OpenApp( "effects" ); return; }
+        if ( Input.Pressed( "Notifications" ) && _appView != "alerts" ) { OpenApp( "alerts" ); return; }
+        int direct = Input.Pressed( "Slot1" ) ? 0 : Input.Pressed( "Slot2" ) ? 1 : Input.Pressed( "Slot3" ) ? 2
+                   : Input.Pressed( "Slot4" ) ? 3 : Input.Pressed( "Slot5" ) ? 4 : Input.Pressed( "Slot6" ) ? 5
+                   : Input.Pressed( "Slot7" ) ? 6 : Input.Pressed( "Slot9" ) ? 7 : -1;
+        if ( direct >= 0 ) { _kb = direct; SoundManager.PlayForward(); StartSwipe( direct, Apps[direct] ); return; }
+
         switch ( _appView )
         {
             case "chat":
@@ -3240,7 +3350,7 @@
                 if ( confirm && _appKb != null ) { RunAppAction( _appKb ); return; }
                 if ( cycle && _stops.Contains( "hit-clear" ) )
                 {
-                    if ( _appKb != "hit-clear" ) { _appKb = "hit-clear"; SoundManager.PlayHover(); StateHasChanged(); }
+                    if ( _appKb != "hit-clear" ) { _appKb = "hit-clear"; KbTakeover(); SoundManager.PlayHover(); StateHasChanged(); }
                     return;
                 }
                 break;
@@ -3278,6 +3388,7 @@
         var next = RadioGrid[nr][nc];
         if ( next == _appKb ) return;
         _appKb = next;
+        KbTakeover();
         SoundManager.PlayHover();
         StateHasChanged();
     }
@@ -3319,7 +3430,7 @@
             // EFFECTS / ALERTS lists could not wheel at all).
             if ( _appView != null )
             {
-                var sref = _appView == "chat" ? _chatScrollRef : _listScrollRef;
+                var sref = ActiveScroller(); // radio → null (a stale _listScrollRef from the previous app must not take the wheel)
                 if ( sref != null ) { sref.ScrollOffset += new Vector2( 0f, delta.y * 40f ); ArmScrollbar(); }
             }
             return; // consumed either way
