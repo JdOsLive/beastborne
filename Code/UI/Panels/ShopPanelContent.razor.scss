@@ -18,23 +18,25 @@
 // INCLUDES padding; only borders add on top):
 //   header   1920×88 + 2px strip                     =   90
 //            (pad 16/32/12/28; kicker 12/14 + 2 + title 38/44 = 60)
-//   body     pad 20/40/20/40                          → column 894
-//            GameHUD.razor.scss keeps a 56px `.shop-panel-content::after`
-//            reserve (PawPad launcher chip, bottom-right) — the brief's
-//            930 assumed no reserve; 1080 − 90 − 20 − 20 − 56 = 894.
+//   body     pad 20/40/20/40                          → column 950
+//            (2026-09-02: GameHUD's 56px `.shop-panel-content::after`
+//            PawPad reserve was REMOVED — the case sits clear of the
+//            chip; 1080 − 90 − 20 − 20 = 950. NOTHING pins this height:
+//            .sh-body is flex 1 1 0 and both columns stretch, so the
+//            goods viewport + case grew 894 → 950 with no rule change.)
 //   goods    1310 = grid 1298 (8 × 150 + 7 × 14) + 12 scrollbar lane
 //   gap      48  (the case's margin-left)
-//   case     482 × 894 r22, pad 24 → 434 inner
+//   case     482 × 950 r22, pad 24 → 434 inner
 //   row      40 + 1310 + 48 + 482 + 40                = 1920 ✓
-//   column   90 + 20 + 894 + 20 + 56                  = 1080 ✓
+//   column   90 + 20 + 950 + 20                       = 1080 ✓
 //
 // GRID RHYTHM (one flat wrap list; kicker rows + cards are DIRECT
 // children of the scroll — the roster/Bag scroll-grid recipe):
 //   grid row-gap 8 · card 168 + margin-bottom 8 → card→card 16
 //   kicker 24 + margin-top 8                    → card→kicker 24
 //   kicker → card                               =  8 (the row gap)
-//   GOLD  4 kickers + 6 card rows: 96 + 24 + 6×176 + 9×8 = 1248 (scrolls 354)
-//   BOSS  4 kickers + 4 card rows: 96 + 24 + 4×176 + 7×8 =  880 ✓ fits
+//   GOLD  4 kickers + 6 card rows: 96 + 24 + 6×176 + 9×8 = 1248 (scrolls 298 in the 950 viewport)
+//   BOSS  4 kickers + 4 card rows: 96 + 24 + 4×176 + 7×8 =  880 ✓ fits (950)
 //
 // CARD = the Bag `.sat-card` object (InventoryPanel.razor.scss:437):
 //   150×168 r16 #1c1830 · art zone 100 (PNG at INTEGER scale: 64/51 ×1)
@@ -63,10 +65,9 @@
 // - Wrap grid pins width AND max-width (1298); rows inside the scroll
 //   are pinned (1298) and the kicker hairline has a REAL flex-basis.
 // - Vertical gradients would use `to bottom`; none here.
-// - Static states only: default + the bare hover slab step. Entrance /
-//   purchase / balance motion is the MOTION lane's (markers below);
-//   only the copied recipes (header fade, ring glide, card bg step)
-//   carry transitions.
+// - Motion (wired 2026-09-02) lives in the MOTION block below: mount
+//   keyframes on render keys, 0.14s colour transitions for states, the
+//   ring's 0.27s glide. Nothing loops; nothing transforms below .sh-body.
 // ═══════════════════════════════════════════════════════════════
 
 ShopPanelContent {
@@ -87,12 +88,104 @@ ShopPanelContent {
 	// (paint-behind law); the slabs are opaque so nothing bleeds through.
 }
 
+// ═══════════════════════════════════════════════════════════════
+// MOTION (LANE: motion, wired 2026-09-02) — the keyframe table.
+// Every one-shot starts at t=0 on a FRESH MOUNT: a render-key class
+// change IS a remount (DOC-4 #5), so `store-<view>` / `art-<id>` /
+// `beat-N` / `own-N` in the razor are the replay triggers. Delays are
+// baked as percentage holds (DOC-4 #6 — zero animation-delay in this
+// sheet). Nothing loops: no `infinite` here; the FLOW layer is
+// BbIconScroll's drift + BbHeaderWaves' own. Ring hosts (cards ·
+// stepper · BUY) and everything inside the grid scroll clip move
+// COLOUR / OPACITY only (DOC-4 #11, DOC-7 #12) — no transform, no
+// shadow, anywhere below .sh-body except the root-level ring.
+//
+//   name       dur    holds                          host · trigger
+//   shFadeIn   0.22s  0 → 1                          .sh-header · page mount
+//   shBodyIn   0.30s  0% 0 · 40% 0 · 100% 1          .sh-goods + .sh-case ·
+//                     (0.12 blank + 0.18 in)         mount / `store-<view>` key
+//   shArtIn    0.12s  0 → 1                          .sh-case-img · `art-<id>` key
+//   shBuyBeat  0.30s  0–6% white · 40% overshoot     .case-buy.beat · `beat-N` key
+//                     · 100% gold (flat, held to
+//                     the 0.5s BOUGHT window)
+//   shBuyInk   0.30s  0–6% amber ink · 100% dark     .case-buy.beat .bb-btn-label
+//   shBalTick  0.30s  0% HDR #ffce3a×2 → 100% gold   .sh-balance.flash .sh-balance-value
+//   shOwnChip  0.20s  0% gold fill → rest            .sat-qty.owned.pop (bought card)
+//   shOwnPop   0.20s  0% dark ink → cream            .sat-qty.owned.pop span
+//
+// State changes (hover / press / hold / ring / scrollbar) are
+// `transition:` (both directions, re-fire on every class toggle —
+// DOC-4 #4): 0.14s ease-out colour steps, the ring's 0.27s glide.
+// ═══════════════════════════════════════════════════════════════
+
 // Header entrance — the hub recipe's opacity-only fade (a translateY
 // would put a transform on the ancestor of the toolbar's flex chain).
-// LANE: motion
 @keyframes shFadeIn {
 	0% { opacity: 0; }
 	100% { opacity: 1; }
+}
+
+// Body entrance AND the store swap (GOLD ↔ BOSS TOKENS). The goods
+// column and the case remount on the `store-<view>` key, so this ONE
+// keyframe plays on first mount and again on every swap. A remount
+// can't fade the OLD content out (the swap is synchronous), so the
+// "0.12 out" is a baked 0.12s hold at 0 before the 0.18s in — reads as
+// a blink-cross-fade, no slide. 40% = 0.12 / 0.30.
+@keyframes shBodyIn {
+	0% { opacity: 0; }
+	40% { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+// Case art — the good's image remounts on `art-<id>` when the case
+// item changes (hover-select, kb walk, dev_shop). Content only: the
+// slab, name and price stay put (numbers the player reads never fade).
+@keyframes shArtIn {
+	0% { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+// THE ONE PURCHASE BEAT (7 signals → 1). BUY remounts as `.beat beat-N`
+// per buy: a one-frame white flash (6% of 0.30s ≈ 18ms ≈ 1 frame),
+// then a bright-gold overshoot that settles onto a flat gold by 0.30s.
+// BUY is a ring-measured host, so NO scale — brightness is the
+// overshoot (DOC-4 #9 exception noted in the brief). The primary tier's
+// fill is a gradient IMAGE; the .beat rule drops it so this colour
+// track is visible (see .case-buy.beat below). LANE: color may re-judge
+// the two golds.
+@keyframes shBuyBeat {
+	0% { background-color: #ffffff; }
+	6% { background-color: #ffffff; }
+	40% { background-color: #ffe98c; }
+	100% { background-color: #ffc043; }
+}
+
+// The label ink flips for the flash frame (gold-on-white is the
+// inverted pair of dark-on-gold), then returns to the primary's ink.
+@keyframes shBuyInk {
+	0% { color: #e0a030; }
+	6% { color: #e0a030; }
+	100% { color: #2a1605; }
+}
+
+// Balance tick — the ONE sanctioned Tier-2 HDR tick on this page: the
+// numeral blooms at ×2 on the 0% frame and falls to its resting gold
+// (the guild LV slam proved `* N` parses inside a keyframe step).
+// Colour only; the chip slab never moves.
+@keyframes shBalTick {
+	0% { color: #ffce3a * 2; }
+	100% { color: #ffce3a; }
+}
+
+// Owned-count chip pop — INSIDE the scroll clip, so fill + ink only.
+@keyframes shOwnChip {
+	0% { background-color: rgba(255, 206, 58, 0.92); }
+	100% { background-color: rgba(8, 6, 16, 0.92); }
+}
+
+@keyframes shOwnPop {
+	0% { color: #2a1605; }
+	100% { color: rgba(244, 241, 234, 0.85); }
 }
 
 // ═══════════════════════════════════════
@@ -111,7 +204,7 @@ ShopPanelContent {
 	// NO own background-color — BbHeaderWaves paints the opaque base
 	// (paint-behind law). The ONE sanctioned panel-signature strip:
 	border-bottom: 2px solid rgba(224, 160, 48, 0.55);
-	animation: shFadeIn 0.22s ease-out; // LANE: motion
+	animation: shFadeIn 0.22s ease-out; // MOTION: the copied recipe, kept at 0.22
 
 	// Host recipe (BbHeaderWaves, DOC-6 #3 — the `> *` lift FROM THE
 	// HOST SHEET): the wave root becomes the absolute underlay, every
@@ -232,7 +325,12 @@ ShopPanelContent {
 	flex: 0 0 auto;
 	cursor: pointer;
 	pointer-events: all;
-	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
+	// MOTION: identity base so the −3px hover lift (gate block, end of
+	// sheet) transitions from a same-shaped transform (DOC-4 #13). The
+	// chip is NOT a ring host and NOT in a scroll clip — the header-chip
+	// family (Beastbook / My Beasts / FilterBar) lifts, so parity keeps it.
+	transform: translateY(0px);
+	transition: background-color 0.14s ease-out, border-color 0.14s ease-out, transform 0.14s ease-out;
 
 	&:active { background-color: #141021; }
 
@@ -267,7 +365,8 @@ ShopPanelContent {
 
 // Balance chip — 32 r11 panel-slab; coin/token glyph + the amount in
 // gold (currency IS a gold role). 12 extra so it reads as its own group.
-// LANE: motion — `.flash` (a value change) is the ONE balance pulse.
+// MOTION (wired 2026-09-02): `.flash flash-N` (a value change, keyed per
+// purchase) is the ONE balance pulse — shBalTick on the numeral below.
 .sh-balance {
 	display: flex;
 	flex-direction: row;
@@ -297,6 +396,13 @@ ShopPanelContent {
 	white-space: nowrap;
 }
 
+// The tick: the chip remounts as `.flash flash-N` (BalanceClass) when
+// the balance changes, so the keyframe plays once per change. 0.3s of
+// the 0.6s flash window; the rest is the resting gold (no fill hold).
+.sh-balance.flash .sh-balance-value {
+	animation: shBalTick 0.3s ease-out both;
+}
+
 // ═══════════════════════════════════════
 // BODY — goods grid (1310) · 48 · case (482)
 // ═══════════════════════════════════════
@@ -321,6 +427,10 @@ ShopPanelContent {
 	flex: 0 0 1310px;
 	min-width: 1310px;
 	overflow: hidden;
+	// MOTION: ONE opacity fade for the whole goods column — no per-card
+	// stagger (30 cards remounting on every .selected/.short flip = the
+	// animation-delay graveyard). Replays on the `store-<view>` key.
+	animation: shBodyIn 0.3s ease-out both;
 }
 
 // The scroll child — the roster-grid recipe verbatim: flat wrap list,
@@ -638,6 +748,15 @@ ShopPanelContent {
 	}
 
 	&.owned span { color: rgba(244, 241, 234, 0.85); }
+
+	// MOTION: the bought card's owned count pops (fill + ink only — inside
+	// the scroll clip). Gated on `.pop` (the case card while IsBuyBeat)
+	// because the CARD's class string is volatile (.selected/.short flip
+	// on every hover-select and gold change = subtree remount) — a bare
+	// mount animation here would blink on every hover (DOC-4 #14). The
+	// `own-N` key replays it if a second buy lands inside the 0.5s window.
+	&.owned.pop { animation: shOwnChip 0.2s ease-out both; }
+	&.owned.pop span { animation: shOwnPop 0.2s ease-out both; }
 }
 
 // LOCKED chip — top-left, red; lock glyph + "LV 20".
@@ -699,7 +818,8 @@ ShopPanelContent {
 }
 
 // ═══════════════════════════════════════
-// THE CASE — 482 × 894 r22, pad 24 → 434 inner
+// THE CASE — 482 × 950 r22, pad 24 → 434 inner (content anchored top;
+// BUY ends at y 638 inside, the slack below it is the ghost glyph's)
 // ═══════════════════════════════════════
 
 .sh-case {
@@ -714,6 +834,9 @@ ShopPanelContent {
 	background-color: #15121f;
 	border-radius: 22px;
 	padding: 24px;
+	// MOTION: the case's ONE fade — first mount + the `store-<view>` key
+	// (the case content is a different catalogue after a swap).
+	animation: shBodyIn 0.3s ease-out both;
 }
 
 // Art slab 434×300 r16 — amber-tinted ground (the framed-tile idiom:
@@ -734,6 +857,10 @@ ShopPanelContent {
 .sh-case-img {
 	image-rendering: pixelated;
 	background-repeat: no-repeat;
+	// MOTION: remounts on `art-<id>` when the case item changes — a 0.12s
+	// content cross-fade (opacity never touches the compositor path, so
+	// the pixel art stays crisp). Name / price update instantly.
+	animation: shArtIn 0.12s ease-out both;
 }
 
 // The ONE stamp on this surface — "15% OFF TODAY", spotlight only.
@@ -977,8 +1104,8 @@ ShopPanelContent {
 // `.off` (Tier=ghost + Disabled from the razor) = the SAME slab,
 // desaturated (DOC-2 #3: a non-pressable primary drops the hue) — the
 // three-class selector beats BbButton's two-class tier/disabled rules.
-// LANE: motion — `.beat beat-N` (remounted per buy) is the ONE purchase
-// beat hook; no rules here.
+// MOTION (wired 2026-09-02) — `.beat beat-N` (remounted per buy) is the
+// ONE purchase beat; rules follow .case-buy.off below.
 // LANE: input (wired 2026-09-02) — the BUY stop. The page's ONE root ring
 // glides here (r26) instead of BbButton's own `Focused` ring, so the
 // cursor is one object grid → stepper → BUY. BbButton's `> *` pointer
@@ -1006,6 +1133,22 @@ ShopPanelContent {
 	.bb-btn-label { color: rgba(214, 206, 236, 0.6); }
 }
 
+// THE PURCHASE BEAT — BUY wears `.beat beat-N` for the 0.5s BOUGHT window
+// (the label reads BOUGHT + check for the same window, so the flat gold
+// slab enters and exits WITH its costume). The primary tier paints a
+// gradient IMAGE, which a background-color track would sit under — the
+// image is dropped here so shBuyBeat's flash → overshoot → settle is
+// what you see. .bb-btn in the selector (0,4,0) out-specifies BbButton's
+// tier-primary:hover gradient swap (0,3,0) for the beat's duration. No
+// transform (ring-measured host, DOC-4 #9 / brief) — brightness IS the
+// overshoot. The 100% frame holds (`both`) until the class drops.
+.sh-case .case-buy.beat.bb-btn {
+	background-image: none;
+	animation: shBuyBeat 0.3s ease-out both;
+
+	.bb-btn-label { animation: shBuyInk 0.3s ease-out both; }
+}
+
 // Ghost watermark — the good at .05 (texture, not content). Small
 // explicit-box absolute anchored bottom-right (the working absolute
 // family); mounted last, z 0, under the z-1 BUY.
@@ -1027,7 +1170,15 @@ ShopPanelContent {
 // W/H rect + 20 − 8 (the 4px border draws outside the placed padding
 // box), r26 = card 16 + 10. ONE HDR stroke — no outline (a hugging
 // outline read as a second ring). z 60: above the cards, below the
-// header (500). Glide is the copied recipe's; LANE: motion owns tuning.
+// header (500). MOTION (tuned 2026-09-02): the hub / skills glide —
+// 0.27s cubic-bezier(0.22,1,0.36,1) on left/top/width/height PLUS
+// border-radius, so the r26 (card / BUY) ↔ r21 (`.pill`, stepper)
+// costume swap glides with the box instead of snapping a frame early.
+// Tick order (UpdateScrollFollow → UpdateShopRing → wave) means the ring
+// measures rects AFTER the grid's 0.30/tick glide step each frame; the
+// CSS glide then trails that by ≤0.27s and settles with it — the two
+// never fight (same recipe as the Bag .sat-ring). Warmup `.snap` lands
+// the first rect instantly (re-appear = snap, glide thereafter).
 .sh-ring {
 	position: absolute;
 	top: 0px;
@@ -1038,7 +1189,7 @@ ShopPanelContent {
 	pointer-events: none;
 	opacity: 0;
 	z-index: 60;
-	transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1), top 0.27s cubic-bezier(0.22, 1, 0.36, 1), width 0.27s cubic-bezier(0.22, 1, 0.36, 1), height 0.27s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease-out;
+	transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1), top 0.27s cubic-bezier(0.22, 1, 0.36, 1), width 0.27s cubic-bezier(0.22, 1, 0.36, 1), height 0.27s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.27s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease-out;
 
 	&.on { opacity: 1; }
 
@@ -1073,13 +1224,32 @@ ShopPanelContent {
 .shop-panel-content.kbd-mode .sh-store-chip.kb-focused {
 	background-color: #241f38;
 	border-color: rgba(224, 160, 48, 0.55);
+	// MOTION: the header-chip family lift (−3px, 0.14s from the identity
+	// base). Header only — nothing in the scroll clip or on a ring host
+	// ever translates. The kb cursor wears the same costume (a finite
+	// transition, not a loop — DOC-4 #10 is about loops).
+	transform: translateY(-3px);
 }
 
 // Cursor ON the active store: the amber slab steps up so "you are here"
 // survives on the chip that is already lit (the header cursor lands on
-// the active chip).
-.shop-panel-content.mouse-mode .sh-store-chip.on:hover { background-color: #4a3410; }
+// the active chip). MOTION: the mouse does NOT lift the active chip
+// (cursor: default — nothing to press); the kb cursor does (it must
+// read as a position, and it parks here by default).
+.shop-panel-content.mouse-mode .sh-store-chip.on:hover {
+	background-color: #4a3410;
+	transform: translateY(0px);
+}
 .shop-panel-content.kbd-mode .sh-store-chip.on.kb-focused {
 	background-color: #5c4014;
 	border-color: #f0b846;
 }
+
+// ─── Stepper hold heat (MOTION, both devices — not hover-dependent, so
+// it sits after the gate at the gate's specificity to win over :hover).
+// `.holding` = INPUT's hold-repeat is FIRING on this button (from the
+// first repeat, not the press — the press is :active's darker step).
+// Warm step on the button only; drops on release via the 0.14s
+// transition. LANE: color — the amber-warmed slab value is a placement;
+// re-judge live against the hover step (#241f38) it must read past.
+.shop-panel-content .sh-qty-btn.holding { background-color: #3a2c22; }
