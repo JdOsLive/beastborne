@@ -34,7 +34,13 @@
 	ring. The crawl joins as the third when it ships.
 *@
 
-<div class="online-hub" onclick=@OnPanelClicked>
+@* LANE: input — ONE-DEVICE ROOT (DOC-5 §5, audit B2 2026-09-02). lastInputDevice
+   drives .kbd-mode/.mouse-mode; EVERY hub :hover lives under
+   .online-hub.mouse-mode and every .kb-focused/.kb-lit under .online-hub.kbd-mode
+   (the ONE CSS GATE at the end of the scss). Root onmousemove reclaims mouse
+   mode only after >= 3px of REAL travel since the keyboard took over — the
+   engine re-sends onmousemove on re-render under a parked cursor. *@
+<div class="online-hub @(IsKbMode ? "kbd-mode" : "mouse-mode")" onclick=@OnPanelClicked onmousemove=@OnRootMouseMove>
 
 	<!-- Living glyph-drift background — house-standard on every tab
 	     (Beastbook/Bag/Shop/Quests mount it the same way). First child;
@@ -102,6 +108,23 @@
 				<div class="hb-filter-hint">
 					<span class="hb-back-cap">R</span>
 					<span class="hb-filter-hint-text">CYCLE</span>
+				</div>
+			</div>
+		}
+		else if ( currentSection == "leaderboards" )
+		{
+			<!-- LANE: input (S5, audit 2026-09-02) — the LEADERBOARDS takeover
+			     had no visible way back: Q already routes to the landing via
+			     TickInput's takeover branch, but nothing on screen said so and
+			     the mouse had no click target (LeaderboardPanel mounts no back
+			     button of its own). Same .hb-back chip the trade board wears,
+			     same header right slot. Hover blip guarded (kb mode ignores). -->
+			<div class="oh-toolbar">
+				<div class="hb-back"
+					 onmouseover=@OnHoverBlip
+					 onclick=@BackToHub>
+					<span class="hb-back-label">BACK TO HUB</span>
+					<span class="hb-back-cap">Q</span>
 				</div>
 			</div>
 		}
@@ -822,7 +845,7 @@
 						<div class="lb-segs">
 							<div class="lb-seg on"><span class="lb-seg-text">@lbCat.Label</span></div>
 							<div class="lb-seg"
-								 onmouseover=@(() => SoundManager.PlayHover())
+								 onmouseover=@OnHoverBlip
 								 onclick=@CycleHubLbCategory>
 								<span class="lb-seg-text">@lbNextCat.Label</span>
 							</div>
@@ -904,7 +927,7 @@
 						<span class="hub-rail-title">TAMER PROFILE</span>
 						<div class="hub-rail-head-spacer"></div>
 						<div class="hub-rail-close"
-							 onmouseover=@(() => SoundManager.PlayHover())
+							 onmouseover=@OnHoverBlip
 							 onclick=@CloseRail>
 							<iconify class="hub-rail-close-glyph" icon="lucide:x" Size=@(13) Color="rgba(244,241,234,0.7)" />
 							<span class="hub-rail-close-cap">Q</span>
@@ -963,11 +986,14 @@
 							<div class="tamer-detail-section-header">
 								<span class="tamer-detail-section-text">ACTIONS</span>
 							</div>
+							<!-- LANE: input (S4) — RAIL ZONE, self branch: kb 0 = Share ·
+							     kb 1 = Change favourite (top→bottom). .kb-focused = the slab
+							     cursor (kbd-mode gate); hover moves the same index. -->
 							<div class="tamer-actions">
-								<div class="tamer-action primary"
-									 onmouseover=@(() => SoundManager.PlayHover())
+								<div class="tamer-action primary @(IsRailKb( 0 ) ? "kb-focused" : "")"
+									 onmouseover=@(() => HoverRail( 0 ))
 									 onclick=@ShowcaseCard>
-									<iconify icon="lucide:share-2" Size=@(14) Color="#9ecdf5" />
+									<iconify class="tamer-action-glyph" icon="lucide:share-2" Size=@(14) Color="#9ecdf5" />
 									<span class="tamer-action-label">Share to Chat</span>
 								</div>
 							</div>
@@ -1002,13 +1028,28 @@
 							<div class="tamer-fav-box @beastElementClass">
 								@if ( showFavSelector )
 								{
-									<div class="tamer-fav-dropdown">
-										<div class="tamer-fav-opt" onclick=@(() => SetFavorite( null ))>
+									@{
+										// LANE: input (S4) — the FAV DROPDOWN cursor: row 0 = None, rows
+										// 1.. = the discovered species in THIS order. Cached per render
+										// so TickInput walks the SAME list the rows were drawn from
+										// (the _others pattern). The current favourite wears .active
+										// (the FilterBar recipe: cursor-on-current steps to solid violet).
+										_favSpecies = GetDiscoveredSpeciesList();
+										var favCurId = TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId;
+									}
+									<div @ref="favDropdownRef" class="tamer-fav-dropdown">
+										<div class="tamer-fav-opt @(string.IsNullOrEmpty( favCurId ) ? "active" : "") @(IsFavKb( 0 ) ? "kb-focused" : "")"
+											 onmouseover=@(() => HoverFav( 0 ))
+											 onclick=@(() => SetFavorite( null ))>
 											<span class="tamer-fav-opt-name">None</span>
 										</div>
-										@foreach ( var species in GetDiscoveredSpeciesList() )
+										@for ( int fsi = 0; fsi < _favSpecies.Count; fsi++ )
 										{
-											<div class="tamer-fav-opt" onclick=@(() => SetFavorite( species.Id ))>
+											var species = _favSpecies[fsi];
+											int favRow = fsi + 1;
+											<div class="tamer-fav-opt @(species.Id == favCurId ? "active" : "") @(IsFavKb( favRow ) ? "kb-focused" : "")"
+												 onmouseover=@(() => HoverFav( favRow ))
+												 onclick=@(() => SetFavorite( species.Id ))>
 												@if ( !string.IsNullOrEmpty( species.IconPath ) )
 												{
 													<img class="tamer-fav-opt-icon" src="@species.IconPath" />
@@ -1020,7 +1061,9 @@
 								}
 								else
 								{
-									<div class="tamer-fav-display" onclick=@OpenFavSelector>
+									<div class="tamer-fav-display @(IsRailKb( 1 ) ? "kb-focused" : "")"
+										 onmouseover=@(() => HoverRail( 1 ))
+										 onclick=@OpenFavSelector>
 										<div class="tamer-fav-portrait">
 											@if ( favBeastSpecies != null && !string.IsNullOrEmpty( favBeastSpecies.IconPath ) )
 											{
@@ -1028,7 +1071,7 @@
 											}
 											else
 											{
-												<iconify icon="lucide:circle-help" Size=@(28) Color="rgba(255,255,255,0.3)" />
+												<iconify class="tamer-fav-glyph" icon="lucide:circle-help" Size=@(28) Color="rgba(255,255,255,0.3)" />
 											}
 										</div>
 										<span class="tamer-fav-name">@GetFavoriteName()</span>
@@ -1103,23 +1146,26 @@
 							<div class="tamer-detail-section-header">
 								<span class="tamer-detail-section-text">ACTIONS</span>
 							</div>
+							<!-- LANE: input (S4) — RAIL ZONE, online branch: ONE ROW, kb 0
+							     Trade · 1 Voice · 2 Mute (A/D walk it; W/S have nowhere to
+							     go — the graph encodes geometry, DOC-5 §21). -->
 							<div class="tamer-actions tamer-actions-grid">
-								<div class="tamer-action primary"
-									 onmouseover=@(() => SoundManager.PlayHover())
+								<div class="tamer-action primary @(IsRailKb( 0 ) ? "kb-focused" : "")"
+									 onmouseover=@(() => HoverRail( 0 ))
 									 onclick=@(() => RequestTrade( p ))>
-									<iconify icon="lucide:handshake" Size=@(14) Color="#4ade80" />
+									<iconify class="tamer-action-glyph" icon="lucide:handshake" Size=@(14) Color="#4ade80" />
 									<span class="tamer-action-label">Trade</span>
 								</div>
-								<div class="tamer-action @(inLobbyVoice ? "active" : "")"
-									 onmouseover=@(() => SoundManager.PlayHover())
+								<div class="tamer-action @(inLobbyVoice ? "active" : "") @(IsRailKb( 1 ) ? "kb-focused" : "")"
+									 onmouseover=@(() => HoverRail( 1 ))
 									 onclick=@JoinLobbyVoice>
-									<iconify icon="lucide:volume-2" Size=@(14) Color="#9ecdf5" />
+									<iconify class="tamer-action-glyph" icon="lucide:volume-2" Size=@(14) Color="#9ecdf5" />
 									<span class="tamer-action-label">Voice</span>
 								</div>
-								<div class="tamer-action @(isMutedFlag ? "muted" : "")"
-									 onmouseover=@(() => SoundManager.PlayHover())
+								<div class="tamer-action @(isMutedFlag ? "muted" : "") @(IsRailKb( 2 ) ? "kb-focused" : "")"
+									 onmouseover=@(() => HoverRail( 2 ))
 									 onclick=@(() => ToggleMutePlayer( p.ConnectionId ))>
-									<iconify icon="@(isMutedFlag ? "lucide:mic-off" : "lucide:mic")" Size=@(14) Color="@(isMutedFlag ? "#f87171" : "rgba(255,255,255,0.7)")" />
+									<iconify class="tamer-action-glyph" icon="@(isMutedFlag ? "lucide:mic-off" : "lucide:mic")" Size=@(14) Color="@(isMutedFlag ? "#f87171" : "rgba(255,255,255,0.7)")" />
 									<span class="tamer-action-label">@(isMutedFlag ? "Unmute" : "Mute")</span>
 								</div>
 							</div>
@@ -1258,7 +1304,7 @@
 					<div class="chip"><span class="chip-text">@($"{allOffers.Count} {( allOffers.Count == 1 ? "OFFER" : "OFFERS" )}")</span></div>
 					<div class="hb-band-spacer"></div>
 					<div class="hb-back"
-						 onmouseover=@(() => SoundManager.PlayHover())
+						 onmouseover=@OnHoverBlip
 						 onclick=@BackToHub>
 						<span class="hb-back-label">BACK TO HUB</span>
 						<span class="hb-back-cap">Q</span>
@@ -1455,6 +1501,37 @@
 	private string _kbZone = "battle";
 	private int _kbIndex = 0;
 	private bool _kbActive = true;
+
+	// ── LANE: input — ONE DEVICE FLAG (DOC-5 §5; audit B2 2026-09-02) ──────
+	// The Roster/Guild contract, ported exactly: the last input device drives
+	// the root .kbd-mode/.mouse-mode class; every hub :hover is CSS-gated
+	// under .mouse-mode and every .kb-focused/.kb-lit under .kbd-mode (the
+	// ONE CSS GATE at the end of the scss), so a parked pointer can never
+	// keep a second row lit while the player keyboards. Any nav keypress
+	// stamps Keyboard AND re-records the pointer's parked position; root
+	// onmousemove flips back only after >= 3px of real travel (the engine
+	// re-dispatches onmousemove on re-render under a parked cursor —
+	// learnings 2026-09-01). Never flipped from onmouseover (kb scroll-
+	// follow fires synthetic hovers).
+	private enum InputDevice { Mouse, Keyboard }
+	private InputDevice lastInputDevice = InputDevice.Mouse;
+	private bool IsKbMode => lastInputDevice == InputDevice.Keyboard;
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
+
+	// ── LANE: input — RAIL ZONE + FAV DROPDOWN cursors (DOC-5 §11/§12; S4) ──
+	// While the profile rail is open the zone cursor freezes underneath and
+	// _railKbIndex walks the rail's controls: self = [Share] / [Change
+	// favourite] (two rows, W/S); online = [Trade · Voice · Mute] (one row,
+	// A/D). Seeded 0 on the OPEN funnel (OpenRailSelf/OpenRailOnline — the
+	// one path both click and kb take). The fav dropdown owns _favKbIndex
+	// over [None, species...] (seeded on the current favourite; W/S rows,
+	// Space picks, Q closes; the 220px list glides to follow).
+	private int _railKbIndex = 0;
+	private int _favKbIndex = 0;
+	private List<MonsterSpecies> _favSpecies = new();
+	private Panel favDropdownRef;
+	private bool _favFollowPending = false;
+	private float _favScrollGlideTarget = -1f;
 
 	private const int MaxTradeSlips = 3;   // newest offers shown in the zone (V0: 3 × 52 in the 206 lane)
 	private const int TradeSlipKbBase = 2; // trades kb: 0 POST OFFER · 1 VIEW ALL OFFERS · 2+ slips
@@ -2083,6 +2160,7 @@
 		UpdateHubRing();
 		ApplyRingWave();
 		if ( currentSection == "board" ) UpdateBoardScrollFollow();
+		if ( railOpen && showFavSelector ) UpdateFavScrollFollow();
 
 		bool noteLive = Time.Now < _postNoteUntil;
 		if ( noteLive != _postNoteLive )
@@ -2251,6 +2329,11 @@
 			return;
 		}
 
+		// LANE: input — device stamp (DOC-5 §5). Any nav key = the keyboard
+		// drove last; re-stamps the parked pointer position every press so a
+		// slow drift never accumulates into a false flip back to mouse.
+		if ( AnyNavKeyPressed() ) SetInputDevice( InputDevice.Keyboard );
+
 		// TRADE BOARD takeover — an inline section (no child panel). Board kb
 		// space: 0 = POST OFFER (ring host) · 1..4 = the filter segments ·
 		// 5+ = the offer CARDS, a 3-column grid. Nav map:
@@ -2277,7 +2360,7 @@
 			_kbZone = "board";
 			_kbIndex = Math.Clamp( _kbIndex, 0, boardCount - 1 );
 			if ( _kbIndex >= BoardCardKbBase && cardCount == 0 ) _kbIndex = BoardFilterKbBase + _boardFilter;
-			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
+			if ( UiInput.ConfirmPressed() )   // Space (advertised) · Enter · E — the ONE confirm pair (DOC-5 §1; S9)
 			{
 				if ( _kbIndex == 0 ) OnPostOffer();
 				else if ( _kbIndex < BoardCardKbBase ) SelectBoardFilter( _kbIndex - BoardFilterKbBase );
@@ -2357,27 +2440,47 @@
 		}
 
 		// ── The landing ──
-		// Inline favorite-beast dropdown (inside the rail): Q closes it as
-		// an internal back before anything else runs.
-		if ( showFavSelector && Input.Pressed( "Menu" ) )
-		{
-			showFavSelector = false;
-			SoundManager.PlayBack();
-			GameHUD.PanelHandledBackKey = true;
-			StateHasChanged();
-			return;
-		}
-
-		// Profile rail: Q closes; while open, the rail is mouse-driven and
-		// the zone cursor stays frozen underneath.
+		// PROFILE RAIL — the zone cursor freezes underneath; the rail owns the
+		// keyboard (LANE: input S4, DOC-5 §11/§12 — it used to be mouse-only
+		// past the open). Back stack, innermost first: the fav dropdown (Q
+		// closes it), then the rail itself (Q closes; the ✕ chip carries the
+		// cap). Both claim PanelHandledBackKey so a Q never falls through to
+		// GameHUD and exits the tab.
 		if ( railOpen )
 		{
-			if ( Input.Pressed( "Menu" ) )
+			if ( showFavSelector )
+			{
+				if ( Input.Pressed( "Menu" ) && !GameHUD.PanelHandledBackKey )
+				{
+					showFavSelector = false;
+					SoundManager.PlayBack();
+					GameHUD.PanelHandledBackKey = true;
+					StateHasChanged();
+					return;
+				}
+				int favCount = 1 + _favSpecies.Count;
+				_favKbIndex = Math.Clamp( _favKbIndex, 0, Math.Max( 0, favCount - 1 ) );
+				if ( UiInput.ConfirmPressed() ) { ActivateFav(); return; }
+				if ( Input.Pressed( "Up" ) ) { MoveFavCursor( -1, favCount ); return; }
+				if ( Input.Pressed( "Down" ) ) { MoveFavCursor( 1, favCount ); return; }
+				return;
+			}
+
+			if ( Input.Pressed( "Menu" ) && !GameHUD.PanelHandledBackKey )
 			{
 				CloseRail();
 				GameHUD.PanelHandledBackKey = true;
 				StateHasChanged();
+				return;
 			}
+			_railKbIndex = Math.Clamp( _railKbIndex, 0, Math.Max( 0, RailCount() - 1 ) );
+			if ( UiInput.ConfirmPressed() ) { ActivateRail(); return; }
+			int rdx = 0, rdy = 0;
+			if ( Input.Pressed( "Left" ) ) rdx = -1;
+			else if ( Input.Pressed( "Right" ) ) rdx = 1;
+			else if ( Input.Pressed( "Up" ) ) rdy = -1;
+			else if ( Input.Pressed( "Down" ) ) rdy = 1;
+			if ( rdx != 0 || rdy != 0 ) MoveRailCursor( rdx, rdy );
 			return;
 		}
 
@@ -2389,8 +2492,9 @@
 
 		ClampHubCursor( others );
 
-		// Space (advertised) / Enter / E (silent alternate) — confirm.
-		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
+		// Space (advertised) · Enter · E (silent alternate) — the ONE confirm
+		// helper (DOC-5 §1; S9 — the inline triple is retired).
+		if ( UiInput.ConfirmPressed() )
 		{
 			ActivateHubCursor( others );
 			return;
@@ -2614,8 +2718,12 @@
 
 	// Mouse hover moves the cursor (one-cursor, last-input-wins — the
 	// roster model). The ring/slab lights on hover exactly as on kb focus.
+	// Ignored while the keyboard drove last (DOC-5 §15): kb scroll-follow
+	// slides rows under a parked pointer and fires SYNTHETIC onmouseover;
+	// the root's onmousemove (real travel only) is the flip-back edge.
 	private void HoverHubCursor( string zone, int idx )
 	{
+		if ( IsKbMode ) return;
 		if ( _kbActive && _kbZone == zone && _kbIndex == idx ) return;
 		_kbZone = zone;
 		_kbIndex = idx;
@@ -2626,6 +2734,155 @@
 
 	private bool IsHubKb( string zone, int idx )
 		=> _kbActive && _kbZone == zone && _kbIndex == idx;
+
+	// ── LANE: input — device flag plumbing (DOC-5 §5) ──────────────────────
+
+	// Every key TickInput reads. Text entry never routes through here (the
+	// hub landing has none), so a stray letter can't flip the device.
+	private static bool AnyNavKeyPressed()
+		=> Input.Pressed( "Up" ) || Input.Pressed( "Down" ) || Input.Pressed( "Left" ) || Input.Pressed( "Right" )
+		|| Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" )
+		|| Input.Pressed( "Menu" ) || Input.Pressed( "Reload" )
+		|| Input.Pressed( "CyclePrev" ) || Input.Pressed( "CycleNext" );
+
+	// Keyboard: ALWAYS re-stamp the parked pointer position (the mouse-mode
+	// edge measures travel from the LAST keypress). The class swap only
+	// re-renders on an actual mode change.
+	private void SetInputDevice( InputDevice dev )
+	{
+		if ( dev == InputDevice.Keyboard ) _kbTakeoverMousePos = Mouse.Position;
+		if ( lastInputDevice == dev ) return;
+		lastInputDevice = dev;
+		StateHasChanged();
+	}
+
+	// Root onmousemove — the mouse-mode edge. Guarded on REAL travel (>= 3px
+	// since the keyboard took over): the engine re-dispatches onmousemove on
+	// re-render/re-layout under a PARKED cursor, so an unguarded flip fired
+	// on every W/S press and the row under the pointer re-hovered (the
+	// roster/guild OnRootMouseMove recipe, learnings 2026-09-01).
+	private void OnRootMouseMove()
+	{
+		if ( lastInputDevice == InputDevice.Mouse ) return;
+		if ( ( Mouse.Position - _kbTakeoverMousePos ).Length < 3f ) return;
+		SetInputDevice( InputDevice.Mouse );
+	}
+
+	// Hover blip for the mouse-only affordances (BACK TO HUB, the rail ✕,
+	// the next-category chip) — honored in mouse mode only, else kb
+	// re-renders under a parked pointer machine-gun it.
+	private void OnHoverBlip()
+	{
+		if ( IsKbMode ) return;
+		SoundManager.PlayHover();
+	}
+
+	// ── LANE: input — RAIL ZONE (S4) ───────────────────────────────────────
+	// Live count matches the markup branch exactly: self = Share + Change
+	// favourite; online = Trade · Voice · Mute.
+	private int RailCount() => selectedKind == "self" ? 2 : 3;
+
+	private bool IsRailKb( int idx ) => railOpen && !showFavSelector && _railKbIndex == idx;
+
+	// Hover moves the SAME rail index the keyboard walks (one cursor).
+	private void HoverRail( int idx )
+	{
+		if ( IsKbMode || !railOpen || showFavSelector ) return;
+		if ( _railKbIndex == idx ) return;
+		_railKbIndex = idx;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// Geometry-honest routes (DOC-5 §21): the self rail stacks its two
+	// controls (W/S); the online rail is one row of three (A/D). The other
+	// axis is a no-op — nothing sits there on screen.
+	private void MoveRailCursor( int dx, int dy )
+	{
+		int count = RailCount();
+		int t = _railKbIndex;
+		if ( selectedKind == "self" ) { if ( dy != 0 ) t = Math.Clamp( t + dy, 0, count - 1 ); }
+		else { if ( dx != 0 ) t = Math.Clamp( t + dx, 0, count - 1 ); }
+		if ( t == _railKbIndex ) return;
+		_railKbIndex = t;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void ActivateRail()
+	{
+		if ( selectedKind == "self" )
+		{
+			if ( _railKbIndex == 0 ) { ShowcaseCard(); return; }
+			OpenFavSelector();
+			StateHasChanged();
+			return;
+		}
+		var p = selectedOnlinePlayer;
+		if ( p == null ) return;
+		switch ( _railKbIndex )
+		{
+			case 0: RequestTrade( p ); break;
+			case 1: JoinLobbyVoice(); break;
+			case 2: ToggleMutePlayer( p.ConnectionId ); break;
+		}
+		StateHasChanged();
+	}
+
+	// ── LANE: input — FAV DROPDOWN (S4; the FilterBar menu grammar) ─────────
+	private bool IsFavKb( int idx ) => showFavSelector && _favKbIndex == idx;
+
+	private void HoverFav( int idx )
+	{
+		if ( IsKbMode || !showFavSelector ) return;
+		if ( _favKbIndex == idx ) return;
+		_favKbIndex = idx;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	private void MoveFavCursor( int dir, int count )
+	{
+		int t = Math.Clamp( _favKbIndex + dir, 0, Math.Max( 0, count - 1 ) );
+		if ( t == _favKbIndex ) return;
+		_favKbIndex = t;
+		_favFollowPending = true;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// Row 0 = None; rows 1.. = _favSpecies (the render-cached list).
+	private void ActivateFav()
+	{
+		if ( _favKbIndex == 0 ) { SetFavorite( null ); StateHasChanged(); return; }
+		int si = _favKbIndex - 1;
+		if ( si >= 0 && si < _favSpecies.Count ) { SetFavorite( _favSpecies[si].Id ); StateHasChanged(); }
+	}
+
+	// Scroll-follow for the 220px dropdown (DOC-5 §13 — the FilterBar
+	// UpdateMenuScrollFollow recipe): retry until the row has a rect,
+	// compute the offset that brings it fully into view, glide 0.30/tick.
+	private void UpdateFavScrollFollow()
+	{
+		var menu = favDropdownRef;
+		if ( menu == null || !showFavSelector ) { _favFollowPending = false; _favScrollGlideTarget = -1f; return; }
+		if ( _favFollowPending && menu.Box.Rect.Height > 0f )
+		{
+			var t = UiGridScroll.ComputeIndexOffset( menu, _favKbIndex, "tamer-fav-opt", null, 8f );
+			_favScrollGlideTarget = t ?? -1f;
+			_favFollowPending = false;
+		}
+		if ( _favScrollGlideTarget < 0f ) return;
+		float cur = menu.ScrollOffset.y;
+		float delta = _favScrollGlideTarget - cur;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			menu.ScrollOffset = new Vector2( menu.ScrollOffset.x, _favScrollGlideTarget );
+			_favScrollGlideTarget = -1f;
+			return;
+		}
+		menu.ScrollOffset = new Vector2( menu.ScrollOffset.x, cur + delta * 0.30f );
+	}
 
 	// ── Battle CTA handlers ────────────────────────────────────────────────
 	// Both quickplay CTAs render visibly but sit in the honest dim state
@@ -2985,9 +3242,30 @@
 	{
 		SoundManager.PlayClick();
 		showFavSelector = true;
+		// LANE: input — the rail cursor sits on Change (the control that
+		// opened this) so closing lands back where the player was; the
+		// dropdown cursor seeds on the CURRENT favourite (None = row 0), and
+		// the first Tick glides it into the 220px window.
+		_railKbIndex = 1;
+		// Prime the render cache HERE too: the next TickInput can run before
+		// the re-render refreshes _favSpecies, and its clamp against an empty
+		// list would reset the seed to 0.
+		_favSpecies = GetDiscoveredSpeciesList();
+		var curId = TamerManager.Instance?.CurrentTamer?.FavoriteMonsterSpeciesId;
+		int seed = 0;
+		if ( !string.IsNullOrEmpty( curId ) )
+		{
+			int si = _favSpecies.FindIndex( s => s.Id == curId );
+			if ( si >= 0 ) seed = si + 1;
+		}
+		_favKbIndex = seed;
+		_favFollowPending = true;
 	}
 
 	// ── Profile rail open/close ────────────────────────────────────────────
+	// LANE: input — these two are the ONE open funnel for click AND kb, so
+	// the rail cursor is seeded here (= the open edge, DOC-5 §12) on the
+	// first control.
 
 	private void OpenRailSelf()
 	{
@@ -2996,6 +3274,7 @@
 		selectedOnlinePlayer = null;
 		showFavSelector = false;
 		railOpen = true;
+		_railKbIndex = 0;
 	}
 
 	private void OpenRailOnline( OnlinePlayerInfo player )
@@ -3006,6 +3285,7 @@
 		selectedOnlinePlayer = player;
 		showFavSelector = false;
 		railOpen = true;
+		_railKbIndex = 0;
 	}
 
 	private void CloseRail()
@@ -3093,7 +3373,10 @@
 				selectedKind,
 				selectedOnlinePlayer?.ConnectionId,
 				showFavSelector,
-				railOpen,
+				// LANE: input — the device flag (root .kbd-mode/.mouse-mode) and the
+				// rail / fav-dropdown cursors re-render like every cursor field
+				// (folded in with railOpen: Combine caps at 8 arguments).
+				HashCode.Combine( railOpen, lastInputDevice, _railKbIndex, _favKbIndex ),
 				IsConnected() ? Connection.All.Count : 0,
 				ChatManager.Instance?.PlayerProfiles?.Count ?? 0,
 				HashCode.Combine( _kbZone, _kbIndex, _kbActive,
