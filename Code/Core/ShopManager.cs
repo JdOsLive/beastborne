@@ -115,7 +115,7 @@ public sealed class ShopManager : Component
 			{
 				Id = "ink_small",
 				Name = "Contract Ink (5)",
-				Description = "Used to capture wild monsters. Each capture attempt uses 1 ink.",
+				Description = "Used to contract wild beasts. Each contract attempt uses 1 ink.",
 				IconPath = "ui/icons/ink_small.png",
 				Type = ShopItemType.ContractInk,
 				Currency = CurrencyType.Gold,
@@ -179,7 +179,7 @@ public sealed class ShopManager : Component
 			{
 				Id = "beast_xp_30",
 				Name = "Beast XP Boost (30 min)",
-				Description = "Double XP for your monsters for 30 minutes.",
+				Description = "Double XP for your beasts for 30 minutes.",
 				IconPath = "ui/items/boosts/beast_xp_tome.png",
 				Type = ShopItemType.BeastXPBoost,
 				Currency = CurrencyType.Gold,
@@ -192,7 +192,7 @@ public sealed class ShopManager : Component
 			{
 				Id = "beast_xp_120",
 				Name = "Beast XP Boost (2 hours)",
-				Description = "Double XP for your monsters for 2 hours.",
+				Description = "Double XP for your beasts for 2 hours.",
 				IconPath = "ui/items/boosts/beast_xp_tome.png",
 				Type = ShopItemType.BeastXPBoost,
 				Currency = CurrencyType.Gold,
@@ -364,7 +364,7 @@ public sealed class ShopManager : Component
 			{
 				Id = "monster_slot_medium",
 				Name = "Storage Expansion (+50)",
-				Description = "Expand your monster box by 50 slots. For the growing collection!",
+				Description = "Expand your beast storage by 50 slots.",
 				IconPath = "ui/icons/slot_small.png",
 				Type = ShopItemType.MonsterSlot,
 				Currency = CurrencyType.Gold,
@@ -376,7 +376,7 @@ public sealed class ShopManager : Component
 			{
 				Id = "monster_slot_large",
 				Name = "Storage Expansion (+100)",
-				Description = "Massively expand your monster box by 100 slots. Best value for collectors!",
+				Description = "Expand your beast storage by 100 slots.",
 				IconPath = "ui/icons/slot_large.png",
 				Type = ShopItemType.MonsterSlot,
 				Currency = CurrencyType.Gold,
