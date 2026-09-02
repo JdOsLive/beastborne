@@ -76,7 +76,8 @@
 			<span class="sp-hero-label">SKILL POINTS</span>
 			<div class="sp-hero-row">
 				<iconify class="sp-hero-star" icon="lucide:star" Size=@(24) Color="#fbbf24" />
-				<span class="sp-hero-value">@GetSkillPoints()</span>
+				@* MOTION: sp-dip / sp-pop + a version key — each beat is a fresh mount. *@
+				<span class="@("sp-hero-value" + SpBeatClass)">@GetSkillPoints()</span>
 			</div>
 		</div>
 	</div>
@@ -95,7 +96,11 @@
 				var chipClass = "sk-branch-chip" + (mastered ? " gold" : "");
 				var chipIcon = mastered ? "lucide:crown" : GetBranchIcon(branch);
 				var chipInk = mastered ? "#241A00" : "#3a0a22";
-				var spineClass = "sk-spine" + (mastered ? " gold" : (spineLit ? " lit" : ""));
+				// MOTION: .wipe for 0.6s when THIS keystone just reached rank 1 (the
+				// ripple's own gate) — the spine grows downward from it (skSpineWipe).
+				var spineWipe = spineLit && !mastered && keystone.Id == lastInvestedId
+					&& GetSkillRank(keystone.Id) == 1 && sinceBurst < 0.6f;
+				var spineClass = "sk-spine" + (mastered ? " gold" : (spineLit ? " lit" : "")) + (spineWipe ? " wipe" : "");
 
 				<div class="@clusterClass">
 
@@ -136,7 +141,7 @@
 									 onmouseover=@(() => OnNodeHover(node))
 									 onmouseout=@OnNodeHoverOut>
 
-									<iconify class="hex-icon" icon="@GetNodeIcon(node)" Size=@(48) Color="@GetNodeIconColor(rank, stateClass, focused)" />
+									<iconify class="hex-icon" icon="@GetNodeIcon(node)" Size=@(48) Color="@GetNodeIconColor(rank, stateClass, focused || IsMouseLit(node))" />
 
 									@if (stateClass == "gated")
 									{
@@ -155,7 +160,9 @@
 								<div class="sk-node-pips">
 									@for (int r = 0; r < node.MaxRank; r++)
 									{
-										<div class="@("sk-node-pip" + (r < rank ? " on" : ""))"></div>
+										@* MOTION: .pip-new on the pip that just lit (same 0.6s gate as the ripple). *@
+										var pipNew = r == rank - 1 && node.Id == lastInvestedId && sinceBurst < 0.6f;
+										<div class="@("sk-node-pip" + (r < rank ? " on" : "") + (pipNew ? " pip-new" : ""))"></div>
 									}
 								</div>
 								<span class="@nameClass">@node.Name.ToUpper()</span>
@@ -198,7 +205,8 @@
 							<div class="@pipsClass">
 								@for (int r = 0; r < insp.MaxRank; r++)
 								{
-									<div class="@("insp-pip" + (r < iRank ? " on" : ""))"></div>
+									var railPipNew = r == iRank - 1 && insp.Id == lastInvestedId && sinceBurst < 0.6f;
+									<div class="@("insp-pip" + (r < iRank ? " on" : "") + (railPipNew ? " pip-new" : ""))"></div>
 								}
 							</div>
 							@if (iMaxed)
@@ -235,7 +243,8 @@
 							}
 							@if (showNext)
 							{
-								<span class="insp-val-next">@GetEffectValue(effect, iNextRank)</span>
+								@* MOTION: vk-N render key (N = the read rank) — the 120ms swap fade remounts when it changes. *@
+								<span class="@("insp-val-next vk-" + iRank)">@GetEffectValue(effect, iNextRank)</span>
 							}
 						</div>
 						<span class="insp-delta-unit">@GetUnitLine(insp, effect)</span>
@@ -254,7 +263,8 @@
 				@* ---- INVEST — the page's one gold primary, directly under
 				   the fact it changes. Zero-SP honesty lives in
 				   GetInvestButtonContent. ---- *@
-				<button class="insp-invest @invest.cssClass"
+				@* MOTION: + `deny deny-vN` for 0.3s after a refused press (the 2px shake). *@
+				<button class="@("insp-invest " + invest.cssClass + InvestDenyClass)"
 						onclick=@OnInvestClicked
 						onmouseover=@OnInvestHover
 						onmouseout=@OnInvestHoverOut>
@@ -390,6 +400,38 @@
 	private bool IsResetFlashing => RealTime.Now < resetFlashUntil;
 	private const float ResetFlashDuration = 0.9f;
 
+	// ── MOTION beats (render-key classes; each fires a fresh mount) ──
+	// SP hero: `sp-dip sp-vN` on an invest (0.26s) · `sp-pop sp-vN` on a
+	// reset commit (0.32s). The version key changes the class string on
+	// every beat, so back-to-back invests each replay (DOC-4 #5).
+	private float spBeatUntil = 0f;
+	private int spBeatVersion = 0;
+	private bool spBeatIsPop = false;
+	private string SpBeatClass => RealTime.Now < spBeatUntil
+		? (spBeatIsPop ? " sp-pop sp-v" : " sp-dip sp-v") + spBeatVersion
+		: "";
+	private void FireSpBeat(bool pop)
+	{
+		spBeatVersion++;
+		spBeatIsPop = pop;
+		spBeatUntil = RealTime.Now + (pop ? 0.32f : 0.26f);
+	}
+
+	// INVEST CTA deny shake: `deny deny-vN` for 0.3s after a refused press.
+	private float investDenyUntil = 0f;
+	private int investDenyVersion = 0;
+	private string InvestDenyClass => RealTime.Now < investDenyUntil ? " deny deny-v" + investDenyVersion : "";
+	private void FireInvestDeny()
+	{
+		investDenyVersion++;
+		investDenyUntil = RealTime.Now + 0.3f;
+	}
+
+	// The mouse's live hover lights the glyph (mouse mode only — the kb
+	// cursor lights it through `focused`). hoveredNode is in BuildHash.
+	private bool IsMouseLit(SkillNode node)
+		=> !IsKbMode && node != null && hoveredNode != null && hoveredNode.Id == node.Id;
+
 	// HOLD-TO-RESET — the hold IS the confirmation (user 2026-07-12, re-ruled
 	// 2026-09-01: ONE grammar for keyboard and mouse). ONE timer, three feeds
 	// (F held · mouse button held on the slab · Space/Enter/E held while the
@@ -426,6 +468,11 @@
 		{
 			var s = "";
 			if (_holdActive) s += " holding";
+			// MOTION: .draining while an early release rewinds the fill — the
+			// fill is INVISIBLE at rest (its r11 corners painted a sliver at
+			// width 0) and shows only under .holding / .draining / .committed,
+			// so the drain must keep it visible until the width lands at 0.
+			if (!_holdActive && resetHoldTime > 0f) s += " draining";
 			if (_holdActive || resetHoldTime > 0f)
 			{
 				int q = ResetHoldQuarter;
@@ -1058,11 +1105,15 @@
 		if (!tamer.CanUnlockSkill(node.Id))
 		{
 			SoundManager.PlayDeny();
+			FireInvestDeny(); // MOTION: 2px CTA shake, nothing else
 			return;
 		}
 
 		bool success = tamer.UnlockSkill(node.Id);
-		if (!success) { SoundManager.PlayDeny(); return; }
+		if (!success) { SoundManager.PlayDeny(); FireInvestDeny(); return; }
+
+		// MOTION: the SP hero dips as the point leaves.
+		FireSpBeat(pop: false);
 
 		int newRank = tamer.GetSkillRank(node.Id);
 		var newNode = tamer.SkillTree?.GetNode(node.Id);
@@ -1118,8 +1169,21 @@
 		SoundManager.PlayHover();
 	}
 
+	// SYNTHETIC HOVER-OUT GUARD (2026-09-01): the engine re-fires
+	// onmouseout/onmouseover pairs under a PARKED cursor on every re-render,
+	// so an unguarded hover-out re-targeted the ring to the nodes and the
+	// next synthetic hover-in sent it back — the ring hung mid-glide between
+	// the node and the slab. A hover-out only counts if the mouse has really
+	// left the host's rect.
+	private bool MouseStillInside( string cls )
+	{
+		var r = FindRectByClass( cls );
+		return r.HasValue && r.Value.IsInside( Mouse.Position );
+	}
+
 	private void OnInvestHoverOut()
 	{
+		if ( MouseStillInside( "insp-invest" ) ) return;
 		investHovered = false;
 		if (_mouseOverZone == CursorZone.Invest) _mouseOverZone = null;
 		if (!IsKbMode && cursorZone == CursorZone.Invest) cursorZone = CursorZone.Nodes;
@@ -1138,6 +1202,7 @@
 
 	private void OnResetHoverOut()
 	{
+		if ( MouseStillInside( "insp-reset" ) ) return;
 		resetHovered = false;
 		_resetMouseHeld = false; // dragging off the slab releases the hold
 		if (_mouseOverZone == CursorZone.Reset) _mouseOverZone = null;
@@ -1175,6 +1240,7 @@
 		resetFlashUntil = RealTime.Now + ResetFlashDuration;
 		resetCommittedUntil = RealTime.Now + ResetCommittedDuration;
 		ringWarm = 0; // the ring wears .snap this frame — MOTION's commit hook
+		FireSpBeat(pop: true); // MOTION: the SP hero's gold pop (rationed to the commit)
 
 		// The cursor STAYS where it is: the node index is still valid (every
 		// node is rank 0 now) and teleporting the ring mid-commit would fight
@@ -1268,7 +1334,11 @@
 		if (IsResetFlashing)
 			return ("lucide:check", "Reset!", "#ffffff", "flashing");
 
-		return ("lucide:rotate-ccw", "Reset all talents", "#ff8a92", "");
+		// MOTION: the glyph's ink flips with the label as the fill passes
+		// the midline (.h50) — the label/cap flip in scss, this is the
+		// attribute half.
+		var glyphInk = ResetHoldQuarter >= 2 ? "#ffffff" : "#ff8a92";
+		return ("lucide:rotate-ccw", "Reset all talents", glyphInk, "");
 	}
 
 	// INVEST — the page's one primary. BIG THINGS BIG: a locked primary
@@ -1487,6 +1557,10 @@
 		// Hold-to-reset costume hooks (.holding/.h25/.h50/.h75/.committed/
 		// .cancelled) are markup classes — the hash must tick with them.
 		hash.Add(ResetStateClasses);
+		// MOTION render-key classes — they must EXPIRE in the hash too, or
+		// the beat class never drops and the next beat has no fresh mount.
+		hash.Add(SpBeatClass);
+		hash.Add(InvestDenyClass);
 		hash.Add(showBurst);
 		hash.Add(burstVersion);
 		hash.Add(lastInvestedId);
