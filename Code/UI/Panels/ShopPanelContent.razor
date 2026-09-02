@@ -54,8 +54,17 @@
 	  chips 26 · +16 qty 44 · +16 price 34 · +4 deficit 16 · +12 BUY 56
 	  = 638; the rest is the ghost glyph's ground.
 
-	ONE-CURSOR MODEL: the living ring wraps the CASE item's card (the
-	selection or the first-affordable default) — no per-card ring.
+	ONE-CURSOR MODEL (INPUT lane 2026-09-02, DOC-5 #5/#6/#7): ONE cursor,
+	three zones. GRID — the cursor card IS the case item (hover selects in
+	mouse mode; WASD walk the true 2-D grid in kb mode), the root-level
+	living ring wraps it. HEADER — W from the top row climbs to the store
+	chips; they wear the hover costume as `.kb-focused` and the ring HIDES
+	(2026-09-02 ruling: header controls never carry the ring); A/D swap the
+	store on landing. CASE — D off a row's last card (or Space on a card)
+	enters the case: the ring glides to the STEPPER group (r21 pill) or the
+	BUY slab (r26); A/D step qty (hold repeats), S/W walk stepper ↔ BUY,
+	Space on BUY buys, A/Q return to the grid card. One device flag gates
+	every :hover under .mouse-mode and `.kb-focused` under .kbd-mode.
 
 	ENGINE LAWS honored: no AcceptsFocus; pointer-events all/none via a
 	CLASS on every child of a pressable; explicit boxes on every absolute;
@@ -64,7 +73,9 @@
 	max-width; no transform/box-shadow on scroll-grid cards.
 *@
 
-<root class="shop-panel-content">
+@* Root carries the device class (DOC-5 #5) — onmousemove is the mouse-mode
+   reclaim (travel-gated), onclick re-enters the panel from tab-nav. *@
+<root class="@RootClass" onmousemove=@OnRootMouseMove onclick=@OnRootClicked>
 	@* Living background: the shop glyph drifting at the house angle
 	   (BbIconScroll supplies the opaque dark base — root paints none). *@
 	<BbIconScroll Icon="shop" />
@@ -84,21 +95,23 @@
 			</div>
 		</div>
 		@* Right slot (.oh-toolbar position): two store chips + the balance chip.
-		   LANE: input — A/D swap stores while the ring sits on the chips; W from
-		   the top card row climbs here. The `,` `.` handlers in TickInput are the
-		   shipped fallback. Chips are ROUNDED slabs (actions never skew). *@
+		   LANE: input (wired 2026-09-02) — the HEADER zone: W from the top card
+		   row lands the cursor on the active chip (`.kb-focused`, no ring); A/D
+		   swap the store on landing; S returns to the grid; W again exits the
+		   panel. Z/X stay as the SILENT store cycle from any zone (DOC-5 #1).
+		   Chips are ROUNDED slabs (actions never skew). *@
 		<div class="sh-toolbar">
 			<div class="@StoreChipClass("gold")"
 				 onmouseover=@(() => OnStoreChipHover("gold"))
 				 onmouseout=@ClearStoreChipHover
-				 onclick=@(() => { SoundManager.PlayClick(); SwitchShopView("gold"); })>
+				 onclick=@(() => OnStoreChipClick("gold"))>
 				<img class="sh-store-glyph" src="ui/icons/currency/money.svg" />
 				<span class="sh-store-label">GOLD</span>
 			</div>
 			<div class="@StoreChipClass("boss")"
 				 onmouseover=@(() => OnStoreChipHover("boss"))
 				 onmouseout=@ClearStoreChipHover
-				 onclick=@(() => { SoundManager.PlayClick(); SwitchShopView("boss"); })>
+				 onclick=@(() => OnStoreChipClick("boss"))>
 				<img class="sh-store-glyph" src="ui/icons/currency/token.svg" />
 				<span class="sh-store-label">BOSS TOKENS</span>
 			</div>
@@ -152,8 +165,8 @@
 							var art = ArtPx(item.IconPath, 84);
 
 							<div class="@cardClass"
-								 onclick=@(() => SelectItem(item))
-								 onmouseover=@(() => OnShopItemHover(item.Id))>
+								 onclick=@(() => OnGoldCardClick(item))
+								 onmouseover=@(() => OnGoldCardHover(item))>
 								<div class="sat-card-art">
 									<img class="sat-card-icon" src=@IconSrc(item) style="width: @(art.w)px; height: @(art.h)px;" />
 								</div>
@@ -221,8 +234,8 @@
 							var art = ArtPx(item.Icon, 84);
 
 							<div class="@cardClass"
-								 onclick=@(() => SelectConsumable(item))
-								 onmouseover=@(() => OnShopItemHover(item.Id))>
+								 onclick=@(() => OnBossCardClick(item))
+								 onmouseover=@(() => OnBossCardHover(item))>
 								<div class="sat-card-art">
 									<img class="sat-card-icon" src=@item.Icon style="width: @(art.w)px; height: @(art.h)px;" />
 								</div>
@@ -321,14 +334,16 @@
 					if (multi)
 					{
 						@* Qty — a bare − + stepper (no MAX, no "units"). Clamped in ChangeQty
-						   to floor(balance ÷ unit). LANE: input — keys for − / + are OPEN
-						   (DOC-5 to rule; `,` `.` free up once A/D take the store swap). *@
-						<div class="sh-qty-row">
-							<div class="@QtyBtnClass(qty <= 1)" onclick=@(() => ChangeQty(-1)) onmouseover=@OnQtyHover>
+						   to floor(balance ÷ unit). LANE: input (wired 2026-09-02) — the
+						   STEPPER stop: A/D = − / + (kb), hold repeats after 0.35s at 8/s on
+						   both devices (mousedown/up arm the same repeat), deny blip at the
+						   clamp. The ring wraps the − … + group as an r21 pill. *@
+						<div @ref="qtyRowRef" class="sh-qty-row">
+							<div class="@QtyBtnClass(qty <= 1)" onclick=@(() => OnQtyClick(-1)) onmousedown=@(() => ArmMouseHold(-1)) onmouseup=@ReleaseMouseHold onmouseout=@ReleaseMouseHold onmouseover=@OnQtyHover>
 								<iconify class="sh-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
 							</div>
 							<div class="sh-qty-value"><span class="sh-qty-num">@qty</span></div>
-							<div class="@QtyBtnClass(qty >= GetMaxBuyQty(caseItem))" onclick=@(() => ChangeQty(1)) onmouseover=@OnQtyHover>
+							<div class="@QtyBtnClass(qty >= GetMaxBuyQty(caseItem))" onclick=@(() => OnQtyClick(1)) onmousedown=@(() => ArmMouseHold(1)) onmouseup=@ReleaseMouseHold onmouseout=@ReleaseMouseHold onmouseover=@OnQtyHover>
 								<iconify class="sh-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
 							</div>
 						</div>
@@ -350,9 +365,12 @@
 					   chrome is amber so the pressable primary stays the only gold slab).
 					   Directly under the price it commits. LANE: motion — `.beat beat-N`
 					   is the ONE purchase beat hook (remounts per buy); no rules yet.
-					   LANE: input — the ring parks here via Focused when the cursor
-					   leaves the grid (r16 + 10 → r26, BbButton's own ring). *@
-					<BbButton Tier="@BuyTier(buy.off)" Size=@(56) Label="@buy.label" Icon="@buy.icon" KeyCap="SPACE"
+					   LANE: input (wired 2026-09-02) — the BUY stop: the page's ONE
+					   root-level HDR ring glides here (r16 + 10 → r26) instead of
+					   lighting BbButton's own non-HDR `Focused` ring, so the cursor
+					   stays one object across grid → stepper → BUY. Space/Enter/E
+					   buy; an off slab answers with the deny blip (never dead). *@
+					<BbButton @ref="buyBtnRef" Tier="@BuyTier(buy.off)" Size=@(56) Label="@buy.label" Icon="@buy.icon" KeyCap="SPACE"
 							  Disabled=@buy.off Class="@BuyClass(buy.off)" OnClick=@BuyCurrent />
 					<img class="sh-case-ghost" src=@IconSrc(caseItem) style="width: @(ghost.w)px; height: @(ghost.h)px;" />
 				}
@@ -381,12 +399,12 @@
 					</div>
 					if (!maxed)
 					{
-						<div class="sh-qty-row">
-							<div class="@QtyBtnClass(qty <= 1)" onclick=@(() => ChangeQty(-1)) onmouseover=@OnQtyHover>
+						<div @ref="qtyRowRef" class="sh-qty-row">
+							<div class="@QtyBtnClass(qty <= 1)" onclick=@(() => OnQtyClick(-1)) onmousedown=@(() => ArmMouseHold(-1)) onmouseup=@ReleaseMouseHold onmouseout=@ReleaseMouseHold onmouseover=@OnQtyHover>
 								<iconify class="sh-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
 							</div>
 							<div class="sh-qty-value"><span class="sh-qty-num">@qty</span></div>
-							<div class="@QtyBtnClass(qty >= GetMaxBuyQty(caseItem))" onclick=@(() => ChangeQty(1)) onmouseover=@OnQtyHover>
+							<div class="@QtyBtnClass(qty >= GetMaxBuyQty(caseItem))" onclick=@(() => OnQtyClick(1)) onmousedown=@(() => ArmMouseHold(1)) onmouseup=@ReleaseMouseHold onmouseout=@ReleaseMouseHold onmouseover=@OnQtyHover>
 								<iconify class="sh-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
 							</div>
 						</div>
@@ -400,7 +418,7 @@
 						}
 					</div>
 					<div class="sh-case-deficit"><span class="sh-deficit-text">@(deficit > 0 ? "need +" + deficit.ToString("N0") : "")</span></div>
-					<BbButton Tier="@BuyTier(buy.off)" Size=@(56) Label="@buy.label" Icon="@buy.icon" KeyCap="SPACE"
+					<BbButton @ref="buyBtnRef" Tier="@BuyTier(buy.off)" Size=@(56) Label="@buy.label" Icon="@buy.icon" KeyCap="SPACE"
 							  Disabled=@buy.off Class="@BuyClass(buy.off)" OnClick=@BuyCurrent />
 					<img class="sh-case-ghost" src=@caseItem.Icon style="width: @(ghost.w)px; height: @(ghost.h)px;" />
 				}
@@ -408,9 +426,11 @@
 		</div>
 	</div>
 
-	@* THE LIVING VIOLET RING — the one cursor, wrapping the case item's card.
-	   Root-level absolute (never clipped by the scroll); position bound from
-	   UpdateShopRing each tick, wave via imperative Style.Transform. z 60. *@
+	@* THE LIVING VIOLET RING — the one cursor. Wraps the case item's card, or
+	   (kb mode, CASE zone) the stepper group (`.pill` r21) / the BUY slab; hidden
+	   in the HEADER zone. Root-level absolute (never clipped by the scroll);
+	   position bound from UpdateShopRing each tick, wave via imperative
+	   Style.Transform. z 60. *@
 	<div @ref="shopRingRef" class="@RingClass()"
 		 style="left: @(shopRingL)px; top: @(shopRingT)px; width: @(shopRingW)px; height: @(shopRingH)px;"></div>
 </root>
@@ -454,28 +474,131 @@
 	private Panel shopGridRef;
 	private Panel sbTrackRef, sbThumbRef;
 	private Panel shopRingRef;
+	// Case-zone ring hosts — one of the two razor branches mounts each.
+	private Panel qtyRowRef;
+	private Panel buyBtnRef;
 
-	// LANE: input — this page has NO device flag (kbd-mode / mouse-mode); the
-	// Skills page's lastInputDevice + SetInputDevice pattern is the port.
+	// ============================================================
+	// LANE: input (2026-09-02) — THE ONE-DEVICE FLAG (DOC-5 #5, the Skills
+	// page's recipe). Root .kbd-mode / .mouse-mode; any nav / confirm / back
+	// key takes the keyboard and stamps the mouse position; the mouse
+	// reclaims only after REAL travel (≥3px — the engine re-sends onmousemove
+	// on every re-render under a parked cursor). Hover handlers IGNORE events
+	// in kb mode (DOC-5 #15); every owned :hover is CSS-gated under
+	// .mouse-mode, every `.kb-focused` under .kbd-mode.
+	// ============================================================
+	private enum InputDevice { Mouse, Keyboard }
+	private InputDevice lastInputDevice = InputDevice.Mouse;
+	private bool IsKbMode => lastInputDevice == InputDevice.Keyboard;
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
+	private string RootClass => "shop-panel-content " + (IsKbMode ? "kbd-mode" : "mouse-mode");
 
-	// ── Hover-sound guards ───────────────────────────────────────
+	// THE CURSOR GRAPH (DOC-5 #11/#21 — geometry-honest):
+	//   HEADER  the two store chips (0 GOLD · 1 BOSS TOKENS); A/D swap on
+	//           landing; S → grid; W → GameHUD.ExitPanel().
+	//   GRID    the case item's card (selection == cursor); WASD true-2D,
+	//           clamped, kicker rows are not stops; W off the top row →
+	//           HEADER; D off a row's last card → CASE (stepper); Space → CASE (BUY).
+	//   CASE    Stepper (A/D = − / +, S → BUY) · BUY (Space buys, W → stepper,
+	//           A → grid). Q from CASE/HEADER → grid (claims the back key).
+	private enum CursorZone { Grid, Header, Case }
+	private enum CaseStop { Stepper, Buy }
+	private CursorZone cursorZone = CursorZone.Grid;
+	private CaseStop caseStop = CaseStop.Buy;
+	private int headerCursor = 0;
+
+	private void SetInputDevice( InputDevice dev )
+	{
+		if ( lastInputDevice == dev ) return;
+		lastInputDevice = dev;
+		if ( dev == InputDevice.Keyboard )
+		{
+			_kbTakeoverMousePos = Mouse.Position;
+			// Drop every live hover so a parked mouse can't keep a second
+			// element lit (and the hover-sound guards re-arm for the flip back).
+			hoveredStoreChip = null;
+			hoveredShopItem = null;
+			hoveredQtyBtn = null;
+		}
+		else
+		{
+			// The mouse owns the page: the cursor is the selection card again;
+			// any kb stepper hold ends with the device.
+			cursorZone = CursorZone.Grid;
+			_kbHoldDir = 0;
+		}
+	}
+
+	// Root onmousemove — the mouse-mode RECLAIM. Travel-gated: a bare flip
+	// would hand the cursor back to the mouse on every keypress re-render.
+	private void OnRootMouseMove()
+	{
+		if ( IsKbMode && (Mouse.Position - _kbTakeoverMousePos).Length >= 3f )
+			SetInputDevice( InputDevice.Mouse );
+	}
+
+	// A click anywhere re-enters the panel from GameHUD's tab-nav state
+	// (the sibling panels' OnPanelClicked recipe).
+	private void OnRootClicked() => GameHUD.EnterPanel();
+
+	// ── Hover handlers — hover IS selection (DOC-5 #6), mouse mode only ──
 	private void OnStoreChipHover( string id )
 	{
+		if ( IsKbMode ) return;
 		if ( hoveredStoreChip == id ) return;
 		hoveredStoreChip = id;
 		SoundManager.PlayHover();
 	}
 	private void ClearStoreChipHover() => hoveredStoreChip = null;
 
-	private void OnShopItemHover( string id )
+	private void OnStoreChipClick( string store )
 	{
-		if ( hoveredShopItem == id ) return;
-		hoveredShopItem = id;
+		SetInputDevice( InputDevice.Mouse );
+		SoundManager.PlayClick();
+		SwitchShopView( store );
+	}
+
+	// Card hover moves the ONE cursor: the card becomes the case item (the
+	// ring + case follow the selection). Silent select — the hover blip is
+	// the sound. Ignored while the keyboard drives (synthetic hovers under a
+	// parked cursor during scroll-follow).
+	private void OnGoldCardHover( ShopItem item )
+	{
+		if ( IsKbMode || item == null ) return;
+		if ( hoveredShopItem == item.Id ) return;
+		hoveredShopItem = item.Id;
 		SoundManager.PlayHover();
+		SelectItem( item, silent: true );
+	}
+
+	private void OnBossCardHover( BossConsumable item )
+	{
+		if ( IsKbMode || item == null ) return;
+		if ( hoveredShopItem == item.Id ) return;
+		hoveredShopItem = item.Id;
+		SoundManager.PlayHover();
+		SelectConsumable( item, silent: true );
+	}
+
+	// Click = the same selection with the click sound (hover already moved
+	// the cursor; the click still answers).
+	private void OnGoldCardClick( ShopItem item )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		SelectItem( item, silent: true );
+		SoundManager.PlayClick();
+	}
+
+	private void OnBossCardClick( BossConsumable item )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		SelectConsumable( item, silent: true );
+		SoundManager.PlayClick();
 	}
 
 	private void OnQtyHover()
 	{
+		if ( IsKbMode ) return;
 		if ( hoveredQtyBtn == "qty" ) return;
 		hoveredQtyBtn = "qty";
 		SoundManager.PlayHover();
@@ -483,11 +606,14 @@
 
 	// ── Header helpers ───────────────────────────────────────────
 	private string GetStoreTitle() => shopView == "boss" ? "BOSS TOKENS" : "GOLD";
-	private string StoreChipClass( string store ) => "sh-store-chip" + (shopView == store ? " on" : "");
+	private static int StoreIndex( string store ) => store == "boss" ? 1 : 0;
+	private static string StoreAt( int index ) => index == 1 ? "boss" : "gold";
+	private bool IsChipKbFocused( string store ) => IsKbMode && cursorZone == CursorZone.Header && headerCursor == StoreIndex( store );
+	private string StoreChipClass( string store ) => "sh-store-chip" + (shopView == store ? " on" : "") + (IsChipKbFocused( store ) ? " kb-focused" : "");
 	private string BalanceClass() => "sh-balance" + ((shopView == "gold" ? IsGoldFlash : IsTokenFlash) ? " flash" : "");
 	private string BalanceGlyph() => shopView == "gold" ? "ui/icons/currency/money.svg" : "ui/icons/currency/token.svg";
 	private string BalanceText() => (shopView == "gold" ? GetGold() : GetBossTokens()).ToString( "N0" );
-	private string RingClass() => "sh-ring" + (shopRingVisible ? " on" : "") + (shopRingWarm < 2 ? " snap" : "");
+	private string RingClass() => "sh-ring" + (shopRingVisible ? " on" : "") + (shopRingWarm < 2 ? " snap" : "") + (shopRingPill ? " pill" : "");
 	private string QtyBtnClass( bool off ) => "sh-qty-btn" + (off ? " off" : "");
 	private string BuyClass( bool off ) => "case-buy" + (off ? " off" : "") + (IsBuyBeat ? " beat beat-" + buyBeatVersion : "");
 	// Off = the ghost tier (same 434×56 slab, desaturated) — a TIER swap is an
@@ -546,6 +672,13 @@
 		selectedConsumable = null;
 		purchaseQty = 1;
 		detailVersion++;
+		// A new catalogue under the cursor: the case zone's hosts remount, so
+		// the cursor falls back to the grid unless it sits in the header (a
+		// header swap keeps the cursor on the chips).
+		if ( cursorZone == CursorZone.Case ) cursorZone = CursorZone.Grid;
+		_kbHoldDir = 0;
+		_mouseHoldDir = 0;
+		RequestScrollFollow();
 	}
 
 	// ============================================================
@@ -554,6 +687,7 @@
 	// ============================================================
 	private int shopRingL, shopRingT, shopRingW = 152, shopRingH = 170;
 	private bool shopRingVisible;
+	private bool shopRingPill;  // stepper host: r11 + 10 → r21 (one costume per host radius, DOC-5 #9)
 	private int shopRingWarm; // <2 = snap to position (no glide) while first rects land
 	private const int ShopRingInset = 10; // card r16 + 10 → ring r26
 
@@ -561,9 +695,57 @@
 	{
 		base.Tick();
 		ApplyDevPending();
+		UpdateMouseHold();
+		UpdateScrollFollow();
 		UpdateShopRing();
 		ApplyShopRingWave();
 		UpdateScrollbar();
+	}
+
+	// The ring's host this tick, or null to hide. Mouse mode / GRID zone: the
+	// `.selected` card (== the case item), self-hidden outside the grid
+	// viewport (a root-level ring is never clipped by the scroll). Kb CASE
+	// zone: the stepper − … + group or the BUY slab. HEADER: hidden (the chips
+	// wear `.kb-focused`).
+	private Rect? ResolveRingHost( out bool pill )
+	{
+		pill = false;
+		if ( IsKbMode && cursorZone == CursorZone.Header ) return null;
+
+		if ( IsKbMode && cursorZone == CursorZone.Case )
+		{
+			if ( caseStop == CaseStop.Stepper && qtyRowRef != null )
+			{
+				Panel first = null, last = null;
+				foreach ( var c in qtyRowRef.Children )
+				{
+					if ( !c.HasClass( "sh-qty-btn" ) ) continue;
+					if ( first == null ) first = c;
+					last = c;
+				}
+				if ( first != null && last != null && first.Box.Rect.Width > 1f )
+				{
+					var a = first.Box.Rect;
+					var b = last.Box.Rect;
+					pill = true;
+					return new Rect( a.Left, a.Top, b.Right - a.Left, a.Height );
+				}
+			}
+			if ( buyBtnRef != null && buyBtnRef.Box.Rect.Width > 1f ) return buyBtnRef.Box.Rect;
+			return null;
+		}
+
+		if ( shopGridRef == null ) return null;
+		var gr = shopGridRef.Box.Rect;
+		if ( gr.Width < 2f ) return null;
+		foreach ( var c in shopGridRef.Children )
+		{
+			if ( !c.HasClass( "shop-card" ) || !c.HasClass( "selected" ) ) continue;
+			var r = c.Box.Rect;
+			if ( r.Top < gr.Top - 14f || r.Bottom > gr.Bottom + 14f ) return null;
+			return r.Width < 2f ? (Rect?)null : r;
+		}
+		return null;
 	}
 
 	private void UpdateShopRing()
@@ -571,28 +753,12 @@
 		bool wasVisible = shopRingVisible;
 		shopRingVisible = false;
 
-		if ( shopGridRef == null ) return;
-
-		var gr = shopGridRef.Box.Rect;
 		var rr = Box.Rect;
-		if ( rr.Width < 2f || gr.Width < 2f ) return;
+		if ( rr.Width < 2f ) return;
 
-		// The `.selected` card IS the case item's card (markup binds both from
-		// the same resolver). Self-hide when it sits outside the grid viewport —
-		// a root-level ring is never clipped by the scroll container.
-		Panel target = null;
-		foreach ( var c in shopGridRef.Children )
-		{
-			if ( !c.HasClass( "shop-card" ) || !c.HasClass( "selected" ) ) continue;
-			var r = c.Box.Rect;
-			if ( r.Top < gr.Top - 14f || r.Bottom > gr.Bottom + 14f ) continue;
-			target = c;
-			break;
-		}
-		if ( target == null ) return;
-
-		var cr = target.Box.Rect;
-		if ( cr.Width < 2f ) return;
+		var host = ResolveRingHost( out bool pill );
+		if ( host == null ) return;
+		var cr = host.Value;
 
 		float sc = ScaleFromScreen;
 		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
@@ -600,15 +766,72 @@
 		// RING CENTERING LAW (learnings 2026-08-29 / audit 2026-09-02): Style.Left/
 		// Top place the PADDING box and the 4px border draws outside it, so
 		// L/T = host − inset + 4 and W/H = host + 2·inset − 8 put the ring's
-		// OUTER edge exactly `inset` off the card on every side.
+		// OUTER edge exactly `inset` off the host on every side.
 		shopRingL = (int)((cr.Left - rr.Left) * sc) - ShopRingInset + 4;
 		shopRingT = (int)((cr.Top - rr.Top) * sc) - ShopRingInset + 4;
 		shopRingW = (int)(cr.Width * sc) + ShopRingInset * 2 - 8;
 		shopRingH = (int)(cr.Height * sc) + ShopRingInset * 2 - 8;
+		shopRingPill = pill;
 
 		shopRingVisible = true;
 		if ( !wasVisible ) shopRingWarm = 0;       // re-appearing → snap first, glide after
 		else if ( shopRingWarm < 2 ) shopRingWarm++;
+	}
+
+	// ============================================================
+	// KB SCROLL-FOLLOW — the roster's glide recipe (DOC-5 #13): a pending
+	// flag resolved in Tick once the cursor card has a rect, endpoints scroll
+	// fully to top/bottom (the kicker rows stay reachable to the eye), then a
+	// 0.30 exponential step per tick toward the target.
+	// ============================================================
+	private bool _scrollFollowPending;
+	private int _scrollFollowFrames;
+	private float gridScrollGlideTarget = -1f;
+
+	private void RequestScrollFollow()
+	{
+		_scrollFollowPending = true;
+		_scrollFollowFrames = 0;
+	}
+
+	private void UpdateScrollFollow()
+	{
+		if ( shopGridRef == null ) return;
+
+		if ( _scrollFollowPending )
+		{
+			if ( ++_scrollFollowFrames > 12 ) _scrollFollowPending = false; // nothing to follow (empty store)
+			int idx = ResolveSelectedShopIndex();
+			var panels = shopGridRef.Children.Where( c => c.HasClass( "shop-card" ) ).ToList();
+			if ( idx >= 0 && idx < panels.Count && panels[idx].Box.Rect.Height > 1f )
+			{
+				_scrollFollowPending = false;
+				var cur = panels[idx].Box.Rect;
+				bool topRow = !panels.Any( p => p.Box.Rect.Top < cur.Top - 1f );
+				bool bottomRow = !panels.Any( p => p.Box.Rect.Top > cur.Top + 1f );
+				float curOff = shopGridRef.ScrollOffset.y;
+				float? t;
+				if ( topRow ) t = curOff > 0.5f ? 0f : null;
+				else if ( bottomRow )
+				{
+					float max = Math.Max( 0f, shopGridRef.ScrollSize.y );
+					t = Math.Abs( max - curOff ) > 0.5f ? max : null;
+				}
+				else t = UiGridScroll.ComputeOffset( shopGridRef, panels[idx] );
+				if ( t.HasValue ) gridScrollGlideTarget = t.Value;
+			}
+		}
+
+		if ( gridScrollGlideTarget < 0f ) return;
+		float now = shopGridRef.ScrollOffset.y;
+		float delta = gridScrollGlideTarget - now;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			shopGridRef.ScrollOffset = new Vector2( shopGridRef.ScrollOffset.x, gridScrollGlideTarget );
+			gridScrollGlideTarget = -1f;
+			return;
+		}
+		shopGridRef.ScrollOffset = new Vector2( shopGridRef.ScrollOffset.x, now + delta * 0.30f );
 	}
 
 	// The liquid ink-lean — the menu cursor's multi-sine at the PawPad's
@@ -676,32 +899,53 @@
 	}
 
 	// ============================================================
-	// Keyboard navigation — called by GameHUD.TickCurrentPanel().
-	// WASD walk the grid (render order, position-based W/S so section
-	// breaks are respected) · Space buys · Q two-stage back (home the
-	// case + qty 1, then exit) · , . swap stores (LANE: input — A/D on
-	// the header chips replaces these once the ring can climb there).
+	// KEYBOARD — called by GameHUD.TickCurrentPanel() (already gated on
+	// UIModalState.AnyModalOpen + IsNavigatingTabs; re-checked here for the
+	// chat focus + a defensive modal check). LANE: input 2026-09-02.
+	//
+	// KEY MAP (DOC-5 #1 grammar):
+	//   WASD / arrows  move the ONE cursor (true-2D grid · header chips ·
+	//                  case stops)          Space / Enter / E  confirm
+	//   Q (Shift)      back — CASE/HEADER → grid (claims the key); GRID →
+	//                  the two-stage exit (home the case + qty 1, then exit)
+	//   Z / X          SILENT store cycle from any zone (DOC-5 #1 pair)
+	//   A / D on the STEPPER stop = − / + (hold repeats); on the HEADER = swap
 	// ============================================================
 	public void TickInput()
 	{
 		try
 		{
+			if ( ChatPanel.IsChatFocused ) return;
+			if ( UIModalState.AnyModalOpen ) return;
+			EnsureCursor();
+			UpdateKbHold();
 			HandleShopKeyboardInput();
-
-			// Keep the keyboard-selected card on screen. Resolve from the
-			// (already-updated) case item, not the `.selected` class (which only
-			// updates next render and would lag the scroll a row).
-			if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) )
-			{
-				int sidx = ResolveSelectedShopIndex();
-				if ( sidx >= 0 )
-					UiGridScroll.ScrollIndexIntoView( shopGridRef, sidx, "shop-card" );
-			}
 		}
 		catch ( Exception ex )
 		{
 			Log.Warning( $"ShopPanelContent.TickInput error: {ex.Message}" );
 		}
+	}
+
+	// Coerce the cursor onto a stop that is actually mounted: the stepper
+	// unmounts for singletons / a maxed boss good (DOC-5 #12 — build the
+	// same live list the markup does).
+	private void EnsureCursor()
+	{
+		if ( cursorZone == CursorZone.Case && caseStop == CaseStop.Stepper && !StepperMounted() )
+			caseStop = CaseStop.Buy;
+		if ( cursorZone == CursorZone.Header ) headerCursor = Math.Clamp( headerCursor, 0, 1 );
+	}
+
+	private bool StepperMounted()
+	{
+		if ( shopView == "gold" )
+		{
+			var c = GetCaseGoldItem( GetGoldItems() );
+			return c != null && SupportsMultiBuy( c );
+		}
+		var b = GetCaseBossItem();
+		return b != null && !IsConsumableMaxed( b );
 	}
 
 	// Index of the case item within the grid's render order. -1 when none.
@@ -720,21 +964,49 @@
 		return cb == null ? -1 : bossItems.FindIndex( i => i.Id == cb.Id );
 	}
 
-	// Position-based vertical navigation: the K-th .shop-card child of the
-	// grid is item K in the caller's render-order list. Finds the card in the
-	// nearest row above/below whose horizontal centre is closest.
+	private int GridCount() => shopView == "gold"
+		? GroupGoldSections( GetGoldItems() ).SelectMany( s => s.Items ).Count()
+		: GetConsumableGroups().SelectMany( g => g.Items ).Count();
+
+	// Select the K-th card in render order — the kb cursor move (hover blip,
+	// not the click) + scroll-follow.
+	private void SelectIndex( int idx )
+	{
+		if ( idx < 0 ) return;
+		if ( shopView == "gold" )
+		{
+			var items = GroupGoldSections( GetGoldItems() ).SelectMany( s => s.Items ).ToList();
+			if ( idx >= items.Count ) return;
+			SelectItem( items[idx], silent: true );
+		}
+		else
+		{
+			var items = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
+			if ( idx >= items.Count ) return;
+			SelectConsumable( items[idx], silent: true );
+		}
+		SoundManager.PlayHover();
+		RequestScrollFollow();
+	}
+
+	// The K-th .shop-card child of the grid is item K in render order.
+	private List<Panel> CardPanels() => shopGridRef == null
+		? new List<Panel>()
+		: shopGridRef.Children.Where( c => c.HasClass( "shop-card" ) ).ToList();
+
+	// TRUE-2D vertical step: the card in the nearest row above/below whose
+	// horizontal centre is closest. Kicker rows are not cards, so W/S skip
+	// them. -1 = no row that way (the grid's top/bottom edge).
 	private int GetVerticalNeighbor( int idx, int itemCount, bool down )
 	{
-		var grid = shopGridRef;
-		if ( grid == null ) return idx;
-		var panels = grid.Children.Where( c => c.HasClass( "shop-card" ) ).ToList();
-		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count ) return idx;
+		var panels = CardPanels();
+		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count ) return -1;
 
 		var cur = panels[idx].Box.Rect;
 		float curCentreX = cur.Left + cur.Width * 0.5f;
 		float curTop = cur.Top;
 
-		int best = idx;
+		int best = -1;
 		float bestRowDist = float.MaxValue;
 		float bestDX = float.MaxValue;
 		for ( int i = 0; i < panels.Count; i++ )
@@ -754,104 +1026,237 @@
 		return best;
 	}
 
+	// TRUE-2D horizontal step within the SAME row (same rect Top) — clamped,
+	// no wrap. -1 = the row's edge (A: stay · D: enter the case). Falls back
+	// to flat ±1 before the first layout lands.
+	private int GetHorizontalNeighbor( int idx, int itemCount, bool right )
+	{
+		var panels = CardPanels();
+		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count )
+		{
+			int flat = right ? idx + 1 : idx - 1;
+			return flat >= 0 && flat < itemCount ? flat : -1;
+		}
+
+		var cur = panels[idx].Box.Rect;
+		int best = -1;
+		float bestDX = float.MaxValue;
+		for ( int i = 0; i < panels.Count; i++ )
+		{
+			if ( i == idx ) continue;
+			var r = panels[i].Box.Rect;
+			if ( Math.Abs( r.Top - cur.Top ) > 1f ) continue;
+			float dx = right ? r.Left - cur.Left : cur.Left - r.Left;
+			if ( dx <= 1f || dx >= bestDX ) continue;
+			best = i;
+			bestDX = dx;
+		}
+		return best;
+	}
+
 	private void HandleShopKeyboardInput()
 	{
-		if ( ChatPanel.IsChatFocused ) return;
-		if ( UIModalState.AnyModalOpen ) return;
-
-		// , / . swap stores (CyclePrev / CycleNext). LANE: input — A/D on the
-		// header chips is the ruled grammar; these stay as the compiling fallback.
-		if ( Input.Pressed( "CyclePrev" ) ) { SwitchShopView( "gold" ); SoundManager.PlayClick(); return; }
-		if ( Input.Pressed( "CycleNext" ) ) { SwitchShopView( "boss" ); SoundManager.PlayClick(); return; }
-
-		if ( shopView == "gold" )
+		// Z / X — the silent store cycle (DOC-5 #1 pair), any zone. A header
+		// cursor follows the active chip; a case cursor falls back to the grid
+		// (SwitchShopView); the grid cursor lands on the new store's case item.
+		if ( Input.Pressed( "CyclePrev" ) || Input.Pressed( "CycleNext" ) )
 		{
-			var all = GetGoldItems();
-			var items = GroupGoldSections( all ).SelectMany( s => s.Items ).ToList();
-			if ( items.Count == 0 ) return;
+			SetInputDevice( InputDevice.Keyboard );
+			SwitchShopView( shopView == "gold" ? "boss" : "gold" );
+			if ( cursorZone == CursorZone.Header ) headerCursor = StoreIndex( shopView );
+			SoundManager.PlayClick();
+			return;
+		}
 
-			var cur = GetCaseGoldItem( all );
-			int idx = cur == null ? -1 : items.FindIndex( i => i.Id == cur.Id );
+		int dir = -1; // 0 up · 1 down · 2 left · 3 right
+		if ( Input.Pressed( "Up" ) ) dir = 0;
+		else if ( Input.Pressed( "Down" ) ) dir = 1;
+		else if ( Input.Pressed( "Left" ) ) dir = 2;
+		else if ( Input.Pressed( "Right" ) ) dir = 3;
+		bool confirm = UiInput.ConfirmPressed();
+		bool back = Input.Pressed( "Menu" ) || Input.Pressed( "run" );
+		if ( dir < 0 && !confirm && !back ) return;
 
-			if ( Input.Pressed( "Left" ) )
+		SetInputDevice( InputDevice.Keyboard );
+
+		switch ( cursorZone )
+		{
+			case CursorZone.Header: HandleHeaderKeys( dir, confirm, back ); break;
+			case CursorZone.Case: HandleCaseKeys( dir, confirm, back ); break;
+			default: HandleGridKeys( dir, confirm, back ); break;
+		}
+	}
+
+	// ── HEADER zone — the two store chips ──
+	private void HandleHeaderKeys( int dir, bool confirm, bool back )
+	{
+		if ( back )
+		{
+			cursorZone = CursorZone.Grid;
+			SoundManager.PlayBack();
+			RequestScrollFollow();
+			GameHUD.PanelHandledBackKey = true;
+			return;
+		}
+		if ( confirm )
+		{
+			// The chip under the cursor is already the active store (A/D swap
+			// on landing) — a confirm re-asserts it, never a dead press.
+			SwitchShopView( StoreAt( headerCursor ) );
+			SoundManager.PlayClick();
+			return;
+		}
+		switch ( dir )
+		{
+			case 2: // A → GOLD
+			case 3: // D → BOSS TOKENS — swap IMMEDIATELY (the hub's segment law)
+				{
+					int next = Math.Clamp( headerCursor + (dir == 3 ? 1 : -1), 0, 1 );
+					if ( next == headerCursor ) return; // clamp — silent
+					headerCursor = next;
+					SwitchShopView( StoreAt( headerCursor ) );
+					SoundManager.PlayClick();
+					return;
+				}
+			case 1: // S → back down to the grid (the case item's card)
+				cursorZone = CursorZone.Grid;
+				SoundManager.PlayHover();
+				RequestScrollFollow();
+				return;
+			case 0: // W → the header is the top of the page: exit the panel
+				GameHUD.ExitPanel();
+				return;
+		}
+	}
+
+	// ── GRID zone — the cursor card IS the case item ──
+	private void HandleGridKeys( int dir, bool confirm, bool back )
+	{
+		int count = GridCount();
+		int idx = ResolveSelectedShopIndex();
+
+		if ( back )
+		{
+			// Two-stage back (kept): stage 1 homes the case (first affordable,
+			// qty 1) and CLAIMS the key; stage 2 (already home) genuinely exits.
+			if ( shopView == "gold" )
 			{
-				idx = idx <= 0 ? 0 : idx - 1;
-				SelectItem( items[idx] );
-			}
-			else if ( Input.Pressed( "Right" ) )
-			{
-				idx = idx < 0 ? 0 : Math.Min( items.Count - 1, idx + 1 );
-				SelectItem( items[idx] );
-			}
-			else if ( Input.Pressed( "Up" ) )
-			{
-				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, false );
-				SelectItem( items[idx] );
-			}
-			else if ( Input.Pressed( "Down" ) )
-			{
-				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, true );
-				SelectItem( items[idx] );
-			}
-			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-			{
-				BuyCurrent();
-			}
-			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
-			{
-				// Two-stage back: stage 1 homes the case (first affordable, qty 1)
-				// and CLAIMS the key; stage 2 (already home) genuinely exits.
+				var all = GetGoldItems();
 				bool home = selectedItem == null || (GetDefaultGoldItem( all )?.Id == selectedItem.Id);
 				if ( !home || purchaseQty != 1 )
 				{
 					selectedItem = null; purchaseQty = 1; detailVersion++; SoundManager.PlayBack();
+					RequestScrollFollow();
 					GameHUD.PanelHandledBackKey = true;
 				}
 				else GameHUD.ExitPanel();
 			}
-		}
-		else
-		{
-			var items = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
-			if ( items.Count == 0 ) return;
-
-			var cur = GetCaseBossItem();
-			int idx = cur == null ? -1 : items.FindIndex( i => i.Id == cur.Id );
-
-			if ( Input.Pressed( "Left" ) )
-			{
-				idx = idx <= 0 ? 0 : idx - 1;
-				SelectConsumable( items[idx] );
-			}
-			else if ( Input.Pressed( "Right" ) )
-			{
-				idx = idx < 0 ? 0 : Math.Min( items.Count - 1, idx + 1 );
-				SelectConsumable( items[idx] );
-			}
-			else if ( Input.Pressed( "Up" ) )
-			{
-				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, false );
-				SelectConsumable( items[idx] );
-			}
-			else if ( Input.Pressed( "Down" ) )
-			{
-				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, true );
-				SelectConsumable( items[idx] );
-			}
-			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-			{
-				BuyCurrent();
-			}
-			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			else
 			{
 				bool home = selectedConsumable == null || (GetDefaultBossItem()?.Id == selectedConsumable.Id);
 				if ( !home || purchaseQty != 1 )
 				{
 					selectedConsumable = null; purchaseQty = 1; detailVersion++; SoundManager.PlayBack();
+					RequestScrollFollow();
 					GameHUD.PanelHandledBackKey = true;
 				}
 				else GameHUD.ExitPanel();
 			}
+			return;
+		}
+
+		if ( count == 0 ) return;
+		if ( idx < 0 ) { SelectIndex( 0 ); return; }
+
+		if ( confirm )
+		{
+			// RULING (job 2): Space on a card never buys — the cursor card is
+			// already the case item, so confirm carries the intent INTO the case
+			// and parks on BUY; the second Space commits. Two presses, never an
+			// accidental 250k storage buy.
+			EnterCase( CaseStop.Buy );
+			return;
+		}
+
+		switch ( dir )
+		{
+			case 2: // A — same row, clamped (silent at the row's first card)
+				{
+					int n = GetHorizontalNeighbor( idx, count, false );
+					if ( n >= 0 ) SelectIndex( n );
+					return;
+				}
+			case 3: // D — same row, else off the row's last card into the case
+				{
+					int n = GetHorizontalNeighbor( idx, count, true );
+					if ( n >= 0 ) SelectIndex( n );
+					else EnterCase( CaseStop.Stepper );
+					return;
+				}
+			case 0: // W — the row above, else the header chips
+				{
+					int n = GetVerticalNeighbor( idx, count, false );
+					if ( n >= 0 ) { SelectIndex( n ); return; }
+					cursorZone = CursorZone.Header;
+					headerCursor = StoreIndex( shopView );
+					gridScrollGlideTarget = 0f; // a cursor leaving upward glides the grid home (DOC-5 #13)
+					SoundManager.PlayHover();
+					return;
+				}
+			case 1: // S — the row below, clamped at the bottom row
+				{
+					int n = GetVerticalNeighbor( idx, count, true );
+					if ( n >= 0 ) SelectIndex( n );
+					return;
+				}
+		}
+	}
+
+	private void EnterCase( CaseStop preferred )
+	{
+		cursorZone = CursorZone.Case;
+		caseStop = preferred == CaseStop.Stepper && StepperMounted() ? CaseStop.Stepper : CaseStop.Buy;
+		SoundManager.PlayHover();
+	}
+
+	private void LeaveCaseToGrid( bool isBack )
+	{
+		cursorZone = CursorZone.Grid;
+		_kbHoldDir = 0;
+		if ( isBack ) { SoundManager.PlayBack(); GameHUD.PanelHandledBackKey = true; }
+		else SoundManager.PlayHover();
+		RequestScrollFollow();
+	}
+
+	// ── CASE zone — STEPPER stop (A/D = − / +) · BUY stop (Space buys) ──
+	private void HandleCaseKeys( int dir, bool confirm, bool back )
+	{
+		if ( back ) { LeaveCaseToGrid( isBack: true ); return; }
+
+		if ( caseStop == CaseStop.Stepper )
+		{
+			if ( confirm ) { caseStop = CaseStop.Buy; SoundManager.PlayHover(); return; } // confirm advances to BUY
+			switch ( dir )
+			{
+				case 2: ChangeQty( -1 ); ArmKbHold( -1 ); return; // clamp = deny blip inside ChangeQty
+				case 3: ChangeQty( 1 ); ArmKbHold( 1 ); return;
+				case 1: caseStop = CaseStop.Buy; SoundManager.PlayHover(); return;
+				case 0: return; // nothing above the stepper — clamp (silent)
+			}
+			return;
+		}
+
+		// BUY stop
+		if ( confirm ) { BuyCurrent(); return; } // off slab → PurchaseX plays the deny blip
+		switch ( dir )
+		{
+			case 0: // W → the stepper (when mounted); a singleton's BUY has nothing above
+				if ( StepperMounted() ) { caseStop = CaseStop.Stepper; SoundManager.PlayHover(); }
+				return;
+			case 2: LeaveCaseToGrid( isBack: false ); return; // A → the grid's cursor card
+			case 1: // S — BUY is the case's floor
+			case 3: // D — nothing right of the case
+				return;
 		}
 	}
 
@@ -1016,7 +1421,8 @@
 		return Math.Max( 1, Math.Max( 0, Math.Min( byBalance, stackRoom ) ) );
 	}
 
-	private void ChangeQty( int delta )
+	// Returns false at the clamp (deny blip played) so hold-repeat can stop.
+	private bool ChangeQty( int delta )
 	{
 		int next = purchaseQty + delta;
 		int max = 1;
@@ -1031,9 +1437,78 @@
 			if ( c != null ) { selectedConsumable = c; max = GetMaxBuyQty( c ); }
 		}
 		int clamped = Math.Max( 1, Math.Min( max, next ) );
-		if ( clamped == purchaseQty ) { SoundManager.PlayDeny(); return; }
+		if ( clamped == purchaseQty ) { SoundManager.PlayDeny(); return false; }
 		purchaseQty = clamped;
 		SoundManager.PlayClick();
+		return true;
+	}
+
+	// ============================================================
+	// STEPPER HOLD-REPEAT (job 5) — holding − / + repeats after 0.35s at
+	// ~8/s on BOTH devices; the clamp answers once with the deny blip and
+	// ends the hold (no 8/s deny chatter). Replaces MAX for bulk ink buys.
+	// ============================================================
+	private const float HoldDelay = 0.35f;
+	private const float HoldPeriod = 0.125f;
+
+	// Keyboard: armed by the A/D press on the stepper stop, polled in TickInput.
+	private int _kbHoldDir;
+	private float _kbHoldNext;
+
+	// Mouse: armed by onmousedown on a qty button, released by mouseup/mouseout,
+	// polled in Tick (panel tick — works even when GameHUD isn't routing keys).
+	private int _mouseHoldDir;
+	private float _mouseHoldNext;
+	private bool _mouseHoldRepeated;
+	private bool _suppressNextQtyClick;
+
+	private void ArmKbHold( int dir )
+	{
+		_kbHoldDir = dir;
+		_kbHoldNext = RealTime.Now + HoldDelay;
+	}
+
+	private void UpdateKbHold()
+	{
+		if ( _kbHoldDir == 0 ) return;
+		if ( !IsKbMode || cursorZone != CursorZone.Case || caseStop != CaseStop.Stepper ) { _kbHoldDir = 0; return; }
+		if ( !Input.Down( _kbHoldDir < 0 ? "Left" : "Right" ) ) { _kbHoldDir = 0; return; }
+		if ( RealTime.Now < _kbHoldNext ) return;
+		if ( !ChangeQty( _kbHoldDir ) ) { _kbHoldDir = 0; return; }
+		_kbHoldNext = RealTime.Now + HoldPeriod;
+	}
+
+	private void ArmMouseHold( int dir )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		_mouseHoldDir = dir;
+		_mouseHoldNext = RealTime.Now + HoldDelay;
+		_mouseHoldRepeated = false;
+		_suppressNextQtyClick = false;
+	}
+
+	// mouseup fires BEFORE click on the same element: a hold that already
+	// repeated eats the release-click so the count doesn't jump one extra.
+	private void ReleaseMouseHold()
+	{
+		if ( _mouseHoldDir != 0 && _mouseHoldRepeated ) _suppressNextQtyClick = true;
+		_mouseHoldDir = 0;
+	}
+
+	private void UpdateMouseHold()
+	{
+		if ( _mouseHoldDir == 0 ) return;
+		if ( RealTime.Now < _mouseHoldNext ) return;
+		_mouseHoldRepeated = true;
+		if ( !ChangeQty( _mouseHoldDir ) ) { _mouseHoldDir = 0; return; }
+		_mouseHoldNext = RealTime.Now + HoldPeriod;
+	}
+
+	private void OnQtyClick( int delta )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		if ( _suppressNextQtyClick ) { _suppressNextQtyClick = false; return; }
+		ChangeQty( delta );
 	}
 
 	private int GetTotalPrice( ShopItem item )
@@ -1106,24 +1581,25 @@
 		return ("lucide:shopping-bag", qty > 1 ? buy + " ×" + qty : buy, false);
 	}
 
-	private void SelectItem( ShopItem item )
+	// `silent` = the caller owns the sound (hover blip / kb cursor hover / click).
+	private void SelectItem( ShopItem item, bool silent = false )
 	{
 		if ( item == null ) return;
 		if ( selectedItem?.Id == item.Id ) return;
 		selectedItem = item;
 		purchaseQty = 1;
 		detailVersion++;
-		SoundManager.PlayClick();
+		if ( !silent ) SoundManager.PlayClick();
 	}
 
-	private void SelectConsumable( BossConsumable item )
+	private void SelectConsumable( BossConsumable item, bool silent = false )
 	{
 		if ( item == null ) return;
 		if ( selectedConsumable?.Id == item.Id ) return;
 		selectedConsumable = item;
 		purchaseQty = 1;
 		detailVersion++;
-		SoundManager.PlayClick();
+		if ( !silent ) SoundManager.PlayClick();
 	}
 
 	// BUY — buys whatever the case shows (method group for BbButton + Space).
@@ -1455,6 +1931,12 @@
 		hash.Add( shopRingH );
 		hash.Add( shopRingVisible );
 		hash.Add( shopRingWarm < 2 );
+		hash.Add( shopRingPill );
+		// One-device flag + cursor graph (root class, chip `.kb-focused`).
+		hash.Add( lastInputDevice );
+		hash.Add( cursorZone );
+		hash.Add( caseStop );
+		hash.Add( headerCursor );
 		return hash.ToHashCode();
 	}
 }
