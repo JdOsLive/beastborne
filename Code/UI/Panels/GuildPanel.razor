@@ -983,7 +983,10 @@ else if ( guildView == "myguild" )
 			     mouse edge, GUARDED on >= 3px of real travel since the last
 			     keypress (B1, run-2 audit): the engine re-dispatches
 			     onmousemove on re-render under a PARKED cursor. -->
-			<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+			<!-- LANE: motion — gs-closing (settings exit latch) and gp-fx-freeze
+			     (dev_guildfx) are ROOT classes: root flips persist the subtree, so
+			     they drive transitions / play-state without remounting anything. -->
+			<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode") @(SettingsClosing ? "gs-closing" : "") @(_gpFxFreeze ? "gp-fx-freeze" : "")" onmousemove=@OnGpPageMouseMove>
 
 				<!-- ── HEADER — the hub's .oh-header anatomy wearing the GUILD'S
 				     NAME (kicker GUILD → 64px italic-900 title → [TAG] whisper →
@@ -1073,10 +1076,12 @@ else if ( guildView == "myguild" )
 					     No name / tag fields (no API). No nav pills, no hint rows.
 					     Non-officers: the left slabs render READ-ONLY (.gs-ro) and
 					     the SAVE row is absent — DANGER still carries LEAVE.
-					     LANE: motion — the four slabs wear the existing gpZone*
-					     rungs (band/roster/week/log) on mount; an exit fade and a
-					     BACK transition are motion's to dress (the sub-view is an
-					     if-mount, so its exit can't animate as built).
+					     LANE: motion (attached, run 2) — ENTER = the slabs' gpZone*
+					     rungs on mount (left column then right, 0.40s). EXIT = the
+					     0.12s delayed-unmount latch: CloseSettingsView stamps
+					     _settingsClosingUntil, the root wears .gs-closing, .gs-body
+					     fades, Tick flips showSettingsView off when the latch expires.
+					     BACK TO GUILD / BACK TO HUB caps carry a 0.18s mount fade.
 					     LANE: input — rows are GetSettingsDrawerRows() ids (color ·
 					     beast · description · joinmode · minlevel · danger rows ·
 					     save); A/D inside a chip row + HOLD-to-confirm on the
@@ -1109,7 +1114,7 @@ else if ( guildView == "myguild" )
 						var gsSaveLabel = gsDirty ? "SAVE CHANGES" : "NO CHANGES";
 						var gsSaveCap = gsDirty ? "SPACE" : "";
 					}
-					<div class="gp-body">
+					<div class="gp-body gs-body">
 						<div class="gs-cols">
 
 							<!-- LEFT 1088 -->
@@ -1341,6 +1346,7 @@ else if ( guildView == "myguild" )
 				}
 				else
 				{
+				@{ ArmLogLadderOnMount(); } @* LANE: motion — the log ladder arms on the plaza body's FIRST render (first open + every return from settings) *@
 				<div class="gp-body">
 
 					<!-- ── TOP BAND 1872×160 — IDENTITY left, ANNOUNCEMENT right.
@@ -1483,11 +1489,15 @@ else if ( guildView == "myguild" )
 									     LANE: input — pending rows are cursor stops (W/S rows,
 									     A/D ACCEPT↔DENY, Space = ACCEPT); REQUESTS·N seats the
 									     cursor on the first pending row.
-									     LANE: motion — NO entrance ladder (volatile rows: they
-									     leave on accept/deny); a Tier-2 fold-into-MEMBERS on
-									     accept and a collapse on deny are motion's. -->
+									     LANE: motion (attached, run 2) — NO entrance ladder
+									     (volatile rows). ACCEPT = gp-leaving-acc (0.2s blue fold,
+									     height-only) + the new member's row lands gp-joined when
+									     it first appears; DENY = gp-leaving-deny (0.16s collapse).
+									     Marks live in _prowLeaving until the server unmounts the
+									     row (pruned in Tick; cleared on OnError). -->
+									@{ int gpPendingLive = pendingRequests.Count( pr => !IsProwLeaving( pr ) ); }
 									<div class="gp-rkick">
-										<span class="gp-rkick-t">@($"PENDING · {pendingRequests.Count}")</span>
+										<span class="gp-rkick-t">@($"PENDING · {gpPendingLive}")</span>
 										<span class="gp-rkick-x">officers only — accept or deny</span>
 									</div>
 									@{ int gpPendIdx = 0; }
@@ -1496,7 +1506,7 @@ else if ( guildView == "myguild" )
 										var r = request;
 										var pIdx = gpPendIdx; gpPendIdx++;
 										var pSub = $"LV {r.Level} · asked {FormatAskedAgo( r.RequestedAt )}";
-										<div class="gp-prow @(pIdx % 2 == 1 ? "alt" : "")">
+										<div class="gp-prow @(pIdx % 2 == 1 ? "alt" : "") @ProwLeavingClass( r )">
 											<div class="gp-head">
 												@if ( r.SteamId > 0 )
 												{
@@ -1512,8 +1522,8 @@ else if ( guildView == "myguild" )
 												<span class="gp-prow-sub">@pSub</span>
 											</div>
 											<div class="gp-prow-spacer"></div>
-											<BbButton Tier="secondary" Size=@(34) Label="ACCEPT" Class="gp-pacc" HoverSound=@false OnClick=@(() => { gm.ApproveJoinRequest( r ); SoundManager.PlaySelect(); }) />
-											<BbButton Tier="ghost" Size=@(34) Label="DENY" Class="gp-pdeny" HoverSound=@false OnClick=@(() => { gm.DenyJoinRequest( r ); SoundManager.PlayDeny(); }) />
+											<BbButton Tier="secondary" Size=@(34) Label="ACCEPT" Class="gp-pacc" HoverSound=@false OnClick=@(() => AcceptPendingWithFold( r )) />
+											<BbButton Tier="ghost" Size=@(34) Label="DENY" Class="gp-pdeny" HoverSound=@false OnClick=@(() => DenyPendingWithCollapse( r )) />
 										</div>
 									}
 									<div class="gp-rkick dim">
@@ -1535,7 +1545,7 @@ else if ( guildView == "myguild" )
 									<!-- LANE: input — row click/Space = member action modal (kept).
 									     Hover moves the ONE cursor (PlazaHover — one-cursor law);
 									     the old hoveredMember side-state is retired. -->
-									<div class="gp-mrow @(mIdx % 2 == 1 ? "alt" : "") @(mGone ? "faded" : "") @(IsPlazaKb( "roster", mIdx ) ? "guild-kb-selected" : "")"
+									<div class="gp-mrow @(mIdx % 2 == 1 ? "alt" : "") @(mGone ? "faded" : "") @(IsJoinedPop( m.SteamId ) ? "gp-joined" : "") @(IsPlazaKb( "roster", mIdx ) ? "guild-kb-selected" : "")"
 										 onmouseover=@(() => PlazaHover( "roster", mIdx ))
 										 onclick=@(() => { OpenMemberMenu( m ); SoundManager.PlayClick(); })>
 										<div class="gp-head" style="border-color: @mRoleColor">
@@ -1691,10 +1701,13 @@ else if ( guildView == "myguild" )
 							     first; ~8 rows visible (band 36 + pad 10 + 8×38 +
 							     7×2 = 364 ≤ 400), the rest scroll. OnLogUpdated →
 							     OnRefresh → StateHasChanged (already subscribed).
-							     LANE: motion (attached) — zone fade rung 4 +
-							     gpLogRow0–7 percentage-ladder row cascade (log rows
-							     carry no volatile classes, so mount keyframes are
-							     safe); scrollbar arm/fade + hover thumb brighten. -->
+							     LANE: motion (attached; run 2 = audit S12) — zone fade rung
+							     4 + the gpLogRow0–7 ladder as CLASS rungs stamped by index
+							     only while armed (0.9s from the body's first render), then
+							     "" — so a prepended entry can't replay the ladder; only the
+							     NEW entry ripples (gp-lnew, keyed by entry content). Zebra
+							     stays BY POSITION (stable under prepends). Scrollbar
+							     arm/fade + hover thumb brighten. -->
 							<div class="gp-log">
 								<div class="gp-band">
 									<div class="gp-chipstamp"><span>THE LOG</span></div>
@@ -1716,7 +1729,7 @@ else if ( guildView == "myguild" )
 										{
 											var e = entry;
 											var lIdx = gpLogRowIdx; gpLogRowIdx++;
-											<div class="gp-lrow @(lIdx % 2 == 1 ? "alt" : "")" onmouseover=@(() => PlazaHover( "log", lIdx ))>
+											<div class="gp-lrow @(lIdx % 2 == 1 ? "alt" : "") @LogRowMotionClass( e, lIdx )" onmouseover=@(() => PlazaHover( "log", lIdx ))>
 												@if ( !string.IsNullOrEmpty( e.PlayerName ) )
 												{
 													<span class="gp-log-actor">@e.PlayerName</span>
@@ -1964,7 +1977,8 @@ else if ( guildView == "myguild" )
 	// (dead tab system / member search / permission matrix CUT — guild
 	// rebuild 2026-08-31, guild-systems-review §2 dead code.)
 
-	// ── Motion state (LANE: motion, attached 2026-09-01) — windowed
+	// ── Motion state (LANE: motion, attached 2026-09-01; run 2 fields
+	//    below) — windowed
 	//    render-keys for the two one-shot beats. The gp-pop class renders
 	//    only while RealTime.Now < *_Until, so it is ABSENT on later
 	//    kb-cursor remounts / page re-opens and the keyframe can't replay
@@ -1973,6 +1987,31 @@ else if ( guildView == "myguild" )
 	private float _claimPopUntil = -1f;
 	private int _lastSeenGuildLevel = -1;
 	private float _lvPopUntil = -1f;
+	// ── run 2 motion state ──
+	// Settings sub-view EXIT latch: CloseSettingsView stamps the deadline,
+	// the root wears .gs-closing while it runs (0.12s body fade), Tick flips
+	// showSettingsView off when it expires (the if-mount can't animate its
+	// own exit). Input is ignored while closing.
+	private float _settingsClosingUntil = -1f;
+	private bool SettingsClosing => _settingsClosingUntil > 0f && RealTime.Now < _settingsClosingUntil;
+	// PENDING rows leaving: key → (accept?, stamped-at). The row keeps its
+	// leaving class until the server round-trip removes the request (pruned
+	// in Tick, 6s timeout, cleared on OnError so a failed action re-expands).
+	private readonly Dictionary<string, (bool accept, float at)> _prowLeaving = new();
+	// ACCEPT → watch for the member row to appear, then window gp-joined on it.
+	private long _joinWatchSteamId = 0;
+	private float _joinWatchUntil = -1f;
+	private long _joinedPopSteamId = 0;
+	private float _joinedPopUntil = -1f;
+	// THE LOG ladder: armed for 0.9s from the plaza body's first render
+	// (rungs stamped by index), then every row's motion class is "". Entry
+	// keys seen so far; a key first seen AFTER the ladder ripples (gp-lnew).
+	private float _logLadderUntil = -1f;
+	private bool _plazaBodyRendered = false;
+	private readonly HashSet<string> _logKnownKeys = new();
+	private readonly Dictionary<string, float> _logNewUntil = new();
+	// dev_guildfx freeze — root class pauses the windowed pops at their 0% frame.
+	private bool _gpFxFreeze = false;
 
 	// Plaza state — one scene, no tabs. SETTINGS is a SUB-VIEW of the page
 	// (run 2): the same header stays mounted, the body swaps (if-mount) so
@@ -2245,6 +2284,18 @@ else if ( guildView == "myguild" )
 					_lvPopUntil = RealTime.Now + 0.6f;
 				_lastSeenGuildLevel = gpLvNow;
 			}
+
+			// LANE: motion (run 2) — pending-row marks, the joined watch, the
+			// log ripple expiry, the ladder re-arm edge.
+			TickMotionBeats();
+		}
+
+		// LANE: motion — settings EXIT latch expiry → the real unmount.
+		if ( showSettingsView && _settingsClosingUntil > 0f && RealTime.Now >= _settingsClosingUntil )
+		{
+			_settingsClosingUntil = -1f;
+			showSettingsView = false;
+			StateHasChanged();
 		}
 
 		// Settings drawer open edge — reset the keyboard row cursor to the
@@ -2343,6 +2394,16 @@ else if ( guildView == "myguild" )
 		hash.Add( _claimPopGoalId );
 		hash.Add( RealTime.Now < _claimPopUntil );
 		hash.Add( RealTime.Now < _lvPopUntil );
+		// run 2 motion keys — exit latch class, leaving rows, joined window,
+		// ladder arm window + live ripple count, freeze root class.
+		hash.Add( SettingsClosing );
+		hash.Add( _prowLeaving.Count );
+		foreach ( var lk in _prowLeaving.Keys ) hash.Add( lk );
+		hash.Add( _joinedPopSteamId );
+		hash.Add( RealTime.Now < _joinedPopUntil );
+		hash.Add( RealTime.Now < _logLadderUntil );
+		hash.Add( ActiveLogNewCount() );
+		hash.Add( _gpFxFreeze );
 		// ── Emblem resolve inputs (BbEmblem.ResolveBeast) — icon/color/owner
 		//    plus everything the leader-favorite default chain reads: your own
 		//    favorite, the member list (owner ConnectionId), and the online
@@ -3302,6 +3363,9 @@ else if ( guildView == "myguild" )
 
 	private void TickSettingsDrawerInput()
 	{
+		// LANE: motion — the view is fading out; nothing takes input mid-exit.
+		if ( SettingsClosing ) return;
+
 		// S3 — typing owns the keyboard while the description entry has focus
 		// (Tab hands it back here; Enter/Esc via the entry's own events). Q
 		// types a 'q' while focused; unfocused Q is the drawer's back (below).
@@ -3310,7 +3374,7 @@ else if ( guildView == "myguild" )
 		// Q — close the drawer (internal back, claim the key).
 		if ( Input.Pressed( "Menu" ) )
 		{
-			showSettingsView = false;
+			CloseSettingsView(); // LANE: motion — the 0.12s exit latch (one close path)
 			SoundManager.PlayBack();
 			ResetKb();
 			GameHUD.PanelHandledBackKey = true;
@@ -3759,6 +3823,8 @@ else if ( guildView == "myguild" )
 	{
 		errorMessage = msg;
 		SoundManager.PlayDeny();
+		// LANE: motion — a failed ACCEPT/DENY must give the pending row back.
+		if ( _prowLeaving.Count > 0 ) { _prowLeaving.Clear(); _joinWatchSteamId = 0; StateHasChanged(); }
 	}
 
 	// Navigation
@@ -3915,11 +3981,15 @@ else if ( guildView == "myguild" )
 		_kbIndex = 0; // Tick's open edge re-seeds too (idempotent)
 	}
 
+	// LANE: motion — the ONE close path arms the exit latch instead of
+	// unmounting: the root wears .gs-closing for 0.12s (body fades), then
+	// Tick flips showSettingsView off. Idempotent while closing.
 	private void CloseSettingsView()
 	{
 		settingsDescInput?.Blur();
-		showSettingsView = false;
 		ResetKb();
+		if ( !showSettingsView ) return;
+		if ( !SettingsClosing ) _settingsClosingUntil = RealTime.Now + 0.12f;
 	}
 
 	private void OnSettingsBackClicked()
@@ -4076,6 +4146,57 @@ else if ( guildView == "myguild" )
 		Log.Info( $"[dev_guildview] -> {mode}" );
 	}
 
+	// TEMP dev instrument (run 2 MOTION, DOC-4 §20): fire / FREEZE the two
+	// windowed pops + the joined beat so the main session can screenshot
+	// them. `dev_guildfx lv` holds the LV stamp at its gold ×1.45 peak
+	// (0% frame, paused via the gp-fx-freeze root class); `dev_guildfx
+	// claim` holds the first goal row's gold rim; `dev_guildfx joined` holds
+	// the first member row's blue seam. Add `play` to run each at real
+	// timing (`dev_guildfx lv play`). `dev_guildfx off` clears everything.
+	[ConCmd( "dev_guildfx" )]
+	public static void DevGuildFx( string beat = "lv", string mode = "freeze" )
+	{
+		var p = _devGuild;
+		var gm = GuildManager.Instance;
+		if ( p == null || gm == null ) { Log.Warning( "[dev_guildfx] Guild page not mounted." ); return; }
+		bool freeze = mode != "play";
+		float win = freeze ? 600f : 0.6f;
+		switch ( beat )
+		{
+			case "lv":
+				p._lvPopUntil = RealTime.Now + win;
+				break;
+			case "claim":
+				var g = gm.WeeklyGoals?.FirstOrDefault();
+				if ( g == null ) { Log.Warning( "[dev_guildfx] No weekly goals to flash." ); return; }
+				p._claimPopGoalId = g.Id;
+				p._claimPopUntil = RealTime.Now + win;
+				break;
+			case "joined":
+				var m = gm.Members?.FirstOrDefault( x => x != null && x.SteamId > 0 ) ?? gm.Members?.FirstOrDefault();
+				if ( m == null ) { Log.Warning( "[dev_guildfx] No member rows." ); return; }
+				p._joinedPopSteamId = m.SteamId;
+				p._joinedPopUntil = RealTime.Now + (freeze ? 600f : 0.8f);
+				break;
+			case "off":
+				p._lvPopUntil = -1f;
+				p._claimPopUntil = -1f;
+				p._claimPopGoalId = null;
+				p._joinedPopUntil = -1f;
+				p._joinedPopSteamId = 0;
+				p._gpFxFreeze = false;
+				p.StateHasChanged();
+				Log.Info( "[dev_guildfx] cleared" );
+				return;
+			default:
+				Log.Info( "[dev_guildfx] beats: lv | claim | joined | off   (add `play` for real timing)" );
+				return;
+		}
+		p._gpFxFreeze = freeze;
+		p.StateHasChanged();
+		Log.Info( $"[dev_guildfx] {beat} -> {(freeze ? "FROZEN at the 0% frame" : "playing")}" );
+	}
+
 	private void OpenPicker( string title, string mode, bool returnsToDrawer )
 	{
 		pickerTitle = title;
@@ -4154,8 +4275,7 @@ else if ( guildView == "myguild" )
 		if ( emblemDirty || settingsDirty ) SoundManager.PlaySuccess();
 		else SoundManager.PlayBack();
 
-		settingsDescInput?.Blur();
-		showSettingsView = false;
+		CloseSettingsView(); // LANE: motion — same 0.12s exit latch as BACK / Q
 	}
 
 	// Danger Zone — uses shared ConfirmDialog (mounted globally in GameHUD)
@@ -4588,6 +4708,133 @@ else if ( guildView == "myguild" )
 	//    and the .on arming class are written per tick. Ratio math: rect px
 	//    and scroll px are commensurate, so viewH/contentH and offset/maxOff
 	//    are unit-free — only the track length needs style-space px.
+	// ═══ LANE: motion (run 2) — pending-row beats, joined beat, log ladder ═══
+
+	// Pending rows are keyed by SteamId + name (the dev fakes share SteamId 0).
+	private static string ProwKey( GuildJoinRequest r ) => r == null ? "" : $"{r.SteamId}|{r.PlayerName}";
+	private bool IsProwLeaving( GuildJoinRequest r ) => r != null && _prowLeaving.ContainsKey( ProwKey( r ) );
+	private string ProwLeavingClass( GuildJoinRequest r )
+		=> r != null && _prowLeaving.TryGetValue( ProwKey( r ), out var lv ) ? (lv.accept ? "gp-leaving-acc" : "gp-leaving-deny") : "";
+
+	// ACCEPT — stamp the fold, arm the joined watch, then the real call. The
+	// row folds NOW (Tier 2, 0.2s) and stays folded (`both`) until the server
+	// round-trip removes the request; OnError clears the mark (row returns).
+	private void AcceptPendingWithFold( GuildJoinRequest r )
+	{
+		var gm = GuildManager.Instance;
+		if ( gm == null || r == null || IsProwLeaving( r ) ) return;
+		_prowLeaving[ProwKey( r )] = (true, RealTime.Now);
+		if ( r.SteamId > 0 ) { _joinWatchSteamId = r.SteamId; _joinWatchUntil = RealTime.Now + 8f; }
+		gm.ApproveJoinRequest( r );
+		SoundManager.PlaySelect();
+		StateHasChanged();
+	}
+
+	// DENY — quiet 0.16s collapse, then the real call.
+	private void DenyPendingWithCollapse( GuildJoinRequest r )
+	{
+		var gm = GuildManager.Instance;
+		if ( gm == null || r == null || IsProwLeaving( r ) ) return;
+		_prowLeaving[ProwKey( r )] = (false, RealTime.Now);
+		gm.DenyJoinRequest( r );
+		SoundManager.PlayDeny();
+		StateHasChanged();
+	}
+
+	private bool IsJoinedPop( long steamId ) => steamId > 0 && steamId == _joinedPopSteamId && RealTime.Now < _joinedPopUntil;
+
+	// Log entries are REBUILT from the server on every fetch (no stable
+	// identity) — key by content.
+	private static string LogKey( GuildLogEntry e ) => e == null ? "" : $"{e.Timestamp.Ticks}|{e.Action}|{e.PlayerName}|{e.Details}";
+
+	// Called from the plaza body's render (else-branch head): arms the ladder
+	// on the body's FIRST render after each (re)mount — first open and every
+	// return from settings. Tick clears _plazaBodyRendered while the body is
+	// away. Render-time mutation is deliberate: arming from Tick would paint
+	// one frame of un-laddered rows before the rungs land (a blink).
+	private void ArmLogLadderOnMount()
+	{
+		if ( _plazaBodyRendered ) return;
+		_plazaBodyRendered = true;
+		_logLadderUntil = RealTime.Now + 0.9f; // the 0.84s ladder + slack
+		_logNewUntil.Clear();
+	}
+
+	// Motion class per log row. ARMED → rung by index (rows 8+ share rung 7)
+	// and every key is recorded. After → "" for known keys; a key seen for
+	// the FIRST time ripples (gp-lnew, 0.35s). Under either diff model no
+	// existing row replays: keyed rows keep their class string, positional
+	// rows only change class where the new entry sits.
+	private string LogRowMotionClass( GuildLogEntry e, int lIdx )
+	{
+		var key = LogKey( e );
+		if ( RealTime.Now < _logLadderUntil )
+		{
+			_logKnownKeys.Add( key );
+			return lIdx >= 7 ? "gp-lr7" : "gp-lr" + lIdx;
+		}
+		if ( _logKnownKeys.Add( key ) ) _logNewUntil[key] = RealTime.Now + 0.35f;
+		return _logNewUntil.TryGetValue( key, out var until ) && RealTime.Now < until ? "gp-lnew" : "";
+	}
+
+	private int ActiveLogNewCount()
+	{
+		int n = 0;
+		foreach ( var kv in _logNewUntil ) if ( RealTime.Now < kv.Value ) n++;
+		return n;
+	}
+
+	// Per-tick housekeeping for the run-2 beats (myguild only).
+	private void TickMotionBeats()
+	{
+		var gm = GuildManager.Instance;
+		if ( gm == null ) return;
+
+		// The plaza body is away (settings view up) → the ladder re-arms on
+		// its next first render.
+		if ( showSettingsView ) _plazaBodyRendered = false;
+
+		// Leaving marks: drop when the request is gone (server confirmed) or
+		// after 6s (a lost round-trip must not leave a ghost fold).
+		if ( _prowLeaving.Count > 0 )
+		{
+			List<string> drop = null;
+			foreach ( var kv in _prowLeaving )
+			{
+				bool present = false;
+				if ( gm.JoinRequests != null )
+					foreach ( var jr in gm.JoinRequests ) if ( ProwKey( jr ) == kv.Key ) { present = true; break; }
+				if ( !present || RealTime.Now - kv.Value.at > 6f ) (drop ??= new()).Add( kv.Key );
+			}
+			if ( drop != null ) foreach ( var k in drop ) _prowLeaving.Remove( k );
+		}
+
+		// Joined watch: the accepted tamer's row appears → window gp-joined on
+		// it (the class is present from the row's FIRST mount, so the keyframe
+		// fires with the row). Give up after 8s.
+		if ( _joinWatchSteamId > 0 )
+		{
+			bool here = false;
+			if ( gm.Members != null )
+				foreach ( var mm in gm.Members ) if ( mm != null && mm.SteamId == _joinWatchSteamId ) { here = true; break; }
+			if ( here )
+			{
+				_joinedPopSteamId = _joinWatchSteamId;
+				_joinedPopUntil = RealTime.Now + 0.8f;
+				_joinWatchSteamId = 0;
+			}
+			else if ( RealTime.Now > _joinWatchUntil ) _joinWatchSteamId = 0;
+		}
+
+		// Expired ripples leave the dictionary (BuildHash reads the live count).
+		if ( _logNewUntil.Count > 0 )
+		{
+			List<string> gone = null;
+			foreach ( var kv in _logNewUntil ) if ( RealTime.Now >= kv.Value ) (gone ??= new()).Add( kv.Key );
+			if ( gone != null ) foreach ( var k in gone ) _logNewUntil.Remove( k );
+		}
+	}
+
 	// LANE: motion — the CLAIM commit with its Tier-2 payload: keys the
 	// goal row's windowed gold flash (gp-pop, 0.6s window > 0.3s anim)
 	// and plays the success cue. Both the click and the kb Space route
