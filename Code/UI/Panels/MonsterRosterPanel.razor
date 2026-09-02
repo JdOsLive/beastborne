@@ -1977,7 +1977,10 @@
 	     grid; position bound from UpdateGridRing each tick, wave via
 	     imperative Style.Transform in ApplyGridRingWave. z 60: above the
 	     grid cards, below the sidebar (80) / journal modal (100) /
-	     header (500) — flat z-index law, no stacking contexts. -->
+	     header (500) — flat z-index law, no stacking contexts. Costumes:
+	     .tight / .altar z90 (stage column). The ring HIDES in the header
+	     zone — the chip's hover costume is the cursor there (user
+	     2026-09-02, LANE: input). -->
 	<div @ref="gridRingRef" class="grid-ring @(gridRingVisible ? "on" : "") @(gridRingWarm < 2 ? "snap" : "") @(gridRingTight ? "tight" : "") @(gridRingAltar ? "altar" : "") @(isFusionMode ? "fusion" : "")"
 		 style="left: @(gridRingL)px; top: @(gridRingT)px; width: @(gridRingW)px; height: @(gridRingH)px;"></div>
 
@@ -2364,6 +2367,33 @@
 		SoundManager.PlayHover();
 	}
 
+	// LANE: input 2026-09-02 — KB-FOCUSED LOOK = THE HOVER LOOK on the header,
+	// and it is the ONLY cursor there (user: "with the mouse there's a glow
+	// and hover lift on those buttons; that doesn't happen with the
+	// keyboard" + "we don't need the glowing ring to go up to the top"). The
+	// header controls live in the shared FilterBar (read-only), so the markup
+	// can't stamp the class — we stamp `.kb-focused` IMPERATIVELY on the
+	// focused control every tick (a FilterBar re-render rewrites the class
+	// attribute, so a one-shot stamp would be wiped; per-tick re-stamp is the
+	// robust form). Cleared from every sibling on index change, on zone
+	// leave, and in mouse mode (parked-cursor law — the CSS is
+	// .kbd-mode-gated too, belt + braces). No ring measures these hosts, so
+	// the lift sits on the host itself, matching the mouse hover exactly.
+	private void SyncHeaderKbFocus()
+	{
+		bool active = kbFocusZone == "header" && IsKbMode && !showResult;
+		if ( !active && !hdrKbFocusStamped ) return; // nothing lit, nothing to clear
+		var ctrls = CollectHeaderControls();
+		bool any = false;
+		for ( int i = 0; i < ctrls.Count; i++ )
+		{
+			bool on = active && i == headerCursorIndex;
+			ctrls[i].SetClass( "kb-focused", on );
+			any |= on;
+		}
+		hdrKbFocusStamped = any;
+	}
+
 	// Hand the keyboard to the Pattern Book (fusion's third nav zone —
 	// grid ↔ book seam mirrors the collection's grid ↔ inspect seam).
 	private void FocusBookZone()
@@ -2576,6 +2606,7 @@
 	private bool gridRingVisible;
 	private bool gridRingTight; // detail-zone hosts are small — tighter inset/radius
 	private bool gridRingAltar; // r18 altar slots → r26 costume (LANE: input 2026-09-02)
+	private bool hdrKbFocusStamped; // a header control currently wears the imperative .kb-focused (LANE: input 2026-09-02)
 	private int gridRingWarm; // <2 = snap to position (no glide) while first rects land
 
 	// ── OVERLAY SCROLLBARS (2026-07-05) ─────────────────────────────────
@@ -2666,30 +2697,15 @@
 		gridRingTight = false;
 		gridRingAltar = false;
 
-		// HEADER WALKUP zone (2026-07-12) — the one ring parks on the
-		// focused toolbar control (tight inset; the one ring formula).
+		// HEADER WALKUP zone — NO RING (user 2026-09-02: "we don't need the
+		// glowing ring to go up to the top"). The ring HIDES while the
+		// keyboard cursor is on the header; the focused control's hover
+		// costume (SyncHeaderKbFocus stamps .kb-focused → lift + rim) IS the
+		// cursor there. It reappears snapped when S returns to the grid.
+		// (Pre-2026-09-02 the ring parked here at .tight z90 — under the
+		// z500 header, so it was never visible anyway.)
 		if ( kbFocusZone == "header" && IsKbMode && !showResult )
 		{
-			var hdrCtrls = CollectHeaderControls();
-			if ( headerCursorIndex >= 0 && headerCursorIndex < hdrCtrls.Count )
-			{
-				var hostH = hdrCtrls[headerCursorIndex];
-				var rrh = Box.Rect;
-				var frH = hostH.Box.Rect;
-				if ( rrh.Width >= 1f && frH.Width >= 1f )
-				{
-					float sch = ScaleFromScreen;
-					if ( sch <= 0.01f || float.IsNaN( sch ) || float.IsInfinity( sch ) ) sch = 1f;
-					gridRingL = (int)(( frH.Left - rrh.Left ) * sch) - DetailRingInset + 4;
-					gridRingT = (int)(( frH.Top - rrh.Top ) * sch) - DetailRingInset + 4;
-					gridRingW = (int)(frH.Width * sch) + DetailRingInset * 2 - 8;
-					gridRingH = (int)(frH.Height * sch) + DetailRingInset * 2 - 8;
-					gridRingTight = true;
-					gridRingVisible = true;
-					if ( !wasVisible ) gridRingWarm = 0;
-					else if ( gridRingWarm < 2 ) gridRingWarm++;
-				}
-			}
 			return;
 		}
 
@@ -6385,7 +6401,9 @@
 
 		// Living-ring upkeep — recompute the target rect (grid scrolls +
 		// reflows, so this is per-tick, not event-latched) and apply the
-		// ink-lean wave imperatively.
+		// ink-lean wave imperatively. The header's imperative .kb-focused
+		// stamp runs first so the ring reads the lifted host this frame.
+		SyncHeaderKbFocus();
 		UpdateGridRing();
 		ApplyGridRingWave();
 

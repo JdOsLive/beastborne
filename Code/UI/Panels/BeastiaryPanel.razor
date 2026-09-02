@@ -1184,6 +1184,32 @@
 		SoundManager.PlayHover();
 	}
 
+	// LANE: input 2026-09-02 — KB-FOCUSED LOOK = THE HOVER LOOK on the header,
+	// and it is the ONLY cursor there (user, on My Beasts — same walkup recipe
+	// here: "with the mouse there's a glow and hover lift on those buttons;
+	// that doesn't happen with the keyboard" + "we don't need the glowing ring
+	// to go up to the top"). The FilterBar is shared/read-only, so the markup can't
+	// stamp the class — stamp `.kb-focused` IMPERATIVELY on the focused
+	// control every tick (a FilterBar re-render rewrites the class attribute,
+	// so a one-shot stamp would be wiped). Cleared from every sibling on
+	// index change, zone leave, and in mouse mode (parked-cursor law; the
+	// CSS is .kbd-mode-gated too). Yields while a popup / edit mode owns the
+	// page, exactly like the ring.
+	private void SyncHeaderKbFocus()
+	{
+		bool active = kbFocusZone == "header" && IsKbMode && !_editMode && !discoveryCelebrationActive && !showBeastPopup;
+		if ( !active && !hdrKbFocusStamped ) return; // nothing lit, nothing to clear
+		var ctrls = CollectHeaderControls();
+		bool any = false;
+		for ( int i = 0; i < ctrls.Count; i++ )
+		{
+			bool on = active && i == headerCursorIndex;
+			ctrls[i].SetClass( "kb-focused", on );
+			any |= on;
+		}
+		hdrKbFocusStamped = any;
+	}
+
 	private void ActivateFocusedDetailAction()
 	{
 		var actions = GetDetailActions();
@@ -1765,7 +1791,7 @@
 	private int bbRingL, bbRingT, bbRingW = 80, bbRingH = 80;
 	private bool bbRingVisible;
 	private int bbRingWarm; // <2 = snap to position (no glide) while first rects land
-	private bool bbRingTight; // header hosts are small — tighter inset/radius costume
+	private bool bbRingTight; // (unused since 2026-09-02 — the ring no longer parks on the header; kept for the class/hash contract)
 
 	// 8px box outset each side; the 4px border lives in SCSS. Declared
 	// width/height are the PADDING box and Style.Left/Top place that box
@@ -1776,7 +1802,7 @@
 	// but no +4 on L/T — the ring hung 12px off the left/top edge and only
 	// 4px off the right/bottom.
 	private const int BbRingInset = 8;
-	private const int BbHeaderRingInset = 6; // 36px FilterBar buttons (radius 8) → ring radius 14
+	private bool hdrKbFocusStamped; // a header control currently wears the imperative .kb-focused (LANE: input 2026-09-02)
 
 	private void UpdateGridRing()
 	{
@@ -1786,34 +1812,13 @@
 
 		if ( _editMode || discoveryCelebrationActive || showBeastPopup ) return;
 
-		// HEADER WALKUP zone (LANE: input 2026-09-01, audit N2 — roster
-		// recipe): the one ring parks on the focused FilterBar control.
-		// Runs BEFORE the selected-species guard — an empty filter set is
-		// exactly when the player needs to reach the header.
-		if ( kbFocusZone == "header" && IsKbMode )
-		{
-			var hdrCtrls = CollectHeaderControls();
-			if ( headerCursorIndex >= 0 && headerCursorIndex < hdrCtrls.Count )
-			{
-				var hostH = hdrCtrls[headerCursorIndex];
-				var rrh = Box.Rect;
-				var frH = hostH.Box.Rect;
-				if ( rrh.Width >= 1f && frH.Width >= 1f )
-				{
-					float sch = ScaleFromScreen;
-					if ( sch <= 0.01f || float.IsNaN( sch ) || float.IsInfinity( sch ) ) sch = 1f;
-					bbRingL = (int)((frH.Left - rrh.Left) * sch) - BbHeaderRingInset + 4;
-					bbRingT = (int)((frH.Top - rrh.Top) * sch) - BbHeaderRingInset + 4;
-					bbRingW = (int)(frH.Width * sch) + BbHeaderRingInset * 2 - 8;
-					bbRingH = (int)(frH.Height * sch) + BbHeaderRingInset * 2 - 8;
-					bbRingTight = true;
-					bbRingVisible = true;
-					if ( !wasVisible ) bbRingWarm = 0;
-					else if ( bbRingWarm < 2 ) bbRingWarm++;
-				}
-			}
-			return;
-		}
+		// HEADER WALKUP zone — NO RING (user 2026-09-02: "we don't need the
+		// glowing ring to go up to the top"). The ring HIDES while the keyboard
+		// cursor is on the FilterBar; the focused chip's hover costume
+		// (SyncHeaderKbFocus stamps .kb-focused → lift + rim) IS the cursor
+		// there. Reappears snapped when S returns to the grid. Runs BEFORE the
+		// selected-species guard so an empty filter set still hides it.
+		if ( kbFocusZone == "header" && IsKbMode ) return;
 
 		if ( bbGridPanel == null || selectedSpecies == null ) return;
 
@@ -1998,6 +2003,9 @@
 		UpdateDossierScrollbar();
 
 		// Living ring — per-tick position (rail scrolls/reflows) + imperative wave.
+		// The header's imperative .kb-focused stamp runs first so the ring
+		// reads the lifted host this frame.
+		SyncHeaderKbFocus();
 		UpdateGridRing();
 		ApplyGridRingWave();
 
