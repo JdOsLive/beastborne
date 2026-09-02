@@ -8,7 +8,10 @@
 @using Beastborne.UI.Primitives;
 @inherits Panel
 
-<root class="beastbook-panel" onclick=@OnPanelClicked onmousemove=@OnPanelMouseMove>
+@* LANE: input 2026-09-01 — root wears the ONE device class (DOC-5 #5):
+   every owned :hover is CSS-gated under .mouse-mode, every .kb-focused
+   under .kbd-mode, so a parked cursor and the keyboard never both light. *@
+<root class="beastbook-panel @(IsKbMode ? "kbd-mode" : "mouse-mode")" onclick=@OnPanelClicked onmousemove=@OnPanelMouseMove>
 	<!-- v10 living background: the panels own glyph drifting at the
 	     house angle (user concept). Replaces animated-bg.webp. -->
 	<BbIconScroll Icon="beastbook" />
@@ -863,7 +866,7 @@
 	     UpdateGridRing each tick, wave via imperative Style.Transform in
 	     ApplyGridRingWave. z 50: above the rail (z 2) and placard (z 3),
 	     below the header (500) — flat z-index law. -->
-	<div @ref="bbRingRef" class="bb-grid-ring @(bbRingVisible ? "on" : "") @(bbRingWarm < 2 ? "snap" : "")"
+	<div @ref="bbRingRef" class="bb-grid-ring @(bbRingVisible ? "on" : "") @(bbRingWarm < 2 ? "snap" : "") @(bbRingTight ? "tight" : "")"
 		 style="left: @(bbRingL)px; top: @(bbRingT)px; width: @(bbRingW)px; height: @(bbRingH)px;"></div>
 
 	<!-- ====== BEAST PREVIEW POPUP ======
@@ -884,7 +887,7 @@
 							<span class="bb-beast-popup-name">@selectedSpecies.Name</span>
 						</div>
 					</div>
-					<button class="bb-beast-popup-close @(IsPopupActionFocused("close") ? "kb-focused" : "")" onclick=@CloseBeastPopup onmouseover=@(() => SoundManager.PlayHover())>
+					<button class="bb-beast-popup-close @(IsPopupActionFocused("close") ? "kb-focused" : "")" onclick=@CloseBeastPopup onmouseover=@(() => OnPopupCtrlHover("close"))>
 						<iconify class="bb-pop-glyph" icon="lucide:x" Size=@(18) Color="rgba(255,255,255,0.85)" />
 					</button>
 				</div>
@@ -908,16 +911,16 @@
 				</div>
 
 				<div class="bb-beast-popup-controls">
-					<button class="bb-beast-popup-ctrl @(IsPopupActionFocused("zoomout") ? "kb-focused" : "")" onclick=@BeastPopupZoomOut onmouseover=@(() => SoundManager.PlayHover())>
+					<button class="bb-beast-popup-ctrl @(IsPopupActionFocused("zoomout") ? "kb-focused" : "")" onclick=@BeastPopupZoomOut onmouseover=@(() => OnPopupCtrlHover("zoomout"))>
 						<iconify class="bb-pop-glyph" icon="lucide:zoom-out" Size=@(16) Color="rgba(255,255,255,0.85)" />
 					</button>
 					<div class="bb-beast-popup-zoom-readout">
 						<span>@((int)(beastPopupZoom * 100))%</span>
 					</div>
-					<button class="bb-beast-popup-ctrl @(IsPopupActionFocused("zoomin") ? "kb-focused" : "")" onclick=@BeastPopupZoomIn onmouseover=@(() => SoundManager.PlayHover())>
+					<button class="bb-beast-popup-ctrl @(IsPopupActionFocused("zoomin") ? "kb-focused" : "")" onclick=@BeastPopupZoomIn onmouseover=@(() => OnPopupCtrlHover("zoomin"))>
 						<iconify class="bb-pop-glyph" icon="lucide:zoom-in" Size=@(16) Color="rgba(255,255,255,0.85)" />
 					</button>
-					<button class="bb-beast-popup-ctrl reset @(IsPopupActionFocused("reset") ? "kb-focused" : "")" onclick=@BeastPopupResetZoom onmouseover=@(() => SoundManager.PlayHover())>
+					<button class="bb-beast-popup-ctrl reset @(IsPopupActionFocused("reset") ? "kb-focused" : "")" onclick=@BeastPopupResetZoom onmouseover=@(() => OnPopupCtrlHover("reset"))>
 						<iconify class="bb-pop-glyph" icon="lucide:refresh-ccw" Size=@(14) Color="rgba(255,255,255,0.7)" />
 					</button>
 				</div>
@@ -1130,6 +1133,58 @@
 		SoundManager.PlayBack();
 	}
 
+	// ── HEADER WALKUP (LANE: input 2026-09-01, audit N2 / DOC-5 #11) ────
+	// W from the grid's top row lands on the FilterBar controls before the
+	// HUD tab bar (hub/guild/roster graph: grid → header → HUD). Controls
+	// are measured by class at THIS layer — FilterBar is a shared component
+	// and stays untouched (the roster's CollectHeaderControls recipe).
+	// Walk order = DOM order = screen order: element · sort · direction.
+	private int headerCursorIndex = 0;
+
+	private List<Panel> CollectHeaderControls()
+	{
+		var outList = new List<Panel>();
+		var host = FindPanelByClass( this, "header-filters" );
+		if ( host == null ) return outList;
+		CollectHeaderControlsRec( host, outList );
+		return outList;
+	}
+
+	private void CollectHeaderControlsRec( Panel root, List<Panel> outList )
+	{
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( "dropdown-btn" ) || c.HasClass( "sort-direction-btn" ) )
+			{
+				outList.Add( c );
+				continue; // never descend into a control (its dropdown menu is mouse territory)
+			}
+			CollectHeaderControlsRec( c, outList );
+		}
+	}
+
+	private static Panel FindPanelByClass( Panel root, string className )
+	{
+		if ( root == null ) return null;
+		if ( root.HasClass( className ) ) return root;
+		foreach ( var child in root.Children )
+		{
+			var hit = FindPanelByClass( child, className );
+			if ( hit != null ) return hit;
+		}
+		return null;
+	}
+
+	private void FocusHeaderZone()
+	{
+		var ctrls = CollectHeaderControls();
+		if ( ctrls.Count == 0 ) { GameHUD.ExitPanel(); return; } // nothing to land on → HUD as before
+		kbFocusZone = "header";
+		headerCursorIndex = Math.Clamp( headerCursorIndex, 0, ctrls.Count - 1 );
+		SetInputDevice( "kb" );
+		SoundManager.PlayHover();
+	}
+
 	private void ToggleKbFocusZone()
 	{
 		if ( kbFocusZone == "grid" ) FocusDetailZone();
@@ -1159,14 +1214,55 @@
 	// lesson). Real mouse motion fires onmousemove FIRST, which flips the
 	// flag back, after which hovers are honored.
 	private string _inputDevice = "mouse";
+	private bool IsKbMode => _inputDevice == "kb";
 	// Dwell-commit: selection commits ~110ms after the hover lands so a
 	// sweep across the rail doesn't strobe the stage entrance cascade.
 	private string pendingHoverSpeciesId = null;
 	private RealTimeSince pendingHoverAt;
 
+	// LANE: input 2026-09-01 (audit B1, DOC-5 #5) — the roster's device
+	// switch, ported exactly. Flipping to keyboard records where the mouse
+	// was parked and clears every hover-dedupe latch centrally.
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
+
+	private void SetInputDevice( string dev )
+	{
+		if ( _inputDevice == dev ) return;
+		_inputDevice = dev;
+		if ( dev == "kb" )
+		{
+			_kbTakeoverMousePos = Mouse.Position; // see OnPanelMouseMove
+			pendingHoverSpeciesId = null;         // kb takes over — drop the hover dwell
+			lastHoveredCardId = null;
+			lastHoveredDiamondId = null;
+			lastHoveredEvoStageId = null;
+			lastHoveredMoveId = null;
+		}
+	}
+
+	// SYNTHETIC-MOVE GUARD (roster OnRootMouseMove, 2026-09-01): the engine
+	// re-dispatches onmousemove when the panel re-renders under a PARKED
+	// cursor — so every keypress re-render flipped this page back to mouse
+	// mode, the tile under the pointer re-armed the hover dwell, and ~110ms
+	// later Tick snapped the selection BACK to the parked tile (and the art
+	// viewer's kb rail lost its cursor each key). Mouse mode is reclaimed
+	// only by REAL travel (> 3px since the keyboard took over).
 	private void OnPanelMouseMove()
 	{
-		if ( _inputDevice != "mouse" ) _inputDevice = "mouse";
+		if ( _inputDevice == "mouse" ) return;
+		if ( ( Mouse.Position - _kbTakeoverMousePos ).Length < 3f ) return;
+		SetInputDevice( "mouse" );
+		StateHasChanged();
+	}
+
+	// Hover blip, honored only in mouse mode (DOC-5 #15) — kb scroll-follow
+	// slides content under a parked cursor, firing synthetic onmouseover per
+	// frame; unguarded inline `() => SoundManager.PlayHover()` handlers
+	// machine-gunned the blip. Replaces every inline handler on this page.
+	private void OnHoverBlip()
+	{
+		if ( IsKbMode ) return;
+		SoundManager.PlayHover();
 	}
 
 	// Medal ladder (2026-07-12) — mastery wears bronze/silver/gold metal,
@@ -1406,17 +1502,31 @@
 	// tooltip fired on mouse-LEAVE across all panels; trait effect text is
 	// now written INLINE in the TRAITS zone, so there is nothing to hover.)
 
+	// LANE: input 2026-09-01 (audit S6) — all three ignore events in kb
+	// mode (synthetic hovers under a parked cursor, DOC-5 #15). The diamond
+	// handler ALSO moves the one cursor (DOC-5 #6, roster
+	// OnDetailControlHover): hovering an action slab parks the kb cursor on
+	// it, so W/S/Space continue from where the mouse left off. The slab's
+	// .kb-focused paint stays quiet in mouse mode (CSS gate) — no second
+	// cursor while the mouse drives.
 	private void OnDiamondHover( string diamondId )
 	{
+		if ( IsKbMode ) return;
 		if ( lastHoveredDiamondId != diamondId )
 		{
 			lastHoveredDiamondId = diamondId;
 			SoundManager.PlayHover();
 		}
+		var actions = GetDetailActions();
+		int idx = actions.IndexOf( diamondId );
+		if ( idx < 0 ) return; // the stage portrait ("portrait") is not a rail slot
+		kbFocusZone = "detail";
+		detailActionIndex = idx;
 	}
 
 	private void OnEvoStageHover( string stageId )
 	{
+		if ( IsKbMode ) return;
 		if ( lastHoveredEvoStageId != stageId )
 		{
 			lastHoveredEvoStageId = stageId;
@@ -1426,6 +1536,7 @@
 
 	private void OnMoveRowHover( string moveId )
 	{
+		if ( IsKbMode ) return;
 		if ( lastHoveredMoveId != moveId )
 		{
 			lastHoveredMoveId = moveId;
@@ -1659,19 +1770,57 @@
 	private int bbRingL, bbRingT, bbRingW = 80, bbRingH = 80;
 	private bool bbRingVisible;
 	private int bbRingWarm; // <2 = snap to position (no glide) while first rects land
+	private bool bbRingTight; // header hosts are small — tighter inset/radius costume
 
 	// 8px box outset each side; the 4px border lives in SCSS. Declared
-	// width/height are CONTENT-box (s&box has no border-box), so the update
-	// subtracts the 8px of border to keep the ring concentric.
+	// width/height are the PADDING box and Style.Left/Top place that box
+	// (borders add OUTSIDE), so the ring rect is: L/T = host − inset + 4,
+	// W/H = host + 2·inset − 8 → the painted stroke sits exactly `inset`
+	// off every host edge (DOC-5 #9 RING CENTERING LAW).
+	// LANE: input 2026-09-01 (audit N1): the old math had the −8 on W/H
+	// but no +4 on L/T — the ring hung 12px off the left/top edge and only
+	// 4px off the right/bottom.
 	private const int BbRingInset = 8;
+	private const int BbHeaderRingInset = 6; // 36px FilterBar buttons (radius 8) → ring radius 14
 
 	private void UpdateGridRing()
 	{
 		bool wasVisible = bbRingVisible;
 		bbRingVisible = false;
+		bbRingTight = false;
+
+		if ( _editMode || discoveryCelebrationActive || showBeastPopup ) return;
+
+		// HEADER WALKUP zone (LANE: input 2026-09-01, audit N2 — roster
+		// recipe): the one ring parks on the focused FilterBar control.
+		// Runs BEFORE the selected-species guard — an empty filter set is
+		// exactly when the player needs to reach the header.
+		if ( kbFocusZone == "header" && IsKbMode )
+		{
+			var hdrCtrls = CollectHeaderControls();
+			if ( headerCursorIndex >= 0 && headerCursorIndex < hdrCtrls.Count )
+			{
+				var hostH = hdrCtrls[headerCursorIndex];
+				var rrh = Box.Rect;
+				var frH = hostH.Box.Rect;
+				if ( rrh.Width >= 1f && frH.Width >= 1f )
+				{
+					float sch = ScaleFromScreen;
+					if ( sch <= 0.01f || float.IsNaN( sch ) || float.IsInfinity( sch ) ) sch = 1f;
+					bbRingL = (int)((frH.Left - rrh.Left) * sch) - BbHeaderRingInset + 4;
+					bbRingT = (int)((frH.Top - rrh.Top) * sch) - BbHeaderRingInset + 4;
+					bbRingW = (int)(frH.Width * sch) + BbHeaderRingInset * 2 - 8;
+					bbRingH = (int)(frH.Height * sch) + BbHeaderRingInset * 2 - 8;
+					bbRingTight = true;
+					bbRingVisible = true;
+					if ( !wasVisible ) bbRingWarm = 0;
+					else if ( bbRingWarm < 2 ) bbRingWarm++;
+				}
+			}
+			return;
+		}
 
 		if ( bbGridPanel == null || selectedSpecies == null ) return;
-		if ( _editMode || discoveryCelebrationActive || showBeastPopup ) return;
 
 		// Find the selected slot by fresh traversal (loop @refs don't exist,
 		// panel refs die on hotload). Slots are DIRECT children of the scroll
@@ -1696,8 +1845,8 @@
 		float sc = ScaleFromScreen;
 		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
 
-		bbRingL = (int)((cr.Left - rr.Left) * sc) - BbRingInset;
-		bbRingT = (int)((cr.Top - rr.Top) * sc) - BbRingInset;
+		bbRingL = (int)((cr.Left - rr.Left) * sc) - BbRingInset + 4;
+		bbRingT = (int)((cr.Top - rr.Top) * sc) - BbRingInset + 4;
 		bbRingW = (int)(cr.Width * sc) + BbRingInset * 2 - 8;
 		bbRingH = (int)(cr.Height * sc) + BbRingInset * 2 - 8;
 
@@ -1949,15 +2098,27 @@
 	{
 		var species = GetFilteredSpecies();
 
-		// Device flag — any owned key flips to keyboard mode and cancels a
-		// pending hover-select (last-input-wins; see the one-cursor block).
+		// Device flag — any owned key flips to keyboard mode (SetInputDevice
+		// records the parked mouse position for the travel guard and cancels
+		// a pending hover-select — last-input-wins; see the one-cursor block).
 		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" )
 			|| Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) || Input.Pressed( "Score" )
 			|| Input.Pressed( "Menu" ) || Input.Pressed( "Reload" ) || Input.Pressed( "CyclePrev" ) || Input.Pressed( "CycleNext" ) )
 		{
-			_inputDevice = "kb";
-			pendingHoverSpeciesId = null;
-			lastHoveredCardId = null;
+			SetInputDevice( "kb" );
+		}
+
+		// ---- DISCOVERY REVEAL overlay (LANE: input 2026-09-01, DOC-5 #1) --
+		// Q / Space / E skip the celebration the way a click does; nothing
+		// underneath navigates while it is up (it auto-dismisses after 4.5s).
+		if ( discoveryCelebrationActive )
+		{
+			if ( Input.Pressed( "Menu" ) || Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
+			{
+				DismissDiscovery();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			return;
 		}
 
 		// ---- ART-VIEWER POPUP: owns every key while open (2026-08-28) ----
@@ -2013,18 +2174,63 @@
 		// 2026-07-12); Z/X stay as the universal silent pair (X = same
 		// direction as R, Z = reverse). Handled FIRST, before the empty-list
 		// early-return below, so the player can always cycle OFF an element
-		// that currently has no species yet (e.g. Ice). Not while the detail
-		// panel holds focus — its own nav owns the keys there.
-		if ( kbFocusZone != "detail" )
+		// that currently has no species yet (e.g. Ice). Works from EVERY
+		// zone (LANE: input 2026-09-01): no zone's own nav uses R/Z/X, and a
+		// mouse hover over a dossier slab now parks the cursor in the detail
+		// zone — the page's advertised cycle key must not die there.
+		if ( Input.Pressed( "Reload" ) ) { CycleElementForward(); return; }
+		if ( Input.Pressed( "CyclePrev" ) ) { CycleElementBack(); return; }
+		if ( Input.Pressed( "CycleNext" ) ) { CycleElementForward(); return; }
+
+		// ---- HEADER zone (LANE: input 2026-09-01, audit N2) --------------
+		// The one ring parks on the FilterBar controls. A/D across, Space/E
+		// = exactly what a click does (dropdowns open — their MENUS are
+		// mouse territory once open, click-to-open convention), S back down
+		// to the grid, W escalates to the HUD tabs, Q/Tab back to the grid.
+		// Handled before the empty-list check so the filter is reachable
+		// when the current filter has no species.
+		if ( kbFocusZone == "header" )
 		{
-			if ( Input.Pressed( "Reload" ) ) { CycleElementForward(); return; }
-			if ( Input.Pressed( "CyclePrev" ) ) { CycleElementBack(); return; }
-			if ( Input.Pressed( "CycleNext" ) ) { CycleElementForward(); return; }
+			var hdr = CollectHeaderControls();
+			if ( hdr.Count == 0 ) { kbFocusZone = "grid"; return; }
+			headerCursorIndex = Math.Clamp( headerCursorIndex, 0, hdr.Count - 1 );
+			if ( Input.Pressed( "Menu" ) || Input.Pressed( "Score" ) )
+			{
+				FocusGridZone();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			else if ( Input.Pressed( "Left" ) )
+			{
+				if ( headerCursorIndex > 0 ) { headerCursorIndex--; SoundManager.PlayHover(); }
+			}
+			else if ( Input.Pressed( "Right" ) )
+			{
+				if ( headerCursorIndex < hdr.Count - 1 ) { headerCursorIndex++; SoundManager.PlayHover(); }
+			}
+			else if ( Input.Pressed( "Down" ) )
+			{
+				// S returns to the grid (the grid cursor kept its slot).
+				kbFocusZone = "grid";
+				SoundManager.PlayHover();
+			}
+			else if ( Input.Pressed( "Up" ) )
+			{
+				kbFocusZone = "grid";
+				GameHUD.ExitPanel();
+			}
+			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" ) )
+			{
+				hdr[headerCursorIndex].CreateEvent( "onclick" );
+				SoundManager.PlayClick();
+			}
+			return;
 		}
 
 		if ( species.Count == 0 )
 		{
-			if ( Input.Pressed( "Up" ) ) GameHUD.ExitPanel();
+			// Empty filter: W still reaches the header so the filter can be
+			// changed (DOC-5 #11 — W flows through zones, skipping empty ones).
+			if ( Input.Pressed( "Up" ) ) FocusHeaderZone();
 			return;
 		}
 
@@ -2080,6 +2286,18 @@
 		// with window size and with whether the detail pane is open).
 		int columns = GetGridColumns();
 
+		// Q backs out of a deep view from the GRID zone too (LANE: input
+		// 2026-09-01, audit B2 / DOC-5 #1 "Q backs out of everything"): a
+		// MOVES/LORE/MASTERY/EVOLUTION view opened by mouse click leaves the
+		// zone on "grid", and Q used to fall through to GameHUD tab-nav with
+		// the deep view still open. Internal move → claim the back key.
+		if ( Input.Pressed( "Menu" ) && detailView != "stats" )
+		{
+			BackToStatsView();
+			GameHUD.PanelHandledBackKey = true;
+			return;
+		}
+
 		// Space / E / Enter — confirm the highlighted species and hand
 		// keyboard control to the detail panel (settled grammar: Space and
 		// E both confirm). Tab also works (kept as an alias).
@@ -2105,7 +2323,9 @@
 		{
 			if ( selectedIndex < columns )
 			{
-				GameHUD.ExitPanel();
+				// Top row → header walkup first (LANE: input 2026-09-01,
+				// audit N2); the header's own W escalates to the HUD tabs.
+				FocusHeaderZone();
 			}
 			else
 			{
@@ -2373,6 +2593,9 @@
 		// ~110ms dwell (sweeps don't strobe the stage). Repeated events on
 		// the same tile must NOT reset the dwell timer.
 		if ( _editMode ) return;
+		// The cursor is now on the rail — the kb zone follows it (DOC-5 #21:
+		// the graph encodes geometry; a dossier hover parked the zone there).
+		kbFocusZone = "grid";
 		if ( selectedSpecies?.Id == speciesId ) { pendingHoverSpeciesId = null; return; }
 		if ( pendingHoverSpeciesId != speciesId )
 		{
@@ -2416,6 +2639,23 @@
 		if ( !showBeastPopup || _inputDevice != "kb" ) return false;
 		int idx = Math.Clamp( popupActionIndex, 0, PopupActions.Length - 1 );
 		return PopupActions[idx] == id;
+	}
+
+	// LANE: input 2026-09-01 — ONE CURSOR on the art-viewer rail (DOC-5
+	// #6): mouse hover parks popupActionIndex on the hovered control (quiet
+	// in mouse mode — the .kb-focused paint is .kbd-mode-gated), so the
+	// next W/A/S/D/Space continues from there. Blip is device-guarded.
+	private void OnPopupCtrlHover( string id )
+	{
+		if ( IsKbMode ) return;
+		int idx = Array.IndexOf( PopupActions, id );
+		if ( idx < 0 ) return;
+		if ( popupActionIndex != idx )
+		{
+			popupActionIndex = idx;
+			if ( idx < 3 ) popupRailMemory = idx;
+			SoundManager.PlayHover();
+		}
 	}
 
 	private void OnPortraitClick()
@@ -2600,6 +2840,8 @@
 		// drive visible state (zone glow, affordance pill, .kb-focused).
 		hash.Add( kbFocusZone );
 		hash.Add( detailActionIndex );
+		hash.Add( headerCursorIndex ); // LANE: input — header walkup cursor
+		hash.Add( bbRingTight );       // LANE: input — ring costume class
 		hash.Add( GetDiscoveredCount() );
 		// Beast preview popup state — visibility + zoom level need to rehash
 		// so the popup opens, closes, and scales smoothly in response to
