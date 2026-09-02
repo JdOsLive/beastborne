@@ -459,6 +459,10 @@ public sealed class TamerManager : Component
 
 		// Leaderboard fire-and-forget (keep existing behaviour).
 		Stats.SetValue( "total-playtime-launch", (int)CurrentTamer.TotalPlayTime.TotalMinutes );
+		// Player directory (CompetitiveManager.KnownPlayers): the one board whose
+		// Value IS the tamer level, so the guild Invite picker can show "LV 12"
+		// for people you've never met. Max-aggregated server-side.
+		Stats.SetValue( "tamer-level-launch", CurrentTamer.Level );
 
 		service.MarkDirty( "tamer" );
 	}

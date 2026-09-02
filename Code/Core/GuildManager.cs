@@ -695,6 +695,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		ActivityLog.Clear();
 		JoinRequests.Clear();
 		PendingInvites.Clear();
+		SentInviteSteamIds.Clear();
 		CurrentRaidBoss = null;
 		OnGuildUpdated?.Invoke();
 		OnMembersUpdated?.Invoke();
@@ -758,6 +759,10 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			OnGuildError?.Invoke( "Failed to send invite." );
 			return;
 		}
+
+		// Remember the target for this session — the picker tags them PENDING
+		// (GetAllInviteCandidates) so an officer can't double-send.
+		if ( targetSteamId != 0 ) SentInviteSteamIds.Add( targetSteamId );
 
 		// Send real-time RPC notification to target
 		var connId = Connection.Local?.Id.ToString() ?? "";
@@ -2419,84 +2424,146 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	// ═══════════════════════════════════════════════════════════════
 
 	/// <summary>
-	/// Build the unified Invite Player picker source list. Combines:
-	///   • Online lobby connections (live players in the same s&box instance)
-	///   • CollectedCards from the local Tamer (offline-friendly — anyone
-	///     the player has previously played with, traded with, or fought in
-	///     arena, persisted to the SaveBlob)
-	///
-	/// Filters out:
-	///   • Self
-	///   • Anyone already a member of the player's current guild
-	///   • Steam id 0 entries (local/dev builds without Steam auth)
-	///   • Duplicates between the two pools (online entries win — they have
-	///     IsOnline=true and the live ConnectionId for real-time RPC)
-	///
-	/// Online entries surface first, then offline cards by most-recently
-	/// updated, so the picker reads "people right now" before "people you
-	/// know". Empty result is valid — just means no invitable targets exist
-	/// (player alone in lobby with empty CollectedCards).
-	///
-	/// Safe to call when not in a guild (the guild-member filter just
-	/// short-circuits). UI calls this on each picker open; cheap enough
-	/// to skip caching at this point (typical sizes: lobby &lt;= 32, cards
-	/// bounded by TamerManager's collection cap).
+	/// Steam ids this guild has invited DURING THIS SESSION (populated when
+	/// POST guilds/{id}/invites succeeds). The API has no "outgoing invites
+	/// for guild X" read, so this is the best "already invited" signal the
+	/// client has; the picker tags those rows PENDING and refuses a re-send.
+	/// Cleared with the rest of the guild state (leave / disband / reset).
 	/// </summary>
-	public IEnumerable<InviteCandidate> GetInvitableCandidates()
+	public HashSet<long> SentInviteSteamIds { get; private set; } = new();
+
+	/// <summary>
+	/// Legacy entry point — the full, unfiltered candidate list. Kept for any
+	/// caller that predates the searchable picker; new code should call
+	/// <see cref="GetAllInviteCandidates"/> with the live search text.
+	/// </summary>
+	public IEnumerable<InviteCandidate> GetInvitableCandidates() => GetAllInviteCandidates( null );
+
+	/// <summary>
+	/// Build the Invite picker source list — "the list of ALL players", not
+	/// just who is nearby. Three pools, unioned in this order:
+	///   1. Live lobby connections (same s&box session) — IsOnline=true, carry
+	///      the ConnectionId for real-time RPC delivery. Level comes from the
+	///      chat presence profile when that player has broadcast one.
+	///   2. The server-wide player directory
+	///      (<see cref="CompetitiveManager.KnownPlayers"/> — every tamer on the
+	///      public launch leaderboards, SteamId + name + level where the
+	///      `tamer-level-launch` board has them). Read from cache; this method
+	///      also REQUESTS a refresh when stale (fire-and-forget) so the UI can
+	///      show "Loading players…" and re-render when it lands.
+	///   3. CollectedCards on the local Tamer (people you've interacted with —
+	///      covers anyone the boards missed and upgrades Level where the card
+	///      is fresher).
+	///
+	/// Filters out: self · current guild members · Steam id 0 (dev/offline
+	/// builds) · duplicates by SteamId (earlier pool wins — online entries
+	/// keep their live ConnectionId). Players already invited this session
+	/// are KEPT but flagged <see cref="InviteCandidate.IsPending"/> so the
+	/// picker can show the PENDING tag instead of silently hiding them.
+	///
+	/// <paramref name="search"/> is a case-insensitive substring filter on the
+	/// display name (null/empty = no filter). Order: online (lobby order) →
+	/// everyone else alphabetically. Safe to call when not in a guild.
+	/// </summary>
+	public IEnumerable<InviteCandidate> GetAllInviteCandidates( string search )
 	{
 		var localSteamId = Connection.Local?.SteamId ?? 0;
 		var memberSteamIds = new HashSet<long>( Members?.Select( m => m.SteamId ) ?? Enumerable.Empty<long>() );
+		var needle = string.IsNullOrWhiteSpace( search ) ? null : search.Trim();
 		var seen = new HashSet<long>();
+		var result = new List<InviteCandidate>();
 
-		// Online lobby first — they're invitable RIGHT NOW with live RPC delivery.
+		bool Excluded( long sid ) => sid == 0 || sid == localSteamId || memberSteamIds.Contains( sid );
+		bool Matches( string name ) => needle == null || ( name ?? "" ).Contains( needle, StringComparison.OrdinalIgnoreCase );
+
+		// 1. Online lobby — invitable RIGHT NOW with live RPC delivery.
+		var profiles = ChatManager.Instance?.PlayerProfiles;
 		foreach ( var conn in Connection.All )
 		{
-			if ( conn == null ) continue;
-			if ( conn == Connection.Local ) continue;
-			if ( conn.SteamId == 0 ) continue;
-			if ( conn.SteamId == localSteamId ) continue;
-			if ( memberSteamIds.Contains( conn.SteamId ) ) continue;
+			if ( conn == null || conn == Connection.Local ) continue;
+			if ( Excluded( conn.SteamId ) ) continue;
 			if ( !seen.Add( conn.SteamId ) ) continue;
 
-			yield return new InviteCandidate
+			var connId = conn.Id.ToString();
+			PlayerProfileData profile = null;
+			profiles?.TryGetValue( connId, out profile );
+
+			result.Add( new InviteCandidate
 			{
 				SteamId = conn.SteamId,
 				Name = conn.DisplayName ?? "Tamer",
-				Level = 0, // Live connection doesn't carry tamer level; UI hides if 0
+				Level = profile?.Level ?? 0, // presence profile carries level; 0 when they haven't broadcast yet
 				IsOnline = true,
-				ConnectionId = conn.Id.ToString()
-			};
+				ConnectionId = connId,
+				IsPending = SentInviteSteamIds.Contains( conn.SteamId )
+			} );
 		}
 
-		// Offline cards — anyone the player has interacted with before. Order
-		// by most-recently updated so freshest contacts surface first.
-		var cards = TamerManager.Instance?.CurrentTamer?.CollectedCards;
-		if ( cards == null ) yield break;
-
-		foreach ( var card in cards.OrderByDescending( c => c.LastUpdated ) )
+		// 2. Server-wide directory (leaderboard-known players). Cached read +
+		//    a non-blocking refresh request when stale.
+		var comp = CompetitiveManager.Instance;
+		comp?.RequestPlayerDirectoryRefresh();
+		var everyone = new List<InviteCandidate>();
+		if ( comp != null )
 		{
-			if ( card == null ) continue;
-			if ( card.SteamId == 0 ) continue;
-			if ( card.SteamId == localSteamId ) continue;
-			if ( memberSteamIds.Contains( card.SteamId ) ) continue;
-			if ( !seen.Add( card.SteamId ) ) continue;
-
-			yield return new InviteCandidate
+			foreach ( var kp in comp.KnownPlayers )
 			{
-				SteamId = card.SteamId,
-				Name = card.Name ?? "Tamer",
-				Level = card.Level,
-				IsOnline = false,
-				ConnectionId = null // Offline target — no live RPC delivery; API persistence covers it
-			};
+				if ( kp == null || Excluded( kp.SteamId ) ) continue;
+				if ( !seen.Add( kp.SteamId ) ) continue;
+				everyone.Add( new InviteCandidate
+				{
+					SteamId = kp.SteamId,
+					Name = string.IsNullOrWhiteSpace( kp.Name ) ? "Tamer" : kp.Name,
+					Level = kp.Level,
+					IsOnline = false,
+					ConnectionId = null, // offline target — API persistence carries the invite
+					IsPending = SentInviteSteamIds.Contains( kp.SteamId )
+				} );
+			}
+		}
+
+		// 3. Collected cards — anyone you've interacted with. Adds the ones the
+		//    boards missed and upgrades Level on directory rows that lack it.
+		var cards = TamerManager.Instance?.CurrentTamer?.CollectedCards;
+		if ( cards != null )
+		{
+			foreach ( var card in cards.OrderByDescending( c => c?.LastUpdated ?? DateTime.MinValue ) )
+			{
+				if ( card == null || Excluded( card.SteamId ) ) continue;
+				if ( !seen.Add( card.SteamId ) )
+				{
+					if ( card.Level > 0 )
+					{
+						var known = everyone.FirstOrDefault( e => e.SteamId == card.SteamId );
+						if ( known != null && known.Level == 0 ) known.Level = card.Level;
+					}
+					continue;
+				}
+				everyone.Add( new InviteCandidate
+				{
+					SteamId = card.SteamId,
+					Name = card.Name ?? "Tamer",
+					Level = card.Level,
+					IsOnline = false,
+					ConnectionId = null,
+					IsPending = SentInviteSteamIds.Contains( card.SteamId )
+				} );
+			}
+		}
+
+		result.AddRange( everyone.OrderBy( e => e.Name, StringComparer.OrdinalIgnoreCase ) );
+
+		foreach ( var c in result )
+		{
+			if ( Matches( c.Name ) ) yield return c;
 		}
 	}
 }
 
 /// <summary>
 /// Picker entry for the Guild Invite UI. Carries enough to render a row
-/// (name + level + online indicator + avatar via Steam id) and route the
-/// invite RPC. <see cref="ConnectionId"/> is null for offline targets —
+/// (avatar via Steam id · name · level · online dot · PENDING tag) and route
+/// the invite RPC. <see cref="ConnectionId"/> is null for offline targets —
 /// <see cref="GuildManager.InvitePlayer"/> handles that case (the API
 /// persistence step works on Steam id alone; the real-time RPC just
 /// becomes a no-op when the target's not in the lobby).
@@ -2508,4 +2575,6 @@ public class InviteCandidate
 	public int Level { get; set; }
 	public bool IsOnline { get; set; }
 	public string ConnectionId { get; set; }
+	/// <summary>Already invited by this guild during this session — show PENDING, don't re-send.</summary>
+	public bool IsPending { get; set; }
 }

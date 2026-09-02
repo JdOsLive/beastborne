@@ -1913,30 +1913,69 @@ else if ( guildView == "myguild" )
 					<div class="picker-list">
 						@if ( pickerMode == "invite" )
 						{
+							<!-- INVITE — "the list of ALL players" (2026-09-02). Rows come
+							     from GuildManager.GetAllInviteCandidates( pickerSearch ):
+							     live lobby → server-wide player directory (leaderboards,
+							     async) → collected cards; ordered online-first. Every
+							     child here is a DIRECT child of .picker-list (flat scroll
+							     law): search row (kb row 0) · kickers · rows · notes.
+							     Space on a row INVITES and the picker STAYS OPEN — the row
+							     flips to PENDING when the API confirms; Q/X close. -->
 							@{
-								var candidates = GuildManager.Instance?.GetInvitableCandidates() ?? Enumerable.Empty<InviteCandidate>();
+								var candidates = GetPickerCandidates();
+								var dirLoading = CompetitiveManager.Instance?.PlayerDirectoryLoading ?? false;
+								var hasFilter = !string.IsNullOrWhiteSpace( pickerSearch );
+								var pickerKbIdx = 1; // row 0 is the search field
+								var kickOnline = false;
+								var kickAll = false;
 							}
-							@if ( !candidates.Any() )
+							<div class="picker-search @(IsPickerKb( 0 ) ? "guild-kb-selected" : "")" onmouseover=@(() => PickerHover( 0 ))>
+								<iconify class="picker-search-icon" icon="lucide:search" Size=@(13) Color="rgba(214, 206, 236, 0.6)" />
+								<TextEntry class="picker-search-input" @ref="pickerSearchInput" Text="@pickerSearch" Placeholder="Search players…" />
+							</div>
+							@if ( candidates.Count == 0 && !( dirLoading && !hasFilter ) )
 							{
-								<span class="picker-empty">No players available to invite</span>
+								<span class="picker-empty">@(hasFilter ? "No players match" : "No one to invite yet")</span>
 							}
-							@{ var pickerKbIdx = 0; }
 							@foreach ( var c in candidates )
 							{
 								var cRef = c;
 								var thisPickerIdx = pickerKbIdx; pickerKbIdx++;
-								<div class="picker-item @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => PickerHover( thisPickerIdx )) onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
+								if ( cRef.IsOnline && !kickOnline )
+								{
+									kickOnline = true;
+									<span class="picker-kick">Online now</span>
+								}
+								if ( !cRef.IsOnline && !kickAll )
+								{
+									kickAll = true;
+									<span class="picker-kick">Everyone</span>
+									if ( dirLoading && !hasFilter )
+									{
+										<span class="picker-loading">Loading players…</span>
+									}
+								}
+								<div class="picker-item @(cRef.IsPending ? "pending" : "") @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onmouseover=@(() => PickerHover( thisPickerIdx )) onclick=@(() => PickerInvite( cRef ))>
 									<img class="picker-avatar" src="avatar:@cRef.SteamId" />
 									<span class="picker-name">@cRef.Name</span>
+									@if ( cRef.Level > 0 )
+									{
+										<span class="picker-level">LV @cRef.Level</span>
+									}
 									@if ( cRef.IsOnline )
 									{
 										<span class="picker-online-dot">●</span>
 									}
-									else if ( cRef.Level > 0 )
+									@if ( cRef.IsPending )
 									{
-										<span class="picker-level">Lv @cRef.Level</span>
+										<span class="picker-pending">Pending</span>
 									}
 								</div>
+							}
+							@if ( !kickAll && dirLoading && !hasFilter )
+							{
+								<span class="picker-kick">Everyone</span>
+								<span class="picker-loading">Loading players…</span>
 							}
 						}
 						else if ( pickerMode == "transfer" )
@@ -2152,6 +2191,27 @@ else if ( guildView == "myguild" )
 	private bool showPicker = false;
 	private string pickerTitle = "";
 	private string pickerMode = "";
+	// Invite picker search (row 0). TextEntry has no onchange — polled in
+	// Tick while the picker is up; cleared on every open. The list is
+	// GuildManager.GetAllInviteCandidates( pickerSearch ) — ONE live call
+	// shared by the markup, the kb walk and BuildHash (stale-map law).
+	private TextEntry pickerSearchInput;
+	private string pickerSearch = "";
+
+	private List<InviteCandidate> GetPickerCandidates() =>
+		GuildManager.Instance?.GetAllInviteCandidates( pickerSearch )?.ToList() ?? new();
+
+	// Invite a picker row. The picker STAYS OPEN so the officer can keep
+	// going down the list — the row flips to PENDING once the API confirms
+	// (GuildManager.SentInviteSteamIds). A PENDING row refuses a re-send.
+	private void PickerInvite( InviteCandidate c )
+	{
+		if ( c == null ) return;
+		if ( c.IsPending ) { SoundManager.PlayBack(); return; }
+		GuildManager.Instance?.InvitePlayer( c.ConnectionId, c.Name, c.SteamId );
+		SoundManager.PlaySuccess();
+		StateHasChanged();
+	}
 	private List<Monster> raidTeamSelection = new();
 	private bool showRaidTeamSelect = false;
 
@@ -2247,6 +2307,8 @@ else if ( guildView == "myguild" )
 		WireTextEntry( createTagInput, () => BlurToRow( createTagInput ) );
 		// MOTD: Enter SAVES — submit is the natural commit for a one-liner.
 		WireTextEntry( motdDraftInput, () => { SaveMotd(); SoundManager.PlaySuccess(); StateHasChanged(); } );
+		// Invite picker search: Enter/Esc hand the keyboard back to row 0.
+		WireTextEntry( pickerSearchInput, () => BlurToRow( pickerSearchInput ) );
 	}
 
 	public override void Tick()
@@ -2262,6 +2324,19 @@ else if ( guildView == "myguild" )
 			if ( t != browseSearchQuery )
 			{
 				browseSearchQuery = t;
+			}
+		}
+
+		// Poll the invite picker's search entry (no onchange). A changed
+		// filter parks the cursor back on the search row — the typist is
+		// there anyway, and the row count under it just changed.
+		if ( showPicker && pickerMode == "invite" && pickerSearchInput != null )
+		{
+			var t = pickerSearchInput.Text ?? "";
+			if ( t != pickerSearch )
+			{
+				pickerSearch = t;
+				_kbIndex = 0;
 			}
 		}
 
@@ -2328,7 +2403,10 @@ else if ( guildView == "myguild" )
 		// (mouse opens too; the Open* helpers already seeded — idempotent).
 		if ( showMemberMenu && !_memberMenuWasOpen ) SeedMemberMenuCursor();
 		_memberMenuWasOpen = showMemberMenu;
-		if ( showPicker && !_pickerWasOpen ) _kbIndex = 0;
+		if ( showPicker && !_pickerWasOpen ) { _kbIndex = 0; pickerSearch = ""; }
+		// Picker CLOSE edge — the search entry must never keep typing focus
+		// behind a closed modal (DOC-5 §18; the drawer's description recipe).
+		if ( !showPicker && _pickerWasOpen ) pickerSearchInput?.Blur();
 		_pickerWasOpen = showPicker;
 
 		// LANE: input (B-1) — the PENDING zone is volatile (rows fold, the
@@ -2382,6 +2460,16 @@ else if ( guildView == "myguild" )
 		hash.Add( showRaidBattle );
 		hash.Add( showRaidResults );
 		hash.Add( showPicker );
+		// Invite picker — search text, the live row count (the directory
+		// lands async; lobby/cards churn), the "Loading players…" flag and
+		// the PENDING flips (SentInviteSteamIds grows when the API confirms).
+		hash.Add( pickerSearch );
+		if ( showPicker && pickerMode == "invite" )
+		{
+			hash.Add( GetPickerCandidates().Count );
+			hash.Add( CompetitiveManager.Instance?.PlayerDirectoryLoading ?? false );
+			hash.Add( GuildManager.Instance?.SentInviteSteamIds?.Count ?? 0 );
+		}
 		hash.Add( showSettingsView );
 		hash.Add( showMemberMenu );
 		hash.Add( raidViewOpen );
@@ -3813,8 +3901,22 @@ else if ( guildView == "myguild" )
 	}
 
 	// ── PICKER MODAL (invite / transfer) ─────────────────────────────────────
+	// INVITE kb graph (2026-09-02): row 0 = the search field (a TextEntry
+	// STOP — Space/Enter/E focus it, deferred a frame; while typing every key
+	// types and Tab / Enter (onsubmit) / Esc (oncancel) hand the keyboard
+	// back to row 0); rows 1..N = candidates in list order (ONLINE NOW then
+	// EVERYONE). W/S walk 0..N. Space on a row INVITES (picker stays open —
+	// the row flips to PENDING; a PENDING row refuses). Q closes.
+	// TRANSFER keeps its old graph: rows 0..N-1, Space picks and closes.
 	private void TickPickerInput()
 	{
+		var isInvite = pickerMode == "invite";
+
+		// S3/S5 — the search entry owns typing while focused (same grammar as
+		// the settings description field). Must run BEFORE the Q check so a
+		// typed "q" never closes the picker.
+		if ( isInvite && TypingOwnsKeys( pickerSearchInput, 0 ) ) return;
+
 		if ( NavPressed() ) StampKb(); // S-A — see TickMemberMenuInput
 
 		if ( Input.Pressed( "Menu" ) )
@@ -3828,31 +3930,39 @@ else if ( guildView == "myguild" )
 		}
 
 		var gm = GuildManager.Instance;
-		List<(string connId, string name, long steam)> items = new();
-		if ( pickerMode == "invite" )
+		List<InviteCandidate> invitees = null;
+		List<GuildMemberInfo> eligible = null;
+		int rows;
+		if ( isInvite )
 		{
-			foreach ( var c in gm?.GetInvitableCandidates() ?? Enumerable.Empty<InviteCandidate>() )
-				items.Add( (c.ConnectionId, c.Name, c.SteamId) );
+			invitees = GetPickerCandidates(); // the SAME call the markup makes
+			rows = 1 + invitees.Count;        // + the search row
 		}
-		else if ( pickerMode == "transfer" )
+		else
 		{
-			var eligible = gm?.Members?.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) && m.Role >= GuildRole.Tamer ).ToList() ?? new();
-			foreach ( var m in eligible )
-				items.Add( (null, m.Name, m.SteamId) );
+			eligible = gm?.Members?.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) && m.Role >= GuildRole.Tamer ).ToList() ?? new();
+			rows = eligible.Count;
+			if ( rows == 0 ) return;
 		}
-		if ( items.Count == 0 ) return;
 
-		if ( Input.Pressed( "Up" ) ) { MoveKb( items.Count, -1 ); return; }
-		if ( Input.Pressed( "Down" ) ) { MoveKb( items.Count, 1 ); return; }
+		if ( Input.Pressed( "Up" ) ) { MoveKb( rows, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( rows, 1 ); return; }
 
 		if ( UiInput.ConfirmPressed() )
 		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, items.Count - 1 );
-			var it = items[_kbIndex];
-			if ( pickerMode == "invite" )
-				gm?.InvitePlayer( it.connId, it.name, it.steam );
-			else if ( pickerMode == "transfer" )
-				gm?.TransferOwnership( it.steam );
+			_kbIndex = Math.Clamp( _kbIndex, 0, rows - 1 );
+			if ( isInvite )
+			{
+				if ( _kbIndex == 0 )
+				{
+					RequestEntryFocus( pickerSearchInput ); // S3 — deferred so the Space isn't typed
+					StateHasChanged();
+					return;
+				}
+				PickerInvite( invitees[_kbIndex - 1] );
+				return;
+			}
+			gm?.TransferOwnership( eligible[_kbIndex].SteamId );
 			ClosePicker();
 			SoundManager.PlaySuccess();
 			ResetKb();
@@ -4214,7 +4324,7 @@ else if ( guildView == "myguild" )
 	// have their own chip + the PENDING section, no people modal.
 	private void OnInviteClicked()
 	{
-		OpenPicker( "Invite Player", "invite", returnsToDrawer: false );
+		OpenPicker( "Invite", "invite", returnsToDrawer: false );
 		SoundManager.PlayForward();
 	}
 
@@ -4473,6 +4583,13 @@ else if ( guildView == "myguild" )
 		_pickerReturnsToDrawer = returnsToDrawer;
 		showPicker = true;
 		_kbIndex = 0; // first row — never the opener's index
+		if ( mode == "invite" )
+		{
+			pickerSearch = "";
+			// Warm the server-wide player directory (non-blocking; the list
+			// shows "Loading players…" under EVERYONE until it lands).
+			CompetitiveManager.Instance?.RequestPlayerDirectoryRefresh();
+		}
 	}
 
 	// ONE exit for every picker close path (Q, X, backdrop, pick). B2: a

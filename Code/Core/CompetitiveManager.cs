@@ -137,6 +137,49 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	private const float LEADERBOARD_CACHE_SECONDS = 60f;
 
 	// ═══════════════════════════════════════════════════════════════
+	// PLAYER DIRECTORY — "everyone the server knows about"
+	//
+	// There is no players/all endpoint on the guild API; the only
+	// server-wide roster the client can reach is the public s&box
+	// leaderboards (Sandbox.Services.Leaderboards — every entry carries
+	// SteamId + DisplayName). We union the launch boards every tamer lands
+	// on through normal play (playtime is written on EVERY save, so it
+	// alone covers nearly everyone) into one SteamId-keyed directory.
+	// The `tamer-level-launch` board (pushed by TamerManager on save) is
+	// the one board whose Value IS the tamer level, so "LV 12" rides along.
+	//
+	// Consumers (GuildManager.GetAllInviteCandidates → the Invite picker)
+	// read the cached snapshot synchronously and call
+	// RequestPlayerDirectoryRefresh() — the fetch is fire-and-forget; the
+	// UI re-renders when PlayerDirectoryLoading / KnownPlayers.Count flip.
+	// ═══════════════════════════════════════════════════════════════
+
+	private const string LEVEL_BOARD = "tamer-level-launch";
+	private static readonly string[] DirectoryBoards =
+	{
+		LEVEL_BOARD,
+		"total-playtime-launch",
+		"monsters-caught-launch",
+		"battles-won-launch",
+		"expeditions-completed-launch",
+		"total-gold-launch",
+		"monsters-bred-launch"
+	};
+	private const float DIRECTORY_CACHE_SECONDS = 120f;
+	private const int DIRECTORY_PAGE_SIZE = 1000;
+
+	private Dictionary<long, KnownPlayer> _playerDirectory = new();
+	private DateTime _lastDirectoryFetch = DateTime.MinValue;
+	private bool _directoryFetching = false;
+
+	/// <summary>True while a directory fetch is in flight (UI: "Loading players…").</summary>
+	public bool PlayerDirectoryLoading => _directoryFetching;
+	/// <summary>True once at least one fetch has completed (empty result included).</summary>
+	public bool PlayerDirectoryLoaded => _lastDirectoryFetch != DateTime.MinValue;
+	/// <summary>Cached snapshot — never blocks. Call RequestPlayerDirectoryRefresh() to warm it.</summary>
+	public IReadOnlyCollection<KnownPlayer> KnownPlayers => _playerDirectory.Values;
+
+	// ═══════════════════════════════════════════════════════════════
 	// EVENTS
 	// ═══════════════════════════════════════════════════════════════
 
@@ -1640,6 +1683,67 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 		return _leaderboardCache;
 	}
 
+	/// <summary>
+	/// Kick off a player-directory fetch if the cache is stale (or `force`).
+	/// Non-blocking: returns immediately; the snapshot in
+	/// <see cref="KnownPlayers"/> is replaced wholesale when every board has
+	/// answered. Safe to call on every picker open.
+	/// </summary>
+	public void RequestPlayerDirectoryRefresh( bool force = false )
+	{
+		if ( _directoryFetching ) return;
+		if ( !force && (DateTime.UtcNow - _lastDirectoryFetch).TotalSeconds < DIRECTORY_CACHE_SECONDS ) return;
+		_ = RefreshPlayerDirectoryAsync();
+	}
+
+	private async Task RefreshPlayerDirectoryAsync()
+	{
+		_directoryFetching = true;
+		var merged = new Dictionary<long, KnownPlayer>( _playerDirectory );
+
+		try
+		{
+			foreach ( var boardName in DirectoryBoards )
+			{
+				try
+				{
+					var board = Leaderboards.GetFromStat( "publicsquare.beastborne", boardName );
+					// Cumulative counters — highest submitted value (the LeaderboardPanel
+					// inflation fix). For the level board this IS the current level.
+					board.SetAggregationMax();
+					board.MaxEntries = DIRECTORY_PAGE_SIZE;
+					await board.Refresh();
+
+					foreach ( var e in board.Entries )
+					{
+						var sid = (long)e.SteamId;
+						if ( sid == 0 ) continue;
+						if ( !merged.TryGetValue( sid, out var kp ) )
+						{
+							kp = new KnownPlayer { SteamId = sid };
+							merged[sid] = kp;
+						}
+						if ( !string.IsNullOrWhiteSpace( e.DisplayName ) ) kp.Name = e.DisplayName;
+						if ( boardName == LEVEL_BOARD )
+							kp.Level = (int)Math.Clamp( e.Value, 0, 9999 );
+					}
+				}
+				catch ( Exception e )
+				{
+					Log.Warning( $"[PlayerDirectory] board '{boardName}' failed: {e.Message}" );
+				}
+			}
+
+			_playerDirectory = merged;
+			_lastDirectoryFetch = DateTime.UtcNow;
+			Log.Info( $"[PlayerDirectory] {_playerDirectory.Count} known players across {DirectoryBoards.Length} boards" );
+		}
+		finally
+		{
+			_directoryFetching = false;
+		}
+	}
+
 	public async Task<int> GetPlayerRank()
 	{
 		try
@@ -1806,6 +1910,18 @@ public class LeaderboardEntry
 	public long Score { get; set; }
 	public string RankTitle { get; set; }
 	public long SteamId { get; set; }
+}
+
+/// <summary>
+/// One row of the server-wide player directory (see
+/// CompetitiveManager.KnownPlayers). Level is 0 when the player has not
+/// yet landed on the `tamer-level-launch` board (pre-directory saves).
+/// </summary>
+public class KnownPlayer
+{
+	public long SteamId { get; set; }
+	public string Name { get; set; }
+	public int Level { get; set; }
 }
 
 /// <summary>
