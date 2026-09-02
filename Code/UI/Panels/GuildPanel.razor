@@ -956,9 +956,16 @@ else if ( guildView == "myguild" )
 				int gpWeekMax = gpMembers.Count > 0 ? Math.Max( 1, gpMembers.Max( mm => mm.WeeklyGuildXP ) ) : 1;
 				var gpTop = GetTopContributor( gpMembers );
 				long gpLocalId = (long)(Connection.Local?.SteamId ?? 0);
-				bool gpDense = gpMembers.Count >= 12;   // roomy 120px rows → 64px scroll stop at 12+
+				bool gpDense = gpMembers.Count >= 12;   // roomy 88px rows (7 fill the 752 zone) → 64px scroll stop at 12+
 				var gpGoals = gm.WeeklyGoals ?? new List<GuildWeeklyGoal>();
 				var gpLog = (gm.ActivityLog ?? new List<GuildLogEntry>()).OrderByDescending( e => e.Timestamp ).ToList();
+				// THE LOG renders a VIEW of the feed (run 3): consecutive identical
+				// SYSTEM rows fold into one row + ×N chip, actor-restating copy is
+				// trimmed (BuildLogRows). The visible count feeds BuildHash + the
+				// kb walk (PlazaZoneCount "log") so the cursor never walks a
+				// folded row.
+				var gpLogRows = BuildLogRows( gpLog );
+				_logVisibleRows = gpLogRows.Count;
 				var gpNext = GetNextUnlockPerk();
 				int gpActivePerks = GetActivePerkCount();
 				long gpXpToNext = Math.Max( 0L, GetGuildXPNeededForNext() - GetGuildXPInLevel() );
@@ -1089,7 +1096,7 @@ else if ( guildView == "myguild" )
 					@{
 						// Preview resolves the PENDING pick exactly as the live
 						// emblem will (BbEmblem chain: beast key → the Beastlord's
-						// favourite → legacy lucide → shield). Everything the markup
+						// favorite → legacy lucide → shield). Everything the markup
 						// needs is computed up front (Razor-attribute hazards).
 						var gsBeast = BbEmblem.ResolveBeast( emblemIcon, guild.OwnerSteamId, members );
 						var gsFill = BbEmblem.BlendTowardSlab( emblemColor, 0.70f );
@@ -1113,6 +1120,17 @@ else if ( guildView == "myguild" )
 						var gsSaveTier = gsDirty ? "primary" : "ghost";
 						var gsSaveLabel = gsDirty ? "SAVE CHANGES" : "NO CHANGES";
 						var gsSaveCap = gsDirty ? "SPACE" : "";
+						// DANGER slab height from the LIVE row list (run 3 — audit S-C):
+						// band 36 + pad 24 + rows × 88 + (rows − 1) × 12 + pad 24.
+						// 4 rows = 472 · 3 = 372 · 2 = 272 · 1 = 172. The 928 column's
+						// surplus pours into .gs-right-spacer (flex 1 1 <that>px) so
+						// SAVE (48, officers only) holds the foot; a Tamer's column is
+						// slab + spacer alone.
+						int gsDangerRows = 1 + ( gsCanClaim ? 1 : 0 ) + ( gsCanTransfer ? 1 : 0 ) + ( gm.IsLeader ? 1 : 0 );
+						int gsDangerH = 36 + 24 + gsDangerRows * 88 + ( gsDangerRows - 1 ) * 12 + 24;
+						int gsSpacerH = Math.Max( 0, 928 - gsDangerH - ( gsOfficer ? 48 : 0 ) );
+						var gsDangerStyle = $"height: {gsDangerH}px;";
+						var gsSpacerStyle = $"height: {gsSpacerH}px;";
 					}
 					<div class="gp-body gs-body">
 						<div class="gs-cols">
@@ -1122,7 +1140,7 @@ else if ( guildView == "myguild" )
 
 								<!-- IDENTITY 1088×368 — band 36 + body (pad 24 L/R, top 24).
 								     Body row: 24 + preview col 112 + gap 24 + pick col 904
-								     + 24 = 1088 ✓. Pick col: kicker 60–74 · COLOUR chips
+								     + 24 = 1088 ✓. Pick col: kicker 60–74 · COLOR chips
 								     80–116 (8 × 44×36 r8, gap 8 = 408) · BEAST kicker
 								     152–166 · tiles 168–212 (8 × 44×44 r9, gap 8 = 408)
 								     · name 222–236 · fallback 264–278 (slab-relative y).
@@ -1165,8 +1183,8 @@ else if ( guildView == "myguild" )
 											</div>
 										</div>
 										<div class="gs-pick-col">
-											<span class="gs-kick">COLOUR</span>
-											<!-- COLOUR — the tile GROUND behind the beast. Chips are
+											<span class="gs-kick">COLOR</span>
+											<!-- COLOR — the tile GROUND behind the beast. Chips are
 											     UPRIGHT 44×36 r8 (DOC-6 actions-never-skew: no NEW
 											     pressable skews; the two-tone active is the FilterBar
 											     family's). LANE: input — A/D walk the chips in-row. -->
@@ -1185,7 +1203,7 @@ else if ( guildView == "myguild" )
 											     8 species tiles 44×44 r9 (declared 40 + 2px rim), the
 											     species sprite as a native-px 40×40 crop (no filter /
 											     transform / object-fit). Sources: your roster first,
-											     then the members' favourites (GetEmblemBeastChoices). -->
+											     then the members' favorites (GetEmblemBeastChoices). -->
 											<div class="gs-chips tiles @(IsSettingsRowKb( "beast" ) ? "guild-kb-selected" : "")">
 												@foreach ( var species in gsChoices )
 												{
@@ -1208,7 +1226,7 @@ else if ( guildView == "myguild" )
 											{
 												<div class="gs-bname-host"><span class="gs-bname dim">NO PICK</span></div>
 											}
-											<span class="gs-note gs-fallback">No pick — the Beastlord's favourite shows</span>
+											<span class="gs-note gs-fallback">No pick — the Beastlord's favorite shows</span>
 										</div>
 									</div>
 								</div>
@@ -1269,14 +1287,15 @@ else if ( guildView == "myguild" )
 							     middle is deliberately EMPTY (danger far from the primary). -->
 							<div class="gs-right">
 
-								<!-- DANGER 768×472 — band 36 + pad 24 + 4 rows × 88 + 3 × 12
-								     + pad 24 = 472 ✓. Row: text col (title 17/800 + note
+								<!-- DANGER 768×(36 + 24 + rows×88 + (rows−1)×12 + 24) — height
+								     DERIVED per role (gsDangerH: 472 leader-with-claim … 172
+								     Tamer); no void under the last row. Row: text col (title 17/800 + note
 								     12/700 dim) · spacer · BbButton danger 320×44 r11 + HOLD
 								     cap. CLAIM is CONDITIONAL (absent, not disabled).
 								     LANE: input — HOLD-to-confirm (~0.9s, the skills-reset
 								     grammar) replaces the ConfirmDialog calls below; until
 								     then the dialogs keep every action working. -->
-								<div class="gs-danger">
+								<div class="gs-danger" style="@gsDangerStyle">
 									<div class="gp-band">
 										<div class="gp-chipstamp danger"><span>DANGER</span></div>
 										<div class="gp-band-spacer"></div>
@@ -1326,7 +1345,8 @@ else if ( guildView == "myguild" )
 									</div>
 								</div>
 
-								<div class="gs-right-spacer"></div>
+								<!-- The column's surplus — derived (928 − danger − save). -->
+								<div class="gs-right-spacer" style="@gsSpacerStyle"></div>
 
 								@if ( gsOfficer )
 								{
@@ -1454,8 +1474,10 @@ else if ( guildView == "myguild" )
 
 						<!-- ROSTER 1088×752 — the heart, expanded. Band 36 (opaque,
 						     gap 0 to the list — scroll-leak law). Rows are DIRECT
-						     children of the scroll child. Row math (roomy): band 36
-						     + pad 18 + 5×120 + 4×20 + pad 18 = 752 ✓ at 5 members.
+						     children of the scroll child. Row math (roomy, run 3): band 36
+						     + pad 16 + 7×88 + 6×12 + pad 12 = 752 ✓ at 7 members
+						     (the 28px surplus of 716 − 688 is split 16 top / 12 foot —
+						     the top pad reads as the band's breathing room).
 						     Row lane: list pad 12 L/R → 1064; row 1060 declared +
 						     4px left seam border = 1064 ✓.
 						     LANE: motion (attached) — zone fade rung 2 (gpZoneRoster);
@@ -1546,7 +1568,14 @@ else if ( guildView == "myguild" )
 									var mVoice = IsMemberInVoice( m );
 									var mWeekPx = RosterWeekBarPx( m.WeeklyGuildXP, gpWeekMax );
 									var mRoleText = m.Role >= GuildRole.Warden ? GuildManager.GetRoleDisplayName( m.Role ).ToUpper() : "";
-									<!-- LANE: input — row click/Space = member action modal (kept).
+									<!-- MEMBER ROW 1064×88 (run 3 — was 120: 60% void when the
+									     week is young). Declared 1060 + 4 seam. Lane, left to
+									     right: 16 pad + head 44 + 16 + name col 300 + spacer 208
+									     + week stat 320 + 16 + presence 120 + 20 pad = 1060 ✓.
+									     Vertical: head 44 at y22 · name 22 + role 3+14 = 39 at
+									     y24 · week stat centred (bar 6 / number 21). The week
+									     stat starts at x 588 (row-relative) — the right half.
+									     LANE: input — row click/Space = member action modal (kept).
 									     Hover moves the ONE cursor (PlazaHover — one-cursor law);
 									     the old hoveredMember side-state is retired. -->
 									<div class="gp-mrow @(mIdx % 2 == 1 ? "alt" : "") @(mGone ? "faded" : "") @(IsJoinedPop( m.SteamId ) ? "gp-joined" : "") @(IsPlazaKb( "roster", mIdx ) ? "guild-kb-selected" : "")"
@@ -1583,18 +1612,27 @@ else if ( guildView == "myguild" )
 												<span class="gp-mrole" style="color: @mRoleColor">@mRoleText</span>
 											}
 										</div>
+										<div class="gp-mrow-spacer"></div>
+										<!-- WEEKLY GUILD XP — ONE inline stat (run 3): above zero =
+										     bar 200 + the number in blue + XP unit (+ crown on the
+										     week's top); zero = one dim 12px line. No label + empty
+										     track — one telling per fact. -->
 										<div class="gp-mweek-col">
-											<span class="gp-mweek-cap">WEEKLY GUILD XP</span>
-											<div class="gp-mweek-row">
-												<span class="gp-mweek-val @(m.WeeklyGuildXP == 0 ? "zero" : "")">@($"{m.WeeklyGuildXP:N0}")</span>
+											@if ( m.WeeklyGuildXP > 0 )
+											{
+												<div class="gp-mweek-bar"><div class="gp-mweek-fill" style="width: @(mWeekPx)px"></div></div>
+												<span class="gp-mweek-val">@($"{m.WeeklyGuildXP:N0}")</span>
+												<span class="gp-mweek-unit">XP</span>
 												@if ( mTopContrib )
 												{
 													<iconify class="gp-crown" icon="lucide:crown" Size=@(13) Color="#ffce3a" />
 												}
-											</div>
-											<div class="gp-mweek-bar"><div class="gp-mweek-fill" style="width: @(mWeekPx)px"></div></div>
+											}
+											else
+											{
+												<span class="gp-mweek-none">no guild XP yet this week</span>
+											}
 										</div>
-										<div class="gp-mrow-spacer"></div>
 										@if ( m.IsOnline )
 										{
 											<div class="gp-presence on"><div class="gp-dot"></div><span class="gp-presence-t">HERE</span></div>
@@ -1727,18 +1765,28 @@ else if ( guildView == "myguild" )
 									     stamped IMPERATIVELY (SyncLogCursorClasses / SetClass)
 									     — a volatile markup class would remount the row and
 									     replay its gpLogRowN entrance ladder on every hop. -->
+									<!-- Rows are the GROUPED view (gpLogRows — run 3): a folded
+									     SYSTEM run renders ONCE with a dim ×N chip and the NEWEST
+									     entry's stamp; the motion key is that newest entry, so a
+									     fresh reset still ripples gp-lnew. Row lane 737: actor ·
+									     text · [×N chip] · spacer · time. -->
 									<div class="gp-log-list" @ref="logScrollRef">
 										@{ int gpLogRowIdx = 0; }
-										@foreach ( var entry in gpLog )
+										@foreach ( var row in gpLogRows )
 										{
-											var e = entry;
+											var lr = row;
+											var e = lr.Entry;
 											var lIdx = gpLogRowIdx; gpLogRowIdx++;
 											<div class="gp-lrow @(lIdx % 2 == 1 ? "alt" : "") @LogRowMotionClass( e, lIdx )" onmouseover=@(() => PlazaHover( "log", lIdx ))>
-												@if ( !string.IsNullOrEmpty( e.PlayerName ) )
+												@if ( lr.Actor != "" )
 												{
-													<span class="gp-log-actor">@e.PlayerName</span>
+													<span class="gp-log-actor">@lr.Actor</span>
 												}
-												<span class="gp-log-text">@LogActionText( e )</span>
+												<span class="gp-log-text">@lr.Text</span>
+												@if ( lr.Count > 1 )
+												{
+													<div class="gp-log-count"><span>@($"×{lr.Count}")</span></div>
+												}
 												<div class="gp-lrow-spacer"></div>
 												<span class="gp-log-time">@FormatLogTimeShort( e.Timestamp )</span>
 											</div>
@@ -2544,6 +2592,7 @@ else if ( guildView == "myguild" )
 			hash.Add( gh.Progress + (gh.Claimed ? 1_000_000 : 0) );
 		hash.Add( gmH?.ActivityLog?.Count ?? 0 );
 		hash.Add( gmH?.ActivityLog?.Count > 0 ? gmH.ActivityLog[0].Timestamp : default );
+		hash.Add( _logVisibleRows ); // grouped-log row count (run 3 — folded SYSTEM runs)
 		return hash.ToHashCode();
 	}
 
@@ -2886,7 +2935,7 @@ else if ( guildView == "myguild" )
 			case "pending": return PlazaPendingLiveCount( gm );        // join-request rows still standing (folding rows excluded)
 			case "roster": return GetPlazaRosterMembers( members ).Count;
 			case "week":   return gm.WeeklyGoals?.Count ?? 0;          // goal rows (claim when claimable)
-			case "log":    return gm.ActivityLog?.Count ?? 0;          // feed rows (info stops, Space no-op)
+			case "log":    return CountLogRows( gm );                   // GROUPED feed rows (run 3 — the rendered list, not ActivityLog.Count); info stops, Space no-op
 		}
 		return 0;
 	}
@@ -4438,9 +4487,9 @@ else if ( guildView == "myguild" )
 
 	// BEAST tile sources — the first 8, deduped, every one with a sprite:
 	//   0. the SAVED pick (so the active tile is always on the row)
-	//   1. your favourite, then your roster (MonsterManager.OwnedMonsters,
+	//   1. your favorite, then your roster (MonsterManager.OwnedMonsters,
 	//      in roster order)
-	//   2. the members' favourites — online broadcast profiles first
+	//   2. the members' favorites — online broadcast profiles first
 	//      (ChatManager.PlayerProfiles by ConnectionId), then any TamerCard
 	//      you hold for an offline member.
 	// Saved value = "beast:<speciesId>" — the one canonical emblem key.
@@ -5022,7 +5071,7 @@ else if ( guildView == "myguild" )
 	//    roster weekly 260.
 	private const int IdentXpBarW = 440;
 	private const int WeekGoalBarW = 480;
-	private const int RosterWeekBarW = 260;
+	private const int RosterWeekBarW = 200; // run 3 — the inline week stat's bar (was 260 under the label)
 
 	private int GuildXpBarPx()
 		=> (int)Math.Round( IdentXpBarW * Math.Clamp( GetGuildXPPercent() / 100f, 0f, 1f ) );
@@ -5126,6 +5175,77 @@ else if ( guildView == "myguild" )
 	// Log entries are REBUILT from the server on every fetch (no stable
 	// identity) — key by content.
 	private static string LogKey( GuildLogEntry e ) => e == null ? "" : $"{e.Timestamp.Ticks}|{e.Action}|{e.PlayerName}|{e.Details}";
+
+	// ── THE LOG view rows (run 3) ──
+	// The visible list is a VIEW of ActivityLog, built once per render:
+	//   1. GROUPING — consecutive SYSTEM entries (no actor) with the same
+	//      Action + rendered text ("Weekly stats have been reset" ×6) fold
+	//      into ONE row that carries the NEWEST entry (its timestamp shows)
+	//      and a Count for the ×N chip. Actor rows never fold.
+	//   2. IDENTITY — the row's motion key is the newest entry's LogKey
+	//      (LogRowMotionClass( row.Entry, idx )), so a fresh reset landing
+	//      on top of a folded run is a NEW key = the gp-lnew ripple, exactly
+	//      as an ungrouped new row would; the ladder rungs stay by index.
+	//   3. COPY — server copy that restates the actor ("ONEearKID was
+	//      approved by JdOs" under an actor span "ONEearKID") loses the
+	//      leading name; "Weekly stats have been reset" → "Weekly stats
+	//      reset" (plain words). Core untouched — this is the client's read.
+	private sealed class GuildLogRow
+	{
+		public GuildLogEntry Entry;   // newest entry of the run — timestamp + motion key
+		public string Actor = "";     // "" = no actor span (SYSTEM)
+		public string Text = "";
+		public int Count = 1;         // > 1 = the ×N chip
+	}
+
+	private int _logVisibleRows = 0;  // set at render from gpLogRows.Count → BuildHash
+
+	private static bool IsSystemLogEntry( GuildLogEntry e )
+		=> e != null && ( string.IsNullOrWhiteSpace( e.PlayerName ) || string.Equals( e.PlayerName.Trim(), "System", StringComparison.OrdinalIgnoreCase ) );
+
+	private static string LogRowText( GuildLogEntry e )
+	{
+		if ( e == null ) return "";
+		var text = LogActionText( e );
+		if ( !IsSystemLogEntry( e ) && !string.IsNullOrEmpty( text ) && text.StartsWith( e.PlayerName, StringComparison.OrdinalIgnoreCase ) )
+		{
+			var rest = text.Substring( e.PlayerName.Length ).TrimStart();
+			if ( rest.Length > 0 ) text = rest;   // "X was approved by Y" → "was approved by Y" (actor span already says X)
+		}
+		if ( string.Equals( text, "Weekly stats have been reset", StringComparison.OrdinalIgnoreCase ) ) text = "Weekly stats reset";
+		return text;
+	}
+
+	// `sorted` = newest first (the razor's gpLog). Pure — no panel state.
+	private static List<GuildLogRow> BuildLogRows( List<GuildLogEntry> sorted )
+	{
+		var rows = new List<GuildLogRow>();
+		if ( sorted == null ) return rows;
+		for ( int i = 0; i < sorted.Count; i++ )
+		{
+			var e = sorted[i];
+			if ( e == null ) continue;
+			var text = LogRowText( e );
+			var row = new GuildLogRow { Entry = e, Actor = IsSystemLogEntry( e ) ? "" : ( e.PlayerName ?? "" ), Text = text, Count = 1 };
+			if ( IsSystemLogEntry( e ) )
+			{
+				while ( i + 1 < sorted.Count )
+				{
+					var n = sorted[i + 1];
+					if ( n == null || !IsSystemLogEntry( n ) ) break;
+					if ( !string.Equals( n.Action, e.Action, StringComparison.Ordinal ) ) break;
+					if ( !string.Equals( LogRowText( n ), text, StringComparison.Ordinal ) ) break;
+					row.Count++; i++;
+				}
+			}
+			rows.Add( row );
+		}
+		return rows;
+	}
+
+	// Grouped row count for callers outside the render (the kb walk).
+	private static int CountLogRows( GuildManager gm )
+		=> BuildLogRows( ( gm?.ActivityLog ?? new List<GuildLogEntry>() ).OrderByDescending( e => e.Timestamp ).ToList() ).Count;
 
 	// Called from the plaza body's render (else-branch head): arms the ladder
 	// on the body's FIRST render after each (re)mount — first open and every
