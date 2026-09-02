@@ -54,7 +54,10 @@ public static class GeneticsCalculator
 	/// - Pick higher OR lower parent (60/40 base, up to 85% higher with skills)
 	/// - Variance is zero-centered (-2 to +2), not always positive
 	/// - Diminishing returns kick in earlier (20+ instead of 27+)
-	/// - Mutation chance is 5% base (down from 15%), 50/50 split
+	/// - Mutation chance is 5% base (down from 15%), 50/50 split; the
+	///   MutationChance SKILL's share of the window rolls positive-only
+	/// - GeneBonusFlat is PER GENE (all six), tapering +2 max at 23-25 and
+	///   +1 max at 26+ so Gene Surge R3 settles ~27, not 28
 	/// - Gene Lock is now "preserve" (higher ±1) not a free climb
 	/// - Climbing past parent values requires skill tree investment via
 	///   GeneticInheritanceBonus, MutationChance, and GeneBonusFlat
@@ -101,19 +104,29 @@ public static class GeneticsCalculator
 		if ( geneBonusFlat > 0 && result < Genetics.MaxGeneValue )
 		{
 			int flatBonus = (int)geneBonusFlat;
+			// Taper mirrors the variance ladder: 23-25 → +2 max, 26+ → +1 max.
+			// Low-gene farming keeps the full bonus; the Gene Surge R3 steady
+			// state lands at ~27 (design target) instead of 28, so the final
+			// climb to 30 stays a mutation story. (2026-09-01)
 			if ( result >= 26 ) flatBonus = Math.Min( flatBonus, 1 );
+			else if ( result >= 23 ) flatBonus = Math.Min( flatBonus, 2 );
 			result += flatBonus;
 		}
 
-		// Mutation chance (5% base, +bonus from skills). 50/50 positive vs
-		// negative — no more biased-upward mutations.
-		float mutationChance = 0.05f;
+		// Mutation. The 5% BASE window is a coin-flip (±1..3) — zero-drift.
+		// The SKILL's share of the window (MutationChance node) rolls positive
+		// only, so "+6% beneficial mutation chance" is literally what the
+		// label promises. A skill is an upside. (2026-09-01)
+		const float baseMutationChance = 0.05f;
 		float mutationBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.MutationChance ) ?? 0;
-		mutationChance += mutationBonus / 100f;
+		float skillMutationChance = Math.Max( 0f, mutationBonus / 100f );
 
-		if ( random.NextDouble() < mutationChance )
+		double mutationRoll = random.NextDouble();
+		if ( mutationRoll < baseMutationChance + skillMutationChance )
 		{
-			int mutation = random.NextDouble() < 0.5 ? random.Next( 1, 4 ) : random.Next( -3, 0 );
+			bool fromSkill = mutationRoll >= baseMutationChance;
+			bool positive = fromSkill || random.NextDouble() < 0.5;
+			int mutation = positive ? random.Next( 1, 4 ) : random.Next( -3, 0 );
 			if ( mutation > 0 && result >= 26 ) mutation = Math.Min( mutation, 1 );
 			result += mutation;
 		}
@@ -264,7 +277,9 @@ public static class GeneticsCalculator
 		if ( geneBonusFlat > 0 )
 		{
 			float flat = geneBonusFlat;
+			// Mirrors InheritGene's taper (+2 max at 23-25, +1 max at 26+).
 			if ( expected >= 26 ) flat = Math.Min( flat, 1f );
+			else if ( expected >= 23 ) flat = Math.Min( flat, 2f );
 			expected += flat;
 		}
 

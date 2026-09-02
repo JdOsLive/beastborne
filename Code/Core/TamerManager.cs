@@ -277,6 +277,10 @@ public sealed class TamerManager : Component
 			if ( repair.ChangedAnything )
 			{
 				Log.Info( $"[NormalizeSkillState/hydrate] Lv{CurrentTamer.Level} repaired: {repair}" );
+				// A repair that moved ranks changes the baked stat bonuses.
+				// No-op if MonsterManager hasn't hydrated yet (empty roster).
+				if ( RanksChanged( repair ) )
+					RefreshOwnedBeastStats( "hydrate normalize" );
 
 				// Only notify the player if the change is something they'll
 				// actually NOTICE in the tree UI. Pure SP top-up (e.g. they
@@ -719,6 +723,8 @@ public sealed class TamerManager : Component
 			var rep = CurrentTamer.NormalizeSkillState( SkillTree );
 			if ( rep.ChangedAnything )
 				Log.Info( $"[NormalizeSkillState/level-up] Lv{CurrentTamer.Level} repaired: {rep}" );
+			if ( RanksChanged( rep ) )
+				RefreshOwnedBeastStats( "level-up normalize" );
 
 			OnLevelUp?.Invoke( CurrentTamer.Level );
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.TamerLevel, CurrentTamer.Level );
@@ -837,6 +843,7 @@ public sealed class TamerManager : Component
 		int currentRank = GetSkillRank( skillId );
 		CurrentTamer.SkillRanks[skillId] = currentRank + 1;
 
+		RefreshOwnedBeastStats( $"unlock {skillId}" );
 		OnSkillUnlocked?.Invoke( skillId );
 
 		// Achievement hooks for skills
@@ -877,6 +884,7 @@ public sealed class TamerManager : Component
 		CurrentTamer.SkillPoints -= costNeeded;
 		CurrentTamer.SkillRanks[skillId] = node.MaxRank;
 
+		RefreshOwnedBeastStats( $"max-out {skillId}" );
 		OnSkillUnlocked?.Invoke( skillId );
 		SaveToCloud();
 
@@ -924,6 +932,24 @@ public sealed class TamerManager : Component
 		Log.Info( "Tamer data reset to defaults" );
 	}
 
+	/// <summary>
+	/// Skill ranks changed → re-bake every owned beast's stats so Might /
+	/// Vitality land immediately. Before 2026-09-01 `OnSkillUnlocked` had zero
+	/// subscribers and nothing recalculated until each beast's next level-up.
+	/// Direct-call pattern (managers call each other's Instance), event kept
+	/// for any future listener.
+	/// </summary>
+	private void RefreshOwnedBeastStats( string reason )
+	{
+		int n = MonsterManager.Instance?.RecalculateAllOwnedStats() ?? 0;
+		if ( n > 0 )
+			Log.Info( $"[TamerManager] Skill ranks changed ({reason}) — recalculated stats for {n} owned beasts" );
+	}
+
+	/// <summary>True when a NormalizeSkillState pass actually moved ranks (not just the SP pool).</summary>
+	private static bool RanksChanged( SkillStateRepairResult rep )
+		=> rep.OrphanRanksStripped > 0 || rep.OverRankRefunds > 0 || rep.OverBudgetRanksStripped > 0;
+
 	// Get total number of skills available in the skill tree
 	public int GetTotalSkillCount() => SkillTree?.AllNodes?.Count ?? 0;
 
@@ -931,6 +957,7 @@ public sealed class TamerManager : Component
 	public float GetSkillBonus( SkillEffectType effectType, ElementType? element = null )
 	{
 		float total = 0;
+		if ( CurrentTamer?.SkillRanks == null || SkillTree == null ) return total;
 
 		foreach ( var kvp in CurrentTamer.SkillRanks )
 		{
@@ -1017,6 +1044,10 @@ public sealed class TamerManager : Component
 		var rep = CurrentTamer.NormalizeSkillState( SkillTree );
 		if ( rep.ChangedAnything )
 			Log.Info( $"[NormalizeSkillState/reset] Lv{CurrentTamer.Level} repaired: {rep}" );
+
+		// Ranks are gone — strip the baked Might/Vitality off every beast now,
+		// not at their next level-up.
+		RefreshOwnedBeastStats( "reset" );
 
 		Stats.SetValue( "skills-unlocked", 0 );
 		Stats.SetValue( "skill-points", 0 );

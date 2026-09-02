@@ -71,9 +71,11 @@ public static class BattleSimulator
 		result.ElementModifier = elementModifier;
 		baseDamage *= elementModifier;
 
-		// Critical hit chance (base 5%)
+		// Critical hit chance (base 5%). Tamer skill crit (Critical Eye) applies
+		// to the PLAYER's beasts only — was "whichever side is attacking".
 		float critChance = 0.05f;
-		float critBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritChanceBonus ) ?? 0;
+		bool attackerIsPlayer = IsPlayerBeast( attacker );
+		float critBonus = attackerIsPlayer ? (TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritChanceBonus ) ?? 0) : 0;
 		critChance += critBonus / 100f;
 
 		// Add held item crit chance bonus
@@ -84,7 +86,7 @@ public static class BattleSimulator
 		{
 			result.IsCritical = true;
 			float critMultiplier = 1.5f;
-			float critDamageBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritDamageBonus ) ?? 0;
+			float critDamageBonus = attackerIsPlayer ? (TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritDamageBonus ) ?? 0) : 0;
 			critMultiplier += critDamageBonus / 100f;
 
 			// Add held item crit damage bonus
@@ -98,15 +100,34 @@ public static class BattleSimulator
 		float variance = 0.9f + (float)CurrentRandom.NextDouble() * 0.2f;
 		baseDamage *= variance;
 
-		// Apply skill damage bonus
-		float damageBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.AllMonsterATKPercent ) ?? 0;
-		baseDamage *= (1 + damageBonus / 100f);
+		// Might (AllMonsterATKPercent) is baked into the player's ATK stat by
+		// MonsterManager.ApplyTamerBonuses — NOT re-applied per hit here. The
+		// pre-2026-09-01 double-apply made "+9% ATK" land as ~+18.8% damage.
 
 		result.Damage = (int)Math.Max( 1, baseDamage );
 		result.IsSuperEffective = elementModifier > 1.0f;
 		result.IsResisted = elementModifier < 1.0f;
 
 		return result;
+	}
+
+	/// <summary>
+	/// Tamer skill-tree combat bonuses (Critical Eye, …) belong to the LOCAL
+	/// tamer's beasts only. Id-based so battle clones match; wild waves, bosses
+	/// and online opponents are never on the local PlayerTeam / roster.
+	/// </summary>
+	private static bool IsPlayerBeast( Monster m )
+	{
+		if ( m == null || m.IsBoss ) return false;
+		var team = BattleManager.Instance?.PlayerTeam;
+		if ( team != null )
+		{
+			for ( int i = 0; i < team.Count; i++ )
+			{
+				if ( team[i] != null && team[i].Id == m.Id ) return true;
+			}
+		}
+		return MonsterManager.Instance?.IsPlayerOwned( m ) == true;
 	}
 
 	/// <summary>
@@ -1053,9 +1074,11 @@ public static class BattleSimulator
 		// Apply trait bonuses
 		baseDamage *= GetTraitDamageMultiplier( attacker, defender, move, state );
 
-		// Critical hit calculation
+		// Critical hit calculation. Tamer skill crit (Critical Eye) applies to
+		// the PLAYER's beasts only — was "whichever side is attacking".
 		float critChance = 0.0625f; // Base 6.25%
-		float critBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritChanceBonus ) ?? 0;
+		bool attackerIsPlayer = IsPlayerBeast( attacker );
+		float critBonus = attackerIsPlayer ? (TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritChanceBonus ) ?? 0) : 0;
 		critChance += critBonus / 100f;
 
 		// CritBoost effect on move
@@ -1094,8 +1117,8 @@ public static class BattleSimulator
 			result.IsCritical = true;
 			float critMultiplier = 1.5f;
 
-			// Apply skill tree crit damage bonus
-			float skillCritBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritDamageBonus ) ?? 0;
+			// Apply skill tree crit damage bonus (player beasts only)
+			float skillCritBonus = attackerIsPlayer ? (TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritDamageBonus ) ?? 0) : 0;
 			critMultiplier += skillCritBonus / 100f;
 
 			// Held item crit damage bonus
@@ -1126,9 +1149,10 @@ public static class BattleSimulator
 		float variance = 0.9f + (float)CurrentRandom.NextDouble() * 0.2f;
 		baseDamage *= variance;
 
-		// Apply tamer skill bonuses
-		float damageBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.AllMonsterATKPercent ) ?? 0;
-		baseDamage *= (1 + damageBonus / 100f);
+		// Might (AllMonsterATKPercent) is baked into the player's ATK stat by
+		// MonsterManager.ApplyTamerBonuses — NOT re-applied per hit here. The
+		// pre-2026-09-01 double-apply made "+9% ATK" land as ~+18.8% on
+		// physical moves (and leaked onto special moves + enemy attacks).
 
 		// Apply boss damage bonuses if defender is a boss
 		if ( defender.IsBoss )

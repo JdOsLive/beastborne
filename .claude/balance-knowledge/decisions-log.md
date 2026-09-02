@@ -23,6 +23,70 @@ Template:
 
 ## Entries
 
+## 2026-09-01 — Skill tree wiring + math audit (Scout wired, enemy-leak gate, Might double-apply, recalc-on-invest, Gene Surge / Mutation honesty)
+
+**Scope:** Five findings from a read-only trace of the launch skill tree (15 nodes, 55 SP). Code fixes in `Code/Core/MonsterManager.cs`, `Code/Core/TamerManager.cs`, `Code/Systems/BattleSimulator.cs`, `Code/Core/ExpeditionManager.cs`, `Code/Systems/GeneticsCalculator.cs`; data-side label strings in `Code/Data/SkillNode.cs`. No node costs, ranks, or per-rank values changed — max-all is still exactly 55 SP (Power 12 / Fortune 12 / Fusion 11 / Expedition 10 / Mastery 10), so saved max-all trees are untouched by `NormalizeSkillState`. No UI files edited (UI lanes active) — label changes for the UI are REPORTED, see "UI follow-ups".
+
+### 1. Scout (`exp_scout`, EncounterRateBonus 5/rank ×3) — was NOT WIRED
+- **Root cause:** no consumer of `GetSkillBonus(EncounterRateBonus)` anywhere. Expeditions have no per-step encounter roll; wave size is fixed `min(3, 1 + wave/2)` (1 → 2 → 2 → 3 → 3 …).
+- **Mapping chosen:** "+N% encounter rate" = N% chance, on each wild (non-boss, non-gauntlet) wave still under the 3-beast cap, that one extra wild beast joins the wave. Cap stays 3 — the battle target UI is hard-wired to three slots (`tg-slot-1..3`, `Slot1-3` keys), raising it is a UI-lane job.
+- **Where:** `ExpeditionManager.cs` — new `MAX_WAVE_ENEMIES = 3` const (with design comment) next to the Hard Mode constants; `GenerateWaveEnemies` uses the const and rolls Scout before the spawn loop.
+- **Numbers:** R1/R2/R3 = 5/10/15% per eligible wave. Eligible waves per run = waves 1-3 in every expedition (wave 1 holds 1 beast, waves 2-3 hold 2). Expected extra beasts per run at R3 = 0.45 → Saltmoor Cove (8 wild + boss) +5.6% beasts met; Old Saltmoor (23 wild + boss) +2%. Each extra beast is also an extra contract target and drop roll.
+- **Verdict:** live and honest, but MODEST for 3 SP versus Prospector (+15% expedition gold). Flagged as a post-launch re-mapping candidate once a real encounter roll exists (mini-expedition nodes).
+
+### 2. Vitality / Might / Crit leaking onto ENEMIES
+- **Root cause A:** `MonsterManager.ApplyTamerBonuses` ran unconditionally inside `RecalculateStats`, which `CreateEnemyMonster` / `CreateBossMonster` (ExpeditionManager) and the three `BattleManager` enemy-setup paths all call. Every wild beast and boss got the player's +ATK%/+HP%. Same class of leak: `ApplyRelicBonuses` and `ApplySpeciesMasteryBonus` (also unconditional).
+- **Root cause B:** `BattleSimulator` crit chance / crit damage read `GetSkillBonus` for whichever side was attacking.
+- **Fix:** new `MonsterManager.IsPlayerOwned(Monster)` — roster membership by Id (battle clones keep Id; bosses excluded). `RecalculateStats` applies tamer skills, relics AND species mastery only when `IsPlayerOwned`. `BattleSimulator.IsPlayerBeast(Monster)` (Id in `BattleManager.PlayerTeam`, else roster) gates both crit sites in both damage paths. `AddMonster` now re-bakes stats right after `OwnedMonsters.Add` (every creation path — CreateMonster, offspring, trade, catch — recalculated BEFORE AddMonster, when ownership was false).
+- **Effect:** Power branch at R3: player beasts +9% ATK / +9% HP / +6% crit; enemies now at baseline (were receiving the identical +9%/+9%/+6%, so the branch's relative value was ~0 for HP/ATK).
+
+### 3. Might double-apply
+- **Root cause:** ATK% baked into `monster.ATK` (roster shows it) AND re-multiplied onto `baseDamage` per hit in both `CalculateDamage` overloads.
+- **Fix:** removed the per-hit multiply (two sites), kept the stat bake — displayed ATK stays honest, damage ∝ ATK so physical damage rises exactly +9% at R3.
+- **Before/after (R3, +9%):** physical moves ×1.09×1.09 = +18.8% → +9%; special moves +9% (per-hit leak; label says ATK) → 0%; enemy attacks +9% → 0%.
+- **Design note:** Might is now ATK-only by the letter of its label. Special attackers get nothing from it — that is the planned `Arcane Focus` node's job (post-launch list in `SkillTree.cs` header). Not adding a second effect to Might: the tree UI's `GetEffectLabel` has no SpA arm and UI lanes are active.
+
+### 4. No recalc on invest
+- **Root cause:** `TamerManager.OnSkillUnlocked` had zero subscribers; Might/Vitality only appeared at each beast's next level-up.
+- **Fix:** `MonsterManager.RecalculateStatsPreservingHP` (keeps HP fraction; KO stays KO; fresh beast → full) + `RecalculateAllOwnedStats()` (roster-wide, then `SaveMonsters()`). `TamerManager.RefreshOwnedBeastStats(reason)` called from `UnlockSkill`, `MaxOutSkill`, `ResetSkillTree`, and after any `NormalizeSkillState` repair that actually moved ranks (hydrate + level-up paths; no-op if the roster isn't hydrated yet). `GetSkillBonus` gained a null guard (`CurrentTamer?.SkillRanks`, `SkillTree`). Event still fires for future listeners.
+
+### 5. Label / math mismatches
+| Node | Was | Now |
+|---|---|---|
+| Gene Surge (GeneBonusFlat 1/rank ×3) | Label "+3 gene point bonus"; math +3 to EACH of 6 genes (+18/fusion), taper only at 26+ (+1 max) | Label "+3 to every gene on fusion"; math unchanged below 23, NEW taper +2 max at 23-25, +1 max at 26+ (both `InheritGene` and `CalculateExpectedGene` preview) |
+| Mutation Chance (3/rank ×2) | "+6% beneficial mutation chance" but the whole window rolled 50/50 ± — skill EV = 0 | Base 5% window still 50/50 (zero-drift); the skill's 6% share rolls +1..+3 only (+1 max at 26+). Expected +0.12/gene/fusion below 26 |
+| Lucky Find (RareItemChance 4/rank ×2) | "+8% rare item chance" — math is a rare-entry WEIGHT multiplier in `RollDropTable` | Math untouched; data label → "+8% rare drop weighting" |
+| Scout | "+15% encounter rate" (dead) | "+15% encounter rate (extra wild beast chance on light waves)" |
+
+**Gene Surge trajectory, two equal parents, R3, no other skills (expected per gene):** before 20 → 23 → ~25.8 → ~28.3 → 28 steady; after 20 → 23 → ~25.4 → ~27.3 → **27 steady**. Ceiling 28 → 27 (the memory's "two 28-gene parents → expected 27" band); the low-gene grind (<23) is untouched; 30/30 still needs a mutation. Base zero-drift math (60/40 pick, ±2 variance, taper) not touched.
+
+### SP / dominance sanity
+- Max-all = 55 SP exactly (unchanged). No cost/rank edits → `NormalizeSkillState` will not bleed any saved tree.
+- Dead-weight check: Scout was dead (now live); Mutation Chance was zero-EV (now positive). Might/Vitality/Crit Eye now actually change fight outcomes (enemies no longer mirror them).
+- Dominance: Gene Surge remains the strongest single node — by design (fusion is the progression loop; memory: "skill investment can push expected +2-3 per gene"). Ceiling pulled from 28 → 27 is the tone-down.
+
+### Files touched
+- `Code/Core/MonsterManager.cs` — `RecalculateStats` ownership gate; `IsPlayerOwned`, `RecalculateStatsPreservingHP`, `RecalculateAllOwnedStats`; `AddMonster` re-bake.
+- `Code/Core/TamerManager.cs` — `RefreshOwnedBeastStats`, `RanksChanged`; calls in `UnlockSkill` / `MaxOutSkill` / `ResetSkillTree` / hydrate + level-up normalize; `GetSkillBonus` null guard.
+- `Code/Systems/BattleSimulator.cs` — `IsPlayerBeast`; crit gates ×4; Might per-hit multiply removed ×2.
+- `Code/Core/ExpeditionManager.cs` — `MAX_WAVE_ENEMIES`; Scout roll in `GenerateWaveEnemies`.
+- `Code/Systems/GeneticsCalculator.cs` — Gene Surge taper (inherit + preview); skill-share-positive mutation; header comment.
+- `Code/Data/SkillNode.cs` — 3 `GetDescription` arms (GeneBonusFlat, RareItemChance, EncounterRateBonus).
+- `Assets/data/patchnotes-pending.json` — 6 entries (3 balance, 3 fix).
+
+### UI follow-ups (REPORTED, not edited — UI lanes own these)
+- `Code/UI/Panels/SkillTreePanel.razor` `GetEffectLabel`: `GeneBonusFlat => "bonus gene point"` → `"to every gene on fusion"`; `MutationChance => "mutation chance"` → `"beneficial mutation chance"`; `RareItemChance => "rare item chance"` → `"rare drop weighting"`; `EncounterRateBonus => "encounter rate"` may stay (honest) or add "· extra wild beast on light waves".
+- `Code/Core/PlayerStatsSummary.cs` gene row description "Flat bonus gene points awarded on fusion." → "Bonus points added to every gene on fusion." (Core file outside this job's allow-list.)
+- `Code/UI/Panels/HelpPanel.razor` ~4750-4791 describes the OLD tree (Gene Surge "10 ranks", Mutation "+2% per rank (5 ranks, 2 SP each)", Scout "+10% per rank (5 ranks, 2 SP each)", Lucky Find "+5% per rank (5 ranks, 3 SP each)") — stale, needs a rewrite against `SkillTree.CreateDefault()`.
+- `ActiveEffectsPanel.razor` falls through to `SkillEffect.GetDescription()` for these four types → picks up the new data-side strings automatically.
+
+### Red flags triggered
+None. No Power-formula change, no BST/growth change, fusion base math zero-drift preserved (only the skill branch tapered), no Epic+ or roster change.
+
+**Approved by:** user 2026-09-01 via team lead — "fix all these things real quick, and balance them as well if you want to." Just-do-it mode; logged per workflow.
+
+---
+
 ## 2026-06-03 — Dewdrop evolution stat-block AUDIT (validate-only; user writes the entry)
 
 **Scope:** Audited a proposed new evolution for shipped species `dewdrop` (Water/Nature Common, BST 290, standalone). NO code edited this turn — user writes the final species block + the new MoveDefinition. This entry records the validated numbers + reasoning. Working name "Duodew" (final name TBD, user owns naming). Beastbook #26 (verified free — handmade roster occupies 20-25, nothing at 26+).

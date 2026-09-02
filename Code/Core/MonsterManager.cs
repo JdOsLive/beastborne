@@ -8783,6 +8783,13 @@ public sealed class MonsterManager : Component
 
 		OwnedMonsters.Add( monster );
 
+		// Now that the beast is on the roster, tamer-side bonuses (skills,
+		// relics, mastery) apply — re-bake. Every creation path (CreateMonster,
+		// offspring, trade, catch) recalculates BEFORE AddMonster, when
+		// IsPlayerOwned was still false. HP fraction preserved (new beasts are
+		// at full, so they stay at full).
+		RecalculateStatsPreservingHP( monster );
+
 		// Add journal entry for joining the team
 		var species = GetSpecies( monster.SpeciesId );
 		if ( monster.IsBred )
@@ -9117,14 +9124,23 @@ public sealed class MonsterManager : Component
 		// Apply nature modifiers
 		ApplyNatureModifiers( monster );
 
-		// Apply tamer skill bonuses
-		ApplyTamerBonuses( monster, species );
+		// Tamer-side bonuses (skill tree Might/Vitality, relics, species mastery)
+		// belong to the LOCAL tamer's beasts only. Before 2026-09-01 they were
+		// applied unconditionally, so every wild wave enemy and boss spawned via
+		// RecalculateStats inherited the player's Might/Vitality/relics — the
+		// skill tree was buffing both sides of every fight. Gate on roster
+		// ownership (Id match, so battle clones count).
+		if ( IsPlayerOwned( monster ) )
+		{
+			// Apply tamer skill bonuses
+			ApplyTamerBonuses( monster, species );
 
-		// Apply relic bonuses
-		ApplyRelicBonuses( monster );
+			// Apply relic bonuses
+			ApplyRelicBonuses( monster );
 
-		// Apply species mastery bonus (Beastbook-tracked, tamer-wide per species)
-		ApplySpeciesMasteryBonus( monster );
+			// Apply species mastery bonus (Beastbook-tracked, tamer-wide per species)
+			ApplySpeciesMasteryBonus( monster );
+		}
 
 		// Clamp CurrentHP to new MaxHP so a recalc that lowers MaxHP
 		// (e.g. after removing a stat-buff item) doesn't leave the beast
@@ -9227,6 +9243,61 @@ public sealed class MonsterManager : Component
 				break;
 			// NatureType.Balanced has no effect
 		}
+	}
+
+	/// <summary>
+	/// True when this beast is on the local tamer's roster (Id match, so battle
+	/// clones count). Wild wave enemies, bosses, online opponents and AI-mirror
+	/// teams all return false. THE gate for tamer-side stat bonuses.
+	/// </summary>
+	public bool IsPlayerOwned( Monster monster )
+	{
+		if ( monster == null || monster.IsBoss ) return false;
+		var id = monster.Id;
+		for ( int i = 0; i < OwnedMonsters.Count; i++ )
+		{
+			if ( OwnedMonsters[i] != null && OwnedMonsters[i].Id == id ) return true;
+		}
+		return false;
+	}
+
+	/// <summary>
+	/// RecalculateStats, but keeps the beast's HP FRACTION (a 50%-HP beast is
+	/// still at 50% after MaxHP moves). KO'd stays KO'd; a fresh beast with no
+	/// prior MaxHP comes out at full. Used whenever tamer-wide bonuses change
+	/// (skill invest/reset, roster add) rather than the raw clamp-only recalc
+	/// the level-up path uses.
+	/// </summary>
+	public void RecalculateStatsPreservingHP( Monster monster )
+	{
+		if ( monster == null ) return;
+		int oldMax = monster.MaxHP;
+		int oldCur = monster.CurrentHP;
+		RecalculateStats( monster );
+		if ( oldMax <= 0 ) { monster.CurrentHP = monster.MaxHP; return; }
+		if ( oldCur <= 0 ) { monster.CurrentHP = 0; return; }
+		float ratio = Math.Clamp( (float)oldCur / oldMax, 0f, 1f );
+		int restored = (int)Math.Round( ratio * monster.MaxHP );
+		monster.CurrentHP = Math.Max( 1, Math.Min( restored, monster.MaxHP ) );
+	}
+
+	/// <summary>
+	/// Re-bake every owned beast's stats (HP fraction preserved) and persist.
+	/// Called by TamerManager when skill ranks change so Might/Vitality land
+	/// immediately — before 2026-09-01 nothing recalculated until each beast's
+	/// next level-up. Returns the number of beasts touched.
+	/// </summary>
+	public int RecalculateAllOwnedStats()
+	{
+		int count = 0;
+		foreach ( var m in OwnedMonsters )
+		{
+			if ( m == null ) continue;
+			RecalculateStatsPreservingHP( m );
+			count++;
+		}
+		if ( count > 0 ) SaveMonsters();
+		return count;
 	}
 
 	private void ApplyTamerBonuses( Monster monster, MonsterSpecies species )

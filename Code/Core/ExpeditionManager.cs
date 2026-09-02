@@ -46,6 +46,16 @@ public sealed class ExpeditionManager : Component
 	public const int HARD_MODE_TOKEN_AWARD_MIN = 3;
 	public const int HARD_MODE_TOKEN_AWARD_MAX = 5;
 
+	// Wave size cap. The battle target UI is built for three (tg-slot-1..3,
+	// Slot1-3 keys) — do not raise without a UI pass.
+	//
+	// Scout (SkillEffectType.EncounterRateBonus, wired 2026-09-01): expeditions
+	// have no per-step encounter roll — waves are fixed (1 → 2 → 2 → 3 …). So
+	// "+N% encounter rate" = an N% chance, on each wild (non-boss) wave that is
+	// still under the cap, that one extra wild beast joins. More beasts met =
+	// more XP, more drops, more contract targets. Boss/gauntlet waves excluded.
+	public const int MAX_WAVE_ENEMIES = 3;
+
 	/// <summary>
 	/// Check if Hard Mode is unlocked for a specific expedition.
 	/// Hard Mode unlocks per-expedition after the player clears that expedition on Normal.
@@ -1269,7 +1279,7 @@ public sealed class ExpeditionManager : Component
 		var random = _sharedRandom;
 
 		// Determine number of enemies (1-3 based on wave)
-		int enemyCount = Math.Min( 3, 1 + (CurrentWave / 2) );
+		int enemyCount = Math.Min( MAX_WAVE_ENEMIES, 1 + (CurrentWave / 2) );
 
 		// Check if this is a boss gauntlet (every wave is a boss)
 		if ( CurrentExpedition.IsBossGauntlet && GauntletBossOrder != null )
@@ -1342,6 +1352,14 @@ public sealed class ExpeditionManager : Component
 			// Fallback if all species were bosses (shouldn't happen, but safety check)
 			if ( availableSpecies.Count == 0 )
 				availableSpecies = CurrentExpedition.PossibleSpecies;
+
+			// Scout skill — chance of one extra wild beast on under-cap waves.
+			float encounterBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.EncounterRateBonus ) ?? 0f;
+			if ( encounterBonus > 0f && enemyCount < MAX_WAVE_ENEMIES && random.NextDouble() < encounterBonus / 100f )
+			{
+				enemyCount++;
+				Log.Info( $"[Scout] +{encounterBonus}% encounter rate fired — wave {CurrentWave} holds {enemyCount} wild beasts" );
+			}
 
 			for ( int i = 0; i < enemyCount; i++ )
 			{
