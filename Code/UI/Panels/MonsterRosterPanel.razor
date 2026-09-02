@@ -2426,6 +2426,7 @@
 		lastInputDevice = dev;
 		if ( dev == InputDevice.Keyboard )
 		{
+			_kbTakeoverMousePos = Mouse.Position; // see OnRootMouseMove
 			hoveredMonsterId = null;
 			hoveredPickerItem = null;
 			pendingHoverSelect = null; // kb takes over — drop the hover dwell
@@ -2440,9 +2441,17 @@
 	// the menu confirms it doesn't swallow events needed elsewhere).
 	// Guarded: onmousemove fires every moving frame, so it must only
 	// re-render on an actual mode change.
+	// 2026-09-01 SYNTHETIC-MOVE GUARD (dev_bookfocus trace): the engine
+	// re-dispatches onmousemove when the panel re-renders/re-lays-out under
+	// a PARKED cursor — every keypress flipped kbd-mode → mouse-mode within
+	// the same frame, so the tile under the mouse gained and lost the kb
+	// slab on each key (the fusion-book "double flicker"). Mouse mode is
+	// only reclaimed by REAL travel (> 3px since the keyboard took over).
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
 	private void OnRootMouseMove()
 	{
 		if ( lastInputDevice == InputDevice.Mouse ) return;
+		if ( ( Mouse.Position - _kbTakeoverMousePos ).Length < 3f ) return;
 		SetInputDevice( InputDevice.Mouse );
 		StateHasChanged();
 	}
@@ -5446,6 +5455,44 @@
 	// must be mounted (open My Beasts → Fuse to actually see it).
 	private static MonsterRosterPanel _devFx;
 
+	// ── TEMP PROBE (2026-09-01): `dev_bookfocus` — logs, on CHANGE only, the
+	// hovered leaf path under the roster root, the device mode, the cursor
+	// zone/index and the hovered .pb-tile's class list. Chasing the fusion
+	// book tile hover flicker. Delete with the flicker.
+	private static float _bookDiagUntil = -1f;
+	private static string _bookDiagLast = "";
+	private static int _bookDiagFlips = 0;
+
+	[ConCmd( "dev_bookfocus" )]
+	public static void DevBookFocus( string arg = "on" )
+	{
+		_bookDiagUntil = arg == "off" ? -1f : Time.Now + 600f;
+		_bookDiagLast = ""; _bookDiagFlips = 0;
+		Log.Info( $"[bookfocus] {( _bookDiagUntil > 0 ? "armed 10 min" : "off" )}" );
+	}
+
+	private void DevBookDiagTick()
+	{
+		if ( _bookDiagUntil < 0f || Time.Now > _bookDiagUntil ) return;
+		var sb = new System.Text.StringBuilder();
+		Panel p = this; int guard = 0; Panel tile = null;
+		while ( p != null && guard++ < 40 )
+		{
+			Panel next = null;
+			foreach ( var c in p.Children ) { if ( c.HasHovered ) { next = c; break; } }
+			if ( next == null ) break;
+			if ( next.HasClass( "pb-tile" ) ) tile = next;
+			sb.Append( '>' ).Append( next.ElementName ).Append( '.' ).Append( string.Join( '.', next.Class ) );
+			p = next;
+		}
+		string keys = ( Input.Down( "Up" ) ? "W" : "" ) + ( Input.Down( "Down" ) ? "S" : "" ) + ( Input.Down( "Left" ) ? "A" : "" ) + ( Input.Down( "Right" ) ? "D" : "" );
+		string state = $"dev={lastInputDevice} keys={( keys == "" ? "-" : keys )} mouse={Mouse.Position.x:F0},{Mouse.Position.y:F0} zone={kbFocusZone} book={bookCursorIndex} hover={( sb.Length == 0 ? "(none)" : sb.ToString() )}"
+			+ $" tile={( tile == null ? "-" : string.Join( '.', tile.Class ) + $" hov={tile.HasHovered} pe={tile.ComputedStyle?.PointerEvents}" )}";
+		if ( state == _bookDiagLast ) return;
+		_bookDiagLast = state; _bookDiagFlips++;
+		Log.Info( $"[bookfocus #{_bookDiagFlips}] {state}" );
+	}
+
 	[ConCmd( "dev_fusefx" )]
 	public static void DevFuseFx( string phase = "play" )
 	{
@@ -6046,6 +6093,7 @@
 
 	public override void Tick()
 	{
+		DevBookDiagTick(); // TEMP dev_bookfocus probe (no-op unless armed)
 		base.Tick();
 		// Note: Input handling is now done via TickInput() called from GameHUD
 
