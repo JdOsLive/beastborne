@@ -45,7 +45,9 @@
 					   OnSortChanged=@OnSortChanged
 					   OnSortDirectionChanged=@OnSortDirectionChanged
 					   OnNameFilterChanged=@OnNameFilterChanged
-					   AvailableNames=@GetSpeciesNames() />
+					   AvailableNames=@GetSpeciesNames()
+					   KbMode=@IsKbMode
+					   OnKbSideStep=@OnFilterBarSideStep />
 			@* Input grammar (2026-07-12): R is the SHOWN cycle key — Z/X
 			   keep working silently (CyclePrev/CycleNext, reverse pair).
 			   Legend shows only the working headline key. LAYOUT 2026-09-01:
@@ -1162,6 +1164,27 @@
 		}
 	}
 
+	// LANE: input 2026-09-02 — A/D inside an open FilterBar menu: the menu has
+	// closed; hop the header cursor to the neighbour of the menu's trigger.
+	// Menubar convention: a neighbouring dropdown OPENS (element ↔ sort browse
+	// with A/D alone); the direction toggle just takes the cursor — never
+	// fired. At the row's end the cursor stays on the trigger, menu closed.
+	private void OnFilterBarSideStep( Panel trigger, int dir )
+	{
+		var hdr = CollectHeaderControls();
+		if ( hdr.Count == 0 ) return;
+		int from = trigger != null ? hdr.IndexOf( trigger ) : -1;
+		if ( from < 0 ) from = Math.Clamp( headerCursorIndex, 0, hdr.Count - 1 );
+		int to = Math.Clamp( from + dir, 0, hdr.Count - 1 );
+		kbFocusZone = "header";
+		headerCursorIndex = to;
+		SetInputDevice( "kb" );
+		if ( to != from && hdr[to].HasClass( "dropdown-btn" ) )
+			hdr[to].CreateEvent( "onclick" ); // opens it (its Toggle seeds the row cursor)
+		else
+			SoundManager.PlayHover();
+	}
+
 	private static Panel FindPanelByClass( Panel root, string className )
 	{
 		if ( root == null ) return null;
@@ -2071,7 +2094,9 @@
 		HandleKeyboardInput();
 		// Keep the keyboard-selected card on screen. Index-based (not the
 		// `.selected` CSS class) so it tracks the move THIS frame.
-		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) )
+		// LANE: input 2026-09-02 — not while a FilterBar MENU owns W/S.
+		if ( ( filterBar == null || !filterBar.IsAnyDropdownOpen )
+			&& ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) ) )
 			UiGridScroll.ScrollIndexIntoView( bbGridPanel, selectedIndex, "bb-card" );
 	}
 
@@ -2185,11 +2210,21 @@
 		if ( Input.Pressed( "CyclePrev" ) ) { CycleElementBack(); return; }
 		if ( Input.Pressed( "CycleNext" ) ) { CycleElementForward(); return; }
 
+		// ---- OPEN FILTER MENU owns the keys (LANE: input 2026-09-02; user:
+		// "when I open the tabs at the top I can't scroll through them with
+		// W and S"). Before the header branch and regardless of zone — a
+		// mouse-opened menu with the cursor in the grid still closes on Q
+		// (FilterBar claims PanelHandledBackKey). W/S rows, Space/E/Enter
+		// pick, A/D close + hop the header cursor (OnFilterBarSideStep).
+		// R/Z/X (above) fall through and close the menu themselves.
+		if ( filterBar != null && filterBar.IsAnyDropdownOpen && filterBar.HandleKeyboard() )
+			return;
+
 		// ---- HEADER zone (LANE: input 2026-09-01, audit N2) --------------
 		// The one ring parks on the FilterBar controls. A/D across, Space/E
-		// = exactly what a click does (dropdowns open — their MENUS are
-		// mouse territory once open, click-to-open convention), S back down
-		// to the grid, W escalates to the HUD tabs, Q/Tab back to the grid.
+		// = exactly what a click does (dropdowns open; once a MENU is open
+		// the FilterBar owns the keys — block above), S back down to the
+		// grid, W escalates to the HUD tabs, Q/Tab back to the grid.
 		// Handled before the empty-list check so the filter is reachable
 		// when the current filter has no species.
 		if ( kbFocusZone == "header" )
@@ -2362,6 +2397,7 @@
 		var elementStrs = new string[] { "all", "neutral", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit" };
 		int idx = Array.IndexOf( elementStrs, currentElementStr );
 		idx = (idx - 1 + elementStrs.Length) % elementStrs.Length;
+		filterBar?.CloseAllDropdowns(); // LANE: input 2026-09-02 — a kb cycle never leaves a stale menu open
 		OnElementChanged( elementStrs[idx] );
 		SoundManager.PlayClick();
 	}
@@ -2371,6 +2407,7 @@
 		var elementStrs = new string[] { "all", "neutral", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit" };
 		int idx = Array.IndexOf( elementStrs, currentElementStr );
 		idx = (idx + 1) % elementStrs.Length;
+		filterBar?.CloseAllDropdowns(); // LANE: input 2026-09-02 — a kb cycle never leaves a stale menu open
 		OnElementChanged( elementStrs[idx] );
 		SoundManager.PlayClick();
 	}

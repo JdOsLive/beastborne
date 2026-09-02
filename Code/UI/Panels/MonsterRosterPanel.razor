@@ -126,7 +126,9 @@
 						   OnRarityChanged=@OnRarityChanged
 						   OnNameFilterChanged=@OnNameFilterChanged
 						   OnSortDirectionChanged=@OnSortDirectionChanged
-						   AvailableNames=@GetMonsterNames() />
+						   AvailableNames=@GetMonsterNames()
+						   KbMode=@IsKbMode
+						   OnKbSideStep=@OnFilterBarSideStep />
 				@* LANE: input 2026-09-02 — R is the SHOWN cycle key (element
 				   filter forward); Z/X cycle the sort silently (DOC-5 #1).
 				   Beastbook's .bh-filter-hint recipe. Unmounted with the
@@ -151,7 +153,9 @@
 						   OnRarityChanged=@OnBreedingRarityChanged
 						   OnNameFilterChanged=@OnBreedingNameFilterChanged
 						   OnSortDirectionChanged=@OnBreedingSortDirectionChanged
-						   AvailableNames=@GetBreedingMonsterNames() />
+						   AvailableNames=@GetBreedingMonsterNames()
+						   KbMode=@IsKbMode
+						   OnKbSideStep=@OnFilterBarSideStep />
 			}
 			@if (!isMultiSelectMode)
 			{
@@ -2356,6 +2360,39 @@
 			}
 			CollectHeaderControlsRec( c, outList );
 		}
+	}
+
+	// LANE: input 2026-09-02 — the FilterBar whose dropdown MENU is open, or
+	// null. The collection bar and the fusion bar are separate mounts (the
+	// other is unmounted → its @ref may be a deleted panel; FilterBar also
+	// resets its open flags in OnDeleted, so a stale ref reads closed).
+	private FilterBar OpenFilterBar()
+	{
+		var fb = isFusionMode ? breedingFilterBar : filterBar;
+		if (fb == null || fb.Parent == null || !fb.IsAnyDropdownOpen) return null;
+		return fb;
+	}
+
+	// A/D inside an open FilterBar menu: the menu has closed; hop the header
+	// cursor to the neighbour of the menu's trigger. Menubar convention: if
+	// the neighbour is another dropdown it OPENS (so element → rarity → sort
+	// browse with A/D alone); a non-menu slab (direction toggle, FUSE/MULTI)
+	// just takes the cursor — never fired. At the row's end the cursor stays
+	// on the trigger with the menu closed.
+	private void OnFilterBarSideStep(Panel trigger, int dir)
+	{
+		var hdr = CollectHeaderControls();
+		if (hdr.Count == 0) return;
+		int from = trigger != null ? hdr.IndexOf(trigger) : -1;
+		if (from < 0) from = Math.Clamp(headerCursorIndex, 0, hdr.Count - 1);
+		int to = Math.Clamp(from + dir, 0, hdr.Count - 1);
+		kbFocusZone = "header";
+		headerCursorIndex = to;
+		SetInputDevice(InputDevice.Keyboard);
+		if (to != from && hdr[to].HasClass("dropdown-btn"))
+			hdr[to].CreateEvent("onclick"); // opens it (its Toggle seeds the row cursor)
+		else
+			SoundManager.PlayHover();
 	}
 
 	private void FocusHeaderZone()
@@ -6442,7 +6479,9 @@
 		// Null target (card already visible) cancels any active glide.
 		// LANE: input 2026-09-01 — only while the GRID owns the cursor; an
 		// arrow in the book/altar/header zone used to glide the grid too.
-		if ( kbFocusZone == "grid"
+		// LANE: input 2026-09-02 — and not while a FilterBar MENU owns W/S
+		// (a mouse-opened menu with the cursor parked in the grid).
+		if ( kbFocusZone == "grid" && OpenFilterBar() == null
 			&& ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) ) )
 		{
 			var t = UiGridScroll.ComputeIndexOffset( rosterGridRef, selectedMonsterIndex, "monster-card-wrapper" );
@@ -6646,13 +6685,27 @@
 			if (Input.Pressed("CycleNext")) { CycleSortMode(1); return; }
 		}
 
+		// ── OPEN FILTER MENU owns the keys (LANE: input 2026-09-02; user:
+		// "when I open the tabs at the top I can't scroll through them with
+		// W and S"). Checked BEFORE the header branch and regardless of the
+		// zone — a menu opened by mouse with the cursor parked in the grid
+		// must still close on Q (FilterBar claims PanelHandledBackKey). W/S
+		// walk the rows, Space/E/Enter pick, A/D close + hop the header
+		// cursor via OnFilterBarSideStep. Keys the menu does not own (R,
+		// Z/X — handled above, they close the menu themselves) fall through.
+		{
+			var openFb = OpenFilterBar();
+			if (openFb != null && openFb.HandleKeyboard()) return;
+		}
+
 		// ── HEADER WALKUP zone (2026-07-12, user: "we should also have
 		// that walkup in my beasts for the sorting stuff at top") — W from
 		// the grid's top row parks the ring on the header controls
 		// (FilterBar dropdowns + sort direction + the FUSE/CANCEL/MULTI
-		// slabs; measured by class at the roster layer — no FilterBar
-		// changes). A/D across, Space/E clicks the control, S back down to
-		// the grid, W escalates to the HUD tabs, Q backs to the grid.
+		// slabs; measured by class at the roster layer). A/D across,
+		// Space/E clicks the control, S back down to the grid, W escalates
+		// to the HUD tabs, Q backs to the grid. Once a dropdown MENU is open
+		// the FilterBar owns the keys (block above) until it closes.
 		// Works in BOTH normal and fusion mode (fusion's CANCEL slab is in
 		// the same toolbar walk).
 		if (kbFocusZone == "header")
@@ -6686,8 +6739,9 @@
 			else if (UiInput.ConfirmPressed())
 			{
 				// Activate = exactly what a mouse click does (dropdowns
-				// open, slabs toggle). Dropdown MENUS are mouse territory
-				// once open (click-to-open convention).
+				// open, slabs toggle). An opened dropdown MENU seeds its row
+				// cursor on the current choice and takes W/S/Space/Q/A/D
+				// from the next tick (FilterBar.HandleKeyboard, above).
 				hdr[headerCursorIndex].CreateEvent("onclick");
 				SoundManager.PlayClick();
 			}
