@@ -5,778 +5,565 @@
 @using Beastborne.Data;
 @using Beastborne.Systems;
 @using Beastborne.UI;
-@using Beastborne.UI.Components;
 @using Beastborne.UI.Primitives;
+@using Beastborne.UI.Components;
+@using System.Linq;
 @inherits Panel
 
+@*
+	SHOP — the goods grid + one display case (2026-09-02 pipeline rebuild,
+	LAYOUT lane).
+
+	Brief: .claude/design-system/components/shop-redesign-brief.html +
+	shop-mock-page.html (user-approved 2026-09-02, the mock's default
+	toggles are the rulings): categories NONE (kicker rows are the
+	sections) · goods are the Bag's .sat-card · qty = a bare − + stepper ·
+	discount BAKED into every price (struck list price ONLY on the Daily
+	Spotlight) · the case opens on the FIRST AFFORDABLE good · accent A =
+	AMBER chrome with BUY in the primary gold · no sell flow.
+
+	CUT (22 + 1 merge): active-boosts rail + nudges · category dropdown +
+	sort · signboards, < > caps, single blade · MERCHANT STALL / Gold
+	Market / Boss Exchange copy · plinths + hanging price gems · triple
+	active signal (timer stays) · "More stock soon" · section counts · met
+	level chip · select pulse · scroll fades · stagger classes · empty
+	cases · underplate · skewed price seam · dust · hook line · SAVE badge
+	· LV meta chip · unit/units · MAX · the 7-signal purchase.
+	ADDED (3): Contract Ink balance on the SUPPLIES row · owned count on
+	gold consumables · EFFECTIVE price on every card (the list-price bug).
+
+	ZONE MAP (1920×1080, PADDING-BOX math — declared size includes
+	padding, borders add on top):
+	  header  1920×88 + 2px strip = 90   (pad 16/32/12/28; kicker 12/14
+	          + 2 + title 38/44 = 60 tall; the hub .oh-header recipe)
+	  body    pad 20/40/20/40; GameHUD keeps a 56px ::after reserve on
+	          .shop-panel-content (the PawPad launcher chip) → the real
+	          column is 1080 − 90 − 20 − 20 − 56 = 894 (the brief's 930
+	          assumed no reserve — same deviation the Skills build took)
+	  goods   1310 = grid 1298 (8 × 150 + 7 × 14) + 12 scrollbar lane
+	  gap     48
+	  case    482 × 894 r22, pad 24 → 434 inner
+	  row     40 + 1310 + 48 + 482 + 40 = 1920 ✓
+	  column  90 + 20 + 894 + 20 + 56 = 1080 ✓
+	Grid rhythm (flat wrap list, kicker rows + cards as DIRECT children):
+	  grid row-gap 8 · card 168 + margin-bottom 8 → card→card 16 ·
+	  kicker 24 + margin-top 8 → card→kicker 24 · kicker→card 8.
+	  GOLD: 4 kickers + 6 card rows = 96 + 24 + 1056 + 72 = 1248 (scrolls
+	  354) · BOSS: 4 kickers + 4 card rows = 96 + 24 + 704 + 56 = 880 ✓ fits.
+	Case interior (434 wide): art 300 · +16 name 34 · +8 desc 44 · +12
+	  chips 26 · +16 qty 44 · +16 price 34 · +4 deficit 16 · +12 BUY 56
+	  = 638; the rest is the ghost glyph's ground.
+
+	ONE-CURSOR MODEL: the living ring wraps the CASE item's card (the
+	selection or the first-affordable default) — no per-card ring.
+
+	ENGINE LAWS honored: no AcceptsFocus; pointer-events all/none via a
+	CLASS on every child of a pressable; explicit boxes on every absolute;
+	line-height px; bare text in spans; explicit width + flex pin on every
+	card; no width:100% inside padded parents; wrap grid pins width AND
+	max-width; no transform/box-shadow on scroll-grid cards.
+*@
+
 <root class="shop-panel-content">
-	<!-- Living background: the shop glyph drifting at the house angle
-	     (BbIconScroll supplies the opaque dark base — root paints none). -->
+	@* Living background: the shop glyph drifting at the house angle
+	   (BbIconScroll supplies the opaque dark base — root paints none). *@
 	<BbIconScroll Icon="shop" />
 
-	<!-- ═══ SIGNBOARD HEADER — merchant-stall identity band. Kicker +
-	     huge italic title (swaps per store), skewed gold seam, the two
-	     big skewed store signboards, filters, and the pouch readout.
-	     Opaque bg + the ONE panel-signature strip (gold) so scroll-grid
-	     leaks below never show through. ═══ -->
-	<div class="shop-header">
+	@* ====================== HEADER — the hub .oh-header recipe ====================== *@
+	<div class="sh-header">
+		@* LANE: color — the brief's accent A wants wave-amber-a/b.png (make-waves.ps1
+		   bake, #e0a030). No amber bake exists and assets are outside this lane's
+		   files, so the shipped GOLD bake mounts here; swap the Accent once baked. *@
+		<BbHeaderWaves Accent=@("gold") />
 		<div class="sh-identity">
-			<span class="sh-kicker">MERCHANT STALL</span>
-			<span class="sh-title">@GetStoreTitle()</span>
+			<span class="sh-kicker">SHOP</span>
+			<div class="sh-title-row">
+				<span class="sh-title">@GetStoreTitle()</span>
+				<div class="sh-seam"></div>
+				<div class="sh-seam dim"></div>
+			</div>
 		</div>
-		<div class="sh-seam"></div>
-		<div class="shop-type-switch">
-			<div class="sh-store-chip @(shopView == "gold" ? "active" : "")"
-				 onmouseover=@(() => { if (hoveredShopTab != "gold") { hoveredShopTab = "gold"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredShopTab = null)
+		@* Right slot (.oh-toolbar position): two store chips + the balance chip.
+		   LANE: input — A/D swap stores while the ring sits on the chips; W from
+		   the top card row climbs here. The `,` `.` handlers in TickInput are the
+		   shipped fallback. Chips are ROUNDED slabs (actions never skew). *@
+		<div class="sh-toolbar">
+			<div class="@StoreChipClass("gold")"
+				 onmouseover=@(() => OnStoreChipHover("gold"))
+				 onmouseout=@ClearStoreChipHover
 				 onclick=@(() => { SoundManager.PlayClick(); SwitchShopView("gold"); })>
-				<div class="sh-chip-inner">
-					<img class="sh-chip-icon" src="ui/icons/currency/money.svg" />
-					<span class="sh-chip-label">@L("ui.shop.gold_store")</span>
-				</div>
+				<img class="sh-store-glyph" src="ui/icons/currency/money.svg" />
+				<span class="sh-store-label">GOLD</span>
 			</div>
-			<div class="sh-store-chip @(shopView == "boss" ? "active" : "")"
-				 onmouseover=@(() => { if (hoveredShopTab != "boss") { hoveredShopTab = "boss"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredShopTab = null)
+			<div class="@StoreChipClass("boss")"
+				 onmouseover=@(() => OnStoreChipHover("boss"))
+				 onmouseout=@ClearStoreChipHover
 				 onclick=@(() => { SoundManager.PlayClick(); SwitchShopView("boss"); })>
-				<div class="sh-chip-inner">
-					<img class="sh-chip-icon" src="ui/icons/currency/token.svg" />
-					<span class="sh-chip-label">@L("ui.shop.boss_store")</span>
-				</div>
+				<img class="sh-store-glyph" src="ui/icons/currency/token.svg" />
+				<span class="sh-store-label">BOSS TOKENS</span>
 			</div>
-			<div class="sh-kb-hint">
-				<div class="sh-cap"><span>&lt;</span></div>
-				<div class="sh-cap"><span>&gt;</span></div>
+			@* Balance — coin glyph for GOLD, token glyph for BOSS TOKENS.
+			   LANE: motion — `.flash` (IsGoldFlash / IsTokenFlash) is the ONE
+			   balance pulse; no rules yet. *@
+			<div class="@BalanceClass()">
+				<img class="sh-balance-glyph" src="@BalanceGlyph()" />
+				<span class="sh-balance-value">@BalanceText()</span>
 			</div>
 		</div>
-		<div class="filter-controls">
-			@if (shopView == "gold")
-			{
-				<div class="dropdown-container">
-					<button class="dropdown-btn shop-category-btn @(currentCategory != "all" ? "active" : "")" onclick=@ToggleCategoryDropdown onmouseover=@OnCategoryDropdownHover>
-						<iconify class="dropdown-icon" icon="@GetCategoryIcon(currentCategory)" Size=@(14) Color="#ffce3a" />
-						<span class="dropdown-label">@GetCategoryLabel(currentCategory)</span>
-						<iconify class="dropdown-arrow @(categoryDropdownOpen ? "open" : "")" icon="lucide:chevron-down" Size=@(12) Color="rgba(255,255,255,0.5)" />
-					</button>
-					@if (categoryDropdownOpen)
-					{
-						<div class="dropdown-menu">
-							<div class="dropdown-item @(currentCategory == "all" ? "active" : "")" onclick=@(() => SelectCategory("all")) onmouseover=@(() => OnDropdownItemHover("gold-all"))>
-								<iconify class="dd-icon" icon="lucide:layers" Size=@(13) Color="rgba(255,255,255,0.7)" />
-								<span class="dd-label">All Items</span>
-							</div>
-							<div class="dropdown-item @(currentCategory == "supplies" ? "active" : "")" onclick=@(() => SelectCategory("supplies")) onmouseover=@(() => OnDropdownItemHover("gold-supplies"))>
-								<iconify class="dd-icon" icon="lucide:feather" Size=@(13) Color="rgba(255,255,255,0.7)" />
-								<span class="dd-label">Supplies</span>
-							</div>
-							<div class="dropdown-item @(currentCategory == "boosts" ? "active" : "")" onclick=@(() => SelectCategory("boosts")) onmouseover=@(() => OnDropdownItemHover("gold-boosts"))>
-								<iconify class="dd-icon" icon="lucide:zap" Size=@(13) Color="rgba(255,255,255,0.7)" />
-								<span class="dd-label">Boosts</span>
-							</div>
-							<div class="dropdown-item @(currentCategory == "storage" ? "active" : "")" onclick=@(() => SelectCategory("storage")) onmouseover=@(() => OnDropdownItemHover("gold-storage"))>
-								<iconify class="dd-icon" icon="lucide:package" Size=@(13) Color="rgba(255,255,255,0.7)" />
-								<span class="dd-label">Storage</span>
-							</div>
-						</div>
-					}
-				</div>
-				<button class="sort-btn @(goldSort != "default" ? "active" : "")" onclick=@CycleGoldSort onmouseover=@OnSortHover>
-					<iconify class="sort-icon" icon="@GetSortIcon(goldSort)" Size=@(13) Color="#ffce3a" />
-					<span class="sort-label">@GetSortLabel(goldSort)</span>
-				</button>
-			}
-			@if (shopView == "boss")
-			{
-				<button class="sort-btn @(bossSort != "default" ? "active" : "")" onclick=@CycleBossSort onmouseover=@OnSortHover>
-					<iconify class="sort-icon" icon="@GetSortIcon(bossSort)" Size=@(13) Color="#ffce3a" />
-					<span class="sort-label">@GetSortLabel(bossSort)</span>
-				</button>
-			}
-		</div>
-		@if (shopView == "gold")
-		{
-			<div class="currency-display @(IsGoldFlash ? "currency-flash" : "")">
-				<div class="cur-gem gold"><img class="cur-gem-icon" src="ui/icons/currency/money.svg" /></div>
-				<span class="cur-value gold-value">@GetGold().ToString("N0")</span>
-			</div>
-		}
-		@if (shopView == "boss")
-		{
-			<div class="currency-display boss-currency @(IsTokenFlash ? "currency-flash" : "")">
-				<div class="cur-gem tokens"><img class="cur-gem-icon" src="ui/icons/currency/token.svg" /></div>
-				<span class="cur-value token-value">@GetBossTokens().ToString("N0")</span>
-			</div>
-		}
 	</div>
 
-	@if (shopView == "gold")
-	{
-		@{
-			var allFiltered = GetFilteredItems();
-			var caseItem = GetCaseItem(allFiltered);
-			var goldSections = GroupGoldSections(allFiltered, null);
-		}
-		<div class="shop-layout layout-@swapVersion dir-@(string.IsNullOrEmpty(viewSwitchDir) ? "none" : viewSwitchDir)">
-			<!-- ═══ THE COUNTER — goods stand on shelf plinths in rows;
-			     price gems hang under them as tags. Flat direct children
-			     of the scroll (engine law), section shelf-tags force row
-			     breaks with flex-basis 100%. ═══ -->
-			<div class="shop-left">
-				<div class="active-boosts-rail">
-					@{ var actives = GetAllActiveBoostDisplay(); }
-					@if (actives.Count == 0)
-					{
-						<div class="active-boosts-empty">
-							<iconify icon="lucide:zap-off" Size=@(12) Color="rgba(255,255,255,0.3)" />
-							<span class="active-boosts-empty-text">No active boosts</span>
-							<div class="active-boosts-nudge">
-								<iconify icon="lucide:arrow-down" Size=@(11) Color="rgba(255, 206, 58, 0.7)" />
-								<span>Grab one below to stack XP &amp; gold</span>
-							</div>
-						</div>
-					}
-					else
-					{
-						<span class="active-boosts-label">ACTIVE</span>
-						@foreach (var b in actives)
-						{
-							<div class="active-boost-pill @(b.IsServer ? "server" : "personal") @(b.TimeRemaining.TotalSeconds < 60 ? "expiring" : "")">
-								<iconify class="ab-icon" icon="@GetBoostIconKey(b.Type)" Size=@(12) Color="@GetBoostIconColor(b.Type)" />
-								<span class="ab-label">@GetBoostShortLabel(b.Type)</span>
-								<span class="ab-sep">·</span>
-								<span class="ab-time">@FormatBoostTime(b.TimeRemaining)</span>
-								@if (b.IsServer)
-								{
-									<span class="ab-server-tag">SERVER</span>
-								}
-							</div>
-						}
-					}
-				</div>
-				<div class="scroll-fade scroll-fade-bottom"></div>
-				<div @ref="shopGridRef" class="items-scroll swap-@swapVersion">
-					@{ int sectionIdx = 0; }
-					@foreach (var section in goldSections)
-					{
-						<div class="shop-section-title stagger-@(Math.Min(sectionIdx, 4))"><span class="section-accent"></span><span class="section-label">@section.Label</span><span class="section-count">@section.Items.Count</span><span class="section-spacer"></span></div>
-						@foreach (var item in section.Items)
-						{
-							bool isActiveBoost = IsBoostItem(item) && (ShopManager.Instance?.IsBoostActive(item.Type) ?? false);
+	@* ====================== BODY — goods grid + the case ====================== *@
+	<div class="sh-body">
 
-							<div class="shop-item @GetItemTypeClass(item.Type) @(CanAfford(item) ? "" : "cant-afford") @(selectedItem?.Id == item.Id ? "selected" : "") @(isActiveBoost ? "boost-active" : "") @(purchasedItemId == item.Id ? "just-purchased" : "")"
+		@* ---- GOODS — 1310: the 1298 grid + a 12px overlay-scrollbar lane ---- *@
+		<div class="sh-goods">
+			<div @ref="shopGridRef" class="sh-grid">
+				@if (shopView == "gold")
+				{
+					var goldItems = GetGoldItems();
+					var goldSections = GroupGoldSections(goldItems);
+					var caseGold = GetCaseGoldItem(goldItems);
+
+					foreach (var section in goldSections)
+					{
+						<div class="sh-kicker-row">
+							<div class="sh-kicker-chip">
+								<div class="sh-kicker-chip-inner"><span class="sh-kicker-text">@section.Label</span></div>
+							</div>
+							<div class="sh-kicker-line"></div>
+							@if (section.Key == "supplies")
+							{
+								@* ADD 1 — the Contract Ink balance every ink pack is bought against. *@
+								<div class="sh-ink">
+									<img class="sh-ink-glyph" src="ui/icons/currency/ink.svg" />
+									<span class="sh-ink-label">CONTRACT INK</span>
+									<span class="sh-ink-value">@GetInk().ToString("N0")</span>
+								</div>
+							}
+						</div>
+
+						foreach (var item in section.Items)
+						{
+							bool running = IsBoostRunning(item);
+							bool locked = GetLevel() < item.RequiredLevel;
+							int owned = GetOwned(item);
+							bool isCase = caseGold != null && caseGold.Id == item.Id;
+							var cardClass = "shop-card" + (isCase ? " selected" : "") + (CanAfford(item) ? "" : " short");
+							var art = ArtPx(item.IconPath, 84);
+
+							<div class="@cardClass"
 								 onclick=@(() => SelectItem(item))
 								 onmouseover=@(() => OnShopItemHover(item.Id))>
-								<div class="good-ring"></div>
-								@if (justSelectedItemId == item.Id)
-								{
-									<div class="select-pulse pulse-@selectPulseVersion"></div>
-								}
-								@if (purchasedItemId == item.Id)
-								{
-									<div class="purchase-confirm"><iconify icon="lucide:check" Size=@(28) Color="#ffffff" /></div>
-								}
-								<div class="good-art">
-									<img class="good-icon" src=@IconSrc(item) />
-									@if (isActiveBoost)
-									{
-										<div class="good-active-check"><iconify icon="lucide:check" Size=@(28) Color="#2a1605" /></div>
-									}
-									@if (item.Quantity > 1)
-									{
-										<span class="good-qty">x@(item.Quantity)</span>
-									}
-									@if (item.BoostDurationMinutes > 0 && !isActiveBoost)
-									{
-										<span class="good-duration">@GetShortDuration(item.BoostDurationMinutes)</span>
-									}
+								<div class="sat-card-art">
+									<img class="sat-card-icon" src=@IconSrc(item) style="width: @(art.w)px; height: @(art.h)px;" />
 								</div>
-								<div class="good-shelf"></div>
-								<div class="good-name"><span>@GetBaseName(item.Name)</span></div>
-								<div class="good-tag-zone">
-									@if (isActiveBoost)
-									{
-										<div class="good-timer">
-											<iconify icon="lucide:clock" Size=@(11) Color="#ffce3a" />
-											<span>@GetActiveBoostTimeText(item.Type)</span>
-										</div>
-									}
-									else
-									{
-										<div class="good-tag @(CanAfford(item) ? "" : "short")">
-											<div class="price-gem gold"><img class="price-gem-icon" src="ui/icons/currency/money.svg" /></div>
-											<span class="good-tag-val">@item.Price.ToString("N0")</span>
-										</div>
-									}
-								</div>
-								@if (isActiveBoost)
+								<div class="sat-card-foot"><span class="sat-card-name">@GetBaseName(item.Name)</span></div>
+								@if (running)
 								{
-									<div class="good-active-tag"><span>ACTIVE</span></div>
-								}
-								@if (ShouldShowLevelChip(item))
-								{
-									<div class="good-lock @(GetLevel() >= item.RequiredLevel ? "met" : "locked")">
-										@if (GetLevel() >= item.RequiredLevel)
-										{
-											<iconify icon="lucide:check" Size=@(9) Color="#86efac" />
-										}
-										else
-										{
-											<iconify icon="lucide:lock" Size=@(9) Color="#fca5a5" />
-										}
-										<span>LV @item.RequiredLevel</span>
+									@* ACTIVE boost = the timer replaces the price. ONE signal. *@
+									<div class="shop-card-price timer">
+										<iconify class="shop-card-glyph" icon="lucide:clock" Size=@(12) Color="#e0a030" />
+										<span class="shop-card-time">@GetBoostTimeText(item)</span>
 									</div>
-								}
-							</div>
-						}
-						@{ sectionIdx++; }
-					}
-
-					@if (allFiltered.Count == 0)
-					{
-						<EmptyState Icon="lucide:search-x"
-									Title="Nothing here right now"
-									Body="Try a different category"
-									Size="full" />
-					}
-					else
-					{
-						<div class="shop-item shop-item-coming-soon">
-							<iconify icon="lucide:plus" Size=@(22) Color="rgba(255, 206, 58, 0.3)" />
-							<span class="coming-soon-label">More stock soon</span>
-						</div>
-					}
-				</div>
-			</div>
-
-			<!-- ═══ THE DISPLAY CASE — gold-trimmed graphite showcase (the
-			     PawPad hardware treatment). Default content: the Daily
-			     Spotlight (the merchant's pick); selecting any good places
-			     it under the glass. The buy CTA lives here, always in the
-			     same spot. ═══ -->
-			<div class="shop-right">
-				@if (caseItem != null)
-				{
-					@{
-						bool caseIsSpotlight = ShopManager.Instance?.IsSpotlight(caseItem) == true;
-						bool caseOnSale = caseIsSpotlight
-							&& caseItem.Currency == CurrencyType.Gold
-							&& (ShopManager.Instance?.SpotlightDiscountPercent ?? 0) > 0;
-						int casePct = caseOnSale ? (int)(ShopManager.Instance?.SpotlightDiscountPercent ?? 0) : 0;
-						// Effective price routes through ShopManager.GetDiscountedPrice —
-						// skill discounts + spotlight stack; purchase charges this amount.
-						int caseUnitPrice = GetEffectivePrice(caseItem);
-						bool goldMulti = SupportsMultiBuy(caseItem);
-						int goldQty = goldMulti && selectedItem != null ? Math.Max(1, purchaseQty) : 1;
-						int casePrice = caseUnitPrice * goldQty;
-						int caseListTotal = caseItem.Price * goldQty;
-						int caseDeficit = casePrice - GetGold();
-						int goldMaxQty = GetMaxBuyQty(caseItem);
-						var caseSave = caseOnSale ? null : GetFeaturedSavings(caseItem);
-						var caseHook = GetFeaturedHook(caseItem);
-						var caseSuffix = GetNameSuffix(caseItem.Name);
-						bool caseHasBoostMeta = caseItem.BoostDurationMinutes > 0;
-						bool caseHasLevelReq = caseItem.RequiredLevel > 1;
-					}
-					<div class="display-case detail-@detailVersion @(purchasedItemId == caseItem.Id ? "just-purchased" : "")">
-						<div class="case-underplate"></div>
-						<div class="case-body">
-							@if (purchasedItemId == caseItem.Id)
-							{
-								<div class="purchase-confirm case-confirm"><iconify icon="lucide:check" Size=@(36) Color="#ffffff" /></div>
-							}
-							<div class="case-stamp-slot">
-								@if (caseIsSpotlight)
-								{
-									<BbStamp Text="DAILY SPOTLIGHT" Tone="gold" Tilt=@(-3) />
 								}
 								else
 								{
-									<BbStamp Text="@GetItemCategory(caseItem.Type)" Tone="neutral" Tilt=@(-3) />
-								}
-							</div>
-							@if (caseOnSale)
-							{
-								<div class="case-sale-slot">
-									<BbStamp Text="@GetSaleStampText(casePct)" Tone="violet" Tilt=@(3) />
-								</div>
-							}
-							<div class="case-glass" onclick=@EnsureCaseSelected>
-								<div class="case-dust">
-									<div class="fd fd0"></div>
-									<div class="fd fd1"></div>
-									<div class="fd fd2"></div>
-								</div>
-								<img class="case-icon" src=@IconSrc(caseItem) />
-								@if (caseItem.Quantity > 1)
-								{
-									<span class="case-qty">x@(caseItem.Quantity)</span>
-								}
-							</div>
-							<div class="case-info">
-								<div class="case-name"><span>@GetBaseName(caseItem.Name)</span></div>
-								@if (caseSuffix != null)
-								{
-									<div class="case-name-sub">@caseSuffix</div>
-								}
-								<div class="case-desc">@caseItem.Description</div>
-								@if (caseHook != null)
-								{
-									<div class="case-hook">
-										<iconify icon="lucide:sparkles" Size=@(11) Color="#ffce3a" />
-										<span>@caseHook</span>
+									@* ADD 3 — EFFECTIVE price (GetDiscountedPrice), never item.Price. *@
+									<div class="shop-card-price">
+										<img class="shop-card-coin" src="ui/icons/currency/money.svg" />
+										<span class="shop-card-value">@GetEffectivePrice(item).ToString("N0")</span>
 									</div>
 								}
-								@if (caseSave != null)
+								@if (locked)
 								{
-									<div class="case-save"><span>@caseSave</span></div>
-								}
-								@if (caseHasBoostMeta || caseHasLevelReq || caseItem.Id.StartsWith("server_"))
-								{
-									<div class="case-meta-row">
-										@if (caseHasBoostMeta)
-										{
-											<div class="case-meta-chip">
-												<iconify icon="lucide:clock" Size=@(11) Color="#ffce3a" />
-												<span>@GetDurationText(caseItem.BoostDurationMinutes)</span>
-											</div>
-											<div class="case-meta-chip">
-												<iconify icon="lucide:trending-up" Size=@(11) Color="#ffce3a" />
-												<span>@GetBoostLabel(caseItem)</span>
-											</div>
-										}
-										@if (caseItem.Id.StartsWith("server_"))
-										{
-											<div class="case-meta-chip server"><span>SERVER-WIDE</span></div>
-										}
-										@if (caseHasLevelReq)
-										{
-											<div class="case-meta-chip @(GetLevel() >= caseItem.RequiredLevel ? "met" : "unmet")">
-												@if (GetLevel() >= caseItem.RequiredLevel)
-												{
-													<iconify icon="lucide:check" Size=@(11) Color="#86efac" />
-												}
-												else
-												{
-													<iconify icon="lucide:lock" Size=@(11) Color="#fca5a5" />
-												}
-												<span>LV @caseItem.RequiredLevel</span>
-											</div>
-										}
+									<div class="shop-card-lock">
+										<iconify class="shop-card-lock-glyph" icon="lucide:lock" Size=@(9) Color="#fca5a5" />
+										<span class="shop-card-lock-text">@("LV " + item.RequiredLevel)</span>
 									</div>
 								}
-							</div>
-							<div class="case-till">
-								@if (goldMulti)
+								@if (HasBundleChip(item))
 								{
-									<div class="qty-picker">
-										<button class="qty-btn @(goldQty <= 1 ? "disabled" : "")" onclick=@(() => CaseChangeQty(-1)) onmouseover=@OnQtyHover>
-											<iconify icon="lucide:minus" Size=@(14) Color="#ffce3a" />
-										</button>
-										<div class="qty-display">
-											<span class="qty-val">@goldQty</span>
-											<span class="qty-unit">@(goldQty == 1 ? "unit" : "units")</span>
-										</div>
-										<button class="qty-btn @(selectedItem != null && purchaseQty >= goldMaxQty ? "disabled" : "")" onclick=@(() => CaseChangeQty(1)) onmouseover=@OnQtyHover>
-											<iconify icon="lucide:plus" Size=@(14) Color="#ffce3a" />
-										</button>
-										<button class="qty-max @(selectedItem != null && purchaseQty >= goldMaxQty ? "active" : "")" onclick=@CaseSetQtyMax onmouseover=@OnQtyHover>
-											<span>MAX</span>
-										</button>
-									</div>
+									<div class="sat-qty"><span>@BundleChipText(item)</span></div>
 								}
-								<div class="price-seam @(GetGold() >= casePrice ? "" : "short")">
-									<div class="price-seam-inner">
-										<div class="price-gem gold"><img class="price-gem-icon" src="ui/icons/currency/money.svg" /></div>
-										@if (caseOnSale)
-										{
-											<div class="price-struck-wrap">
-												<span class="price-struck">@caseListTotal.ToString("N0")</span>
-												<div class="price-struck-line"></div>
-											</div>
-											<iconify class="price-arrow" icon="lucide:arrow-right" Size=@(14) Color="rgba(255, 206, 58, 0.75)" />
-											<span class="price-now">@casePrice.ToString("N0")</span>
-										}
-										else
-										{
-											<span class="price-now">@casePrice.ToString("N0")</span>
-										}
-										@if (GetGold() < casePrice)
-										{
-											<span class="deficit">need +@(caseDeficit.ToString("N0"))</span>
-										}
-									</div>
-								</div>
-								@{ var goldBtn = GetBuyButtonContent(caseItem); }
-								<button class="buy-btn @(IsPurchaseFlash ? "purchased is-flashing" : "") @(CanPurchaseQty(caseItem) ? "" : "disabled") @(buyBtnOvershoot ? "overshoot" : "")"
-										onclick=@(() => PurchaseItem(caseItem))>
-									<iconify icon="@goldBtn.icon" Size=@(goldBtn.size) Color="@goldBtn.color" />
-									<span>@goldBtn.label</span>
-								</button>
-							</div>
-						</div>
-					</div>
-				}
-				else
-				{
-					<div class="display-case case-empty">
-						<div class="case-underplate"></div>
-						<div class="case-body">
-							<div class="case-glass empty">
-								<iconify icon="lucide:shopping-basket" Size=@(52) Color="rgba(255, 206, 58, 0.25)" />
-							</div>
-							<div class="case-info">
-								<div class="case-name"><span>Browse the shelves</span></div>
-								<div class="case-desc">Pick a good from the counter and it lands here, under the glass.</div>
-							</div>
-						</div>
-					</div>
-				}
-			</div>
-		</div>
-	}
-	@if (shopView == "boss")
-	{
-		<div class="shop-layout layout-@swapVersion dir-@(string.IsNullOrEmpty(viewSwitchDir) ? "none" : viewSwitchDir)">
-			<!-- ═══ THE COUNTER (boss exchange) — same shelf language,
-			     token price tags + owned counters. ═══ -->
-			<div class="shop-left boss-left">
-				<div class="active-boosts-rail">
-					@{ var bActives = GetAllActiveBoostDisplay(); }
-					@if (bActives.Count == 0)
-					{
-						<div class="active-boosts-empty">
-							<iconify icon="lucide:zap-off" Size=@(12) Color="rgba(255,255,255,0.3)" />
-							<span class="active-boosts-empty-text">No active boosts</span>
-							<div class="active-boosts-nudge">
-								<iconify icon="lucide:arrow-up-left" Size=@(11) Color="rgba(255, 206, 58, 0.7)" />
-								<span>Grab one from the Gold Market</span>
-							</div>
-						</div>
-					}
-					else
-					{
-						<span class="active-boosts-label">ACTIVE</span>
-						@foreach (var b in bActives)
-						{
-							<div class="active-boost-pill @(b.IsServer ? "server" : "personal") @(b.TimeRemaining.TotalSeconds < 60 ? "expiring" : "")">
-								<iconify class="ab-icon" icon="@GetBoostIconKey(b.Type)" Size=@(12) Color="@GetBoostIconColor(b.Type)" />
-								<span class="ab-label">@GetBoostShortLabel(b.Type)</span>
-								<span class="ab-sep">·</span>
-								<span class="ab-time">@FormatBoostTime(b.TimeRemaining)</span>
-								@if (b.IsServer)
+								else if (owned > 0)
 								{
-									<span class="ab-server-tag">SERVER</span>
+									@* ADD 2 — owned count (the Bag's qty-chip semantics, cream). *@
+									<div class="sat-qty owned"><span>@OwnedChipText(owned)</span></div>
+								}
+								@if (item.BoostDurationMinutes > 0 && !running)
+								{
+									<div class="shop-card-dur"><span>@GetShortDuration(item.BoostDurationMinutes)</span></div>
 								}
 							</div>
 						}
 					}
-				</div>
-				<div class="scroll-fade scroll-fade-bottom"></div>
-				<div @ref="shopGridRef" class="items-scroll swap-@swapVersion">
-					@{
-						var bossConsumableGroups = GetConsumableGroups();
-						int bossSectionIdx = 0;
-					}
-					@foreach (var group in bossConsumableGroups)
+				}
+				else
+				{
+					var bossGroups = GetConsumableGroups();
+					var caseBoss = GetCaseBossItem();
+
+					foreach (var group in bossGroups)
 					{
-						<div class="shop-section-title stagger-@(Math.Min(bossSectionIdx, 4))"><span class="section-accent"></span><span class="section-label">@group.Label</span><span class="section-count">@group.Items.Count</span><span class="section-spacer"></span></div>
-						@foreach (var item in group.Items)
+						<div class="sh-kicker-row">
+							<div class="sh-kicker-chip">
+								<div class="sh-kicker-chip-inner"><span class="sh-kicker-text">@group.Label</span></div>
+							</div>
+							<div class="sh-kicker-line"></div>
+						</div>
+
+						foreach (var item in group.Items)
 						{
-							bool canAfford = GetBossTokens() >= item.Cost;
 							int owned = GetConsumableOwned(item.Id);
 							bool maxed = IsConsumableMaxed(item);
+							bool isCase = caseBoss != null && caseBoss.Id == item.Id;
+							var cardClass = "shop-card" + (isCase ? " selected" : "") + (GetBossTokens() >= item.Cost ? "" : " short");
+							var art = ArtPx(item.Icon, 84);
 
-							<div class="shop-item boss-item @(!canAfford ? "cant-afford" : "") @(selectedConsumable?.Id == item.Id ? "selected" : "") @(maxed ? "maxed" : "") @(purchasedItemId == item.Id ? "just-purchased" : "")"
+							<div class="@cardClass"
 								 onclick=@(() => SelectConsumable(item))
 								 onmouseover=@(() => OnShopItemHover(item.Id))>
-								<div class="good-ring"></div>
-								@if (justSelectedItemId == item.Id)
-								{
-									<div class="select-pulse pulse-@selectPulseVersion"></div>
-								}
-								@if (purchasedItemId == item.Id)
-								{
-									<div class="purchase-confirm"><iconify icon="lucide:check" Size=@(28) Color="#ffffff" /></div>
-								}
-								<div class="good-art">
-									<img class="good-icon" src=@item.Icon />
+								<div class="sat-card-art">
+									<img class="sat-card-icon" src=@item.Icon style="width: @(art.w)px; height: @(art.h)px;" />
 								</div>
-								<div class="good-shelf"></div>
-								<div class="good-name"><span>@GetBaseName(item.Name)</span></div>
-								<div class="good-tag-zone">
-									@if (maxed)
-									{
-										<div class="good-maxed"><span>MAX</span></div>
-									}
-									else
-									{
-										<div class="good-tag @(canAfford ? "" : "short")">
-											<div class="price-gem tokens"><img class="price-gem-icon" src="ui/icons/currency/token.svg" /></div>
-											<span class="good-tag-val">@item.Cost.ToString("N0")</span>
-										</div>
-									}
-								</div>
+								<div class="sat-card-foot"><span class="sat-card-name">@GetBaseName(item.Name)</span></div>
+								@if (maxed)
+								{
+									<div class="shop-card-price maxed"><span class="shop-card-max">MAX HELD</span></div>
+								}
+								else
+								{
+									<div class="shop-card-price">
+										<img class="shop-card-coin" src="ui/icons/currency/token.svg" />
+										<span class="shop-card-value">@item.Cost.ToString("N0")</span>
+									</div>
+								}
 								@if (owned > 0)
 								{
-									<div class="good-owned"><span>@owned</span></div>
+									<div class="sat-qty owned"><span>@OwnedChipText(owned)</span></div>
 								}
 							</div>
 						}
-						@{ bossSectionIdx++; }
 					}
-
-					@if (GetTotalBossCount(bossConsumableGroups) == 0)
-					{
-						<EmptyState Icon="lucide:search-x"
-									Title="Nothing here right now"
-									Body="Try a different category"
-									Size="full" />
-					}
-					else
-					{
-						<div class="shop-item shop-item-coming-soon">
-							<iconify icon="lucide:plus" Size=@(22) Color="rgba(255, 206, 58, 0.3)" />
-							<span class="coming-soon-label">Beat more bosses</span>
-						</div>
-					}
-				</div>
+				}
 			</div>
 
-			<!-- ═══ THE DISPLAY CASE (boss exchange) — selected consumable
-			     under the glass; plaque copy when nothing is picked. ═══ -->
-			<div class="shop-right boss-right">
-				@if (selectedConsumable != null)
-				{
-					@{
-						int cQty = Math.Max(1, purchaseQty);
-						int cTotal = selectedConsumable.Cost * cQty;
-						int cDeficit = cTotal - GetBossTokens();
-						int cMaxQty = GetMaxBuyQty(selectedConsumable);
-						bool cMaxed = IsConsumableMaxed(selectedConsumable);
-						var cSuffix = GetNameSuffix(selectedConsumable.Name);
-					}
-					<div class="display-case boss-case detail-@detailVersion @(purchasedItemId == selectedConsumable.Id ? "just-purchased" : "")">
-						<div class="case-underplate"></div>
-						<div class="case-body">
-							@if (purchasedItemId == selectedConsumable.Id)
-							{
-								<div class="purchase-confirm case-confirm"><iconify icon="lucide:check" Size=@(36) Color="#ffffff" /></div>
-							}
-							<div class="case-stamp-slot">
-								<BbStamp Text="BOSS EXCHANGE" Tone="violet" Tilt=@(-3) />
-							</div>
-							<div class="case-glass">
-								<div class="case-dust">
-									<div class="fd fd0"></div>
-									<div class="fd fd1"></div>
-									<div class="fd fd2"></div>
-								</div>
-								<img class="case-icon" src=@selectedConsumable.Icon />
-							</div>
-							<div class="case-info">
-								<div class="case-name"><span>@GetBaseName(selectedConsumable.Name)</span></div>
-								@if (cSuffix != null)
-								{
-									<div class="case-name-sub">@cSuffix</div>
-								}
-								<div class="case-desc">@selectedConsumable.Description</div>
-								<div class="case-meta-row">
-									<div class="case-meta-chip">
-										<iconify icon="lucide:package" Size=@(11) Color="#ffce3a" />
-										<span>OWNED @GetConsumableOwned(selectedConsumable.Id) / @GetConsumableMaxStack(selectedConsumable.Id)</span>
-									</div>
-								</div>
-							</div>
-							<div class="case-till">
-								@if (!cMaxed)
-								{
-									<div class="qty-picker">
-										<button class="qty-btn @(purchaseQty <= 1 ? "disabled" : "")" onclick=@(() => ChangeQty(-1)) onmouseover=@OnQtyHover>
-											<iconify icon="lucide:minus" Size=@(14) Color="#ffce3a" />
-										</button>
-										<div class="qty-display">
-											<span class="qty-val">@cQty</span>
-											<span class="qty-unit">@(cQty == 1 ? "unit" : "units")</span>
-										</div>
-										<button class="qty-btn @(purchaseQty >= cMaxQty ? "disabled" : "")" onclick=@(() => ChangeQty(1)) onmouseover=@OnQtyHover>
-											<iconify icon="lucide:plus" Size=@(14) Color="#ffce3a" />
-										</button>
-										<button class="qty-max @(purchaseQty >= cMaxQty ? "active" : "")" onclick=@SetQtyMax onmouseover=@OnQtyHover>
-											<span>MAX</span>
-										</button>
-									</div>
-								}
-								<div class="price-seam boss-seam @(GetBossTokens() >= cTotal ? "" : "short")">
-									<div class="price-seam-inner">
-										<div class="price-gem tokens"><img class="price-gem-icon" src="ui/icons/currency/token.svg" /></div>
-										<span class="price-now">@cTotal.ToString("N0")</span>
-										@if (GetBossTokens() < cTotal)
-										{
-											<span class="deficit">need +@(cDeficit.ToString("N0"))</span>
-										}
-									</div>
-								</div>
-								@{ var cBtn = GetBuyButtonContentConsumable(selectedConsumable); }
-								<button class="buy-btn @(IsPurchaseFlash ? "purchased is-flashing" : "") @(CanPurchaseConsumableQty(selectedConsumable) ? "" : "disabled") @(buyBtnOvershoot ? "overshoot" : "")"
-										onclick=@(() => PurchaseConsumable(selectedConsumable))>
-									<iconify icon="@cBtn.icon" Size=@(cBtn.size) Color="@cBtn.color" />
-									<span>@cBtn.label</span>
-								</button>
-							</div>
-						</div>
-					</div>
-				}
-				else
-				{
-					<div class="display-case case-empty">
-						<div class="case-underplate"></div>
-						<div class="case-body">
-							<div class="case-stamp-slot">
-								<BbStamp Text="BOSS EXCHANGE" Tone="violet" Tilt=@(-3) />
-							</div>
-							<div class="case-glass empty">
-								<iconify icon="lucide:gem" Size=@(52) Color="rgba(255, 206, 58, 0.25)" />
-							</div>
-							<div class="case-info">
-								<div class="case-name"><span>Pick from the counter</span></div>
-								<div class="case-desc">Rare runes &amp; consumables, paid in boss tokens.</div>
-								<div class="case-meta-row">
-									<div class="case-meta-chip">
-										<iconify icon="lucide:layers" Size=@(11) Color="#ffce3a" />
-										<span>@consumables.Count GOODS IN STOCK</span>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-				}
+			@* Overlay scrollbar — the roster .col-scrollbar recipe: read-only thumb
+			   written per tick (scrollbar-color/-width don't parse). Lives in the
+			   12px lane right of the 1298 grid. *@
+			<div @ref="sbTrackRef" class="sh-scrollbar">
+				<div @ref="sbThumbRef" class="sh-sb-thumb"></div>
 			</div>
 		</div>
-	}
 
-	<!-- THE LIVING VIOLET RING — one waving selection cursor wrapping the
-	     selected good on the counter. Root-level absolute so it can wave
-	     per-frame without dirtying the grid; position bound from
-	     UpdateShopRing each tick, wave via imperative Style.Transform in
-	     ApplyShopRingWave. z 60: above the counter goods, below the
-	     display case (80) and header (500) — flat z-index law. -->
-	<div @ref="shopRingRef" class="shop-ring @(shopRingVisible ? "on" : "") @(shopRingWarm < 2 ? "snap" : "")"
-		 style="left: @(shopRingL)px; top: @(shopRingT)px; width: @(shopRingW)px; height: @(shopRingH)px;"></div>
-
-	@if (purchaseBurstActive)
-	{
-		@{
-			// Particle count scales with the qty that was purchased so a big
-			// buy feels bigger, but cap at 30 so x100 isn't a snowstorm. Base
-			// is 10 (the pre-multibuy count) + qty, bounded.
-			int burstQty = Math.Max(1, purchaseBurstQty);
-			int particleCount = Math.Min(30, 10 + burstQty);
-			// Flyer scale: 1.0 for small, 1.3 for >=10, 1.6 for >=50.
-			string flyerScale = burstQty >= 50 ? "flyer-xl" : (burstQty >= 10 ? "flyer-lg" : "");
-		}
-		<div class="purchase-burst-layer burst-@purchaseBurstVersion @(purchaseBurstIsBoss ? "boss-burst" : "gold-burst")">
-			@for (int i = 0; i < particleCount; i++)
+		@* ---- THE CASE — 482 × 894 r22, pad 24 → 434 inner ---- *@
+		<div class="sh-case">
+			@if (shopView == "gold")
 			{
-				<div class="purchase-burst-particle pp@(i % 10)"></div>
-			}
-			<div class="purchase-reward-flyer @(purchaseBurstIsBoss ? "fly-token" : "fly-gold") @flyerScale"></div>
-		</div>
-	}
+				var caseItem = GetCaseGoldItem(GetGoldItems());
+				if (caseItem != null)
+				{
+					bool spotlight = ShopManager.Instance?.IsSpotlight(caseItem) == true
+						&& (ShopManager.Instance?.SpotlightDiscountPercent ?? 0) > 0;
+					int unit = GetEffectivePrice(caseItem);
+					bool multi = SupportsMultiBuy(caseItem);
+					int qty = multi ? Math.Max(1, purchaseQty) : 1;
+					int total = unit * qty;
+					int listTotal = caseItem.Price * qty;
+					int deficit = total - GetGold();
+					bool running = IsBoostRunning(caseItem);
+					int owned = GetOwned(caseItem);
+					var art = ArtPx(caseItem.IconPath, 240);
+					var ghost = ArtPx(caseItem.IconPath, 160);
+					var buy = GetBuyButtonContent(caseItem);
 
+					<div class="sh-case-art">
+						<img class="sh-case-img" src=@IconSrc(caseItem) style="width: @(art.w)px; height: @(art.h)px;" />
+						@if (spotlight)
+						{
+							@* The ONE stamp on this surface — the Daily Spotlight sale. *@
+							<div class="sh-case-stamp">
+								<BbStamp Text="@GetSaleStampText()" Tone="gold" Tilt=@(-3) />
+							</div>
+						}
+					</div>
+					<span class="sh-case-name">@caseItem.Name</span>
+					<span class="sh-case-desc">@caseItem.Description</span>
+					<div class="sh-case-meta">
+						@if (caseItem.BoostDurationMinutes > 0)
+						{
+							<div class="sh-meta-chip">
+								<iconify class="sh-meta-glyph" icon="lucide:clock" Size=@(11) Color="rgba(214, 206, 236, 0.7)" />
+								<span class="sh-meta-text">@GetDurationText(caseItem.BoostDurationMinutes)</span>
+							</div>
+							<div class="sh-meta-chip"><span class="sh-meta-text">@GetBoostLabel(caseItem)</span></div>
+						}
+						@if (caseItem.Id.StartsWith("server_"))
+						{
+							<div class="sh-meta-chip amber"><span class="sh-meta-text">SERVER-WIDE</span></div>
+						}
+						@if (HasBundleChip(caseItem))
+						{
+							<div class="sh-meta-chip"><span class="sh-meta-text">@BundleMetaText(caseItem)</span></div>
+						}
+						@if (owned > 0)
+						{
+							<div class="sh-meta-chip"><span class="sh-meta-text">@OwnedChipText(owned)</span></div>
+						}
+						@if (running)
+						{
+							<div class="sh-meta-chip amber">
+								<iconify class="sh-meta-glyph" icon="lucide:clock" Size=@(11) Color="#e0a030" />
+								<span class="sh-meta-text">@(GetBoostTimeText(caseItem) + " LEFT")</span>
+							</div>
+						}
+					</div>
+					if (multi)
+					{
+						@* Qty — a bare − + stepper (no MAX, no "units"). Clamped in ChangeQty
+						   to floor(balance ÷ unit). LANE: input — keys for − / + are OPEN
+						   (DOC-5 to rule; `,` `.` free up once A/D take the store swap). *@
+						<div class="sh-qty-row">
+							<div class="@QtyBtnClass(qty <= 1)" onclick=@(() => ChangeQty(-1)) onmouseover=@OnQtyHover>
+								<iconify class="sh-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
+							</div>
+							<div class="sh-qty-value"><span class="sh-qty-num">@qty</span></div>
+							<div class="@QtyBtnClass(qty >= GetMaxBuyQty(caseItem))" onclick=@(() => ChangeQty(1)) onmouseover=@OnQtyHover>
+								<iconify class="sh-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
+							</div>
+						</div>
+					}
+					<div class="sh-case-price">
+						@if (spotlight)
+						{
+							<span class="sh-price-struck">@listTotal.ToString("N0")</span>
+						}
+						<img class="sh-price-coin" src="ui/icons/currency/money.svg" />
+						<span class="sh-price-value">@total.ToString("N0")</span>
+						@if (qty > 1)
+						{
+							<span class="sh-price-mult">@(qty + " × " + unit.ToString("N0"))</span>
+						}
+					</div>
+					<div class="sh-case-deficit"><span class="sh-deficit-text">@(deficit > 0 ? "need +" + deficit.ToString("N0") : "")</span></div>
+					@* BUY — the page's one primary (gold; DOC-2 #1 exception: the page
+					   chrome is amber so the pressable primary stays the only gold slab).
+					   Directly under the price it commits. LANE: motion — `.beat beat-N`
+					   is the ONE purchase beat hook (remounts per buy); no rules yet.
+					   LANE: input — the ring parks here via Focused when the cursor
+					   leaves the grid (r16 + 10 → r26, BbButton's own ring). *@
+					<BbButton Tier="@BuyTier(buy.off)" Size=@(56) Label="@buy.label" Icon="@buy.icon" KeyCap="SPACE"
+							  Disabled=@buy.off Class="@BuyClass(buy.off)" OnClick=@BuyCurrent />
+					<img class="sh-case-ghost" src=@IconSrc(caseItem) style="width: @(ghost.w)px; height: @(ghost.h)px;" />
+				}
+			}
+			else
+			{
+				var caseItem = GetCaseBossItem();
+				if (caseItem != null)
+				{
+					int qty = Math.Max(1, purchaseQty);
+					int total = caseItem.Cost * qty;
+					int deficit = total - GetBossTokens();
+					bool maxed = IsConsumableMaxed(caseItem);
+					int owned = GetConsumableOwned(caseItem.Id);
+					var art = ArtPx(caseItem.Icon, 240);
+					var ghost = ArtPx(caseItem.Icon, 160);
+					var buy = GetBuyButtonContentConsumable(caseItem);
+
+					<div class="sh-case-art">
+						<img class="sh-case-img" src=@caseItem.Icon style="width: @(art.w)px; height: @(art.h)px;" />
+					</div>
+					<span class="sh-case-name">@caseItem.Name</span>
+					<span class="sh-case-desc">@caseItem.Description</span>
+					<div class="sh-case-meta">
+						<div class="sh-meta-chip"><span class="sh-meta-text">@(L("ui.shop.owned") + " " + owned + " / " + GetConsumableMaxStack(caseItem.Id))</span></div>
+					</div>
+					if (!maxed)
+					{
+						<div class="sh-qty-row">
+							<div class="@QtyBtnClass(qty <= 1)" onclick=@(() => ChangeQty(-1)) onmouseover=@OnQtyHover>
+								<iconify class="sh-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
+							</div>
+							<div class="sh-qty-value"><span class="sh-qty-num">@qty</span></div>
+							<div class="@QtyBtnClass(qty >= GetMaxBuyQty(caseItem))" onclick=@(() => ChangeQty(1)) onmouseover=@OnQtyHover>
+								<iconify class="sh-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
+							</div>
+						</div>
+					}
+					<div class="sh-case-price">
+						<img class="sh-price-coin" src="ui/icons/currency/token.svg" />
+						<span class="sh-price-value">@total.ToString("N0")</span>
+						@if (qty > 1)
+						{
+							<span class="sh-price-mult">@(qty + " × " + caseItem.Cost.ToString("N0"))</span>
+						}
+					</div>
+					<div class="sh-case-deficit"><span class="sh-deficit-text">@(deficit > 0 ? "need +" + deficit.ToString("N0") : "")</span></div>
+					<BbButton Tier="@BuyTier(buy.off)" Size=@(56) Label="@buy.label" Icon="@buy.icon" KeyCap="SPACE"
+							  Disabled=@buy.off Class="@BuyClass(buy.off)" OnClick=@BuyCurrent />
+					<img class="sh-case-ghost" src=@caseItem.Icon style="width: @(ghost.w)px; height: @(ghost.h)px;" />
+				}
+			}
+		</div>
+	</div>
+
+	@* THE LIVING VIOLET RING — the one cursor, wrapping the case item's card.
+	   Root-level absolute (never clipped by the scroll); position bound from
+	   UpdateShopRing each tick, wave via imperative Style.Transform. z 60. *@
+	<div @ref="shopRingRef" class="@RingClass()"
+		 style="left: @(shopRingL)px; top: @(shopRingT)px; width: @(shopRingW)px; height: @(shopRingH)px;"></div>
 </root>
 
 @code {
-	// Localization helper
+	// Localization helper — routed only where keys already exist.
+	// LANE: audit (loc) — "GOLD" / "BOSS TOKENS" / "SERVER-WIDE" / "CONTRACT INK" /
+	// "MAX HELD" / "need +N" have no keys; ui.shop.gold_store ("Gold Store") and
+	// ui.shop.boss_store ("Boss Token Store") carry the RETIRED copy.
 	private string L( string key ) => LocalizationManager.Get( key );
-	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
 
-	// Shop view state
+	// ── Store state ──────────────────────────────────────────────
 	private string shopView = "gold";
-	private string hoveredShopTab = null;
-
-	// Hover-sound guards
-	private string hoveredCategoryDropdown = null;
-	private string hoveredDropdownItem = null;
+	private string hoveredStoreChip = null;
 	private string hoveredShopItem = null;
-	private string hoveredSort = null;
+	private string hoveredQtyBtn = null;
 
-	private void OnCategoryDropdownHover()
+	// Selection — null = the case shows the first affordable good.
+	private ShopItem selectedItem;
+	private BossConsumable selectedConsumable;
+	private int detailVersion = 0;
+
+	// Multi-buy qty — reset to 1 on any selection change or store swap.
+	private int purchaseQty = 1;
+
+	// Purchase beat — ONE hook for the MOTION lane (BUY flash class, remounted
+	// per buy via the version key). The HUD gold pill pulses on its own.
+	private int buyBeatVersion = 0;
+	private float buyBeatUntil = 0f;
+	private bool IsBuyBeat => RealTime.Now < buyBeatUntil;
+
+	// Balance pulse (kept — the one currency signal on this page).
+	private float goldFlashUntil = 0f;
+	private float tokenFlashUntil = 0f;
+	private int lastGoldValue = -1;
+	private int lastTokenValue = -1;
+	private bool IsGoldFlash => RealTime.Now < goldFlashUntil;
+	private bool IsTokenFlash => RealTime.Now < tokenFlashUntil;
+
+	// Refs
+	private Panel shopGridRef;
+	private Panel sbTrackRef, sbThumbRef;
+	private Panel shopRingRef;
+
+	// LANE: input — this page has NO device flag (kbd-mode / mouse-mode); the
+	// Skills page's lastInputDevice + SetInputDevice pattern is the port.
+
+	// ── Hover-sound guards ───────────────────────────────────────
+	private void OnStoreChipHover( string id )
 	{
-		string key = shopView;
-		if (hoveredCategoryDropdown == key) return;
-		hoveredCategoryDropdown = key;
+		if ( hoveredStoreChip == id ) return;
+		hoveredStoreChip = id;
 		SoundManager.PlayHover();
 	}
+	private void ClearStoreChipHover() => hoveredStoreChip = null;
 
-	private void OnDropdownItemHover(string id)
+	private void OnShopItemHover( string id )
 	{
-		if (hoveredDropdownItem == id) return;
-		hoveredDropdownItem = id;
-		SoundManager.PlayHover();
-	}
-
-	private void OnShopItemHover(string id)
-	{
-		if (hoveredShopItem == id) return;
+		if ( hoveredShopItem == id ) return;
 		hoveredShopItem = id;
 		SoundManager.PlayHover();
 	}
 
-	private void OnSortHover()
-	{
-		if (hoveredSort == "btn") return;
-		hoveredSort = "btn";
-		SoundManager.PlayHover();
-	}
-
-	private string hoveredQtyBtn = null;
 	private void OnQtyHover()
 	{
-		if (hoveredQtyBtn == "qty") return;
+		if ( hoveredQtyBtn == "qty" ) return;
 		hoveredQtyBtn = "qty";
 		SoundManager.PlayHover();
 	}
 
-	// Gold shop state
-	private string currentCategory = "all";
-	private string goldSort = "default";
-	private ShopItem selectedItem;
+	// ── Header helpers ───────────────────────────────────────────
+	private string GetStoreTitle() => shopView == "boss" ? "BOSS TOKENS" : "GOLD";
+	private string StoreChipClass( string store ) => "sh-store-chip" + (shopView == store ? " on" : "");
+	private string BalanceClass() => "sh-balance" + ((shopView == "gold" ? IsGoldFlash : IsTokenFlash) ? " flash" : "");
+	private string BalanceGlyph() => shopView == "gold" ? "ui/icons/currency/money.svg" : "ui/icons/currency/token.svg";
+	private string BalanceText() => (shopView == "gold" ? GetGold() : GetBossTokens()).ToString( "N0" );
+	private string RingClass() => "sh-ring" + (shopRingVisible ? " on" : "") + (shopRingWarm < 2 ? " snap" : "");
+	private string QtyBtnClass( bool off ) => "sh-qty-btn" + (off ? " off" : "");
+	private string BuyClass( bool off ) => "case-buy" + (off ? " off" : "") + (IsBuyBeat ? " beat beat-" + buyBeatVersion : "");
+	// Off = the ghost tier (same 434×56 slab, desaturated) — a TIER swap is an
+	// attribute change on the root, never a child-slot swap (ghost-child law).
+	private string BuyTier( bool off ) => off ? "ghost" : "primary";
 
-	// Boss shop state
-	private string bossSort = "default";
-	private BossConsumable selectedConsumable;
+	// ── Tamer reads ──────────────────────────────────────────────
+	private int GetGold() => TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+	private int GetLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 1;
+	private int GetBossTokens() => TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0;
+	private int GetInk() => TamerManager.Instance?.CurrentTamer?.ContractInk ?? 0;
 
-	// Category dropdown state
-	private bool categoryDropdownOpen = false;
+	// Icon src without $-interpolation in markup attributes (razor generator
+	// law: interpolated strings in attribute expressions emit broken codegen).
+	private string IconSrc( ShopItem item ) => "/" + item.IconPath;
+	private string GetSaleStampText() => (int)(ShopManager.Instance?.SpotlightDiscountPercent ?? 15f) + "% OFF TODAY";
 
-	// Version counter to retrigger grid fade on category swap
-	private int swapVersion = 0;
+	// ── Art at INTEGER scale (DOC-6 #13) ─────────────────────────
+	// Sources are 64×64 (ink, slots, boosts, runes) or 51×51 (consumables).
+	// Card zone max 84 → 1× (64 / 51); case slab max 240 → 3× 192 / 4× 204;
+	// ghost max 160 → 2× 128 / 3× 153. Dims cached from Texture.Load once per
+	// path (the BbEmblem SpriteDims recipe); fallback 64.
+	private static readonly Dictionary<string, (int w, int h)> _artDims = new();
 
-	// @ref to the shop item grid — keyboard up/down navigation reads its
-	// child .shop-item rects to find the row above/below.
-	private Panel shopGridRef;
-	// Version counter to retrigger detail-pane fade on selection change
-	private int detailVersion = 0;
+	private static (int w, int h) ArtDims( string path )
+	{
+		if ( string.IsNullOrEmpty( path ) ) return (64, 64);
+		string key = path.TrimStart( '/' );
+		if ( !_artDims.TryGetValue( key, out var d ) )
+		{
+			d = (64, 64);
+			try
+			{
+				var tex = Texture.Load( FileSystem.Mounted, key );
+				if ( tex != null && tex.Width > 0 && tex.Height > 0 ) d = (tex.Width, tex.Height);
+			}
+			catch { }
+			_artDims[key] = d;
+		}
+		return d;
+	}
+
+	private static (int w, int h) ArtPx( string path, int max )
+	{
+		var d = ArtDims( path );
+		int longest = Math.Max( d.w, d.h );
+		int scale = Math.Max( 1, max / Math.Max( 1, longest ) );
+		return (d.w * scale, d.h * scale);
+	}
+
+	private void SwitchShopView( string view )
+	{
+		if ( shopView == view ) return;
+		shopView = view;
+		selectedItem = null;
+		selectedConsumable = null;
+		purchaseQty = 1;
+		detailVersion++;
+	}
 
 	// ============================================================
-	// THE LIVING VIOLET RING — one waving selection cursor wrapping
-	// the selected good on the counter (menu/PawPad signature, roster
-	// scroll-grid recipe). Root-level absolute; position recomputed
-	// every Tick from live Box.Rects (grid scrolls + reflows), wave
-	// via imperative Style.Transform (flat panel — per-frame writes
-	// are cheap outside a perspective lean).
+	// THE LIVING VIOLET RING — imperative position (the Bag/roster
+	// recipe), waving via Style.Transform. Wraps the case item's card.
 	// ============================================================
-	private Panel shopRingRef;
-	private int shopRingL, shopRingT, shopRingW = 140, shopRingH = 170;
+	private int shopRingL, shopRingT, shopRingW = 152, shopRingH = 170;
 	private bool shopRingVisible;
 	private int shopRingWarm; // <2 = snap to position (no glide) while first rects land
-	private const int ShopRingInset = 8;
+	private const int ShopRingInset = 10; // card r16 + 10 → ring r26
 
 	public override void Tick()
 	{
 		base.Tick();
+		ApplyDevPending();
 		UpdateShopRing();
 		ApplyShopRingWave();
+		UpdateScrollbar();
 	}
 
 	private void UpdateShopRing()
@@ -785,23 +572,20 @@
 		shopRingVisible = false;
 
 		if ( shopGridRef == null ) return;
-		bool want = shopView == "gold" ? selectedItem != null : selectedConsumable != null;
-		if ( !want ) return;
 
 		var gr = shopGridRef.Box.Rect;
 		var rr = Box.Rect;
 		if ( rr.Width < 2f || gr.Width < 2f ) return;
 
-		// Fresh traversal for the .selected good. Self-hide when it sits
-		// outside the counter viewport — the root-level ring is never
-		// clipped by the scroll container (engine law), so an off-screen
-		// target would paint the ring over the showcase band.
+		// The `.selected` card IS the case item's card (markup binds both from
+		// the same resolver). Self-hide when it sits outside the grid viewport —
+		// a root-level ring is never clipped by the scroll container.
 		Panel target = null;
 		foreach ( var c in shopGridRef.Children )
 		{
-			if ( !c.HasClass( "shop-item" ) || !c.HasClass( "selected" ) ) continue;
+			if ( !c.HasClass( "shop-card" ) || !c.HasClass( "selected" ) ) continue;
 			var r = c.Box.Rect;
-			if ( r.Top < gr.Top - 12f || r.Bottom > gr.Bottom + 12f ) continue;
+			if ( r.Top < gr.Top - 14f || r.Bottom > gr.Bottom + 14f ) continue;
 			target = c;
 			break;
 		}
@@ -813,10 +597,12 @@
 		float sc = ScaleFromScreen;
 		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
 
-		// Content-box math: declared size = target + 2×inset − 2×border
-		// (4px border in SCSS; s&box has no border-box).
-		shopRingL = (int)((cr.Left - rr.Left) * sc) - ShopRingInset;
-		shopRingT = (int)((cr.Top - rr.Top) * sc) - ShopRingInset;
+		// RING CENTERING LAW (learnings 2026-08-29 / audit 2026-09-02): Style.Left/
+		// Top place the PADDING box and the 4px border draws outside it, so
+		// L/T = host − inset + 4 and W/H = host + 2·inset − 8 put the ring's
+		// OUTER edge exactly `inset` off the card on every side.
+		shopRingL = (int)((cr.Left - rr.Left) * sc) - ShopRingInset + 4;
+		shopRingT = (int)((cr.Top - rr.Top) * sc) - ShopRingInset + 4;
 		shopRingW = (int)(cr.Width * sc) + ShopRingInset * 2 - 8;
 		shopRingH = (int)(cr.Height * sc) + ShopRingInset * 2 - 8;
 
@@ -846,209 +632,55 @@
 	}
 
 	// ============================================================
-	// Market-counter composition helpers
+	// OVERLAY SCROLLBAR — the roster UpdateScrollbar recipe (read-only
+	// thumb, imperative Style writes, only-on-change caches; caches reset
+	// when a template swap remounts the track).
 	// ============================================================
+	private int _sbTop = int.MinValue, _sbH = int.MinValue, _sbTrackH = int.MinValue;
+	private Panel _sbSeen;
 
-	// Icon src without $-interpolation in markup attributes (razor
-	// generator law: interpolated strings in attribute expressions
-	// emit broken codegen).
-	private string IconSrc( ShopItem item ) => "/" + item.IconPath;
-
-	// Signboard title per store.
-	private string GetStoreTitle() => shopView == "boss" ? "Boss Exchange" : "Gold Market";
-
-	// Sale stamp copy ("15% OFF TODAY") — helper keeps interpolation
-	// out of the markup attribute.
-	private string GetSaleStampText( int pct ) => pct + "% OFF TODAY";
-
-	// The item currently under the display-case glass: the player's
-	// selection, or the merchant's Daily Spotlight pick as the default.
-	private ShopItem GetCaseItem( List<ShopItem> filtered ) => selectedItem ?? GetFeaturedItem( filtered );
-
-	// Qty controls on the case act on the DISPLAYED item — if the case
-	// is showing the un-selected spotlight default, adopt it as the
-	// selection first so ChangeQty/SetQtyMax have a target.
-	private void EnsureCaseSelected()
+	private void UpdateScrollbar()
 	{
-		if ( shopView != "gold" || selectedItem != null ) return;
-		var f = GetFeaturedItem( GetFilteredItems() );
-		if ( f == null ) return;
-		selectedItem = f;
-		purchaseQty = 1;
-	}
+		if ( !ReferenceEquals( _sbSeen, sbThumbRef ) )
+		{ _sbSeen = sbThumbRef; _sbTop = _sbH = _sbTrackH = int.MinValue; }
 
-	private void CaseChangeQty( int delta ) { EnsureCaseSelected(); ChangeQty( delta ); }
-	private void CaseSetQtyMax() { EnsureCaseSelected(); SetQtyMax(); }
+		var scroll = shopGridRef;
+		var track = sbTrackRef;
+		var thumb = sbThumbRef;
+		if ( track == null || thumb == null ) return;
 
-	// Direction of the last store switch — "forward" (gold→boss) or "back" (boss→gold).
-	// Drives which side the new view slides in from. Empty on first mount so the
-	// initial entrance uses the neutral `.shop-layout-enter` fade instead of a
-	// slide (we don't want to fake a "you came from somewhere" on first open).
-	private string viewSwitchDir = "";
-
-	// Card-select pulse — a one-shot border flash on the clicked card. Increments
-	// per click so `.select-pulse-@selectPulseVersion` remounts the overlay div,
-	// re-firing the @keyframes each time. Two fields so we know WHICH card is
-	// the pulse target (we can't put this on every card).
-	private string justSelectedItemId = null;
-	private int selectPulseVersion = 0;
-
-	// After a successful purchase, mark the card so it can flash a green "got it"
-	// overlay before clearing. Pairs with TriggerPurchaseFlash for ~800ms.
-	private string purchasedItemId = null;
-
-	// Purchase feedback state
-	private float purchaseFlashUntil = 0f;
-	private float goldFlashUntil = 0f;
-	private float tokenFlashUntil = 0f;
-	private int lastGoldValue = -1;
-	private int lastTokenValue = -1;
-
-	// Multi-buy quantity state — only applies to stackable items (ContractInk
-	// in the gold store, and all boss-store consumables). Reset to 1 on any
-	// selection change or view swap so the player never carries a stale qty
-	// into a new item's detail pane.
-	private int purchaseQty = 1;
-
-	// Buy button overshoot (press animation, ~100ms)
-	private bool buyBtnOvershoot = false;
-
-	// Purchase particle burst state (DailyPanel-style flyer toward HUD currency pill)
-	private bool purchaseBurstActive = false;
-	private bool purchaseBurstIsBoss = false;
-	private int purchaseBurstVersion = 0;
-	// Captured qty at burst start — used to scale particle count and flyer size.
-	// Snapshot at burst time so we don't render more particles if the player
-	// toggles qty mid-flight (wouldn't happen — overlay is on top — but safer).
-	private int purchaseBurstQty = 1;
-
-	private bool IsPurchaseFlash => RealTime.Now < purchaseFlashUntil;
-	private bool IsGoldFlash => RealTime.Now < goldFlashUntil;
-	private bool IsTokenFlash => RealTime.Now < tokenFlashUntil;
-
-	private void TriggerPurchaseFlash()
-	{
-		purchaseFlashUntil = RealTime.Now + 0.8f;
-	}
-
-	private void CheckCurrencyFlash()
-	{
-		int currentGold = GetGold();
-		int currentTokens = GetBossTokens();
-		if ( lastGoldValue >= 0 && currentGold != lastGoldValue )
-			goldFlashUntil = RealTime.Now + 0.6f;
-		if ( lastTokenValue >= 0 && currentTokens != lastTokenValue )
-			tokenFlashUntil = RealTime.Now + 0.6f;
-		lastGoldValue = currentGold;
-		lastTokenValue = currentTokens;
-	}
-
-	// Category dropdown helpers
-	private void ToggleCategoryDropdown() { categoryDropdownOpen = !categoryDropdownOpen; }
-
-	private void SelectCategory(string cat)
-	{
-		if (currentCategory == cat) { categoryDropdownOpen = false; return; }
-		currentCategory = cat;
-		categoryDropdownOpen = false;
-		selectedItem = null;
-		hoveredShopItem = null;
-		purchaseQty = 1;
-		swapVersion++;
-	}
-
-	private string GetCategoryIcon(string cat) => cat switch
-	{
-		"supplies" => "lucide:feather",
-		"boosts" => "lucide:zap",
-		"storage" => "lucide:package",
-		_ => "lucide:layers"
-	};
-
-	private string GetCategoryLabel(string cat) => cat switch
-	{
-		"supplies" => "Supplies",
-		"boosts" => "Boosts",
-		"storage" => "Storage",
-		_ => "All Items"
-	};
-
-	private void CycleGoldSort()
-	{
-		goldSort = goldSort switch
+		float maxOff = scroll?.ScrollSize.y ?? 0f;
+		float viewH = scroll?.Box.Rect.Height ?? 0f;
+		if ( scroll == null || maxOff < 2f || viewH <= 0f )
 		{
-			"default" => "price-asc",
-			"price-asc" => "price-desc",
-			"price-desc" => "level",
-			_ => "default"
-		};
-		selectedItem = null;
-		purchaseQty = 1;
-		swapVersion++;
-		SoundManager.PlayClick();
-	}
+			track.SetClass( "on", false ); // content fits — hide entirely
+			return;
+		}
 
-	private void CycleBossSort()
-	{
-		bossSort = bossSort switch
-		{
-			"default" => "price-asc",
-			"price-asc" => "price-desc",
-			_ => "default"
-		};
-		selectedConsumable = null;
-		purchaseQty = 1;
-		swapVersion++;
-		SoundManager.PlayClick();
-	}
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
 
-	private string GetSortIcon(string s) => s switch
-	{
-		"price-asc" => "lucide:arrow-up-narrow-wide",
-		"price-desc" => "lucide:arrow-down-wide-narrow",
-		"level" => "lucide:shield",
-		_ => "lucide:arrow-up-down"
-	};
+		// Track top 8 (SCSS) + 8 bottom breathing = 16 trimmed.
+		int trackH = (int)(viewH * sc) - 16;
+		if ( trackH < 40 ) { track.SetClass( "on", false ); return; }
 
-	private string GetSortLabel(string s) => s switch
-	{
-		"price-asc" => "Price ↑",
-		"price-desc" => "Price ↓",
-		"level" => "Level Req",
-		_ => "Default"
-	};
+		float contentH = viewH + maxOff;
+		int h = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
+		float t01 = Math.Clamp( scroll.ScrollOffset.y / maxOff, 0f, 1f );
+		int top = (int)((trackH - h) * t01);
 
-	// Gold helpers
-	private int GetGold() => TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
-	private int GetGems() => TamerManager.Instance?.CurrentTamer?.Gems ?? 0;
-	private int GetLevel() => TamerManager.Instance?.CurrentTamer?.Level ?? 1;
-
-	// Boss helpers
-	private int GetBossTokens() => TamerManager.Instance?.CurrentTamer?.BossTokens ?? 0;
-
-	private void SwitchShopView(string view)
-	{
-		if (shopView == view) return;
-		// Remember direction so the new grid slides in from the matching side —
-		// gold is the "left tab", boss is the "right tab" in the header pill row.
-		// Forward = gold→boss (new content comes from the right).
-		// Back = boss→gold (new content comes from the left).
-		viewSwitchDir = (shopView == "gold" && view == "boss") ? "forward" : "back";
-		shopView = view;
-		selectedItem = null;
-		selectedConsumable = null;
-		justSelectedItemId = null;
-		purchaseQty = 1;
-		swapVersion++;
-		SoundManager.PlayClick();
+		if ( trackH != _sbTrackH ) { _sbTrackH = trackH; track.Style.Height = Length.Pixels( trackH ); }
+		if ( h != _sbH ) { _sbH = h; thumb.Style.Height = Length.Pixels( h ); }
+		if ( top != _sbTop ) { _sbTop = top; thumb.Style.Top = Length.Pixels( top ); }
+		track.SetClass( "on", true );
 	}
 
 	// ============================================================
 	// Keyboard navigation — called by GameHUD.TickCurrentPanel().
-	// Reuses selectedItem / selectedConsumable as the cursor so the
-	// existing card-highlight + detail-pane state needs no parallel
-	// fields. Arrows move the cursor through the flat visible list,
-	// confirm purchases the selected item, Q/E swap stores.
+	// WASD walk the grid (render order, position-based W/S so section
+	// breaks are respected) · Space buys · Q two-stage back (home the
+	// case + qty 1, then exit) · , . swap stores (LANE: input — A/D on
+	// the header chips replaces these once the ring can climb there).
 	// ============================================================
 	public void TickInput()
 	{
@@ -1056,14 +688,14 @@
 		{
 			HandleShopKeyboardInput();
 
-			// Keep the keyboard-selected item on screen. Resolve the index from
-			// the (already-updated) selected item — NOT the `.selected` CSS
-			// class, which only updates next render and lagged the scroll a row.
+			// Keep the keyboard-selected card on screen. Resolve from the
+			// (already-updated) case item, not the `.selected` class (which only
+			// updates next render and would lag the scroll a row).
 			if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) )
 			{
 				int sidx = ResolveSelectedShopIndex();
 				if ( sidx >= 0 )
-					UiGridScroll.ScrollIndexIntoView( shopGridRef, sidx, "shop-item", "shop-item-coming-soon" );
+					UiGridScroll.ScrollIndexIntoView( shopGridRef, sidx, "shop-card" );
 			}
 		}
 		catch ( Exception ex )
@@ -1072,35 +704,30 @@
 		}
 	}
 
-	// Index of the currently-selected item within the grid's render order
-	// (the order .shop-item children appear in). -1 when nothing is selected.
+	// Index of the case item within the grid's render order. -1 when none.
 	private int ResolveSelectedShopIndex()
 	{
 		if ( shopView == "gold" )
 		{
-			if ( selectedItem == null ) return -1;
-			var af = GetFilteredItems();
-			var ri = GroupGoldSections( af, GetFeaturedItem( af ) ).SelectMany( s => s.Items ).ToList();
-			return ri.FindIndex( i => i.Id == selectedItem.Id );
+			var items = GetGoldItems();
+			var ordered = GroupGoldSections( items ).SelectMany( s => s.Items ).ToList();
+			var c = GetCaseGoldItem( items );
+			return c == null ? -1 : ordered.FindIndex( i => i.Id == c.Id );
 		}
 
-		if ( selectedConsumable == null ) return -1;
 		var bossItems = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
-		return bossItems.FindIndex( i => i.Id == selectedConsumable.Id );
+		var cb = GetCaseBossItem();
+		return cb == null ? -1 : bossItems.FindIndex( i => i.Id == cb.Id );
 	}
 
-	// Position-based vertical navigation for the shop's sectioned flex-wrap
-	// grid. The K-th real .shop-item child of the grid is item K in the
-	// caller's render-order list. Finds the item in the nearest row above/
-	// below whose horizontal centre is closest — so W/S move one visual row
-	// and respect category section breaks instead of leaping across them.
+	// Position-based vertical navigation: the K-th .shop-card child of the
+	// grid is item K in the caller's render-order list. Finds the card in the
+	// nearest row above/below whose horizontal centre is closest.
 	private int GetVerticalNeighbor( int idx, int itemCount, bool down )
 	{
 		var grid = shopGridRef;
 		if ( grid == null ) return idx;
-		var panels = grid.Children
-			.Where( c => c.HasClass( "shop-item" ) && !c.HasClass( "shop-item-coming-soon" ) )
-			.ToList();
+		var panels = grid.Children.Where( c => c.HasClass( "shop-card" ) ).ToList();
 		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count ) return idx;
 
 		var cur = panels[idx].Box.Rect;
@@ -1114,7 +741,6 @@
 		{
 			if ( i == idx ) continue;
 			var r = panels[i].Box.Rect;
-			// Only consider panels on a row in the requested direction.
 			if ( down ? r.Top <= curTop + 1f : r.Top >= curTop - 1f ) continue;
 			float rowDist = Math.Abs( r.Top - curTop );
 			float dx = Math.Abs( (r.Left + r.Width * 0.5f) - curCentreX );
@@ -1131,26 +757,21 @@
 	private void HandleShopKeyboardInput()
 	{
 		if ( ChatPanel.IsChatFocused ) return;
-		// A blocking popup is open — it owns the keyboard.
 		if ( UIModalState.AnyModalOpen ) return;
 
-		// , / . swap stores (CyclePrev / CycleNext — the <,> keys). A prev/next
-		// pair that doesn't collide with the grid's arrows, Jump/Enter confirm,
-		// or Menu/Run back. ( [ / ] stay reserved for the global radio skip.)
-		if ( Input.Pressed( "CyclePrev" ) ) { SwitchShopView( "gold" ); return; }
-		if ( Input.Pressed( "CycleNext" ) ) { SwitchShopView( "boss" ); return; }
+		// , / . swap stores (CyclePrev / CycleNext). LANE: input — A/D on the
+		// header chips is the ruled grammar; these stay as the compiling fallback.
+		if ( Input.Pressed( "CyclePrev" ) ) { SwitchShopView( "gold" ); SoundManager.PlayClick(); return; }
+		if ( Input.Pressed( "CycleNext" ) ) { SwitchShopView( "boss" ); SoundManager.PlayClick(); return; }
 
 		if ( shopView == "gold" )
 		{
-			var allFiltered = GetFilteredItems();
-			// Walk the SAME order the grid renders — GroupGoldSections regroups
-			// items by category, so navigating the raw filtered list would
-			// teleport across category sections.
-			var items = GroupGoldSections( allFiltered, GetFeaturedItem( allFiltered ) )
-				.SelectMany( s => s.Items ).ToList();
+			var all = GetGoldItems();
+			var items = GroupGoldSections( all ).SelectMany( s => s.Items ).ToList();
 			if ( items.Count == 0 ) return;
 
-			int idx = selectedItem == null ? -1 : items.FindIndex( i => i.Id == selectedItem.Id );
+			var cur = GetCaseGoldItem( all );
+			int idx = cur == null ? -1 : items.FindIndex( i => i.Id == cur.Id );
 
 			if ( Input.Pressed( "Left" ) )
 			{
@@ -1174,29 +795,28 @@
 			}
 			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
 			{
-				if ( selectedItem != null ) PurchaseItem( selectedItem );
-				else SelectItem( items[0] );
+				BuyCurrent();
 			}
 			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 			{
-				// Back: deselect first, then exit to tab nav. The deselect is
-				// an INTERNAL action — claim the back key so GameHUD doesn't
-				// also exit to tabs the same frame. When nothing is selected,
-				// Q genuinely exits the panel, so the flag is NOT set there.
-				if ( selectedItem != null )
+				// Two-stage back: stage 1 homes the case (first affordable, qty 1)
+				// and CLAIMS the key; stage 2 (already home) genuinely exits.
+				bool home = selectedItem == null || (GetDefaultGoldItem( all )?.Id == selectedItem.Id);
+				if ( !home || purchaseQty != 1 )
 				{
-					selectedItem = null; detailVersion++; SoundManager.PlayBack();
+					selectedItem = null; purchaseQty = 1; detailVersion++; SoundManager.PlayBack();
 					GameHUD.PanelHandledBackKey = true;
 				}
 				else GameHUD.ExitPanel();
 			}
 		}
-		else // boss store
+		else
 		{
 			var items = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
 			if ( items.Count == 0 ) return;
 
-			int idx = selectedConsumable == null ? -1 : items.FindIndex( i => i.Id == selectedConsumable.Id );
+			var cur = GetCaseBossItem();
+			int idx = cur == null ? -1 : items.FindIndex( i => i.Id == cur.Id );
 
 			if ( Input.Pressed( "Left" ) )
 			{
@@ -1220,16 +840,14 @@
 			}
 			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
 			{
-				if ( selectedConsumable != null ) PurchaseConsumable( selectedConsumable );
-				else SelectConsumable( items[0] );
+				BuyCurrent();
 			}
 			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 			{
-				// Same two-stage back as the gold store: deselect = internal
-				// (claim the key), nothing selected = genuine exit (don't).
-				if ( selectedConsumable != null )
+				bool home = selectedConsumable == null || (GetDefaultBossItem()?.Id == selectedConsumable.Id);
+				if ( !home || purchaseQty != 1 )
 				{
-					selectedConsumable = null; detailVersion++; SoundManager.PlayBack();
+					selectedConsumable = null; purchaseQty = 1; detailVersion++; SoundManager.PlayBack();
 					GameHUD.PanelHandledBackKey = true;
 				}
 				else GameHUD.ExitPanel();
@@ -1237,752 +855,413 @@
 		}
 	}
 
-	private List<ShopItem> GetFilteredItems()
+	// ============================================================
+	// GOLD goods — the 30 ShopManager goods in four sections
+	// ============================================================
+	private List<ShopItem> GetGoldItems()
 	{
-		var items = ShopManager.Instance?.GetAvailableItems(100) ?? new List<ShopItem>();
-		items = items.Where(i => i.Currency == CurrencyType.Gold).ToList();
-
-		items = currentCategory switch
-		{
-			"supplies" => items.Where(i => i.Type == ShopItemType.ContractInk || i.Type == ShopItemType.Consumable).ToList(),
-			"boosts" => items.Where(i => i.Type == ShopItemType.XPBoost || i.Type == ShopItemType.TamerXPBoost || i.Type == ShopItemType.BeastXPBoost || i.Type == ShopItemType.GoldBoost || i.Type == ShopItemType.RareEncounter || i.Type == ShopItemType.LuckyCharm).ToList(),
-			"storage" => items.Where(i => i.Type == ShopItemType.MonsterSlot).ToList(),
-			_ => items
-		};
-
-		return goldSort switch
-		{
-			"price-asc" => items.OrderBy(i => i.Price).ToList(),
-			"price-desc" => items.OrderByDescending(i => i.Price).ToList(),
-			"level" => items.OrderBy(i => i.RequiredLevel).ThenBy(i => i.Price).ToList(),
-			_ => items
-		};
-	}
-
-	/// <summary>
-	/// Pick a "featured" item to spotlight. Priority ladder:
-	///   1. Big-ticket storage expansion (if player still has room to expand)
-	///   2. Highest-priced non-server boost (personal XP/Gold/Lucky)
-	///   3. Highest-priced non-server item (any type — final safety net)
-	/// Only shown when category is "all" and no sort is applied so the player
-	/// isn't fighting their own filter intent.
-	///
-	/// Why the ladder: a lv 158 player may have maxed their monster storage and
-	/// server boosts are out of place as a "hero pick" (they're a communal
-	/// action, not a personal-progression moment). Falling back to a personal
-	/// boost keeps the spotlight card relevant across the game's lifecycle.
-	/// </summary>
-	private ShopItem GetFeaturedItem(List<ShopItem> filtered)
-	{
-		// The featured hero card only renders on the unfiltered "all" view
-		// with default sort — filtered views shouldn't fight player intent.
-		// NOTE: we do NOT clear ShopManager.SpotlightItemId here — the sale
-		// is a "today's deal" concept that applies to the item even when the
-		// player buys it from a filtered view. The card being visible on-
-		// screen is a presentation detail; the sale is a data fact.
-		if (currentCategory != "all" || goldSort != "default") return null;
-		if (filtered == null || filtered.Count == 0) return null;
-
-		ShopItem picked = null;
-
-		bool canExpandStorage = MonsterManager.Instance?.CanExpandStorage ?? true;
-		if (canExpandStorage)
-		{
-			picked = filtered.FirstOrDefault(i => i.Type == ShopItemType.MonsterSlot && i.Price >= 250000);
-		}
-
-		if (picked == null)
-		{
-			picked = filtered
-				.Where(i => !i.Id.StartsWith("server_") && IsBoostItem(i))
-				.OrderByDescending(i => i.Price)
-				.FirstOrDefault();
-		}
-
-		if (picked == null)
-		{
-			picked = filtered
-				.Where(i => !i.Id.StartsWith("server_"))
-				.OrderByDescending(i => i.Price)
-				.FirstOrDefault();
-		}
-
-		// Keep ShopManager's spotlight id in sync with the UI's pick — this
-		// matters when the UI heuristic differs from the manager's init-time
-		// resolver (e.g. player maxed their storage, UI falls back to a boost
-		// while the manager resolved storage at boot). The discount applies
-		// to whatever the UI actually shows; filtered views inherit the same
-		// id until this function runs again with a different pick.
-		if (picked != null)
-		{
-			ShopManager.Instance?.SetSpotlight(picked.Id);
-		}
-		return picked;
-	}
-
-	/// <summary>
-	/// Return a short "why is this featured?" hook for the spotlight card.
-	/// Pulled from item type — gives the right side of the card a reason to
-	/// exist beyond category + price (which a normal grid card already shows).
-	/// Returns null when the item type doesn't have a clear value angle.
-	/// </summary>
-	private string GetFeaturedHook(ShopItem item)
-	{
-		if (item == null) return null;
-		return item.Type switch
-		{
-			ShopItemType.MonsterSlot => "Permanent unlock",
-			ShopItemType.ContractInk when item.Quantity >= 100 => "Best per-ink rate",
-			ShopItemType.ContractInk => "Stockpile for capture runs",
-			ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost or ShopItemType.XPBoost => "Stack with daily login bonus",
-			ShopItemType.GoldBoost => "Pairs with rare-drop runs",
-			ShopItemType.RareEncounter => "Best for legendary hunting",
-			ShopItemType.LuckyCharm => "More rare item drops",
-			_ => null
-		};
-	}
-
-	/// <summary>
-	/// Compute a "SAVE X%" value callout for bundle items. Compares this item's
-	/// per-unit price to the cheapest per-unit price of siblings in the same
-	/// category — if this is a real bundle (>= 5% savings), surface the discount.
-	/// This is price-per-unit math, not RNG — anti-gacha safe (no "lucky roll"
-	/// framing). Returns null for singletons and non-bundles.
-	/// </summary>
-	private string GetFeaturedSavings(ShopItem item)
-	{
-		if (item == null || item.Quantity <= 1) return null;
-		if (item.Type != ShopItemType.ContractInk) return null;
-
-		var items = ShopManager.Instance?.GetAvailableItems(100) ?? new List<ShopItem>();
-		var siblings = items.Where(i => i.Type == item.Type && i.Id != item.Id && i.Quantity > 0).ToList();
-		if (siblings.Count == 0) return null;
-
-		float ourPerUnit = item.Quantity > 0 ? (float)item.Price / item.Quantity : item.Price;
-		float cheapestSibling = siblings.Min(i => i.Quantity > 0 ? (float)i.Price / i.Quantity : i.Price);
-		if (cheapestSibling <= 0 || ourPerUnit >= cheapestSibling) return null;
-
-		int savePct = (int)MathF.Round((1f - ourPerUnit / cheapestSibling) * 100f);
-		if (savePct < 5) return null;
-		if (savePct >= 30) return $"BEST VALUE · {savePct}% OFF";
-		return $"SAVE {savePct}%";
+		var items = ShopManager.Instance?.GetAvailableItems( 100 ) ?? new List<ShopItem>();
+		return items.Where( i => i.Currency == CurrencyType.Gold ).ToList();
 	}
 
 	public class GoldSection
 	{
+		public string Key { get; set; }
 		public string Label { get; set; }
 		public List<ShopItem> Items { get; set; } = new();
 	}
 
-	private List<GoldSection> GroupGoldSections(List<ShopItem> items, ShopItem featured)
+	// Grouping verbatim from the shipped page: ContractInk + Consumable →
+	// SUPPLIES; the six boost types split personal / `server_` prefix;
+	// MonsterSlot → STORAGE.
+	private List<GoldSection> GroupGoldSections( List<ShopItem> items )
 	{
-		// The featured card at the top of the grid is a spotlight highlight,
-		// not a relocation — we still list the item in its normal section so
-		// players searching by category can find it where they expect.
-		var working = items.ToList();
 		var result = new List<GoldSection>();
 
-		// When sorted explicitly, don't split by category — one flat section labeled by sort.
-		if (goldSort != "default")
-		{
-			result.Add(new GoldSection { Label = "Results", Items = working });
-			return result;
-		}
+		var supplies = items.Where( i => i.Type == ShopItemType.ContractInk || i.Type == ShopItemType.Consumable ).ToList();
+		var boosts = items.Where( IsBoostItem ).ToList();
+		var storage = items.Where( i => i.Type == ShopItemType.MonsterSlot ).ToList();
 
-		// Category-based grouping
-		if (currentCategory == "all")
+		if ( supplies.Count > 0 ) result.Add( new GoldSection { Key = "supplies", Label = L( "ui.shop.supplies" ).ToUpperInvariant(), Items = supplies } );
+		if ( boosts.Count > 0 )
 		{
-			var supplies = working.Where(i => i.Type == ShopItemType.ContractInk || i.Type == ShopItemType.Consumable).ToList();
-			var boosts = working.Where(i => i.Type == ShopItemType.TamerXPBoost || i.Type == ShopItemType.BeastXPBoost || i.Type == ShopItemType.XPBoost || i.Type == ShopItemType.GoldBoost || i.Type == ShopItemType.RareEncounter || i.Type == ShopItemType.LuckyCharm).ToList();
-			var storage = working.Where(i => i.Type == ShopItemType.MonsterSlot).ToList();
+			var personal = boosts.Where( i => !i.Id.StartsWith( "server_" ) ).ToList();
+			var server = boosts.Where( i => i.Id.StartsWith( "server_" ) ).ToList();
+			if ( personal.Count > 0 ) result.Add( new GoldSection { Key = "boosts", Label = L( "ui.shop.boosts" ).ToUpperInvariant(), Items = personal } );
+			if ( server.Count > 0 ) result.Add( new GoldSection { Key = "server", Label = "SERVER-WIDE", Items = server } );
+		}
+		if ( storage.Count > 0 ) result.Add( new GoldSection { Key = "storage", Label = L( "ui.shop.storage" ).ToUpperInvariant(), Items = storage } );
 
-			if (supplies.Count > 0) result.Add(new GoldSection { Label = "Supplies", Items = supplies });
-			if (boosts.Count > 0)
-			{
-				// Split server vs personal
-				var personal = boosts.Where(i => !i.Id.StartsWith("server_")).ToList();
-				var server = boosts.Where(i => i.Id.StartsWith("server_")).ToList();
-				if (personal.Count > 0) result.Add(new GoldSection { Label = "Boosts", Items = personal });
-				if (server.Count > 0) result.Add(new GoldSection { Label = "Server-Wide Boosts", Items = server });
-			}
-			if (storage.Count > 0) result.Add(new GoldSection { Label = "Storage", Items = storage });
-		}
-		else if (currentCategory == "boosts")
-		{
-			var personal = working.Where(i => !i.Id.StartsWith("server_")).ToList();
-			var server = working.Where(i => i.Id.StartsWith("server_")).ToList();
-			if (personal.Count > 0) result.Add(new GoldSection { Label = "Personal Boosts", Items = personal });
-			if (server.Count > 0) result.Add(new GoldSection { Label = "Server-Wide Boosts", Items = server });
-		}
-		else
-		{
-			result.Add(new GoldSection { Label = GetCategoryLabel(currentCategory), Items = working });
-		}
-
+		// Keep ShopManager's spotlight id in sync with the UI's pick (the shipped
+		// ladder: storage ≥ 250k → priciest personal boost → priciest good).
+		SyncSpotlight( items );
 		return result;
 	}
 
-	/// <summary>
-	/// For boss-store consumables: group runes by stat family, and keep other
-	/// items in a general "Items" group. Makes the 16-rune list scannable.
-	/// </summary>
-	public class ConsumableGroup
+	private void SyncSpotlight( List<ShopItem> items )
 	{
-		public string Label { get; set; }
-		public List<BossConsumable> Items { get; set; } = new();
+		if ( items == null || items.Count == 0 ) return;
+		ShopItem picked = null;
+		bool canExpandStorage = MonsterManager.Instance?.CanExpandStorage ?? true;
+		if ( canExpandStorage )
+			picked = items.FirstOrDefault( i => i.Type == ShopItemType.MonsterSlot && i.Price >= 250000 );
+		if ( picked == null )
+			picked = items.Where( i => !i.Id.StartsWith( "server_" ) && IsBoostItem( i ) ).OrderByDescending( i => i.Price ).FirstOrDefault();
+		if ( picked == null )
+			picked = items.Where( i => !i.Id.StartsWith( "server_" ) ).OrderByDescending( i => i.Price ).FirstOrDefault();
+		if ( picked != null ) ShopManager.Instance?.SetSpotlight( picked.Id );
 	}
 
-	private List<ConsumableGroup> GetConsumableGroups()
+	// The case NEVER empties (NO NOTHING): selection, else the first good the
+	// player can actually buy, else the first good.
+	private ShopItem GetDefaultGoldItem( List<ShopItem> items )
 	{
-		var sorted = bossSort switch
-		{
-			"price-asc" => consumables.OrderBy(i => i.Cost).ToList(),
-			"price-desc" => consumables.OrderByDescending(i => i.Cost).ToList(),
-			_ => consumables.ToList()
-		};
-
-		var result = new List<ConsumableGroup>();
-
-		if (bossSort != "default")
-		{
-			// Flat sorted list when player picks a sort
-			result.Add(new ConsumableGroup { Label = "Items & Runes", Items = sorted });
-			return result;
-		}
-
-		var runes = sorted.Where(i => i.Id.StartsWith("boss_rune_")).ToList();
-		var other = sorted.Where(i => !i.Id.StartsWith("boss_rune_")).ToList();
-
-		if (other.Count > 0) result.Add(new ConsumableGroup { Label = "Items", Items = other });
-
-		// Split runes into rough families by description keywords
-		if (runes.Count > 0)
-		{
-			var offense = runes.Where(r => r.Description.Contains("+10% ATK") || r.Description.Contains("+10% SpA")).ToList();
-			var defense = runes.Where(r => (r.Description.Contains("+10% DEF") || r.Description.Contains("+10% SpD") || r.Description.Contains("+10% HP")) && !r.Description.Contains("+10% ATK") && !r.Description.Contains("+10% SpA") && !r.Description.Contains("+10% SPD")).ToList();
-			var speed = runes.Where(r => r.Description.Contains("+10% SPD") && !r.Description.Contains("+10% ATK") && !r.Description.Contains("+10% DEF") && !r.Description.Contains("+10% HP") && !r.Description.Contains("+10% SpA") && !r.Description.Contains("+10% SpD")).ToList();
-			var rest = runes.Except(offense).Except(defense).Except(speed).ToList();
-
-			if (offense.Count > 0) result.Add(new ConsumableGroup { Label = "Offense Runes", Items = offense });
-			if (defense.Count > 0) result.Add(new ConsumableGroup { Label = "Defense Runes", Items = defense });
-			if (speed.Count > 0) result.Add(new ConsumableGroup { Label = "Speed Runes", Items = speed });
-			if (rest.Count > 0) result.Add(new ConsumableGroup { Label = "Hybrid Runes", Items = rest });
-		}
-
-		return result;
+		var ordered = GroupGoldSections( items ).SelectMany( s => s.Items ).ToList();
+		return ordered.FirstOrDefault( CanPurchase ) ?? ordered.FirstOrDefault();
 	}
 
-	/// <summary>
-	/// Compute total number of boss-store items rendered for the current filter —
-	/// used to show an empty-state when the filter matches nothing. Takes the
-	/// pre-computed consumable groups so we don't call GetConsumableGroups twice.
-	/// </summary>
-	private int GetTotalBossCount(List<ConsumableGroup> consumableGroups)
+	private ShopItem GetCaseGoldItem( List<ShopItem> items )
 	{
-		return consumableGroups.Sum(g => g.Items.Count);
+		if ( selectedItem != null && items.Any( i => i.Id == selectedItem.Id ) ) return selectedItem;
+		return GetDefaultGoldItem( items );
 	}
 
-	private bool IsBoostItem(ShopItem item)
+	private bool IsBoostItem( ShopItem item )
 	{
-		return item.Type == ShopItemType.TamerXPBoost || item.Type == ShopItemType.BeastXPBoost || item.Type == ShopItemType.XPBoost || item.Type == ShopItemType.GoldBoost || item.Type == ShopItemType.RareEncounter || item.Type == ShopItemType.LuckyCharm;
+		return item.Type == ShopItemType.TamerXPBoost || item.Type == ShopItemType.BeastXPBoost || item.Type == ShopItemType.XPBoost
+			|| item.Type == ShopItemType.GoldBoost || item.Type == ShopItemType.RareEncounter || item.Type == ShopItemType.LuckyCharm;
 	}
 
-	// Is this specific boost type currently running? (Used to disable server-
-	// boost purchases when the same buff is already active communally.)
-	private bool IsBoostAlreadyActive(ShopItem item)
+	// Boost state is per TYPE (ShopManager.IsBoostActive) — both Gold Boost
+	// goods show the same running timer, honestly.
+	private bool IsBoostRunning( ShopItem item ) => IsBoostItem( item ) && (ShopManager.Instance?.IsBoostActive( item.Type ) ?? false);
+
+	private bool IsAtBoostLimit( ShopItem item )
 	{
-		if (!IsBoostItem(item)) return false;
-		return ShopManager.Instance?.IsBoostActive(item.Type) ?? false;
+		if ( !IsBoostItem( item ) ) return false;
+		if ( IsBoostRunning( item ) ) return true;
+		if ( item.Id.StartsWith( "server_" ) )
+			return !(ShopManager.Instance?.CanActivateServerBoost( item.Type ) ?? true);
+		return !(ShopManager.Instance?.CanActivateBoost( item.Type ) ?? true);
 	}
 
-	// Has the player hit the active-boost limit for this type? Server boosts
-	// and personal boosts use separate caps.
-	private bool IsAtBoostLimit(ShopItem item)
+	private bool IsStorageMaxed( ShopItem item )
 	{
-		if (!IsBoostItem(item)) return false;
-		if (IsBoostAlreadyActive(item)) return true;
-		if (item.Id.StartsWith("server_"))
-			return !(ShopManager.Instance?.CanActivateServerBoost(item.Type) ?? true);
-		return !(ShopManager.Instance?.CanActivateBoost(item.Type) ?? true);
-	}
-
-	// Storage expansion is a singleton purchase — caps out at MaxMonsters.
-	private bool IsStorageMaxed(ShopItem item)
-	{
-		if (item.Type != ShopItemType.MonsterSlot) return false;
+		if ( item.Type != ShopItemType.MonsterSlot ) return false;
 		return !(MonsterManager.Instance?.CanExpandStorage ?? true);
 	}
 
-	/// <summary>
-	/// Whether the level-req chip should render on a shop card. The intent is
-	/// to signal an item's unlock gate to players who still find that info
-	/// actionable (locked, or just-unlocked-so-recall-matters). For veterans
-	/// who've long out-levelled every item, the chip becomes a wall of green
-	/// checkmarks that adds noise without information — suppress it.
-	///
-	/// Rule: only show when the item has a req > lv 1 AND the player is within
-	/// 5 levels of the gate. 5 levels ≈ one play session's worth of catch-up,
-	/// so a new player still sees the green checks as "I reached these
-	/// recently" while long-time players see a clean grid.
-	/// </summary>
-	private bool ShouldShowLevelChip(ShopItem item)
+	// ADD 2 — the ShopItem → inventory-id map. Consumables share their id with
+	// the ItemDefinition (ApplyItemEffect's Consumable branch). Ink is a
+	// currency and storage a permanent unlock (no inventory row).
+	// LANE: systems — boosts land in inventory via ShopManager's PRIVATE
+	// GetInventoryItemIdForBoost (boost_tamer_xp_1h …); expose it publicly and
+	// route it here so boost cards can carry an owned count too.
+	private string GetInventoryId( ShopItem item ) => item?.Type == ShopItemType.Consumable ? item.Id : null;
+
+	private int GetOwned( ShopItem item )
 	{
-		if (item.RequiredLevel <= 1) return false;
-		int level = GetLevel();
-		if (level < item.RequiredLevel) return true; // still locked → always show
-		return level < item.RequiredLevel + 5;
+		var id = GetInventoryId( item );
+		return id == null ? 0 : (ItemManager.Instance?.GetItemCount( id ) ?? 0);
 	}
 
-	/// <summary>
-	/// Convert a `#RRGGBB` hex string to `rgba(r, g, b, a)` so we can tint
-	/// s&box inline styles at arbitrary alpha. s&box doesn't support
-	/// `color-mix()` or similar CSS composition — this is the cheap
-	/// equivalent. Returns `rgba(0,0,0,a)` for any malformed input so we
-	/// never emit invalid CSS at runtime.
-	/// </summary>
-	private string HexToRgba(string hex, float alpha)
-	{
-		if (string.IsNullOrEmpty(hex) || hex.Length < 7 || hex[0] != '#')
-			return $"rgba(0, 0, 0, {alpha.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)})";
-		try
-		{
-			int r = System.Convert.ToInt32(hex.Substring(1, 2), 16);
-			int g = System.Convert.ToInt32(hex.Substring(3, 2), 16);
-			int b = System.Convert.ToInt32(hex.Substring(5, 2), 16);
-			string a = alpha.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-			return $"rgba({r}, {g}, {b}, {a})";
-		}
-		catch
-		{
-			return $"rgba(0, 0, 0, {alpha.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)})";
-		}
-	}
+	// Corner chip — ONE slot, two meanings by kind: bundle count (ink ×5,
+	// storage +50, tan) OR owned count (cream). Ink/storage never carry an
+	// owned count, consumables never a bundle, so the two never co-occur.
+	private bool HasBundleChip( ShopItem item ) => item.Quantity > 1 && item.Type != ShopItemType.Consumable;
+	private string BundleChipText( ShopItem item ) => (item.Type == ShopItemType.MonsterSlot ? "+" : "×") + item.Quantity;
+	private string BundleMetaText( ShopItem item ) => item.Type == ShopItemType.MonsterSlot ? "+" + item.Quantity + " SLOTS" : "×" + item.Quantity + " CONTRACT INK";
+	private string OwnedChipText( int owned ) => L( "ui.shop.owned" ) + " " + owned;
 
-	// Affordability uses the effective (post-discount) price so the spotlight
-	// + any skill discounts are honored by every downstream "can the player
-	// actually buy this?" check (card state, button state, deficit line).
-	// ShopManager.PurchaseItem charges the same effective price.
-	private int GetEffectivePrice(ShopItem item) => ShopManager.Instance?.GetDiscountedPrice(item) ?? item.Price;
-	private bool CanAfford(ShopItem item) => GetGold() >= GetEffectivePrice(item);
+	// Affordability uses the EFFECTIVE (post-discount) price everywhere —
+	// ShopManager.PurchaseItem charges the same amount.
+	private int GetEffectivePrice( ShopItem item ) => ShopManager.Instance?.GetDiscountedPrice( item ) ?? item.Price;
+	private bool CanAfford( ShopItem item ) => GetGold() >= GetEffectivePrice( item );
 
-	private bool CanPurchase(ShopItem item) =>
-		CanAfford(item)
+	private bool CanPurchase( ShopItem item ) =>
+		CanAfford( item )
 		&& GetLevel() >= item.RequiredLevel
 		&& item.IsInStock
-		&& !IsAtBoostLimit(item)
-		&& !IsStorageMaxed(item);
+		&& !IsAtBoostLimit( item )
+		&& !IsStorageMaxed( item );
 
-	// ============================================================
-	// Multi-buy plumbing
-	// ------------------------------------------------------------
-	// Only stackable items qualify: gold ContractInk bundles, and every
-	// boss-store consumable (runes, orbs, ink bundles). Boosts and
-	// MonsterSlot expansions are singletons and never show the picker.
-	// ============================================================
-	private bool SupportsMultiBuy(ShopItem item)
+	// ── Multi-buy ────────────────────────────────────────────────
+	// Stackable goods only: ink packs + personal boosts (inventory items) and
+	// every boss-token good. Server boosts and storage are singletons.
+	private bool SupportsMultiBuy( ShopItem item )
 	{
-		if (item == null) return false;
-		// Server-activated boosts are one-off communal actions — can't be
-		// stockpiled, so no multi-buy.
-		if (item.Id.StartsWith("server_")) return false;
-		// ContractInk + all personal boosts (into inventory as stackable items).
-		if (item.Type == ShopItemType.ContractInk) return true;
-		if (IsBoostItem(item)) return true;
+		if ( item == null ) return false;
+		if ( item.Id.StartsWith( "server_" ) ) return false;
+		if ( item.Type == ShopItemType.ContractInk || item.Type == ShopItemType.Consumable ) return true;
+		if ( IsBoostItem( item ) ) return true;
 		return false;
 	}
 
-	private bool SupportsMultiBuy(BossConsumable item) => item != null;
-
-	/// <summary>
-	/// Cap on how many units the player can buy right now. Balance-capped
-	/// first (floor gold / unit price), then inventory-capped (MaxStack
-	/// minus currently-owned) so we never oversell. Returns at least 1 so
-	/// the qty picker never shows "0 max" for an item the player has just
-	/// clicked.
-	/// </summary>
-	private int GetMaxBuyQty(ShopItem item)
+	// Cap = floor(balance ÷ unit), never below 1 so the stepper always has a floor.
+	private int GetMaxBuyQty( ShopItem item )
 	{
-		if (item == null) return 1;
-		int unit = GetEffectivePrice(item);
-		if (unit <= 0) return 1;
-		int byBalance = GetGold() / unit;
-		// Contract Ink has no hard inventory cap in this panel — rely on balance.
-		return Math.Max(1, byBalance);
+		if ( item == null ) return 1;
+		int unit = GetEffectivePrice( item );
+		if ( unit <= 0 ) return 1;
+		return Math.Max( 1, GetGold() / unit );
 	}
 
-	private int GetMaxBuyQty(BossConsumable item)
+	private int GetMaxBuyQty( BossConsumable item )
 	{
-		if (item == null) return 1;
+		if ( item == null ) return 1;
 		int unit = item.Cost;
-		if (unit <= 0) return 1;
+		if ( unit <= 0 ) return 1;
 		int byBalance = GetBossTokens() / unit;
-		int stackRoom = GetConsumableMaxStack(item.Id) - GetConsumableOwned(item.Id);
-		int cap = Math.Max(0, Math.Min(byBalance, stackRoom));
-		return Math.Max(1, cap);
+		int stackRoom = GetConsumableMaxStack( item.Id ) - GetConsumableOwned( item.Id );
+		return Math.Max( 1, Math.Max( 0, Math.Min( byBalance, stackRoom ) ) );
 	}
 
-	private void ChangeQty(int delta)
+	private void ChangeQty( int delta )
 	{
 		int next = purchaseQty + delta;
 		int max = 1;
-		if (selectedItem != null && SupportsMultiBuy(selectedItem)) max = GetMaxBuyQty(selectedItem);
-		else if (selectedConsumable != null) max = GetMaxBuyQty(selectedConsumable);
-		purchaseQty = Math.Max(1, Math.Min(max, next));
-		SoundManager.PlayClick();
-	}
-
-	private void SetQtyMax()
-	{
-		if (selectedItem != null && SupportsMultiBuy(selectedItem))
-			purchaseQty = GetMaxBuyQty(selectedItem);
-		else if (selectedConsumable != null)
-			purchaseQty = GetMaxBuyQty(selectedConsumable);
+		if ( shopView == "gold" )
+		{
+			var c = GetCaseGoldItem( GetGoldItems() );
+			if ( c != null && SupportsMultiBuy( c ) ) { selectedItem = c; max = GetMaxBuyQty( c ); }
+		}
 		else
-			purchaseQty = 1;
+		{
+			var c = GetCaseBossItem();
+			if ( c != null ) { selectedConsumable = c; max = GetMaxBuyQty( c ); }
+		}
+		int clamped = Math.Max( 1, Math.Min( max, next ) );
+		if ( clamped == purchaseQty ) { SoundManager.PlayDeny(); return; }
+		purchaseQty = clamped;
 		SoundManager.PlayClick();
 	}
 
-	/// <summary>
-	/// Total cost after multiplying unit price by qty. Spotlight/skill
-	/// discounts are already baked into `GetEffectivePrice`, so this is
-	/// the exact amount SpendGold will deduct across the purchase loop.
-	/// Non-multi-buy items always use qty=1 regardless of the picker value
-	/// so a stale qty can never leak into a singleton's affordability.
-	/// </summary>
-	private int GetTotalPrice(ShopItem item)
+	private int GetTotalPrice( ShopItem item )
 	{
-		int qty = SupportsMultiBuy(item) ? Math.Max(1, purchaseQty) : 1;
-		return GetEffectivePrice(item) * qty;
+		int qty = SupportsMultiBuy( item ) ? Math.Max( 1, purchaseQty ) : 1;
+		return GetEffectivePrice( item ) * qty;
 	}
-	private int GetTotalPrice(BossConsumable item) => (item?.Cost ?? 0) * Math.Max(1, purchaseQty);
 
-	private bool CanAffordTotal(ShopItem item) => GetGold() >= GetTotalPrice(item);
-	private bool CanAffordTotal(BossConsumable item) => GetBossTokens() >= GetTotalPrice(item);
-
-	private bool CanPurchaseQty(ShopItem item)
+	private bool CanPurchaseQty( ShopItem item )
 	{
-		if (item == null) return false;
-		if (!CanAffordTotal(item)) return false;
-		if (GetLevel() < item.RequiredLevel) return false;
-		if (!item.IsInStock) return false;
+		if ( item == null ) return false;
+		if ( GetGold() < GetTotalPrice( item ) ) return false;
+		if ( GetLevel() < item.RequiredLevel ) return false;
+		if ( !item.IsInStock ) return false;
+		if ( IsAtBoostLimit( item ) ) return false;
+		if ( IsStorageMaxed( item ) ) return false;
 		return true;
 	}
 
-	private bool CanPurchaseConsumableQty(BossConsumable item)
+	private bool CanPurchaseConsumableQty( BossConsumable item )
 	{
-		if (item == null) return false;
-		if (!CanAffordTotal(item)) return false;
-		if (IsConsumableMaxed(item)) return false;
-		int qty = Math.Max(1, purchaseQty);
-		int stackRoom = GetConsumableMaxStack(item.Id) - GetConsumableOwned(item.Id);
-		if (stackRoom < qty) return false;
+		if ( item == null ) return false;
+		int qty = Math.Max( 1, purchaseQty );
+		if ( GetBossTokens() < item.Cost * qty ) return false;
+		if ( IsConsumableMaxed( item ) ) return false;
+		int stackRoom = GetConsumableMaxStack( item.Id ) - GetConsumableOwned( item.Id );
+		if ( stackRoom < qty ) return false;
 		return true;
 	}
 
 	// ------------------------------------------------------------
-	// Unified buy-button content. The cascaded @if/else chain in Razor
-	// was leaving ghost iconify children in the DOM during rapid clicks
-	// (user-reported bug: two icons + text during purchase flash). By
-	// computing the icon + label in code-behind and rendering ONE
-	// iconify + ONE span unconditionally, s&box only swaps attribute
-	// values on re-render — no child-slot thrash, no duplicate glyphs.
+	// Unified BUY content — computed as a tuple so BbButton renders ONE
+	// iconify + ONE span and only swaps attribute values (the ghost-child
+	// law). `off` = the desaturated non-pressable slab (same size, BIG
+	// THINGS BIG). Copy is plain words; the qty rides the label.
 	// ------------------------------------------------------------
-	private (string icon, string label, string color, int size) GetBuyButtonContent(ShopItem item)
+	private (string icon, string label, bool off) GetBuyButtonContent( ShopItem item )
 	{
-		// Gold-tier CTA: ink #2a1605 on the gold fill (BbTokens.GoldInk).
-		// Flash state stays white (green confirm fill); disabled states
-		// stay dim white (dark slab fill).
-		if (IsPurchaseFlash) return ("lucide:check", "Purchased!", "#ffffff", 18);
-		if (item == null) return ("lucide:shopping-bag", "Purchase", "#2a1605", 18);
+		if ( IsBuyBeat ) return ("lucide:check", "BOUGHT", false);
+		if ( item == null ) return ("lucide:shopping-bag", L( "ui.shop.buy" ).ToUpperInvariant(), true);
 
-		int qty = SupportsMultiBuy(item) ? Math.Max(1, purchaseQty) : 1;
-		int total = GetEffectivePrice(item) * qty;
+		int qty = SupportsMultiBuy( item ) ? Math.Max( 1, purchaseQty ) : 1;
+		int total = GetEffectivePrice( item ) * qty;
 
-		// Level gate — user can't get past this, no qty workaround.
-		if (GetLevel() < item.RequiredLevel) return ("lucide:lock", "Level Locked", "rgba(255,255,255,0.5)", 16);
+		if ( GetLevel() < item.RequiredLevel ) return ("lucide:lock", "LEVEL " + item.RequiredLevel, true);
+		if ( IsBoostItem( item ) && IsBoostRunning( item ) && item.Id.StartsWith( "server_" ) )
+			return ("lucide:zap", L( "ui.shop.active" ).ToUpperInvariant(), true);
+		if ( IsBoostItem( item ) && IsAtBoostLimit( item ) ) return ("lucide:zap", "BOOST FULL", true);
+		if ( IsStorageMaxed( item ) ) return ("lucide:archive", "STORAGE FULL", true);
+		if ( GetGold() < total ) return ("lucide:x", "NEED +" + (total - GetGold()).ToString( "N0" ), true);
 
-		// Server boost already running — can't re-activate until it expires.
-		if (IsBoostItem(item) && item.Id.StartsWith("server_") && IsBoostAlreadyActive(item))
-			return ("lucide:zap", "Active", "rgba(255,255,255,0.5)", 16);
-		// Server boost type limit reached (communal cap).
-		if (IsBoostItem(item) && item.Id.StartsWith("server_") && IsAtBoostLimit(item))
-			return ("lucide:archive", "Max Active", "rgba(255,255,255,0.5)", 16);
-		// Storage expansion — already at max monster slots.
-		if (item.Type == ShopItemType.MonsterSlot && IsStorageMaxed(item))
-			return ("lucide:archive", "Max Storage", "rgba(255,255,255,0.5)", 16);
-
-		if (GetGold() < total) return ("lucide:x", "Not Enough", "rgba(255,255,255,0.5)", 16);
-		return ("lucide:shopping-bag", qty > 1 ? $"Purchase x{qty}" : "Purchase", "#ffffff", 18);
+		string buy = L( "ui.shop.buy" ).ToUpperInvariant();
+		return ("lucide:shopping-bag", qty > 1 ? buy + " ×" + qty : buy, false);
 	}
 
-	private (string icon, string label, string color, int size) GetBuyButtonContentConsumable(BossConsumable item)
+	private (string icon, string label, bool off) GetBuyButtonContentConsumable( BossConsumable item )
 	{
-		if (IsPurchaseFlash) return ("lucide:check", "Purchased!", "#ffffff", 18);
-		if (item == null) return ("lucide:shopping-bag", "Purchase", "#ffffff", 18);
+		if ( IsBuyBeat ) return ("lucide:check", "BOUGHT", false);
+		if ( item == null ) return ("lucide:shopping-bag", L( "ui.shop.buy" ).ToUpperInvariant(), true);
 
-		int qty = Math.Max(1, purchaseQty);
+		int qty = Math.Max( 1, purchaseQty );
 		int total = item.Cost * qty;
 
-		if (IsConsumableMaxed(item)) return ("lucide:archive", "Max Owned", "rgba(255,255,255,0.5)", 16);
-		int stackRoom = GetConsumableMaxStack(item.Id) - GetConsumableOwned(item.Id);
-		if (stackRoom < qty) return ("lucide:archive", "Stack Full", "rgba(255,255,255,0.5)", 16);
-		if (GetBossTokens() < total) return ("lucide:x", "Not Enough", "rgba(255,255,255,0.5)", 16);
-		return ("lucide:shopping-bag", qty > 1 ? $"Purchase x{qty}" : "Purchase", "#ffffff", 18);
+		if ( IsConsumableMaxed( item ) ) return ("lucide:archive", "MAX HELD", true);
+		int stackRoom = GetConsumableMaxStack( item.Id ) - GetConsumableOwned( item.Id );
+		if ( stackRoom < qty ) return ("lucide:archive", "ROOM FOR " + stackRoom, true);
+		if ( GetBossTokens() < total ) return ("lucide:x", "NEED +" + (total - GetBossTokens()).ToString( "N0" ), true);
+
+		string buy = L( "ui.shop.buy" ).ToUpperInvariant();
+		return ("lucide:shopping-bag", qty > 1 ? buy + " ×" + qty : buy, false);
 	}
 
-	private void SelectItem(ShopItem item)
+	private void SelectItem( ShopItem item )
 	{
-		if (selectedItem?.Id == item.Id) return;
+		if ( item == null ) return;
+		if ( selectedItem?.Id == item.Id ) return;
 		selectedItem = item;
-		purchaseQty = 1; // reset multi-buy qty so a new item never inherits a stale count
+		purchaseQty = 1;
 		detailVersion++;
-		// One-shot card-select pulse — the overlay div is keyed on
-		// selectPulseVersion so it remounts each click, replaying @keyframes.
-		justSelectedItemId = item.Id;
-		selectPulseVersion++;
 		SoundManager.PlayClick();
 	}
 
-	private async void PurchaseItem(ShopItem item)
+	private void SelectConsumable( BossConsumable item )
 	{
-		if (!CanPurchaseQty(item)) return;
-		if (purchaseBurstActive) return; // guard against double-click
-
-		int qty = SupportsMultiBuy(item) ? Math.Max(1, purchaseQty) : 1;
-
-		// t=0: layered sound + button overshoot + particle burst. Sound fires
-		// ONCE for the whole multi-buy (not N times) — anti-annoyance. For
-		// big buys, sprinkle extra gold-reward chimes: one per 10 units, max 3.
+		if ( item == null ) return;
+		if ( selectedConsumable?.Id == item.Id ) return;
+		selectedConsumable = item;
+		purchaseQty = 1;
+		detailVersion++;
 		SoundManager.PlayClick();
-		SoundManager.PlaySuccess();
-		SoundManager.PlayGoldReward();
-		_ = PlayMultiBuyChimes(qty);
+	}
 
-		buyBtnOvershoot = true;
-		_ = ClearBuyBtnOvershoot();
+	// BUY — buys whatever the case shows (method group for BbButton + Space).
+	private void BuyCurrent()
+	{
+		if ( shopView == "gold" ) PurchaseItem( GetCaseGoldItem( GetGoldItems() ) );
+		else PurchaseConsumable( GetCaseBossItem() );
+	}
 
-		purchaseBurstIsBoss = false;
-		purchaseBurstQty = qty;
-		purchaseBurstVersion++;
-		purchaseBurstActive = true;
+	// ONE beat: the BUY flash class + the balance pulse (CheckCurrencyFlash).
+	// The 0.35s defer, particle burst, flyer, card tick and chime ladder are CUT.
+	private void PurchaseItem( ShopItem item )
+	{
+		if ( item == null ) return;
+		if ( !CanPurchaseQty( item ) ) { SoundManager.PlayDeny(); return; }
 
-		// Defer so HUD currency roll-up / icon pulse fires when the flyer "lands"
-		await GameTask.DelaySeconds( 0.35f );
+		int qty = SupportsMultiBuy( item ) ? Math.Max( 1, purchaseQty ) : 1;
+		if ( selectedItem == null || selectedItem.Id != item.Id ) selectedItem = item;
 
-		// Single-unit ShopManager.PurchaseItem call in a loop. The HUD currency
-		// roll-up handles the cumulative deduction naturally (it pulses on any
-		// value change). If any unit fails (balance tanked elsewhere), break
-		// and still flash success for the units that went through.
 		int bought = 0;
-		for (int i = 0; i < qty; i++)
+		for ( int i = 0; i < qty; i++ )
 		{
-			if (ShopManager.Instance?.PurchaseItem(item.Id) != true) break;
+			if ( ShopManager.Instance?.PurchaseItem( item.Id ) != true ) break;
 			bought++;
 		}
 
-		if (bought > 0)
+		if ( bought > 0 )
 		{
-			TriggerPurchaseFlash();
-			// Flash the purchased card itself — a brief green tick overlay gives
-			// "yes, you got THIS item" confirmation on top of the HUD currency
-			// flyer. Clears ~900ms later, not retriggered on re-renders.
-			purchasedItemId = item.Id;
-			_ = ClearPurchasedCard();
+			SoundManager.PlayGoldReward();
+			TriggerBuyBeat();
+			if ( qty > 1 ) purchaseQty = 1;
 		}
 		else
 		{
 			SoundManager.PlayBack();
 		}
-
-		// Reset qty back to 1 after a successful multi-buy so the next item
-		// opened from the grid doesn't inherit a stale high count.
-		if (bought > 0 && qty > 1) purchaseQty = 1;
-
-		await GameTask.DelaySeconds( 0.5f );
-		purchaseBurstActive = false;
 	}
 
-	/// <summary>
-	/// Sprinkle 1-3 extra gold-reward chimes for multi-buy (qty >= 10).
-	/// Caps at 3 extras so the biggest purchase (x100) isn't a siren.
-	/// </summary>
-	private async Task PlayMultiBuyChimes(int qty)
+	private void PurchaseConsumable( BossConsumable item )
 	{
-		if (qty < 10) return;
-		int extras = Math.Min(3, qty / 10);
-		for (int i = 0; i < extras; i++)
+		if ( item == null ) return;
+		if ( !CanPurchaseConsumableQty( item ) ) { SoundManager.PlayDeny(); return; }
+
+		int qty = Math.Max( 1, purchaseQty );
+		if ( selectedConsumable == null || selectedConsumable.Id != item.Id ) selectedConsumable = item;
+
+		int bought = 0;
+		for ( int i = 0; i < qty; i++ )
 		{
-			await GameTask.DelaySeconds( 0.08f + 0.06f * i );
+			if ( TamerManager.Instance?.SpendBossTokens( item.Cost ) != true ) break;
+			ItemManager.Instance?.AddItem( item.Id );
+			bought++;
+		}
+
+		if ( bought > 0 )
+		{
+			TamerManager.Instance?.SaveToCloud();
+			MissionManager.Instance?.TrackShopPurchase( 0 );
 			SoundManager.PlayGoldReward();
+			TriggerBuyBeat();
+			if ( qty > 1 ) purchaseQty = 1;
+		}
+		else
+		{
+			SoundManager.PlayBack();
 		}
 	}
 
-	private async Task ClearPurchasedCard()
+	private void TriggerBuyBeat()
 	{
-		// Capture the id we're clearing — if the player has already purchased
-		// a different item before our timer fires, we shouldn't clear theirs.
-		string targetId = purchasedItemId;
-		await GameTask.DelaySeconds( 0.9f );
-		if (purchasedItemId == targetId)
-		{
-			purchasedItemId = null;
-		}
+		buyBeatVersion++;
+		buyBeatUntil = RealTime.Now + 0.5f;
 	}
 
-	private async Task ClearBuyBtnOvershoot()
+	private void CheckCurrencyFlash()
 	{
-		await GameTask.DelaySeconds( 0.12f );
-		buyBtnOvershoot = false;
+		int currentGold = GetGold();
+		int currentTokens = GetBossTokens();
+		if ( lastGoldValue >= 0 && currentGold != lastGoldValue ) goldFlashUntil = RealTime.Now + 0.6f;
+		if ( lastTokenValue >= 0 && currentTokens != lastTokenValue ) tokenFlashUntil = RealTime.Now + 0.6f;
+		lastGoldValue = currentGold;
+		lastTokenValue = currentTokens;
 	}
 
-	private string GetBoostLabel(ShopItem item)
+	// ── Copy helpers ─────────────────────────────────────────────
+	private string GetBoostLabel( ShopItem item ) => item.Type switch
 	{
-		return item.Type switch
-		{
-			ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost => "2x XP",
-			ShopItemType.GoldBoost => "2x Gold",
-			ShopItemType.RareEncounter => "2x Rare Encounters",
-			ShopItemType.LuckyCharm => "2x Rare Drops",
-			_ => ""
-		};
-	}
+		ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost => "2× XP",
+		ShopItemType.GoldBoost => "2× GOLD",
+		ShopItemType.RareEncounter => "2× RARE ENCOUNTERS",
+		ShopItemType.LuckyCharm => "2× RARE DROPS",
+		_ => ""
+	};
 
-	private string GetDurationText(int minutes)
+	private string GetDurationText( int minutes )
 	{
-		if (minutes >= 60)
+		if ( minutes >= 60 )
 		{
 			int hours = minutes / 60;
 			int mins = minutes % 60;
-			return mins > 0 ? $"{hours}h {mins}m" : $"{hours} hour{(hours > 1 ? "s" : "")}";
+			return mins > 0 ? hours + "H " + mins + "M" : hours + (hours > 1 ? " HOURS" : " HOUR");
 		}
-		return $"{minutes} minutes";
+		return minutes + " MIN";
 	}
 
-	private string GetShortDuration(int minutes)
-	{
-		if (minutes >= 60)
-		{
-			int hours = minutes / 60;
-			return $"{hours}h";
-		}
-		return $"{minutes}m";
-	}
+	private string GetShortDuration( int minutes ) => minutes >= 60 ? (minutes / 60) + "H" : minutes + "M";
 
-	private string GetItemTypeClass(ShopItemType type) => type switch
+	private string FormatBoostTime( TimeSpan t )
 	{
-		ShopItemType.ContractInk => "type-supply",
-		ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost
-			or ShopItemType.GoldBoost or ShopItemType.RareEncounter or ShopItemType.LuckyCharm => "type-boost",
-		ShopItemType.MonsterSlot => "type-storage",
-		_ => "type-misc"
-	};
-
-	private string GetItemCategory(ShopItemType type) => type switch
-	{
-		ShopItemType.ContractInk => "Supply",
-		ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost
-			or ShopItemType.GoldBoost or ShopItemType.RareEncounter or ShopItemType.LuckyCharm => "Boost",
-		ShopItemType.MonsterSlot => "Storage",
-		_ => "Item"
-	};
-
-	// Iconify replacement for the old emoji-based GetBoostIcon
-	private string GetBoostIconKey(ShopItemType type) => type switch
-	{
-		ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost => "lucide:zap",
-		ShopItemType.GoldBoost => "lucide:coins",
-		ShopItemType.RareEncounter => "lucide:radar",
-		ShopItemType.LuckyCharm => "lucide:clover",
-		_ => "lucide:sparkles"
-	};
-
-	private string GetBoostIconColor(ShopItemType type) => type switch
-	{
-		ShopItemType.XPBoost or ShopItemType.TamerXPBoost or ShopItemType.BeastXPBoost => "#a78bfa",
-		ShopItemType.GoldBoost => "#fbbf24",
-		ShopItemType.RareEncounter => "#60a5fa",
-		ShopItemType.LuckyCharm => "#4ade80",
-		_ => "#c4b5fd"
-	};
-
-	private string GetBoostShortLabel(ShopItemType type) => type switch
-	{
-		ShopItemType.TamerXPBoost => "2× Tamer XP",
-		ShopItemType.BeastXPBoost => "2× Beast XP",
-		ShopItemType.XPBoost => "2× XP",
-		ShopItemType.GoldBoost => "2× Gold",
-		ShopItemType.RareEncounter => "2× Rare Spawns",
-		ShopItemType.LuckyCharm => "2× Rare Drops",
-		_ => type.ToString()
-	};
-
-	private string FormatBoostTime(TimeSpan t)
-	{
-		if (t.TotalHours >= 1) return $"{(int)t.TotalHours}h {t.Minutes}m";
-		if (t.TotalMinutes >= 1) return $"{(int)t.TotalMinutes}m";
+		if ( t.TotalHours >= 1 ) return $"{(int)t.TotalHours}h {t.Minutes}m";
+		if ( t.TotalMinutes >= 1 ) return $"{(int)t.TotalMinutes}m";
 		return $"{(int)t.TotalSeconds}s";
 	}
 
-	/// <summary>
-	/// Time-remaining label for an active boost type. Used inline on
-	/// grid cards so the player sees how long their running boost has left
-	/// without opening the detail pane.
-	/// </summary>
-	private string GetActiveBoostTimeText(ShopItemType type)
+	// Time left on the running boost of this good's TYPE (personal first, then server).
+	private string GetBoostTimeText( ShopItem item )
 	{
-		var personal = ShopManager.Instance?.GetActiveBoost(type);
-		if (personal != null) return FormatBoostTime(personal.TimeRemaining);
-		var server = ShopManager.Instance?.GetServerBoost(type);
-		if (server != null) return FormatBoostTime(server.TimeRemaining);
-		return "active";
+		var personal = ShopManager.Instance?.GetActiveBoost( item.Type );
+		if ( personal != null ) return FormatBoostTime( personal.TimeRemaining );
+		var server = ShopManager.Instance?.GetServerBoost( item.Type );
+		if ( server != null ) return FormatBoostTime( server.TimeRemaining );
+		return L( "ui.shop.active" ).ToLowerInvariant();
 	}
 
-	public class BoostDisplay
+	// Card name = the string before "(" — the bundle rides the corner chip.
+	private string GetBaseName( string name )
 	{
-		public ShopItemType Type { get; set; }
-		public TimeSpan TimeRemaining { get; set; }
-		public bool IsServer { get; set; }
+		if ( string.IsNullOrEmpty( name ) ) return name;
+		int idx = name.IndexOf( '(' );
+		return idx > 0 ? name.Substring( 0, idx ).Trim() : name;
 	}
 
-	private List<BoostDisplay> GetAllActiveBoostDisplay()
-	{
-		var all = ShopManager.Instance?.GetAllActiveBoosts() ?? new();
-		return all.Select(b => new BoostDisplay { Type = b.Type, TimeRemaining = b.TimeRemaining, IsServer = b.IsServer }).ToList();
-	}
-
-	/// <summary>
-	/// Gets the base part of an item name (before parentheses).
-	/// </summary>
-	private string GetBaseName(string name)
-	{
-		if (string.IsNullOrEmpty(name)) return name;
-		int idx = name.IndexOf('(');
-		return idx > 0 ? name.Substring(0, idx).Trim() : name;
-	}
-
-	/// <summary>
-	/// Gets the parenthetical part of an item name.
-	/// </summary>
-	private string GetNameSuffix(string name)
-	{
-		if (string.IsNullOrEmpty(name)) return null;
-		int idx = name.IndexOf('(');
-		return idx > 0 ? name.Substring(idx) : null;
-	}
-
-	// Boss shop selection methods
-	private void SelectConsumable(BossConsumable item)
-	{
-		if (selectedConsumable?.Id == item.Id) return;
-		selectedConsumable = item;
-		purchaseQty = 1;
-		detailVersion++;
-		justSelectedItemId = item.Id;
-		selectPulseVersion++;
-		SoundManager.PlayClick();
-	}
-
-	// Boss consumables data
+	// ============================================================
+	// BOSS TOKENS goods — 7 items + 16 nature runes
+	// LANE: systems — this catalogue should come from ItemManager (one
+	// source: name / description / icon / MaxStack already live there);
+	// only Cost is shop data. Data unchanged in this rebuild.
+	// ============================================================
 	private List<BossConsumable> consumables = new()
 	{
 		new BossConsumable { Id = "boss_xp_orb_small", Name = "XP Orb (Small)", Description = "Grants 500 XP to one monster", Icon = "/ui/items/consumables/xp_orb_small.png", Cost = 100 },
@@ -2013,81 +1292,6 @@
 		new BossConsumable { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK)", Icon = "/ui/items/consumables/rune_serene.png", Cost = 400 },
 	};
 
-	private int GetConsumableMaxStack(string itemId)
-	{
-		var itemDef = ItemManager.Instance?.GetItem(itemId);
-		if (itemDef != null && itemDef.MaxStack > 0) return itemDef.MaxStack;
-		return 99;
-	}
-
-	private int GetConsumableOwned(string itemId)
-	{
-		return TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault(itemId, 0) ?? 0;
-	}
-
-	private bool IsConsumableMaxed(BossConsumable item)
-	{
-		return GetConsumableOwned(item.Id) >= GetConsumableMaxStack(item.Id);
-	}
-
-	private async void PurchaseConsumable(BossConsumable item)
-	{
-		if (purchaseBurstActive) return;
-		if (!CanPurchaseConsumableQty(item))
-		{
-			if (IsConsumableMaxed(item)) SoundManager.PlayDeny();
-			return;
-		}
-
-		int qty = Math.Max(1, purchaseQty);
-
-		SoundManager.PlayClick();
-		SoundManager.PlaySuccess();
-		SoundManager.PlayGoldReward();
-		_ = PlayMultiBuyChimes(qty);
-
-		buyBtnOvershoot = true;
-		_ = ClearBuyBtnOvershoot();
-
-		purchaseBurstIsBoss = true;
-		purchaseBurstQty = qty;
-		purchaseBurstVersion++;
-		purchaseBurstActive = true;
-
-		await GameTask.DelaySeconds( 0.35f );
-
-		// Loop single-unit purchase so we stop cleanly if balance drops mid-buy
-		// (shouldn't happen client-side, but cheap safety). SaveToCloud once
-		// at the end — not per unit.
-		int bought = 0;
-		for (int i = 0; i < qty; i++)
-		{
-			if (TamerManager.Instance?.SpendBossTokens(item.Cost) != true) break;
-			ItemManager.Instance?.AddItem(item.Id);
-			bought++;
-		}
-
-		if (bought > 0)
-		{
-			TamerManager.Instance?.SaveToCloud();
-			MissionManager.Instance?.TrackShopPurchase( 0 );
-			TriggerPurchaseFlash();
-			purchasedItemId = item.Id;
-			_ = ClearPurchasedCard();
-			if (qty > 1) purchaseQty = 1;
-		}
-		else
-		{
-			SoundManager.PlayBack();
-			purchaseBurstActive = false;
-			return;
-		}
-
-		await GameTask.DelaySeconds( 0.5f );
-		purchaseBurstActive = false;
-	}
-
-	// Helper classes
 	public class BossConsumable
 	{
 		public string Id { get; set; }
@@ -2097,57 +1301,160 @@
 		public int Cost { get; set; }
 	}
 
+	public class ConsumableGroup
+	{
+		public string Label { get; set; }
+		public List<BossConsumable> Items { get; set; } = new();
+	}
+
+	// Runes group by the stat their NatureType BOOSTS, read from the
+	// ItemDefinition's EffectValue (ItemManager) — never from description
+	// strings. Offense = ATK / SpA · Defense = DEF / SpD / HP · Speed = SPD.
+	// LANE: systems — the +stat map belongs beside NatureType in Genetics.cs
+	// (GetNatureDescription is the only shipped source and it is a string).
+	private static string RuneFamily( NatureType n ) => n switch
+	{
+		NatureType.Ferocious or NatureType.Reckless or NatureType.Ruthless
+			or NatureType.Mystical or NatureType.Arcane or NatureType.Cunning => "offense",
+		NatureType.Stalwart or NatureType.Enduring or NatureType.Stoic or NatureType.Vigorous
+			or NatureType.Resolute or NatureType.Warded or NatureType.Serene => "defense",
+		NatureType.Restless or NatureType.Skittish or NatureType.Nimble => "speed",
+		_ => "other"
+	};
+
+	private string RuneFamilyOf( BossConsumable c )
+	{
+		var def = ItemManager.Instance?.GetItem( c.Id );
+		if ( def == null || def.EffectType != ItemEffectType.NatureChange ) return c.Id.StartsWith( "boss_rune_" ) ? "other" : null;
+		return RuneFamily( (NatureType)(int)def.EffectValue );
+	}
+
+	private List<ConsumableGroup> GetConsumableGroups()
+	{
+		var result = new List<ConsumableGroup>();
+		var items = new List<BossConsumable>();
+		var offense = new List<BossConsumable>();
+		var defense = new List<BossConsumable>();
+		var speed = new List<BossConsumable>();
+		var other = new List<BossConsumable>();
+
+		foreach ( var c in consumables )
+		{
+			switch ( RuneFamilyOf( c ) )
+			{
+				case "offense": offense.Add( c ); break;
+				case "defense": defense.Add( c ); break;
+				case "speed": speed.Add( c ); break;
+				case "other": other.Add( c ); break;
+				default: items.Add( c ); break;
+			}
+		}
+
+		if ( items.Count > 0 ) result.Add( new ConsumableGroup { Label = "ITEMS", Items = items } );
+		if ( offense.Count > 0 ) result.Add( new ConsumableGroup { Label = "OFFENSE RUNES", Items = offense } );
+		if ( defense.Count > 0 ) result.Add( new ConsumableGroup { Label = "DEFENSE RUNES", Items = defense } );
+		if ( speed.Count > 0 ) result.Add( new ConsumableGroup { Label = "SPEED RUNES", Items = speed } );
+		if ( other.Count > 0 ) result.Add( new ConsumableGroup { Label = "RUNES", Items = other } );
+		return result;
+	}
+
+	private BossConsumable GetDefaultBossItem()
+	{
+		var ordered = GetConsumableGroups().SelectMany( g => g.Items ).ToList();
+		return ordered.FirstOrDefault( c => GetBossTokens() >= c.Cost && !IsConsumableMaxed( c ) ) ?? ordered.FirstOrDefault();
+	}
+
+	private BossConsumable GetCaseBossItem() => selectedConsumable ?? GetDefaultBossItem();
+
+	private int GetConsumableMaxStack( string itemId )
+	{
+		var itemDef = ItemManager.Instance?.GetItem( itemId );
+		if ( itemDef != null && itemDef.MaxStack > 0 ) return itemDef.MaxStack;
+		return 99;
+	}
+
+	private int GetConsumableOwned( string itemId ) => ItemManager.Instance?.GetItemCount( itemId ) ?? 0;
+	private bool IsConsumableMaxed( BossConsumable item ) => GetConsumableOwned( item.Id ) >= GetConsumableMaxStack( item.Id );
+
+	// ============================================================
+	// DEV HOOK — `dev_shop [itemId|gold|boss]` opens the shop and parks the
+	// case on a given good (screenshot instrument; the dev_beastbook pattern).
+	//   dev_shop                    → open the shop
+	//   dev_shop boss               → open the BOSS TOKENS store
+	//   dev_shop tamer_xp_120       → open GOLD, select that good
+	//   dev_shop boss_rune_arcane   → open BOSS TOKENS, select that good
+	// REMOVE after the redesign is user-approved.
+	// ============================================================
+	private static string _devPending;
+
+	[ConCmd( "dev_shop" )]
+	public static void DevOpenShop( string arg = "" )
+	{
+		var gm = Beastborne.Core.GameManager.Instance;
+		if ( gm != null && !gm.IsInGame ) gm.StartGame();
+		PhoneLauncher.Close();
+		NavManager.GoTo( "shop" );
+		_devPending = arg ?? "";
+		Log.Info( $"[Shop] dev_shop → '{_devPending}'" );
+	}
+
+	private void ApplyDevPending()
+	{
+		if ( _devPending == null ) return;
+		if ( Box.Rect.Width < 2f ) return; // wait until laid out
+		string arg = _devPending;
+		_devPending = null;
+
+		if ( string.IsNullOrEmpty( arg ) || arg == "gold" ) { SwitchShopView( "gold" ); return; }
+		if ( arg == "boss" ) { SwitchShopView( "boss" ); return; }
+
+		var gold = GetGoldItems().FirstOrDefault( i => i.Id == arg );
+		if ( gold != null ) { SwitchShopView( "gold" ); selectedItem = gold; purchaseQty = 1; detailVersion++; return; }
+		var boss = consumables.FirstOrDefault( c => c.Id == arg );
+		if ( boss != null ) { SwitchShopView( "boss" ); selectedConsumable = boss; purchaseQty = 1; detailVersion++; return; }
+		Log.Warning( $"[Shop] dev_shop: no good with id '{arg}'" );
+	}
+
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
-		hash.Add(shopView);
-		hash.Add(currentCategory);
-		hash.Add(goldSort);
-		hash.Add(bossSort);
-		hash.Add(selectedItem?.Id);
-		hash.Add(selectedConsumable?.Id);
-		hash.Add(GetGold());
-		hash.Add(GetBossTokens());
-		// Tamer level drives level-lock met/locked state + ShouldShowLevelChip
-		// visibility on every card. Without it, leveling up while the shop tab
-		// is open leaves stale lock pills until the next unrelated re-render.
-		hash.Add(GetLevel());
-		hash.Add(categoryDropdownOpen);
-		hash.Add(swapVersion);
-		hash.Add(detailVersion);
-		hash.Add(viewSwitchDir);
-		hash.Add(justSelectedItemId);
-		hash.Add(selectPulseVersion);
-		hash.Add(purchasedItemId);
-		hash.Add(buyBtnOvershoot);
-		hash.Add(purchaseBurstActive);
-		hash.Add(purchaseBurstVersion);
-		hash.Add(purchaseQty);
-		// Consumable owned-count feeds into max-stack display, qty cap,
-		// and Maxed state — without it, the picker would fail to update
-		// after a purchase lands.
-		if (selectedConsumable != null)
-			hash.Add(GetConsumableOwned(selectedConsumable.Id));
-		// Active boosts — minute-granularity timer so the rail ticks down visibly
-		var actives = GetAllActiveBoostDisplay();
-		hash.Add(actives.Count);
-		foreach (var b in actives)
+		hash.Add( shopView );
+		hash.Add( selectedItem?.Id );
+		hash.Add( selectedConsumable?.Id );
+		hash.Add( GetGold() );
+		hash.Add( GetBossTokens() );
+		hash.Add( GetInk() );
+		// Tamer level drives the LOCKED chip + the LEVEL N button state.
+		hash.Add( GetLevel() );
+		hash.Add( detailVersion );
+		hash.Add( purchaseQty );
+		hash.Add( buyBeatVersion );
+		hash.Add( IsBuyBeat );
+		// Owned counts feed the corner chips, the case chip, the qty cap and MAX HELD.
+		if ( selectedConsumable != null ) hash.Add( GetConsumableOwned( selectedConsumable.Id ) );
+		if ( selectedItem != null ) hash.Add( GetOwned( selectedItem ) );
+		// Running boosts — second granularity so the card timers tick.
+		var actives = ShopManager.Instance?.GetAllActiveBoosts();
+		if ( actives != null )
 		{
-			hash.Add(b.Type);
-			hash.Add((int)b.TimeRemaining.TotalSeconds);
+			hash.Add( actives.Count );
+			foreach ( var b in actives )
+			{
+				hash.Add( b.Type );
+				hash.Add( (int)b.TimeRemaining.TotalSeconds );
+			}
 		}
-		// Currency change flash detection
+		// Balance pulse
 		CheckCurrencyFlash();
-		hash.Add(IsPurchaseFlash);
-		hash.Add(IsGoldFlash);
-		hash.Add(IsTokenFlash);
-		// Living violet ring — markup-bound position + visibility class.
-		hash.Add(shopRingL);
-		hash.Add(shopRingT);
-		hash.Add(shopRingW);
-		hash.Add(shopRingH);
-		hash.Add(shopRingVisible);
-		hash.Add(shopRingWarm < 2);
+		hash.Add( IsGoldFlash );
+		hash.Add( IsTokenFlash );
+		// Living ring — markup-bound position + visibility class.
+		hash.Add( shopRingL );
+		hash.Add( shopRingT );
+		hash.Add( shopRingW );
+		hash.Add( shopRingH );
+		hash.Add( shopRingVisible );
+		hash.Add( shopRingWarm < 2 );
 		return hash.ToHashCode();
 	}
 }
