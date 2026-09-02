@@ -531,6 +531,13 @@
 								<span>Pick a beast</span>
 							</div>
 						}
+						@* LANE: motion 2026-09-02 — landing frame: mounted for 0.32s
+						   after a parent lands, so its settle keyframe plays once and
+						   never on a cursor hop (the slot carries .kb-focused). *@
+						@if (slot1Landed)
+						{
+							<div class="altar-land"></div>
+						}
 					</div>
 
 					@* The core — chevrons converge on the predicted offspring. *@
@@ -589,6 +596,11 @@
 								<iconify icon="lucide:plus" Size=@(24) Color="rgba(255,255,255,0.4)" />
 								<span>Pick a beast</span>
 							</div>
+						}
+						@* LANE: motion 2026-09-02 — landing frame (same as slot 1). *@
+						@if (slot2Landed)
+						{
+							<div class="altar-land"></div>
 						}
 					</div>
 				</div>
@@ -2070,6 +2082,16 @@
 	private Monster Parent1 = null;
 	private Monster Parent2 = null;
 	private int selectedForSlot = 1; // Which slot is being selected for (1 or 2)
+	// LANE: motion 2026-09-02 — altar LANDING beat. A parent landing on a
+	// slot stamps RealTime.Now; for SlotLandWindow the slot mounts an
+	// `.altar-land` overlay child whose mount keyframe IS the settle. The
+	// old settle sat on `.altar-slot.filled` itself and replayed on every
+	// cursor hop (the slot's class string also carries .kb-focused → remount).
+	private float slot1LandAt = -10f;
+	private float slot2LandAt = -10f;
+	private bool slot1Landed = false;
+	private bool slot2Landed = false;
+	private const float SlotLandWindow = 0.32f;
 	private string breedingFilter = "all";
 	private string breedingSort = "genes";
 	private string breedingRarity = "all";
@@ -4425,6 +4447,7 @@
 		// Fuse from detail panel always sets Parent1 (the primary fusion parent).
 		// Parent2 is selected by clicking another card in fusion mode.
 		Parent1 = SelectedMonster;
+		slot1LandAt = RealTime.Now; // LANE: motion — landing beat
 		Parent2 = null; // Clear Parent2 — starting fresh with a new primary
 		selectedForSlot = 2; // Auto-switch to selecting slot 2
 		lockedGenes.Clear();
@@ -5307,12 +5330,14 @@
 		if (selectedForSlot == 1 || Parent1 == null)
 		{
 			Parent1 = monster;
+			slot1LandAt = RealTime.Now; // LANE: motion — landing beat
 			// Auto-switch to slot 2 after selecting parent 1
 			selectedForSlot = 2;
 		}
 		else
 		{
 			Parent2 = monster;
+			slot2LandAt = RealTime.Now; // LANE: motion — landing beat
 		}
 	}
 
@@ -5497,6 +5522,7 @@
 		SoundManager.PlayClick();
 		SoundManager.PlaySwoosh(); // back into the forge — page-turn cue (juice 2026-07-12)
 		Parent1 = breedingResult;
+		slot1LandAt = RealTime.Now; // LANE: motion — landing beat
 		Parent2 = null;
 		selectedForSlot = 2;
 		lockedGenes.Clear();
@@ -5639,6 +5665,7 @@
 				if ( a == null || b == null ) { Log.Warning( $"[dev_patternbook] Need owned '{argA}' and '{argB}' (dev_givebeast)." ); return; }
 				p.Parent1 = a;
 				p.Parent2 = b;
+				p.slot1LandAt = p.slot2LandAt = RealTime.Now; // LANE: motion — landing beat
 				p.selectedForSlot = 2;
 				p.lockedGenes.Clear();
 				Log.Info( $"[dev_patternbook] Slotted {a.Nickname} × {b.Nickname}." );
@@ -6165,6 +6192,18 @@
 	{
 		base.Tick();
 		// Note: Input handling is now done via TickInput() called from GameHUD
+
+		// LANE: motion 2026-09-02 — altar landing window, edge-detected so
+		// the .altar-land overlay mounts once and unmounts once (both flags
+		// are in BuildHash; DOC-4 #15 — later beats come from Tick stamps).
+		bool land1 = RealTime.Now - slot1LandAt < SlotLandWindow;
+		bool land2 = RealTime.Now - slot2LandAt < SlotLandWindow;
+		if ( land1 != slot1Landed || land2 != slot2Landed )
+		{
+			slot1Landed = land1;
+			slot2Landed = land2;
+			StateHasChanged();
+		}
 
 		// Deferred sub-view scroll reset — the write must land AFTER the
 		// branch swap has laid out (an immediate write gets re-clamped by
@@ -7192,6 +7231,8 @@
 		hash.Add(gridRingWarm < 2);
 		hash.Add(gridRingTight); // costume classes (LANE: input 2026-09-02)
 		hash.Add(gridRingAltar);
+		hash.Add(slot1Landed); // altar landing overlays (LANE: motion 2026-09-02)
+		hash.Add(slot2Landed);
 		// Beast-art editor — re-render when the dev switches modes,
 		// drags a sprite, or the override count changes (so the toolbar's
 		// edit-counter and active-mode chip both stay live).
@@ -7284,19 +7325,8 @@
 		};
 	}
 
-	private string GetJournalEntryColor(JournalEntryType type)
-	{
-		return type switch
-		{
-			JournalEntryType.Caught => "#60a5fa",
-			JournalEntryType.Bred => "#7b4ddb", // fusion identity = forge violet, the PAGE accent (#9b6cff is the cursor alone — 2026-09-02)
-			JournalEntryType.Evolution => "#ffce3a",
-			JournalEntryType.BossDefeat => "#f87171",
-			JournalEntryType.Milestone => "#4ade80",
-			JournalEntryType.Expedition => "#a78bfa",
-			_ => "#9ca3af"
-		};
-	}
+	// (GetJournalEntryColor DELETED 2026-09-02, LANE: motion — no callers;
+	// the per-type accent hues live in the journal SCSS.)
 
 	private string GetJournalEntryBadge(JournalEntryType type)
 	{
