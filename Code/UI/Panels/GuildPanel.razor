@@ -527,13 +527,16 @@ else if ( guildView == "myguild" )
 								<span>IDENTITY</span>
 							</div>
 
-							<div class="create-stamp-field">
+							<!-- LANE: input (S5) — name/tag are kb stops 0/1: Space/Enter/E
+							     focuses the box; Tab / Enter / Esc hand the keyboard back
+							     with the cursor on the field (TickCreateInput). -->
+							<div class="create-stamp-field @(IsCreateKb( 0 ) ? "guild-kb-selected" : "")">
 								<span class="create-stamp-field-label">GUILD NAME</span>
 								<TextEntry class="create-stamp-input" @ref="createNameInput" Text=@createName />
 								<span class="create-stamp-field-hint">3–24 characters · must be unique</span>
 							</div>
 
-							<div class="create-stamp-field">
+							<div class="create-stamp-field @(IsCreateKb( 1 ) ? "guild-kb-selected" : "")">
 								<span class="create-stamp-field-label">TAG</span>
 								<TextEntry class="create-stamp-input tag" @ref="createTagInput" Text=@createTag />
 								<span class="create-stamp-field-hint">2–5 characters · shown next to your name in chat</span>
@@ -548,7 +551,7 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<span class="create-stamp-pick-caption">COLOR</span>
-							<div class="create-stamp-pick-row @(IsCreateKb( 0 ) ? "guild-kb-selected" : "")">
+							<div class="create-stamp-pick-row @(IsCreateKb( 2 ) ? "guild-kb-selected" : "")">
 								@foreach ( var color in EmblemColors )
 								{
 									<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
@@ -556,7 +559,7 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<span class="create-stamp-pick-caption">ICON</span>
-							<div class="create-stamp-pick-row @(IsCreateKb( 1 ) ? "guild-kb-selected" : "")">
+							<div class="create-stamp-pick-row @(IsCreateKb( 3 ) ? "guild-kb-selected" : "")">
 								@foreach ( var icon in EmblemIcons )
 								{
 									<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
@@ -566,7 +569,7 @@ else if ( guildView == "myguild" )
 							</div>
 
 							<span class="create-stamp-pick-caption">SHAPE</span>
-							<div class="create-stamp-pick-row @(IsCreateKb( 2 ) ? "guild-kb-selected" : "")">
+							<div class="create-stamp-pick-row @(IsCreateKb( 4 ) ? "guild-kb-selected" : "")">
 								@foreach ( var shape in EmblemShapes )
 								{
 									<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
@@ -611,7 +614,7 @@ else if ( guildView == "myguild" )
 							<span class="cost-label">gold to found</span>
 						</div>
 
-						<button class="create-stamp-cta @(IsCreateKb( 3 ) ? "guild-kb-selected" : "")" onclick=@OnCreateGuild>
+						<button class="create-stamp-cta @(IsCreateKb( 5 ) ? "guild-kb-selected" : "")" onclick=@OnCreateGuild>
 							<iconify icon="lucide:hammer" Size=@(15) Color="#ffffff" />
 							<span>FOUND GUILD</span>
 						</button>
@@ -976,9 +979,10 @@ else if ( guildView == "myguild" )
 			<!-- LANE: input — device-mode root (DOC-5 §5): _gpKbdMode drives
 			     .kbd-mode/.mouse-mode; every gp :hover is CSS-gated under
 			     .mouse-mode so a parked pointer can't keep a second row lit
-			     while the player keyboards. onmousemove fires only on REAL
-			     movement (never when kb scroll slides rows under a parked
-			     cursor), so it is the safe flip-back-to-mouse edge. -->
+			     while the player keyboards. onmousemove is the flip-back-to-
+			     mouse edge, GUARDED on >= 3px of real travel since the last
+			     keypress (B1, run-2 audit): the engine re-dispatches
+			     onmousemove on re-render under a PARKED cursor. -->
 			<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
 
 				<!-- ── HEADER — the hub's .oh-header anatomy wearing the GUILD'S
@@ -1007,7 +1011,7 @@ else if ( guildView == "myguild" )
 					<div class="gp-toolbar">
 						@if ( pendingRequests.Count > 0 )
 						{
-							<div class="gp-chip @(IsPlazaKb( "chips", 0 ) ? "guild-kb-selected" : "")" onmouseover=@(() => PlazaHover( "chips", 0 )) onclick=@(() => { showRequestsModal = true; SoundManager.PlayForward(); })>
+							<div class="gp-chip @(IsPlazaKb( "chips", 0 ) ? "guild-kb-selected" : "")" onmouseover=@(() => PlazaHover( "chips", 0 )) onclick=@(() => { OpenRequests(); SoundManager.PlayForward(); })>
 								<span class="gp-chip-label">REQUESTS</span>
 								<div class="gp-chip-n"><span class="gp-chip-nt">@pendingRequests.Count</span></div>
 							</div>
@@ -1101,10 +1105,11 @@ else if ( guildView == "myguild" )
 									@if ( editingMotd )
 									{
 										<TextEntry class="gp-ann-input" @ref="motdDraftInput" Text=@motdDraft />
-										<!-- LANE: input — editor kb stops: A/D walk Save↔Cancel,
-										     Space/Enter/E fires, Q cancels (TickEditorInput).
-										     While the TextEntry OWNS typing focus the engine
-										     captures keys — click out (or submit) first. -->
+										<!-- LANE: input — the entry takes focus on open (S4 latch).
+										     While typing: Enter SAVES (onsubmit), Esc/Tab hand the
+										     keyboard back (cursor on Save). Then A/D walk
+										     Save↔Cancel, Space/Enter/E fires, Q cancels, W climbs
+										     back into the text box (TickEditorInput). -->
 										<div class="gp-ann-actions">
 											<div class="guild-btn accept-btn @(IsMotdEditorKb( 0 ) ? "guild-kb-selected" : "")" onmouseover=@(() => MotdEditorHover( 0 )) onclick=@(() => { SaveMotd(); SoundManager.PlaySuccess(); })><span>@L("ui.guild.save")</span></div>
 											<div class="guild-btn deny-btn @(IsMotdEditorKb( 1 ) ? "guild-kb-selected" : "")" onmouseover=@(() => MotdEditorHover( 1 )) onclick=@CancelMotd><span>@L("ui.common.cancel")</span></div>
@@ -1167,7 +1172,7 @@ else if ( guildView == "myguild" )
 									     the old hoveredMember side-state is retired. -->
 									<div class="gp-mrow @(mIdx % 2 == 1 ? "alt" : "") @(mGone ? "faded" : "") @(IsPlazaKb( "roster", mIdx ) ? "guild-kb-selected" : "")"
 										 onmouseover=@(() => PlazaHover( "roster", mIdx ))
-										 onclick=@(() => { selectedMember = m; showMemberMenu = true; SoundManager.PlayClick(); })>
+										 onclick=@(() => { OpenMemberMenu( m ); SoundManager.PlayClick(); })>
 										<div class="gp-head" style="border-color: @mRoleColor">
 											@if ( m.SteamId > 0 )
 											{
@@ -1448,7 +1453,10 @@ else if ( guildView == "myguild" )
 					<!-- Description block — moved off the plaza (guild-mock ruling:
 					     description is recruiting copy for browsers, not a daily
 					     stone). Polled in Tick while the drawer is open; saved by
-					     the footer's Save Changes via SaveSettings. -->
+					     the footer's Save Changes via SaveSettingsAndClose.
+					     LANE: input (S3) — a kb STOP: Space/Enter/E on the row
+					     focuses the entry; Tab / Enter / Esc give the keyboard
+					     back with the cursor still on this row. -->
 					<div class="settings-drawer-section">
 						<div class="settings-drawer-section-label">
 							<iconify icon="lucide:file-text" Size=@(12) Color="#a78bfa" />
@@ -1505,7 +1513,7 @@ else if ( guildView == "myguild" )
 								@* Shape picker CUT (guild-redesign brief §2 — beast
 								   emblems are square; three near-identical squares
 								   were a dead picker row). emblemShape persists
-								   unchanged through SaveEmblem. *@
+								   unchanged through SaveSettingsAndClose. *@
 							</div>
 						</div>
 					</div>
@@ -1540,7 +1548,7 @@ else if ( guildView == "myguild" )
 						</div>
 						@* Min-Rank + auto-kick rows CUT (brief §2 — min-rank gates
 						   on the dormant arena; auto-kick was never enforced).
-						   Their fields persist unchanged through SaveSettings. *@
+						   Their fields persist unchanged through SaveSettingsAndClose. *@
 					</div>
 
 					<!-- Danger section — the old plaza DANGER ZONE bar, moved to
@@ -1586,7 +1594,7 @@ else if ( guildView == "myguild" )
 					<button class="guild-btn deny-btn @(IsSettingsRowKb( "cancel" ) ? "guild-kb-selected" : "")" onclick=@(() => showSettingsModal = false)><span>@L("ui.common.cancel")</span></button>
 					@if ( gm.IsOfficer )
 					{
-						<button class="guild-btn accept-btn @(IsSettingsRowKb( "save" ) ? "guild-kb-selected" : "")" onclick=@(() => { SaveEmblem(); SaveSettings(); showSettingsModal = false; })>
+						<button class="guild-btn accept-btn @(IsSettingsRowKb( "save" ) ? "guild-kb-selected" : "")" onclick=@(() => SaveSettingsAndClose())>
 							<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
 							<span>Save Changes</span>
 						</button>
@@ -1663,7 +1671,7 @@ else if ( guildView == "myguild" )
 								<span class="requests-count-num">@pendingRequests.Count</span>
 							</div>
 							<div class="requests-title-spacer"></div>
-							<div class="requests-invite-btn" onclick=@(() => { showRequestsModal = false; pickerTitle = "Invite Player"; pickerMode = "invite"; showPicker = true; SoundManager.PlayForward(); })>
+							<div class="requests-invite-btn" onclick=@(() => { showRequestsModal = false; OpenPicker( "Invite Player", "invite", returnsToDrawer: false ); SoundManager.PlayForward(); })>
 								<iconify icon="lucide:user-plus" Size=@(12) Color="#a78bfa" />
 								<span>Invite</span>
 							</div>
@@ -1753,13 +1761,13 @@ else if ( guildView == "myguild" )
 		<!-- Picker Overlay -->
 		@if ( showPicker )
 		{
-			<div class="confirm-overlay" onclick=@(() => { showPicker = false; })>
+			<div class="confirm-overlay" onclick=@(() => { ClosePicker(); })>
 				<div class="picker-dialog" onclick:stopPropagation>
 					<div class="picker-header-row">
 						@{ var pickerIcon = pickerMode == "invite" ? "lucide:user-plus" : "lucide:shield-check"; }
 						<iconify icon="@pickerIcon" Size=@(15) Color="#fbbf24" />
 						<span class="picker-title">@pickerTitle</span>
-						<button class="settings-modal-close picker-close-btn" onclick=@(() => showPicker = false)>
+						<button class="settings-modal-close picker-close-btn" onclick=@(() => ClosePicker())>
 							<iconify icon="lucide:x" Size=@(14) Color="rgba(255,255,255,0.7)" />
 						</button>
 					</div>
@@ -1778,7 +1786,7 @@ else if ( guildView == "myguild" )
 							{
 								var cRef = c;
 								var thisPickerIdx = pickerKbIdx; pickerKbIdx++;
-								<div class="picker-item @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+								<div class="picker-item @(IsPickerKb( thisPickerIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.InvitePlayer( cRef.ConnectionId, cRef.Name, cRef.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
 									<img class="picker-avatar" src="avatar:@cRef.SteamId" />
 									<span class="picker-name">@cRef.Name</span>
 									@if ( cRef.IsOnline )
@@ -1805,7 +1813,7 @@ else if ( guildView == "myguild" )
 							@foreach ( var member in eligibleMembers )
 							{
 								var thisTransferIdx = transferKbIdx; transferKbIdx++;
-								<div class="picker-item @(IsPickerKb( thisTransferIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); showPicker = false; SoundManager.PlaySuccess(); })>
+								<div class="picker-item @(IsPickerKb( thisTransferIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { GuildManager.Instance?.TransferOwnership( member.SteamId ); ClosePicker(); SoundManager.PlaySuccess(); })>
 									<span class="picker-name">@member.Name</span>
 									<span class="picker-role">@member.Role</span>
 								</div>
@@ -1865,6 +1873,31 @@ else if ( guildView == "myguild" )
 	// kb-mode (kb scroll fires synthetic onmouseover under a parked
 	// pointer). Root onmousemove flips back — it only fires on REAL moves.
 	private bool _gpKbdMode = false;
+	// B1 (run-2 audit, DOC-5 §5) — where the pointer sat at the LAST nav
+	// keypress. The engine re-dispatches onmousemove on re-render under a
+	// PARKED cursor (roster OnRootMouseMove trace), so mouse mode is only
+	// reclaimed by REAL travel (>= 3px from this stamp).
+	private Vector2 _gpKbTakeoverPos = new Vector2( -9999f, -9999f );
+	// S1 (DOC-5 §12) — overlay open edges. Each overlay seeds its OWN cursor
+	// on its safe stop when it opens (Open* helpers seed at the click so no
+	// frame paints the opener's stale index; the Tick edges are the net for
+	// any other opener). Member menu → Close · picker → first · requests → first.
+	private bool _memberMenuWasOpen = false;
+	private bool _requestsWasOpen = false;
+	private bool _pickerWasOpen = false;
+	// B2 — the transfer picker is opened FROM the drawer; the drawer closes
+	// while the picker is up (ONE z ladder) and reopens on any picker close.
+	private bool _pickerReturnsToDrawer = false;
+	// S3/S4/S5 — TextEntry grammar plumbing. Focus is DEFERRED a frame so the
+	// Space/E that asked for it is never typed into the box; the MOTD entry
+	// also has to MOUNT first (2-frame latch after the ref exists — the phone
+	// chat-box recipe). _entryBlurAt is the same-frame latch: the Enter that
+	// blurred via onsubmit is still edge-true this Tick and must not re-focus.
+	private TextEntry _focusEntryPending = null;
+	private int _focusEntryFrames = 0;
+	private int _motdFocusLatch = 0;
+	private float _entryBlurAt = -999f;
+	private readonly HashSet<Panel> _wiredEntries = new();
 	// Perk-ladder row cursor (info stops). Reset on the ladder's OPEN EDGE
 	// in Tick (DOC-5 §12 — the ladder opens by mouse too).
 	private int _ladderKbIndex = 0;
@@ -2031,6 +2064,16 @@ else if ( guildView == "myguild" )
 				}
 			}
 		}
+
+		// LANE: input (S3/S5) — TextEntry exit grammar. Enter (onsubmit) and
+		// Esc (the entry's own oncancel — never an Input "Escape" bind, DOC-5
+		// §2) hand the keyboard back to the row. Wired per INSTANCE, every
+		// render, because the MOTD/create entries are re-created on mount.
+		WireTextEntry( settingsDescInput, () => BlurToRow( settingsDescInput ) );
+		WireTextEntry( createNameInput, () => BlurToRow( createNameInput ) );
+		WireTextEntry( createTagInput, () => BlurToRow( createTagInput ) );
+		// MOTD: Enter SAVES — submit is the natural commit for a one-liner.
+		WireTextEntry( motdDraftInput, () => { SaveMotd(); SoundManager.PlaySuccess(); StateHasChanged(); } );
 	}
 
 	public override void Tick()
@@ -2050,7 +2093,7 @@ else if ( guildView == "myguild" )
 		}
 
 		// Poll the drawer's description editor while open — keeps the draft
-		// in sync so SaveSettings() picks up the latest text (no onchange).
+		// in sync so SaveSettingsAndClose() picks up the latest text (no onchange).
 		if ( showSettingsModal && settingsDescInput != null )
 		{
 			var t = settingsDescInput.Text ?? "";
@@ -2088,7 +2131,39 @@ else if ( guildView == "myguild" )
 		// index 2) in from whatever zone opened it.
 		if ( showSettingsModal && !_settingsWasOpen )
 			_kbIndex = 0;
+		// Drawer CLOSE edge — the description entry must never keep typing
+		// focus behind a closed drawer (DOC-5 §18: clear on every exit path).
+		if ( !showSettingsModal && _settingsWasOpen )
+			settingsDescInput?.Blur();
 		_settingsWasOpen = showSettingsModal;
+
+		// S1 — overlay open edges seed each overlay's cursor on its safe stop
+		// (mouse opens too; the Open* helpers already seeded — idempotent).
+		if ( showMemberMenu && !_memberMenuWasOpen ) SeedMemberMenuCursor();
+		_memberMenuWasOpen = showMemberMenu;
+		if ( showRequestsModal && !_requestsWasOpen ) _kbIndex = 0;
+		_requestsWasOpen = showRequestsModal;
+		if ( showPicker && !_pickerWasOpen ) _kbIndex = 0;
+		_pickerWasOpen = showPicker;
+
+		// Deferred TextEntry focus (S3/S5) — one frame after the confirm key.
+		if ( _focusEntryPending != null )
+		{
+			_focusEntryFrames--;
+			if ( _focusEntryFrames <= 0 )
+			{
+				_focusEntryPending.Focus();
+				_focusEntryPending = null;
+			}
+		}
+
+		// S4 — MOTD editor focus latch: wait for the entry to MOUNT (ref
+		// non-null), then two frames, then Focus() (the phone chat-box latch).
+		if ( _motdFocusLatch > 0 && editingMotd && motdDraftInput != null )
+		{
+			_motdFocusLatch--;
+			if ( _motdFocusLatch == 0 ) motdDraftInput.Focus();
+		}
 
 		// Perk-ladder open edge — same rule (opens by mouse OR Space on the
 		// next-unlock chip; the row cursor must not carry a stale index).
@@ -2130,6 +2205,10 @@ else if ( guildView == "myguild" )
 		hash.Add( _kbSearchFocused );
 		hash.Add( _gpKbdMode );     // .kbd-mode/.mouse-mode root class
 		hash.Add( _ladderKbIndex ); // perk-ladder row cursor
+		// (run-2 input fields — _gpKbTakeoverPos, the *WasOpen edges,
+		//  _pickerReturnsToDrawer, the focus latches — drive NO markup and
+		//  are deliberately unhashed: hashing the parked-mouse stamp would
+		//  re-render the tree on every keypress, the very re-dispatch B1 kills.)
 		// ── Motion render-keys — the windowed pop classes must attach AND
 		//    drop on time (the booleans flip when the windows expire).
 		hash.Add( _claimPopGoalId );
@@ -2750,8 +2829,7 @@ else if ( guildView == "myguild" )
 				var ordered = GetPlazaRosterMembers( members );
 				if ( ordered.Count == 0 ) return;
 				int i = Math.Clamp( _kbIndex, 0, ordered.Count - 1 );
-				selectedMember = ordered[i];
-				showMemberMenu = true;
+				OpenMemberMenu( ordered[i] );
 				SoundManager.PlayClick();
 				StateHasChanged();
 				break;
@@ -2801,20 +2879,28 @@ else if ( guildView == "myguild" )
 		StateHasChanged();
 	}
 
-	// Device flip: any nav keypress = keyboard drove last.
+	// Device flip: any nav keypress = keyboard drove last. Re-stamps the
+	// pointer's parked position on EVERY nav press (B1) — the mouse-mode edge
+	// measures travel from the last keypress, so a slow drift never
+	// accumulates into a false flip.
 	private void StampKb()
 	{
+		_gpKbTakeoverPos = Mouse.Position;
 		if ( _gpKbdMode ) return;
 		_gpKbdMode = true;
 		StateHasChanged();
 	}
 
-	// Root onmousemove — fires on REAL pointer movement only (never when kb
-	// scroll slides content under a parked cursor), so it is the safe
-	// mouse-mode edge (MonsterRosterPanel OnRootMouseMove precedent).
+	// Root onmousemove — the mouse-mode edge. B1 (run-2 audit, DOC-5 §5):
+	// the engine re-dispatches onmousemove on re-render/re-layout under a
+	// PARKED cursor, so an unguarded flip fired on every W/S press — device
+	// flipped mid-frame, the row under the pointer re-hovered, the cursor
+	// snapped back. Mouse mode is reclaimed only by REAL travel (>= 3px since
+	// the keyboard took over) — the roster's OnRootMouseMove recipe.
 	private void OnGpPageMouseMove()
 	{
 		if ( !_gpKbdMode ) return;
+		if ( ( Mouse.Position - _gpKbTakeoverPos ).Length < 3f ) return;
 		_gpKbdMode = false;
 		StateHasChanged();
 	}
@@ -2976,8 +3062,19 @@ else if ( guildView == "myguild" )
 	}
 
 	// ── CREATE FORM ──────────────────────────────────────────────────────────
+	// Rows (S5, top-to-bottom on screen): name(0) · tag(1) · color(2) ·
+	// icon(3) · shape(4) · FOUND(5). Name/tag are TextEntry stops: Space/
+	// Enter/E focuses the box; typing then owns the keyboard until Tab /
+	// Enter / Esc hand it back (cursor stays on the field).
+	private const int CreateRowName = 0, CreateRowTag = 1, CreateRowColor = 2,
+		CreateRowIcon = 3, CreateRowShape = 4, CreateRowFound = 5, CreateRowCount = 6;
+
 	private void TickCreateInput()
 	{
+		// Typing owns the keyboard (Q types a 'q', it does not leave the form).
+		if ( TypingOwnsKeys( createNameInput, CreateRowName, "create" ) ) return;
+		if ( TypingOwnsKeys( createTagInput, CreateRowTag, "create" ) ) return;
+
 		// Q — leave the create form, back to landing.
 		if ( Input.Pressed( "Menu" ) )
 		{
@@ -2992,10 +3089,9 @@ else if ( guildView == "myguild" )
 
 		if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN ) return; // level-gated
 
-		// Focusable rows: color swatches, icon options, shape options, Found CTA.
-		// We treat each picker group as one row stepped with Up/Down, and
-		// Left/Right cycles the option inside the focused group.
-		const int rowCount = 4; // color, icon, shape, found
+		// Each picker group is one row stepped with Up/Down; Left/Right cycles
+		// the option inside the focused group (no-op on the text rows).
+		const int rowCount = CreateRowCount;
 
 		if ( !_kbActive || _kbZone != "create" )
 		{
@@ -3011,14 +3107,14 @@ else if ( guildView == "myguild" )
 		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) )
 		{
 			int dir = Input.Pressed( "Right" ) ? 1 : -1;
-			if ( _kbIndex == 0 ) // color
+			if ( _kbIndex == CreateRowColor ) // color
 			{
 				int ci = Array.IndexOf( EmblemColors, emblemColor );
 				ci = ( ci + dir + EmblemColors.Length ) % EmblemColors.Length;
 				emblemColor = EmblemColors[ci];
 				SoundManager.PlayClick();
 			}
-			else if ( _kbIndex == 1 ) // icon
+			else if ( _kbIndex == CreateRowIcon ) // icon
 			{
 				var keys = EmblemIcons.Keys.ToList();
 				int ki = keys.IndexOf( emblemIcon );
@@ -3027,7 +3123,7 @@ else if ( guildView == "myguild" )
 				emblemIcon = keys[ki];
 				SoundManager.PlayClick();
 			}
-			else if ( _kbIndex == 2 ) // shape
+			else if ( _kbIndex == CreateRowShape ) // shape
 			{
 				var keys = EmblemShapes.Keys.ToList();
 				int si = keys.IndexOf( emblemShape );
@@ -3042,7 +3138,9 @@ else if ( guildView == "myguild" )
 
 		if ( UiInput.ConfirmPressed() )
 		{
-			if ( _kbIndex == 3 ) OnCreateGuild();
+			if ( _kbIndex == CreateRowFound ) OnCreateGuild();
+			else if ( _kbIndex == CreateRowName ) RequestEntryFocus( createNameInput );
+			else if ( _kbIndex == CreateRowTag ) RequestEntryFocus( createTagInput );
 		}
 	}
 
@@ -3071,6 +3169,11 @@ else if ( guildView == "myguild" )
 
 	private void TickSettingsDrawerInput()
 	{
+		// S3 — typing owns the keyboard while the description entry has focus
+		// (Tab hands it back here; Enter/Esc via the entry's own events). Q
+		// types a 'q' while focused; unfocused Q is the drawer's back (below).
+		if ( TypingOwnsKeys( settingsDescInput, GetSettingsDrawerRows().IndexOf( "description" ) ) ) return;
+
 		// Q — close the drawer (internal back, claim the key).
 		if ( Input.Pressed( "Menu" ) )
 		{
@@ -3116,10 +3219,10 @@ else if ( guildView == "myguild" )
 			return;
 		}
 
-		// Space/Enter — activate. Buttons fire; danger rows open their
+		// Space/Enter/E — activate. Buttons fire; danger rows open their
 		// confirm dialogs; a radio row steps forward (so the keyboard works
-		// even without Left/Right). The description row is a TextEntry —
-		// Space types into it, so it's not activated here.
+		// even without Left/Right); the description row hands the keyboard
+		// to its TextEntry (S3 — deferred a frame so the Space isn't typed).
 		if ( UiInput.ConfirmPressed() )
 		{
 			if ( row == "cancel" )
@@ -3131,17 +3234,16 @@ else if ( guildView == "myguild" )
 			}
 			else if ( row == "save" )
 			{
-				SaveEmblem();
-				SaveSettings();
-				showSettingsModal = false;
+				SaveSettingsAndClose(); // S13 — one save path, one chime
 				ResetKb();
 				StateHasChanged();
 			}
+			else if ( row == "description" ) { RequestEntryFocus( settingsDescInput ); }
 			else if ( row == "claim" )    { OnClaimLeadership(); SoundManager.PlayPopup(); }
 			else if ( row == "transfer" ) { OnTransferOwnership(); }
 			else if ( row == "leave" )    { OnLeaveGuild(); SoundManager.PlayPopup(); }
 			else if ( row == "disband" )  { OnDisbandGuild(); SoundManager.PlayPopup(); }
-			else if ( row != "description" )
+			else
 			{
 				CycleSettingsRow( row, 1 );
 			}
@@ -3216,18 +3318,43 @@ else if ( guildView == "myguild" )
 	}
 
 	// ── MEMBER CONTEXT MENU ──────────────────────────────────────────────────
+	// Live action list in render order (mirrors the markup's @if chain).
+	private List<string> GetMemberMenuActions( GuildManager gm, GuildMemberInfo sm )
+	{
+		var actions = new List<string>();
+		if ( gm != null && sm != null )
+		{
+			var canManage = gm.IsOfficer && sm.SteamId != (Connection.Local?.SteamId ?? 0) && sm.Role < gm.Membership.Role;
+			if ( canManage && gm.IsLeader && sm.Role < GuildRole.Warden ) actions.Add( "promote" );
+			if ( canManage && gm.IsLeader && sm.Role > GuildRole.Wanderer && sm.Role < GuildRole.Beastlord ) actions.Add( "demote" );
+			if ( canManage ) actions.Add( "kick" );
+		}
+		actions.Add( "close" );
+		return actions;
+	}
+
+	// S1 (DOC-5 §12/§14) — the menu's cursor seeds on CLOSE (its safe stop),
+	// never on the roster row index it was opened from (leader on row 1 →
+	// [promote, kick, close] used to open ON KICK).
+	private void SeedMemberMenuCursor()
+	{
+		_kbIndex = GetMemberMenuActions( GuildManager.Instance, selectedMember ).Count - 1;
+	}
+
+	// One opener for click AND Space — seeds at open so no frame paints the
+	// roster index; Tick's open edge is the net for any other path.
+	private void OpenMemberMenu( GuildMemberInfo m )
+	{
+		selectedMember = m;
+		showMemberMenu = true;
+		SeedMemberMenuCursor();
+	}
+
 	private void TickMemberMenuInput()
 	{
 		var gm = GuildManager.Instance;
 		var sm = selectedMember;
-		var canManage = gm.IsOfficer && sm.SteamId != (Connection.Local?.SteamId ?? 0) && sm.Role < gm.Membership.Role;
-
-		// Build the live action list in render order.
-		var actions = new List<string>();
-		if ( canManage && gm.IsLeader && sm.Role < GuildRole.Warden ) actions.Add( "promote" );
-		if ( canManage && gm.IsLeader && sm.Role > GuildRole.Wanderer && sm.Role < GuildRole.Beastlord ) actions.Add( "demote" );
-		if ( canManage ) actions.Add( "kick" );
-		actions.Add( "close" );
+		var actions = GetMemberMenuActions( gm, sm );
 
 		if ( Input.Pressed( "Menu" ) )
 		{
@@ -3301,7 +3428,7 @@ else if ( guildView == "myguild" )
 	{
 		if ( Input.Pressed( "Menu" ) )
 		{
-			showPicker = false;
+			ClosePicker(); // B2 — returns to the drawer when opened from it
 			SoundManager.PlayBack();
 			ResetKb();
 			GameHUD.PanelHandledBackKey = true;
@@ -3335,7 +3462,7 @@ else if ( guildView == "myguild" )
 				gm?.InvitePlayer( it.connId, it.name, it.steam );
 			else if ( pickerMode == "transfer" )
 				gm?.TransferOwnership( it.steam );
-			showPicker = false;
+			ClosePicker();
 			SoundManager.PlaySuccess();
 			ResetKb();
 			StateHasChanged();
@@ -3343,20 +3470,31 @@ else if ( guildView == "myguild" )
 	}
 
 	// ── INLINE EDITOR (MOTD) ─────────────────────────────────────────────────
-	// While the TextEntry OWNS typing focus the engine captures every key and
-	// none of this runs — that's correct (the player is typing). Once focus
-	// is elsewhere: Q cancels; A/D walk the Save↔Cancel pair (side-by-side
-	// row — spatially honest); Space/Enter/E fires the focused button.
+	// The entry takes focus on open (S4 latch). While it owns typing: Enter
+	// SAVES (onsubmit), Esc (oncancel) / Tab hand the keyboard back, every
+	// other key types. Unfocused: Q cancels; A/D walk the Save↔Cancel pair
+	// (side-by-side row — spatially honest); Space/Enter/E fires the focused
+	// button; W climbs back into the text box (it sits ABOVE the pair).
 	// Cursor seeded on SAVE (index 0) by StartEditMotd — a non-destructive
 	// commit, so confirm-default is the right seat.
 	private void TickEditorInput()
 	{
+		if ( TypingOwnsKeys( motdDraftInput, -1 ) ) return;
+
 		if ( Input.Pressed( "Menu" ) )
 		{
 			if ( editingMotd ) CancelMotd();
 			SoundManager.PlayBack();
 			GameHUD.PanelHandledBackKey = true;
 			StateHasChanged();
+			return;
+		}
+
+		// W — back up into the text box (spatially above Save/Cancel).
+		if ( Input.Pressed( "Up" ) )
+		{
+			StampKb();
+			RequestEntryFocus( motdDraftInput );
 			return;
 		}
 
@@ -3389,6 +3527,63 @@ else if ( guildView == "myguild" )
 		_kbIndex = idx;
 		SoundManager.PlayHover();
 		StateHasChanged();
+	}
+
+	// ── TEXT-ENTRY GRAMMAR (LANE: input — S3/S5, DOC-5 §11/§18) ─────────────
+	// Every TextEntry on this page is a kb STOP on its row:
+	//   Space/Enter/E on the row → the box takes focus (deferred one frame so
+	//     the confirm key itself is never typed);
+	//   while typing → keys type; Tab (here), Enter (onsubmit) or Esc (the
+	//     entry's own oncancel event — no Input "Escape" bind, DOC-5 §2)
+	//     hand the keyboard back with the cursor still on that row;
+	//   Q while unfocused → the surface's normal back.
+	// Exception: the MOTD editor's Enter SAVES (submit IS the commit there).
+	private void WireTextEntry( TextEntry entry, Action onSubmit )
+	{
+		if ( entry == null || _wiredEntries.Contains( entry ) ) return;
+		_wiredEntries.Add( entry );
+		entry.AddEventListener( "onsubmit", ( e ) => onSubmit?.Invoke() );
+		entry.AddEventListener( "oncancel", ( e ) => BlurToRow( entry ) );
+	}
+
+	private void RequestEntryFocus( TextEntry entry )
+	{
+		if ( entry == null ) return;
+		_focusEntryPending = entry;
+		_focusEntryFrames = 1;
+		SoundManager.PlayClick();
+	}
+
+	// Give the keyboard back; the cursor is already parked on the entry's
+	// row (Space put it there, or TypingOwnsKeys dragged it on click-focus).
+	private void BlurToRow( TextEntry entry )
+	{
+		if ( entry == null ) return;
+		entry.Blur();
+		_entryBlurAt = RealTime.Now; // same-frame latch — see TypingOwnsKeys
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// True while `entry` owns typing (or just stopped, within the blur
+	// latch — the Enter that blurred via onsubmit is still edge-true this
+	// Tick and must not re-fire as a row confirm). Handles the one exit key
+	// that reaches TickInput (Tab) and swallows everything else so WASD/Q
+	// type instead of steering. A mouse click-focus also drags the ONE
+	// cursor onto the entry's row (DOC-5 §6) so Tab lands where the box is.
+	private bool TypingOwnsKeys( TextEntry entry, int rowIndex, string zone = null )
+	{
+		if ( entry == null ) return false;
+		if ( RealTime.Now - _entryBlurAt < 0.05f ) return true;
+		if ( !entry.HasFocus ) return false;
+		if ( rowIndex >= 0 && ( _kbIndex != rowIndex || ( zone != null && ( !_kbActive || _kbZone != zone ) ) ) )
+		{
+			if ( zone != null ) { _kbActive = true; _kbZone = zone; }
+			_kbIndex = rowIndex;
+			StateHasChanged();
+		}
+		if ( Input.Pressed( "Score" ) ) BlurToRow( entry );
+		return true;
 	}
 
 	// ── kb-selected predicates — one per focusable region. Each returns true
@@ -3606,14 +3801,42 @@ else if ( guildView == "myguild" )
 		var requests = gm?.IsOfficer == true ? (gm.JoinRequests ?? new List<GuildJoinRequest>()) : new List<GuildJoinRequest>();
 		if ( requests.Count > 0 )
 		{
-			showRequestsModal = true;
+			OpenRequests();
 			SoundManager.PlayForward();
 			return;
 		}
-		pickerTitle = "Invite Player";
-		pickerMode = "invite";
-		showPicker = true;
+		OpenPicker( "Invite Player", "invite", returnsToDrawer: false );
 		SoundManager.PlayForward();
+	}
+
+	// ── Overlay openers (S1) — seed the cursor on the safe stop AT OPEN
+	//    (mouse and keyboard both route here; Tick's edges are the net).
+	private void OpenRequests()
+	{
+		showRequestsModal = true;
+		_kbIndex = 0; // first row's ACCEPT
+	}
+
+	private void OpenPicker( string title, string mode, bool returnsToDrawer )
+	{
+		pickerTitle = title;
+		pickerMode = mode;
+		_pickerReturnsToDrawer = returnsToDrawer;
+		showPicker = true;
+		_kbIndex = 0; // first row — never the opener's index
+	}
+
+	// ONE exit for every picker close path (Q, X, backdrop, pick). B2: a
+	// picker opened from the drawer closed it on the way in — give it back
+	// (Tick's drawer open edge re-seeds the drawer's row cursor).
+	private void ClosePicker()
+	{
+		showPicker = false;
+		if ( _pickerReturnsToDrawer )
+		{
+			_pickerReturnsToDrawer = false;
+			showSettingsModal = true;
+		}
 	}
 
 	// MOTD
@@ -3622,6 +3845,7 @@ else if ( guildView == "myguild" )
 		motdDraft = GuildManager.Instance?.Guild?.Motd ?? "";
 		editingMotd = true;
 		_kbIndex = 0; // editor cursor seeds on SAVE (open edge — mouse or kb)
+		_motdFocusLatch = 2; // S4 — focus the entry once it has mounted (Tick)
 	}
 
 	private void SaveMotd()
@@ -3629,35 +3853,49 @@ else if ( guildView == "myguild" )
 		motdDraft = motdDraftInput?.Text ?? "";
 		GuildManager.Instance?.UpdateMotd( motdDraft );
 		editingMotd = false;
+		_motdFocusLatch = 0;
 		_kbIndex = 0; // back to the announcement's one "info" stop
 	}
 
 	private void CancelMotd()
 	{
 		editingMotd = false;
+		_motdFocusLatch = 0;
 		_kbIndex = 0; // back to the announcement's one "info" stop
 	}
 
 	// (Description editing moved into the settings drawer — the plaza stone
-	// is CUT. The drawer's TextEntry drives settingsDescription; SaveSettings
-	// persists it.)
+	// is CUT. The drawer's TextEntry drives settingsDescription;
+	// SaveSettingsAndClose persists it.)
 
-	// Emblem
-	private void SaveEmblem()
+	// S13 — ONE save path for the drawer's Save Changes (mouse + kb). Each
+	// PUT fires only if its section actually changed against the saved guild,
+	// and the success chime plays ONCE (nothing changed → a quiet close).
+	// GuildManager has no combined update (Core is read-only for this lane):
+	// when BOTH the emblem and the settings changed we still issue two PUTs
+	// (two refreshes) — flagged for a combined UpdateGuild API. Min-rank /
+	// auto-kick / inactive-days lost their UI rows (brief §2 cuts) but keep
+	// round-tripping their stored values so the manager signature is untouched.
+	private void SaveSettingsAndClose()
 	{
-		GuildManager.Instance?.UpdateEmblem( emblemColor, emblemIcon, emblemShape );
-		SoundManager.PlaySuccess();
-	}
-
-	// Settings — the drawer owns the description now. Min-rank / auto-kick /
-	// inactive-days lost their UI rows (brief §2 cuts) but keep round-tripping
-	// their stored values so the manager call signature is untouched.
-	private void SaveSettings()
-	{
+		var g = GuildManager.Instance?.Guild;
 		settingsDescription = settingsDescInput?.Text ?? settingsDescription;
-		GuildManager.Instance?.UpdateGuildSettings( settingsJoinMode, settingsMinLevel, settingsMinRank, settingsAutoKick, settingsInactiveDays,
+
+		bool emblemDirty = g == null
+			|| emblemColor != g.EmblemColor || emblemIcon != g.EmblemIcon || emblemShape != g.EmblemShape;
+		bool settingsDirty = g == null
+			|| settingsJoinMode != g.JoinMode || settingsMinLevel != g.MinLevel
+			|| ( settingsDescription ?? "" ) != ( g.Description ?? "" );
+
+		if ( emblemDirty ) GuildManager.Instance?.UpdateEmblem( emblemColor, emblemIcon, emblemShape );
+		if ( settingsDirty ) GuildManager.Instance?.UpdateGuildSettings( settingsJoinMode, settingsMinLevel, settingsMinRank, settingsAutoKick, settingsInactiveDays,
 			settingsDescription );
-		SoundManager.PlaySuccess();
+
+		if ( emblemDirty || settingsDirty ) SoundManager.PlaySuccess();
+		else SoundManager.PlayBack();
+
+		settingsDescInput?.Blur();
+		showSettingsModal = false;
 	}
 
 	// Danger Zone — uses shared ConfirmDialog (mounted globally in GameHUD)
@@ -3685,11 +3923,17 @@ else if ( guildView == "myguild" )
 			onConfirm: () => GuildManager.Instance?.DisbandGuild() );
 	}
 
+	// B2 (run-2 audit, DOC-5 §4): the picker rides .confirm-overlay (z100)
+	// and the drawer root is z1000 — opened over the drawer, the picker
+	// painted BEHIND it and the keyboard drove an invisible list. Decision:
+	// keep ONE z ladder (every modal on .confirm-overlay z100; the drawer
+	// alone at z1000; they never coexist) — the drawer CLOSES while the
+	// picker is up and REOPENS on any picker close (ClosePicker). No z lift.
 	private void OnTransferOwnership()
 	{
-		pickerTitle = "Transfer Ownership";
-		pickerMode = "transfer";
-		showPicker = true;
+		bool fromDrawer = showSettingsModal;
+		showSettingsModal = false;
+		OpenPicker( "Transfer Ownership", "transfer", returnsToDrawer: fromDrawer );
 		SoundManager.PlayForward();
 	}
 
