@@ -2909,4 +2909,110 @@ public sealed class ItemManager : Component
 
 		return drops;
 	}
+
+	// ============================================
+	// ZONE DROP ODDS — read-only preview for the Expedition detail card
+	// ============================================
+
+	/// <summary>
+	/// One line of the detail card's DROPS slab. <c>PerRunPct</c> is the
+	/// Normal-baseline chance of seeing the item at least once in a full run,
+	/// rounded to the nearest 5 (0 = "&lt;5%"). <c>EveryKo</c> marks species
+	/// materials — guaranteed on every wild KO, so the % slot prints EVERY KO.
+	/// </summary>
+	public record struct DropOdds( ItemDefinition Item, int PerRunPct, bool EveryKo );
+
+	/// <summary>
+	/// Honest per-run drop odds for a zone — READ-ONLY, mirrors the roll
+	/// without touching it (user ruling 2026-09-04, drops option B).
+	///
+	///  · Materials first: every wild KO drops the species' signature material
+	///    (ExpeditionManager.OnMonsterDefeated ~L375-392). The wild pool is
+	///    PossibleSpecies MINUS every boss-pool species (GenerateWaveEnemies
+	///    ~L1340-1364) — boss-only species never roll a wild material here.
+	///  · Items: ONLY the table the roll actually uses (CalculateDrop: the
+	///    `zone_{id}` table when present, else the element table, else base),
+	///    level-gated exactly like RollDropTable (MinExpeditionLevel ≤ the
+	///    BaseEnemyLevel BattleSimulator passes). P(per KO) = table
+	///    BaseDropChance × weight share; then the separate base-table roll
+	///    (Fortune Chime) with its own chance — CalculateDrop rolls base once
+	///    per KO on both branches.
+	///  · Per run = 1 − (1 − p)^KOs with KOs = Σ min(3, 1 + wave/2) over the
+	///    WILD waves (the boss wave rolls the boss table, so it is excluded).
+	///  · Hard = ×1.5 on the table chance (HARD_MODE_DROP_RATE_MULT). Skills,
+	///    relics and Lucky Charm are NOT applied — the card prints the baseline.
+	/// </summary>
+	public List<DropOdds> GetZoneDropOdds( string expeditionId, bool hardMode )
+	{
+		var result = new List<DropOdds>();
+		var exp = ExpeditionManager.Instance?.GetExpedition( expeditionId );
+		if ( exp == null ) return result;
+
+		// ── Boss-pool species are excluded from the wild waves ──
+		var bossIds = new HashSet<string>();
+		var pool = BossPoolDatabase.GetPool( expeditionId );
+		if ( pool != null )
+		{
+			foreach ( var b in pool.Bosses ) bossIds.Add( b.SpeciesId );
+			if ( pool.RareBosses != null )
+				foreach ( var rb in pool.RareBosses ) bossIds.Add( rb.SpeciesId );
+		}
+
+		// ── 1. Species materials — EVERY KO, in PossibleSpecies order ──
+		foreach ( var speciesId in exp.PossibleSpecies ?? new List<string>() )
+		{
+			if ( bossIds.Contains( speciesId ) ) continue;
+			var sp = MonsterManager.Instance?.GetSpecies( speciesId );
+			if ( sp == null || !sp.HasSignatureDrop ) continue;
+			if ( !_itemDatabase.TryGetValue( sp.SignatureDropItemId, out var mat ) ) continue;
+			if ( result.Any( r => r.Item.Id == mat.Id ) ) continue;
+			result.Add( new DropOdds( mat, 100, true ) );
+		}
+
+		// ── 2. Wild KOs across the run ──
+		int wildWaves = exp.IsBossGauntlet ? 0 : ( exp.HasBoss ? exp.Waves - 1 : exp.Waves );
+		int kos = 0;
+		for ( int w = 1; w <= wildWaves; w++ )
+			kos += System.Math.Min( ExpeditionManager.MAX_WAVE_ENEMIES, 1 + w / 2 );
+		if ( kos <= 0 ) return result;
+
+		float hardMult = hardMode ? ExpeditionManager.HARD_MODE_DROP_RATE_MULT : 1f;
+		int level = exp.BaseEnemyLevel; // what BattleSimulator passes to CalculateDrop
+
+		// ── 3. The table the roll prefers ──
+		string zoneKey = $"zone_{expeditionId}";
+		if ( !_dropTables.TryGetValue( zoneKey, out var table ) )
+			_dropTables.TryGetValue( exp.Element.ToString().ToLower(), out table );
+		table ??= _dropTables.GetValueOrDefault( "base" );
+		if ( table == null ) return result;
+
+		AppendTableOdds( table, level, kos, hardMult, result );
+
+		// ── 4. The separate base roll (Fortune Chime) ──
+		if ( table.Id != "base" && _dropTables.TryGetValue( "base", out var baseTable ) )
+			AppendTableOdds( baseTable, level, kos, hardMult, result );
+
+		return result;
+	}
+
+	private void AppendTableOdds( DropTable table, int level, int kos, float chanceMult, List<DropOdds> result )
+	{
+		var valid = table.Entries.Where( e => level >= e.MinExpeditionLevel ).ToList();
+		if ( valid.Count == 0 ) return;
+		int totalWeight = valid.Sum( e => e.Weight );
+		if ( totalWeight <= 0 ) return;
+
+		float tableChance = table.BaseDropChance * chanceMult;
+		foreach ( var entry in valid )
+		{
+			if ( !_itemDatabase.TryGetValue( entry.ItemId, out var item ) ) continue;
+			if ( result.Any( r => r.Item.Id == item.Id ) ) continue;
+
+			double pKo = tableChance * ( entry.Weight / (double)totalWeight );
+			double pRun = 1.0 - System.Math.Pow( 1.0 - pKo, kos );
+			int pct = (int)System.Math.Round( pRun * 100.0 / 5.0 ) * 5; // nearest 5; 0 = "<5%"
+			pct = System.Math.Clamp( pct, 0, 100 );
+			result.Add( new DropOdds( item, pct, false ) );
+		}
+	}
 }

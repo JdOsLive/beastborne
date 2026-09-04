@@ -6,864 +6,550 @@
 @using Beastborne.Systems;
 @using Beastborne.UI;
 @using Beastborne.UI.Components;
+@using Beastborne.UI.Primitives;
 @using System;
 @using System.Collections.Generic;
 @using System.Linq;
 @inherits Panel
 
-<root class="world-map-root">
-	<div class="map-modal">
-		<!-- ═══ ILLUSTRATED MAP BACKDROP — Serpinglin (temporary art) ═══
-			 Layered:
-				1. base — the empty land/water/forest illustration
-				2. landmarks — village PNGs (houses, statue, mine, bridge, fences)
-				   each with hover-lore tooltip; not zone markers
-				3. clouds — subtle perimeter cloud overlay -->
-		<div class="map-backdrop">
-			<div class="map-bg-vignette"></div>
+@*
+	WORLD MAP — the Expedition page (LAYOUT lane, pipeline run: expedition rebuild, part 1).
+	Brief: .claude/design-system/components/expedition-redesign-brief.html + expedition-mock-page.html,
+	revision 2 (expedition-revision-2.html) overrides run 1 where they differ. 1920×1080, padding-box.
+
+	ZONE MAP (px):
+	  .map-stage            abs 0/0 1920×1080 — the illustration IS the room (DOC-1 #7: no slab under the title)
+	    .map-zoom           abs 0/0 1920×1080 — the UNLOCK REVEAL group: art frame + markers only; inline
+	                        transform-origin = the reveal pin's % · `.reveal` class hook (LANE: motion owns the
+	                        transition + beat ladder). Every child is absolute-% → nothing inside flex-grows.
+	      .map-art-frame    base art · landmarks (+ hover title slab 32 r11) · clouds
+	      .map-markers      .wm-dim (z40, mounts with a card/popup) · zone pins 44 · mini pins 32 · request pins 32
+	    .map-vignette       abs full, OUTSIDE the group
+	  .wm-header            abs 0/0 1920×88 + 2px strip · pad 16/32/12/28 · kicker 12/14 + 2 + title row 44 = 60
+	                        (16 + 60 + 12 = 88 ✓) · right slot = ONE chip 32 r11 (BACK · Q slot left for LANE: input)
+	  .zd-card              abs x1420 y110 460 r22 pad 24 → 412 inner, content-sized (see BuildCardHeights)
+	  .request-popup        untouched (another part of the run)
+	  <TeamPickerPopup />   untouched (another lane)
+*@
+
+<root class="wm-root">
+	<div class="map-stage">
+
+		@* ═══ UNLOCK REVEAL GROUP — art frame + markers. Header / vignette / ring stay outside. ═══ *@
+		<div class="map-zoom @(_revealZoneId != null ? "reveal" : "")" style="@RevealOriginStyle()">
+
 			<div class="map-art-frame">
-				@* Map base + clouds rendered as background-image (stretch to fill)
-				   so the landmark % positions stay locked to the artwork
-				   regardless of viewport aspect ratio. <img object-fit: contain>
-				   would letterbox in widescreen and detach the landmarks. *@
 				<div class="map-base"></div>
 
-				@* Hoverable lore landmarks. Decorative, not playable.
-				   Each landmark is positioned in % over the .map-art-frame so
-				   it lines up with the same illustration from the artist. *@
+				@* Village landmarks — decorative PNGs at the artist's % positions. Hover = a 32 r11 title slab. *@
 				<div class="map-landmarks">
 					@foreach ( var lm in Landmarks )
 					{
 						var landmark = lm;
-						var lmKey = "lm-" + landmark.Id;
-						var isHovered = _hoveredLandmarkId == landmark.Id;
-						var lmPos = GetLandmarkPos( landmark );
 						if ( landmark.IsDecoration )
 						{
-							// Decoration — no hover/tooltip. Drag still works in edit mode.
-							<div class="landmark decoration @(_editMode ? "editable" : "")"
-								 style="left: @(lmPos.X)%; top: @(lmPos.Y)%; width: @(lmPos.Width)%;"
-								 onmousedown=@(() => StartDragLandmark(landmark.Id))>
+							<div class="landmark decoration" style="left: @(landmark.X)%; top: @(landmark.Y)%; width: @(landmark.Width)%;">
 								<img class="landmark-art" src="@landmark.ImagePath" />
 							</div>
 						}
 						else
 						{
-							<div class="landmark @(isHovered ? "hovered" : "") @(_editMode ? "editable" : "")"
-								 style="left: @(lmPos.X)%; top: @(lmPos.Y)%; width: @(lmPos.Width)%;"
+							var lmKey = "lm-" + landmark.Id;
+							<div class="landmark @(_hoveredLandmarkId == landmark.Id ? "hovered" : "")"
+								 style="left: @(landmark.X)%; top: @(landmark.Y)%; width: @(landmark.Width)%;"
 								 onmouseover=@(() => OnLandmarkHover(landmark.Id, lmKey))
-								 onmouseout=@(() => OnLandmarkLeave(landmark.Id))
-								 onmousedown=@(() => StartDragLandmark(landmark.Id))>
+								 onmouseout=@(() => OnLandmarkLeave(landmark.Id))>
 								<img class="landmark-art" src="@landmark.ImagePath" />
+							</div>
+						}
+					}
+
+					@* Hover title — 240×32 transparent host centred on the landmark (absolutes never
+					   shrink-wrap → the slab is an in-flow child that hugs its label). *@
+					@if ( _hoveredLandmarkId != null )
+					{
+						var hl = GetLandmark( _hoveredLandmarkId );
+						if ( hl != null && !hl.IsDecoration )
+						{
+							<div class="lm-title-host" style="left: @(hl.X + hl.Width / 2)%; top: @(hl.Y)%;">
+								<div class="lm-title"><span class="lm-title-text">@hl.Name</span></div>
 							</div>
 						}
 					}
 				</div>
 
-				<!-- Subtle cloud overlay around the map perimeter — soft drift -->
 				<div class="map-clouds"></div>
 			</div>
 
-			@* ═══ FIELD BRIEFING HEADER — the panel's identity moment ═══
-			   Expedition-orange kicker stamp + big italic display title +
-			   zone-clear progress. Sits top-left over the map art; pointer-
-			   events pass through (the backdrop is already inert). Kept to
-			   ONE stamp + bare type so the pixel-art map stays the hero. *@
-			<div class="map-briefing">
-				<div class="mb-kicker"><span>EXPEDITION</span></div>
-				<div class="mb-title">SERPINGLIN</div>
-				<div class="mb-progress">
-					<span class="mb-prog-num">@GetClearedZoneCount() / @GetTotalZoneCount()</span>
-					<span class="mb-prog-label">ZONES CLEARED</span>
-				</div>
-			</div>
+			@* ═══ MARKERS — one pin family (orange diamonds), % positions against the art frame ═══ *@
+			<div class="map-markers">
 
-@* Bottom-right hint — let players know landmarks are interactive *@
-			<div class="map-hint-stamp">
-				<iconify icon="lucide:mouse-pointer-2" Size=@(13) Color="#fbbf24" />
-				<span>Hover the village landmarks for lore</span>
-			</div>
-
-			@* Landmark hover tooltip — floats above the hovered landmark *@
-			@if ( _hoveredLandmarkId != null )
-			{
-				var hl = GetLandmark( _hoveredLandmarkId );
-				if ( hl != null && !hl.IsDecoration )
+				@* Dim — mounts with the card or the request popup, INSIDE .map-markers so the selected
+				   pin (same parent, higher z) stays lit above it. Click = close the top surface. *@
+				@if ( _selectedExpId != null || _tradePopupNodeId != null )
 				{
-					var hlPos = GetLandmarkPos( hl );
-					<div class="landmark-tooltip @(hl.TagLabel == "Home" ? "tag-home" : "")"
-						 style="left: @(hlPos.X + hlPos.Width / 2)%; top: @(hlPos.Y)%;">
-						<div class="landmark-tooltip-tag"><span>@hl.TagLabel</span></div>
-						<div class="landmark-tooltip-title">@hl.Name</div>
-						<div class="landmark-tooltip-body">@hl.Lore</div>
+					<div class="wm-dim" onclick=@CloseTopSurface></div>
+				}
+
+				@foreach ( var z in Zones )
+				{
+					var zone = z;
+					if ( !IsZoneVisible( zone ) ) { continue; }
+					var zExp = GetExpedition( zone.ExpeditionId );
+					var isUnlocked = IsZoneUnlocked( zone );
+					var isCleared = ExpeditionManager.Instance?.HasClearedExpedition( zone.ExpeditionId ) ?? false;
+					var hardUnlocked = isCleared && ( ExpeditionManager.Instance?.IsHardModeUnlocked( zone.ExpeditionId ) ?? false );
+					var stateClass = !isUnlocked ? "locked" : ( isCleared ? "cleared" : "current" );
+					var isHovered = _hoveredZoneId == zone.Id;
+					var isKb = KbActiveMarkerId == zone.Id;
+					var isSelected = _selectedExpId == zone.ExpeditionId;
+					var zoneKey = "zone-" + zone.Id;
+					var (glyph, glyphColor) = PinGlyph( isUnlocked, isCleared );
+					var pinName = zExp?.Name ?? zone.Name;
+					var pinLevel = zExp?.BaseEnemyLevel ?? 1;
+					var lockedMeta = "CLEAR " + ( PreviousZoneName( zone ) ?? "THE PREVIOUS ZONE" ).ToUpperInvariant();
+
+					// Pin host 160×106, margin −80/−22 so the 44 diamond's centre sits on the anchor.
+					// Column: diamond 44 · 14 · name 16 · 2 · meta 14 (· 2 · meta 14) = 106 max.
+					<div class="zone-pin @stateClass @(isHovered ? "hovered" : "") @(isKb ? "kb-active" : "") @(isSelected ? "selected" : "")"
+						 style="left: @(zone.X)%; top: @(zone.Y)%;"
+						 onclick=@(() => SelectZone(zone.Id))
+						 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
+						 onmouseout=@(() => OnZoneMarkerLeave(zone.Id))>
+						<div class="pin-diamond">
+							<iconify class="pin-glyph" icon="@glyph" Size=@(22) Color="@glyphColor" />
+							@* The one violet ring — child of the rotated diamond so it inherits the 45°.
+							   LANE: input — hover == focus; the kb cursor graph flips .kb-active. *@
+							<div class="pin-ring"></div>
+						</div>
+						<div class="pin-label">
+							<span class="pin-name">@pinName</span>
+							@if ( isUnlocked )
+							{
+								<span class="pin-meta lv">LV @pinLevel</span>
+							}
+							else
+							{
+								<span class="pin-meta dim">@lockedMeta</span>
+							}
+							@if ( hardUnlocked )
+							{
+								<span class="pin-meta hard">HARD UNLOCKED</span>
+							}
+						</div>
 					</div>
 				}
-			}
+
+				@* Mini-expeditions — 32 diamonds in the same family. *@
+				@foreach ( var mini in GetMiniExpeditions() )
+				{
+					var mx = mini;
+					var mUnlocked = ExpeditionManager.Instance?.CanStartExpedition( mx.Id ) ?? false;
+					var mCleared = ExpeditionManager.Instance?.HasClearedExpedition( mx.Id ) ?? false;
+					var mState = !mUnlocked ? "locked" : ( mCleared ? "cleared" : "current" );
+					var mKey = "mini-" + mx.Id;
+					var mHovered = _hoveredMiniId == mx.Id;
+					var mKb = KbActiveMarkerId == mx.Id;
+					var mSelected = _selectedExpId == mx.Id;
+					var mPos = GetMiniPos( mx.Id );
+					var (mGlyph, mGlyphColor) = PinGlyph( mUnlocked, mCleared );
+					var mLockedMeta = "CLEAR " + ( MiniGateName( mx ) ?? "THE MAIN ZONES" ).ToUpperInvariant();
+
+					// Host 160×88, margin −80/−16: diamond 32 · 12 · name 14 · 2 · meta 14 = 74 (+14 slack).
+					<div class="mini-pin @mState @(mHovered ? "hovered" : "") @(mKb ? "kb-active" : "") @(mSelected ? "selected" : "")"
+						 style="left: @(mPos.X)%; top: @(mPos.Y)%;"
+						 onclick=@(() => SelectMini(mx.Id))
+						 onmouseover=@(() => OnMiniHover(mx.Id, mKey))
+						 onmouseout=@(() => OnMiniLeave(mx.Id))>
+						<div class="pin-diamond mini">
+							<iconify class="pin-glyph" icon="@mGlyph" Size=@(16) Color="@mGlyphColor" />
+							<div class="pin-ring mini"></div>
+						</div>
+						<div class="pin-label mini">
+							<span class="pin-name mini">@mx.Name</span>
+							@if ( mUnlocked )
+							{
+								<span class="pin-meta lv">LV @mx.BaseEnemyLevel</span>
+							}
+							else
+							{
+								<span class="pin-meta dim">@mLockedMeta</span>
+							}
+						</div>
+					</div>
+				}
+
+				@* Request pins — "?" on a neutral 32 r8 slab; check when done; pulse when affordable.
+				   Visible only once the host zone is cleared (GetVisibleTradeNodes). *@
+				@foreach ( var node in GetVisibleTradeNodes() )
+				{
+					var n = node;
+					var isDone = TradeNodeManager.Instance?.IsLocked( n.Id ) ?? true;
+					var canAfford = !isDone && ( TradeNodeManager.Instance?.CanAfford( n.Id ) ?? false );
+					var tnKey = "tn-" + n.Id;
+					<div class="req-pin @(isDone ? "done" : "") @(canAfford ? "ready" : "") @(_hoveredTradeNodeId == n.Id ? "hovered" : "")"
+						 style="left: @(n.MapPosX)%; top: @(n.MapPosY)%;"
+						 onclick=@(() => OpenTradeNode(n.Id))
+						 onmouseover=@(() => { OnHover(tnKey); _hoveredTradeNodeId = n.Id; })
+						 onmouseout=@(() => { if (_hoveredTradeNodeId == n.Id) _hoveredTradeNodeId = null; })>
+						@if ( canAfford )
+						{
+							@* LANE: motion — the 1.6s ready pulse (the one surviving loop on the map). *@
+							<div class="req-pulse"></div>
+						}
+						@if ( isDone )
+						{
+							<iconify class="req-glyph" icon="lucide:check" Size=@(16) Color="#3fb45e" />
+						}
+						else
+						{
+							<iconify class="req-glyph" icon="lucide:badge-help" Size=@(18) Color="#f4f1ea" />
+						}
+					</div>
+				}
+			</div>
 		</div>
 
-		<!-- ═══ ZONE MARKERS (absolute positioned on backdrop) ═══ -->
-		<div class="map-markers">
-			@foreach ( var z in Zones )
-			{
-				var zone = z;
-				if ( !IsZoneVisible( zone ) ) { continue; }
-				var isUnlocked = IsZoneUnlocked( zone );
-				var isCleared = ExpeditionManager.Instance?.HasClearedExpedition( zone.ExpeditionId ) ?? false;
-				var unlockedClass = isUnlocked ? "unlocked" : "locked";
-				var clearedClass = isCleared ? "cleared" : "";
-				var zoneKey = "zone-" + zone.Id;
-				var isHovered = _hoveredZoneId == zone.Id;
-				var zonePos = GetZonePos( zone );
-				<div class="zone-marker @unlockedClass @clearedClass @(isHovered ? "hovered" : "") @(_editMode ? "editable" : "") @(KbActiveMarkerId == zone.Id ? "kb-active" : "")"
-					 style="left: @(zonePos.X)%; top: @(zonePos.Y)%;"
-					 onclick=@(() => SelectZone(zone.Id))
-					 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
-					 onmouseout=@(() => OnZoneMarkerLeave(zone.Id))
-					 onmousedown=@(() => StartDragZone(zone.Id))>
+		@* Vignette — outside the zoom group so the frame edge never scales. *@
+		<div class="map-vignette"></div>
 
-					<div class="marker-pin">
-						@if ( !isUnlocked )
-						{
-							<iconify icon="lucide:lock" Size=@(22) Color="#94a3b8" />
-						}
-						else if ( isCleared )
-						{
-							<iconify icon="lucide:check" Size=@(24) Color="#86efac" />
-						}
-						else
-						{
-							<iconify icon="lucide:swords" Size=@(26) Color="#fef3c7" />
-						}
-						@* Living violet ring — hover/keyboard cursor. Child of the
-						   rotated pin so it inherits the diamond orientation AND
-						   scales in lockstep with the hover/kb pop for free. *@
-						<div class="marker-ring"></div>
-					</div>
-					<div class="marker-pulse"></div>
-
-					<div class="zone-label">
-						<span class="zone-name">@zone.Name</span>
-						<span class="zone-meta">Lv @zone.Level</span>
-					</div>
+		@* ═══ HOUSE HEADER ON THE ART — the hub .oh-header recipe with its slab removed ═══
+		   Host paints NO fill (BbHeaderWaves paint-behind law); .bhw-base is made transparent from this
+		   sheet because the illustration is the room. LANE: motion — header entrance. *@
+		<div class="wm-header">
+			<BbHeaderWaves Accent=@("orange") />
+			<div class="wm-h-identity">
+				<span class="wm-kicker">EXPEDITION</span>
+				<div class="wm-title-row">
+					<span class="wm-title">WEAVERTON</span>
+					<div class="wm-seam"></div>
+					<div class="wm-seam dim"></div>
 				</div>
-			}
-
-			<!-- ═══ ZONE HOVER PREVIEW (Age of Calamity style) ═══ -->
-			@if ( _hoveredZoneId != null )
-			{
-				var hz = GetZone( _hoveredZoneId );
-				if ( hz != null )
-				{
-					var hexp = GetExpedition( hz.ExpeditionId );
-					var hUnlocked = IsZoneUnlocked( hz );
-					var hCleared = ExpeditionManager.Instance?.HasClearedExpedition( hz.ExpeditionId ) ?? false;
-					// Preview always sits to the right of the marker — the
-					// player's reading flow left→right means the card reads as
-					// supplementary detail rather than a sidetrack. Right-edge
-					// overflow is accepted in exchange for consistency.
-					var cardImg = !string.IsNullOrEmpty( hexp?.BackgroundImage ) ? hexp.BackgroundImage : "ui/locations/placeholder_zone.png";
-					var hzPos = GetZonePos( hz );
-					<div class="zone-preview flip-right"
-						 style="left: @(hzPos.X)%; top: @(hzPos.Y)%;">
-						<div class="zp-header">
-							<span class="zp-title">@hz.Name</span>
-							@if ( hCleared )
-							{
-								<span class="zp-badge cleared">CLEARED</span>
-							}
-							else if ( !hUnlocked )
-							{
-								<span class="zp-badge locked">LOCKED</span>
-							}
-						</div>
-						<div class="zp-image-wrap">
-							<img class="zp-image" src="@cardImg" />
-							@if ( !hUnlocked )
-							{
-								<div class="zp-image-veil">
-									<iconify icon="lucide:lock" Size=@(34) Color="#f1f5f9" />
-								</div>
-							}
-						</div>
-						<div class="zp-rec">
-							<span class="zp-rec-label">RECOMMENDED LEVEL</span>
-							<span class="zp-rec-value">Lv. @hz.Level</span>
-						</div>
-						<div class="zp-stats">
-							<div class="zp-stat">
-								<iconify icon="lucide:layers" Size=@(14) Color="#c4b5fd" />
-								<span>@(hexp?.Waves ?? 0) WAVES</span>
-							</div>
-							@if ( hexp != null )
-							{
-								<div class="zp-stat element-@(hexp.Element.ToString().ToLower())">
-									<img class="zp-stat-el" src="ui/icons/elements/background/@(hexp.Element.ToString().ToLower()).png" />
-									<span>@hexp.Element.ToString().ToUpper()</span>
-								</div>
-								@if ( hexp.HasBoss )
-								{
-									<div class="zp-stat boss">
-										<iconify icon="lucide:skull" Size=@(13) Color="#fca5a5" />
-										<span>BOSS</span>
-									</div>
-								}
-							}
-						</div>
-						<div class="zp-lore">@hz.Lore</div>
-						@if ( hUnlocked )
-						{
-							<div class="zp-hint">
-								<iconify icon="lucide:mouse-pointer-click" Size=@(12) Color="#fde68a" />
-								<span>Click to open</span>
-							</div>
-						}
-						else
-						{
-							<div class="zp-hint locked">
-								<iconify icon="lucide:info" Size=@(12) Color="#94a3b8" />
-								<span>Clear the previous zone to unlock</span>
-							</div>
-						}
-					</div>
-				}
-			}
-
-			<!-- ═══ MINI-EXPEDITION MARKERS (secondary side content) ═══ -->
-			@foreach ( var mini in GetMiniExpeditions() )
-			{
-				var mx = mini;
-				var mUnlocked = ExpeditionManager.Instance?.CanStartExpedition( mx.Id ) ?? false;
-				var mClass = mUnlocked ? "unlocked" : "locked";
-				var mKey = "mini-" + mx.Id;
-				var mHovered = _hoveredMiniId == mx.Id;
-				var mPos = GetMiniPos( mx.Id );
-				var mEdge = mPos.X > 70f ? "right-edge" : "";
-				<div class="mini-marker @mClass @(mHovered ? "hovered" : "") @mEdge @(_editMode ? "editable" : "") @(KbActiveMarkerId == mx.Id ? "kb-active" : "")"
-					 style="left: @(mPos.X)%; top: @(mPos.Y)%;"
-					 onclick=@(() => SelectMini(mx.Id))
-					 onmouseover=@(() => OnMiniHover(mx.Id, mKey))
-					 onmouseout=@(() => { if (_hoveredMiniId == mx.Id) _hoveredMiniId = null; })
-					 onmousedown=@(() => StartDragMini(mx.Id))>
-
-					<div class="mini-pin">
-						@if ( !mUnlocked )
-						{
-							<iconify icon="lucide:lock" Size=@(13) Color="#94a3b8" />
-						}
-						else
-						{
-							<iconify icon="lucide:trees" Size=@(14) Color="#fef3c7" />
-						}
-						<div class="marker-ring mini"></div>
-					</div>
-
-					<div class="mini-label">
-						<span class="mini-marker-name">@mx.Name</span>
-						<span class="mini-meta">LV @mx.BaseEnemyLevel</span>
-					</div>
-
-					@if ( mHovered )
-					{
-						<div class="mini-tooltip">
-							<span class="mini-tip-title">@mx.Name</span>
-							<span class="mini-tip-desc">@mx.Description</span>
-							@if ( !mUnlocked )
-							{
-								<span class="mini-tip-locked">Clear Weavermere to unlock</span>
-							}
-						</div>
-					}
-				</div>
-			}
-
-			<!-- ═══ TRADE NODES (request-tile style) ═══ -->
-			@foreach ( var node in GetVisibleTradeNodes() )
-			{
-				var n = node;
-				var isLocked = TradeNodeManager.Instance?.IsLocked( n.Id ) ?? true;
-				var canAfford = TradeNodeManager.Instance?.CanAfford( n.Id ) ?? false;
-				// Color-tint requests by host zone so the player can read at a
-				// glance which expedition area each marker belongs to.
-				var hostZone = GetZone( n.ZoneId );
-				var hostUnlocked = hostZone != null && IsZoneUnlocked( hostZone );
-				var zoneClass = "zone-" + ( n.ZoneId ?? "" ).Replace( "_", "-" );
-				var tnClass = (isLocked ? "done" : "") + " " + (canAfford ? "ready" : "") + " " + zoneClass + (hostUnlocked ? "" : " host-locked");
-				var tnKey = "tn-" + n.Id;
-				@{ var tnPos = GetTradeNodePos( n ); var tnHovered = _hoveredTradeNodeId == n.Id; }
-				<div class="trade-node @tnClass @(_editMode ? "editable" : "") @(tnHovered ? "hovered" : "")"
-					 style="left: @(tnPos.X)%; top: @(tnPos.Y)%;"
-					 onclick=@(() => OpenTradeNode(n.Id))
-					 onmouseover=@(() => { OnHover(tnKey); _hoveredTradeNodeId = n.Id; })
-					 onmouseout=@(() => { if (_hoveredTradeNodeId == n.Id) _hoveredTradeNodeId = null; })
-					 onmousedown=@(() => StartDragTradeNode(n.Id))>
-					<div class="tn-pin">
-						@if ( isLocked )
-						{
-							<iconify icon="lucide:check" Size=@(14) Color="#4ade80" />
-						}
-						else
-						{
-							@* "?" badge = JRPG quest marker — reads as "an NPC
-							   wants something" instantly. Replaced lucide:handshake
-							   which read as a generic trade. *@
-							<iconify icon="lucide:badge-help" Size=@(18) Color="#fef3c7" />
-						}
-					</div>
-					@if ( canAfford && !isLocked )
-					{
-						<div class="tn-ready-pulse"></div>
-					}
-
-					@* Hover tooltip — Persona stamp pill above the pin showing
-					   request title + NPC + zone hint when host is locked. *@
-					@if ( tnHovered )
-					{
-						<div class="tn-tooltip">
-							<span class="tn-tip-title">@n.Name</span>
-							<span class="tn-tip-npc">@n.NpcName</span>
-							@if ( !hostUnlocked && hostZone != null )
-							{
-								<span class="tn-tip-locked">Unlocks with @hostZone.Name</span>
-							}
-						</div>
-					}
-				</div>
-			}
-		</div>
-
-		<!-- ═══ TRADE NODE POPUP (exchange dialog) ═══ -->
-		@if ( _tradePopupNodeId != null )
-		{
-			var tnode = TradeNodeManager.Instance?.GetNode( _tradePopupNodeId );
-			if ( tnode != null )
-			{
-				var canAfford = TradeNodeManager.Instance?.CanAfford( tnode.Id ) ?? false;
-				var isDone = TradeNodeManager.Instance?.IsLocked( tnode.Id ) ?? true;
-				var state = TradeNodeManager.Instance?.GetState( tnode.Id );
-
-				<div class="zone-detail-overlay" onclick=@CloseTradePopup></div>
-				<div class="request-popup">
-					<button class="close-btn rp-close" onclick=@CloseTradePopup onmouseover=@(() => OnHover("tn-close"))>
-						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-					</button>
-
-					@* NPC band — portrait diamond + kicker + name. Identifies the
-					   requestor at a glance before the request title. *@
-					<div class="rp-npc-band">
-						<div class="rp-npc-portrait">
-							<iconify icon="lucide:user" Size=@(28) Color="#fbbf24" />
-						</div>
-						<div class="rp-npc-meta">
-							<span class="rp-npc-kicker">REQUEST · @tnode.NpcName</span>
-							<span class="rp-title">@tnode.Name</span>
-						</div>
-					</div>
-
-					<div class="rp-desc">@tnode.Description</div>
-
-					@* GIVE — what the player needs to hand over *@
-					<div class="rp-section-label">YOU GIVE</div>
-					<div class="rp-line-list">
-						@foreach ( var (itemId, qty) in tnode.Requirements )
-						{
-							var item = ItemManager.Instance?.GetItem( itemId );
-							var have = TamerManager.Instance?.CurrentTamer?.Inventory != null
-								&& TamerManager.Instance.CurrentTamer.Inventory.TryGetValue( itemId, out var h ) ? h : 0;
-							var lineClass = have >= qty ? "satisfied" : "short";
-							<div class="rp-line @lineClass">
-								<img class="rp-line-icon" src="@(item?.IconPath)" />
-								<span class="rp-line-name">@(item?.Name ?? itemId)</span>
-								<span class="rp-line-amt">@have / @qty</span>
-							</div>
-						}
-						@if ( tnode.GoldCost > 0 )
-						{
-							var gold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
-							var lineClass = gold >= tnode.GoldCost ? "satisfied" : "short";
-							<div class="rp-line @lineClass">
-								<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
-								<span class="rp-line-name">Gold</span>
-								<span class="rp-line-amt">@gold / @tnode.GoldCost</span>
-							</div>
-						}
-					</div>
-
-					@* RECEIVE — rewards laid out the same so the trade reads symmetrically *@
-					<div class="rp-section-label">YOU RECEIVE</div>
-					<div class="rp-line-list">
-						@foreach ( var (itemId, qty) in tnode.ItemRewards )
-						{
-							var item = ItemManager.Instance?.GetItem( itemId );
-							<div class="rp-line reward">
-								<img class="rp-line-icon" src="@(item?.IconPath)" />
-								<span class="rp-line-name">@(item?.Name ?? itemId)</span>
-								<span class="rp-line-amt">×@qty</span>
-							</div>
-						}
-						@if ( tnode.GoldReward > 0 )
-						{
-							<div class="rp-line reward">
-								<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
-								<span class="rp-line-name">Gold</span>
-								<span class="rp-line-amt">+@tnode.GoldReward</span>
-							</div>
-						}
-						@if ( tnode.XPReward > 0 )
-						{
-							<div class="rp-line reward">
-								<iconify icon="lucide:arrow-up" Size=@(20) Color="#4ade80" />
-								<span class="rp-line-name">Tamer XP</span>
-								<span class="rp-line-amt">+@tnode.XPReward</span>
-							</div>
-						}
-						@if ( tnode.SkillPointReward > 0 )
-						{
-							<div class="rp-line reward">
-								<iconify icon="lucide:sparkles" Size=@(20) Color="#a78bfa" />
-								<span class="rp-line-name">Skill Points</span>
-								<span class="rp-line-amt">+@tnode.SkillPointReward</span>
-							</div>
-						}
-					</div>
-
-					@if ( isDone )
-					{
-						<div class="rp-done-banner">
-							<iconify icon="lucide:check-circle-2" Size=@(18) Color="#4ade80" />
-							<span>Already Completed</span>
-						</div>
-					}
-					else
-					{
-						<button class="embark-btn rp-accept @(canAfford ? "" : "disabled")"
-								onclick=@(() => ExecuteTrade(tnode.Id))
-								onmouseover=@(() => OnHover("tn-exec-" + tnode.Id))>
-							<iconify icon="lucide:handshake" Size=@(20) Color="#ffffff" />
-							<span>@(canAfford ? "ACCEPT TRADE" : "NOT ENOUGH")</span>
-						</button>
-					}
-
-					@if ( state != null && state.TimesCompleted > 0 )
-					{
-						<div class="tn-times-row">
-							<span>Completed @state.TimesCompleted @(state.TimesCompleted == 1 ? "time" : "times")</span>
-						</div>
-					}
-				</div>
-			}
-		}
-
-		<!-- ═══ ZONE DETAIL PANE (appears when a zone is selected) ═══ -->
-		@if ( _selectedZoneId != null )
-		{
-			var sz = GetZone( _selectedZoneId );
-			if ( sz != null )
-			{
-				var exp = GetExpedition( sz.ExpeditionId );
-
-				<div class="zone-detail-overlay" onclick=@CloseZoneDetail></div>
-				@{
-					var drops = ItemManager.Instance?.GetDropsForExpedition( sz.ExpeditionId ) ?? new System.Collections.Generic.List<ItemDefinition>();
-					var heroImg = !string.IsNullOrEmpty( exp?.BackgroundImage ) ? exp.BackgroundImage : "ui/locations/placeholder_zone.png";
-					var elClassZone = exp?.Element.ToString().ToLower() ?? "neutral";
-				}
-				@* Hyrule-Warriors style hero card — image up top, title overlay,
-				   stat strip, lore, beast portraits, drop strip, single CTA. *@
-				<div class="zone-detail hw-card">
-					<button class="close-btn zd-close" onclick=@CloseZoneDetail onmouseover=@(() => OnHover("zd-close"))>
-						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-					</button>
-
-					@* Hero image — zone art with element-tinted gradient + title overlay *@
-					<div class="zd-hero element-@elClassZone">
-						<img class="zd-hero-img" src="@heroImg" />
-						<div class="zd-hero-veil"></div>
-						@* Recommended-level stamp — tilted −3°, expedition orange.
-						   The level moves OUT of the stat strip and into a stamp so
-						   the briefing's most important number reads first. *@
-						<div class="zd-level-stamp">
-							<span class="zls-kicker">RECOMMENDED</span>
-							<span class="zls-lv">LV @sz.Level</span>
-						</div>
-						<div class="zd-hero-info">
-							<span class="zd-hero-kicker">FIELD BRIEFING</span>
-							<span class="zd-hero-title">@sz.Name</span>
-							<div class="zd-hero-stats">
-								<span class="zd-hero-stat">@(exp?.Waves ?? 0) Waves</span>
-								@if ( exp != null && exp.HasBoss )
-								{
-									<span class="zd-hero-dot">·</span>
-									<span class="zd-hero-stat boss">
-										<iconify icon="lucide:skull" Size=@(12) Color="#fca5a5" />
-										BOSS
-									</span>
-								}
-								<div class="zd-threat">
-									<span class="zd-threat-label">THREAT</span>
-									@for ( int tp = 0; tp < 5; tp++ )
-									{
-										<div class="threat-pip @(tp < GetThreatPips(sz.Level) ? "on" : "")"></div>
-									}
-								</div>
-							</div>
-						</div>
-					</div>
-
-					@* Lore — short, breathable *@
-					<div class="zd-lore-line">@sz.Lore</div>
-
-					@* Wild beasts — square thumbnails in a row, names below.
-					   Each thumbnail uses the species' DetailIconScale/Offset
-					   so framing matches the My Beasts detail panel. Sprite
-					   inner is sized in absolute pixels (no transform) so
-					   `image-rendering: pixelated` stays crisp. *@
-					@if ( exp != null && exp.PossibleSpecies.Count > 0 )
-					{
-						<div class="zd-row-label">WILD BEASTS</div>
-						<div class="zd-beast-row">
-							@foreach ( var speciesId in exp.PossibleSpecies )
-							{
-								var sp = MonsterManager.Instance?.GetSpecies( speciesId );
-								if ( sp == null ) { continue; }
-								var rClass = sp.BaseRarity.ToString().ToLower();
-								var unseen = !( BeastiaryManager.Instance?.IsSeen( speciesId ) ?? false );
-								<div class="zd-beast-portrait rarity-@rClass @(unseen ? "unseen" : "")">
-									<div class="zd-portrait-icon">
-										<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(sp)"></div>
-										@if ( unseen )
-										{
-											<span class="zd-portrait-mystery">?</span>
-										}
-									</div>
-									<div class="zd-portrait-label">
-										<span class="zd-portrait-name">@(unseen ? "???" : sp.Name)</span>
-										@if ( !unseen )
-										{
-											<img class="zd-portrait-element" src="ui/icons/elements/background/@(sp.Element.ToString().ToLower()).png" />
-											@if ( sp.SecondaryElement.HasValue )
-											{
-												<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(sp.SecondaryElement.Value.ToString().ToLower()).png" />
-											}
-										}
-									</div>
-								</div>
-							}
-							@if ( exp.HasBoss && !string.IsNullOrEmpty( exp.BossSpeciesId ) )
-							{
-								var boss = MonsterManager.Instance?.GetSpecies( exp.BossSpeciesId );
-								if ( boss != null )
-								{
-									var bossUnseen = !( BeastiaryManager.Instance?.IsSeen( exp.BossSpeciesId ) ?? false );
-									<div class="zd-beast-portrait boss @(bossUnseen ? "unseen" : "")">
-										<div class="zd-portrait-icon">
-											<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(boss)"></div>
-											@if ( bossUnseen )
-											{
-												<span class="zd-portrait-mystery">?</span>
-											}
-										</div>
-										<div class="zd-portrait-label">
-											<span class="zd-portrait-name">@(bossUnseen ? "???" : boss.Name)</span>
-											@if ( !bossUnseen )
-											{
-												<img class="zd-portrait-element" src="ui/icons/elements/background/@(boss.Element.ToString().ToLower()).png" />
-												@if ( boss.SecondaryElement.HasValue )
-												{
-													<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(boss.SecondaryElement.Value.ToString().ToLower()).png" />
-												}
-											}
-										</div>
-										<iconify class="zd-portrait-skull" icon="lucide:skull" Size=@(11) Color="#fca5a5" />
-									</div>
-								}
-							}
-						</div>
-					}
-
-					@* Primary CTA — sits above drops so the action is the anchor
-					   point and drops are secondary info beneath it. *@
-					<button class="embark-btn hw-embark" onclick=@(() => Embark(sz.ExpeditionId)) onmouseover=@(() => OnHover("embark-" + sz.Id))>
-						<iconify icon="lucide:compass" Size=@(20) Color="#ffffff" />
-						<span>EMBARK</span>
-					</button>
-
-					@* Drops — 2 cards per row. Built with explicit row pairs so
-					   each card has a stable parent width (s&box flex-wrap +
-					   calc(50%) collapses to character-width columns). *@
-					@if ( drops.Count > 0 )
-					{
-						<div class="zd-row-label">
-							<span>POSSIBLE DROPS</span>
-							<span class="zd-row-sub">@drops.Count items</span>
-						</div>
-						<div class="zd-drop-scroll">
-							@for ( int i = 0; i < drops.Count; i += 2 )
-							{
-								var leftDrop = drops[i];
-								var rightDrop = i + 1 < drops.Count ? drops[i + 1] : null;
-								<div class="zd-drop-pair">
-									<div class="zd-drop-card rarity-@(leftDrop.Rarity.ToString().ToLower())">
-										<img class="zd-drop-icon" src="@leftDrop.IconPath" />
-										<div class="zd-drop-meta">
-											<span class="zd-drop-name">@leftDrop.Name</span>
-											<span class="zd-drop-source">@GetDropSource(leftDrop, sz, exp)</span>
-										</div>
-									</div>
-									@if ( rightDrop != null )
-									{
-										<div class="zd-drop-card rarity-@(rightDrop.Rarity.ToString().ToLower())">
-											<img class="zd-drop-icon" src="@rightDrop.IconPath" />
-											<div class="zd-drop-meta">
-												<span class="zd-drop-name">@rightDrop.Name</span>
-												<span class="zd-drop-source">@GetDropSource(rightDrop, sz, exp)</span>
-											</div>
-										</div>
-									}
-									else
-									{
-										<div class="zd-drop-card-empty"></div>
-									}
-								</div>
-							}
-						</div>
-					}
-				</div>
-			}
-		}
-
-		<!-- ═══ MINI-EXPEDITION DETAIL PANE ═══ -->
-		@if ( _selectedMiniId != null )
-		{
-			var mexp = GetExpedition( _selectedMiniId );
-			if ( mexp != null )
-			{
-				var mDrops = ItemManager.Instance?.GetDropsForExpedition( _selectedMiniId ) ?? new System.Collections.Generic.List<ItemDefinition>();
-				var mHeroImg = !string.IsNullOrEmpty( mexp.BackgroundImage ) ? mexp.BackgroundImage : "ui/locations/placeholder_zone.png";
-				var mElClass = mexp.Element.ToString().ToLower();
-				// Pull boss species from the pool rather than a BossSpeciesId field —
-				// mini-expedition boss is defined in BossPoolDatabase, not inline on Expedition.
-				var mBossPool = BossPoolDatabase.GetPool( _selectedMiniId );
-				var mBossSpeciesId = mBossPool?.Bosses?.Count > 0 ? mBossPool.Bosses[0].SpeciesId : null;
-				var mBoss = mBossSpeciesId != null ? MonsterManager.Instance?.GetSpecies( mBossSpeciesId ) : null;
-				<div class="zone-detail-overlay" onclick=@CloseMiniDetail></div>
-				<div class="zone-detail mini-card hw-card">
-					<button class="close-btn zd-close" onclick=@CloseMiniDetail onmouseover=@(() => OnHover("mini-close"))>
-						<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-					</button>
-
-					<div class="zd-hero element-@mElClass">
-						<img class="zd-hero-img" src="@mHeroImg" />
-						<div class="zd-hero-veil"></div>
-						<div class="zd-level-stamp">
-							<span class="zls-kicker">RECOMMENDED</span>
-							<span class="zls-lv">LV @mexp.BaseEnemyLevel</span>
-						</div>
-						<div class="zd-hero-info">
-							<span class="zd-hero-kicker">SIDE EXPEDITION</span>
-							<span class="zd-hero-title">@mexp.Name</span>
-							<div class="zd-hero-stats">
-								<span class="zd-hero-stat">@mexp.Waves Waves</span>
-								@if ( mexp.HasBoss )
-								{
-									<span class="zd-hero-dot">·</span>
-									<span class="zd-hero-stat boss">
-										<iconify icon="lucide:skull" Size=@(12) Color="#fca5a5" />
-										BOSS
-									</span>
-								}
-								<div class="zd-threat">
-									<span class="zd-threat-label">THREAT</span>
-									@for ( int tp = 0; tp < 5; tp++ )
-									{
-										<div class="threat-pip @(tp < GetThreatPips(mexp.BaseEnemyLevel) ? "on" : "")"></div>
-									}
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<div class="zd-lore-line">@mexp.Description</div>
-
-					@if ( mexp.PossibleSpecies.Count > 0 || mBoss != null )
-					{
-						<div class="zd-row-label">WILD BEASTS</div>
-						<div class="zd-beast-row">
-							@foreach ( var speciesId in mexp.PossibleSpecies )
-							{
-								var sp = MonsterManager.Instance?.GetSpecies( speciesId );
-								if ( sp == null ) { continue; }
-								var rClass = sp.BaseRarity.ToString().ToLower();
-								var unseen = !( BeastiaryManager.Instance?.IsSeen( speciesId ) ?? false );
-								<div class="zd-beast-portrait rarity-@rClass @(unseen ? "unseen" : "")">
-									<div class="zd-portrait-icon">
-										<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(sp)"></div>
-										@if ( unseen )
-										{
-											<span class="zd-portrait-mystery">?</span>
-										}
-									</div>
-									<div class="zd-portrait-label">
-										<span class="zd-portrait-name">@(unseen ? "???" : sp.Name)</span>
-										@if ( !unseen )
-										{
-											<img class="zd-portrait-element" src="ui/icons/elements/background/@(sp.Element.ToString().ToLower()).png" />
-											@if ( sp.SecondaryElement.HasValue )
-											{
-												<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(sp.SecondaryElement.Value.ToString().ToLower()).png" />
-											}
-										}
-									</div>
-								</div>
-							}
-							@if ( mBoss != null )
-							{
-								var mBossUnseen = !( BeastiaryManager.Instance?.IsSeen( mBoss.Id ) ?? false );
-								<div class="zd-beast-portrait boss-tag @(mBossUnseen ? "unseen" : "")">
-									<div class="zd-portrait-icon">
-										<div class="zd-portrait-icon-bg" style="@BuildZdIconStyle(mBoss)"></div>
-										@if ( mBossUnseen )
-										{
-											<span class="zd-portrait-mystery">?</span>
-										}
-									</div>
-									<div class="zd-portrait-label">
-										<span class="zd-portrait-name">@(mBossUnseen ? "???" : mBoss.Name)</span>
-										@if ( !mBossUnseen )
-										{
-											<img class="zd-portrait-element" src="ui/icons/elements/background/@(mBoss.Element.ToString().ToLower()).png" />
-											@if ( mBoss.SecondaryElement.HasValue )
-											{
-												<img class="zd-portrait-element secondary" src="ui/icons/elements/background/@(mBoss.SecondaryElement.Value.ToString().ToLower()).png" />
-											}
-										}
-									</div>
-									<iconify class="zd-portrait-skull" icon="lucide:skull" Size=@(11) Color="#fca5a5" />
-									<span class="zd-no-contract">CANNOT CONTRACT</span>
-								</div>
-							}
-						</div>
-					}
-
-					<button class="embark-btn hw-embark" onclick=@(() => EmbarkMini(_selectedMiniId)) onmouseover=@(() => OnHover("embark-mini-" + _selectedMiniId))>
-						<iconify icon="lucide:compass" Size=@(20) Color="#ffffff" />
-						<span>START EXPEDITION</span>
-					</button>
-
-					@if ( mDrops.Count > 0 )
-					{
-						<div class="zd-row-label">
-							<span>POSSIBLE DROPS</span>
-							<span class="zd-row-sub">@mDrops.Count items</span>
-						</div>
-						<div class="zd-drop-scroll">
-							@for ( int i = 0; i < mDrops.Count; i += 2 )
-							{
-								var leftDrop = mDrops[i];
-								var rightDrop = i + 1 < mDrops.Count ? mDrops[i + 1] : null;
-								<div class="zd-drop-pair">
-									<div class="zd-drop-card rarity-@(leftDrop.Rarity.ToString().ToLower())">
-										<img class="zd-drop-icon" src="@leftDrop.IconPath" />
-										<div class="zd-drop-meta">
-											<span class="zd-drop-name">@leftDrop.Name</span>
-											<span class="zd-drop-source">@GetMiniDropSource(leftDrop)</span>
-										</div>
-									</div>
-									@if ( rightDrop != null )
-									{
-										<div class="zd-drop-card rarity-@(rightDrop.Rarity.ToString().ToLower())">
-											<img class="zd-drop-icon" src="@rightDrop.IconPath" />
-											<div class="zd-drop-meta">
-												<span class="zd-drop-name">@rightDrop.Name</span>
-												<span class="zd-drop-source">@GetMiniDropSource(rightDrop)</span>
-											</div>
-										</div>
-									}
-									else
-									{
-										<div class="zd-drop-card-empty"></div>
-									}
-								</div>
-							}
-						</div>
-					}
-				</div>
-			}
-		}
-
-		<!-- ═══ TEAM PICKER POPUP (overlays the whole map when Embark is clicked) ═══ -->
-		<TeamPickerPopup />
-
-		@* ═══ DEV: DRAG-TO-PLACE EDITOR ═══
-		   Hidden behind ShowDevTools. Flip the const back to `true` in the
-		   @code block to reveal the EDIT / SAVE → CONSOLE buttons for further
-		   placement work. *@
-		@if ( ShowDevTools )
-		{
-			<div class="map-dev-toolbar">
-				<button class="map-dev-btn @(_editMode ? "active" : "")" onclick=@ToggleEditMode>
-					<iconify icon="lucide:move" Size=@(13) Color="#fbbf24" />
-					<span>EDIT @(_editMode ? "ON" : "OFF")</span>
-				</button>
-				@if ( _editMode )
-				{
-					<button class="map-dev-btn map-dev-save" onclick=@PrintPositions>
-						<iconify icon="lucide:save" Size=@(13) Color="#4ade80" />
-						<span>SAVE → CONSOLE</span>
-					</button>
-				}
 			</div>
-		}
-
-		@if ( !string.IsNullOrEmpty( _draggingId ) )
-		{
-			<div class="map-drag-shield"
-				 onmousemove=@OnEditDragMove
-				 onmouseup=@OnEditDragEnd></div>
-		}
+			<div class="wm-toolbar">
+				<div class="wm-chip">
+					<span class="wm-chip-label">@GetClearedZoneCount() / @GetTotalZoneCount() CLEARED</span>
+				</div>
+				@* LANE: input — BACK · Q slot (run 1 said no BACK; the input lane rules). *@
+			</div>
+		</div>
 	</div>
+
+	@* ═══ DETAIL CARD — one card for zones AND minis (the Expedition record carries both) ═══ *@
+	@if ( _selectedExpId != null )
+	{
+		var exp = GetExpedition( _selectedExpId );
+		if ( exp != null )
+		{
+			var em = ExpeditionManager.Instance;
+			var cardUnlocked = em?.CanStartExpedition( exp.Id ) ?? false;
+			var cardCleared = em?.HasClearedExpedition( exp.Id ) ?? false;
+			var cardHard = cardCleared && ( em?.IsHardModeUnlocked( exp.Id ) ?? false );
+			var kicker = cardHard ? "CLEARED · HARD UNLOCKED" : ( cardCleared ? "CLEARED" : ( exp.IsMiniExpedition ? "SIDE EXPEDITION" : "" ) );
+			var heroImg = !string.IsNullOrEmpty( exp.BackgroundImage ) ? exp.BackgroundImage : "ui/locations/placeholder_zone.png";
+			var wild = GetWildSpecies( exp );
+			var (bossSpecies, bossCount) = GetCardBoss( exp );
+			var drops = ItemManager.Instance?.GetZoneDropOdds( exp.Id, false ) ?? new List<ItemManager.DropOdds>();
+			// Drop tiles 200×44 two-up (200 + 12 + 200 = 412), rows 6 apart → grid = 44r + 6(r−1).
+			var dropRows = ( drops.Count + 1 ) / 2;
+			var dropsGridH = dropRows > 0 ? dropRows * 44 + ( dropRows - 1 ) * 6 : 0;
+			// Card budget (see the scss header): fixed 684 with a kicker (666 without) + the drops grid,
+			// clamped so the card never passes 928 (y 110 → 1038). 5 rows (10 drops) fit; only the DROPS grid scrolls.
+			var fixedH = string.IsNullOrEmpty( kicker ) ? 666 : 684;
+			var dropsH = Math.Min( dropsGridH, 928 - fixedH );
+			var dropsScrolls = dropsGridH > dropsH;
+
+			<div class="zd-card">
+				@* HERO 412×200 r16 — zone art under a dark veil, BACK · Q top-right (in-flow row above the absolutes). *@
+				<div class="zd-hero">
+					<img class="zd-hero-img" src="@heroImg" />
+					<div class="zd-hero-veil"></div>
+					<div class="zd-hero-top">
+						<div class="zd-back" onclick=@CloseCard onmouseover=@(() => OnHover("zd-back"))>
+							<span class="zd-back-label">BACK</span>
+							<span class="zd-back-cap">Q</span>
+						</div>
+					</div>
+				</div>
+
+				@* KICKER = state · TITLE 30/34 · ONE meta line "LV 10 · 7 WAVES · BOSS" (LV gold) *@
+				@if ( !string.IsNullOrEmpty( kicker ) )
+				{
+					<span class="zd-kicker">@kicker</span>
+				}
+				<span class="zd-title">@exp.Name</span>
+				<div class="zd-meta">
+					<span class="zd-meta-lv">LV @exp.BaseEnemyLevel</span>
+					<span class="zd-meta-dot">·</span>
+					<span class="zd-meta-txt">@exp.Waves WAVES</span>
+					@if ( exp.HasBoss )
+					{
+						<span class="zd-meta-dot">·</span>
+						<span class="zd-meta-txt">BOSS</span>
+					}
+				</div>
+
+				@* LORE 15/22 pinned at 3 lines (66) — the card stays deterministic. *@
+				<div class="zd-lore"><span class="zd-lore-text">@exp.Description</span></div>
+
+				@* WILD BEASTS — only species the wild waves can roll (boss-pool species excluded) + the boss tile. *@
+				<span class="zd-rowkick">WILD BEASTS</span>
+				<div class="zd-beast-row">
+					@foreach ( var sp in wild )
+					{
+						var species = sp;
+						var unseen = !( BeastiaryManager.Instance?.IsSeen( species.Id ) ?? false );
+						<div class="zd-beast @(unseen ? "unseen" : "")">
+							<div class="zd-beast-tile">
+								@if ( unseen )
+								{
+									<span class="zd-beast-q">?</span>
+								}
+								else
+								{
+									<img class="zd-beast-img" src="@species.IconPath" style="@BbEmblem.CropStyleFor(species, 60, 60)" />
+								}
+							</div>
+							<span class="zd-beast-name">@(unseen ? "???" : species.Name)</span>
+						</div>
+					}
+					@if ( bossSpecies != null )
+					{
+						var bossUnseen = !( BeastiaryManager.Instance?.IsSeen( bossSpecies.Id ) ?? false );
+						var bossCaption = !bossSpecies.IsCatchable ? "BOSS · CANNOT CONTRACT" : ( bossCount > 1 ? $"BOSS · 1 OF {bossCount}" : "BOSS" );
+						<div class="zd-beast @(bossUnseen ? "unseen" : "")">
+							<div class="zd-beast-tile boss">
+								@if ( bossUnseen )
+								{
+									<span class="zd-beast-q">?</span>
+								}
+								else
+								{
+									<img class="zd-beast-img" src="@bossSpecies.IconPath" style="@BbEmblem.CropStyleFor(bossSpecies, 60, 60)" />
+								}
+							</div>
+							<span class="zd-beast-name">@(bossUnseen ? "???" : bossSpecies.Name)</span>
+							<span class="zd-beast-cap">@bossCaption</span>
+						</div>
+					}
+				</div>
+
+				@* EMBARK — the one gold primary, 412×56 r16. Row host so Stretch fills the WIDTH (flex-basis is main-axis).
+				   Locked keeps the slab and dims (BIG THINGS BIG). LANE: input — Focused when the card cursor sits here. *@
+				<div class="zd-cta-row">
+					<BbButton Tier="primary" Size=@(56) Label="EMBARK" KeyCap="SPACE" Stretch=@true Disabled=@(!cardUnlocked) OnClick=@EmbarkSelected />
+				</div>
+
+				@* DROPS — one slab: materials first (beast glyph · EVERY KO), then items with per-run odds. *@
+				<div class="zd-rowkick-row">
+					<span class="zd-rowkick">DROPS · ODDS PER RUN · NORMAL</span>
+					@if ( cardHard )
+					{
+						<span class="zd-rowkick hard">· HARD ×1.5</span>
+					}
+				</div>
+				@if ( drops.Count > 0 )
+				{
+					<div class="zd-drops @(dropsScrolls ? "scrolls" : "")" style="height: @(dropsH)px;">
+						@foreach ( var d in drops )
+						{
+							var drop = d;
+							var matSpecies = drop.EveryKo ? SpeciesForMaterial( drop.Item ) : null;
+							var rarityClass = "rarity-" + drop.Item.Rarity.ToString().ToLower();
+							<div class="zd-drop @rarityClass @(drop.EveryKo ? "material" : "")">
+								<div class="zd-drop-glyph">
+									@if ( matSpecies != null )
+									{
+										<img class="zd-drop-beast" src="@matSpecies.IconPath" style="@BbEmblem.CropStyleFor(matSpecies, 28, 28)" />
+									}
+									else
+									{
+										<img class="zd-drop-icon" src="@drop.Item.IconPath" />
+									}
+								</div>
+								<div class="zd-drop-text">
+									<span class="zd-drop-name">@drop.Item.Name</span>
+									@if ( drop.EveryKo )
+									{
+										<span class="zd-drop-odds every">EVERY KO</span>
+									}
+									else if ( drop.PerRunPct <= 0 )
+									{
+										<span class="zd-drop-odds low">@("<5%")</span>
+									}
+									else
+									{
+										<span class="zd-drop-odds">@(drop.PerRunPct)%</span>
+									}
+								</div>
+								<div class="zd-drop-rs"></div>
+							</div>
+						}
+					</div>
+				}
+				else
+				{
+					<div class="zd-drops-empty"><span class="zd-drops-empty-text">Nothing rolls here yet.</span></div>
+				}
+			</div>
+		}
+	}
+
+	<!-- ═══ REQUEST POPUP — untouched this part (another slice of the run owns its re-dialect) ═══ -->
+	@if ( _tradePopupNodeId != null )
+	{
+		var tnode = TradeNodeManager.Instance?.GetNode( _tradePopupNodeId );
+		if ( tnode != null )
+		{
+			var canAfford = TradeNodeManager.Instance?.CanAfford( tnode.Id ) ?? false;
+			var isDone = TradeNodeManager.Instance?.IsLocked( tnode.Id ) ?? true;
+			var state = TradeNodeManager.Instance?.GetState( tnode.Id );
+
+			<div class="request-popup">
+				<button class="close-btn rp-close" onclick=@CloseTradePopup onmouseover=@(() => OnHover("tn-close"))>
+					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+				</button>
+
+				<div class="rp-npc-band">
+					<div class="rp-npc-portrait">
+						<iconify icon="lucide:user" Size=@(28) Color="#fbbf24" />
+					</div>
+					<div class="rp-npc-meta">
+						<span class="rp-npc-kicker">REQUEST · @tnode.NpcName</span>
+						<span class="rp-title">@tnode.Name</span>
+					</div>
+				</div>
+
+				<div class="rp-desc">@tnode.Description</div>
+
+				<div class="rp-section-label">YOU GIVE</div>
+				<div class="rp-line-list">
+					@foreach ( var (itemId, qty) in tnode.Requirements )
+					{
+						var item = ItemManager.Instance?.GetItem( itemId );
+						var have = TamerManager.Instance?.CurrentTamer?.Inventory != null
+							&& TamerManager.Instance.CurrentTamer.Inventory.TryGetValue( itemId, out var h ) ? h : 0;
+						var lineClass = have >= qty ? "satisfied" : "short";
+						<div class="rp-line @lineClass">
+							<img class="rp-line-icon" src="@(item?.IconPath)" />
+							<span class="rp-line-name">@(item?.Name ?? itemId)</span>
+							<span class="rp-line-amt">@have / @qty</span>
+						</div>
+					}
+					@if ( tnode.GoldCost > 0 )
+					{
+						var gold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+						var lineClass = gold >= tnode.GoldCost ? "satisfied" : "short";
+						<div class="rp-line @lineClass">
+							<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
+							<span class="rp-line-name">Gold</span>
+							<span class="rp-line-amt">@gold / @tnode.GoldCost</span>
+						</div>
+					}
+				</div>
+
+				<div class="rp-section-label">YOU RECEIVE</div>
+				<div class="rp-line-list">
+					@foreach ( var (itemId, qty) in tnode.ItemRewards )
+					{
+						var item = ItemManager.Instance?.GetItem( itemId );
+						<div class="rp-line reward">
+							<img class="rp-line-icon" src="@(item?.IconPath)" />
+							<span class="rp-line-name">@(item?.Name ?? itemId)</span>
+							<span class="rp-line-amt">×@qty</span>
+						</div>
+					}
+					@if ( tnode.GoldReward > 0 )
+					{
+						<div class="rp-line reward">
+							<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
+							<span class="rp-line-name">Gold</span>
+							<span class="rp-line-amt">+@tnode.GoldReward</span>
+						</div>
+					}
+					@if ( tnode.XPReward > 0 )
+					{
+						<div class="rp-line reward">
+							<iconify icon="lucide:arrow-up" Size=@(20) Color="#4ade80" />
+							<span class="rp-line-name">Tamer XP</span>
+							<span class="rp-line-amt">+@tnode.XPReward</span>
+						</div>
+					}
+					@if ( tnode.SkillPointReward > 0 )
+					{
+						<div class="rp-line reward">
+							<iconify icon="lucide:sparkles" Size=@(20) Color="#a78bfa" />
+							<span class="rp-line-name">Skill Points</span>
+							<span class="rp-line-amt">+@tnode.SkillPointReward</span>
+						</div>
+					}
+				</div>
+
+				@if ( isDone )
+				{
+					<div class="rp-done-banner">
+						<iconify icon="lucide:check-circle-2" Size=@(18) Color="#4ade80" />
+						<span>Already Completed</span>
+					</div>
+				}
+				else
+				{
+					<button class="embark-btn rp-accept @(canAfford ? "" : "disabled")"
+							onclick=@(() => ExecuteTrade(tnode.Id))
+							onmouseover=@(() => OnHover("tn-exec-" + tnode.Id))>
+						<iconify icon="lucide:handshake" Size=@(20) Color="#ffffff" />
+						<span>@(canAfford ? "ACCEPT TRADE" : "NOT ENOUGH")</span>
+					</button>
+				}
+
+				@if ( state != null && state.TimesCompleted > 0 )
+				{
+					<div class="tn-times-row">
+						<span>Completed @state.TimesCompleted @(state.TimesCompleted == 1 ? "time" : "times")</span>
+					</div>
+				}
+			</div>
+		}
+	}
+
+	<!-- ═══ TEAM PICKER POPUP (overlays the whole map when EMBARK is pressed) ═══ -->
+	<TeamPickerPopup />
 </root>
 
 @code {
 	public static WorldMapPanel Instance { get; private set; }
 
-	private string _selectedZoneId;
+	// ───────────────────── STATE ─────────────────────
+	// One selection for zones AND minis: the Expedition id (the card reads the
+	// Expedition record for both — MapZone.Lore duplicated Expedition.Description
+	// and is gone).
+	private string _selectedExpId;
 	private string _tradePopupNodeId;
-	// Hovered request marker — shows a small tooltip with name + NPC above the pin.
 	private string _hoveredTradeNodeId;
-	// Tracked separately from _hoveredKey so mousing over child elements of
-	// the marker (label, pin) doesn't flicker the preview card off and back.
 	private string _hoveredZoneId;
-	// Lore-only village landmarks (houses, statue, mine, bridge, fences).
-	// Shows a stamp tooltip on hover; not connected to any expedition.
 	private string _hoveredLandmarkId;
-	// Mini-expedition (side content) hover — shows a tooltip above the smaller pin.
 	private string _hoveredMiniId;
-	// Mini-expedition detail pane — mirrors _selectedZoneId for main zones.
-	private string _selectedMiniId;
 
-	// ───────────────────── DEV: DRAG-TO-PLACE EDITOR ─────────────────────
-	// Toggle EDIT MODE to grab any landmark or zone marker and reposition it
-	// on the map. Hit SAVE → CONSOLE to dump the current X/Y values to the
-	// log so you can paste them back into the static Landmarks/Zones arrays.
-	// Drag-shield pattern matches ChatPanel — onmousemove/onmouseup live on a
-	// fullscreen shield that mounts only while dragging.
-	//
-	// Set ShowDevTools = true to surface the toolbar in-game. Hidden during
-	// release / screenshot passes so the buttons don't appear in marketing.
-	private const bool ShowDevTools = false;
-	private bool _editMode = false;
-	private string _draggingId;       // null when not dragging
-	private string _draggingType;     // "landmark" or "zone"
-	private float _dragStartMouseX, _dragStartMouseY;
-	private float _dragStartItemX, _dragStartItemY;
-	private bool _needsDragAnchor;
-	private Dictionary<string, (float X, float Y, float Width)> _landmarkOverrides = new();
-	private Dictionary<string, (float X, float Y)> _zoneOverrides = new();
-	private Dictionary<string, (float X, float Y)> _tradeOverrides = new();
-	private Dictionary<string, (float X, float Y)> _miniOverrides = new();
+	// UNLOCK REVEAL — structure only. LANE: motion consumes PendingRevealZoneId
+	// on the map's open edge, sets _revealZoneId for the beat, then clears it.
+	// While set: .map-zoom carries `.reveal` and transform-origin = that zone's %.
+	public static string PendingRevealZoneId;
+	private string _revealZoneId;
 
-	// Hover-sound guard — onmouseover bubbles from children in s&box, so gate
-	// sound playback behind a key change.
+	private string RevealOriginStyle()
+	{
+		var ci = System.Globalization.CultureInfo.InvariantCulture;
+		float ox = 50f, oy = 50f;
+		if ( _revealZoneId != null )
+		{
+			var z = Zones.FirstOrDefault( zz => zz.Id == _revealZoneId || zz.ExpeditionId == _revealZoneId );
+			if ( z != null ) { ox = z.X; oy = z.Y; }
+			else if ( MiniPositions.TryGetValue( _revealZoneId, out var mp ) ) { ox = mp.X; oy = mp.Y; }
+		}
+		return $"transform-origin: {ox.ToString( "F1", ci )}% {oy.ToString( "F1", ci )}%;";
+	}
+
+	// Hover-sound guard — onmouseover bubbles from children, gate on a key change.
 	private string _hoveredKey;
 	private void OnHover( string key )
 	{
@@ -872,10 +558,6 @@
 		SoundManager.PlayHover();
 	}
 
-	// Zone marker hover — plays the hover sound once AND sets the preview
-	// target. Split from OnHover so the preview card only anchors on the
-	// outermost marker element, not its label/pin children (which would
-	// otherwise fire mouseout and close the card mid-read).
 	private void OnZoneMarkerHover( string zoneId, string hoverKey )
 	{
 		OnHover( hoverKey );
@@ -887,9 +569,6 @@
 		if ( _hoveredZoneId == zoneId ) _hoveredZoneId = null;
 	}
 
-	// Landmark hover — village lore tooltip. Same flicker-guard pattern as
-	// zone markers; OnLandmarkHover sets _hoveredLandmarkId so the tooltip
-	// follows the cursor across the .landmark element's children.
 	private void OnLandmarkHover( string landmarkId, string hoverKey )
 	{
 		OnHover( hoverKey );
@@ -901,194 +580,94 @@
 		if ( _hoveredLandmarkId == landmarkId ) _hoveredLandmarkId = null;
 	}
 
-	private Landmark GetLandmark( string id ) => Landmarks.FirstOrDefault( l => l.Id == id );
-
-	/// <summary>
-	/// Player-facing subtitle on each drop card. For beast-signature materials
-	/// (`mat_{speciesId}`), shows "Drops from {Beast}". For held items / relics
-	/// / consumables, shows the gameplay effect (`+5% ATK`, `+25% gold`, etc.)
-	/// so the player can see at a glance what the item actually does.
-	/// </summary>
-	private string GetDropSource( ItemDefinition drop, MapZone zone, Expedition exp )
+	private void OnMiniHover( string miniId, string hoverKey )
 	{
-		if ( drop == null ) return "";
-
-		if ( drop.Id.StartsWith( "mat_" ) )
-		{
-			var speciesId = drop.Id.Substring( 4 );
-			var sp = MonsterManager.Instance?.GetSpecies( speciesId );
-			var beastName = sp?.Name ?? "this beast";
-			return $"Drops from {beastName}.";
-		}
-
-		// Held items + relics + consumables show their stat effect.
-		var effect = drop.GetEffectDescription();
-		return !string.IsNullOrEmpty( effect ) ? effect : drop.Description;
+		OnHover( hoverKey );
+		_hoveredMiniId = miniId;
 	}
+
+	private void OnMiniLeave( string miniId )
+	{
+		if ( _hoveredMiniId == miniId ) _hoveredMiniId = null;
+	}
+
+	private Landmark GetLandmark( string id ) => Landmarks.FirstOrDefault( l => l.Id == id );
 
 	// ═══════════════════════════════════════════════════════════════
 	// Village landmarks — lore-only PNG overlays on the map
 	// ═══════════════════════════════════════════════════════════════
-	// Each Landmark is a hover-lore element placed on the illustrated
-	// map. They're decorative — clicking does nothing; hovering shows a
-	// stamp-styled tooltip with one paragraph of village flavor.
-	//
-	// X/Y/Width are percent values relative to .map-art-frame so the
-	// landmarks stay in alignment with the artist's illustration regardless
-	// of viewport size. The Width is the landmark sprite's % width — Y/X
-	// are the top-left anchor, NOT the center.
-	//
-	// Positions are eyeballed from map_whole.png. Tweak in art-direction
-	// passes by swapping these numbers — no code logic depends on them.
-	private record Landmark( string Id, string Name, string Lore, string ImagePath, float X, float Y, float Width, bool IsDecoration = false, string TagLabel = "Landmark" );
+	// X/Y/Width are percent values relative to .map-art-frame (top-left anchor).
+	// Positions were baked from the (now retired) drag editor's last save.
+	private record Landmark( string Id, string Name, string ImagePath, float X, float Y, float Width, bool IsDecoration = false );
 
 	private static readonly Landmark[] Landmarks = new[]
 	{
-		// Positions baked from the live SAVE → CONSOLE dev tool — these are
-		// the canonical map placements. Adjust further by re-entering EDIT
-		// mode in-game and re-saving; the JSON in FileSystem.Data overrides
-		// these defaults at runtime when present.
-		new Landmark(
-			Id: "embrik_statue",
-			Name: "Embrik's Watch",
-			Lore: "A weathered statue of the village's first companion, carved by the founder's own hands. Tradition says new tamers leave a single ember at its base before their first run.",
-			ImagePath: "ui/worldmap/serpinglin/embrik_statue.png",
-			X: 46.2f, Y: 49.6f, Width: 3f ),
-
-		new Landmark(
-			Id: "house_001_home",
-			Name: "Your Cottage",
-			Lore: "Yours. Inherited from a grandparent you barely remember, kept livable by the kindness of neighbors. The hearth is older than the house, and the garden out back has a fence that was never quite finished.",
-			ImagePath: "ui/worldmap/serpinglin/house_001.png",
-			X: 37.8f, Y: 46.2f, Width: 3.8f,
-			TagLabel: "Home" ),
-
-		new Landmark(
-			Id: "house_001b",
-			Name: "",
-			Lore: "",
-			ImagePath: "ui/worldmap/serpinglin/house_001.png",
-			X: 35.1f, Y: 49.0f, Width: 3.8f,
-			IsDecoration: true ),
-
-		new Landmark(
-			Id: "house_001c",
-			Name: "",
-			Lore: "",
-			ImagePath: "ui/worldmap/serpinglin/house_001.png",
-			X: 37.4f, Y: 51.5f, Width: 3.8f,
-			IsDecoration: true ),
-
-		new Landmark(
-			Id: "house_001d",
-			Name: "",
-			Lore: "",
-			ImagePath: "ui/worldmap/serpinglin/house_001.png",
-			X: 44.3f, Y: 61.9f, Width: 3.8f,
-			IsDecoration: true ),
-
-		new Landmark(
-			Id: "house_002_almonry",
-			Name: "The Almonry",
-			Lore: "Was the village grain store; now a guesthouse. Every traveler gets one bowl on the house. Every contract with a starving beast gets two.",
-			ImagePath: "ui/worldmap/serpinglin/house_002.png",
-			X: 42.7f, Y: 37.7f, Width: 4.2f ),
-
-		new Landmark(
-			Id: "house_002b",
-			Name: "",
-			Lore: "",
-			ImagePath: "ui/worldmap/serpinglin/house_002.png",
-			X: 47.9f, Y: 59.3f, Width: 4.2f,
-			IsDecoration: true ),
-
-		new Landmark(
-			Id: "house_003",
-			Name: "Sundial House",
-			Lore: "Built around the village's only working clock. The chime at sundown calls trainers home; the bell at noon means a new contract has been signed somewhere.",
-			ImagePath: "ui/worldmap/serpinglin/house_003.png",
-			X: 47.0f, Y: 37.0f, Width: 6.5f ),
-
-		new Landmark(
-			Id: "fences",
-			Name: "The Holding Pens",
-			Lore: "Where contracted beasts rest between expeditions. The fence posts are warded against startled stampedes. Step lightly when you visit — they remember you.",
-			ImagePath: "ui/worldmap/serpinglin/fences.png",
-			X: 30.8f, Y: 34.7f, Width: 11f ),
-
-		new Landmark(
-			Id: "mine",
-			Name: "The Quiet Pit",
-			Lore: "A spent vein that still hums, faintly, when the wind is right. Nobody mines here anymore, but the hum has its admirers — and a few small beasts that won't leave.",
-			ImagePath: "ui/worldmap/serpinglin/mine.png",
-			X: 31.4f, Y: 66.5f, Width: 5.5f ),
-
-		new Landmark(
-			Id: "bridge",
-			Name: "The Long Bridge",
-			Lore: "A long bridge to somewhere. Nobody in the village seems to remember exactly what's on the far side anymore — only that the boards keep getting replaced and the iron pins are still the originals.",
-			ImagePath: "ui/worldmap/serpinglin/bridge.png",
-			X: 15.3f, Y: 39.5f, Width: 11f ),
+		new Landmark( "embrik_statue",   "Embrik's Watch",   "ui/worldmap/serpinglin/embrik_statue.png", 46.2f, 49.6f, 3f ),
+		new Landmark( "house_001_home",  "Your Cottage",     "ui/worldmap/serpinglin/house_001.png",     37.8f, 46.2f, 3.8f ),
+		new Landmark( "house_001b",      "",                 "ui/worldmap/serpinglin/house_001.png",     35.1f, 49.0f, 3.8f, IsDecoration: true ),
+		new Landmark( "house_001c",      "",                 "ui/worldmap/serpinglin/house_001.png",     37.4f, 51.5f, 3.8f, IsDecoration: true ),
+		new Landmark( "house_001d",      "",                 "ui/worldmap/serpinglin/house_001.png",     44.3f, 61.9f, 3.8f, IsDecoration: true ),
+		new Landmark( "house_002_almonry", "The Almonry",    "ui/worldmap/serpinglin/house_002.png",     42.7f, 37.7f, 4.2f ),
+		new Landmark( "house_002b",      "",                 "ui/worldmap/serpinglin/house_002.png",     47.9f, 59.3f, 4.2f, IsDecoration: true ),
+		new Landmark( "house_003",       "Sundial House",    "ui/worldmap/serpinglin/house_003.png",     47.0f, 37.0f, 6.5f ),
+		new Landmark( "fences",          "The Holding Pens", "ui/worldmap/serpinglin/fences.png",        30.8f, 34.7f, 11f ),
+		new Landmark( "mine",            "The Quiet Pit",    "ui/worldmap/serpinglin/mine.png",          31.4f, 66.5f, 5.5f ),
+		new Landmark( "bridge",          "The Long Bridge",  "ui/worldmap/serpinglin/bridge.png",        15.3f, 39.5f, 11f ),
 	};
 
-	// Zone definitions — visual/narrative layer on top of the ExpeditionManager
-	// data. Each zone maps to one of the first three Expedition entries until we
-	// cut the rest on the Apr 25 retheme pass.
-	private record MapZone(
-		string Id,
-		string ExpeditionId,
-		string Name,
-		string Lore,
-		int Level,
-		float X,
-		float Y,
-		string[] NpcPlaceholders );
+	// Zone pins — the visual layer over ExpeditionManager. Name is a fallback
+	// only (the pin and card read Expedition.Name); X/Y are % of the art frame.
+	private record MapZone( string Id, string ExpeditionId, string Name, float X, float Y );
 
 	private static readonly MapZone[] Zones = new[]
 	{
-		// Tutorial-only zone — filtered out of the map by IsZoneVisible
-		// once the tutorial completes/skips. Sits visually near the bridge.
-		// Positions baked from the live SAVE → CONSOLE dev tool.
-		new MapZone(
-			Id: "saltmoor_approach",
-			ExpeditionId: "saltmoor_approach",
-			Name: "Serpinglin Approach",
-			Lore: "A friendly stretch of path just past the Long Bridge. Perfect for a first run.",
-			Level: 1,
-			X: 14f,
-			Y: 78f,
-			NpcPlaceholders: new[] { "Trail Marker" } ),
-
-		new MapZone(
-			Id: "saltmoor_cove",
-			ExpeditionId: "saltmoor_cove",
-			Name: "Weaverton Pasture",
-			Lore: "The fenced loop the wool-village of Weaverton set aside for young tamers to practice on. Sheepots graze just over the hedge, and the beasts that wander in past the pasture gate are gentle and curious — perfect for trying out your first contracts without anyone getting sheared.",
-			Level: 1,
-			X: 27.8f,
-			Y: 49.2f,
-			NpcPlaceholders: new[] { "Elder Mira", "Loomkeeper Bram", "Lost-Cat Kera" } ),
-
-		new MapZone(
-			Id: "saltmoor_forest",
-			ExpeditionId: "saltmoor_forest",
-			Name: "Weaverwood",
-			Lore: "The pinewood east of Weaverton. The herders take Sheepots up these paths each summer for the long pasture, and the village's dye-leaves come from the old groves further in. The beasts here are wilder than the pasture pens — and lately the herders are coming back short a sheep more often than they'd like.",
-			Level: 10,
-			X: 68.6f,
-			Y: 53.3f,
-			NpcPlaceholders: new[] { "Ranger Tasha", "The Herbalist", "A Nervous Trader" } ),
-
-		new MapZone(
-			Id: "old_saltmoor",
-			ExpeditionId: "old_saltmoor",
-			Name: "Weavermere",
-			Lore: "The mirror-still pond above Weaverton, ringed in lily pads and dragonfly-flicker. The village's painters, dyers, and pattern-weavers walk up here at dawn to find the colors no loom can match — and a few have come back with stranger stories than they went up with.",
-			Level: 20,
-			X: 69.1f,
-			Y: 27.4f,
-			NpcPlaceholders: new[] { "Painter Selene", "Dye-Master Wren", "The Wandering Poet" } ),
+		// Tutorial-only — hidden once the tutorial completes/skips (IsZoneVisible).
+		new MapZone( "saltmoor_approach", "saltmoor_approach", "Weaverton Approach", 14f,   78f ),
+		new MapZone( "saltmoor_cove",     "saltmoor_cove",     "Weaverton Pasture",  27.8f, 49.2f ),
+		new MapZone( "saltmoor_forest",   "saltmoor_forest",   "Weaverwood",         68.6f, 53.3f ),
+		new MapZone( "old_saltmoor",      "old_saltmoor",      "Weavermere",         69.1f, 27.4f ),
 	};
+
+	// Mini-expedition pins — % of the art frame. The Hollow sits on the forest
+	// road between the Pasture and Weaverwood, nudged north so it reads as a
+	// cave detour. (The runtime JSON override is gone with the dev editor.)
+	private static readonly Dictionary<string, (float X, float Y)> MiniPositions = new()
+	{
+		{ "mini_loomweaver_burrow", (52f, 43f) },
+	};
+
+	private (float X, float Y) GetMiniPos( string id )
+	{
+		if ( MiniPositions.TryGetValue( id, out var pos ) ) return pos;
+		return (75f, 20f);
+	}
+
+	// Pin glyph + ink by state: lock (dim) · check (dark ink on orange) · swords (dark ink on orange).
+	private static (string Icon, string Color) PinGlyph( bool unlocked, bool cleared )
+	{
+		if ( !unlocked ) return ("lucide:lock", "rgba(214, 206, 236, 0.5)");
+		if ( cleared ) return ("lucide:check", "#2a1605");
+		return ("lucide:swords", "#2a1605");
+	}
+
+	/// <summary>Name of the zone the player must clear to open this one (the non-tutorial chain).</summary>
+	private string PreviousZoneName( MapZone zone )
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) return null;
+		var chain = em.Expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
+		int idx = chain.FindIndex( e => e.Id == zone.ExpeditionId );
+		if ( idx <= 0 ) return null;
+		return chain[idx - 1].Name;
+	}
+
+	/// <summary>Minis gate on the LAST main zone being cleared (ExpeditionManager.CanStartExpedition).</summary>
+	private string MiniGateName( Expedition mini )
+	{
+		var em = ExpeditionManager.Instance;
+		var last = em?.Expeditions.LastOrDefault( e => !e.TutorialOnly && !e.IsMiniExpedition );
+		return last?.Name;
+	}
 
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
@@ -1096,35 +675,28 @@
 		{
 			Instance = this;
 			_hoveredKey = null;
-			_selectedZoneId = null;
-			LoadSavedPositions();
+			_selectedExpId = null;
 		}
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
-		// Esc dismisses the zone-detail overlay if it's open. Leaving the map
-		// itself is done via the HUD tab bar (map is inline, not a modal).
+		// Esc dismisses the top surface. Leaving the map is the HUD tab bar's job.
 		if ( Input.Pressed( "Escape" ) )
 		{
 			if ( _tradePopupNodeId != null ) CloseTradePopup();
-			else if ( _selectedZoneId != null ) CloseZoneDetail();
-			else if ( _selectedMiniId != null ) CloseMiniDetail();
+			else if ( _selectedExpId != null ) CloseCard();
 		}
 	}
 
 	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
-	// Cursor over the visible map markers — zones first, then mini-
-	// expeditions, in render order. Drives the `.kb-active` highlight on
-	// the matching marker. arrows = move, Space/Enter = open/embark,
-	// Menu/run = close pane or exit to the tab bar.
+	// LANE: input — the pin cursor graph (WASD spatial walk: zones → mini →
+	// visible requests), card stops (EMBARK · BACK), the Q chain (popup →
+	// card → page) and the device flag all land here. This is the shipped
+	// linear walk kept alive so the page is drivable until then.
 	private int _kbMarkerIndex = 0;
 
-	/// <summary>
-	/// Flat ordered list of navigable markers: (id, isMini). Mirrors the
-	/// render order so arrow keys feel spatially sensible.
-	/// </summary>
 	private List<(string Id, bool IsMini)> GetKbMarkers()
 	{
 		var list = new List<(string, bool)>();
@@ -1140,7 +712,7 @@
 		return list;
 	}
 
-	/// <summary>Id of the marker currently under the keyboard cursor, or null.</summary>
+	/// <summary>Id of the marker under the keyboard cursor, or null.</summary>
 	public string KbActiveMarkerId
 	{
 		get
@@ -1152,9 +724,7 @@
 		}
 	}
 
-	/// <summary>
-	/// Called by GameHUD.TickCurrentPanel() — child panels don't auto-tick.
-	/// </summary>
+	/// <summary>Called by GameHUD.TickCurrentPanel() — child panels don't auto-tick.</summary>
 	public void TickInput()
 	{
 		try
@@ -1170,39 +740,31 @@
 	private void HandleMapKeyboardInput()
 	{
 		if ( ChatPanel.IsChatFocused ) return;
-		// A blocking popup (incl. the team picker) owns the keyboard.
 		if ( UIModalState.AnyModalOpen ) return;
-		// Dev edit mode swallows clicks for drag-place — skip keyboard nav too.
-		if ( _editMode ) return;
 
-		// ── A detail pane is open: confirm embarks, Menu/run closes it. ──
-		// Closing a detail pane is INTERNAL — claim the back key so GameHUD
-		// (which ticks after this panel) doesn't also exit to the tab bar.
-		if ( _selectedZoneId != null )
-		{
-			var sz = GetZone( _selectedZoneId );
-			if ( ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) ) && sz != null )
-				Embark( sz.ExpeditionId );
-			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
-			{
-				CloseZoneDetail();
-				GameHUD.PanelHandledBackKey = true;
-			}
-			return;
-		}
-		if ( _selectedMiniId != null )
+		// Card open: confirm embarks, back closes (claimed so GameHUD doesn't also exit).
+		if ( _selectedExpId != null )
 		{
 			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-				EmbarkMini( _selectedMiniId );
+				EmbarkSelected();
 			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 			{
-				CloseMiniDetail();
+				CloseCard();
 				GameHUD.PanelHandledBackKey = true;
 			}
 			return;
 		}
 
-		// ── No pane open: arrow through markers, confirm opens the pane. ──
+		if ( _tradePopupNodeId != null )
+		{
+			if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			{
+				CloseTradePopup();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			return;
+		}
+
 		var markers = GetKbMarkers();
 		if ( markers.Count == 0 ) return;
 		_kbMarkerIndex = Math.Clamp( _kbMarkerIndex, 0, markers.Count - 1 );
@@ -1225,17 +787,13 @@
 		}
 		else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 		{
-			// No pane open — back exits to the HUD tab bar.
 			GameHUD.ExitPanel();
 		}
 	}
 
+	// ────────────────────── SELECTION / CARD ──────────────────────
 	private void SelectZone( string zoneId )
 	{
-		// Don't open the zone-detail pane while the player is repositioning
-		// markers in dev edit mode — the click is part of a drag.
-		if ( _editMode ) return;
-
 		var zone = GetZone( zoneId );
 		if ( zone == null ) return;
 		if ( !IsZoneUnlocked( zone ) )
@@ -1243,19 +801,44 @@
 			SoundManager.PlayDeny();
 			return;
 		}
-		_selectedZoneId = zoneId;
+		_selectedExpId = zone.ExpeditionId;
 		_hoveredKey = null;
 		SoundManager.PlayClick();
-
-		// Tutorial: notify that a zone was picked.
 		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "worldmap.zone-selected" );
 	}
 
-	private void CloseZoneDetail()
+	private void SelectMini( string expeditionId )
 	{
-		_selectedZoneId = null;
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) return;
+		if ( !em.CanStartExpedition( expeditionId ) )
+		{
+			SoundManager.PlayDeny();
+			return;
+		}
+		_selectedExpId = expeditionId;
+		_hoveredKey = null;
+		SoundManager.PlayClick();
+	}
+
+	private void CloseCard()
+	{
+		_selectedExpId = null;
 		_hoveredKey = null;
 		SoundManager.PlayPopdown();
+	}
+
+	/// <summary>Dim click — closes whichever surface is on top (popup over card).</summary>
+	private void CloseTopSurface()
+	{
+		if ( _tradePopupNodeId != null ) CloseTradePopup();
+		else if ( _selectedExpId != null ) CloseCard();
+	}
+
+	private void EmbarkSelected()
+	{
+		if ( _selectedExpId == null ) return;
+		Embark( _selectedExpId );
 	}
 
 	private void Embark( string expeditionId )
@@ -1266,10 +849,7 @@
 			SoundManager.PlayDeny();
 			return;
 		}
-
-		// Progression gate — requires the previous expedition to be cleared.
-		// Tamer level is NOT a hard cap (only a recommendation), so the copy
-		// here reflects the real reason the CTA was disallowed.
+		// Progression gate — the previous zone must be cleared (tamer level is advisory).
 		if ( !em.CanStartExpedition( expeditionId ) )
 		{
 			NotificationManager.Instance?.AddNotification(
@@ -1279,11 +859,8 @@
 			SoundManager.PlayDeny();
 			return;
 		}
-
-		// Open the team picker popup — it owns the actual StartExpedition call.
-		// Close the zone-detail pane so the popup isn't stacked under the
-		// zd-overlay's click-dismiss layer.
-		_selectedZoneId = null;
+		// The picker owns StartExpedition. Close the card so the popup isn't under the dim.
+		_selectedExpId = null;
 		TeamPickerPopup.Show( expeditionId );
 	}
 
@@ -1292,287 +869,55 @@
 	private Expedition GetExpedition( string id ) =>
 		ExpeditionManager.Instance?.Expeditions.FirstOrDefault( e => e.Id == id );
 
-	// ───────────────────── DEV: DRAG-TO-PLACE ─────────────────────
+	// ────────────────────── CARD DATA ──────────────────────
 
-	/// <summary>Returns the live (overridden or default) position of a landmark.</summary>
-	private (float X, float Y, float Width) GetLandmarkPos( Landmark lm )
+	/// <summary>Species the WILD waves can roll — PossibleSpecies minus every boss-pool species
+	/// (ExpeditionManager.GenerateWaveEnemies ~L1340-1364).</summary>
+	private List<MonsterSpecies> GetWildSpecies( Expedition exp )
 	{
-		if ( _landmarkOverrides.TryGetValue( lm.Id, out var pos ) ) return pos;
-		return (lm.X, lm.Y, lm.Width);
+		var list = new List<MonsterSpecies>();
+		if ( exp?.PossibleSpecies == null ) return list;
+		var bossIds = new HashSet<string>();
+		var pool = BossPoolDatabase.GetPool( exp.Id );
+		if ( pool != null )
+		{
+			foreach ( var b in pool.Bosses ) bossIds.Add( b.SpeciesId );
+			if ( pool.RareBosses != null ) foreach ( var rb in pool.RareBosses ) bossIds.Add( rb.SpeciesId );
+		}
+		foreach ( var id in exp.PossibleSpecies )
+		{
+			if ( bossIds.Contains( id ) ) continue;
+			var sp = MonsterManager.Instance?.GetSpecies( id );
+			if ( sp != null ) list.Add( sp );
+		}
+		return list;
 	}
 
-	/// <summary>Returns the live (overridden or default) position of a zone marker.</summary>
-	private (float X, float Y) GetZonePos( MapZone z )
+	/// <summary>The boss tile: highest tier in the zone's pool (Elite first), and the pool size for "1 OF N".</summary>
+	private (MonsterSpecies Species, int Count) GetCardBoss( Expedition exp )
 	{
-		if ( _zoneOverrides.TryGetValue( z.Id, out var pos ) ) return pos;
-		return (z.X, z.Y);
+		if ( exp == null || !exp.HasBoss ) return (null, 0);
+		var pool = BossPoolDatabase.GetPool( exp.Id );
+		if ( pool == null || pool.Bosses == null || pool.Bosses.Count == 0 )
+		{
+			// Legacy inline field — null on every launch zone, kept as the fallback.
+			var inline = !string.IsNullOrEmpty( exp.BossSpeciesId ) ? MonsterManager.Instance?.GetSpecies( exp.BossSpeciesId ) : null;
+			return (inline, inline != null ? 1 : 0);
+		}
+		var pick = pool.Bosses.OrderByDescending( b => (int)b.Tier ).First();
+		return (MonsterManager.Instance?.GetSpecies( pick.SpeciesId ), pool.Bosses.Count);
 	}
 
-	/// <summary>Returns the live (overridden or default) position of a trade-node request marker.</summary>
-	private (float X, float Y) GetTradeNodePos( TradeNode n )
+	/// <summary>`mat_{speciesId}` → the species, so a material tile wears its beast's glyph.</summary>
+	private MonsterSpecies SpeciesForMaterial( ItemDefinition item )
 	{
-		if ( _tradeOverrides.TryGetValue( n.Id, out var pos ) ) return pos;
-		return (n.MapPosX, n.MapPosY);
+		if ( item == null || string.IsNullOrEmpty( item.Id ) || !item.Id.StartsWith( "mat_" ) ) return null;
+		return MonsterManager.Instance?.GetSpecies( item.Id.Substring( 4 ) );
 	}
 
-	private void ToggleEditMode()
-	{
-		_editMode = !_editMode;
-		if ( !_editMode ) { _draggingId = null; _draggingType = null; }
-		SoundManager.PlayClick();
-		StateHasChanged();
-	}
+	// ────────────────────── TRADE NODE HELPERS ──────────────────────
 
-	private void StartDragLandmark( string id )
-	{
-		if ( !_editMode ) return;
-		var lm = GetLandmark( id );
-		if ( lm == null ) return;
-		var pos = GetLandmarkPos( lm );
-		_draggingId = id;
-		_draggingType = "landmark";
-		_dragStartItemX = pos.X;
-		_dragStartItemY = pos.Y;
-		_needsDragAnchor = true;
-		StateHasChanged();
-	}
-
-	private void StartDragZone( string id )
-	{
-		if ( !_editMode ) return;
-		var z = GetZone( id );
-		if ( z == null ) return;
-		var pos = GetZonePos( z );
-		_draggingId = id;
-		_draggingType = "zone";
-		_dragStartItemX = pos.X;
-		_dragStartItemY = pos.Y;
-		_needsDragAnchor = true;
-		StateHasChanged();
-	}
-
-	private void StartDragTradeNode( string id )
-	{
-		if ( !_editMode ) return;
-		var n = TradeNodeManager.Instance?.GetNode( id );
-		if ( n == null ) return;
-		var pos = GetTradeNodePos( n );
-		_draggingId = id;
-		_draggingType = "trade";
-		_dragStartItemX = pos.X;
-		_dragStartItemY = pos.Y;
-		_needsDragAnchor = true;
-		StateHasChanged();
-	}
-
-	private void StartDragMini( string id )
-	{
-		if ( !_editMode ) return;
-		var pos = GetMiniPos( id );
-		_draggingId = id;
-		_draggingType = "mini";
-		_dragStartItemX = pos.X;
-		_dragStartItemY = pos.Y;
-		_needsDragAnchor = true;
-		StateHasChanged();
-	}
-
-	private void OnEditDragMove( PanelEvent e )
-	{
-		if ( string.IsNullOrEmpty( _draggingId ) ) return;
-
-		// First move after drag start — anchor mouse coords on the shield
-		// (which is fullscreen + static, so its coords are immune to the
-		// landmark/marker moving as we drag it).
-		if ( _needsDragAnchor )
-		{
-			_dragStartMouseX = MousePosition.x;
-			_dragStartMouseY = MousePosition.y;
-			_needsDragAnchor = false;
-			return;
-		}
-
-		var rect = Box.Rect;
-		if ( rect.Width <= 0 || rect.Height <= 0 ) return;
-
-		float dxPct = ( MousePosition.x - _dragStartMouseX ) / rect.Width * 100f;
-		float dyPct = ( MousePosition.y - _dragStartMouseY ) / rect.Height * 100f;
-		float newX = _dragStartItemX + dxPct;
-		float newY = _dragStartItemY + dyPct;
-
-		if ( _draggingType == "landmark" )
-		{
-			var lm = GetLandmark( _draggingId );
-			if ( lm != null )
-			{
-				var existing = GetLandmarkPos( lm );
-				_landmarkOverrides[_draggingId] = (newX, newY, existing.Width);
-			}
-		}
-		else if ( _draggingType == "zone" )
-		{
-			_zoneOverrides[_draggingId] = (newX, newY);
-		}
-		else if ( _draggingType == "trade" )
-		{
-			_tradeOverrides[_draggingId] = (newX, newY);
-		}
-		else if ( _draggingType == "mini" )
-		{
-			_miniOverrides[_draggingId] = (newX, newY);
-		}
-		StateHasChanged();
-	}
-
-	private void OnEditDragEnd( PanelEvent e )
-	{
-		_draggingId = null;
-		_draggingType = null;
-		StateHasChanged();
-	}
-
-	// ───── Saved-positions persistence ─────────────────────────────
-	// JSON file in FileSystem.Data so dragged positions actually persist
-	// across sessions (was previously log-only — print and manually paste).
-	private const string SavedPositionsFile = "serpinglin_map_positions.json";
-
-	private class SavedLandmark { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } public float Width { get; set; } }
-	private class SavedZone { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
-	private class SavedTrade { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
-	private class SavedMini { public string Id { get; set; } public float X { get; set; } public float Y { get; set; } }
-	private class MapPositionsData { public List<SavedLandmark> Landmarks { get; set; } = new(); public List<SavedZone> Zones { get; set; } = new(); public List<SavedTrade> TradeNodes { get; set; } = new(); public List<SavedMini> MiniExpeditions { get; set; } = new(); }
-
-	/// <summary>
-	/// Persist current landmark + zone positions to FileSystem.Data, AND dump
-	/// them to the engine log so they can be pasted into the static arrays.
-	/// </summary>
-	private void PrintPositions()
-	{
-		// 1) Persist to disk so the next session loads them automatically
-		var data = new MapPositionsData();
-		foreach ( var lm in Landmarks )
-		{
-			var pos = GetLandmarkPos( lm );
-			data.Landmarks.Add( new SavedLandmark { Id = lm.Id, X = pos.X, Y = pos.Y, Width = pos.Width } );
-		}
-		foreach ( var z in Zones )
-		{
-			var pos = GetZonePos( z );
-			data.Zones.Add( new SavedZone { Id = z.Id, X = pos.X, Y = pos.Y } );
-		}
-		foreach ( var n in TradeNodeManager.Instance?.AllNodes ?? new System.Collections.Generic.List<TradeNode>() )
-		{
-			var pos = GetTradeNodePos( n );
-			data.TradeNodes.Add( new SavedTrade { Id = n.Id, X = pos.X, Y = pos.Y } );
-		}
-		foreach ( var mx in GetMiniExpeditions() )
-		{
-			var pos = GetMiniPos( mx.Id );
-			data.MiniExpeditions.Add( new SavedMini { Id = mx.Id, X = pos.X, Y = pos.Y } );
-		}
-
-		try
-		{
-			var json = System.Text.Json.JsonSerializer.Serialize( data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true } );
-			FileSystem.Data.WriteAllText( SavedPositionsFile, json );
-			Log.Info( $"[MapEdit] Saved {data.Landmarks.Count} landmark(s) + {data.Zones.Count} zone(s) → FileSystem.Data/{SavedPositionsFile}" );
-		}
-		catch ( System.Exception ex )
-		{
-			Log.Warning( $"[MapEdit] Failed to write positions: {ex.Message}" );
-		}
-
-		// 2) Print to log for paste-back into the static arrays
-		var sb = new System.Text.StringBuilder();
-		sb.AppendLine();
-		sb.AppendLine( "=== MAP POSITIONS — paste back into WorldMapPanel.razor ===" );
-		sb.AppendLine( "Landmarks:" );
-		foreach ( var lm in Landmarks )
-		{
-			var pos = GetLandmarkPos( lm );
-			sb.AppendLine( $"  {lm.Id,-22}  X: {pos.X,5:0.0}f, Y: {pos.Y,5:0.0}f, Width: {pos.Width,4:0.0}f" );
-		}
-		sb.AppendLine();
-		sb.AppendLine( "Zones:" );
-		foreach ( var z in Zones )
-		{
-			var pos = GetZonePos( z );
-			sb.AppendLine( $"  {z.Id,-22}  X: {pos.X,5:0.0}f, Y: {pos.Y,5:0.0}f" );
-		}
-		sb.AppendLine();
-		sb.AppendLine( "Trade Nodes / Requests:" );
-		foreach ( var n in TradeNodeManager.Instance?.AllNodes ?? new System.Collections.Generic.List<TradeNode>() )
-		{
-			var pos = GetTradeNodePos( n );
-			sb.AppendLine( $"  {n.Id,-30}  MapPosX: {pos.X,5:0.0}f, MapPosY: {pos.Y,5:0.0}f" );
-		}
-		sb.AppendLine();
-		sb.AppendLine( "Mini-Expeditions (paste into MiniPositions dict):" );
-		foreach ( var mx in GetMiniExpeditions() )
-		{
-			var pos = GetMiniPos( mx.Id );
-			sb.AppendLine( $"  {{ \"{mx.Id}\", ({pos.X:0.0}f, {pos.Y:0.0}f) }}," );
-		}
-		sb.AppendLine( "===========================================================" );
-		Log.Info( sb.ToString() );
-		SoundManager.PlaySuccess();
-	}
-
-	/// <summary>
-	/// Load saved positions on panel init. If the file exists, populates
-	/// the override dictionaries so the stored positions render immediately.
-	/// </summary>
-	private void LoadSavedPositions()
-	{
-		try
-		{
-			if ( !FileSystem.Data.FileExists( SavedPositionsFile ) ) return;
-			var json = FileSystem.Data.ReadAllText( SavedPositionsFile );
-			var data = System.Text.Json.JsonSerializer.Deserialize<MapPositionsData>( json );
-			if ( data == null ) return;
-
-			foreach ( var lm in data.Landmarks )
-			{
-				if ( string.IsNullOrEmpty( lm.Id ) ) continue;
-				_landmarkOverrides[lm.Id] = (lm.X, lm.Y, lm.Width);
-			}
-			foreach ( var z in data.Zones )
-			{
-				if ( string.IsNullOrEmpty( z.Id ) ) continue;
-				_zoneOverrides[z.Id] = (z.X, z.Y);
-			}
-			if ( data.TradeNodes != null )
-			{
-				foreach ( var t in data.TradeNodes )
-				{
-					if ( string.IsNullOrEmpty( t.Id ) ) continue;
-					_tradeOverrides[t.Id] = (t.X, t.Y);
-				}
-			}
-			if ( data.MiniExpeditions != null )
-			{
-				foreach ( var m in data.MiniExpeditions )
-				{
-					if ( string.IsNullOrEmpty( m.Id ) ) continue;
-					_miniOverrides[m.Id] = (m.X, m.Y);
-				}
-			}
-			Log.Info( $"[MapEdit] Loaded {data.Landmarks.Count} landmark(s) + {data.Zones.Count} zone(s) + {data.TradeNodes?.Count ?? 0} request(s) + {data.MiniExpeditions?.Count ?? 0} mini(s) from {SavedPositionsFile}" );
-		}
-		catch ( System.Exception ex )
-		{
-			Log.Warning( $"[MapEdit] Failed to load saved positions: {ex.Message}" );
-		}
-	}
-
-	// ───────────────────── TRADE NODE HELPERS ─────────────────────
-
-	/// <summary>
-	/// Trade nodes / requests only show on the map after the player has
-	/// cleared their host expedition at least once. Until then the zone's
-	/// requests stay hidden — players discover them as a reward for
-	/// progressing through expeditions.
-	/// </summary>
+	/// <summary>Requests show only after their host expedition is cleared once.</summary>
 	private IEnumerable<TradeNode> GetVisibleTradeNodes()
 	{
 		var mgr = TradeNodeManager.Instance;
@@ -1588,10 +933,6 @@
 
 	private void OpenTradeNode( string nodeId )
 	{
-		// Don't open the request popup while the player is repositioning
-		// markers in dev edit mode — the click is part of a drag.
-		if ( _editMode ) return;
-
 		_tradePopupNodeId = nodeId;
 		_hoveredKey = null;
 		SoundManager.PlayClick();
@@ -1608,124 +949,19 @@
 	{
 		var result = TradeNodeManager.Instance?.Execute( nodeId ) ?? TradeNodeManager.TradeResult.UnknownNode;
 		if ( result == TradeNodeManager.TradeResult.Success )
-		{
 			SoundManager.PlaySuccess();
-			// Keep the popup open so the player sees the updated counts. Auto-close
-			// after they click elsewhere.
-		}
 		else
-		{
 			SoundManager.PlayDeny();
-		}
 	}
 
-	// ───────────────────── MINI-EXPEDITIONS ─────────────────────
-
-	private static readonly Dictionary<string, (float X, float Y)> MiniPositions = new()
-	{
-		// Forest road between Weaverton Pasture (27.8%, 49.2%) and Weaverwood (68.6%, 53.3%).
-		// Nudged north of the road midpoint so it reads as a cave detour, not dead-center on the path.
-		{ "mini_loomweaver_burrow", (52f, 43f) },
-	};
-
+	// ────────────────────── MINI-EXPEDITIONS ──────────────────────
 	private IEnumerable<Expedition> GetMiniExpeditions()
 	{
 		return ExpeditionManager.Instance?.Expeditions
 			.Where( e => e.IsMiniExpedition ) ?? Enumerable.Empty<Expedition>();
 	}
 
-	private (float X, float Y) GetMiniPos( string id )
-	{
-		if ( _miniOverrides.TryGetValue( id, out var ov ) ) return ov;
-		if ( MiniPositions.TryGetValue( id, out var pos ) ) return pos;
-		return (75f, 20f);
-	}
-
-	// Build the inline style for `.zd-portrait-icon-bg` — applies the
-	// species' DetailIconScale/X/Y exactly the way the My Beasts detail
-	// portrait does, so this thumbnail's framing matches the big version.
-	// Math mirrors `MonsterCard.razor`'s mini-icon: explicit width/height
-	// + left/top instead of CSS transform, so `image-rendering: pixelated`
-	// stays crisp (transform-scale smooths bitmaps in s&box).
-	//
-	// The DetailIcon* values were tuned against a 120-px visible window
-	// containing a 180-px sprite element. The thumbnail is a 72-px window,
-	// so the sprite scales to 72 × 1.5 = 108 px base (preserving the same
-	// "sprite area is 1.5× window" ratio), and pixel offsets scale by
-	// 72/120 = 0.6.
-	private string BuildZdIconStyle( Beastborne.Data.MonsterSpecies sp )
-	{
-		if ( sp == null ) return "";
-		var ci = System.Globalization.CultureInfo.InvariantCulture;
-		const float container = 72f;
-		const float baseFit = 108f;       // container * 1.5 — matches portrait sprite-area ratio
-		const float offsetMul = 0.6f;     // container / 120 — scale offsets to the smaller window
-		float scale = sp.DetailIconScale;
-		float spritePx = baseFit * scale;
-		float left = ( container - spritePx ) * 0.5f + sp.DetailIconOffsetX * offsetMul;
-		float top = ( container - spritePx ) * 0.5f + sp.DetailIconOffsetY * offsetMul;
-		return $"background-image: url({sp.IconPath}); width: {spritePx.ToString( "F1", ci )}px; height: {spritePx.ToString( "F1", ci )}px; left: {left.ToString( "F1", ci )}px; top: {top.ToString( "F1", ci )}px;";
-	}
-
-	private void OnMiniHover( string miniId, string hoverKey )
-	{
-		OnHover( hoverKey );
-		_hoveredMiniId = miniId;
-	}
-
-	private void SelectMini( string expeditionId )
-	{
-		if ( _editMode ) return;
-		var em = ExpeditionManager.Instance;
-		if ( em == null ) return;
-		if ( !em.CanStartExpedition( expeditionId ) )
-		{
-			NotificationManager.Instance?.AddNotification(
-				NotificationType.Warning,
-				"Area locked",
-				"Clear Weavermere to access this area." );
-			SoundManager.PlayDeny();
-			return;
-		}
-		_selectedZoneId = null;
-		_selectedMiniId = expeditionId;
-		_hoveredKey = null;
-		SoundManager.PlayClick();
-	}
-
-	private void CloseMiniDetail()
-	{
-		_selectedMiniId = null;
-		_hoveredKey = null;
-		SoundManager.PlayPopdown();
-	}
-
-	private void EmbarkMini( string expeditionId )
-	{
-		var em = ExpeditionManager.Instance;
-		if ( em == null || !em.CanStartExpedition( expeditionId ) )
-		{
-			SoundManager.PlayDeny();
-			return;
-		}
-		_selectedMiniId = null;
-		TeamPickerPopup.Show( expeditionId );
-	}
-
-	private string GetMiniDropSource( ItemDefinition drop )
-	{
-		if ( drop == null ) return "";
-		if ( drop.Id.StartsWith( "mat_" ) )
-		{
-			var speciesId = drop.Id.Substring( 4 );
-			var sp = MonsterManager.Instance?.GetSpecies( speciesId );
-			return $"Drops from {sp?.Name ?? "this beast"}.";
-		}
-		var effect = drop.GetEffectDescription();
-		return !string.IsNullOrEmpty( effect ) ? effect : drop.Description;
-	}
-
-	// ───────────────────── FIELD BRIEFING HELPERS ─────────────────────
+	// ────────────────────── HEADER HELPERS ──────────────────────
 
 	/// <summary>Zones the player has fully cleared (visible, non-tutorial).</summary>
 	private int GetClearedZoneCount()
@@ -1757,52 +993,30 @@
 		return count;
 	}
 
-	/// <summary>
-	/// Threat rating (1-5 diamond pips) derived from the zone's recommended
-	/// level — a glanceable danger read for the briefing pane. Lv 1 → 1 pip,
-	/// Lv 10 → 2, Lv 20 → 3, capped at 5.
-	/// </summary>
-	private int GetThreatPips( int level ) => Math.Clamp( 1 + level / 10, 1, 5 );
-
 	private bool IsZoneUnlocked( MapZone zone )
 	{
-		// Zone N is unlocked once the previous expedition has been cleared at
-		// least once. HighestExpeditionCleared is a count (0 = none, 1 = cleared
-		// expedition[0], 2 = cleared through expedition[1], etc.) — so a zone
-		// at index N is unlocked when HighestExpeditionCleared >= N.
 		var em = ExpeditionManager.Instance;
 		var tamer = TamerManager.Instance?.CurrentTamer;
-		if ( em == null || tamer == null ) return zone.Id == "saltmoor_cove"; // fail-safe: only the starter
+		if ( em == null || tamer == null ) return zone.Id == "saltmoor_cove";
 
 		var exp = em.Expeditions.FirstOrDefault( e => e.Id == zone.ExpeditionId );
 		if ( exp == null ) return false;
 
-		// Tutorial-only zones are always unlocked while the tutorial is active.
 		if ( exp.TutorialOnly )
-		{
 			return Beastborne.Core.TutorialManager.Instance?.IsTutorialActive == true;
-		}
 
-		// Compute the index against the non-tutorial chain so a player who skipped
-		// the tutorial isn't gated by an expedition they can't see anymore.
 		var realChain = em.Expeditions.Where( e => !e.TutorialOnly ).ToList();
 		int idx = realChain.IndexOf( exp );
 		return idx <= tamer.HighestExpeditionCleared;
 	}
 
-	/// <summary>
-	/// Tutorial-only zones only show on the map while the tutorial is active.
-	/// All other zones are always visible (their unlocked-state controls clickability).
-	/// </summary>
 	private bool IsZoneVisible( MapZone zone )
 	{
 		var em = ExpeditionManager.Instance;
 		var exp = em?.Expeditions.FirstOrDefault( e => e.Id == zone.ExpeditionId );
 		if ( exp == null ) return true;
 		if ( exp.TutorialOnly )
-		{
 			return Beastborne.Core.TutorialManager.Instance?.IsTutorialActive == true;
-		}
 		return true;
 	}
 
@@ -1810,31 +1024,22 @@
 	{
 		var h = new HashCode();
 		h.Add( IsVisible );
-		h.Add( _selectedZoneId );
+		h.Add( _selectedExpId );
 		h.Add( _tradePopupNodeId );
 		h.Add( _hoveredZoneId );
 		h.Add( _hoveredLandmarkId );
 		h.Add( _hoveredTradeNodeId );
 		h.Add( _hoveredMiniId );
-		h.Add( _selectedMiniId );
 		h.Add( _kbMarkerIndex );
-		h.Add( _editMode );
-		h.Add( _draggingId );
-		// Override dictionaries change on every drag tick — hash their counts +
-		// a couple of values so re-render fires when positions shift.
-		h.Add( _landmarkOverrides.Count );
-		h.Add( _zoneOverrides.Count );
-		h.Add( _tradeOverrides.Count );
-		h.Add( _miniOverrides.Count );
-		foreach ( var kv in _landmarkOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
-		foreach ( var kv in _zoneOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
-		foreach ( var kv in _tradeOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
-		foreach ( var kv in _miniOverrides ) { h.Add( kv.Value.X ); h.Add( kv.Value.Y ); }
+		h.Add( _revealZoneId );
+		h.Add( PendingRevealZoneId );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Level ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.HighestExpeditionCleared ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Gold ?? 0 );
+		h.Add( TamerManager.Instance?.CurrentTamer?.HardModeUnlocked?.Count ?? 0 );
 		h.Add( ExpeditionManager.Instance?.CanStartExpedition( "mini_loomweaver_burrow" ) ?? false );
-		// Rebuild the "ready" badge when the player's material counts change.
+		h.Add( Beastborne.Core.TutorialManager.Instance?.IsTutorialActive == true );
+		// Request pins flip READY/DONE with the bag and completion state.
 		var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
 		if ( inv != null )
 		{
