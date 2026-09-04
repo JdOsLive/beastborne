@@ -26,13 +26,13 @@
 	      .map-markers      .wm-dim (z40, mounts with a card/popup) · zone pins 44 · mini pins 32 · request pins 32
 	    .map-vignette       abs full, OUTSIDE the group
 	  .wm-header            abs 0/0 1920×88 + 2px strip · pad 16/32/12/28 · kicker 12/14 + 2 + title row 44 = 60
-	                        (16 + 60 + 12 = 88 ✓) · right slot = ONE chip 32 r11 (BACK · Q slot left for LANE: input)
+	                        (16 + 60 + 12 = 88 ✓) · right slot = ONE chip 32 r11 (BACK · Q slot left EMPTY — run-1 ledger; LANE: input)
 	  .zd-card              abs x1420 y110 460 r22 pad 24 → 412 inner, content-sized (see BuildCardHeights)
 	  .request-popup        untouched (another part of the run)
 	  <TeamPickerPopup />   untouched (another lane)
 *@
 
-<root class="wm-root">
+<root class="wm-root @(IsKbMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnRootMouseMove>
 	<div class="map-stage">
 
 		@* ═══ UNLOCK REVEAL GROUP — art frame + markers. Header / vignette / ring stay outside. ═══ *@
@@ -117,7 +117,10 @@
 						 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
 						 onmouseout=@(() => OnZoneMarkerLeave(zone.Id))>
 						<div class="pin-diamond">
-							<iconify class="pin-glyph" icon="@glyph" Size=@(22) Color="@glyphColor" />
+							@* Counter-rotate HOLDER — a sized div (a transform on the iconify panel itself never landed live). *@
+							<div class="pin-glyph">
+								<iconify class="pin-glyph-ico" icon="@glyph" Size=@(22) Color="@glyphColor" />
+							</div>
 							@* The one violet ring — child of the rotated diamond so it inherits the 45°.
 							   LANE: input — hover == focus; the kb cursor graph flips .kb-active. *@
 							<div class="pin-ring"></div>
@@ -162,7 +165,9 @@
 						 onmouseover=@(() => OnMiniHover(mx.Id, mKey))
 						 onmouseout=@(() => OnMiniLeave(mx.Id))>
 						<div class="pin-diamond mini">
-							<iconify class="pin-glyph" icon="@mGlyph" Size=@(16) Color="@mGlyphColor" />
+							<div class="pin-glyph mini">
+								<iconify class="pin-glyph-ico" icon="@mGlyph" Size=@(16) Color="@mGlyphColor" />
+							</div>
 							<div class="pin-ring mini"></div>
 						</div>
 						<div class="pin-label mini">
@@ -187,11 +192,13 @@
 					var isDone = TradeNodeManager.Instance?.IsLocked( n.Id ) ?? true;
 					var canAfford = !isDone && ( TradeNodeManager.Instance?.CanAfford( n.Id ) ?? false );
 					var tnKey = "tn-" + n.Id;
-					<div class="req-pin @(isDone ? "done" : "") @(canAfford ? "ready" : "") @(_hoveredTradeNodeId == n.Id ? "hovered" : "")"
+					<div class="req-pin @(isDone ? "done" : "") @(canAfford ? "ready" : "") @(_hoveredTradeNodeId == n.Id ? "hovered" : "") @(KbActiveMarkerId == n.Id ? "kb-active" : "")"
 						 style="left: @(n.MapPosX)%; top: @(n.MapPosY)%;"
 						 onclick=@(() => OpenTradeNode(n.Id))
-						 onmouseover=@(() => { OnHover(tnKey); _hoveredTradeNodeId = n.Id; })
-						 onmouseout=@(() => { if (_hoveredTradeNodeId == n.Id) _hoveredTradeNodeId = null; })>
+						 onmouseover=@(() => OnReqPinHover(n.Id, tnKey))
+						 onmouseout=@(() => OnReqPinLeave(n.Id))>
+						@* LANE: input — the same ring recipe on the 32 r8 square (no rotation): 52 outer, r18. *@
+						<div class="pin-ring req"></div>
 						@if ( canAfford )
 						{
 							@* LANE: motion — the 1.6s ready pulse (the one surviving loop on the map). *@
@@ -230,7 +237,8 @@
 				<div class="wm-chip">
 					<span class="wm-chip-label">@GetClearedZoneCount() / @GetTotalZoneCount() CLEARED</span>
 				</div>
-				@* LANE: input — BACK · Q slot (run 1 said no BACK; the input lane rules). *@
+				@* LANE: input — BACK · Q slot stays EMPTY: the run-1 ledger has no BACK chip on the page root, and
+				   an unclaimed Q at the root is GameHUD's silent no-op (2026-09-04) — there is nothing to back out of. *@
 			</div>
 		</div>
 	</div>
@@ -251,13 +259,10 @@
 			var (bossSpecies, bossCount) = GetCardBoss( exp );
 			var drops = ItemManager.Instance?.GetZoneDropOdds( exp.Id, false ) ?? new List<ItemManager.DropOdds>();
 			// Drop tiles 200×44 two-up (200 + 12 + 200 = 412), rows 6 apart → grid = 44r + 6(r−1).
-			var dropRows = ( drops.Count + 1 ) / 2;
-			var dropsGridH = dropRows > 0 ? dropRows * 44 + ( dropRows - 1 ) * 6 : 0;
 			// Card budget (see the scss header): fixed 684 with a kicker (666 without) + the drops grid,
 			// clamped so the card never passes 928 (y 110 → 1038). 5 rows (10 drops) fit; only the DROPS grid scrolls.
-			var fixedH = string.IsNullOrEmpty( kicker ) ? 666 : 684;
-			var dropsH = Math.Min( dropsGridH, 928 - fixedH );
-			var dropsScrolls = dropsGridH > dropsH;
+			// ONE formula shared with the kb card stops (DropsLayout — LANE: input).
+			var (dropRows, dropsH, dropsScrolls) = DropsLayout( drops.Count, !string.IsNullOrEmpty( kicker ) );
 
 			<div class="zd-card">
 				@* HERO 412×200 r16 — zone art under a dark veil, BACK · Q top-right (in-flow row above the absolutes). *@
@@ -265,7 +270,7 @@
 					<img class="zd-hero-img" src="@heroImg" />
 					<div class="zd-hero-veil"></div>
 					<div class="zd-hero-top">
-						<div class="zd-back" onclick=@CloseCard onmouseover=@(() => OnHover("zd-back"))>
+						<div class="zd-back" onclick=@CloseCard onmouseover=@(() => OnHover("zd-back"))>@* :hover + blip gated to mouse-mode (scss + OnHover) *@
 							<span class="zd-back-label">BACK</span>
 							<span class="zd-back-cap">Q</span>
 						</div>
@@ -336,8 +341,8 @@
 
 				@* EMBARK — the one gold primary, 412×56 r16. Row host so Stretch fills the WIDTH (flex-basis is main-axis).
 				   Locked keeps the slab and dims (BIG THINGS BIG). LANE: input — Focused when the card cursor sits here. *@
-				<div class="zd-cta-row">
-					<BbButton Tier="primary" Size=@(56) Label="EMBARK" KeyCap="SPACE" Stretch=@true Disabled=@(!cardUnlocked) OnClick=@EmbarkSelected />
+				<div class="zd-cta-row" onmouseover=@OnEmbarkHover>
+					<BbButton Tier="primary" Size=@(56) Label="EMBARK" KeyCap="SPACE" Stretch=@true Disabled=@(!cardUnlocked) Focused=@(IsKbMode && _cardCursor == 0) OnClick=@EmbarkSelected />
 				</div>
 
 				@* DROPS — one slab: materials first (beast glyph · EVERY KO), then items with per-run odds. *@
@@ -350,13 +355,17 @@
 				</div>
 				@if ( drops.Count > 0 )
 				{
-					<div class="zd-drops @(dropsScrolls ? "scrolls" : "")" style="height: @(dropsH)px;">
-						@foreach ( var d in drops )
+					<div class="zd-drops @(dropsScrolls ? "scrolls" : "")" style="height: @(dropsH)px;" @ref="_dropsScroll">
+						@foreach ( var (d, di) in drops.Select( ( x, i ) => (x, i) ) )
 						{
 							var drop = d;
+							var dropRow = di / 2;
 							var matSpecies = drop.EveryKo ? SpeciesForMaterial( drop.Item ) : null;
 							var rarityClass = "rarity-" + drop.Item.Rarity.ToString().ToLower();
-							<div class="zd-drop @rarityClass @(drop.EveryKo ? "material" : "")">
+							// LANE: input — the ROW is the stop (slab cursor, kb mode only via the scss gate), only while the grid scrolls.
+							var dropKb = dropsScrolls && _cardCursor == 1 + dropRow;
+							<div class="zd-drop @rarityClass @(drop.EveryKo ? "material" : "") @(dropKb ? "kb-focused" : "")"
+								 onmouseover=@(() => OnDropRowHover(dropRow, dropsScrolls))>
 								<div class="zd-drop-glyph">
 									@if ( matSpecies != null )
 									{
@@ -550,18 +559,25 @@
 	}
 
 	// Hover-sound guard — onmouseover bubbles from children, gate on a key change.
+	// LANE: input — every hover handler is a no-op in keyboard mode (DOC-5 #15: kb
+	// re-renders fire synthetic onmouseover under a parked pointer).
 	private string _hoveredKey;
 	private void OnHover( string key )
 	{
+		if ( IsKbMode ) return;
 		if ( _hoveredKey == key ) return;
 		_hoveredKey = key;
 		SoundManager.PlayHover();
 	}
 
+	// Pin hover == the cursor (one cursor, last input wins): the hovered pin becomes
+	// the kb marker so WASD continues from where the mouse left off.
 	private void OnZoneMarkerHover( string zoneId, string hoverKey )
 	{
+		if ( IsKbMode ) return;
 		OnHover( hoverKey );
 		_hoveredZoneId = zoneId;
+		_kbMarkerId = zoneId;
 	}
 
 	private void OnZoneMarkerLeave( string zoneId )
@@ -571,6 +587,7 @@
 
 	private void OnLandmarkHover( string landmarkId, string hoverKey )
 	{
+		if ( IsKbMode ) return; // landmark titles are mouse-only (no kb stops)
 		OnHover( hoverKey );
 		_hoveredLandmarkId = landmarkId;
 	}
@@ -582,13 +599,42 @@
 
 	private void OnMiniHover( string miniId, string hoverKey )
 	{
+		if ( IsKbMode ) return;
 		OnHover( hoverKey );
 		_hoveredMiniId = miniId;
+		_kbMarkerId = miniId;
 	}
 
 	private void OnMiniLeave( string miniId )
 	{
 		if ( _hoveredMiniId == miniId ) _hoveredMiniId = null;
+	}
+
+	private void OnReqPinHover( string nodeId, string hoverKey )
+	{
+		if ( IsKbMode ) return;
+		OnHover( hoverKey );
+		_hoveredTradeNodeId = nodeId;
+		_kbMarkerId = nodeId;
+	}
+
+	private void OnReqPinLeave( string nodeId )
+	{
+		if ( _hoveredTradeNodeId == nodeId ) _hoveredTradeNodeId = null;
+	}
+
+	// Card stops follow the mouse too: EMBARK row → stop 0, a drop row → 1 + row.
+	private void OnEmbarkHover()
+	{
+		if ( IsKbMode ) return;
+		_cardCursor = 0;
+	}
+
+	private void OnDropRowHover( int row, bool scrolls )
+	{
+		if ( IsKbMode || !scrolls ) return;
+		_cardCursor = 1 + row;
+		_dropsGlideTarget = -1f; // the mouse (wheel) owns the slab now
 	}
 
 	private Landmark GetLandmark( string id ) => Landmarks.FirstOrDefault( l => l.Id == id );
@@ -676,12 +722,31 @@
 			Instance = this;
 			_hoveredKey = null;
 			_selectedExpId = null;
+			_kbMarkerId = SeedMarkerId(); // open edge: the cursor lands on the CURRENT zone
 		}
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
+
+		// LANE: input — kb scroll-follow on the DROPS slab: 0.30 glide per tick toward the
+		// target row (DOC-5 #13); cleared once landed, or by the wheel / a row hover.
+		if ( _dropsGlideTarget >= 0f && _selectedExpId != null && _dropsScroll != null )
+		{
+			float cur = _dropsScroll.ScrollOffset.y;
+			float delta = _dropsGlideTarget - cur;
+			if ( Math.Abs( delta ) < 0.5f )
+			{
+				_dropsScroll.ScrollOffset = new Vector2( _dropsScroll.ScrollOffset.x, _dropsGlideTarget );
+				_dropsGlideTarget = -1f;
+			}
+			else
+			{
+				_dropsScroll.ScrollOffset = new Vector2( _dropsScroll.ScrollOffset.x, cur + delta * 0.30f );
+			}
+		}
+
 		// Esc dismisses the top surface. Leaving the map is the HUD tab bar's job.
 		if ( Input.Pressed( "Escape" ) )
 		{
@@ -690,38 +755,153 @@
 		}
 	}
 
-	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
-	// LANE: input — the pin cursor graph (WASD spatial walk: zones → mini →
-	// visible requests), card stops (EMBARK · BACK), the Q chain (popup →
-	// card → page) and the device flag all land here. This is the shipped
-	// linear walk kept alive so the page is drivable until then.
-	private int _kbMarkerIndex = 0;
+	// ────────────────────── INPUT DEVICE — one flag, three legs (DOC-5 #5) ──────────────────────
+	// LANE: input. `_lastInputDevice` → root .kbd-mode/.mouse-mode; every owned :hover is
+	// CSS-gated under .mouse-mode and every kb cursor class under .kbd-mode (the scss gate
+	// block); hover handlers no-op in kb mode. Root onmousemove reclaims mouse mode only
+	// after REAL travel (> 3px since the keyboard took over) — the engine re-sends
+	// onmousemove when the panel re-renders under a parked cursor (learnings 2026-09-01).
+	private enum InputDevice { Mouse, Keyboard }
+	private InputDevice _lastInputDevice = InputDevice.Mouse;
+	private bool IsKbMode => _lastInputDevice == InputDevice.Keyboard;
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
 
-	private List<(string Id, bool IsMini)> GetKbMarkers()
+	private void SetInputDevice( InputDevice dev )
 	{
-		var list = new List<(string, bool)>();
+		if ( _lastInputDevice == dev ) return;
+		_lastInputDevice = dev;
+		if ( dev == InputDevice.Keyboard )
+		{
+			_kbTakeoverMousePos = Mouse.Position;
+			// Keyboard takes over — drop every hover so a parked pointer can't hold a second cursor.
+			_hoveredZoneId = null;
+			_hoveredMiniId = null;
+			_hoveredTradeNodeId = null;
+			_hoveredLandmarkId = null;
+			_hoveredKey = null;
+		}
+	}
+
+	private void OnRootMouseMove()
+	{
+		if ( _lastInputDevice == InputDevice.Mouse ) return;
+		if ( ( Mouse.Position - _kbTakeoverMousePos ).Length < 3f ) return;
+		SetInputDevice( InputDevice.Mouse );
+		StateHasChanged();
+	}
+
+	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
+	// LANE: input — THE PIN GRAPH IS SPATIAL: W/A/S/D move to the nearest pin in that
+	// direction by anchor centre (the inline % anchors scaled to the 1920×1080 frame —
+	// the same numbers that place the pins, so the graph IS the screen; DOC-5 #21).
+	// Stops: zone pins (locked ones too — they read "CLEAR …"), mini pins, visible
+	// request pins. The cursor is an ID, not an index (DOC-5 #20: tutorial pins hide,
+	// requests appear). Hover in mouse mode moves the same id.
+	private string _kbMarkerId;
+	private record KbPin( string Id, string Kind, float X, float Y ); // Kind: zone | mini | req
+
+	/// <summary>Id of the marker under the cursor (zone id · mini expedition id · request node id), or null.</summary>
+	public string KbActiveMarkerId => _kbMarkerId;
+
+	private List<KbPin> GetKbPins()
+	{
+		var list = new List<KbPin>();
 		foreach ( var z in Zones )
 		{
 			if ( !IsZoneVisible( z ) ) continue;
-			list.Add( (z.Id, false) );
+			list.Add( new KbPin( z.Id, "zone", z.X * 19.2f, z.Y * 10.8f ) );
 		}
 		foreach ( var mx in GetMiniExpeditions() )
 		{
-			list.Add( (mx.Id, true) );
+			var p = GetMiniPos( mx.Id );
+			list.Add( new KbPin( mx.Id, "mini", p.X * 19.2f, p.Y * 10.8f ) );
+		}
+		foreach ( var n in GetVisibleTradeNodes() )
+		{
+			list.Add( new KbPin( n.Id, "req", n.MapPosX * 19.2f, n.MapPosY * 10.8f ) );
 		}
 		return list;
 	}
 
-	/// <summary>Id of the marker under the keyboard cursor, or null.</summary>
-	public string KbActiveMarkerId
+	/// <summary>Seed = the CURRENT zone: the furthest unlocked zone in chain order (everything
+	/// cleared → the last cleared); a visible tutorial zone wins while the tutorial runs.</summary>
+	private string SeedMarkerId()
 	{
-		get
+		string first = null, lastUnlocked = null;
+		foreach ( var z in Zones )
 		{
-			var markers = GetKbMarkers();
-			if ( markers.Count == 0 ) return null;
-			int i = Math.Clamp( _kbMarkerIndex, 0, markers.Count - 1 );
-			return markers[i].Id;
+			if ( !IsZoneVisible( z ) ) continue;
+			first ??= z.Id;
+			var exp = GetExpedition( z.ExpeditionId );
+			if ( exp != null && exp.TutorialOnly && IsZoneUnlocked( z ) ) return z.Id;
+			if ( IsZoneUnlocked( z ) ) lastUnlocked = z.Id;
 		}
+		return lastUnlocked ?? first;
+	}
+
+	/// <summary>Nearest pin strictly in the pressed direction: distance along the axis + 2× the
+	/// perpendicular drift, so straight-ahead beats diagonal. No candidate = the map's edge — rest.</summary>
+	private void MovePinCursor( int dx, int dy )
+	{
+		var pins = GetKbPins();
+		var cur = pins.FirstOrDefault( p => p.Id == _kbMarkerId );
+		if ( cur == null ) { _kbMarkerId = SeedMarkerId(); return; }
+		KbPin best = null;
+		float bestScore = float.MaxValue;
+		foreach ( var p in pins )
+		{
+			if ( p.Id == cur.Id ) continue;
+			float ddx = p.X - cur.X, ddy = p.Y - cur.Y;
+			float ahead = dx * ddx + dy * ddy;
+			if ( ahead < 8f ) continue;
+			float perp = Math.Abs( dx != 0 ? ddy : ddx );
+			float score = ahead + perp * 2f;
+			if ( score < bestScore ) { bestScore = score; best = p; }
+		}
+		if ( best == null ) return;
+		_kbMarkerId = best.Id;
+		SoundManager.PlayHover();
+	}
+
+	// ── CARD STOPS: 0 = EMBARK (seeded on the open edge — "land on the current zone → Space →
+	// EMBARK is the first stop → Space → picker"), 1..N = DROPS rows, only while the grid
+	// scrolls (.zd-drops.scrolls). WILD / BOSS tiles are read-only — no stops.
+	private int _cardCursor = 0;
+	private Panel _dropsScroll;
+	private float _dropsGlideTarget = -1f;
+
+	/// <summary>The drops grid budget — ONE formula for the markup and the kb stops: rows two-up,
+	/// 44 tall, 6 apart; fixed card 684 with a kicker (666 without); the card never passes 928.</summary>
+	private static (int Rows, int ViewH, bool Scrolls) DropsLayout( int dropCount, bool hasKicker )
+	{
+		int rows = ( dropCount + 1 ) / 2;
+		int gridH = rows > 0 ? rows * 44 + ( rows - 1 ) * 6 : 0;
+		int fixedH = hasKicker ? 684 : 666;
+		int viewH = Math.Min( gridH, 928 - fixedH );
+		return (rows, viewH, gridH > viewH);
+	}
+
+	private (int Rows, int ViewH, bool Scrolls) CurrentCardDrops()
+	{
+		var exp = GetExpedition( _selectedExpId );
+		if ( exp == null ) return (0, 0, false);
+		var em = ExpeditionManager.Instance;
+		bool cleared = em?.HasClearedExpedition( exp.Id ) ?? false;
+		bool hard = cleared && ( em?.IsHardModeUnlocked( exp.Id ) ?? false );
+		bool hasKicker = hard || cleared || exp.IsMiniExpedition; // mirrors the markup's kicker
+		int count = ItemManager.Instance?.GetZoneDropOdds( exp.Id, false )?.Count ?? 0;
+		return DropsLayout( count, hasKicker );
+	}
+
+	/// <summary>Glide target that brings drop row `row` fully into the slab (row 0 → top; the
+	/// measured-rect helper handles the rest in screen space, so scale is honest).</summary>
+	private void FollowDropRow( int row )
+	{
+		if ( _dropsScroll == null ) return;
+		if ( row <= 0 ) { _dropsGlideTarget = 0f; return; }
+		var tile = _dropsScroll.Children.ElementAtOrDefault( row * 2 );
+		var off = UiGridScroll.ComputeOffset( _dropsScroll, tile, 0f );
+		if ( off.HasValue ) _dropsGlideTarget = off.Value;
 	}
 
 	/// <summary>Called by GameHUD.TickCurrentPanel() — child panels don't auto-tick.</summary>
@@ -740,83 +920,141 @@
 	private void HandleMapKeyboardInput()
 	{
 		if ( ChatPanel.IsChatFocused ) return;
-		if ( UIModalState.AnyModalOpen ) return;
+		if ( UIModalState.AnyModalOpen ) return; // the picker / a dialogue / a confirm owns the keys
 
-		// Card open: confirm embarks, back closes (claimed so GameHUD doesn't also exit).
-		if ( _selectedExpId != null )
-		{
-			if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-				EmbarkSelected();
-			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
-			{
-				CloseCard();
-				GameHUD.PanelHandledBackKey = true;
-			}
-			return;
-		}
+		// Leg 1 of the device contract: any nav key → keyboard mode.
+		bool navKey = Input.Pressed( "Up" ) || Input.Pressed( "Down" ) || Input.Pressed( "Left" ) || Input.Pressed( "Right" )
+			|| UiInput.ConfirmPressed() || Input.Pressed( "Menu" );
+		if ( navKey ) SetInputDevice( InputDevice.Keyboard );
 
+		// ── Q CHAIN, top surface first: request popup → card → page. ──
 		if ( _tradePopupNodeId != null )
 		{
-			if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+			if ( Input.Pressed( "Menu" ) )
 			{
 				CloseTradePopup();
 				GameHUD.PanelHandledBackKey = true;
+				return;
+			}
+			// Space = ACCEPT TRADE (the popup's one action); not affordable / done = deny.
+			if ( UiInput.ConfirmPressed() )
+			{
+				var mgr = TradeNodeManager.Instance;
+				bool done = mgr?.IsLocked( _tradePopupNodeId ) ?? true;
+				bool afford = !done && ( mgr?.CanAfford( _tradePopupNodeId ) ?? false );
+				if ( afford ) ExecuteTrade( _tradePopupNodeId );
+				else SoundManager.PlayDeny();
 			}
 			return;
 		}
 
-		var markers = GetKbMarkers();
-		if ( markers.Count == 0 ) return;
-		_kbMarkerIndex = Math.Clamp( _kbMarkerIndex, 0, markers.Count - 1 );
+		if ( _selectedExpId != null )
+		{
+			HandleCardKeys();
+			return;
+		}
 
-		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) )
+		// ── PAGE: the pin graph. ──
+		var pins = GetKbPins();
+		if ( pins.Count == 0 ) return;
+		if ( _kbMarkerId == null || pins.All( p => p.Id != _kbMarkerId ) ) _kbMarkerId = SeedMarkerId();
+
+		if ( UiInput.ConfirmPressed() )   // Space (advertised) · Enter · E
 		{
-			_kbMarkerIndex = Math.Max( 0, _kbMarkerIndex - 1 );
-			SoundManager.PlayHover();
+			var cur = pins.First( p => p.Id == _kbMarkerId );
+			switch ( cur.Kind )
+			{
+				case "zone": SelectZone( cur.Id ); break;
+				case "mini": SelectMini( cur.Id ); break;
+				default: OpenTradeNode( cur.Id ); break;
+			}
+			return;
 		}
-		else if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) )
+
+		if ( Input.Pressed( "Up" ) ) MovePinCursor( 0, -1 );
+		else if ( Input.Pressed( "Down" ) ) MovePinCursor( 0, 1 );
+		else if ( Input.Pressed( "Left" ) ) MovePinCursor( -1, 0 );
+		else if ( Input.Pressed( "Right" ) ) MovePinCursor( 1, 0 );
+		// Q at the page root is NOT claimed: there is nothing to back out of, and GameHUD
+		// treats an unclaimed Q as a silent no-op (2026-09-04). Leaving the map = the tab keys.
+	}
+
+	private void HandleCardKeys()
+	{
+		if ( Input.Pressed( "Menu" ) )
 		{
-			_kbMarkerIndex = Math.Min( markers.Count - 1, _kbMarkerIndex + 1 );
-			SoundManager.PlayHover();
+			CloseCard();
+			GameHUD.PanelHandledBackKey = true;
+			return;
 		}
-		else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+
+		var (rows, _, scrolls) = CurrentCardDrops();
+		int maxStop = scrolls ? rows : 0;
+		_cardCursor = Math.Clamp( _cardCursor, 0, maxStop );
+
+		if ( UiInput.ConfirmPressed() )
 		{
-			var m = markers[_kbMarkerIndex];
-			if ( m.IsMini ) SelectMini( m.Id );
-			else SelectZone( m.Id );
+			if ( _cardCursor == 0 )
+			{
+				// EMBARK → the picker (Embark → TeamPickerPopup.Show). Locked card: the button is
+				// Disabled — deny blip, nothing opens.
+				bool unlocked = ExpeditionManager.Instance?.CanStartExpedition( _selectedExpId ) ?? false;
+				if ( unlocked ) EmbarkSelected();
+				else SoundManager.PlayDeny();
+			}
+			// drop rows are read-only — silent
+			return;
 		}
-		else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+
+		int dy = Input.Pressed( "Up" ) ? -1 : ( Input.Pressed( "Down" ) ? 1 : 0 );
+		if ( dy == 0 ) return; // A/D: no horizontal stops on the card
+		int next = Math.Clamp( _cardCursor + dy, 0, maxStop );
+		if ( next == _cardCursor ) return; // W off EMBARK / S off the last row — rest
+		_cardCursor = next;
+		SoundManager.PlayHover();
+		if ( _cardCursor == 0 ) _dropsGlideTarget = 0f;
+		else FollowDropRow( _cardCursor - 1 );
+	}
+
+	// Wheel over the DROPS slab scrolls it (the engine's own scroll via base); the map has
+	// nothing else to scroll, so every other wheel is consumed here. `public` — same base
+	// visibility as LeaderboardPanel / BeastiaryPanel (both `@inherits Panel`).
+	public override void OnMouseWheel( Vector2 delta )
+	{
+		if ( _selectedExpId != null && _dropsScroll != null && _dropsScroll.Box.Rect.IsInside( Mouse.Position ) )
 		{
-			GameHUD.ExitPanel();
+			_dropsGlideTarget = -1f; // the wheel wins over a pending kb glide
+			base.OnMouseWheel( delta );
+			return;
 		}
+		// consumed
 	}
 
 	// ────────────────────── SELECTION / CARD ──────────────────────
+	// A LOCKED pin opens its card too (the card carries the disabled EMBARK; "CLEAR …" is on
+	// the pin) — Space/click on the disabled EMBARK is the deny, not the pin.
 	private void SelectZone( string zoneId )
 	{
 		var zone = GetZone( zoneId );
 		if ( zone == null ) return;
-		if ( !IsZoneUnlocked( zone ) )
-		{
-			SoundManager.PlayDeny();
-			return;
-		}
-		_selectedExpId = zone.ExpeditionId;
-		_hoveredKey = null;
-		SoundManager.PlayClick();
-		Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "worldmap.zone-selected" );
+		OpenCard( zone.ExpeditionId, zone.Id );
+		if ( IsZoneUnlocked( zone ) )
+			Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "worldmap.zone-selected" );
 	}
 
 	private void SelectMini( string expeditionId )
 	{
-		var em = ExpeditionManager.Instance;
-		if ( em == null ) return;
-		if ( !em.CanStartExpedition( expeditionId ) )
-		{
-			SoundManager.PlayDeny();
-			return;
-		}
+		if ( ExpeditionManager.Instance == null ) return;
+		OpenCard( expeditionId, expeditionId );
+	}
+
+	/// <summary>Open edge of the card (mouse AND keyboard land here): the cursor sits on EMBARK.</summary>
+	private void OpenCard( string expeditionId, string markerId )
+	{
 		_selectedExpId = expeditionId;
+		_kbMarkerId = markerId;
+		_cardCursor = 0;
+		_dropsGlideTarget = -1f;
 		_hoveredKey = null;
 		SoundManager.PlayClick();
 	}
@@ -824,6 +1062,8 @@
 	private void CloseCard()
 	{
 		_selectedExpId = null;
+		_cardCursor = 0;
+		_dropsGlideTarget = -1f;
 		_hoveredKey = null;
 		SoundManager.PlayPopdown();
 	}
@@ -934,6 +1174,7 @@
 	private void OpenTradeNode( string nodeId )
 	{
 		_tradePopupNodeId = nodeId;
+		_kbMarkerId = nodeId; // the cursor follows the click
 		_hoveredKey = null;
 		SoundManager.PlayClick();
 	}
@@ -1030,7 +1271,10 @@
 		h.Add( _hoveredLandmarkId );
 		h.Add( _hoveredTradeNodeId );
 		h.Add( _hoveredMiniId );
-		h.Add( _kbMarkerIndex );
+		// LANE: input — every cursor field (DOC-7 #22).
+		h.Add( _lastInputDevice );
+		h.Add( _kbMarkerId );
+		h.Add( _cardCursor );
 		h.Add( _revealZoneId );
 		h.Add( PendingRevealZoneId );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Level ?? 0 );
