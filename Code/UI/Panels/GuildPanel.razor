@@ -34,9 +34,15 @@
 	     align (right stays 216) — the alternative (a right slab stretched
 	     to match with 700px of nothing in it) breaks §10 harder. The page
 	     black under the slabs is the settings sub-view's precedent.
-	     LANE: input — kb walk: BROWSE (0) · ACCEPT/DECLINE pairs (1+2i /
-	     2+2i) · CREATE (1+2n); W/S already flow that order (TickLandingInput);
-	     A/D column hop BROWSE ⇄ CREATE + the Q chain landing → hub are input's.
+	     LANE: input (run 3) — the cursor graph is GEOMETRY (DOC-5 §21):
+	     LEFT column = BROWSE (0) · invite rows (1..n; A/D = ACCEPT ⇄ DECLINE
+	     sub-cursor _kbLandBtn) — W/S walk it; RIGHT column = CREATE (n+1),
+	     reached by D (BROWSE ⇄ CREATE sit at the same height; D off a
+	     row's DECLINE hops there too) and left by A → BROWSE. S past the
+	     last left stop is a silent clamp — nothing is below it on screen.
+	     Seeded on BROWSE at open (Tick view edge). Q → hub, claimed.
+	     Hover moves the same cursor (mouse mode only): LandingHover on the
+	     slab bodies (CTAs, target-walked), LandingRowHover on the rows.
 	     LANE: motion — view enter (the gp-header carries gpZoneHeader; the
 	     slabs are static — no rungs assigned here).
 	     LANE: color — the two status lines share TextDim; the gate reads
@@ -63,7 +69,7 @@
 		int glLeftH = glN == 0 ? 216 : Math.Min( 928, 288 + 80 * glN );
 		var glLeftStyle = $"height: {glLeftH}px;";
 		var glInvChip = glN == 1 ? "1 INVITE WAITING" : $"{glN} INVITES WAITING";
-		int glCreateIdx = 1 + glN * 2;
+		int glCreateIdx = 1 + glN; // rows model: BROWSE 0 · rows 1..n · CREATE n+1 (TickLandingInput)
 	}
 	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
 		<div class="gp-header">
@@ -96,7 +102,7 @@
 						<div class="gp-darkchip"><span>@glInvChip</span></div>
 					}
 				</div>
-				<div class="gl-slab-body">
+				<div class="gl-slab-body" onmouseover=@(( e ) => LandingHover( e ))>
 					<span class="gl-copy">Browse every guild that's recruiting and ask to join.</span>
 					<BbButton Tier="primary" Size=@(56) Label=@L("ui.guild.browse") Class="gl-cta" HoverSound=@false Focused=@(IsLandingKb( 0 )) OnClick=@OnBrowsePressed />
 					<span class="gl-sub">@glJoinLine</span>
@@ -111,17 +117,16 @@
 						     no emblem / level / member count (Core is read-only for
 						     this lane), so the tile is the shield glyph on the
 						     default ground and the sub reads "[TAG] · from Inviter". -->
-						<div class="gl-inv-list">
+						<div class="gl-inv-list" @ref="landingInvRef">
 							@{ int glIdx = 0; }
 							@foreach ( var invite in glInvites )
 							{
 								var inv = invite;
-								int accIdx = 1 + glIdx * 2;
-								int decIdx = 2 + glIdx * 2;
-								bool rowKb = IsLandingKb( accIdx ) || IsLandingKb( decIdx );
+								int rowIdx = 1 + glIdx; // landing stop = the ROW; _kbLandBtn picks ACCEPT (0) / DECLINE (1)
+								bool rowKb = IsLandingKb( rowIdx );
 								var invSub = $"[{inv.GuildTag}] · from {inv.InviterName}";
 								glIdx++;
-								<div class="gl-irow @(glIdx % 2 == 0 ? "alt" : "") @(rowKb ? "guild-kb-selected" : "")">
+								<div class="gl-irow @(glIdx % 2 == 0 ? "alt" : "") @(rowKb ? "guild-kb-selected" : "")" onmouseover=@(( e ) => LandingRowHover( rowIdx, e ))>
 									<div class="gl-emblem">
 										<iconify class="gl-emblem-glyph" icon="lucide:shield" Size=@(24) Color="#ffffff" />
 									</div>
@@ -130,8 +135,8 @@
 										<span class="gp-prow-sub">@invSub</span>
 									</div>
 									<div class="gl-irow-spacer"></div>
-									<BbButton Tier="secondary" Size=@(34) Label=@L("ui.guild.accept") Class="gp-pacc" Disabled=@(!glCanJoin) HoverSound=@false Focused=@(IsLandingKb( accIdx )) OnClick=@(() => { AcceptInvite( inv ); SoundManager.PlaySelect(); }) />
-									<BbButton Tier="ghost" Size=@(34) Label="DECLINE" Class="gl-pdec" HoverSound=@false Focused=@(IsLandingKb( decIdx )) OnClick=@(() => { DeclineInvite( inv ); SoundManager.PlayDeny(); }) />
+									<BbButton Tier="secondary" Size=@(34) Label=@L("ui.guild.accept") Class="gp-pacc" Disabled=@(!glCanJoin) HoverSound=@false Focused=@(rowKb && _kbLandBtn == 0) OnClick=@(() => { AcceptInvite( inv ); SoundManager.PlaySelect(); }) />
+									<BbButton Tier="ghost" Size=@(34) Label="DECLINE" Class="gl-pdec" HoverSound=@false Focused=@(rowKb && _kbLandBtn == 1) OnClick=@(() => { DeclineInvite( inv ); SoundManager.PlayDeny(); }) />
 								</div>
 							}
 						</div>
@@ -145,7 +150,7 @@
 					<div class="gp-chipstamp"><span>START YOUR OWN</span></div>
 					<div class="gp-band-spacer"></div>
 				</div>
-				<div class="gl-slab-body">
+				<div class="gl-slab-body" onmouseover=@(( e ) => LandingHover( e ))>
 					<span class="gl-copy">Found a guild of your own — pick its name, tag and emblem.</span>
 					<BbButton Tier="secondary" Size=@(56) Label=@L("ui.guild.create_a_guild") Class="gl-cta" Disabled=@(!glCanCreate) HoverSound=@false Focused=@(IsLandingKb( glCreateIdx )) OnClick=@OnCreatePressed />
 					<span class="gl-sub">@glCreateLine</span>
@@ -171,9 +176,18 @@ else if ( guildView == "browse" )
 	     Join mode from data: Open → JOIN · Request → REQUEST · InviteOnly /
 	     Closed → dim INVITE ONLY / CLOSED text in the button's lane.
 	     Empty = one honest line + a normal-size REFRESH ghost (NO NOTHING).
-	     LANE: input — W/S walk rows (TickBrowseInput, scroll-follow on
-	     .gb-row); Space opens the detail; A/D → a JOIN sub-cursor on the
-	     focused row + the sort pair (R cycle) + Tab ⇄ search are input's.
+	     LANE: input (run 3) — two zones, one cursor: "browse-head" (search
+	     chip 0 · MEMBERS 1 · LEVEL 2; A/D across, S → the list) and
+	     "browse-grid" (rows; W off row 0 → the head stop last used; A/D =
+	     row ⇄ its JOIN/REQUEST sub-cursor _kbBrowseBtn; Space = detail on
+	     the row / join on the button; scroll-follow on .gb-row). Empty list
+	     = one REFRESH stop (grid 0). R toggles the sort pair (cap by LEVEL).
+	     Search: Space on the chip focuses the TextEntry — TypingOwnsKeys
+	     grammar, Tab/Enter/Esc hand back, cursor stays on the chip. Detail
+	     zone "browse-detail": [JOIN] · BACK TO LIST (A/D and W/S both step
+	     the pair — it is a two-stop row), Q → list; list Q → landing/plaza.
+	     Seeded on row 0 at open; returning from the detail re-seats the
+	     row that opened it.
 	     LANE: layout-next — the DETAIL body (.guild-detail, 2026-04 dialect)
 	     is hosted inside the slab as-is; only its actions moved to BbButtons
 	     and its BACK to the header cap. Full house restyle next run.
@@ -188,7 +202,7 @@ else if ( guildView == "browse" )
 		var gbCountChip = isLoadingGuilds ? "LOADING…" : gbGuilds.Count == 1 ? "1 FOUND" : $"{gbGuilds.Count} FOUND";
 		var gbBandLabel = gbDetail ? "GUILD" : "GUILDS";
 		var gbDetailTag = gbDetail ? $"[{viewingGuild.GuildTag}]" : "";
-		var gbSearchCls = _kbSearchFocused ? "guild-kb-search-focused" : "";
+		var gbSearchCls = ( _kbSearchFocused ? "guild-kb-search-focused " : "" ) + ( IsBrowseHeadKb( 0 ) ? "guild-kb-selected" : "" );
 	}
 	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
 		<div class="gp-header">
@@ -204,7 +218,7 @@ else if ( guildView == "browse" )
 			<div class="gp-toolbar">
 				@if ( gbDetail )
 				{
-					<div class="gp-back" onmouseover=@(() => SoundManager.PlayHover()) onclick=@(() => { SoundManager.PlayBack(); viewingGuild = null; ResetKb(); })>
+					<div class="gp-back" onmouseover=@(() => SoundManager.PlayHover()) onclick=@OnDetailBackPressed>
 						<span class="gp-back-label">@L("ui.guild.back_to_list")</span>
 						<span class="gp-back-cap">Q</span>
 					</div>
@@ -218,16 +232,21 @@ else if ( guildView == "browse" )
 					<!-- Search chip — a plain 180 TextEntry chip in the .gp-chip
 					     family (the FilterBar ShowSearchChip param is another
 					     lane's — not depended on). Polled in Tick (no onchange). -->
-					<div class="gb-search @gbSearchCls">
+					<!-- LANE: input — the three header stops (zone "browse-head" 0/1/2);
+					     hover moves the one cursor (BrowseHeadHover, mouse mode only).
+					     The R cap sits by the pair (the hub's board-filter recipe,
+					     cap only — no instruction text). -->
+					<div class="gb-search @gbSearchCls" onmouseover=@(() => BrowseHeadHover( 0 ))>
 						<iconify class="gb-search-glyph" icon="lucide:search" Size=@(13) Color="#a79dbe" />
 						<TextEntry class="gb-search-input" @ref="browseSearchInput" Text="@browseSearchQuery" Placeholder="Search name or tag" />
 					</div>
-					<div class="gp-chip @(browseSort == "members" ? "on" : "")" onmouseover=@(() => SoundManager.PlayHover()) onclick=@(() => { browseSort = "members"; SoundManager.PlayClick(); })>
+					<div class="gp-chip @(browseSort == "members" ? "on" : "") @(IsBrowseHeadKb( 1 ) ? "guild-kb-selected" : "")" onmouseover=@(() => BrowseHeadHover( 1 )) onclick=@(() => SetBrowseSort( "members" ))>
 						<span class="gp-chip-label">MEMBERS</span>
 					</div>
-					<div class="gp-chip @(browseSort == "level" ? "on" : "")" onmouseover=@(() => SoundManager.PlayHover()) onclick=@(() => { browseSort = "level"; SoundManager.PlayClick(); })>
+					<div class="gp-chip @(browseSort == "level" ? "on" : "") @(IsBrowseHeadKb( 2 ) ? "guild-kb-selected" : "")" onmouseover=@(() => BrowseHeadHover( 2 )) onclick=@(() => SetBrowseSort( "level" ))>
 						<span class="gp-chip-label">LEVEL</span>
 					</div>
+					<div class="gp-sort-hint"><span class="gp-back-cap">R</span></div>
 				}
 			</div>
 		</div>
@@ -345,7 +364,7 @@ else if ( guildView == "browse" )
 						}
 						<!-- Actions — BbButtons (run 3): JOIN secondary 44 (Open /
 						     Request) · BACK TO LIST ghost 44. kb: [join], back. -->
-						<div class="gb-dactions">
+						<div class="gb-dactions" onmouseover=@(( e ) => BrowseDetailHover( e, detailBackIdx ))>
 							@if ( !gbInGuild )
 							{
 								@if ( detailLocked )
@@ -354,10 +373,10 @@ else if ( guildView == "browse" )
 								}
 								else
 								{
-									<BbButton Tier="secondary" Size=@(44) Label=@detailJoinLabel Class="gb-dbtn" Disabled=@gbGated HoverSound=@false Focused=@(IsBrowseDetailKb( 0 )) OnClick=@OnDetailJoinPressed />
+									<BbButton Tier="secondary" Size=@(44) Label=@detailJoinLabel Class="gb-dbtn gb-djoin" Disabled=@gbGated HoverSound=@false Focused=@(IsBrowseDetailKb( 0 )) OnClick=@OnDetailJoinPressed />
 								}
 							}
-							<BbButton Tier="ghost" Size=@(44) Label=@L("ui.guild.back_to_list") Class="gb-dbtn" HoverSound=@false Focused=@(IsBrowseDetailKb( detailBackIdx )) OnClick=@OnDetailBackPressed />
+							<BbButton Tier="ghost" Size=@(44) Label=@L("ui.guild.back_to_list") Class="gb-dbtn gb-dback" HoverSound=@false Focused=@(IsBrowseDetailKb( detailBackIdx )) OnClick=@OnDetailBackPressed />
 						</div>
 					</div>
 					</div>
@@ -368,9 +387,10 @@ else if ( guildView == "browse" )
 					<div class="gb-list" @ref="browseScrollRef">
 						@if ( gbGuilds.Count == 0 )
 						{
-							<div class="gb-empty">
+							<!-- LANE: input — the empty list's ONE stop is REFRESH (grid 0). -->
+							<div class="gb-empty" onmouseover=@(( e ) => BrowseRowHover( 0, e ))>
 								<span class="gb-empty-t">@(isLoadingGuilds ? "Loading guilds…" : string.IsNullOrWhiteSpace( browseSearchQuery ) ? "No guilds are recruiting yet." : "No guild matches that search.")</span>
-								<BbButton Tier="ghost" Size=@(44) Label="REFRESH" Class="gb-refresh" Disabled=@isLoadingGuilds HoverSound=@false OnClick=@OnRefreshGuildsPressed />
+								<BbButton Tier="ghost" Size=@(44) Label="REFRESH" Class="gb-refresh" Disabled=@isLoadingGuilds HoverSound=@false Focused=@(IsBrowseGridKb( 0 )) OnClick=@OnRefreshGuildsPressed />
 							</div>
 						}
 						@for ( int gi = 0; gi < gbGuilds.Count; gi++ )
@@ -386,7 +406,7 @@ else if ( guildView == "browse" )
 							var gJoinLabel = g.JoinMode == GuildJoinMode.Open ? "JOIN" : "REQUEST";
 							var gOnline = g.OnlineCount > 0 ? $"{g.OnlineCount} ONLINE" : "";
 							bool gRowKb = IsBrowseGridKb( gIdx );
-							<div class="gb-row @(gi % 2 == 1 ? "alt" : "") @(gRowKb ? "guild-kb-selected" : "")" onclick=@(() => OpenGuildRow( g ))>
+							<div class="gb-row @(gi % 2 == 1 ? "alt" : "") @(gRowKb ? "guild-kb-selected" : "")" onmouseover=@(( e ) => BrowseRowHover( gIdx, e )) onclick=@(() => OpenGuildRow( g ))>
 								<div class="gb-emblem @(gBeast != null ? "beast-tile" : "")" style="background-color: @gFill">
 									@if ( gBeast != null )
 									{
@@ -422,7 +442,7 @@ else if ( guildView == "browse" )
 									}
 									else
 									{
-										<BbButton Tier="secondary" Size=@(34) Label=@gJoinLabel Class="gb-join" Disabled=@gbGated HoverSound=@false OnClick=@(() => RequestJoinRow( g )) />
+										<BbButton Tier="secondary" Size=@(34) Label=@gJoinLabel Class="gb-join" Disabled=@gbGated HoverSound=@false Focused=@(gRowKb && _kbBrowseBtn == 1) OnClick=@(() => RequestJoinRow( g )) />
 									}
 								</div>
 							</div>
@@ -457,11 +477,18 @@ else if ( guildView == "myguild" )
 		     Picks made here (colour · beast · description · join mode · min
 		     level) are applied the moment the guild lands (OnRefresh →
 		     ApplyCreatePicks — CreateGuild takes name + tag only, Core untouched).
-		     LANE: input — kb rows (TickCreateInput, CreateRow* consts):
+		     LANE: input (run 3) — kb rows (TickCreateInput, CreateRow* consts):
 		     name 0 · tag 1 · color 2 · beast 3 · description 4 · joinmode 5 ·
-		     minlevel 6 · FOUND 7. Name/tag/description are TextEntry stops
-		     (Space focuses, Tab/Enter/Esc hand back); A/D cycle the chip rows.
-		     Q chain create → landing is wired; the hub leg is input's.
+		     minlevel 6 · FOUND 7 — one column, W/S walk it (the right slab's
+		     FOUND is the column's last stop: nothing else lives on the right).
+		     Name/tag/description are TextEntry stops (Space focuses,
+		     Tab/Enter/Esc hand back, cursor stays); A/D cycle the four chip
+		     rows (verified: the TickCreateInput switch handles COLOR / BEAST /
+		     JOIN / LEVEL); Space on FOUND = create (gated → deny blip). Hover
+		     moves the same cursor: CreateHover on every row host (mouse mode
+		     only). Q → landing (claimed). Seeded on NAME at open (Tick view
+		     edge); after a successful create the plaza mounts and the view
+		     edge seeds ITS first zone (create → plaza only).
 		     LANE: motion — the slabs carry the settings sub-view's gpZone*
 		     rungs by class (gs-ident / gs-recruit); nothing new assigned.
 		     LANE: color — FOUND is the page's one gold; disabled = the
@@ -564,15 +591,15 @@ else if ( guildView == "myguild" )
 										<span class="gs-note">name 3–24 letters · tag 2–5, shown as [TAG] beside your name</span>
 									</div>
 									<div class="gc-fields">
-										<div class="gc-field @(IsCreateKb( CreateRowName ) ? "guild-kb-selected" : "")">
+										<div class="gc-field @(IsCreateKb( CreateRowName ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowName ))>
 											<TextEntry class="gc-name-input" @ref="createNameInput" Text=@createName Placeholder="Guild name" MaxLength=@(24) />
 										</div>
-										<div class="gc-field @(IsCreateKb( CreateRowTag ) ? "guild-kb-selected" : "")">
+										<div class="gc-field @(IsCreateKb( CreateRowTag ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowTag ))>
 											<TextEntry class="gc-tag-input" @ref="createTagInput" Text=@createTag Placeholder="TAG" MaxLength=@(5) />
 										</div>
 									</div>
 									<span class="gs-kick gc-kick-color">COLOR</span>
-									<div class="gs-chips @(IsCreateKb( CreateRowColor ) ? "guild-kb-selected" : "")">
+									<div class="gs-chips @(IsCreateKb( CreateRowColor ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowColor ))>
 										@foreach ( var color in EmblemColors )
 										{
 											var c = color;
@@ -585,7 +612,7 @@ else if ( guildView == "myguild" )
 									<span class="gs-kick gs-kick-beast">BEAST</span>
 									<!-- BEAST — your own roster (GetEmblemBeastChoices without a
 									     guild: favorite first, then roster order). -->
-									<div class="gs-chips tiles @(IsCreateKb( CreateRowBeast ) ? "guild-kb-selected" : "")">
+									<div class="gs-chips tiles @(IsCreateKb( CreateRowBeast ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowBeast ))>
 										@foreach ( var species in gcChoices )
 										{
 											var s = species;
@@ -622,14 +649,14 @@ else if ( guildView == "myguild" )
 									<span class="gs-kick">DESCRIPTION</span>
 									<span class="gs-note">what tamers read before they ask to join</span>
 								</div>
-								<div class="gs-entry-wrap @(IsCreateKb( CreateRowDesc ) ? "guild-kb-selected" : "")">
+								<div class="gs-entry-wrap @(IsCreateKb( CreateRowDesc ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowDesc ))>
 									<TextEntry class="gs-desc-input" @ref="createDescInput" Text=@createDescription Placeholder="Pitch your guild to recruits…" Multiline=@(true) MaxLength=@(200) />
 									<div class="gs-counter"><span class="gs-counter-t">@gcCounter</span></div>
 								</div>
 								<div class="gs-kick-row gs-gap-join">
 									<span class="gs-kick">JOIN MODE</span>
 								</div>
-								<div class="gs-chips @(IsCreateKb( CreateRowJoin ) ? "guild-kb-selected" : "")">
+								<div class="gs-chips @(IsCreateKb( CreateRowJoin ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowJoin ))>
 									@foreach ( var joinMode in JoinModeChips )
 									{
 										var mode = joinMode;
@@ -642,7 +669,7 @@ else if ( guildView == "myguild" )
 								<div class="gs-kick-row gs-gap-level">
 									<span class="gs-kick">MIN LEVEL</span>
 								</div>
-								<div class="gs-chips @(IsCreateKb( CreateRowLevel ) ? "guild-kb-selected" : "")">
+								<div class="gs-chips @(IsCreateKb( CreateRowLevel ) ? "guild-kb-selected" : "")" onmouseover=@(() => CreateHover( CreateRowLevel ))>
 									@foreach ( var level in MinLevelChips )
 									{
 										var lvl = level;
@@ -664,7 +691,7 @@ else if ( guildView == "myguild" )
 						{
 							<div class="gc-err-row"><span class="gc-err">@errorMessage</span></div>
 						}
-						<div class="gc-foot">
+						<div class="gc-foot" onmouseover=@(( e ) => CreateFootHover( e ))>
 							<span class="gc-cost">@gcCostLine</span>
 							<BbButton Tier="primary" Size=@(44) Label="FOUND GUILD" Class="gs-save" Disabled=@(!gcCanCreate) HoverSound=@false Focused=@(IsCreateKb( CreateRowFound )) OnClick=@OnCreateGuild />
 						</div>
@@ -2259,11 +2286,29 @@ else if ( guildView == "myguild" )
 	// Save/Cancel grammar); W/S keep the column while walking rows; entering
 	// the zone from above/below/the REQUESTS chip re-seats on ACCEPT.
 	private int _kbPendBtn = 0;
+	// LANE: input (run 3) — the NO-GUILD views' sub-cursors + memories.
+	// Landing invite row: 0 = ACCEPT (the row's verb) · 1 = DECLINE.
+	private int _kbLandBtn = 0;
+	// Browse row: 0 = the row (Space opens the detail) · 1 = its JOIN/REQUEST.
+	private int _kbBrowseBtn = 0;
+	// Browse head stop last used (search 0 · MEMBERS 1 · LEVEL 2) — W off
+	// row 0 returns THERE, not always to the search chip.
+	private int _kbBrowseHeadIdx = 0;
+	// The row that opened the detail — BACK re-seats it (list order is stable).
+	private int _browseReturnIdx = 0;
+	// Landing invite count seen last Tick — a shrinking list (ACCEPT/DECLINE
+	// landed) keeps the cursor in the rows instead of sliding it onto CREATE.
+	private int _landPrevN = -1;
+	// View key seen last Tick (landing · browse · browse-detail · create ·
+	// plaza) — a change is the view's OPEN EDGE (DOC-5 §12): each view seeds
+	// its cursor there, whether a key or a click opened it.
+	private string _kbViewEdge = "";
 	// Tracks the settings sub-view open edge so the row cursor resets to the
 	// first row whenever the drawer opens — by keyboard OR by mouse click.
 	private bool _settingsWasOpen = false;
 	// Scroll containers for keyboard scroll-follow (UiGridScroll).
 	private Panel browseScrollRef;   // .gb-list — browse guild rows (run 3)
+	private Panel landingInvRef;     // .gl-inv-list — landing invite rows (run 3, 9+ scroll)
 	private Panel rosterScrollRef;   // .gp-roster-list — roster rows
 	private Panel logScrollRef;      // .gp-log-list — activity log rows
 	private Panel weekBodyRef;       // .gp-week-body — goal rows (A/D column-hop rect math)
@@ -2388,6 +2433,8 @@ else if ( guildView == "myguild" )
 		WireTextEntry( motdDraftInput, () => { SaveMotd(); SoundManager.PlaySuccess(); StateHasChanged(); } );
 		// Invite picker search: Enter/Esc hand the keyboard back to row 0.
 		WireTextEntry( pickerSearchInput, () => BlurToRow( pickerSearchInput ) );
+		// Browse search chip (run 3): Enter/Esc hand back to head stop 0.
+		WireTextEntry( browseSearchInput, () => BlurToRow( browseSearchInput ) );
 	}
 
 	public override void Tick()
@@ -2403,6 +2450,27 @@ else if ( guildView == "myguild" )
 			if ( t != browseSearchQuery )
 			{
 				browseSearchQuery = t;
+			}
+		}
+		// LANE: input (run 3) — the search chip's typing state is READ off the
+		// entry (TypingOwnsKeys grammar; no Tab-toggle flag any more). Drives
+		// the .guild-kb-search-focused class only.
+		_kbSearchFocused = guildView == "browse" && viewingGuild == null && browseSearchInput != null && browseSearchInput.HasFocus;
+
+		// LANE: input (run 3, DOC-5 §12) — VIEW OPEN EDGES. The no-guild views
+		// seed their cursor when they appear (by key OR click): landing →
+		// BROWSE · browse → row 0 (or the row that opened the detail, coming
+		// back) · detail → its first button · create → NAME · plaza → its first
+		// zone, but ONLY arriving from a successful create (the plaza's own
+		// open behaviour — first nav press lights the cursor — is untouched).
+		{
+			string viewKey = guildView == "browse" ? ( viewingGuild != null ? "browse-detail" : "browse" )
+				: guildView == "myguild" ? ( InGuildLive() ? "plaza" : "create" )
+				: "landing";
+			if ( viewKey != _kbViewEdge )
+			{
+				SeedViewCursor( viewKey, _kbViewEdge );
+				_kbViewEdge = viewKey;
 			}
 		}
 
@@ -2586,6 +2654,8 @@ else if ( guildView == "myguild" )
 		hash.Add( _kbZone );
 		hash.Add( _kbIndex );
 		hash.Add( _kbPendBtn );     // PENDING row ACCEPT/DENY sub-cursor (BbButton Focused)
+		hash.Add( _kbLandBtn );     // landing invite row ACCEPT/DECLINE sub-cursor
+		hash.Add( _kbBrowseBtn );   // browse row ⇄ JOIN sub-cursor
 		hash.Add( _kbSearchFocused );
 		hash.Add( _gpKbdMode );     // .kbd-mode/.mouse-mode root class
 		hash.Add( _ladderKbIndex ); // perk-ladder row cursor
@@ -2646,10 +2716,12 @@ else if ( guildView == "myguild" )
 	// KEYBOARD NAVIGATION
 	// Dispatched from OnlineHubPanel.TickInput() while the Guild section is up.
 	// Per-view scheme:
-	//   landing — W/S walk BROWSE → invite ACCEPT/DECLINE pairs → CREATE,
-	//             Space activates. Q falls through to GameHUD (exit Guild section).
-	//   browse  — Tab toggles search chip ⇄ guild list; W/S walk the rows,
-	//             Space opens the detail (Up/Down walks join/back there); Q backs out.
+	//   landing — LEFT column BROWSE → invite rows (A/D = ACCEPT ⇄ DECLINE),
+	//             RIGHT column CREATE (D from the left); Space activates;
+	//             Q → hub (claimed). Seeded on BROWSE at open.
+	//   browse  — head (search · MEMBERS · LEVEL; A/D) above the rows (W/S,
+	//             A/D = row ⇄ JOIN); Space = detail / join; R = sort toggle;
+	//             Q → landing/plaza (claimed). Detail: A/D+W/S JOIN ⇄ BACK.
 	//   myguild (plaza) — Tab cycles zones (tiles → roster → perks → danger);
 	//             arrows nav within a zone; Space activates; Q backs to landing
 	//             or exits the section if already at the plaza root.
@@ -2715,42 +2787,128 @@ else if ( guildView == "myguild" )
 		StateHasChanged();
 	}
 
-	// ── LANDING (run 3) ─────────────────────────────────────────────────────
-	// Stops in screen order — the markup shares this map (stale-map law):
-	//   BROWSE (0) · ACCEPT / DECLINE per invite (1+2i / 2+2i) · CREATE (1+2n).
-	// W/S walk it as one column. Q falls through to GameHUD (section exit).
-	// LANE: input — A/D: BROWSE ⇄ CREATE column hop + the ACCEPT ⇄ DECLINE pair.
+	// ── LANDING (run 3, LANE: input) ────────────────────────────────────────
+	// The cursor graph is the screen (DOC-5 §21). Two slabs side by side:
+	//   LEFT  column — BROWSE (0) · invite ROWS (1..n; the row is the stop,
+	//                  _kbLandBtn = ACCEPT 0 / DECLINE 1)      W/S walk it
+	//   RIGHT column — CREATE (n+1), the slab's only stop, at BROWSE's height
+	// A/D: BROWSE → D → CREATE · CREATE → A → BROWSE (same height, honest) ·
+	// on a row A/D step ACCEPT ⇄ DECLINE and D past DECLINE hops to CREATE
+	// (the plaza's column-hop grammar: one stop on the right, so it takes
+	// it). W/S on CREATE and S past the last left stop are silent clamps —
+	// nothing sits there on screen. The markup shares this map (stale-map
+	// law). Q → hub (OnBack), claimed so it never reaches the SYSTEM menu.
 	private void TickLandingInput()
 	{
 		var gm = GuildManager.Instance;
 		var invites = gm?.PendingInvites ?? new List<GuildInvite>();
-		int count = invites.Count * 2 + 2;
+		int n = invites.Count;
+		int createIdx = n + 1;
 
-		if ( NavPressed() ) StampKb();
-
-		if ( !_kbActive || _kbZone != "landing" )
+		// Q — leave the guild page for the hub (the landing IS the page root
+		// when you have no guild). Claimed: an unclaimed Q here would reach
+		// GameHUD and open the SYSTEM menu on top of the hub's own back.
+		if ( Input.Pressed( "Menu" ) )
 		{
-			if ( NavPressed() ) EngageKb( "landing" );
+			OnBackClicked();
+			GameHUD.PanelHandledBackKey = true;
 			return;
 		}
 
-		if ( Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
-		if ( Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
+		if ( NavPressed() ) StampKb();
+
+		// The invite list is volatile (ACCEPT/DECLINE land async, the server
+		// prunes). A cursor on a row that vanished stays in the ROWS — never
+		// slides onto CREATE because the index arithmetic moved under it.
+		if ( _landPrevN >= 0 && n < _landPrevN && _kbActive && _kbZone == "landing" && _kbIndex >= 1 && _kbIndex <= _landPrevN )
+		{
+			_kbIndex = Math.Min( _kbIndex, n ); // n == 0 → BROWSE
+			_kbLandBtn = 0;
+			StateHasChanged();
+		}
+		_landPrevN = n;
+
+		if ( !_kbActive || _kbZone != "landing" )
+		{
+			if ( NavPressed() ) { SeedViewCursor( "landing", _kbViewEdge ); }
+			return;
+		}
+
+		_kbIndex = Math.Clamp( _kbIndex, 0, createIdx );
+		bool onCreate = _kbIndex == createIdx;
+		bool onRow = _kbIndex >= 1 && _kbIndex <= n;
+		if ( !onRow ) _kbLandBtn = 0;
+
+		// W/S — the LEFT column only (0..n). CREATE has nothing above/below.
+		if ( Input.Pressed( "Up" ) || Input.Pressed( "Down" ) )
+		{
+			if ( onCreate ) return;
+			int next = Math.Clamp( _kbIndex + ( Input.Pressed( "Down" ) ? 1 : -1 ), 0, n );
+			if ( next == _kbIndex ) return; // top/bottom of the column — silent
+			_kbIndex = next;
+			_kbLandBtn = 0; // entering a row lands on its verb
+			if ( _kbIndex >= 1 ) UiGridScroll.ScrollIndexIntoView( landingInvRef, _kbIndex - 1, "gl-irow" );
+			else if ( landingInvRef != null ) landingInvRef.ScrollOffset = new Vector2( landingInvRef.ScrollOffset.x, 0f );
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+
+		// A/D — the column hop + the ACCEPT ⇄ DECLINE pair.
+		if ( Input.Pressed( "Left" ) )
+		{
+			if ( onCreate ) { _kbIndex = 0; _kbLandBtn = 0; SoundManager.PlayHover(); StateHasChanged(); }
+			else if ( onRow && _kbLandBtn == 1 ) { _kbLandBtn = 0; SoundManager.PlayHover(); StateHasChanged(); }
+			return; // BROWSE / ACCEPT — nothing to the left
+		}
+		if ( Input.Pressed( "Right" ) )
+		{
+			if ( onCreate ) return; // nothing to the right
+			if ( onRow && _kbLandBtn == 0 ) { _kbLandBtn = 1; SoundManager.PlayHover(); StateHasChanged(); return; }
+			_kbIndex = createIdx; // BROWSE → CREATE · DECLINE → CREATE (column hop)
+			_kbLandBtn = 0;
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
 
 		if ( UiInput.ConfirmPressed() )
 		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
-			int createIdx = count - 1;
 			if ( _kbIndex == 0 ) { OnBrowsePressed(); return; }
-			if ( _kbIndex == createIdx ) { OnCreatePressed(); return; }
-			var invite = invites[( _kbIndex - 1 ) / 2];
-			if ( ( _kbIndex - 1 ) % 2 == 0 ) { AcceptInvite( invite ); SoundManager.PlaySelect(); }
-			else { DeclineInvite( invite ); SoundManager.PlayDeny(); }
+			if ( onCreate ) { OnCreatePressed(); return; } // gated → deny blip inside
+			var invite = invites[_kbIndex - 1];
+			if ( _kbLandBtn == 0 )
+			{
+				// ACCEPT is Disabled while the join gate fails (level / hop
+				// cooldown) — the same check the markup dims it with.
+				bool canJoin = GetTamerLevel() >= GuildManager.MIN_LEVEL_TO_JOIN && !( gm?.IsOnHopCooldown() ?? false );
+				if ( !canJoin ) { SoundManager.PlayDeny(); return; }
+				AcceptInvite( invite );
+				SoundManager.PlaySelect();
+			}
+			else
+			{
+				DeclineInvite( invite );
+				SoundManager.PlayDeny();
+			}
 			StateHasChanged();
 		}
 	}
 
-	// ── BROWSE ───────────────────────────────────────────────────────────────
+	// ── BROWSE (run 3, LANE: input) ─────────────────────────────────────────
+	// Two zones, one cursor, geometry-honest (DOC-5 §21):
+	//   "browse-head" — search chip 0 · MEMBERS 1 · LEVEL 2 (the header's
+	//                   right slot). A/D across; S → the list; W silent.
+	//                   Space: 0 focuses the TextEntry (TypingOwnsKeys
+	//                   grammar — Tab/Enter/Esc hand back, cursor stays on
+	//                   the chip; Q types a 'q'); 1/2 apply that sort.
+	//   "browse-grid" — the rows (or the ONE REFRESH stop when the list is
+	//                   empty). W/S walk rows with scroll-follow; W off row
+	//                   0 → the head stop last used; A/D = row ⇄ its
+	//                   JOIN/REQUEST (_kbBrowseBtn; rows without a button
+	//                   hold 0). Space: row → the detail · button → join.
+	// R toggles the sort pair from anywhere (the cap sits by LEVEL).
+	// Q → landing (or the plaza when in a guild) — claimed.
 	private void TickBrowseInput()
 	{
 		// Guild-detail sub-view owns the keyboard while a guild is selected.
@@ -2758,16 +2916,18 @@ else if ( guildView == "myguild" )
 		{
 			if ( Input.Pressed( "Menu" ) )
 			{
-				SoundManager.PlayBack();
-				viewingGuild = null;
-				ResetKb();
+				OnDetailBackPressed();
 				GameHUD.PanelHandledBackKey = true;
-				StateHasChanged();
 				return;
 			}
 			TickBrowseDetailInput();
 			return;
 		}
+
+		// Typing owns the keyboard while the search entry has focus (Q types
+		// a 'q'; Tab here / Enter+Esc via the entry's events hand it back).
+		// A click-focus also drags the cursor onto head stop 0.
+		if ( TypingOwnsKeys( browseSearchInput, 0, "browse-head" ) ) return;
 
 		// Q — back to the plaza / landing (internal back, claim the key).
 		if ( Input.Pressed( "Menu" ) )
@@ -2779,59 +2939,131 @@ else if ( guildView == "myguild" )
 
 		if ( NavPressed() ) StampKb();
 
-		// Tab — toggle focus between the search chip and the guild list.
-		if ( Input.Pressed( "Score" ) )
+		// R — the page's cycle key: toggle the sort pair (silent; the cap by
+		// LEVEL advertises it). The cursor stays where it is.
+		if ( Input.Pressed( "Reload" ) )
 		{
-			_kbSearchFocused = !_kbSearchFocused;
-			if ( _kbSearchFocused )
+			SetBrowseSort( browseSort == "members" ? "level" : "members" );
+			return;
+		}
+
+		var guilds = GetVisibleGuilds();
+		int rows = guilds.Count;
+		int gridCount = Math.Max( 1, rows ); // 0 rows → the REFRESH stop
+
+		bool inHead = _kbActive && _kbZone == "browse-head";
+		bool inGrid = _kbActive && _kbZone == "browse-grid";
+		if ( !inHead && !inGrid )
+		{
+			if ( NavPressed() ) SeedViewCursor( "browse", _kbViewEdge );
+			return;
+		}
+
+		if ( inHead )
+		{
+			_kbIndex = Math.Clamp( _kbIndex, 0, 2 );
+			_kbBrowseHeadIdx = _kbIndex;
+			if ( Input.Pressed( "Left" ) ) { if ( _kbIndex > 0 ) { _kbIndex--; _kbBrowseHeadIdx = _kbIndex; SoundManager.PlayHover(); StateHasChanged(); } return; }
+			if ( Input.Pressed( "Right" ) ) { if ( _kbIndex < 2 ) { _kbIndex++; _kbBrowseHeadIdx = _kbIndex; SoundManager.PlayHover(); StateHasChanged(); } return; }
+			if ( Input.Pressed( "Up" ) ) return; // nothing above the header
+			if ( Input.Pressed( "Down" ) )
 			{
-				browseSearchInput?.Focus();
-				_kbActive = false;
+				_kbZone = "browse-grid";
+				_kbIndex = 0;
+				_kbBrowseBtn = 0;
+				if ( browseScrollRef != null ) browseScrollRef.ScrollOffset = new Vector2( browseScrollRef.ScrollOffset.x, 0f );
+				SoundManager.PlayHover();
+				StateHasChanged();
+				return;
 			}
-			else
+			if ( UiInput.ConfirmPressed() )
 			{
-				browseSearchInput?.Blur();
-				EngageKb( "browse-grid" );
+				switch ( _kbIndex )
+				{
+					case 0: RequestEntryFocus( browseSearchInput ); break;
+					case 1: SetBrowseSort( "members" ); break;
+					case 2: SetBrowseSort( "level" ); break;
+				}
 			}
+			return;
+		}
+
+		// ── the grid ──
+		_kbIndex = Math.Clamp( _kbIndex, 0, gridCount - 1 );
+		bool hasBtn = rows > 0 && BrowseRowHasJoin( guilds[_kbIndex] );
+		if ( !hasBtn && _kbBrowseBtn != 0 ) { _kbBrowseBtn = 0; StateHasChanged(); }
+
+		if ( Input.Pressed( "Up" ) )
+		{
+			if ( _kbIndex == 0 )
+			{
+				// Off the top of the list → the header's right slot.
+				_kbZone = "browse-head";
+				_kbIndex = Math.Clamp( _kbBrowseHeadIdx, 0, 2 );
+				_kbBrowseBtn = 0;
+				if ( browseScrollRef != null ) browseScrollRef.ScrollOffset = new Vector2( browseScrollRef.ScrollOffset.x, 0f );
+				SoundManager.PlayHover();
+				StateHasChanged();
+				return;
+			}
+			_kbIndex--;
+			_kbBrowseBtn = 0;
+			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex, "gb-row" );
 			SoundManager.PlayHover();
 			StateHasChanged();
 			return;
 		}
-
-		// While the search field owns typing, swallow nav so the player can
-		// type freely — only Tab (above) / Q move focus out.
-		if ( _kbSearchFocused ) return;
-
-		var guilds = GetVisibleGuilds();
-		if ( guilds.Count == 0 ) return;
-
-		if ( !_kbActive || _kbZone != "browse-grid" )
+		if ( Input.Pressed( "Down" ) )
 		{
-			if ( NavPressed() ) EngageKb( "browse-grid" );
-			return;
-		}
-
-		// Run 3: ONE flat row list (zone id kept). W/S walk rows; Space opens
-		// the detail. LANE: input — A/D → the focused row's JOIN sub-cursor;
-		// R → the MEMBERS / LEVEL sort pair.
-		if ( Input.Pressed( "Up" ) ) MoveKb( guilds.Count, -1 );
-		else if ( Input.Pressed( "Down" ) ) MoveKb( guilds.Count, 1 );
-		else if ( UiInput.ConfirmPressed() )
-		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, guilds.Count - 1 );
-			ViewGuildDetail( guilds[_kbIndex] );
-			ResetKb();
-			return;
-		}
-
-		// Keep the focused row on screen — .gb-row rows are the DIRECT
-		// children of the .gb-list scroller.
-		if ( NavPressed() )
+			if ( _kbIndex >= gridCount - 1 ) return; // bottom — silent
+			_kbIndex++;
+			_kbBrowseBtn = 0;
 			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex, "gb-row" );
+			SoundManager.PlayHover();
+			StateHasChanged();
+			return;
+		}
+		if ( Input.Pressed( "Left" ) )
+		{
+			if ( _kbBrowseBtn == 1 ) { _kbBrowseBtn = 0; SoundManager.PlayHover(); StateHasChanged(); }
+			return;
+		}
+		if ( Input.Pressed( "Right" ) )
+		{
+			if ( hasBtn && _kbBrowseBtn == 0 ) { _kbBrowseBtn = 1; SoundManager.PlayHover(); StateHasChanged(); }
+			return;
+		}
+
+		if ( UiInput.ConfirmPressed() )
+		{
+			if ( rows == 0 )
+			{
+				if ( isLoadingGuilds ) { SoundManager.PlayDeny(); return; }
+				OnRefreshGuildsPressed();
+				return;
+			}
+			var g = guilds[_kbIndex];
+			if ( _kbBrowseBtn == 1 && hasBtn )
+			{
+				// JOIN is Disabled under the same gate the markup dims it with.
+				if ( BrowseJoinGated() ) { SoundManager.PlayDeny(); return; }
+				RequestJoinRow( g );
+				return;
+			}
+			_browseReturnIdx = _kbIndex;
+			ViewGuildDetail( g );
+			ResetKb(); // the Tick view edge seeds "browse-detail"
+		}
 	}
 
+	// Detail: [JOIN/REQUEST] · BACK TO LIST — a two-stop ROW (.gb-dactions is
+	// a flex row), so A/D step it; W/S step it too (nothing else is
+	// reachable vertically, and the pair is the only thing on the page).
+	// Q is handled by the caller (→ list, claimed).
 	private void TickBrowseDetailInput()
 	{
+		if ( NavPressed() ) StampKb();
+
 		var inGuild = InGuildLive();
 		bool locked = viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly;
 		bool canJoin = !inGuild && !locked;
@@ -2839,30 +3071,202 @@ else if ( guildView == "myguild" )
 
 		if ( !_kbActive || _kbZone != "browse-detail" )
 		{
-			if ( NavPressed() ) EngageKb( "browse-detail" );
+			if ( NavPressed() ) SeedViewCursor( "browse-detail", _kbViewEdge );
 			return;
 		}
 
-		if ( Input.Pressed( "Up" ) ) { MoveKb( count, -1 ); return; }
-		if ( Input.Pressed( "Down" ) ) { MoveKb( count, 1 ); return; }
+		_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Up" ) ) { if ( _kbIndex > 0 ) MoveKb( count, -1 ); return; }
+		if ( Input.Pressed( "Right" ) || Input.Pressed( "Down" ) ) { if ( _kbIndex < count - 1 ) MoveKb( count, 1 ); return; }
 
 		if ( UiInput.ConfirmPressed() )
 		{
-			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
 			if ( canJoin && _kbIndex == 0 )
 			{
-				RequestJoin( viewingGuild );
-				SoundManager.PlaySelect();
-				viewingGuild = null;
-				ResetKb();
+				if ( BrowseJoinGated() ) { SoundManager.PlayDeny(); return; }
+				OnDetailJoinPressed();
 			}
-			else // back to list
+			else OnDetailBackPressed();
+		}
+	}
+
+	// ── No-guild view helpers (LANE: input, run 3) ──────────────────────────
+	// The row shows a JOIN/REQUEST button (not in a guild; Open / Request).
+	private bool BrowseRowHasJoin( GuildAdvertisement g )
+		=> g != null && !InGuildLive() && g.JoinMode != GuildJoinMode.Closed && g.JoinMode != GuildJoinMode.InviteOnly;
+
+	// The JOIN buttons' Disabled gate (markup gbGated): in a guild, under
+	// level, or on the hop cooldown.
+	private bool BrowseJoinGated()
+		=> InGuildLive() || GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN || ( GuildManager.Instance?.IsOnHopCooldown() ?? false );
+
+	// MEMBERS / LEVEL — one path for click, Space and R. Re-selecting the
+	// active sort is a quiet no-op.
+	private void SetBrowseSort( string sort )
+	{
+		if ( browseSort == sort ) return;
+		browseSort = sort;
+		SoundManager.PlayClick();
+		if ( _kbActive && _kbZone == "browse-grid" && browseScrollRef != null )
+			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex, "gb-row" );
+		StateHasChanged();
+	}
+
+	// View OPEN EDGE seeding (DOC-5 §12) — called from Tick when the view key
+	// changes, and by the engage branches when a nav key arrives with no
+	// cursor lit. `prev` is the view we came from.
+	private void SeedViewCursor( string key, string prev )
+	{
+		switch ( key )
+		{
+			case "landing":
+				_kbActive = true; _kbZone = "landing"; _kbIndex = 0; _kbLandBtn = 0;
+				_landPrevN = GuildManager.Instance?.PendingInvites?.Count ?? 0;
+				break;
+			case "browse":
 			{
-				SoundManager.PlayBack();
-				viewingGuild = null;
-				ResetKb();
+				_kbActive = true; _kbZone = "browse-grid"; _kbBrowseBtn = 0;
+				int rows = GetVisibleGuilds().Count;
+				_kbIndex = prev == "browse-detail" ? Math.Clamp( _browseReturnIdx, 0, Math.Max( 0, rows - 1 ) ) : 0;
+				if ( prev != "browse-detail" ) _kbBrowseHeadIdx = 0;
+				if ( _kbIndex > 0 ) UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex, "gb-row" );
+				break;
 			}
-			StateHasChanged();
+			case "browse-detail":
+				_kbActive = true; _kbZone = "browse-detail"; _kbIndex = 0;
+				break;
+			case "create":
+				_kbActive = true; _kbZone = "create"; _kbIndex = CreateRowName;
+				break;
+			case "plaza":
+				// Only the create → plaza hand-off seeds (a fresh guild, the
+				// player's hands still on WASD). Any other arrival keeps the
+				// plaza's shipped behaviour (first nav press lights it).
+				if ( prev != "create" ) return;
+				{
+					var gm = GuildManager.Instance;
+					var members = gm?.Members ?? new List<GuildMemberInfo>();
+					_kbActive = true; _kbZone = "chips"; _kbIndex = 0;
+					if ( PlazaZoneCount( "chips", gm, members ) <= 0 ) _kbZone = "unlock";
+				}
+				break;
+			default:
+				return;
+		}
+		StateHasChanged();
+	}
+
+	// ── One-cursor hover for the no-guild views (DOC-5 §6) — same contract as
+	//    PlazaHover: ignored while the keyboard drove last (synthetic hovers
+	//    under a parked pointer during scroll-follow), moves the SAME
+	//    zone/index the keys walk, guard against re-firing on the same stop.
+	private bool SetHoverCursor( string zone, int idx )
+	{
+		if ( _kbActive && _kbZone == zone && _kbIndex == idx ) return false;
+		_kbActive = true;
+		_kbZone = zone;
+		_kbIndex = idx;
+		SoundManager.PlayHover();
+		StateHasChanged();
+		return true;
+	}
+
+	// Landing slab bodies — the two CTAs are BbButtons (no hover callback of
+	// their own), so the body catches the bubbled onmouseover and walks the
+	// target: .gl-cta inside .gl-slab-create → CREATE, else → BROWSE. Rows
+	// have their own handler (a target inside .gl-irow is ignored here).
+	private void LandingHover( PanelEvent e )
+	{
+		if ( _gpKbdMode || guildView != "landing" ) return;
+		bool isCta = false, inCreate = false;
+		for ( var p = e?.Target; p != null; p = p.Parent )
+		{
+			if ( p.HasClass( "gl-irow" ) ) return;
+			if ( p.HasClass( "gl-cta" ) ) isCta = true;
+			if ( p.HasClass( "gl-slab-create" ) ) { inCreate = true; break; }
+			if ( p.HasClass( "gl-slab" ) ) break;
+		}
+		if ( !isCta ) return;
+		int n = GuildManager.Instance?.PendingInvites?.Count ?? 0;
+		if ( SetHoverCursor( "landing", inCreate ? n + 1 : 0 ) ) _kbLandBtn = 0;
+	}
+
+	// Landing invite row — the row is the stop; over ACCEPT (.gp-pacc) or
+	// DECLINE (.gl-pdec) the sub-cursor seats there (the PendingRowHover
+	// recipe); over the row's text it keeps its seat (ACCEPT on a fresh row).
+	private void LandingRowHover( int rowIdx, PanelEvent e )
+	{
+		if ( _gpKbdMode || guildView != "landing" ) return;
+		int btn = -1;
+		for ( var p = e?.Target; p != null; p = p.Parent )
+		{
+			if ( p.HasClass( "gl-irow" ) ) break;
+			if ( p.HasClass( "gp-pacc" ) ) { btn = 0; break; }
+			if ( p.HasClass( "gl-pdec" ) ) { btn = 1; break; }
+		}
+		if ( SetHoverCursor( "landing", rowIdx ) ) { _kbLandBtn = btn < 0 ? 0 : btn; return; }
+		if ( btn < 0 || btn == _kbLandBtn ) return;
+		_kbLandBtn = btn;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// Browse header stops (search 0 · MEMBERS 1 · LEVEL 2).
+	private void BrowseHeadHover( int idx )
+	{
+		if ( _gpKbdMode || guildView != "browse" || viewingGuild != null ) return;
+		if ( SetHoverCursor( "browse-head", idx ) ) _kbBrowseHeadIdx = idx;
+	}
+
+	// Browse row (or the empty block's REFRESH at 0) — over the row's JOIN
+	// (.gb-join) the sub-cursor seats on the button.
+	private void BrowseRowHover( int idx, PanelEvent e )
+	{
+		if ( _gpKbdMode || guildView != "browse" || viewingGuild != null ) return;
+		int btn = 0;
+		for ( var p = e?.Target; p != null; p = p.Parent )
+		{
+			if ( p.HasClass( "gb-row" ) || p.HasClass( "gb-empty" ) ) break;
+			if ( p.HasClass( "gb-join" ) ) { btn = 1; break; }
+		}
+		if ( SetHoverCursor( "browse-grid", idx ) ) { _kbBrowseBtn = btn; return; }
+		if ( btn == _kbBrowseBtn ) return;
+		_kbBrowseBtn = btn;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// Detail actions row — JOIN (.gb-djoin → 0) · BACK TO LIST (.gb-dback →
+	// backIdx: 1 when JOIN renders, else 0).
+	private void BrowseDetailHover( PanelEvent e, int backIdx )
+	{
+		if ( _gpKbdMode || guildView != "browse" || viewingGuild == null ) return;
+		int idx = -1;
+		for ( var p = e?.Target; p != null; p = p.Parent )
+		{
+			if ( p.HasClass( "gb-dactions" ) ) break;
+			if ( p.HasClass( "gb-djoin" ) ) { idx = 0; break; }
+			if ( p.HasClass( "gb-dback" ) ) { idx = backIdx; break; }
+		}
+		if ( idx < 0 ) return;
+		SetHoverCursor( "browse-detail", idx );
+	}
+
+	// Create form rows — every row host carries this (fields, chip rows, the
+	// description wrap); the FOUND row walks its target for the button.
+	private void CreateHover( int row )
+	{
+		if ( _gpKbdMode || guildView != "myguild" || InGuildLive() ) return;
+		SetHoverCursor( "create", row );
+	}
+
+	private void CreateFootHover( PanelEvent e )
+	{
+		if ( _gpKbdMode || guildView != "myguild" || InGuildLive() ) return;
+		for ( var p = e?.Target; p != null; p = p.Parent )
+		{
+			if ( p.HasClass( "gc-foot" ) ) return;
+			if ( p.HasClass( "gs-save" ) ) { SetHoverCursor( "create", CreateRowFound ); return; }
 		}
 	}
 
@@ -3681,7 +4085,7 @@ else if ( guildView == "myguild" )
 
 		if ( !_kbActive || _kbZone != "create" )
 		{
-			if ( NavPressed() ) EngageKb( "create" );
+			if ( NavPressed() ) SeedViewCursor( "create", _kbViewEdge );
 			return;
 		}
 
@@ -4190,6 +4594,7 @@ else if ( guildView == "myguild" )
 	//    the given index. The markup applies `guild-kb-selected` accordingly.
 	private bool IsLandingKb( int idx ) => _kbActive && _kbZone == "landing" && _kbIndex == idx;
 	private bool IsBrowseGridKb( int idx ) => _kbActive && _kbZone == "browse-grid" && _kbIndex == idx;
+	private bool IsBrowseHeadKb( int idx ) => _kbActive && _kbZone == "browse-head" && _kbIndex == idx;
 	private bool IsBrowseDetailKb( int idx ) => _kbActive && _kbZone == "browse-detail" && _kbIndex == idx;
 	// One generic predicate for the rebuilt guild page's zones
 	// (chips / unlock / info / pending / roster / week / log).
