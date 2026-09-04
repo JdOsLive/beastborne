@@ -2323,6 +2323,15 @@ public sealed class ItemManager : Component
 					tamer.EliteInkExpiresAt = currentExpiry.AddMinutes( item.EffectDuration );
 					TamerManager.Instance?.SaveToCloud();
 					success = true;
+
+					// Phone alert: total time left on the ink buff (stacks honestly)
+					int inkMinutesLeft = (int)Math.Ceiling( (tamer.EliteInkExpiresAt - DateTime.Now).TotalMinutes );
+					NotificationManager.Instance?.NotifyBoostActive(
+						item.Name,
+						NotificationManager.FormatBoostDuration( inkMinutesLeft ),
+						item.GetEffectDescription(),
+						item.IconPath
+					);
 				}
 				break;
 
@@ -2346,6 +2355,14 @@ public sealed class ItemManager : Component
 						RemainingUses = item.EffectDuration
 					} );
 					success = true;
+
+					// Phone alert: these count down in waves (contract lures in attempts)
+					NotificationManager.Instance?.NotifyBoostActive(
+						item.Name,
+						NotificationManager.FormatUseDuration( item.EffectDuration, item.EffectType == ItemEffectType.CatchRateBoost ),
+						item.GetEffectDescription(),
+						item.IconPath
+					);
 				}
 				break;
 		}
@@ -2629,6 +2646,18 @@ public sealed class ItemManager : Component
 
 		// Track mission progress for boost activation
 		MissionManager.Instance?.TrackBoostActivated();
+
+		// Phone alert for OUR activation (NotificationManager skips our own
+		// OnServerBoostActivated event, and an extension never raises it).
+		// Duration = total time now left on the server boost, so an extension
+		// reads "active for 2h 30m" rather than re-announcing the scroll's 1h.
+		var totalLeft = shopManager.GetServerBoostTimeRemaining( shopType.Value );
+		NotificationManager.Instance?.NotifyBoostActive(
+			item.Name,
+			NotificationManager.FormatBoostDuration( (int)Math.Ceiling( totalLeft.TotalMinutes ) ),
+			item.GetEffectDescription(),
+			item.IconPath
+		);
 
 		Log.Info( $"Used server boost: {item.Name}" );
 		return (true, $"Activated {item.Name}!");

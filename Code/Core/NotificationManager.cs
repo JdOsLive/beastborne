@@ -93,6 +93,10 @@ public sealed class NotificationManager : Component
 		if ( ShopManager.Instance != null )
 		{
 			ShopManager.Instance.OnServerBoostActivated += OnServerBoostActivated;
+			// Boost expiry (2026-09-04): ShopManager already polls both lists
+			// in OnUpdate and raises these — no timer of our own.
+			ShopManager.Instance.OnBoostExpired += OnPersonalBoostExpired;
+			ShopManager.Instance.OnServerBoostExpired += OnServerBoostExpired;
 		}
 
 		// Subscribe to competitive events (ranked battle searching)
@@ -123,6 +127,8 @@ public sealed class NotificationManager : Component
 		if ( ShopManager.Instance != null )
 		{
 			ShopManager.Instance.OnServerBoostActivated -= OnServerBoostActivated;
+			ShopManager.Instance.OnBoostExpired -= OnPersonalBoostExpired;
+			ShopManager.Instance.OnServerBoostExpired -= OnServerBoostExpired;
 		}
 
 		if ( CompetitiveManager.Instance != null )
@@ -163,6 +169,18 @@ public sealed class NotificationManager : Component
 		string boostName = GetBoostName( boost.Type );
 		string iconPath = GetBoostIconPath( boost.Type );
 		NotifyServerBoost( boost.ActivatedBy ?? "Someone", boostName, iconPath );
+	}
+
+	private void OnPersonalBoostExpired( Data.ActiveBoost boost )
+	{
+		if ( boost == null ) return;
+		NotifyBoostExpired( GetBoostName( boost.Type ), false, GetBoostIconPath( boost.Type ) );
+	}
+
+	private void OnServerBoostExpired( Data.ServerBoost boost )
+	{
+		if ( boost == null ) return;
+		NotifyBoostExpired( GetBoostName( boost.Type ), true, GetBoostIconPath( boost.Type ) );
 	}
 
 	private void OnPlayerSearchingRanked( string playerName )
@@ -384,6 +402,101 @@ public sealed class NotificationManager : Component
 			10f,
 			iconPath
 		);
+	}
+
+	// ── Boost activation / expiry (2026-09-04) ─────────────────────────
+	// "It's active now" beat for the player's OWN boosts — the phone alert
+	// (and its badge) is the whole beat; the Effects widget lists the boost.
+	// Fires from ItemManager.UseItem (wave/attempt/minute consumables) and
+	// ItemManager.UseBoost (server-wide scrolls). Same type + route as the
+	// other-players' server-boost alert so it lands in the effects lane.
+
+	private string _lastBoostNotifyKey;
+	private DateTime _lastBoostNotifyAt;
+
+	/// <summary>
+	/// Title reads "&lt;Item&gt; active for &lt;duration&gt;" (a trailing "(1h)"
+	/// in the item name is dropped — the duration already says it); the
+	/// message is the item's own effect line. Identical fires inside one
+	/// second collapse into one alert (guards a per-quantity double call).
+	/// </summary>
+	public void NotifyBoostActive( string itemName, string durationText, string effectText, string iconPath = null )
+	{
+		if ( string.IsNullOrWhiteSpace( itemName ) ) return;
+
+		string name = StripTrailingParenthetical( itemName );
+		string title = string.IsNullOrWhiteSpace( durationText )
+			? LocalizationManager.Get( "notify.boost_active_short", name )
+			: LocalizationManager.Get( "notify.boost_active", name, durationText );
+		string message = effectText ?? "";
+
+		string key = title + "|" + message;
+		if ( key == _lastBoostNotifyKey && (DateTime.UtcNow - _lastBoostNotifyAt).TotalSeconds < 1.0 )
+			return;
+		_lastBoostNotifyKey = key;
+		_lastBoostNotifyAt = DateTime.UtcNow;
+
+		AddNotification(
+			NotificationType.ServerBoost,
+			title,
+			message,
+			8f,
+			iconPath,
+			"effects"
+		);
+	}
+
+	/// <summary>
+	/// A timed boost ran out. Only wired to hooks ShopManager already raises
+	/// (personal + server-wide shop boosts) — there is no timer here.
+	/// </summary>
+	public void NotifyBoostExpired( string boostName, bool serverWide, string iconPath = null )
+	{
+		if ( string.IsNullOrWhiteSpace( boostName ) ) return;
+
+		AddNotification(
+			NotificationType.Info,
+			LocalizationManager.Get( "notify.boost_expired", boostName ),
+			LocalizationManager.Get( serverWide ? "notify.boost_expired_server_desc" : "notify.boost_expired_desc" ),
+			6f,
+			iconPath,
+			"effects"
+		);
+	}
+
+	/// <summary>
+	/// Honest clock text for a minute count: "1h" · "1h 30m" · "30m". Zero or
+	/// negative → "" (caller falls back to the duration-less title).
+	/// </summary>
+	public static string FormatBoostDuration( int minutes )
+	{
+		if ( minutes <= 0 ) return "";
+		int h = minutes / 60;
+		int m = minutes % 60;
+		if ( h > 0 && m > 0 ) return $"{h}h {m}m";
+		if ( h > 0 ) return $"{h}h";
+		return $"{m}m";
+	}
+
+	/// <summary>
+	/// Use-counted boosts: "8 waves" · "12 attempts" (contract lures). Zero or
+	/// negative → "" (caller falls back to the duration-less title).
+	/// </summary>
+	public static string FormatUseDuration( int uses, bool attempts )
+	{
+		if ( uses <= 0 ) return "";
+		return LocalizationManager.Get( attempts ? "notify.duration_attempts" : "notify.duration_waves", uses );
+	}
+
+	/// <summary>"Gold Boost (1h)" → "Gold Boost". Anything else passes through.</summary>
+	private static string StripTrailingParenthetical( string name )
+	{
+		string trimmed = name.Trim();
+		if ( !trimmed.EndsWith( ")" ) ) return trimmed;
+		int open = trimmed.LastIndexOf( " (" );
+		if ( open <= 0 ) return trimmed;
+		string head = trimmed.Substring( 0, open ).Trim();
+		return head.Length > 0 ? head : trimmed;
 	}
 
 	/// <summary>
