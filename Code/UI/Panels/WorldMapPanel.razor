@@ -28,7 +28,8 @@
 	  .wm-header            abs 0/0 1920×88 + 2px strip · pad 16/32/12/28 · kicker 12/14 + 2 + title row 44 = 60
 	                        (16 + 60 + 12 = 88 ✓) · right slot = ONE chip 32 r11 (BACK · Q slot left EMPTY — run-1 ledger; LANE: input)
 	  .zd-card              abs x1420 y110 460 r22 pad 24 → 412 inner, content-sized (see BuildCardHeights)
-	  .request-popup        untouched (another part of the run)
+	  .rq-host → .rq-popup  abs full-cover FLEX-CENTRE host z65 → 560 r22 pad 24 → 512 lane, content-sized
+	                        (Gnollcap 2 req · 1 reward = 560 → y 260; anatomy in the REQUEST POPUP block)
 	  <TeamPickerPopup />   untouched (another lane)
 *@
 
@@ -438,7 +439,16 @@
 		}
 	}
 
-	<!-- ═══ REQUEST POPUP — untouched this part (another slice of the run owns its re-dialect) ═══ -->
+	@* ═══ REQUEST POPUP — LAYOUT + COLOR (2026-09-04, expedition rebuild). 560 r22 FLEX-CENTRED in a
+	   root-level full-cover host (z65: above the card z60 and the .wm-dim z40, under the reveal shield
+	   z200) — never `transform: translate` (DOC-7 #15). The host is pointer-inert so the .wm-dim shield
+	   behind it still takes the close click (CloseTopSurface); the popup opts back in.
+	   Content-sized column, pad 24 → 512 lane (PADDING-BOX: the declared 560 INCLUDES the pad):
+	     24 · head 52 (kicker 14 + 4 + title 34 | BACK · Q 30) · 4 · giver 14 · 16 · desc ≤66 (15/22, ≤3 lines:
+	     every TradeNode.Description is ≤174 chars ≈ 3 lines at 512) · 20 · REQUIRES slab 54 + 44n + 4(n−1)
+	     · 16 · REWARDS slab (same) · 24 · CTA 512×56 · 24.  Gnollcap (2 req · 1 reward) = 560 → y 260.
+	   Keys live in HandleMapKeyboardInput: Space = ACCEPT TRADE · Q = close (claims PanelHandledBackKey).
+	   No giver portrait: TradeNode carries no portrait field (the 96 r12 tile recipe waits on data). *@
 	@if ( _tradePopupNodeId != null )
 	{
 		var tnode = TradeNodeManager.Instance?.GetNode( _tradePopupNodeId );
@@ -446,111 +456,125 @@
 		{
 			var canAfford = TradeNodeManager.Instance?.CanAfford( tnode.Id ) ?? false;
 			var isDone = TradeNodeManager.Instance?.IsLocked( tnode.Id ) ?? true;
-			var state = TradeNodeManager.Instance?.GetState( tnode.Id );
+			var giverZone = GetExpedition( tnode.ZoneId )?.Name;
+			var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
+			var tamerGold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+			var hasRewards = tnode.ItemRewards.Count > 0 || tnode.GoldReward > 0 || tnode.XPReward > 0 || tnode.SkillPointReward > 0;
 
-			<div class="request-popup">
-				<button class="close-btn rp-close" onclick=@CloseTradePopup onmouseover=@(() => OnHover("tn-close"))>
-					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-				</button>
-
-				<div class="rp-npc-band">
-					<div class="rp-npc-portrait">
-						<iconify icon="lucide:user" Size=@(28) Color="#fbbf24" />
+			<div class="rq-host">
+				<div class="rq-popup">
+					@* HEAD 512×52 — identity column 400 (kicker → title) | BACK · Q (the .zd-back / .gp-back recipe). *@
+					<div class="rq-head">
+						<div class="rq-head-id">
+							<span class="rq-kicker">REQUEST</span>
+							<span class="rq-title">@tnode.Name</span>
+						</div>
+						<div class="rq-back" onclick=@CloseTradePopup onmouseover=@(() => OnHover("rq-back"))>
+							<span class="rq-back-label">BACK</span>
+							<span class="rq-back-cap">Q</span>
+						</div>
 					</div>
-					<div class="rp-npc-meta">
-						<span class="rp-npc-kicker">REQUEST · @tnode.NpcName</span>
-						<span class="rp-title">@tnode.Name</span>
+
+					@* GIVER — "from Elder Mira · Weaverwood" as sibling spans (a multi-@ text node squashes). *@
+					<div class="rq-giver">
+						<span class="rq-giver-txt">@("from " + tnode.NpcName)</span>
+						@if ( !string.IsNullOrEmpty( giverZone ) )
+						{
+							<span class="rq-giver-dot">·</span>
+							<span class="rq-giver-txt">@giverZone</span>
+						}
+					</div>
+
+					<div class="rq-desc"><span class="rq-desc-text">@tnode.Description</span></div>
+
+					@* REQUIRES — one raised slab, rows 44: glyph 28 · name · have / need. LANE: color — the ONE
+					   honest red/green on the page: red only while SHORT, green only once MET (DOC-2 #4). *@
+					<div class="rq-slab">
+						<span class="rq-slab-kick">REQUIRES</span>
+						@foreach ( var (itemId, qty) in tnode.Requirements )
+						{
+							var item = ItemManager.Instance?.GetItem( itemId );
+							int have = 0;
+							if ( inv != null && inv.TryGetValue( itemId, out var h ) ) have = h;
+							<div class="rq-row @(have >= qty ? "met" : "short")">
+								<img class="rq-glyph" src="@(item?.IconPath)" />
+								<span class="rq-name">@(item?.Name ?? itemId)</span>
+								<span class="rq-amt">@(have + " / " + qty)</span>
+							</div>
+						}
+						@if ( tnode.GoldCost > 0 )
+						{
+							<div class="rq-row @(tamerGold >= tnode.GoldCost ? "met" : "short")">
+								<img class="rq-glyph" src="ui/icons/currency/money.png" />
+								<span class="rq-name">Gold</span>
+								<span class="rq-amt">@(tamerGold.ToString( "N0" ) + " / " + tnode.GoldCost.ToString( "N0" ))</span>
+							</div>
+						}
+					</div>
+
+					@* REWARDS — the same row. Amounts GOLD (gold IS the reward semantic; the ration holds — the
+					   primary below is the one gold SURFACE, these are numerals). Item rewards carry the rarity
+					   strip at the row foot, colour inline from BbTokens.Rarity (DOC-2 #8/#16). *@
+					@if ( hasRewards )
+					{
+						<div class="rq-slab">
+							<span class="rq-slab-kick">REWARDS</span>
+							@foreach ( var (itemId, qty) in tnode.ItemRewards )
+							{
+								var item = ItemManager.Instance?.GetItem( itemId );
+								<div class="rq-row reward">
+									<img class="rq-glyph" src="@(item?.IconPath)" />
+									<span class="rq-name">@(item?.Name ?? itemId)</span>
+									<span class="rq-amt">@("×" + qty)</span>
+									@if ( item != null )
+									{
+										<div class="rq-rs" style="background-color: @BbTokens.Rarity(item.Rarity.ToString());"></div>
+									}
+								</div>
+							}
+							@if ( tnode.GoldReward > 0 )
+							{
+								<div class="rq-row reward">
+									<img class="rq-glyph" src="ui/icons/currency/money.png" />
+									<span class="rq-name">Gold</span>
+									<span class="rq-amt">@("+" + tnode.GoldReward.ToString( "N0" ))</span>
+								</div>
+							}
+							@if ( tnode.SkillPointReward > 0 )
+							{
+								<div class="rq-row reward">
+									<div class="rq-glyph-slot"><iconify class="rq-glyph-ic" icon="lucide:sparkles" Size=@(22) Color="rgba(244, 241, 234, 0.85)" /></div>
+									<span class="rq-name">@(tnode.SkillPointReward == 1 ? "Skill Point" : "Skill Points")</span>
+									<span class="rq-amt">@("+" + tnode.SkillPointReward)</span>
+								</div>
+							}
+							@if ( tnode.XPReward > 0 )
+							{
+								<div class="rq-row reward">
+									<div class="rq-glyph-slot"><iconify class="rq-glyph-ic" icon="lucide:arrow-up" Size=@(22) Color="rgba(244, 241, 234, 0.85)" /></div>
+									<span class="rq-name">Tamer XP</span>
+									<span class="rq-amt">@("+" + tnode.XPReward.ToString( "N0" ))</span>
+								</div>
+							}
+						</div>
+					}
+
+					@* FOOT — ONE primary in three states (BIG THINGS BIG, DOC-1 #9): gold ACCEPT TRADE · the same
+					   slab Disabled + "NOT ENOUGH" while short · ghost "COMPLETED" once turned in. BbButton is the
+					   button (DOC-6 #1). LANE: input — Focused mirrors the card's EMBARK: kb mode = the ring on the
+					   one action (Space already fires it in HandleMapKeyboardInput). *@
+					<div class="rq-cta-row">
+						@if ( isDone )
+						{
+							<BbButton Tier="ghost" Size=@(56) Label="COMPLETED" Icon="lucide:check" Stretch=@true Disabled=@true Class="rq-cta" />
+						}
+						else
+						{
+							<BbButton Tier="primary" Size=@(56) Label=@(canAfford ? "ACCEPT TRADE" : "NOT ENOUGH") KeyCap="SPACE" Stretch=@true
+									  Disabled=@(!canAfford) Focused=@IsKbMode OnClick=@ExecuteSelectedTrade Class="rq-cta" />
+						}
 					</div>
 				</div>
-
-				<div class="rp-desc">@tnode.Description</div>
-
-				<div class="rp-section-label">YOU GIVE</div>
-				<div class="rp-line-list">
-					@foreach ( var (itemId, qty) in tnode.Requirements )
-					{
-						var item = ItemManager.Instance?.GetItem( itemId );
-						var have = TamerManager.Instance?.CurrentTamer?.Inventory != null
-							&& TamerManager.Instance.CurrentTamer.Inventory.TryGetValue( itemId, out var h ) ? h : 0;
-						var lineClass = have >= qty ? "satisfied" : "short";
-						<div class="rp-line @lineClass">
-							<img class="rp-line-icon" src="@(item?.IconPath)" />
-							<span class="rp-line-name">@(item?.Name ?? itemId)</span>
-							<span class="rp-line-amt">@have / @qty</span>
-						</div>
-					}
-					@if ( tnode.GoldCost > 0 )
-					{
-						var gold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
-						var lineClass = gold >= tnode.GoldCost ? "satisfied" : "short";
-						<div class="rp-line @lineClass">
-							<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
-							<span class="rp-line-name">Gold</span>
-							<span class="rp-line-amt">@gold / @tnode.GoldCost</span>
-						</div>
-					}
-				</div>
-
-				<div class="rp-section-label">YOU RECEIVE</div>
-				<div class="rp-line-list">
-					@foreach ( var (itemId, qty) in tnode.ItemRewards )
-					{
-						var item = ItemManager.Instance?.GetItem( itemId );
-						<div class="rp-line reward">
-							<img class="rp-line-icon" src="@(item?.IconPath)" />
-							<span class="rp-line-name">@(item?.Name ?? itemId)</span>
-							<span class="rp-line-amt">×@qty</span>
-						</div>
-					}
-					@if ( tnode.GoldReward > 0 )
-					{
-						<div class="rp-line reward">
-							<iconify icon="lucide:coins" Size=@(20) Color="#fbbf24" />
-							<span class="rp-line-name">Gold</span>
-							<span class="rp-line-amt">+@tnode.GoldReward</span>
-						</div>
-					}
-					@if ( tnode.XPReward > 0 )
-					{
-						<div class="rp-line reward">
-							<iconify icon="lucide:arrow-up" Size=@(20) Color="#4ade80" />
-							<span class="rp-line-name">Tamer XP</span>
-							<span class="rp-line-amt">+@tnode.XPReward</span>
-						</div>
-					}
-					@if ( tnode.SkillPointReward > 0 )
-					{
-						<div class="rp-line reward">
-							<iconify icon="lucide:sparkles" Size=@(20) Color="#a78bfa" />
-							<span class="rp-line-name">Skill Points</span>
-							<span class="rp-line-amt">+@tnode.SkillPointReward</span>
-						</div>
-					}
-				</div>
-
-				@if ( isDone )
-				{
-					<div class="rp-done-banner">
-						<iconify icon="lucide:check-circle-2" Size=@(18) Color="#4ade80" />
-						<span>Already Completed</span>
-					</div>
-				}
-				else
-				{
-					<button class="embark-btn rp-accept @(canAfford ? "" : "disabled")"
-							onclick=@(() => ExecuteTrade(tnode.Id))
-							onmouseover=@(() => OnHover("tn-exec-" + tnode.Id))>
-						<iconify icon="lucide:handshake" Size=@(20) Color="#ffffff" />
-						<span>@(canAfford ? "ACCEPT TRADE" : "NOT ENOUGH")</span>
-					</button>
-				}
-
-				@if ( state != null && state.TimesCompleted > 0 )
-				{
-					<div class="tn-times-row">
-						<span>Completed @state.TimesCompleted @(state.TimesCompleted == 1 ? "time" : "times")</span>
-					</div>
-				}
 			</div>
 		}
 	}
@@ -750,6 +774,30 @@
 		if ( p.RevealLive ) p.SkipReveal();
 		p.StateHasChanged();
 		Log.Info( $"[dev_reveal] replaying the unlock reveal for '{zoneId}'." );
+	}
+
+	// dev_request <nodeId|list> — LAYOUT/COLOR live-test hook: opens the request popup for ANY
+	// trade node regardless of the host zone's cleared state (the map must be up: dev_page
+	// expedition). `list` prints the ids one per line (Log.Info truncates at a newline).
+	[ConCmd( "dev_request" )]
+	public static void DevRequest( string nodeId = "list" )
+	{
+		var mgr = TradeNodeManager.Instance;
+		if ( mgr == null ) { Log.Info( "[dev_request] no TradeNodeManager in the scene." ); return; }
+		if ( nodeId == "list" || mgr.GetNode( nodeId ) == null )
+		{
+			Log.Info( $"[dev_request] {mgr.AllNodes.Count} nodes — dev_request <id>:" );
+			foreach ( var n in mgr.AllNodes ) Log.Info( $"  {n.Id}  ({n.Name} · {n.ZoneId})" );
+			return;
+		}
+		var p = Instance;
+		if ( p == null || p.Parent == null ) { Log.Info( "[dev_request] open the map first (dev_page expedition)." ); return; }
+		if ( p.RevealLive ) p.SkipReveal();
+		p._selectedExpId = null;
+		p._cardLeaving = false;
+		p.OpenTradeNode( nodeId );
+		p.StateHasChanged();
+		Log.Info( $"[dev_request] opened '{nodeId}'." );
 	}
 
 	// ── CARD EXIT LATCH — LANE: motion. CloseCard keeps the card mounted with `.leaving` for
@@ -1425,6 +1473,12 @@
 		_tradePopupNodeId = null;
 		_hoveredKey = null;
 		SoundManager.PlayPopdown();
+	}
+
+	/// <summary>BbButton OnClick for the request popup (method group — hotload law): the open node.</summary>
+	private void ExecuteSelectedTrade()
+	{
+		if ( _tradePopupNodeId != null ) ExecuteTrade( _tradePopupNodeId );
 	}
 
 	private void ExecuteTrade( string nodeId )
