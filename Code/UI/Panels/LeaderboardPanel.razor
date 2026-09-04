@@ -64,7 +64,7 @@
 				var idx = i;
 				var grp = GroupMeta[i];
 				var on = i == currentGroupIndex;
-				<div class="lb-gchip @(on ? "on" : "") @(IsChipKb( idx ) ? "kb-focused" : "")"
+				<div class="lb-gchip @(on ? "on" : "") @(IsChipKb( idx ) ? "kb-focused" : "") @(IsChipPop( idx ) ? "lb-pop" : "")"
 					 onmouseover=@(() => HoverChip( idx ))
 					 onclick=@(() => SetGroup( idx ))>
 					<iconify class="lb-gchip-glyph" icon="@grp.Icon" Size=@(16) Color="@(on ? "#ffffff" : "rgba(214, 206, 236, 0.55)")" />
@@ -81,10 +81,14 @@
 		var mySteam = GetLocalSteamId();
 	}
 
-	@* ── SLABS — three pinned 600×874 (gap 20). The row carries the three-phase
-	   spin classes (spin-out-* / warp-from-*) — LANE: motion owns the swap
-	   choreography and any cascade; the classes + timings here are the shipped
-	   mechanics, preserved. Nothing inside needs flex-grow WIDTH resolution
+	@* ── SLABS — three pinned 600×808 (gap 20). The row carries the three-phase
+	   spin classes (spin-out-* / warp-from-*) — LANE: motion (attached
+	   2026-09-04) owns the swap choreography (house 0.18 out · 0.22 in, curves
+	   in the scss) and the cascades: each slab wears lb-s0/1/2 for its
+	   entrance rung (2–4, stable per slab), rows wear a WINDOWED ladder rung
+	   (RowLadderClass — 0.75s after a load / at swap phase 3; the cursor row
+	   never carries one), the pinned YOU row wears lb-youin for 0.7s after a
+	   load (its seam beat). Nothing inside needs flex-grow WIDTH resolution
 	   (three pinned 600s), so the translateX on this row is safe. *@
 	<div class="lb-slabs @spinClass">
 		@for ( int si = 0; si < currentCats.Length; si++ )
@@ -99,7 +103,7 @@
 			// aren't on the board yet ("—" rank, your local value).
 			var pinYou = !isLoading && ( myEntry == null || myEntry.Rank > VisibleRows );
 
-			<div class="lb-slab">
+			<div class="lb-slab @("lb-s" + slabIdx)">
 				@* Band 36 — chipstamp (category) · spacer · darkchip "N TAMERS"
 				   (entries.Count — the honest population). OPAQUE, gap 0 to the list
 				   (scroll-leak law). *@
@@ -141,14 +145,15 @@
 							{
 								var entry = entries[ri];
 								var isMe = myEntry != null && ReferenceEquals( entry, myEntry );
-								@RenderRow( entry, cat.Key, isMe, ri % 2 == 1, false, IsRowKb( slabIdx, ri ) )
+								var rowKb = IsRowKb( slabIdx, ri );
+								@RenderRow( entry, cat.Key, isMe, ri % 2 == 1, false, rowKb, RowLadderClass( slabIdx, ri, rowKb ) )
 							}
 						</div>
 					}
 
 					@if ( pinYou )
 					{
-						@RenderRow( myEntry, cat.Key, true, false, true, false )
+						@RenderRow( myEntry, cat.Key, true, false, true, false, YouInClass() )
 					}
 				</div>
 			</div>
@@ -250,6 +255,10 @@
 
 		spinClass = $"spin-out-{exitTo}";
 		currentGroupIndex = targetIdx;
+		// LANE: motion — the chip that just went .on pops NOW (the press is
+		// the sharpest beat on screen; 0.4s window > the 0.22s keyframe).
+		_chipPopUntil = RealTime.Now + 0.4f;
+		_chipPopIdx = targetIdx;
 		// LANE: input — the rim rides .on; a row cursor re-follows in the new
 		// lane (counts differ per board — TickInput clamps _kbRow).
 		if ( _kbZone == "chips" ) _kbIndex = targetIdx;
@@ -260,6 +269,9 @@
 		await System.Threading.Tasks.Task.Delay( 30 );
 
 		spinClass = "";
+		// LANE: motion — the new rows re-cascade as the slabs glide home (the
+		// ladder's first rung lands at 200ms, the glide settles at 220ms).
+		ArmRowLadder();
 		await System.Threading.Tasks.Task.Delay( 220 );
 
 		isSpinning = false;
@@ -270,7 +282,9 @@
 	// (session tags / avatars change as people come and go) and — LANE:
 	// input — every cursor field + the REFRESH press window (InputHash; the
 	// hub folds the same value into ITS BuildHash so the header chips
-	// re-render with the cursor). Combine caps at 8 args — nested.
+	// re-render with the cursor) and — LANE: motion — the liveness of each
+	// windowed motion class (MotionHash), so a window's expiry re-renders
+	// and drops the class. Combine caps at 8 args — nested.
 	protected override int BuildHash()
 	{
 		return System.HashCode.Combine(
@@ -281,7 +295,7 @@
 			allEntries.Count,
 			System.HashCode.Combine( _avatarByName.Count, _tagBySteam.Count, _tagByName.Count ),
 			Networking.IsActive ? Connection.All.Count : 0,
-			System.HashCode.Combine( TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0, InputHash )
+			System.HashCode.Combine( TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0, InputHash, MotionHash )
 		);
 	}
 
@@ -314,6 +328,7 @@
 
 	protected override async void OnAfterTreeRender( bool firstTime )
 	{
+		_devLb = this; // LANE: motion — dev_lbmotion handle
 		if ( firstTime )
 		{
 			await LoadAllLeaderboards();
@@ -398,6 +413,10 @@
 
 		isLoading = false;
 		_loadVersion++;
+		// LANE: motion — the rows cascade in (the lane mounts fresh as the note
+		// leaves) and the pinned YOU row takes its arrival beat.
+		ArmRowLadder();
+		_youInUntil = RealTime.Now + 0.7f;
 		StateHasChanged();
 	}
 
@@ -483,7 +502,9 @@
 	// RenderToggleRow; the templated-fragment form is unverified here.)
 	// `kb` = the slab cursor sits on this row (LANE: input — .kb-focused is the
 	// ONE cursor class; painted violet under .kbd-mode by the hub gate).
-	private RenderFragment RenderRow( LeaderboardEntry entry, string catKey, bool isMe, bool alt, bool pinned, bool kb ) => __builder =>
+	// `motion` = LANE: motion's windowed class ("" outside a window): a ladder
+	// rung (lb-rrN) for lane rows, lb-youin for the pinned YOU row.
+	private RenderFragment RenderRow( LeaderboardEntry entry, string catKey, bool isMe, bool alt, bool pinned, bool kb, string motion ) => __builder =>
 	{
 		var rank = entry?.Rank ?? 0;
 		var rankText = rank > 0 ? rank.ToString() : "—";
@@ -493,7 +514,7 @@
 		var avatarId = entry != null ? AvatarIdFor( entry ) : GetLocalSteamId();
 		var tag = entry != null ? TagFor( entry ) : GuildManager.Instance?.Membership?.GuildTag;
 		var value = entry?.Score ?? GetPlayerValue( catKey );
-		var rowClass = "lb-row" + ( alt ? " alt" : "" ) + ( isMe ? " me" : "" ) + ( pinned ? " pinned" : "" ) + ( kb ? " kb-focused" : "" );
+		var rowClass = "lb-row" + ( alt ? " alt" : "" ) + ( isMe ? " me" : "" ) + ( pinned ? " pinned" : "" ) + ( kb ? " kb-focused" : "" ) + ( string.IsNullOrEmpty( motion ) ? "" : " " + motion );
 		<div class="@rowClass">
 			<div class="lb-rank">
 				<div class="lb-disc @discClass"><span class="lb-rank-t @(podium ? "ink" : "")">@rankText</span></div>
@@ -839,6 +860,70 @@
 			return;
 		}
 		// consumed
+	}
+
+	// ── LANE: motion (attached 2026-09-04) — windowed motion classes ───────
+	// The guild RowLadderClass / gp-pop recipe: a class is present ONLY during
+	// its window, set from code, read at render time; BuildHash carries each
+	// window's liveness (MotionHash) so the expiry re-renders and the class
+	// drops — the one remount at expiry lands on already-settled rows (the
+	// log's law). RealTime — wall-clock beats, like the guild's. Nothing here
+	// touches the cursor fields (LANE: input) or the data path.
+	private float _rowLadderUntil = -1f;
+	private readonly HashSet<int> _rowLadderTouched = new();
+	private float _chipPopUntil = -1f;
+	private int _chipPopIdx = -1;
+	private float _youInUntil = -1f;
+
+	private bool LadderLive => RealTime.Now < _rowLadderUntil;
+	private bool ChipPopLive => RealTime.Now < _chipPopUntil;
+	private bool YouInLive => RealTime.Now < _youInUntil;
+	private int MotionHash => System.HashCode.Combine( LadderLive, ChipPopLive, YouInLive );
+
+	// Row ladder — 0.7s of rungs + slack. Touched rows forget on arm.
+	private void ArmRowLadder()
+	{
+		_rowLadderUntil = RealTime.Now + 0.75f;
+		_rowLadderTouched.Clear();
+	}
+
+	// Motion class for a lane row while the ladder is armed: rung by row index
+	// (rows 7+ share the last rung — the visible lane is 11–12 rows and must
+	// not fill bottom-first), EXCEPT rows the cursor has touched in this
+	// window — the cursor row's class string changes on every hop, and a
+	// replayed rung (hold + fade) would blink, so touched rows carry nothing
+	// and mount whole (DOC-4 §14). After the window every row is "".
+	private string RowLadderClass( int slab, int idx, bool rowKb )
+	{
+		if ( !LadderLive ) return "";
+		int key = slab * 4096 + idx;
+		if ( rowKb ) { _rowLadderTouched.Add( key ); return ""; }
+		if ( _rowLadderTouched.Contains( key ) ) return "";
+		return idx >= 7 ? "lb-rr7" : "lb-rr" + idx;
+	}
+
+	private bool IsChipPop( int idx ) => ChipPopLive && _chipPopIdx == idx;
+	private string YouInClass() => YouInLive ? "lb-youin" : "";
+
+	// Freeze/replay instrument (DOC-4 §20 — sub-second beats can't be caught
+	// over MCP): re-fires a beat without a network reload or a group swap.
+	//   dev_lbmotion ladder | you | pop | all
+	private static LeaderboardPanel _devLb;
+
+	[ConCmd( "dev_lbmotion" )]
+	public static void DevLbMotion( string beat = "all" )
+	{
+		var p = _devLb;
+		if ( p == null ) { Log.Warning( "[dev_lbmotion] Leaderboards not mounted." ); return; }
+		bool ladder = beat == "ladder" || beat == "all";
+		bool you = beat == "you" || beat == "all";
+		bool pop = beat == "pop" || beat == "all";
+		if ( !ladder && !you && !pop ) { Log.Info( "[dev_lbmotion] ladder | you | pop | all" ); return; }
+		if ( ladder ) p.ArmRowLadder();
+		if ( you ) p._youInUntil = RealTime.Now + 0.7f;
+		if ( pop ) { p._chipPopUntil = RealTime.Now + 0.4f; p._chipPopIdx = p.currentGroupIndex; }
+		p.StateHasChanged();
+		Log.Info( $"[dev_lbmotion] {beat}" );
 	}
 
 	// ── Data helpers ──────────────────────────────────────────────────────
