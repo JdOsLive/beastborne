@@ -74,8 +74,10 @@
 //   REAL flex-basis.
 // - No transform / box-shadow below .bag-body except the root ring and
 //   the picker (outside the scroll).
-// - Motion here = what the copied recipes carry (root fade · ring glide ·
-//   0.14s colour steps · toast rise/fall). Everything else → LANE: motion.
+// - Motion = the MOTION table below the root block (LANE: motion, wired
+//   2026-09-03 — the Shop's dialect verbatim: render-key remounts for
+//   one-shots, percentage holds for every stagger, 0.14s colour steps
+//   for states, zero animation-delay / transition-delay in this sheet).
 // Panel z-ladder: cards ~1 < ring 60 < header 500 < picker 600 < toast 700.
 // ═══════════════════════════════════════════════════════════════
 
@@ -103,6 +105,143 @@ InventoryPanel {
 	}
 }
 
+// ═══════════════════════════════════════════════════════════════
+// MOTION (LANE: motion, wired 2026-09-03) — the keyframe table.
+// The Shop's dialect (ShopPanelContent.razor.scss) so Shop ↔ Bag reads
+// as ONE language. Every one-shot starts at t=0 on a FRESH MOUNT: a
+// render-key class change IS a remount (DOC-4 #5), so `open-N` /
+// `art-<id>` / `case-<id>` / `qty-N` / `sold-N` / `flash-N` in the razor
+// are the replay triggers. This root is PERSISTENT (IsVisible toggles
+// `.visible`), so the page-enter keyframes ride the `open-N` key (bumped
+// per Show()) instead of a plain mount. Zero animation-delay and zero
+// transition-delay here (DOC-4 #6 / DOC-7 #17 — the ring position sits
+// in BuildHash, so this panel re-renders every gliding frame). Nothing
+// loops: the FLOW layer is BbIconScroll's drift + BbHeaderWaves' own.
+// Everything inside the grid / picker scroll clips and every ring host
+// (cards · PRIMARY · stepper · SELL) moves COLOUR / OPACITY only
+// (DOC-4 #11, DOC-7 #12). The ONLY transforms this sheet animates are
+// the toast's (root-level, outside every clip, no static base).
+//
+//   name           dur    holds                              host · trigger
+//   bagBodyIn      0.30s  0% 0 · 40% 0 · 100% 1              .bag-goods + .bag-case · `open-N`
+//                         (0.12 blank under the root fade      (the zone ladder: header via the
+//                         + 0.18 in)                           root .visible fade, body 0.12 later)
+//   bagArtIn       0.18s  0 → 1                              .bag-case-img · `art-<id>`
+//   bagCaseTextIn  0.18s  0.3 → 1 (soft crossfade)           .bag-case-name / .bag-case-qty-text · `case-<id>`
+//   bagKickerStamp 0.22s  0% .4 + lifted tan → 100% tan      .bag-kicker-chip · mount (ALL re-forms)
+//   bagEmptyIn     0.25s  0 → 1                              .bag-empty-* · mount (.empty flip)
+//   bagQtyTick     0.18s  0% tan ink → cream                 .bag-qty-num · `qty-N`
+//   bagBalTick     0.30s  0% HDR #ffce3a×2 → gold            .bag-balance.flash .bag-balance-value · `flash-N`
+//   bagSellBeat    0.30s  0–6% white · 40% hot · 100% rest   .bag-sell.sold · `sold-N` (the sold item only)
+//   bagSellInk     0.30s  0–6% red-on-white → rest ink       .bag-sell.sold .bag-sell-label
+//   bagShieldIn    0.18s  0 → 1                              .bag-picker-overlay · mount (@if showPicker)
+//   bagPickerRise  0.22s  opacity 0→1 · margin-top 28→0      .bag-picker · mount (NO transform — a
+//                                                             transform on this flex parent poisons
+//                                                             the head spacer's width, DOC-7 #15;
+//                                                             the Guild ships height/margin keyframes)
+//   bagToastRise / bagToastFall — the shipped toast recipe, kept.
+//
+// State changes are `transition:` (both directions, re-fire on every
+// class toggle — DOC-4 #4): 0.14s colour steps, the ring's 0.27s glide,
+// the SELL fill's 0.05s width step + 0.9s heat ramp under `.holding`
+// and its 0.25s drain under `.draining`.
+//
+// DELIBERATELY STILL (report): no per-card cascade (.sat-card's class
+// flips on every hover-select → a mount keyframe would replay per hover,
+// DOC-4 #14 — the Shop skipped it for the same reason); no kicker
+// ladder (kicker rows remount whenever the flat list re-forms — a sold
+// stack, a search keystroke — so a long percentage hold would blank
+// the chips for ~0.4s; the stamp is a 0.22s brightness pop that reads
+// fine on an incidental remount); no header keyframe (an `open-N` key on
+// .bag-header would remount the FilterBar and desync its search text —
+// the root's .visible fade IS the header's enter); no smash pop (no
+// non-scroll icon host on this page — the stepper glyphs sit on ring
+// hosts); no E-chip / NEW-stamp pop (they live on the hover-flipping
+// card); no picker exit latch (a close is a synchronous unmount).
+// ═══════════════════════════════════════════════════════════════
+
+// Body entrance — replays on `open-N`. A remount can't fade the OLD
+// content out, so the 0.12s hold under the root's 0.2s fade reads as
+// header-then-body (40% = 0.12 / 0.30).
+@keyframes bagBodyIn {
+	0% { opacity: 0; }
+	40% { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+// Case art — remounts on `art-<id>` when the case item changes (hover-
+// select, kb walk, dev_bag). Opacity never touches the compositor path,
+// so the pixel art stays crisp (DOC-7 #18 — no scale "pop" on an <img>).
+@keyframes bagArtIn {
+	0% { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+// Name + ×N — a SOFT crossfade (from .3, never blank: the word stays
+// readable through the swap). The effect line stays still (dense reading).
+@keyframes bagCaseTextIn {
+	0% { opacity: 0.3; }
+	100% { opacity: 1; }
+}
+
+// Section kicker chip lands: a brightness pop that settles onto the tan
+// (opacity + fill only — the chip's static skewX is untouched, DOC-4 #13).
+// LANE: color — #f0c78a is tan lifted one step for the land frame.
+@keyframes bagKickerStamp {
+	0% { opacity: 0.4; background-color: #f0c78a; }
+	100% { opacity: 1; background-color: #d9a054; }
+}
+
+@keyframes bagEmptyIn {
+	0% { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+// Stepper numeral tick — the count remounts on `qty-N`: tan ink on the
+// change frame, back to cream. Under the 8/s hold-repeat it restarts each
+// step (a warm flicker at the numeral = "it is counting").
+@keyframes bagQtyTick {
+	0% { color: #d9a054; }
+	100% { color: #f4f1ea; }
+}
+
+// Balance tick — THE ONE HDR knob on this page (the Shop's shBalTick):
+// the numeral blooms at ×2 on the 0% frame and falls to its resting gold.
+@keyframes bagBalTick {
+	0% { color: #ffce3a * 2; }
+	100% { color: #ffce3a; }
+}
+
+// THE SELL BEAT — the Shop's shBuyBeat shape in the danger pair: one
+// frame of white (6% of 0.30s ≈ 1 frame), a hot overshoot, settling onto
+// the SELL ground by 0.30s and holding (`both`) for the rest of the 0.5s
+// window. SDR: red is not a gold/tan commit, so no `* N` here.
+@keyframes bagSellBeat {
+	0% { background-color: #ffffff; }
+	6% { background-color: #ffffff; }
+	40% { background-color: rgba(224, 65, 74, 0.6); }
+	100% { background-color: rgba(224, 65, 74, 0.14); }
+}
+
+@keyframes bagSellInk {
+	0% { color: #e0414a; }
+	6% { color: #e0414a; }
+	100% { color: #ff8a92; }
+}
+
+// Picker — the sub-view enter: the shield fades, the panel rises 14px
+// (margin-top 28 → 0 on a centred flex child = half the travel) with its
+// opacity. No transform anywhere on the picker (DOC-7 #15).
+@keyframes bagShieldIn {
+	0% { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+@keyframes bagPickerRise {
+	0% { opacity: 0; margin-top: 28px; }
+	100% { opacity: 1; margin-top: 0px; }
+}
+
 // ═══════════════════════════════════════
 // HEADER — the hub .oh-header recipe verbatim, accent → TAN
 // ═══════════════════════════════════════
@@ -119,7 +258,10 @@ InventoryPanel {
 	// NO own background-color — BbHeaderWaves paints the opaque base
 	// (paint-behind law). The ONE sanctioned panel-signature strip:
 	border-bottom: 2px solid rgba(217, 160, 84, 0.55);
-	// LANE: motion — the hub recipe's opacity-only fade (0.22s) goes here.
+	// MOTION: the header's enter IS the root's .visible fade (0.2s) — no
+	// keyframe here on purpose: an `open-N` key on this element would
+	// remount the FilterBar (search text / open menus reset). The body
+	// then lands 0.12s later (bagBodyIn's hold) = the zone ladder.
 
 	// Host recipe (BbHeaderWaves, DOC-6 #3 — the `> *` lift FROM THE HOST
 	// SHEET): the wave root is the absolute underlay, every other child
@@ -306,6 +448,14 @@ InventoryPanel {
 	white-space: nowrap;
 }
 
+// The tick: the chip remounts as `.flash flash-N` (BalanceClass) when the
+// gold changes, so the numeral's keyframe replays per sell; `both` holds
+// the rest colour through the 0.6s flash window. Colour only — the slab
+// never moves.
+.bag-balance.flash .bag-balance-value {
+	animation: bagBalTick 0.3s ease-out both;
+}
+
 // BACK · Q — the hub .hb-back recipe (filled r11 slab + Q cap). Reused in
 // the picker head. Hover = one slab step (gated under .mouse-mode at the
 // end of the sheet); press dim.
@@ -377,8 +527,10 @@ InventoryPanel {
 	flex: 0 0 1330px;
 	min-width: 1330px;
 	overflow: hidden;
-	// LANE: motion — the shop's shBodyIn (one opacity fade for the column;
-	// no per-card stagger — remount hazard) goes here.
+	// MOTION: ONE opacity fade for the whole goods column — no per-card
+	// stagger (cards remount on every .selected flip = the animation-delay
+	// graveyard, DOC-4 #14). Replays on the `open-N` key (per Show()).
+	animation: bagBodyIn 0.3s ease-out both;
 }
 
 // The scroll child — the roster-grid recipe verbatim: flat wrap list,
@@ -444,6 +596,15 @@ InventoryPanel {
 	flex: 0 0 auto;
 }
 
+// MOTION: the empty lines mount when the grid flips `.empty` — a fresh
+// mount, so a plain keyframe replays each time (opacity only; they are
+// direct children of the scroll).
+.bag-empty-head,
+.bag-empty-sub,
+.bag-empty-hint {
+	animation: bagEmptyIn 0.25s ease-out both;
+}
+
 // Overlay scrollbar — the roster .col-scrollbar recipe (read-only thumb,
 // imperative height/top; scrollbar-color/-width don't parse). Track in the
 // 20px lane: right 4 → 11px clear of the cards; top 8 + 8 bottom breathing
@@ -502,6 +663,11 @@ InventoryPanel {
 	background-color: #d9a054;
 	transform: skewX(-12deg);
 	flex: 0 0 auto;
+	// MOTION: the stamp — the chip lands bright and settles to tan when the
+	// ALL list (re)forms (category → ALL, page open via `open-N`). Opacity
+	// + fill only: the keyframe never names transform, so the static skew
+	// survives (DOC-4 #13). Short on purpose — see the table's STILL list.
+	animation: bagKickerStamp 0.22s ease-out both;
 }
 
 .bag-kicker-chip-inner {
@@ -746,7 +912,9 @@ InventoryPanel {
 	background-color: #15121f;
 	border-radius: 22px;
 	padding: 24px;
-	// LANE: motion — the case's fade shares the body's (shBodyIn).
+	// MOTION: the case's ONE fade — shares the goods column's `open-N` key,
+	// so both zones land together 0.12s after the header.
+	animation: bagBodyIn 0.3s ease-out both;
 }
 
 // Art slab 434×300 r16 — NEUTRAL dark ground (#1c1830, the raised step;
@@ -767,8 +935,11 @@ InventoryPanel {
 .bag-case-img {
 	image-rendering: pixelated;
 	background-repeat: no-repeat;
-	// LANE: motion — the shop's shArtIn (0.12s content fade on an
-	// `art-<id>` render key) goes here.
+	// MOTION: remounts on `art-<id>` when the case item changes — a 0.18s
+	// content fade (the brief's ~180ms; the Shop runs 0.12 — the Bag's
+	// case art is 256px vs the Shop's 240 and reads better a hair slower).
+	// Opacity never touches the compositor path, so the art stays crisp.
+	animation: bagArtIn 0.18s ease-out both;
 }
 
 // Rarity strip 122×4 at the slab's foot: bottom 12, left (434 − 122) / 2 = 156.
@@ -802,6 +973,8 @@ InventoryPanel {
 	margin-top: 16px;
 	padding-right: 6px; // italic overhang (inside the 434)
 	flex: 0 0 auto;
+	// MOTION: `case-<id>` key — the soft crossfade with the art.
+	animation: bagCaseTextIn 0.18s ease-out both;
 }
 
 // ×N line 434×24 — always mounted (empty for qty 1) so the effect line
@@ -824,6 +997,8 @@ InventoryPanel {
 	letter-spacing: 0.3px;
 	color: #d9a054;
 	white-space: nowrap;
+	// MOTION: `case-<id>` key — crossfades with the name.
+	animation: bagCaseTextIn 0.18s ease-out both;
 }
 
 // The ONE effect line 15/22 — Exo2Medium roman (dense reading stays roman;
@@ -940,6 +1115,9 @@ InventoryPanel {
 	line-height: 32px;
 	color: #f4f1ea;
 	white-space: nowrap;
+	// MOTION: `qty-N` key — the tick on every count change (colour only:
+	// the numeral sits inside the ring's r21 pill host).
+	animation: bagQtyTick 0.18s ease-out both;
 }
 
 // HOLD SELL — the shipped .sat-sell recipe (BbButton has no hold-fill
@@ -947,8 +1125,8 @@ InventoryPanel {
 // #ff8a92 ink, the HOLD cap. 282 beside the stepper (margin-left 12 = the
 // row's one gap); `.wide` = 434 for singles. The fill is an absolute child
 // whose width is written in PX from the razor (a % width on an absolute
-// paints full — CLAUDE.md). LANE: motion — the 0.05s width step + the
-// `.holding` pulse (the old sellHoldWarn) go here.
+// paints full — CLAUDE.md). MOTION (wired 2026-09-03): the hold grammar
+// (.holding / .draining / .sold) lives on this slab + the fill below.
 .bag-sell {
 	position: relative;
 	width: 282px;
@@ -973,19 +1151,64 @@ InventoryPanel {
 	}
 
 	&:active { background-color: rgba(224, 65, 74, 0.28); }
+
+	// ── The hold grammar (MOTION, wired 2026-09-03 — the Skills reset
+	// dialect: .holding / .draining / .sold). Classes from SellBtnClass. ──
+	// .holding — the slab warms one step from the first down frame (both
+	// devices); the fill's heat ramp rides the CHILD (below).
 	&.holding { background-color: rgba(224, 65, 74, 0.24); }
+
+	// .sold sold-N — THE SELL BEAT, keyed to the SOLD item (the case may
+	// fall to a neighbour when a stack sells out; a fresh SELL never wears
+	// it). The keyframe beats the hover/holding transition on
+	// background-color while it runs (DOC-4 #12) and `both` holds the rest
+	// ground for the remainder of the 0.5s window.
+	&.sold {
+		animation: bagSellBeat 0.3s ease-out both;
+
+		.bag-sell-label { animation: bagSellInk 0.3s ease-out both; }
+	}
 }
 
+// The fill — width is INPUT's measured px (SellFillPx, written per tick).
+// MOTION owns its visibility, colour and edge timing:
+//  · REST = invisible (opacity 0). A 0px-wide r11 box paints a ~6px
+//    sliver in-engine (the SDF rounds a degenerate box — Skills, user
+//    screenshot 2026-09-01), so width 0 alone is not enough. It shows
+//    only under .holding / .draining.
+//  · Leading edge square (`11px 0 0 11px`) so a partial fill reads as a
+//    gauge, not a pill sliding under the label (the Skills recipe).
+//  · .holding: the 0.05s width step smooths the per-tick writes, and the
+//    fill HEATS over the hold's own 0.9s (a transition, not per-tick
+//    classes): rest red → hot coral as the commit nears. LANE: color —
+//    the two stops are the danger pair's own ladder; tune live.
+//  · .draining (0.25s class window after an early release): the inline
+//    width has already gone to 0, so the DESTINATION rule's transition
+//    (DOC-4 #15) drains it over 0.22s while the opacity falls with it —
+//    the sliver at width 0 lands at opacity 0.
 .bag-sell-fill {
 	position: absolute;
 	top: 0px;
 	left: 0px;
 	width: 0px; // written in px from the razor (SellFillPx)
 	height: 44px;
-	border-radius: 11px;
-	background-color: rgba(255, 255, 255, 0.18);
+	border-radius: 11px 0 0 11px;
+	background-color: rgba(224, 65, 74, 0.35);
 	pointer-events: none;
 	z-index: 1;
+	opacity: 0;
+	transition: opacity 0.1s ease-out, background-color 0.14s ease-out;
+}
+
+.bag-sell.holding .bag-sell-fill {
+	opacity: 1;
+	background-color: rgba(255, 120, 110, 0.72);
+	transition: width 0.05s linear, background-color 0.9s linear, opacity 0.1s ease-out;
+}
+
+.bag-sell.draining .bag-sell-fill {
+	opacity: 0;
+	transition: width 0.22s ease-in, opacity 0.22s ease-in, background-color 0.22s ease-out;
 }
 
 .bag-sell-label {
@@ -1000,7 +1223,11 @@ InventoryPanel {
 	white-space: nowrap;
 	pointer-events: none;
 	z-index: 2;
+	transition: color 0.14s ease-out; // MOTION: the .holding ink lift (below)
 }
+
+// The ink lifts toward white as the hold runs (readable over the hot fill).
+.bag-sell.holding .bag-sell-label { color: #ffd2d6; }
 
 .bag-sell-hold {
 	display: flex;
@@ -1076,8 +1303,10 @@ InventoryPanel {
 // BEAST PICKER (sub-modal) — 560 × 640 r22 over a dim shield
 // ═══════════════════════════════════════
 // Rows are DIRECT children of the scroll (DOC-1 #12); the 2-col wrappers
-// died. LANE: motion — the overlay fade + panel rise (the shipped
-// picker-overlay-fade / picker-panel-rise) go here.
+// died. MOTION (wired 2026-09-03): the picker is an `@if` branch, so its
+// enter is FREE mount keyframes (DOC-4 #5) — shield fade + panel rise.
+// Rows carry NO mount animation (their class flips per cursor hop,
+// DOC-4 #14); their costume is the 0.14s transitions below.
 
 .bag-picker-overlay {
 	position: absolute;
@@ -1091,6 +1320,7 @@ InventoryPanel {
 	justify-content: center;
 	z-index: 600;
 	pointer-events: all;
+	animation: bagShieldIn 0.18s ease-out both;
 }
 
 .bag-picker {
@@ -1102,6 +1332,9 @@ InventoryPanel {
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
+	// MOTION: the rise is margin-top 28 → 0 (14px of travel on a centred
+	// child) + opacity — NO transform on this flex parent (DOC-7 #15).
+	animation: bagPickerRise 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 // Head 560×64: title (plain) · spacer · BACK · Q. pad 0 16 → 528 inner.
@@ -1185,6 +1418,7 @@ InventoryPanel {
 	align-items: center;
 	justify-content: center;
 	pointer-events: none;
+	transition: background-color 0.14s ease-out; // MOTION: the kb-focused step glides both ways
 }
 
 .bag-picker-sprite-img {
@@ -1213,6 +1447,7 @@ InventoryPanel {
 	color: #f4f1ea;
 	white-space: nowrap;
 	pointer-events: none;
+	transition: color 0.14s ease-out; // MOTION: cream → white on the cursor row
 }
 
 .bag-picker-sub {
@@ -1328,6 +1563,18 @@ InventoryPanel {
 .inventory-panel.mouse-mode .bag-qty-btn.off:hover { background-color: #1c1830; }
 .inventory-panel.mouse-mode .bag-sell:hover { background-color: rgba(224, 65, 74, 0.24); }
 .inventory-panel.mouse-mode .bag-picker-row:hover { background-color: #2a2340; }
+
+// ─── Stepper hold heat (MOTION, both devices — not hover-dependent, so it
+// sits after the gate at the gate's specificity (0,4,0) and wins over
+// :hover by source order). `.holding` = INPUT's hold-repeat is FIRING on
+// this button (from the first repeat, not the press — the press is
+// :active's darker step). Drops on release via the 0.14s transition.
+// LANE: color — #4b3211 is the tan's own dark fill (hsl 34° at l≈18%,
+// the Shop's #4a3410 amber-dark is the sibling value): cool → warm reads
+// as a hue step past hover, not a value nudge. Never fires on `.off`
+// (INPUT's hold gate does not arm at the clamp).
+.inventory-panel.mouse-mode .bag-qty-btn.holding,
+.inventory-panel.kbd-mode .bag-qty-btn.holding { background-color: #4b3211; }
 
 // ── INPUT 2026-09-03 — the KEYBOARD side of the same gate ─────────────────
 // HEADER: no ring up here (user ruling, the roster / shop recipe) — the

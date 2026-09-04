@@ -43,8 +43,18 @@
 	     Seeded on BROWSE at open (Tick view edge). Q → hub, claimed.
 	     Hover moves the same cursor (mouse mode only): LandingHover on the
 	     slab bodies (CTAs, target-walked), LandingRowHover on the rows.
-	     LANE: motion — view enter (the gp-header carries gpZoneHeader; the
-	     slabs are static — no rungs assigned here).
+	     LANE: motion (attached, run 3) — ENTER: gp-header gpZoneHeader rung 0,
+	     JOIN A GUILD slab rung 1 (gpZoneBand), START YOUR OWN rung 2
+	     (gpZoneRoster) — opacity-only like the plaza's (a translate would
+	     poison the rows' flex spacers, DOC-7 §15). Invite rows ride the
+	     gpRowIn0–7 ladder (RowLadderClass: 0.75s arm from the list's FIRST
+	     render; a row the cursor has touched mounts whole — its class string
+	     changes per hop, and a remount would replay the rung). ACCEPT /
+	     DECLINE = the plaza's gpProwAccept / gpProwDeny via the windowed
+	     gp-leaving-* classes (AcceptInviteWithFold / DeclineInviteWithCollapse;
+	     OnError gives the row back). EXIT: BROWSE / CREATE / the guild landing
+	     route through BeginViewExit (root .gp-leaving, 0.12s) — the branch
+	     swaps only when the latch expires (the settings sub-view's recipe).
 	     LANE: color — the two status lines share TextDim; the gate reads
 	     dim, not red (a locked state is quiet). -->
 	@{
@@ -70,8 +80,9 @@
 		var glLeftStyle = $"height: {glLeftH}px;";
 		var glInvChip = glN == 1 ? "1 INVITE WAITING" : $"{glN} INVITES WAITING";
 		int glCreateIdx = 1 + glN; // rows model: BROWSE 0 · rows 1..n · CREATE n+1 (TickLandingInput)
+		_landingUp = true; // LANE: motion — the guild-lands edge (TickNoGuildMotion) fades THIS view to the plaza; render-time set, the log-ladder precedent
 	}
-	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode") @(ViewLeavingClass)" onmousemove=@OnGpPageMouseMove>
 		<div class="gp-header">
 			<BbHeaderWaves Accent=@("blue") />
 			<div class="gp-h-identity">
@@ -118,7 +129,7 @@
 						     this lane), so the tile is the shield glyph on the
 						     default ground and the sub reads "[TAG] · from Inviter". -->
 						<div class="gl-inv-list" @ref="landingInvRef">
-							@{ int glIdx = 0; }
+							@{ ArmLandingLadderOnMount(); int glIdx = 0; } @* LANE: motion — the row ladder arms on the list's FIRST render (ArmLogLadderOnMount recipe) *@
 							@foreach ( var invite in glInvites )
 							{
 								var inv = invite;
@@ -126,7 +137,10 @@
 								bool rowKb = IsLandingKb( rowIdx );
 								var invSub = $"[{inv.GuildTag}] · from {inv.InviterName}";
 								glIdx++;
-								<div class="gl-irow @(glIdx % 2 == 0 ? "alt" : "") @(rowKb ? "guild-kb-selected" : "")" onmouseover=@(( e ) => LandingRowHover( rowIdx, e ))>
+								// LANE: motion — ladder rung during the arm window (empty once the cursor touched the row / after), fold class while leaving.
+								var invRung = RowLadderClass( rowIdx - 1, rowKb );
+								var invLeave = IrowLeavingClass( inv );
+								<div class="gl-irow @(glIdx % 2 == 0 ? "alt" : "") @(rowKb ? "guild-kb-selected" : "") @invRung @invLeave" onmouseover=@(( e ) => LandingRowHover( rowIdx, e ))>
 									<div class="gl-emblem">
 										<iconify class="gl-emblem-glyph" icon="lucide:shield" Size=@(24) Color="#ffffff" />
 									</div>
@@ -135,8 +149,8 @@
 										<span class="gp-prow-sub">@invSub</span>
 									</div>
 									<div class="gl-irow-spacer"></div>
-									<BbButton Tier="secondary" Size=@(34) Label=@L("ui.guild.accept") Class="gp-pacc" Disabled=@(!glCanJoin) HoverSound=@false Focused=@(rowKb && _kbLandBtn == 0) OnClick=@(() => { AcceptInvite( inv ); SoundManager.PlaySelect(); }) />
-									<BbButton Tier="ghost" Size=@(34) Label="DECLINE" Class="gl-pdec" HoverSound=@false Focused=@(rowKb && _kbLandBtn == 1) OnClick=@(() => { DeclineInvite( inv ); SoundManager.PlayDeny(); }) />
+									<BbButton Tier="secondary" Size=@(34) Label=@L("ui.guild.accept") Class="gp-pacc" Disabled=@(!glCanJoin) HoverSound=@false Focused=@(rowKb && _kbLandBtn == 0) OnClick=@(() => AcceptInviteWithFold( inv )) />
+									<BbButton Tier="ghost" Size=@(34) Label="DECLINE" Class="gl-pdec" HoverSound=@false Focused=@(rowKb && _kbLandBtn == 1) OnClick=@(() => DeclineInviteWithCollapse( inv )) />
 								</div>
 							}
 						</div>
@@ -191,8 +205,18 @@ else if ( guildView == "browse" )
 	     LANE: layout-next — the DETAIL body (.guild-detail, 2026-04 dialect)
 	     is hosted inside the slab as-is; only its actions moved to BbButtons
 	     and its BACK to the header cap. Full house restyle next run.
-	     LANE: motion — view enter. LANE: color — INVITE ONLY text is dim,
-	     never red (not an error). -->
+	     LANE: motion (attached, run 3) — ENTER: header rung 0, the slab rung 1
+	     (gpZoneBand); rows ride the gpRowIn0–7 ladder (RowLadderClass — armed
+	     on the list's FIRST render, on a REFRESH, and when the open-time fetch
+	     fills an EMPTY list; rows 8+ mount static; cursor-touched rows mount
+	     whole); .gb-empty fades on rung 2; the hosted .guild-detail fades on
+	     rung 1 (opacity-only override of the 2026-04 viewSlideIn — it sits in
+	     a scroll host). SWAPS: list ⇄ detail via BeginViewExit(gp-leaving-sub)
+	     (the list/detail host + toolbar fade 0.12s, band stays); BACK via
+	     gp-leaving. BEATS: sort apply = windowed gp-pop chip stamp pop;
+	     JOIN/REQUEST = windowed gp-sent blue seam flash on the row (the view's
+	     one HDR tick, inside the keyframe). LANE: color — INVITE ONLY text is
+	     dim, never red (not an error). -->
 	@{
 		var gbGuilds = GetVisibleGuilds();
 		bool gbDetail = viewingGuild != null;
@@ -203,8 +227,12 @@ else if ( guildView == "browse" )
 		var gbBandLabel = gbDetail ? "GUILD" : "GUILDS";
 		var gbDetailTag = gbDetail ? $"[{viewingGuild.GuildTag}]" : "";
 		var gbSearchCls = ( _kbSearchFocused ? "guild-kb-search-focused " : "" ) + ( IsBrowseHeadKb( 0 ) ? "guild-kb-selected" : "" );
+		// LANE: motion — windowed pop: the sort chip that just went active wears gp-pop for 0.4s (SetBrowseSort stamps it).
+		bool gbSortPop = RealTime.Now < _sortPopUntil;
+		var gbPopMembers = gbSortPop && browseSort == "members" ? "gp-pop" : "";
+		var gbPopLevel = gbSortPop && browseSort == "level" ? "gp-pop" : "";
 	}
-	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode") @(ViewLeavingClass)" onmousemove=@OnGpPageMouseMove>
 		<div class="gp-header">
 			<BbHeaderWaves Accent=@("blue") />
 			<div class="gp-h-identity">
@@ -240,10 +268,10 @@ else if ( guildView == "browse" )
 						<iconify class="gb-search-glyph" icon="lucide:search" Size=@(13) Color="#a79dbe" />
 						<TextEntry class="gb-search-input" @ref="browseSearchInput" Text="@browseSearchQuery" Placeholder="Search name or tag" />
 					</div>
-					<div class="gp-chip @(browseSort == "members" ? "on" : "") @(IsBrowseHeadKb( 1 ) ? "guild-kb-selected" : "")" onmouseover=@(() => BrowseHeadHover( 1 )) onclick=@(() => SetBrowseSort( "members" ))>
+					<div class="gp-chip @(browseSort == "members" ? "on" : "") @(IsBrowseHeadKb( 1 ) ? "guild-kb-selected" : "") @gbPopMembers" onmouseover=@(() => BrowseHeadHover( 1 )) onclick=@(() => SetBrowseSort( "members" ))>
 						<span class="gp-chip-label">MEMBERS</span>
 					</div>
-					<div class="gp-chip @(browseSort == "level" ? "on" : "") @(IsBrowseHeadKb( 2 ) ? "guild-kb-selected" : "")" onmouseover=@(() => BrowseHeadHover( 2 )) onclick=@(() => SetBrowseSort( "level" ))>
+					<div class="gp-chip @(browseSort == "level" ? "on" : "") @(IsBrowseHeadKb( 2 ) ? "guild-kb-selected" : "") @gbPopLevel" onmouseover=@(() => BrowseHeadHover( 2 )) onclick=@(() => SetBrowseSort( "level" ))>
 						<span class="gp-chip-label">LEVEL</span>
 					</div>
 					<div class="gp-sort-hint"><span class="gp-back-cap">R</span></div>
@@ -385,6 +413,7 @@ else if ( guildView == "browse" )
 				{
 					<!-- GUILD LIST — flat scroll children (rows + the one empty block). -->
 					<div class="gb-list" @ref="browseScrollRef">
+						@{ ArmBrowseLadderOnMount(); _browseRowsRendered = gbGuilds.Count; } @* LANE: motion — the row ladder arms on the list's FIRST render; the count feeds the data-landed re-arm (an empty list that fills cascades) *@
 						@if ( gbGuilds.Count == 0 )
 						{
 							<!-- LANE: input — the empty list's ONE stop is REFRESH (grid 0). -->
@@ -406,7 +435,10 @@ else if ( guildView == "browse" )
 							var gJoinLabel = g.JoinMode == GuildJoinMode.Open ? "JOIN" : "REQUEST";
 							var gOnline = g.OnlineCount > 0 ? $"{g.OnlineCount} ONLINE" : "";
 							bool gRowKb = IsBrowseGridKb( gIdx );
-							<div class="gb-row @(gi % 2 == 1 ? "alt" : "") @(gRowKb ? "guild-kb-selected" : "")" onmouseover=@(( e ) => BrowseRowHover( gIdx, e )) onclick=@(() => OpenGuildRow( g ))>
+							// LANE: motion — ladder rung during the arm window; gp-sent = the JOIN/REQUEST commit flash (windowed, RequestJoinRow stamps it).
+							var gRung = RowLadderClass( gIdx, gRowKb );
+							var gSent = g.GuildId == _sentPopGuildId && RealTime.Now < _sentPopUntil ? "gp-sent" : "";
+							<div class="gb-row @(gi % 2 == 1 ? "alt" : "") @(gRowKb ? "guild-kb-selected" : "") @gRung @gSent" onmouseover=@(( e ) => BrowseRowHover( gIdx, e )) onclick=@(() => OpenGuildRow( g ))>
 								<div class="gb-emblem @(gBeast != null ? "beast-tile" : "")" style="background-color: @gFill">
 									@if ( gBeast != null )
 									{
@@ -455,7 +487,7 @@ else if ( guildView == "browse" )
 }
 else if ( guildView == "myguild" )
 {
-	@if ( !InGuildLive() )
+	@if ( !InGuildLive() || _createUp )
 	{
 		<!-- ═══ CREATE A GUILD — run 3 LAYOUT. The SETTINGS sub-view's
 		     IDENTITY + RECRUITING slabs reused (same gs-* recipes, gc-*
@@ -489,8 +521,18 @@ else if ( guildView == "myguild" )
 		     only). Q → landing (claimed). Seeded on NAME at open (Tick view
 		     edge); after a successful create the plaza mounts and the view
 		     edge seeds ITS first zone (create → plaza only).
-		     LANE: motion — the slabs carry the settings sub-view's gpZone*
-		     rungs by class (gs-ident / gs-recruit); nothing new assigned.
+		     LANE: motion (attached, run 3) — ENTER: the slabs carry the settings
+		     sub-view's rungs BY CLASS (verified: .gs-ident owns gpZoneBand rung 1,
+		     .gs-recruit owns gpZoneRoster rung 2; the gc-* modifiers only size
+		     them); the FOUND foot (.gc-foot) takes rung 3 (the gs-save-row
+		     recipe) — it was missing. .gc-err-row slides in (gpErrIn) on mount.
+		     Colour / beast / join / level chip cycles = the settings swatch tick
+		     (the .on two-tone eases 0.14s both ways — inherited, nothing added;
+		     a mount pop on .on would replay on every cursor hop, DOC-4 §14).
+		     FOUND gated = INPUT's PlayDeny only (the settings SAVE has no visual
+		     blip, so none is invented here). EXIT: BACK via BeginViewExit
+		     (gp-leaving); FOUND success holds this branch on _createUp until the
+		     latch fades it, then the plaza mounts with its own cascade.
 		     LANE: color — FOUND is the page's one gold; disabled = the
 		     primitive's dim, the status line stays TextDim. -->
 		@{
@@ -519,8 +561,9 @@ else if ( guildView == "myguild" )
 			var gcJoinNote = JoinModeNote( settingsJoinMode );
 			var gcLevelNote = MinLevelNote( settingsMinLevel );
 			bool gcHasError = !string.IsNullOrEmpty( errorMessage );
+			_createUp = true; // LANE: motion — holds this branch through the exit latch when the guild lands (TickNoGuildMotion edge → plaza); cleared by the commit / on leaving myguild
 		}
-		<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+		<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode") @(ViewLeavingClass)" onmousemove=@OnGpPageMouseMove>
 			<div class="gp-header">
 				<BbHeaderWaves Accent=@("blue") />
 				<div class="gp-h-identity">
@@ -2189,6 +2232,46 @@ else if ( guildView == "myguild" )
 	private readonly Dictionary<string, float> _logNewUntil = new();
 	// dev_guildfx freeze — root class pauses the windowed pops at their 0% frame.
 	private bool _gpFxFreeze = false;
+	// ── run 3 motion state (LANE: motion) — the NO-GUILD views ──
+	// VIEW EXIT LATCH — the settings sub-view's recipe generalized: a swap that
+	// unmounts a branch under the cursor stamps a 0.12s deadline, the root
+	// wears _viewExitClass (gp-leaving = header identity + toolbar + body fade;
+	// gp-leaving-sub = the browse slab's list/detail host + toolbar), and Tick
+	// runs the stored commit when it expires. Input is ignored mid-exit (Q
+	// stays claimed). Idempotent while leaving.
+	private float _viewExitUntil = -1f;
+	private string _viewExitClass = "";
+	private Action _viewExitCommit = null;
+	private bool ViewLeaving => _viewExitUntil > 0f && RealTime.Now < _viewExitUntil;
+	private string ViewLeavingClass => ViewLeaving ? _viewExitClass : "";
+	// Which no-guild branch is on screen (render-time set, like
+	// _plazaBodyRendered): the guild-lands edge fades that branch to the plaza
+	// instead of hard-swapping it; _createUp also HOLDS the create branch
+	// mounted through the latch (its @if reads it).
+	private bool _landingUp = false;
+	private bool _createUp = false;
+	// ROW LADDER (browse rows / landing invite rows) — armed for 0.75s from a
+	// list's FIRST render (and on REFRESH / a fetch that fills an empty list);
+	// rung by index, 8 rungs, rows past the cap mount static. Rows the cursor
+	// has TOUCHED in the window carry no rung: their class string changes on
+	// every hop (= remount = replay), so they mount whole while the rest
+	// cascade. Cleared on arm.
+	private float _rowLadderUntil = -1f;
+	private readonly HashSet<int> _rowLadderTouched = new();
+	private bool _browseListRendered = false;
+	private bool _landingListRendered = false;
+	private int _browseRowsRendered = 0;
+	private bool _wasLoadingGuilds = false;
+	private bool _browseRearmOnLoad = false;
+	// Landing invite rows leaving (ACCEPT fold / DECLINE collapse) — the
+	// plaza's _prowLeaving shape keyed by the invite; pruned when the invite is
+	// gone or after 6s; cleared on OnError (the row comes back).
+	private readonly Dictionary<string, (bool accept, float at)> _irowLeaving = new();
+	// Sort chip stamp pop — windowed gp-pop on the chip that just went active.
+	private float _sortPopUntil = -1f;
+	// JOIN / REQUEST sent — windowed gp-sent blue seam flash on that row.
+	private string _sentPopGuildId = null;
+	private float _sentPopUntil = -1f;
 
 	// Plaza state — one scene, no tabs. SETTINGS is a SUB-VIEW of the page
 	// (run 2): the same header stays mounted, the body swaps (if-mount) so
@@ -2536,6 +2619,10 @@ else if ( guildView == "myguild" )
 			TickMotionBeats();
 		}
 
+		// LANE: motion (run 3) — view exit latch expiry, row-ladder arms, invite
+		// fold pruning, the guild-lands edges (landing / create → plaza).
+		TickNoGuildMotion();
+
 		// LANE: motion — settings EXIT latch expiry → the real unmount.
 		if ( showSettingsView && _settingsClosingUntil > 0f && RealTime.Now >= _settingsClosingUntil )
 		{
@@ -2678,6 +2765,19 @@ else if ( guildView == "myguild" )
 		hash.Add( RealTime.Now < _logLadderUntil );
 		hash.Add( ActiveLogNewCount() );
 		hash.Add( _gpFxFreeze );
+		// run 3 motion keys (LANE: motion) — view exit latch (class attach/drop),
+		// row ladder window, invite rows leaving, sort pop, sent flash, the
+		// no-guild branch flags (the create @if reads _createUp).
+		hash.Add( ViewLeaving );
+		hash.Add( _viewExitClass );
+		hash.Add( RealTime.Now < _rowLadderUntil );
+		hash.Add( _irowLeaving.Count );
+		foreach ( var ik in _irowLeaving.Keys ) hash.Add( ik );
+		hash.Add( RealTime.Now < _sortPopUntil );
+		hash.Add( _sentPopGuildId );
+		hash.Add( RealTime.Now < _sentPopUntil );
+		hash.Add( _createUp );
+		hash.Add( _landingUp );
 		// ── Emblem resolve inputs (BbEmblem.ResolveBeast) — icon/color/owner
 		//    plus everything the leader-favorite default chain reads: your own
 		//    favorite, the member list (owner ConnectionId), and the online
@@ -2752,6 +2852,15 @@ else if ( guildView == "myguild" )
 		if ( showMemberMenu && selectedMember != null ) { TickMemberMenuInput(); return; }
 		if ( showSettingsView ) { TickSettingsDrawerInput(); return; }
 		if ( editingMotd ) { TickEditorInput(); return; }
+
+		// LANE: motion (run 3) — a view is fading out under the exit latch;
+		// nothing takes input mid-exit. Q stays OURS (the settings S-H rule): a
+		// fast double-tap must not fall through to the hub. Claim it, act on nothing.
+		if ( ViewLeaving )
+		{
+			if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+			return;
+		}
 
 		// ---- View dispatch ----
 		switch ( guildView )
@@ -2883,13 +2992,11 @@ else if ( guildView == "myguild" )
 				// cooldown) — the same check the markup dims it with.
 				bool canJoin = GetTamerLevel() >= GuildManager.MIN_LEVEL_TO_JOIN && !( gm?.IsOnHopCooldown() ?? false );
 				if ( !canJoin ) { SoundManager.PlayDeny(); return; }
-				AcceptInvite( invite );
-				SoundManager.PlaySelect();
+				AcceptInviteWithFold( invite ); // LANE: motion — fold + sound, the same path as the click
 			}
 			else
 			{
-				DeclineInvite( invite );
-				SoundManager.PlayDeny();
+				DeclineInviteWithCollapse( invite ); // LANE: motion — collapse + sound, the same path as the click
 			}
 			StateHasChanged();
 		}
@@ -3051,8 +3158,7 @@ else if ( guildView == "myguild" )
 				return;
 			}
 			_browseReturnIdx = _kbIndex;
-			ViewGuildDetail( g );
-			ResetKb(); // the Tick view edge seeds "browse-detail"
+			OpenGuildDetail( g ); // LANE: motion — the sub latch; ResetKb runs in its commit, then the Tick view edge seeds "browse-detail"
 		}
 	}
 
@@ -3106,6 +3212,7 @@ else if ( guildView == "myguild" )
 	{
 		if ( browseSort == sort ) return;
 		browseSort = sort;
+		_sortPopUntil = RealTime.Now + 0.4f; // LANE: motion — windowed gp-pop on the chip that just went active (0.4s > the 0.22s stamp pop)
 		SoundManager.PlayClick();
 		if ( _kbActive && _kbZone == "browse-grid" && browseScrollRef != null )
 			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex, "gb-row" );
@@ -4668,6 +4775,7 @@ else if ( guildView == "myguild" )
 		SoundManager.PlayDeny();
 		// LANE: motion — a failed ACCEPT/DENY must give the pending row back.
 		if ( _prowLeaving.Count > 0 ) { _prowLeaving.Clear(); _joinWatchSteamId = 0; StateHasChanged(); }
+		if ( _irowLeaving.Count > 0 ) { _irowLeaving.Clear(); StateHasChanged(); } // run 3 — a failed invite ACCEPT / DECLINE gives the landing row back
 	}
 
 	// Navigation
@@ -4683,9 +4791,10 @@ else if ( guildView == "myguild" )
 	private List<MemberApiData> viewingGuildMembers = new();
 	private bool isLoadingMembers = false;
 
+	// LANE: motion (run 3) — no sound here: OpenGuildDetail plays PlayForward at
+	// the PRESS, this runs 0.12s later as the sub latch's commit.
 	private async void ViewGuildDetail( GuildAdvertisement guild )
 	{
-		SoundManager.PlayForward();
 		viewingGuild = guild;
 		viewingGuildMembers = new();
 		isLoadingMembers = true;
@@ -4813,51 +4922,74 @@ else if ( guildView == "myguild" )
 		return true;
 	}
 
+	// LANE: motion (run 3) — every page swap below plays its sound at the PRESS
+	// and commits through BeginViewExit: the root wears gp-leaving for 0.12s
+	// (header identity + toolbar + body fade; the waves stay), then the branch
+	// swaps and the new view's mount rungs carry the enter. Re-presses while
+	// leaving are no-ops.
 	private void OnBrowsePressed()
 	{
+		if ( ViewLeaving ) return;
 		SoundManager.PlayForward();
-		guildView = "browse";
-		errorMessage = "";
-		viewingGuild = null;
-		LoadGuildsFromApi();
-		ResetKb();
-		StateHasChanged();
+		LoadGuildsFromApi(); // the fetch runs under the fade
+		BeginViewExit( "gp-leaving", () =>
+		{
+			guildView = "browse";
+			errorMessage = "";
+			viewingGuild = null;
+			ResetKb();
+		} );
 	}
 
 	private void OnCreatePressed()
 	{
+		if ( ViewLeaving ) return;
 		if ( !CreateGateOpen() ) { SoundManager.PlayDeny(); return; }
 		SoundManager.PlayForward();
-		guildView = "myguild"; // no guild → the create form
-		errorMessage = "";
-		ResetKb();
-		StateHasChanged();
+		BeginViewExit( "gp-leaving", () =>
+		{
+			guildView = "myguild"; // no guild → the create form
+			errorMessage = "";
+			ResetKb();
+		} );
 	}
 
 	// BACK · Q from browse → the plaza when in a guild, else the landing.
 	private void OnBrowseBackPressed()
 	{
+		if ( ViewLeaving ) return;
 		SoundManager.PlayBack();
-		guildView = InGuildLive() ? "myguild" : "landing";
-		viewingGuild = null;
-		errorMessage = "";
-		ResetKb();
-		StateHasChanged();
+		BeginViewExit( "gp-leaving", () =>
+		{
+			guildView = InGuildLive() ? "myguild" : "landing";
+			viewingGuild = null;
+			errorMessage = "";
+			ResetKb();
+		} );
 	}
 
 	private void OnCreateBackPressed()
 	{
+		if ( ViewLeaving ) return;
 		SoundManager.PlayBack();
-		guildView = "landing";
-		errorMessage = "";
-		ResetKb();
-		StateHasChanged();
+		BeginViewExit( "gp-leaving", () =>
+		{
+			guildView = "landing";
+			_createUp = false;
+			errorMessage = "";
+			ResetKb();
+		} );
 	}
 
+	// LANE: motion (run 3) — REFRESH re-cascades the list: the ladder re-arms
+	// when the fetch lands (Tick edge on isLoadingGuilds), or right away if
+	// the load completed synchronously (no API).
 	private void OnRefreshGuildsPressed()
 	{
 		SoundManager.PlayClick();
+		_browseRearmOnLoad = true;
 		LoadGuildsFromApi();
+		if ( !isLoadingGuilds ) { _browseRearmOnLoad = false; ArmRowLadder(); StateHasChanged(); }
 	}
 
 	// Row click → the detail, unless a BbButton inside the row just fired
@@ -4865,33 +4997,45 @@ else if ( guildView == "myguild" )
 	private void OpenGuildRow( GuildAdvertisement g )
 	{
 		if ( RealTime.Now < _rowClickSuppressUntil ) return;
-		ViewGuildDetail( g );
+		OpenGuildDetail( g );
 	}
 
+	// LANE: motion (run 3) — the ONE path into the detail (row click + kb
+	// Space): the list + toolbar fade under the sub latch (gp-leaving-sub),
+	// then the detail mounts and its .guild-detail fades in on rung 1.
+	private void OpenGuildDetail( GuildAdvertisement g )
+	{
+		if ( g == null || ViewLeaving ) return;
+		SoundManager.PlayForward();
+		BeginViewExit( "gp-leaving-sub", () => { ViewGuildDetail( g ); ResetKb(); } );
+	}
+
+	// LANE: motion (run 3) — the request goes out NOW; the row wears the
+	// windowed gp-sent (0.6s > the 0.5s blue seam flash) so later cursor
+	// remounts replay nothing. The BbButton's own :active dim is the press.
 	private void RequestJoinRow( GuildAdvertisement g )
 	{
 		_rowClickSuppressUntil = RealTime.Now + 0.05f;
 		RequestJoin( g );
+		_sentPopGuildId = g?.GuildId;
+		_sentPopUntil = RealTime.Now + 0.6f;
 		SoundManager.PlaySelect();
 		StateHasChanged();
 	}
 
 	private void OnDetailJoinPressed()
 	{
-		if ( viewingGuild == null ) return;
+		if ( viewingGuild == null || ViewLeaving ) return;
 		RequestJoin( viewingGuild );
 		SoundManager.PlaySelect();
-		viewingGuild = null;
-		ResetKb();
-		StateHasChanged();
+		BeginViewExit( "gp-leaving-sub", () => { viewingGuild = null; ResetKb(); } );
 	}
 
 	private void OnDetailBackPressed()
 	{
+		if ( ViewLeaving ) return;
 		SoundManager.PlayBack();
-		viewingGuild = null;
-		ResetKb();
-		StateHasChanged();
+		BeginViewExit( "gp-leaving-sub", () => { viewingGuild = null; ResetKb(); } );
 	}
 
 	// Roster cap for a browsed guild — the ad carries no MaxMembers, so it is
@@ -5922,6 +6066,148 @@ else if ( guildView == "myguild" )
 			List<string> gone = null;
 			foreach ( var kv in _logNewUntil ) if ( RealTime.Now >= kv.Value ) (gone ??= new()).Add( kv.Key );
 			if ( gone != null ) foreach ( var k in gone ) _logNewUntil.Remove( k );
+		}
+	}
+
+	// ═══ LANE: motion (run 3) — the NO-GUILD views: exit latch, row ladder,
+	//     invite folds, the guild-lands edges ═══
+
+	// Arm the view exit latch: the root wears `cls` for 0.12s, then Tick runs
+	// `commit` (the state flip that unmounts the branch). Idempotent while a
+	// latch is live — a second press mid-fade is a no-op, its state unchanged.
+	private void BeginViewExit( string cls, Action commit )
+	{
+		if ( ViewLeaving ) return;
+		_viewExitClass = cls ?? "";
+		_viewExitCommit = commit;
+		_viewExitUntil = RealTime.Now + 0.12f;
+		StateHasChanged();
+	}
+
+	// Row ladder — 0.7s of rungs + slack. Touched rows forget on arm.
+	private void ArmRowLadder()
+	{
+		_rowLadderUntil = RealTime.Now + 0.75f;
+		_rowLadderTouched.Clear();
+	}
+
+	// Called from the lists' render heads (first render after each mount —
+	// the ArmLogLadderOnMount recipe; Tick clears the flags while the list is
+	// away). Render-time mutation is deliberate: arming from Tick would paint
+	// one frame of un-laddered rows first (a blink).
+	private void ArmBrowseLadderOnMount()
+	{
+		if ( _browseListRendered ) return;
+		_browseListRendered = true;
+		ArmRowLadder();
+	}
+
+	private void ArmLandingLadderOnMount()
+	{
+		if ( _landingListRendered ) return;
+		_landingListRendered = true;
+		ArmRowLadder();
+	}
+
+	// Motion class for a list row while the ladder is armed: rung by index
+	// (8 rungs; rows 8+ mount static), EXCEPT rows the cursor has touched in
+	// this window — the cursor row's class string changes on every hop, and a
+	// remount would replay the rung (hold + fade = a blink), so touched rows
+	// carry nothing and mount whole. After the window every row is "" (the
+	// one remount at expiry lands on already-opaque rows — the log's law).
+	private string RowLadderClass( int idx, bool rowKb )
+	{
+		if ( RealTime.Now >= _rowLadderUntil ) return "";
+		if ( rowKb ) { _rowLadderTouched.Add( idx ); return ""; }
+		if ( _rowLadderTouched.Contains( idx ) ) return "";
+		return idx >= 8 ? "" : "gp-rr" + idx;
+	}
+
+	// Landing invite rows — keyed by the invite's three strings (no id on
+	// GuildInvite; Core is read-only for this lane).
+	private static string IrowKey( GuildInvite i ) => i == null ? "" : $"{i.GuildTag}|{i.GuildName}|{i.InviterName}";
+	private string IrowLeavingClass( GuildInvite i )
+		=> i != null && _irowLeaving.TryGetValue( IrowKey( i ), out var lv ) ? ( lv.accept ? "gp-leaving-acc" : "gp-leaving-deny" ) : "";
+
+	// ACCEPT — the row folds NOW (gpProwAccept, 0.2s, `both`) and stays folded
+	// until the invite leaves PendingInvites or the guild lands (the Tick edge
+	// fades the landing to the plaza); OnError gives the row back.
+	private void AcceptInviteWithFold( GuildInvite i )
+	{
+		if ( i == null || _irowLeaving.ContainsKey( IrowKey( i ) ) ) return;
+		_irowLeaving[IrowKey( i )] = (true, RealTime.Now);
+		AcceptInvite( i );
+		SoundManager.PlaySelect();
+		StateHasChanged();
+	}
+
+	// DECLINE — the quiet 0.16s collapse (no colour — a refusal is not a beat).
+	private void DeclineInviteWithCollapse( GuildInvite i )
+	{
+		if ( i == null || _irowLeaving.ContainsKey( IrowKey( i ) ) ) return;
+		_irowLeaving[IrowKey( i )] = (false, RealTime.Now);
+		DeclineInvite( i );
+		SoundManager.PlayDeny();
+		StateHasChanged();
+	}
+
+	// Per-tick housekeeping for the run-3 beats (every view).
+	private void TickNoGuildMotion()
+	{
+		// Exit latch expiry → the stored commit (the real branch swap).
+		if ( _viewExitUntil > 0f && RealTime.Now >= _viewExitUntil )
+		{
+			_viewExitUntil = -1f;
+			var commit = _viewExitCommit;
+			_viewExitCommit = null;
+			commit?.Invoke();
+			StateHasChanged();
+		}
+
+		// The lists' first-render arms reset while they are away; so do the
+		// branch flags (the guild-lands edge only fires on a branch that rendered).
+		bool browseListUp = guildView == "browse" && viewingGuild == null;
+		if ( !browseListUp ) _browseListRendered = false;
+		if ( guildView != "landing" ) { _landingListRendered = false; _landingUp = false; }
+		if ( guildView != "myguild" ) _createUp = false;
+
+		// Browse data landing: a fetch that fills an EMPTY list (the open-time
+		// load) or one the player asked for (REFRESH) re-cascades the rows.
+		// Rows already on screen keep their class strings (no remount) unless
+		// the window had expired — then they replay too, which IS the refresh.
+		if ( browseListUp && _wasLoadingGuilds && !isLoadingGuilds && ( _browseRowsRendered == 0 || _browseRearmOnLoad ) )
+		{
+			_browseRearmOnLoad = false;
+			ArmRowLadder();
+		}
+		_wasLoadingGuilds = isLoadingGuilds;
+
+		// Invite rows leaving: drop when the invite is gone (server confirmed)
+		// or after 6s (a lost round-trip must not leave a ghost fold).
+		if ( _irowLeaving.Count > 0 )
+		{
+			var invites = GuildManager.Instance?.PendingInvites;
+			List<string> drop = null;
+			foreach ( var kv in _irowLeaving )
+			{
+				bool present = false;
+				if ( invites != null )
+					foreach ( var iv in invites ) if ( IrowKey( iv ) == kv.Key ) { present = true; break; }
+				if ( !present || RealTime.Now - kv.Value.at > 6f ) (drop ??= new()).Add( kv.Key );
+			}
+			if ( drop != null ) foreach ( var k in drop ) _irowLeaving.Remove( k );
+		}
+
+		// The guild LANDS under a no-guild view (an ACCEPT came back on the
+		// landing / FOUND GUILD came back on the create form): fade that view
+		// under the latch, then the plaza mounts with its own cascade. Before
+		// this nothing flipped the landing at all (it stayed up in a guild).
+		if ( InGuildLive() && !ViewLeaving )
+		{
+			if ( guildView == "landing" && _landingUp )
+				BeginViewExit( "gp-leaving", () => { guildView = "myguild"; _landingUp = false; ResetKb(); } );
+			else if ( guildView == "myguild" && _createUp )
+				BeginViewExit( "gp-leaving", () => { _createUp = false; ResetKb(); } );
 		}
 	}
 

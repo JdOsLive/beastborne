@@ -172,8 +172,9 @@
 		}
 
 		@* ---- GOODS — 1330: 12 inset + the 1298 grid + a 20px overlay-scrollbar lane ---- *@
-		@* MOTION: body fade on mount (the shop's shBodyIn) — not wired here. *@
-		<div class="bag-goods">
+		@* MOTION (2026-09-03): `open-N` render key — the column remounts per
+		   Show() so bagBodyIn (the shop's shBodyIn) replays on every open. *@
+		<div class="@("bag-goods open-" + openVersion)">
 			<div @ref="gridRef" class="@GridClass(navItems.Count == 0)">
 				@if (navItems.Count == 0)
 				{
@@ -260,8 +261,8 @@
 
 		@* ---- THE CASE — 482 × 950 r22, pad 24 → 434 inner ---- *@
 		@* Never empty (NO NOTHING): the selection, else the first item in render
-		   order. MOTION: the case's fade shares the body's — not wired here. *@
-		<div class="bag-case">
+		   order. MOTION (2026-09-03): same `open-N` key — the case fades with the goods. *@
+		<div class="@("bag-case open-" + openVersion)">
 			@if (caseItem != null)
 			{
 				int qty = GetItemQuantity(caseItem.Id);
@@ -271,16 +272,19 @@
 				bool sellable = CanSellItem(caseItem);
 				int sq = Math.Clamp(sellQty, 1, Math.Max(1, qty));
 
+				@* MOTION (2026-09-03): the case swap — `art-<id>` remounts the art
+				   (0.18s fade), `case-<id>` soft-crossfades the name + ×N. The slab,
+				   strip and effect line stay put. *@
 				<div class="bag-case-art">
-					<img class="bag-case-img" src="@caseItem.IconPath" style="width: @(art.w)px; height: @(art.h)px;" />
+					<img class="@("bag-case-img art-" + caseItem.Id)" src="@caseItem.IconPath" style="width: @(art.w)px; height: @(art.h)px;" />
 					<div class="@("bag-case-strip r-" + GetRarityClass(caseItem.Rarity))"></div>
 				</div>
-				<span class="bag-case-name">@caseItem.Name</span>
+				<span class="@("bag-case-name case-" + caseItem.Id)">@caseItem.Name</span>
 				@* ×N line 24 — always mounted so the effect line holds still. *@
 				<div class="bag-case-qty">
 					@if (qty > 1)
 					{
-						<span class="bag-case-qty-text">@QtyText(qty)</span>
+						<span class="@("bag-case-qty-text case-" + caseItem.Id)">@QtyText(qty)</span>
 					}
 				</div>
 				@* The ONE effect line. LANE: systems (bug rider, data untouched) —
@@ -317,19 +321,23 @@
 					   mounted above; the ring wraps − … + as an r21 pill); SELL = hold
 					   Space (kb) or mouse-down 0.9s, release cancels. `.holding` on a
 					   qty button = the repeat is firing (MOTION's heat hook).
-					   LANE: motion — the fill's 0.05s width step + the holding pulse. *@
+					   LANE: motion — the fill's 0.05s width step + the holding pulse —
+						   WIRED 2026-09-03: `qty-N` on the numeral = the tick; SELL wears
+						   `.holding` / `.draining` / `.sold sold-N` (SellBtnClass) — fill
+						   visibility, heat ramp, drain and the commit beat live in the SCSS;
+						   the fill's px width stays INPUT's. *@
 					<div @ref="sellRowRef" class="bag-sell-row">
 						@if (qty > 1)
 						{
 							<div class="@QtyBtnClass(sq <= 1, -1)" onclick=@(() => OnQtyClick(-1)) onmousedown=@(() => ArmMouseHold(-1)) onmouseup=@ReleaseMouseHold onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
 								<iconify class="bag-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
 							</div>
-							<div class="bag-qty-value"><span class="bag-qty-num">@sq</span></div>
+							<div class="bag-qty-value"><span class="@("bag-qty-num qty-" + sq)">@sq</span></div>
 							<div class="@QtyBtnClass(sq >= qty, 1)" onclick=@(() => OnQtyClick(1)) onmousedown=@(() => ArmMouseHold(1)) onmouseup=@ReleaseMouseHold onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
 								<iconify class="bag-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
 							</div>
 						}
-						<div class="@SellBtnClass(qty > 1)"
+						<div class="@SellBtnClass(qty > 1, caseItem.Id)"
 							 onmousedown=@StartHoldSell
 							 onmouseup=@StopHold
 							 onmouseout=@StopHold
@@ -364,7 +372,8 @@
 	   boosts) and EQUIP <item> TO... (held items → ItemManager.EquipHeldItem).
 	   Rows are DIRECT scroll children (DOC-1 #12); a datum column on the right
 	   shows the ONE number the item is about to change. Title plain, no
-	   subtitle, no seam chip. MOTION: the overlay/panel enter — not wired.
+	   subtitle, no seam chip. MOTION (2026-09-03, wired): an `@if` branch =
+	   free mount keyframes — shield fade 0.18s + panel rise 0.22s (SCSS).
 	   INPUT 2026-09-03 — W/S rows (scroll-follow) · Space = confirm · Q closes
 	   back to the case; hover moves the same index in mouse mode. Rows wear
 	   the SLAB cursor (`.kb-focused`: violet seam + lift — 8px gaps leave no
@@ -472,6 +481,24 @@
 	private int sellBeatVersion = 0;
 	private bool IsGoldFlash => RealTime.Now < goldFlashUntil;
 
+	// MOTION (2026-09-03) — the SELL hold's costume hooks (the Skills reset
+	// dialect): `.sold sold-N` for 0.5s after a commit, keyed to the SOLD
+	// item's id (the case may fall to a neighbour when a stack sells out — a
+	// fresh SELL must never wear the beat); `.draining` for 0.25s after an
+	// early release (the fill's inline width is already 0 — the class picks
+	// the drain transition). Both windows are RealTime-stamped, no per-tick
+	// class churn.
+	private string sellBeatItemId;
+	private float sellBeatUntil = 0f;
+	private float sellDrainUntil = 0f;
+	private bool IsSellBeat( string itemId ) => itemId != null && itemId == sellBeatItemId && RealTime.Now < sellBeatUntil;
+	private bool IsSellDraining => !isHoldingSell && RealTime.Now < sellDrainUntil;
+
+	// MOTION — the page-open render key: this root is persistent (`.visible`
+	// toggles), so the goods column and the case wear `open-N` and remount
+	// per Show() — bagBodyIn replays on every open, not once per session.
+	private static int openVersion = 0;
+
 	private static string _pendingBattleCategory = null;
 
 	// Refs
@@ -526,6 +553,7 @@
 	public static void Show()
 	{
 		IsVisible = true;
+		openVersion++; // MOTION: `open-N` render key — the body zones replay their enter
 		if ( IsInBattleMode() ) _pendingBattleCategory = "consumable";
 		SoundManager.PlayPopup();
 	}
@@ -638,7 +666,12 @@
 	// MOTION: `.holding` = the hold-repeat is FIRING on this button (kb or mouse).
 	private string QtyBtnClass( bool off, int dir ) => "bag-qty-btn" + (off ? " off" : "") + (IsHolding( dir ) ? " holding" : "");
 	private string PickerRowClass( int idx ) => "bag-picker-row" + (idx == pickerCursor ? " kb-focused" : "");
-	private string SellBtnClass( bool stack ) => "bag-sell" + (stack ? "" : " wide") + (isHoldingSell ? " holding" : "");
+	// MOTION: `.holding` (the hold runs) · `.draining` (early release, 0.25s) ·
+	// `.sold sold-N` (the beat, 0.5s, this item only).
+	private string SellBtnClass( bool stack, string itemId ) => "bag-sell" + (stack ? "" : " wide")
+		+ (isHoldingSell ? " holding" : "")
+		+ (IsSellDraining ? " draining" : "")
+		+ (IsSellBeat( itemId ) ? " sold sold-" + sellBeatVersion : "");
 	private string PrimaryTier( bool off ) => off ? "ghost" : "primary";
 	private string PrimaryClass( bool off ) => "case-primary" + (off ? " off" : "");
 	private string EquippedCountText() => (TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Count ?? 0) + " / " + ItemManager.MaxRelics + " EQUIPPED";
@@ -1112,6 +1145,10 @@
 
 	private void StopHold()
 	{
+		// MOTION: an early release with real progress arms the 0.25s drain
+		// window (the commit path clears isHoldingSell before any release
+		// reaches here, so a sold hold never drains).
+		if ( isHoldingSell && holdProgress > 0.03f ) sellDrainUntil = RealTime.Now + 0.25f;
 		isHoldingSell = false;
 		_kbSellHold = false;
 		holdProgress = 0f;
@@ -1145,6 +1182,8 @@
 		{
 			SoundManager.PlayGoldReward();
 			sellBeatVersion++;
+			sellBeatItemId = item.Id;              // MOTION: the beat wears on THIS item's SELL only
+			sellBeatUntil = RealTime.Now + 0.5f;   // the Shop's BOUGHT window
 			sellQty = 1;
 			ShowToast( "SOLD " + (n > 1 ? n + " × " : "") + item.Name + " · +" + (item.SellPrice * n).ToString( "N0" ) + "G", true );
 			SettleAfterStackChange( item.Id, idx ); // the cursor stays, or slides to the card that took the slot
@@ -2097,6 +2136,10 @@
 		CheckGoldFlash();
 		hash.Add( IsGoldFlash );
 		hash.Add( sellBeatVersion );
+		// MOTION: the open key + the SELL costume windows (edge-triggered bools)
+		hash.Add( openVersion );
+		hash.Add( IsSellDraining );
+		hash.Add( RealTime.Now < sellBeatUntil );
 		// NEW stamps (one source) + the search chip's focus rim
 		hash.Add( ItemManager.Instance?.NewItemCount ?? 0 );
 		hash.Add( filterBar != null && filterBar.IsSearchFocused );
