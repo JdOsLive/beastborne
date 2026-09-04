@@ -19,8 +19,10 @@
    + leaderboards-mock-page.html, every RECOMMENDED toggle taken).
 
    ZONE MAP (1920×1080, PADDING-BOX — the hub's .oh-header 88 + 2 strip sits above):
-     header 90 → body pad 20 → carousel 44 → 20 → slabs 874 → 32 bottom pad
-     90 + 20 + 44 + 20 + 874 + 32 = 1080 ✓
+     header 90 → body pad 20 → carousel 44 → 20 → slabs 808 → 98 bottom pad
+     90 + 20 + 44 + 20 + 808 + 98 = 1080 ✓  (slabs end at y 982 — 8px above
+     the PawPad chip at y 990, so the right slab's pinned YOU value shows;
+     input pass 2026-09-04, was 874/32)
      slabs: 40 pad + 600 + 20 + 600 + 20 + 600 + 40 pad = 1920 ✓
    The hub header (kicker TAMERLINK · title LEADERBOARDS · REFRESH · F + BACK TO
    HUB · Q) is the hub's markup — see OnlineHubPanel.razor .oh-header.
@@ -44,9 +46,16 @@
 	   centred, gap 12. Chips = the guild .gp-chip recipe (32 r11, two-tone .on —
 	   ACTIONS NEVER SKEW); arrows = BbButton ghost 44 pinned square. All three
 	   groups are visible, so the row IS the counter (no dots, no "2 / 3").
-	   LANE: input — ring hosts: ‹ · the three chips · › (+ the header's REFRESH /
-	   BACK TO HUB chips); A/D rotate from anywhere (TickInput below); device flag
-	   (.kbd-mode/.mouse-mode) + the travel guard are the hub root's. *@
+	   LANE: input (wired 2026-09-04) — the chips are SLAB-cursor stops (.kb-focused
+	   = violet rim, fill holds .on's two-tone; DOC-5 §7/§8 — a 32px chip has no
+	   12px ring clearance). The cursor RIDES the active chip: A/D rotate the
+	   group and the rim follows .on; mouse hover parks the rim on any chip
+	   (mouse mode only — DOC-5 §15), Space on a parked non-active chip = that
+	   group. The ‹ › arrows are CLICK targets, not stops (A/D are their keys).
+	   Device flag (.kbd-mode/.mouse-mode) + the 3px travel guard are the hub
+	   root's (OnlineHubPanel OnRootMouseMove) — read here via HubKbMode. The
+	   CSS for hover/cursor lives in the hub's ONE DEVICE GATE (LEADERBOARDS
+	   TAKEOVER sub-blocks), so a parked pointer never fights the cursor. *@
 	<div class="lb-carousel">
 		<BbButton Tier="ghost" Size=@(44) Icon="lucide:chevron-left" OnClick=@PrevGroup Class="lb-arrow" />
 		<div class="lb-groups">
@@ -55,8 +64,8 @@
 				var idx = i;
 				var grp = GroupMeta[i];
 				var on = i == currentGroupIndex;
-				<div class="lb-gchip @(on ? "on" : "")"
-					 onmouseover=@(() => { if ( idx != currentGroupIndex ) SoundManager.PlayHover(); })
+				<div class="lb-gchip @(on ? "on" : "") @(IsChipKb( idx ) ? "kb-focused" : "")"
+					 onmouseover=@(() => HoverChip( idx ))
 					 onclick=@(() => SetGroup( idx ))>
 					<iconify class="lb-gchip-glyph" icon="@grp.Icon" Size=@(16) Color="@(on ? "#ffffff" : "rgba(214, 206, 236, 0.55)")" />
 					<span class="lb-gchip-label">@grp.Name.ToUpper()</span>
@@ -78,8 +87,10 @@
 	   mechanics, preserved. Nothing inside needs flex-grow WIDTH resolution
 	   (three pinned 600s), so the translateX on this row is safe. *@
 	<div class="lb-slabs @spinClass">
-		@foreach ( var cat in currentCats )
+		@for ( int si = 0; si < currentCats.Length; si++ )
 		{
+			var slabIdx = si;
+			var cat = currentCats[si];
 			var entries = GetEntries( cat.Key );
 			var count = entries.Count;
 			var myEntry = FindMyEntry( entries, mySteam, myName );
@@ -101,12 +112,16 @@
 					}
 				</div>
 
-				@* List zone 838 = 874 − 36; pad 16/12/12/12 → inner 810 × 576.
+				@* List zone 772 = 808 − 36; pad 16/12/12/12 → inner 744 × 576.
 				   .lb-lane is THE scroll child (flex 1 1 0; min-height 0), rows its
-				   DIRECT children. Lane = 810 − (8 + 56 pinned) = 746 when YOU is
-				   pinned → 12 × 56 + 11 × 6 = 738 (8 slack); 810 when inline → 13 rows
-				   (806). LANE: input — wheel routes to the lane under the pointer
-				   (OnMouseWheel override), W/S row walk + scroll-follow if adopted. *@
+				   DIRECT children. Lane = 744 − (8 + 56 pinned) = 680 when YOU is
+				   pinned → 11 × 56 + 10 × 6 = 676 (4 slack); 744 when inline → 12 rows
+				   (668). LANE: input — rows are SLAB-cursor stops (read-only: Space
+				   is silent) so the lane is keyboard-reachable (house rule: every
+				   scroll region); W/S walk + glide scroll-follow in Tick; wheel over
+				   a lane scrolls THAT lane (OnMouseWheel below). Hover on a row is
+				   COLOUR-ONLY css (mouse mode) — it does not move the cursor. The
+				   pinned YOU row is outside the lane and always visible: not a stop. *@
 				<div class="lb-list">
 					@if ( isLoading )
 					{
@@ -126,14 +141,14 @@
 							{
 								var entry = entries[ri];
 								var isMe = myEntry != null && ReferenceEquals( entry, myEntry );
-								@RenderRow( entry, cat.Key, isMe, ri % 2 == 1, false )
+								@RenderRow( entry, cat.Key, isMe, ri % 2 == 1, false, IsRowKb( slabIdx, ri ) )
 							}
 						</div>
 					}
 
 					@if ( pinYou )
 					{
-						@RenderRow( myEntry, cat.Key, true, false, true )
+						@RenderRow( myEntry, cat.Key, true, false, true, false )
 					}
 				</div>
 			</div>
@@ -153,8 +168,9 @@
 	public string FilterMode { get; set; } = "all";
 
 	// How many 56px rows the lane shows before it scrolls — the inline/pinned
-	// YOU decision reads this (see the slab loop). 12 × 56 + 11 × 6 = 738 ≤ 746.
-	private const int VisibleRows = 12;
+	// YOU decision reads this (see the slab loop). 11 × 56 + 10 × 6 = 676 ≤ 680
+	// (the 808 slab; was 12 at 874).
+	private const int VisibleRows = 11;
 
 	private Dictionary<string, List<LeaderboardEntry>> allEntries = new();
 	// Long-typed because cumulative stats (gold, damage, playtime) can exceed
@@ -234,6 +250,10 @@
 
 		spinClass = $"spin-out-{exitTo}";
 		currentGroupIndex = targetIdx;
+		// LANE: input — the rim rides .on; a row cursor re-follows in the new
+		// lane (counts differ per board — TickInput clamps _kbRow).
+		if ( _kbZone == "chips" ) _kbIndex = targetIdx;
+		if ( _kbZone == "rows" ) { _rowFollowPending = true; _laneGlideTarget = -1f; }
 		await System.Threading.Tasks.Task.Delay( 180 );
 
 		spinClass = $"warp-from-{enterFrom}";
@@ -246,8 +266,11 @@
 	}
 
 	// Every field that affects rendering: the carousel, the swap phase, the
-	// load state + version, the identity maps' sizes, and the presence count
-	// (session tags / avatars change as people come and go).
+	// load state + version, the identity maps' sizes, the presence count
+	// (session tags / avatars change as people come and go) and — LANE:
+	// input — every cursor field + the REFRESH press window (InputHash; the
+	// hub folds the same value into ITS BuildHash so the header chips
+	// re-render with the cursor). Combine caps at 8 args — nested.
 	protected override int BuildHash()
 	{
 		return System.HashCode.Combine(
@@ -258,7 +281,7 @@
 			allEntries.Count,
 			System.HashCode.Combine( _avatarByName.Count, _tagBySteam.Count, _tagByName.Count ),
 			Networking.IsActive ? Connection.All.Count : 0,
-			TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0
+			System.HashCode.Combine( TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0, InputHash )
 		);
 	}
 
@@ -458,7 +481,9 @@
 	// rank "—", your local value.
 	// (The `__builder =>` form is the one proven in-engine — OptionsPanel
 	// RenderToggleRow; the templated-fragment form is unverified here.)
-	private RenderFragment RenderRow( LeaderboardEntry entry, string catKey, bool isMe, bool alt, bool pinned ) => __builder =>
+	// `kb` = the slab cursor sits on this row (LANE: input — .kb-focused is the
+	// ONE cursor class; painted violet under .kbd-mode by the hub gate).
+	private RenderFragment RenderRow( LeaderboardEntry entry, string catKey, bool isMe, bool alt, bool pinned, bool kb ) => __builder =>
 	{
 		var rank = entry?.Rank ?? 0;
 		var rankText = rank > 0 ? rank.ToString() : "—";
@@ -468,7 +493,7 @@
 		var avatarId = entry != null ? AvatarIdFor( entry ) : GetLocalSteamId();
 		var tag = entry != null ? TagFor( entry ) : GuildManager.Instance?.Membership?.GuildTag;
 		var value = entry?.Score ?? GetPlayerValue( catKey );
-		var rowClass = "lb-row" + ( alt ? " alt" : "" ) + ( isMe ? " me" : "" ) + ( pinned ? " pinned" : "" );
+		var rowClass = "lb-row" + ( alt ? " alt" : "" ) + ( isMe ? " me" : "" ) + ( pinned ? " pinned" : "" ) + ( kb ? " kb-focused" : "" );
 		<div class="@rowClass">
 			<div class="lb-rank">
 				<div class="lb-disc @discClass"><span class="lb-rank-t @(podium ? "ink" : "")">@rankText</span></div>
@@ -497,21 +522,323 @@
 		</div>
 	};
 
-	// ── Keyboard (the hub calls this while the takeover has the page) ──────
-	// LANE: input — A/D rotate the group carousel (the arrows do the same);
-	// F refreshes (Flashlight). Q back to hub is the hub's takeover routing —
-	// claim via GameHUD.PanelHandledBackKey only if this panel grows an
-	// internal back stack. W/S row walk + scroll-follow, the ring over the
-	// arrows/chips/header chips, wheel routing to the hovered lane and the
-	// device flag / travel guard are the input lane's to wire.
-	public void TickInput()
+	// ── LANE: input — THE ONE CURSOR (DOC-5 §6/§11; wired 2026-09-04) ─────
+	// Three zones, W/S flowing top-to-bottom exactly as the screen stacks them:
+	//   "header" — the hub chrome's REFRESH (0) · BACK TO HUB (1). A/D between,
+	//              Space fires, S → chips. (Hub markup; the hub reads
+	//              IsHeaderKb/RefreshPressed and forwards HoverHeader.)
+	//   "chips"  — the carousel; _kbIndex = the chip under the rim. Seeded on
+	//              the ACTIVE chip (BATTLE) at mount — the hub @if-mounts this
+	//              panel fresh per takeover, so the fields ARE the open edge
+	//              (DOC-5 §12). A/D ROTATE the group (SpinTo moves the rim with
+	//              .on); W → header, S → rows.
+	//   "rows"   — _kbSlab (0..2 = left/middle/right lane) × _kbRow. A/D hop
+	//              lanes (row index carries, clamped — rank N stays under the
+	//              cursor); W/S walk rows with glide scroll-follow; W off row 0
+	//              → chips; S past the last row rests (endpoint). Rows are
+	//              read-only: Space is SILENT. Empty/loading lanes are skipped.
+	// R / X = next group · Z = previous (the page's cycle pair, silent twins of
+	// A/D on the carousel; any zone). F = refresh (any zone; REFRESH chip wears
+	// .pressed for the window). Q = back to hub, CLAIMED here.
+	private string _kbZone = "chips";
+	private int _kbIndex = 1;          // chips: the chip idx (= currentGroupIndex at seed) · header: 0/1
+	private int _kbSlab = 1;           // rows: the lane — first entry lands on the MIDDLE (under the centred carousel)
+	private int _kbRow = 0;
+
+	// REFRESH press window (F / Space / chrome click) — the hub paints .pressed.
+	private float _refreshPressedUntil = -1f;
+	public bool RefreshPressed => Time.Now < _refreshPressedUntil;
+
+	// Every cursor field — this panel's BuildHash AND the hub's fold it in.
+	public int InputHash => System.HashCode.Combine( _kbZone, _kbIndex, _kbSlab, _kbRow, RefreshPressed );
+
+	public bool IsHeaderKb( int idx ) => _kbZone == "header" && _kbIndex == idx;
+	private bool IsChipKb( int idx ) => _kbZone == "chips" && _kbIndex == idx;
+	private bool IsRowKb( int slab, int row ) => _kbZone == "rows" && _kbSlab == slab && _kbRow == row;
+
+	// The hub root wears .kbd-mode / .mouse-mode (its ONE device flag + 3px
+	// travel guard) — read off the ancestor chain, no hub private exposed.
+	private bool HubKbMode
+	{
+		get
+		{
+			for ( var p = Parent; p != null; p = p.Parent )
+			{
+				if ( p.HasClass( "kbd-mode" ) ) return true;
+				if ( p.HasClass( "mouse-mode" ) ) return false;
+			}
+			return false;
+		}
+	}
+
+	// Mouse hover moves the SAME cursor (one cursor, last input wins) — mouse
+	// mode only: kb scroll-follow slides rows under a parked pointer and the
+	// engine re-sends synthetic hovers (DOC-5 §15; learnings 2026-09-01).
+	private void HoverChip( int idx )
+	{
+		if ( HubKbMode ) return;
+		if ( _kbZone == "chips" && _kbIndex == idx ) return;
+		_kbZone = "chips";
+		_kbIndex = idx;
+		if ( idx != currentGroupIndex ) SoundManager.PlayHover();  // the .on chip stays quiet (shipped behaviour)
+		StateHasChanged();
+	}
+
+	// The hub's REFRESH / BACK TO HUB chips forward their hover here.
+	public void HoverHeader( int idx )
+	{
+		if ( HubKbMode ) return;
+		if ( _kbZone == "header" && _kbIndex == idx ) return;
+		_kbZone = "header";
+		_kbIndex = idx;
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// F / Space-on-REFRESH / the chrome chip click — one path, one press window.
+	public void PressRefresh()
 	{
 		if ( isLoading ) return;
+		_refreshPressedUntil = Time.Now + 0.16f;
+		RefreshAll();
+	}
 
-		if ( Input.Pressed( "Flashlight" ) ) { RefreshAll(); return; }
+	private int RowCount( int slab )
+	{
+		var cats = GetCurrentGroupCats();
+		if ( slab < 0 || slab >= cats.Length ) return 0;
+		return GetEntries( cats[slab].Key ).Count;
+	}
 
-		if ( Input.Pressed( "Left" ) ) { PrevGroup(); return; }
-		if ( Input.Pressed( "Right" ) ) { NextGroup(); return; }
+	// Nearest lane with rows, searching from `from` in `dir` (±1; 0 = from
+	// itself outward). -1 when every lane is empty.
+	private int NearestFilledSlab( int from, int dir )
+	{
+		int n = GetCurrentGroupCats().Length;
+		if ( dir != 0 )
+		{
+			for ( int s = from + dir; s >= 0 && s < n; s += dir )
+				if ( RowCount( s ) > 0 ) return s;
+			return -1;
+		}
+		if ( RowCount( from ) > 0 ) return from;
+		for ( int d = 1; d < n; d++ )
+		{
+			if ( from - d >= 0 && RowCount( from - d ) > 0 ) return from - d;
+			if ( from + d < n && RowCount( from + d ) > 0 ) return from + d;
+		}
+		return -1;
+	}
+
+	private void EnterRows()
+	{
+		int slab = NearestFilledSlab( _kbSlab, 0 );
+		if ( slab < 0 ) return;                 // nothing to walk — the cursor stays on the carousel
+		_kbZone = "rows";
+		_kbSlab = slab;
+		_kbRow = 0;
+		_rowFollowPending = true;
+		_laneGlideTarget = -1f;
+		SoundManager.PlayHover();
+	}
+
+	private void LeaveRowsUp()
+	{
+		_kbZone = "chips";
+		_kbIndex = currentGroupIndex;
+		// A cursor leaving upward glides the lane home (DOC-5 §13).
+		_rowFollowPending = false;
+		_laneGlideTarget = 0f;
+		SoundManager.PlayHover();
+	}
+
+	// The hub calls this each frame while the takeover has the page (its
+	// device stamp already ran, so HubKbMode is honest here). Order: Q claim →
+	// F → cycle keys → (loading gate) → confirm → per-zone WASD.
+	public void TickInput()
+	{
+		if ( Input.Pressed( "Menu" ) && !GameHUD.PanelHandledBackKey )
+		{
+			GameHUD.PanelHandledBackKey = true;
+			OnBack?.Invoke();
+			return;
+		}
+
+		if ( Input.Pressed( "Flashlight" ) ) { PressRefresh(); return; }
+
+		if ( isLoading ) return;
+
+		// Page cycle pair (DOC-5 §1): R / X forward, Z back — from any zone.
+		if ( Input.Pressed( "Reload" ) || Input.Pressed( "CycleNext" ) ) { NextGroup(); return; }
+		if ( Input.Pressed( "CyclePrev" ) ) { PrevGroup(); return; }
+
+		// Clamp against the live lists (group swaps and refreshes change counts).
+		if ( _kbZone == "rows" )
+		{
+			int slab = NearestFilledSlab( _kbSlab, 0 );
+			if ( slab < 0 ) { _kbZone = "chips"; _kbIndex = currentGroupIndex; }
+			else
+			{
+				if ( slab != _kbSlab ) { _kbSlab = slab; _rowFollowPending = true; }
+				_kbRow = Math.Clamp( _kbRow, 0, RowCount( _kbSlab ) - 1 );
+			}
+		}
+
+		if ( UiInput.ConfirmPressed() )   // Space (advertised) · Enter · E
+		{
+			if ( _kbZone == "header" )
+			{
+				if ( _kbIndex == 0 ) PressRefresh();
+				else OnBack?.Invoke();          // the hub's BackToHub plays the back blip
+			}
+			else if ( _kbZone == "chips" && _kbIndex != currentGroupIndex )
+			{
+				SetGroup( _kbIndex );          // a mouse-parked rim + Space = that group
+			}
+			// rows: read-only — silent.
+			return;
+		}
+
+		int dx = 0, dy = 0;
+		if ( Input.Pressed( "Up" ) ) dy = -1;
+		else if ( Input.Pressed( "Down" ) ) dy = 1;
+		else if ( Input.Pressed( "Left" ) ) dx = -1;
+		else if ( Input.Pressed( "Right" ) ) dx = 1;
+		if ( dx == 0 && dy == 0 ) return;
+
+		switch ( _kbZone )
+		{
+			case "header":
+				if ( dx != 0 ) { int t = Math.Clamp( _kbIndex + dx, 0, 1 ); if ( t != _kbIndex ) { _kbIndex = t; SoundManager.PlayHover(); } }
+				else if ( dy > 0 ) { _kbZone = "chips"; _kbIndex = currentGroupIndex; SoundManager.PlayHover(); }
+				// W off the header: top of the page — rests.
+				break;
+
+			case "chips":
+				if ( dx < 0 ) PrevGroup();                       // rotate; SpinTo moves the rim with .on
+				else if ( dx > 0 ) NextGroup();
+				else if ( dy < 0 ) { _kbZone = "header"; _kbIndex = 0; SoundManager.PlayHover(); }
+				else EnterRows();
+				break;
+
+			case "rows":
+				if ( dx != 0 )
+				{
+					int t = NearestFilledSlab( _kbSlab, dx );
+					if ( t >= 0 )
+					{
+						_kbSlab = t;
+						_kbRow = Math.Clamp( _kbRow, 0, RowCount( t ) - 1 );
+						_rowFollowPending = true;
+						_laneGlideTarget = -1f;
+						SoundManager.PlayHover();
+					}
+				}
+				else if ( dy < 0 )
+				{
+					if ( _kbRow > 0 ) { _kbRow--; _rowFollowPending = true; SoundManager.PlayHover(); }
+					else LeaveRowsUp();
+				}
+				else
+				{
+					int last = RowCount( _kbSlab ) - 1;
+					if ( _kbRow < last ) { _kbRow++; _rowFollowPending = true; SoundManager.PlayHover(); }
+				}
+				break;
+		}
+		StateHasChanged();
+	}
+
+	// ── LANE: input — scroll-follow + wheel ────────────────────────────────
+	// The lanes are rendered in a loop (no @ref) — resolve the Nth .lb-lane
+	// on demand (three slabs; cheap). Slabs with a note / EmptyState have no
+	// lane, so the Nth lane is the Nth FILLED slab — RowCount-ordered the
+	// same way the markup mounts them (a lane exists iff count > 0).
+	private Panel LaneFor( int slab )
+	{
+		if ( slab < 0 ) return null;
+		// Map the slab index to its lane ordinal (skip empty slabs before it).
+		int ordinal = 0;
+		for ( int s = 0; s < slab; s++ ) if ( RowCount( s ) > 0 ) ordinal++;
+		if ( RowCount( slab ) == 0 ) return null;
+		int n = 0;
+		foreach ( var lane in Descendants.Where( d => d.HasClass( "lb-lane" ) ) )
+		{
+			if ( n == ordinal ) return lane;
+			n++;
+		}
+		return null;
+	}
+
+	private Panel LaneUnderPointer()
+	{
+		var m = Mouse.Position;
+		return Descendants.FirstOrDefault( d => d.HasClass( "lb-lane" ) && d.Box.Rect.IsInside( m ) );
+	}
+
+	// Kb scroll-follow (DOC-5 §13 — the hub board / FilterBar recipe):
+	// ComputeIndexOffset behind a pending flag (retried until the focused row
+	// has a rect), then a 0.30 glide per tick toward the target.
+	private bool _rowFollowPending = false;
+	private float _laneGlideTarget = -1f;
+
+	public override void Tick()
+	{
+		base.Tick();
+		UpdateRowScrollFollow();
+	}
+
+	private void UpdateRowScrollFollow()
+	{
+		if ( !_rowFollowPending && _laneGlideTarget < 0f ) return;   // idle — no tree walk
+		var lane = LaneFor( _kbSlab );
+		if ( lane == null ) { _rowFollowPending = false; _laneGlideTarget = -1f; return; }
+
+		if ( _rowFollowPending && _kbZone == "rows" )
+		{
+			var off = UiGridScroll.ComputeIndexOffset( lane, _kbRow, "lb-row", null, 12f );
+			var focused = lane.Children.FirstOrDefault( c => c.HasClass( "kb-focused" ) );
+			if ( focused != null && focused.Box.Rect.Height > 0f ) _rowFollowPending = false;
+			if ( off.HasValue ) _laneGlideTarget = off.Value;
+			// Endpoint (DOC-5 §13): row 0 always shows the lane from the top.
+			if ( _kbRow == 0 && lane.ScrollOffset.y > 0.5f ) _laneGlideTarget = 0f;
+		}
+
+		if ( _laneGlideTarget < 0f ) return;
+		float cur = lane.ScrollOffset.y;
+		float delta = _laneGlideTarget - cur;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			lane.ScrollOffset = new Vector2( lane.ScrollOffset.x, _laneGlideTarget );
+			_laneGlideTarget = -1f;
+			return;
+		}
+		lane.ScrollOffset = new Vector2( lane.ScrollOffset.x, cur + delta * 0.30f );
+	}
+
+	// Wheel (DOC-5 §17; CLAUDE.md wheel row). Engine model, proven on the
+	// PawPad (learnings 2026-08-28/29 — its overflow-y: scroll lists could not
+	// wheel at all while the root override consumed): a scrollable leaf does
+	// NOT scroll itself — the wheel bubbles to the root, and only if NOBODY
+	// consumed it does the engine scroll the nearest scrollable ancestor of
+	// the hovered panel. So: over a lane → let it through (the engine scrolls
+	// exactly the hovered lane, the same step as every other list in the
+	// game; writing ScrollOffset here too would double-step) and drop any kb
+	// glide on it (mouse wins); anywhere else → consume, so nothing behind
+	// the takeover moves. `public` — on THIS panel the compiler reports the
+	// inherited member as public (live compile 2026-09-04); the CLAUDE.md
+	// `protected override` note applies where the base is protected internal.
+	public override void OnMouseWheel( Vector2 delta )
+	{
+		var lane = LaneUnderPointer();
+		if ( lane != null )
+		{
+			_rowFollowPending = false;
+			_laneGlideTarget = -1f;
+			base.OnMouseWheel( delta );
+			return;
+		}
+		// consumed
 	}
 
 	// ── Data helpers ──────────────────────────────────────────────────────
