@@ -8,32 +8,73 @@
 @using Beastborne.Core;
 @using Beastborne.Data;
 @using Beastborne.Systems;
+@using Beastborne.UI;
 @using Beastborne.UI.Components;
+@using Beastborne.UI.Primitives;
 @inherits Panel
+
+@*
+	TEAM PICKER — option B (user ruling 2026-09-04): a 1720×920 popup over
+	the dimmed map with a FACTS column for the beast under the cursor.
+	LAYOUT lane, pipeline run 5 part 2. Design: expedition-revision-2.html §2
+	(B) + the run-1 expedition-mock-page.html slot anatomy (.sl1).
+
+	ZONE MAP (padding-box — declared width/height INCLUDES padding, borders
+	add on top; DOC-1 #4):
+	  shield  rgba(4,6,15,.8) full-viewport, flex-centres the modal (NEVER
+	          translate(-50%,-50%) on the modal — DOC-7 #15, the 6-hour bug)
+	  modal   1720×920 r22 pad 24 → inner lane 1672 × 872
+	  header  1672×74: identity (kicker 14 · title 38/42 · sub 16 + 2 = 74)
+	          · toolbar right slot (FilterBar ELEMENT · SORT · dir · R CYCLE ·
+	          BACK Q) — filters live in the header's right slot (DOC-1 #8)
+	  gap 24
+	  body    1672×774 row: LEFT 400 · 24 · CENTER 824 · 24 · FACTS 400
+	          400 + 24 + 824 + 24 + 400 = 1672 ✓ (zero slack)
+	    LEFT 400 column: team row 32 · 16 · slots 3×176 + 2×16 = 560 · 24 ·
+	          controls 44 (AUTO-FILL 194 · 12 · NORMAL|HARD 194) · 42 ·
+	          EMBARK 56  →  32+16+560+24+44+42+56 = 774 ✓
+	    CENTER 824 = wrap grid 814 (5 × 150 + 4 × 16) + 10 scrollbar lane;
+	          rows 168 + 16 gap → 4 rows = 720 of 774 (scrolls)
+	    FACTS 400: identity 120 (hero 120×120 · 16 · text 264) · 24 · MOVES
+	          kicker 16 · 8 · 4 rows 32 + 3×8 = 152 · 24 · TRAIT 40 = 384;
+	          the rest is the modal surface (display-only column, never a
+	          cursor stop — rev-2 §2 keys)
+
+	Why 5-wide, not 6: 6 × 150 + 5 × 12 = 960 needs CENTER ≥ 972 with a
+	scrollbar lane → FACTS 252, under the briefed 300; 5-wide at gap 16 =
+	814 + 10 lane = 824 and the remainder goes to FACTS as 400 (mirrors
+	LEFT — symmetric wings), not into a void beside the grid.
+
+	Kept from the flow (unchanged): Show()/Close()/IsVisible, PreFillTeam,
+	drag-drop between roster and slots, hard-mode gate, presets on 1/2/3,
+	C clear, F auto-fill, the embark hand-off to BattleTransition.
+	Cut (run-1 cuts stand): zone hero + lore, search, rarity filter, preset
+	buttons, CLEAR button, the Z/X hint row, coverage pill, "ROSTER n / N".
+*@
 
 @{
 	var expedition = ExpeditionManager.Instance?.GetExpedition( PendingExpeditionId );
 }
 
 <root class="team-picker-root @_rootVisibleClass">
-	<div class="picker-overlay" onclick=@Close></div>
+	<div class="tp-shield" onclick=@Close></div>
 
 	@if ( IsVisible && expedition != null )
 	{
 		var filled = _team.Count( m => m != null );
 		var roster = GetFilteredMonsters();
-		var coverage = GetTeamCoverage( expedition.Element );
 		var recommendedLevel = expedition.BaseEnemyLevel;
+		var teamPower = (int)_team.Where( m => m != null ).Sum( m => m.PowerRating );
+		var hardUnlocked = IsHardUnlocked();
+		var focus = GetFocusedBeast( roster );
 
-		<div class="picker-modal">
+		<div class="tp-modal">
 			@* ═══ DEV: SLOT POSITION EDITOR ════════════════════════
-			   Hidden behind ShowSlotEditor. Pick any species (whether
-			   you own it or not) and it renders in all 3 team slots
-			   for visual positioning checks. Drag the sprite on a
-			   slot to adjust CardOffsetX/Y; mouse wheel scales the
-			   sprite. Same data the Beastbook editor edits — saving
-			   updates both surfaces. SAVE → CONSOLE dumps overrides
-			   as paste-ready C# for MonsterManager.cs. *@
+			   Hidden behind ShowSlotEditor. Retained verbatim (dev tool).
+			   NOTE 2026-09-04: the slot art now uses the house integer-fit /
+			   viewport-crop (FitStyle) instead of CardScale/CardOffset, so
+			   the editor's Scale/Offset no longer drive this surface — it
+			   still edits the shared species data the Beastbook reads. *@
 			@if ( ShowSlotEditor )
 			{
 				@{
@@ -78,417 +119,309 @@
 				</div>
 			}
 
-			<!-- ═══ HEADER ═══ -->
-			<div class="picker-header">
-				<div class="ph-left">
-					<div class="ph-kicker">EMBARK</div>
-					<div class="ph-title-row">
-						<span class="ph-title">@expedition.Name</span>
-						@if ( expedition.HasBoss )
+			@* ═══ HEADER 1672×74 — identity left, filters + BACK in the right
+			   slot (the Bag .bag-toolbar recipe). On the modal surface, no slab
+			   under the title (DOC-1 #7). *@
+			<div class="tp-header">
+				<div class="tp-identity">
+					<span class="tp-kicker">EXPEDITION</span>
+					<span class="tp-title">@expedition.Name</span>
+					<div class="tp-sub-row">
+						<span class="tp-sub-lv">@LevelText( expedition )</span>
+						@if ( _hardMode )
 						{
-							<div class="ph-boss-chip">
-								<iconify icon="lucide:skull" Size=@(13) Color="#fca5a5" />
-								<span>BOSS</span>
+							<span class="tp-sub-dot">·</span>
+							<span class="tp-sub-hard">HARD</span>
+						}
+					</div>
+				</div>
+
+				@* LANE: input — the HEADER zone of the cursor graph: W off the
+				   top grid row lands here; A/D walk ELEMENT · SORT · dir · BACK
+				   (OnFilterBarSideStep is the stub); Space opens a menu and
+				   FilterBar.HandleKeyboard owns the keys inside it; S / Q return
+				   to the grid. KbMode is not passed yet (mouse-mode default). *@
+				<div class="tp-toolbar" @ref="toolbarRef">
+					@* The shipped ELEMENT dropdown (ElementItems + the two-tone
+					   active chip) — R cycles it (CycleElementFilter). Sort is a
+					   custom beast list so "name" is a plain sort, never the
+					   name-search popup (search is cut). No rarity, no search. *@
+					<FilterBar @ref="filterBar"
+							   CurrentElement=@_currentFilter
+							   OnElementChanged=@OnElementChanged
+							   ItemSorts=@BeastSorts
+							   CurrentSort=@_currentSort
+							   SortAscending=@_sortAscending
+							   OnSortChanged=@OnSortChanged
+							   OnSortDirectionChanged=@OnSortDirectionChanged
+							   ShowRarityFilter=@false
+							   ShowSearchChip=@false
+							   OnKbSideStep=@OnFilterBarSideStep />
+					<div class="tp-filter-hint">
+						<span class="tp-cap">R</span>
+						<span class="tp-filter-hint-text">CYCLE</span>
+					</div>
+					<div class="tp-back" onclick=@Close onmouseover=@(() => OnHover("tp-back"))>
+						<span class="tp-back-label">BACK</span>
+						<span class="tp-back-cap">Q</span>
+					</div>
+				</div>
+			</div>
+
+			@* ═══ BODY 1672×774 — LEFT 400 · 24 · CENTER 824 · 24 · FACTS 400 *@
+			<div class="tp-body">
+
+				@* ── LEFT 400: team row · 3 slots · controls · EMBARK ── *@
+				<div class="tp-left">
+					<div class="tp-team-row">
+						<span class="tp-team-kicker">YOUR TEAM</span>
+						<span class="tp-team-count">@TeamCountText( filled )</span>
+						<div class="tp-team-line"></div>
+						<span class="tp-team-pwr-k">PWR</span>
+						<span class="tp-team-pwr-v">@teamPower</span>
+					</div>
+
+					@* LANE: input — slot ⇄ grid ⇄ header ⇄ EMBARK cursor graph;
+					   `.tp-slot.focused` is the kb slab step, the ring is yours. *@
+					<div class="tp-slots" onmouseup=@CancelDragIfAny>
+						@for ( int i = 0; i < 3; i++ )
+						{
+							var slotIdx = i;
+							var beast = _team[slotIdx];
+							var dragHover = _dragHoverSlot == slotIdx && _dragSource != null;
+							var editTestSpecies = !string.IsNullOrEmpty( _slotEditTestSpeciesId )
+								? MonsterManager.Instance?.GetSpecies( _slotEditTestSpeciesId )
+								: null;
+							var species = editTestSpecies != null
+								? editTestSpecies
+								: ( beast != null ? MonsterManager.Instance?.GetSpecies( beast.SpeciesId ) : null );
+
+							<div class="tp-slot @(species != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "")"
+								 onclick=@(() => OnTeamSlotClicked(slotIdx))
+								 onmousedown=@(() => OnSlotMouseDown(slotIdx))
+								 onmouseup=@(() => OnSlotMouseUp(slotIdx))
+								 onmouseover=@(() => OnSlotMouseOver(slotIdx))>
+								@if ( species != null )
+								{
+									var hpPct = beast != null ? Math.Clamp( beast.HPPercent, 0f, 1f ) : 1f;
+									var hpClass = hpPct > 0.6f ? "healthy" : hpPct > 0.25f ? "wounded" : "critical";
+									var hpPx = (int)Math.Round( 150f * hpPct ); // bar is pinned 150 — px, never %
+									var isKo = beast != null && beast.CurrentHP <= 0;
+									var lowLevel = beast != null && !isKo && beast.Level < recommendedLevel - 5;
+									var ppLow = beast != null && !isKo && HasLowPP( beast );
+									var editing = ShowSlotEditor && !string.IsNullOrEmpty( _slotEditTestSpeciesId );
+
+									@* Beast tile 128×128 r11 — integer scale for 64/128 sources,
+									   viewport crop for 256s (DOC-6 #11/#13). pointer-inert unless
+									   the dev editor is live. *@
+									<div class="tp-slot-art @(editing ? "slot-edit" : "")"
+										 onmousedown=@(() => StartDragSlotArt(species))
+										 onmouseover=@(() => OnSlotEditCardEnter(species?.Id))
+										 onmouseout=@(() => OnSlotEditCardLeave(species?.Id))>
+										<img class="tp-sprite" src="@(species.IconPath ?? "ui/monsters/placeholder.png")" style="@FitStyle( species, 128, 128 )" />
+									</div>
+
+									<div class="tp-slot-info">
+										<div class="tp-slot-name-row">
+											<span class="tp-slot-name">@BeastName( beast, species )</span>
+											@if ( isKo )
+											{
+												<div class="tp-badge ko"><span class="tp-badge-text">KO</span></div>
+											}
+											else if ( lowLevel )
+											{
+												<div class="tp-badge under"><span class="tp-badge-text">UNDER LV</span></div>
+											}
+											@if ( ppLow )
+											{
+												<div class="tp-badge pp"><span class="tp-badge-text">PP LOW</span></div>
+											}
+										</div>
+										<div class="tp-slot-meta">
+											<span class="tp-slot-lv">@LevelText( beast )</span>
+											<img class="tp-el-icon" src="ui/icons/elements/background/@(ElementKey( species.Element )).png" />
+											@if ( species.SecondaryElement.HasValue && species.SecondaryElement.Value != species.Element )
+											{
+												<img class="tp-el-icon" src="ui/icons/elements/background/@(ElementKey( species.SecondaryElement.Value )).png" />
+											}
+											<span class="tp-slot-pwr">@PwrText( beast )</span>
+										</div>
+										<div class="tp-slot-hp">
+											<div class="tp-hp-bar">
+												<div class="tp-hp-fill @hpClass" style="width: @(hpPx)px;"></div>
+											</div>
+											<span class="tp-hp-text">@HpText( beast )</span>
+										</div>
+									</div>
+
+									<div class="tp-slot-x">
+										<iconify class="tp-slot-x-glyph" icon="lucide:x" Size=@(16) Color="rgba(214, 206, 236, 0.7)" />
+									</div>
+								}
+								else
+								{
+									<iconify class="tp-slot-plus" icon="lucide:plus" Size=@(28) Color="rgba(214, 206, 236, 0.35)" />
+									<span class="tp-slot-empty-label">PICK A BEAST</span>
+								}
 							</div>
 						}
 					</div>
-					<div class="ph-meta-row">
-						<span class="ph-meta-pill @(_hardMode ? "hard" : "")">
-							<iconify icon="lucide:swords" Size=@(12) Color="#fde68a" />
-							<span>Lv @GetDisplayLevel( expedition )</span>
-						</span>
-						<span class="ph-meta-pill">
-							<iconify icon="lucide:layers" Size=@(12) Color="#c4b5fd" />
-							<span>@expedition.Waves waves</span>
-						</span>
-					</div>
-				</div>
-				<button class="close-btn ph-close" onclick=@Close onmouseover=@(() => OnHover("tp-close"))>
-					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-				</button>
-			</div>
 
-			<!-- ═══ TWO-COLUMN BODY ═══ -->
-			<!-- Left: zone hero + team + controls. Right: filter bar + roster
-				 grid. Embark CTA is outside this block so it can span the
-				 whole modal width at the bottom. -->
-			<div class="picker-body">
-				<div class="picker-left">
-
-				<!-- Zone hero image (placeholder until 3D-scene portraits land) -->
-				<div class="zone-hero-image">
-					@if ( !string.IsNullOrEmpty( expedition.BackgroundImage ) )
-					{
-						<img class="zone-hero-img" src="@expedition.BackgroundImage" />
-					}
-					else
-					{
-						<div class="zone-hero-placeholder">
-							<iconify icon="lucide:image" Size=@(36) Color="#64748b" />
-						</div>
-					}
-					<div class="zone-hero-gradient"></div>
-					<div class="zone-hero-stamp @(_hardMode ? "hard" : "")">
-						<span class="zhs-kicker">@(_hardMode ? "HARD MODE" : "RECOMMENDED")</span>
-						<span class="zhs-level">Lv. @GetDisplayLevel( expedition )</span>
-					</div>
-				</div>
-
-				<!-- Lore snippet -->
-				@if ( !string.IsNullOrEmpty( expedition.Description ) )
-				{
-					<div class="zone-lore-text">@expedition.Description</div>
-				}
-
-				<!-- ═══ TEAM SLOTS ═══ -->
-				<div class="picker-team-section">
-				<div class="ps-head-row">
-					<span class="ps-label">YOUR TEAM</span>
-					<span class="ps-count">@filled / 3</span>
-					@{
-						var teamPower = (int)_team.Where( m => m != null ).Sum( m => m.PowerRating );
-					}
-					@if ( teamPower > 0 )
-					{
-						<div class="ps-power">
-							<iconify icon="lucide:swords" Size=@(12) Color="#fde68a" />
-							<span class="ps-power-label">PWR</span>
-							<span class="ps-power-value">@teamPower</span>
-						</div>
-					}
-					@* Team coverage pill removed — relies on zone element which
-					   isn't a meaningful expedition attribute right now. *@
-				</div>
-
-				<div class="team-slots" onmouseup=@CancelDragIfAny>
-					@for ( int i = 0; i < 3; i++ )
-					{
-						var slotIdx = i;
-						var beast = _team[slotIdx];
-						var dragHover = _dragHoverSlot == slotIdx && _dragSource != null;
-						<div class="team-slot @(beast != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "")"
-							 onclick=@(() => OnTeamSlotClicked(slotIdx))
-							 onmousedown=@(() => OnSlotMouseDown(slotIdx))
-							 onmouseup=@(() => OnSlotMouseUp(slotIdx))
-							 onmouseover=@(() => OnSlotMouseOver(slotIdx))>
-							@{
-								// Slot-edit override: when the dev picks a test species,
-								// every slot renders that species (without needing to
-								// own it). Falls back to the real beast in the slot.
-								var editTestSpecies = !string.IsNullOrEmpty( _slotEditTestSpeciesId )
-									? MonsterManager.Instance?.GetSpecies( _slotEditTestSpeciesId )
-									: null;
-								var displaySpecies = editTestSpecies != null
-									? editTestSpecies
-									: ( beast != null ? MonsterManager.Instance?.GetSpecies( beast.SpeciesId ) : null );
-							}
-							@if ( beast != null || displaySpecies != null )
-							{
-								var species = displaySpecies;
-								var hpPct = beast != null ? beast.HPPercent * 100f : 100f;
-								var hpClass = hpPct > 60f ? "healthy" : hpPct > 25f ? "wounded" : "critical";
-								var heldItem = ( beast != null && !string.IsNullOrEmpty( beast.HeldItemId ) )
-									? ItemManager.Instance?.GetItem( beast.HeldItemId )
-									: null;
-								var lowLevel = beast != null && beast.Level < recommendedLevel - 5;
-								var ppLow = beast != null && HasLowPP( beast );
-
-								@{
-									// Reuse the BeastiaryPanel grid-card per-species positioning
-									// so the sprite sits perfectly in the slot art frame. Multiplier
-									// 0.65 matches the evo-stage pattern (smaller frame than 172px
-									// grid card → proportionally smaller offsets). Overrides from
-									// the slot editor (if active) shadow the species data.
-									var slotCi = System.Globalization.CultureInfo.InvariantCulture;
-									var slotArt = GetSlotArt( species );
-									var slotScale = slotArt.Scale;
-									var slotOffX = slotArt.OffX * 0.65f;
-									var slotOffY = slotArt.OffY * 0.65f;
-									var slotSpriteStyle = $"transform: translate({slotOffX.ToString("F2", slotCi)}px, {slotOffY.ToString("F2", slotCi)}px) scale({slotScale.ToString("F2", slotCi)}); transform-origin: center bottom;";
+					@* Controls 400×44: AUTO-FILL · F (secondary 194) · NORMAL | HARD
+					   segmented 194. Pressables are rounded slabs — never skewed. *@
+					<div class="tp-controls">
+						<BbButton Tier="secondary" Size=@(44) Label="AUTO-FILL" KeyCap="F" Class="tp-autofill" OnClick=@AutoFill />
+						<div class="tp-seg">
+							<div class="tp-seg-opt @(!_hardMode ? "active" : "")"
+								 onclick=@(() => SetHardMode(false))
+								 onmouseover=@(() => OnHover("diff-normal"))>
+								<span class="tp-seg-label">NORMAL</span>
+							</div>
+							<div class="tp-seg-opt hard @(_hardMode ? "active" : "") @(hardUnlocked ? "" : "locked")"
+								 onclick=@(() => SetHardMode(true))
+								 onmouseover=@(() => OnHover("diff-hard"))>
+								@if ( !hardUnlocked )
+								{
+									<iconify class="tp-seg-glyph" icon="lucide:lock" Size=@(12) Color="rgba(214, 206, 236, 0.6)" />
 								}
-								<div class="slot-art-wrap @(ShowSlotEditor && !string.IsNullOrEmpty(_slotEditTestSpeciesId) ? "slot-edit" : "")"
-									 onmousedown=@(() => StartDragSlotArt(species))
-									 onmouseover=@(() => OnSlotEditCardEnter(species?.Id))
-									 onmouseout=@(() => OnSlotEditCardLeave(species?.Id))>
-									<div class="slot-art-portrait" style="@slotSpriteStyle">
-										<img class="slot-art" src="@(species?.IconPath ?? "ui/monsters/placeholder.png")" />
-									</div>
-									@if ( beast != null && beast.IsFavorite )
-									{
-										<div class="slot-fav">
-											<iconify icon="lucide:star" Size=@(11) Color="#fbbf24" />
-										</div>
-									}
-									@if ( heldItem != null )
-									{
-										<div class="slot-item-badge">
-											<iconify icon="lucide:package" Size=@(10) Color="#c4b5fd" />
-										</div>
-									}
-									@if ( ppLow )
-									{
-										<div class="slot-pp-warn">
-											<iconify icon="lucide:battery-low" Size=@(10) Color="#fca5a5" />
-										</div>
-									}
-								</div>
-
-								<div class="slot-info">
-									<div class="slot-name-row">
-										<span class="slot-name">@(beast?.Nickname ?? species?.Name ?? beast?.SpeciesId ?? "?")</span>
-										@if ( lowLevel )
-										{
-											<div class="slot-underlevel-chip">
-												<iconify icon="lucide:alert-triangle" Size=@(9) Color="#fca5a5" />
-											</div>
-										}
-									</div>
-									<div class="slot-meta-row">
-										<span class="slot-lv">Lv @(beast?.Level.ToString() ?? "?")</span>
-										@if ( species != null )
-										{
-											<img class="slot-el el-@(species.Element.ToString().ToLower())" src="ui/icons/elements/background/@(species.Element.ToString().ToLower()).png" />
-											@if ( species.SecondaryElement.HasValue && species.SecondaryElement.Value != species.Element )
-											{
-												<img class="slot-el el-@(species.SecondaryElement.Value.ToString().ToLower())" src="ui/icons/elements/background/@(species.SecondaryElement.Value.ToString().ToLower()).png" />
-											}
-										}
-									</div>
-									<div class="slot-hp-row">
-										<span class="slot-hp-text @hpClass">@(beast?.CurrentHP.ToString() ?? "—") / @(beast?.MaxHP.ToString() ?? "—")</span>
-										<div class="slot-hp-bar">
-											<div class="slot-hp-fill @hpClass" style="width: @(hpPct)%"></div>
-										</div>
-									</div>
-								</div>
-
-								<div class="slot-remove">
-									<iconify icon="lucide:x" Size=@(14) Color="#cbd5e1" />
-								</div>
-							}
-							else
-							{
-								<div class="slot-empty-inner">
-									<iconify icon="lucide:plus" Size=@(28) Color="#cbd5e1" />
-									<span class="slot-empty-label">EMPTY SLOT</span>
-								</div>
-							}
-							@* Living violet ring — hover/drag-target cursor. Sits
-							   just inside the slot bounds (slot is overflow:hidden). *@
-							<div class="slot-ring"></div>
-						</div>
-					}
-				</div>
-
-				<!-- Controls: split into two rows so nothing collapses.
-					 Row 1: Auto-fill + Clear (team actions).
-					 Row 2: PRESETS label + A/B/C slots (saved loadouts). -->
-				<div class="ps-controls-row">
-					<button class="ctrl-btn" onclick=@AutoFill onmouseover=@(() => OnHover("autofill"))>
-						<div class="cb-key picker-cap"><span>F</span></div>
-						<iconify icon="lucide:wand-2" Size=@(13) Color="#a78bfa" />
-						<span>Auto-fill</span>
-					</button>
-					<button class="ctrl-btn" onclick=@ClearTeam onmouseover=@(() => OnHover("clearteam"))>
-						<div class="cb-key picker-cap"><span>C</span></div>
-						<iconify icon="lucide:eraser" Size=@(13) Color="#94a3b8" />
-						<span>Clear</span>
-					</button>
-				</div>
-
-				@* ═══ DIFFICULTY — NORMAL / HARD (restored to the live embark
-				   flow; the toggle previously only existed on the retired
-				   pre-worldmap expedition screen). Hard = red commit tier,
-				   +100% rewards, gated by ExpeditionManager.IsHardModeUnlocked. *@
-				@{
-					var pickerHardUnlocked = ExpeditionManager.Instance?.IsHardModeUnlocked( PendingExpeditionId ) ?? false;
-				}
-				<div class="picker-diff-row">
-					<span class="pd-label">DIFFICULTY</span>
-					<div class="pd-pills">
-						<div class="pd-pill @(!_hardMode ? "active" : "")"
-							 onclick=@(() => SetHardMode(false))
-							 onmouseover=@(() => OnHover("diff-normal"))>
-							<span>NORMAL</span>
-						</div>
-						<div class="pd-pill hard @(_hardMode ? "active" : "") @(pickerHardUnlocked ? "" : "locked")"
-							 onclick=@(() => SetHardMode(true))
-							 onmouseover=@(() => OnHover("diff-hard"))>
-							@if ( !pickerHardUnlocked )
-							{
-								<iconify icon="lucide:lock" Size=@(11) Color="#94a3b8" />
-							}
-							else
-							{
-								<iconify icon="lucide:skull" Size=@(11) Color="@(_hardMode ? "#fca5a5" : "#94a3b8")" />
-							}
-							<span>HARD</span>
-							@if ( pickerHardUnlocked )
-							{
-								<span class="pd-bonus">+100%</span>
-							}
+								<span class="tp-seg-label">HARD</span>
+								@if ( hardUnlocked )
+								{
+									<span class="tp-seg-bonus">+100%</span>
+								}
+							</div>
 						</div>
 					</div>
+
+					@* EMBARK 400×56 — the ONE gold primary; locked it stays big and
+					   dims (DOC-1 #9). LANE: input — KeyCap per the cursor graph
+					   (Enter embarks as the stopgap; Space picks in the grid). *@
+					<BbButton Tier="primary" Size=@(56) Label=@GetEmbarkLabel( filled ) Disabled=@(!CanEmbark()) Class="tp-embark" OnClick=@OnEmbarkClicked />
 				</div>
 
-				<div class="ps-presets-row">
-					<span class="ps-preset-label">PRESETS</span>
-					@for ( int p = 0; p < 3; p++ )
-					{
-						var pIdx = p;
-						var preset = GetPreset( pIdx );
-						var label = preset != null && preset.MonsterIds.Count > 0
-							? (preset.Name ?? GetDefaultPresetName( pIdx ))
-							: GetDefaultPresetName( pIdx );
-						var hasData = preset != null && preset.MonsterIds.Count > 0;
-						<div class="preset-slot @(hasData ? "saved" : "empty")">
-							<button class="preset-btn @(hasData ? "saved" : "")"
-									onclick=@(() => LoadPreset(pIdx))
-									onmouseover=@(() => OnHover("preset-load-" + pIdx))>
-								<div class="cb-key picker-cap"><span>@(pIdx + 1)</span></div>
-								<iconify icon="@(hasData ? "lucide:bookmark-check" : "lucide:bookmark")" Size=@(12) Color="@(hasData ? "#a78bfa" : "#64748b")" />
-								<span>@label</span>
-							</button>
-							<button class="preset-save-btn @(filled > 0 ? "" : "disabled")"
-									onclick=@(() => SavePreset(pIdx))
-									onmouseover=@(() => OnHover("preset-save-" + pIdx))>
-								<iconify icon="lucide:save" Size=@(11) Color="#cbd5e1" />
-							</button>
-						</div>
-					}
-				</div>
-			</div>
-
-					@* Compact red Persona-stamp CTA — pinned at the bottom of
-					   the LEFT column so the right roster grid can extend the
-					   full modal height. *@
-					<button class="picker-embark-btn @(CanEmbark() ? "ready" : "disabled") @(_hardMode ? "hard" : "")"
-							onclick=@OnEmbarkClicked
-							onmouseover=@(() => OnHover("embark-cta"))>
-						<div class="cb-key picker-cap picker-cap-embark"><span>R</span></div>
-						<iconify icon="lucide:compass" Size=@(22) Color="#ffffff" />
-						<span class="embark-label">@GetEmbarkLabel( filled )</span>
-					</button>
-
-				</div> <!-- /.picker-left -->
-
-				<div class="picker-right">
-
-				<!-- ═══ FILTERS ═══ -->
-				<!-- The cycle-element hint sits on its OWN row directly under
-					 the FilterBar, hard-aligned to the LEFT edge so it reads as
-					 an annotation attached to the element dropdown (the
-					 left-most filter) — not as floating text by the sort
-					 controls on the far right. -->
-				<div class="picker-filters">
-				<FilterBar @ref="filterBar"
-						   CurrentElement=@_currentFilter
-						   CurrentSort=@_currentSort
-						   CurrentRarity=@_currentRarity
-						   SortAscending=@_sortAscending
-						   ShowBeastiarySort=@false
-						   ShowRarityFilter=@true
-						   HideMonsterOnlySorts=@false
-						   OnElementChanged=@OnElementChanged
-						   OnSortChanged=@OnSortChanged
-						   OnRarityChanged=@OnRarityChanged
-						   OnNameFilterChanged=@OnNameFilterChanged
-						   OnSortDirectionChanged=@OnSortDirectionChanged
-						   AvailableNames=@GetMonsterNames() />
-					<div class="picker-cycle-hint">
-						<iconify class="pch-arrow" icon="lucide:corner-left-up" Size=@(14) Color="rgba(196, 181, 253, 0.9)" />
-						<div class="cb-key picker-cap"><span>Z</span></div>
-						<div class="cb-key picker-cap"><span>X</span></div>
-						<span class="pch-label">cycle element</span>
-					</div>
-			</div>
-
-			<!-- ═══ ROSTER HEADER (sibling of grid, NOT wrapping it — matches
-				 BeastiaryPanel structure where the working grid is a direct
-				 child of its column-flex parent with no intermediate wrapper) -->
-			<div class="ps-head-row roster-head-row">
-				<span class="ps-label">ROSTER</span>
-				<span class="ps-count">@roster.Count / @(MonsterManager.Instance?.OwnedMonsters?.Count ?? 0)</span>
-			</div>
-
-			<!-- ═══ ROSTER GRID — NO flex-wrap.
-				 s&box's flex-wrap engine consistently allocates only ~640px
-				 of wrap budget regardless of parent width (confirmed via
-				 hardcoded 1000px on picker-right + every CSS workaround
-				 imaginable). Bypassing flex-wrap by manually slicing the
-				 roster into rows of 5 in code-behind — each row is its own
-				 single-line flex container which lays out reliably. -->
-			<div class="picker-roster-scroll" @ref="pickerRosterScroll">
-				@if ( roster.Count == 0 )
-				{
-					<div class="roster-empty">
-						<iconify icon="lucide:search-x" Size=@(28) Color="#64748b" />
-						<span>No beasts match</span>
-					</div>
-				}
-				else
-				{
-					@{
-						var rosterChunks = new List<List<Monster>>();
-						for ( int i = 0; i < roster.Count; i += CARDS_PER_ROW )
+				@* ── CENTER 824: the roster scroll grid — cards are DIRECT children
+				   of the scroll (DOC-1 #12), 5-wide, width + max-width pinned. *@
+				<div class="tp-center">
+					<div class="tp-grid @(roster.Count == 0 ? "empty" : "")" @ref="pickerRosterScroll">
+						@if ( roster.Count == 0 )
 						{
-							var chunk = new List<Monster>();
-							for ( int j = i; j < Math.Min( i + CARDS_PER_ROW, roster.Count ); j++ )
-								chunk.Add( roster[j] );
-							rosterChunks.Add( chunk );
+							<span class="tp-empty-title">@EmptyGridTitle()</span>
+							<span class="tp-empty-sub">R cycles the element</span>
 						}
-					}
-					@foreach ( var rowChunk in rosterChunks )
-					{
-						<div class="picker-roster-row">
-							@foreach ( var m in rowChunk )
+						else
+						{
+							@foreach ( var m in roster )
 							{
 								var beast = m;
+								var sp = MonsterManager.Instance?.GetSpecies( beast.SpeciesId );
 								var isPicked = _team.Any( t => t?.Id == beast.Id );
-								var isFainted = beast.CurrentHP <= 0;
-								var isUnpickable = isFainted;
-								<div class="picker-card-wrapper @(isPicked ? "picked" : "") @(isFainted ? "fainted" : "") @(isUnpickable ? "unpickable" : "") @(_kbIndex >= 0 && _kbIndex < roster.Count && roster[_kbIndex].Id == beast.Id ? "kb-selected" : "")"
+								var isKo = beast.CurrentHP <= 0;
+								var kbFocused = _hoveredCardId == null && _kbIndex >= 0 && _kbIndex < roster.Count && roster[_kbIndex].Id == beast.Id;
+								@* LANE: input — `.tp-card.focused` is the cursor slab step; the
+								   living ring attaches here (inside the card bounds — scroll law). *@
+								<div class="tp-card @(isPicked ? "picked" : "") @(isKo ? "ko" : "") @(kbFocused ? "focused" : "")"
 									 onclick=@(() => OnRosterCardClicked(beast))
 									 onmousedown=@(() => OnRosterCardMouseDown(beast))
 									 onmouseover=@(() => OnCardHover(beast.Id))>
-									<MonsterCard Monster=@beast
-												 IsSelected=@isPicked
-												 ShouldAnimate=@(_hoveredCardId == beast.Id && !isFainted)
-												 IsMini=@true
-												 ShowGenes=@false
-												 AnimateOnHover=@true
-												 AnimationFrame=@SpriteAnimator.GlobalFrame
-												 ClickAction=@(() => {})
-												 HoverAction=@(() => {})
-												 LeaveAction=@(() => {}) />
-									@* Living violet ring — keyboard + hover cursor.
-									   Sits INSIDE the card bounds (scroll containers
-									   don't clip overhanging absolutes in s&box). *@
-									<div class="pick-ring"></div>
-									@if ( isFainted )
-									{
-										<div class="card-fainted-overlay">
-											<span>KO</span>
-										</div>
-									}
+									<div class="tp-card-art">
+										<img class="tp-sprite" src="@(sp?.IconPath ?? "ui/monsters/placeholder.png")" style="@FitStyle( sp, 150, 104 )" />
+									</div>
+									<div class="tp-card-pwr">
+										<span class="tp-card-pwr-k">PWR</span>
+										<span class="tp-card-pwr-v">@beast.PowerRating</span>
+									</div>
+									<div class="tp-card-foot">
+										<span class="tp-card-name">@BeastName( beast, sp )</span>
+										@if ( sp != null )
+										{
+											<img class="tp-el-icon" src="ui/icons/elements/background/@(ElementKey( sp.Element )).png" />
+										}
+									</div>
+									<div class="tp-card-lv"><span class="tp-card-lv-text">@LevelText( beast )</span></div>
 									@if ( isPicked )
 									{
-										<div class="card-picked-check">
-											<iconify icon="lucide:check" Size=@(14) Color="#ffffff" />
+										<div class="tp-card-check">
+											<iconify class="tp-card-check-glyph" icon="lucide:check" Size=@(12) Color="#04160a" />
 										</div>
+									}
+									@if ( isKo )
+									{
+										<div class="tp-card-ko"><span class="tp-card-ko-text">KO</span></div>
+									}
+								</div>
+							}
+						}
+					</div>
+				</div>
+
+				@* ── FACTS 400: the beast under the cursor (hover, else the kb card).
+				   Display-only — never a cursor stop. identity → moves → trait
+				   (DOC-6 #14). LANE: motion — a swap fade when `focus` changes. *@
+				<div class="tp-facts">
+					@if ( focus == null )
+					{
+						<span class="tp-facts-empty-title">@EmptyGridTitle()</span>
+						<span class="tp-facts-empty-sub">R cycles the element filter</span>
+					}
+					else
+					{
+						var fsp = MonsterManager.Instance?.GetSpecies( focus.SpeciesId );
+						var fel = fsp != null ? ElementKey( fsp.Element ) : "neutral";
+						var ftone = BbTokens.Element( fel );
+
+						<div class="tp-facts-id">
+							@* Framed beast tile — the pennant fill (page accent blended .70
+							   toward the slab, DOC-6 #11). LANE: color — the blend value. *@
+							<div class="tp-facts-hero" style="background-color: @HeroFill();">
+								<img class="tp-sprite" src="@(fsp?.IconPath ?? "ui/monsters/placeholder.png")" style="@FitStyle( fsp, 120, 120 )" />
+							</div>
+							<div class="tp-facts-text">
+								<span class="tp-facts-name">@BeastName( focus, fsp )</span>
+								@* LANE: color — element two-tone from BbTokens.Element (fill + rim ink). *@
+								<div class="tp-el-chip" style="background-color: @ftone.Fill;">
+									<img class="tp-el-icon" src="ui/icons/elements/background/@(fel).png" />
+									<span class="tp-el-chip-label" style="color: @ftone.Rim;">@fel.ToUpperInvariant()</span>
+								</div>
+								<div class="tp-facts-line">
+									<span class="tp-facts-lv">@LevelText( focus )</span>
+									<span class="tp-facts-dot">·</span>
+									<span class="tp-facts-pwr">@PwrText( focus )</span>
+									<span class="tp-facts-dot">·</span>
+									<span class="tp-facts-hp">@("HP " + HpText( focus ))</span>
+								</div>
+							</div>
+						</div>
+
+						<span class="tp-facts-kicker">MOVES</span>
+						<div class="tp-moves">
+							@for ( int mi = 0; mi < Monster.MaxMoves; mi++ )
+							{
+								var mv = focus.Moves != null && mi < focus.Moves.Count ? focus.Moves[mi] : null;
+								var def = mv != null ? MoveDatabase.GetMove( mv.MoveId ) : null;
+								var mtone = BbTokens.Element( def != null ? ElementKey( def.Element ) : "" );
+								<div class="tp-move @(def == null ? "none" : "")">
+									@* LANE: color — the element seam rim. *@
+									<div class="tp-move-seam" style="background-color: @(def != null ? mtone.Rim : "rgba(214, 206, 236, 0.15)");"></div>
+									<span class="tp-move-name">@(def?.Name ?? "—")</span>
+									@if ( def != null )
+									{
+										<span class="tp-move-pwr">@MovePwrText( def )</span>
+										<span class="tp-move-pp">@MovePpText( mv, def )</span>
 									}
 								</div>
 							}
 						</div>
-					}
-				}
-			</div>
 
-				</div> <!-- /.picker-right -->
-			</div> <!-- /.picker-body -->
+						<div class="tp-trait">
+							<span class="tp-trait-k">TRAIT</span>
+							<span class="tp-trait-v">@TraitText( focus )</span>
+						</div>
+					}
+				</div>
+			</div>
 		</div>
 
-		@* Drag shield — fullscreen overlay during slot-art drag. *@
+		@* Drag shield — fullscreen overlay during slot-art drag (dev editor). *@
 		@if ( !string.IsNullOrEmpty( _slotEditDraggingId ) )
 		{
 			<div class="slot-edit-drag-shield"
@@ -510,7 +443,8 @@
 	// slots so the dev can tune how the sprite frames in the slab.
 	// Drag the sprite to adjust CardOffsetX/Y; mouse wheel scales.
 	// Same data the Beastbook editor uses — saving propagates to
-	// both surfaces.
+	// both surfaces. (The picker's own slot art no longer reads these
+	// values as of 2026-09-04 — see the markup note.)
 	private const bool ShowSlotEditor = false;
 	private string _slotEditTestSpeciesId;
 	private string _slotEditDraggingId;
@@ -615,7 +549,6 @@
 
 	private void StartDragSlotArt( MonsterSpecies species )
 	{
-		Log.Info( $"[SlotEdit] StartDragSlotArt called. species={species?.Id}, testSpecies={_slotEditTestSpeciesId}, show={ShowSlotEditor}" );
 		if ( !ShowSlotEditor || species == null || string.IsNullOrEmpty( _slotEditTestSpeciesId ) ) return;
 		var art = GetSlotArt( species );
 		_slotEditDraggingId = species.Id;
@@ -635,9 +568,6 @@
 			_slotDragNeedsAnchor = false;
 			return;
 		}
-		// Multiplier 1/0.65 ≈ 1.54 — drag pixel input maps to species
-		// CardOffsetX/Y space (which the slot multiplies by 0.65 when
-		// rendering), so visual drag distance matches sprite movement.
 		float dx = ( MousePosition.x - _slotDragStartMouseX ) / 0.65f;
 		float dy = ( MousePosition.y - _slotDragStartMouseY ) / 0.65f;
 		var prev = _slotArtOverrides.TryGetValue( _slotEditDraggingId, out var ov )
@@ -679,13 +609,8 @@
 			Log.Info( "[SlotEdit] No overrides yet — drag a slot or scroll over it first." );
 			return;
 		}
-
-		// 1) Persist to disk so the next session loads them automatically.
 		PersistSlotArtToDisk();
 		Log.Info( $"[SlotEdit] Saved {_slotArtOverrides.Count} override(s) → FileSystem.Data/{SavedSlotArtFile}" );
-
-		// 2) Log each line separately for paste-back into MonsterManager.cs
-		//    (s&box's Log.Info silently truncates multi-line strings).
 		Log.Info( "─── Slot card-art overrides — paste into MonsterManager.cs ───" );
 		var ci = System.Globalization.CultureInfo.InvariantCulture;
 		foreach ( var kvp in _slotArtOverrides )
@@ -716,8 +641,7 @@
 	// ─── DIFFICULTY ──────────────────────────────────────────────
 	// Hard mode is panel-local UI state passed to StartExpedition at
 	// embark time (per-expedition Expedition.IsHardMode is the runtime
-	// source of truth — same contract the old expedition screen used).
-	// Resets to NORMAL every time the picker opens.
+	// source of truth). Resets to NORMAL every time the picker opens.
 	private bool _hardMode = false;
 
 	private bool IsHardUnlocked() =>
@@ -736,7 +660,7 @@
 		StateHasChanged();
 	}
 
-	/// <summary>Recommended level shown in the header/hero — boosted when hard mode is armed.</summary>
+	/// <summary>Recommended level shown in the header — boosted when hard mode is armed.</summary>
 	private int GetDisplayLevel( Expedition exp )
 	{
 		if ( exp == null ) return 0;
@@ -745,37 +669,104 @@
 			: exp.BaseEnemyLevel;
 	}
 
-	/// <summary>CTA label — mirrors the old ternary exactly, plus the hard-mode variant.</summary>
+	/// <summary>CTA label — plus the hard-mode variant.</summary>
 	private string GetEmbarkLabel( int filled )
 	{
-		if ( !CanEmbark() ) return filled == 0 ? "PICK A BEAST" : "FILL YOUR TEAM";
+		if ( !CanEmbark() ) return filled == 0 ? "PICK A BEAST" : "EMBARK";
 		return _hardMode ? "EMBARK · HARD" : "EMBARK";
 	}
 
-	// Filter/sort state — mirrors MonsterRosterPanel naming for copy-paste sanity.
+	// ═══════════════════════════════════════════════════════════════
+	// TEXT HELPERS — every multi-value string is built HERE, never as a
+	// text node mixing several interpolations with literal separators (the squash law, DOC-3 #17).
+	// ═══════════════════════════════════════════════════════════════
+
+	private string LevelText( Expedition exp ) => "LV " + GetDisplayLevel( exp );
+	private static string LevelText( Monster m ) => m != null ? "LV " + m.Level : "LV ?";
+	private static string PwrText( Monster m ) => m != null ? "PWR " + m.PowerRating : "PWR —";
+	private static string HpText( Monster m ) => m != null ? $"{m.CurrentHP} / {m.MaxHP}" : "— / —";
+	private static string TeamCountText( int filled ) => $"{filled} / 3";
+	private static string MovePwrText( MoveDefinition def ) => def.BasePower > 0 ? "PWR " + def.BasePower : "PWR —";
+	private static string MovePpText( MonsterMove mv, MoveDefinition def ) => $"PP {mv.CurrentPP} / {def.MaxPP}";
+	private static string ElementKey( ElementType e ) => e.ToString().ToLowerInvariant();
+
+	private static string BeastName( Monster m, MonsterSpecies sp )
+		=> m?.Nickname ?? sp?.Name ?? m?.SpeciesId ?? "?";
+
+	private string EmptyGridTitle()
+		=> _currentFilter == "all" ? "NO BEASTS" : "NO " + _currentFilter.ToUpperInvariant() + " BEASTS";
+
+	private static string TraitText( Monster m )
+	{
+		if ( m?.Traits == null || m.Traits.Count == 0 ) return "—";
+		var names = m.Traits
+			.Select( id => TraitDatabase.GetTrait( id )?.Name )
+			.Where( n => !string.IsNullOrEmpty( n ) )
+			.ToList();
+		return names.Count == 0 ? "—" : string.Join( " · ", names );
+	}
+
+	// LANE: color — the framed tile's pennant fill: page accent (orange)
+	// blended .70 toward the slab (the OnlineHub .ts-tile.framed recipe).
+	private static string HeroFill() => BbEmblem.BlendTowardSlab( BbTokens.Orange, 0.70f );
+
+	/// <summary>
+	/// Sprite fit for a TW×TH window: INTEGER upscale when the source fits
+	/// (64 → 2× in 128; 128 → 1×), otherwise the house viewport crop
+	/// (0.45 horizontal — sprites face left; 0.22 vertical — the head band).
+	/// Inline width/height/margins, whole px; no object-fit, no filter, no
+	/// transform on the img (DOC-6 #11/#13, DOC-7 #18). Host: overflow
+	/// hidden + align/justify flex-start (in-flow children DO clip).
+	/// </summary>
+	private static string FitStyle( MonsterSpecies s, int tw, int th )
+	{
+		var d = BbEmblem.SpriteDims( s );
+		int sw = Math.Max( 1, d.w ), sh = Math.Max( 1, d.h );
+		int scale = Math.Max( 1, Math.Min( tw / sw, th / sh ) );
+		int w = sw * scale, h = sh * scale;
+		int ml = w > tw ? -(int)Math.Round( ( w - tw ) * 0.45f ) : ( tw - w ) / 2;
+		int mt = h > th ? -(int)Math.Round( ( h - th ) * 0.22f ) : ( th - h ) / 2;
+		return $"width: {w}px; height: {h}px; min-width: {w}px; margin-left: {ml}px; margin-top: {mt}px;";
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// FILTER / SORT STATE
+	// ═══════════════════════════════════════════════════════════════
+
 	private string _currentFilter = "all";
 	private string _currentSort = "level";
-	private string _currentRarity = "all";
-	private string _currentNameFilter = "";
+	private string _currentRarity = "all"; // no rarity chip is mounted — stays "all"
 	private bool _sortAscending = false;
+
+	// The picker's sort menu — a custom list so the FilterBar treats "name"
+	// as a plain sort (the beast default opens the name-search popup; search
+	// is cut here). Keys match GetFilteredMonsters' switch.
+	private static readonly List<FilterBar.MenuItem> _beastSorts = new()
+	{
+		new FilterBar.MenuItem { Key = "level",  Label = "Level",     Icon = "ui/icons/sort/arrow-up.svg" },
+		new FilterBar.MenuItem { Key = "power",  Label = "Power",     Icon = "ui/icons/sort/power.svg" },
+		new FilterBar.MenuItem { Key = "rarity", Label = "Rarity",    Icon = "ui/icons/sort/star.svg" },
+		new FilterBar.MenuItem { Key = "recent", Label = "Recent",    Icon = "ui/icons/sort/clock.svg" },
+		new FilterBar.MenuItem { Key = "fav",    Label = "Favorites", Icon = "ui/icons/sort/heart.svg" },
+		new FilterBar.MenuItem { Key = "name",   Label = "Name",      Icon = "ui/icons/sort/search.svg" },
+	};
+	private static List<FilterBar.MenuItem> BeastSorts => _beastSorts;
 
 	private Guid? _hoveredCardId;
 	private string _hoveredKey;
 
-	// Keyboard navigation. The roster grid is a fixed 5-wide layout.
+	// Keyboard navigation. The roster grid is a fixed 5-wide layout
+	// (CENTER 824 = 5 × 150 + 4 × 16 + 10 lane).
 	private const int CARDS_PER_ROW = 5;
 	private int _kbIndex = 0;
 	private Panel pickerRosterScroll;
+	private Panel toolbarRef;
 	private FilterBar filterBar;
 
 	// ─── DRAG-DROP STATE ───
 	// _dragSource is the beast currently being dragged (from roster OR a team slot).
 	// _dragFromSlot is the index of the source team slot, or null if dragging from
-	// the roster. _dragHoverSlot drives the yellow drop-target highlight.
-	//
-	// s&box Razor doesn't expose HTML5 drag events, so this is pure mouse-event
-	// drag: onmousedown starts, onmouseup on a slot commits, onmouseup anywhere
-	// else (via the .team-slots container's onmouseup) cancels.
+	// the roster. _dragHoverSlot drives the drop-target highlight.
 	private Monster _dragSource;
 	private int? _dragFromSlot;
 	private int? _dragHoverSlot;
@@ -792,6 +783,25 @@
 		if ( _hoveredCardId == id ) return;
 		_hoveredCardId = id;
 	}
+
+	/// <summary>The beast the FACTS column describes: the hovered card, else
+	/// the keyboard card. Hover == focus (DOC-5 #6); a keyboard move clears
+	/// the hover so the two never fight. LANE: input — device-mode gating.</summary>
+	private Monster GetFocusedBeast( List<Monster> roster )
+	{
+		if ( roster == null || roster.Count == 0 ) return null;
+		if ( _hoveredCardId.HasValue )
+		{
+			var h = roster.FirstOrDefault( m => m.Id == _hoveredCardId.Value );
+			if ( h != null ) return h;
+		}
+		return roster[Math.Clamp( _kbIndex, 0, roster.Count - 1 )];
+	}
+
+	// LANE: input — the header cursor graph (ELEMENT · SORT · dir · BACK).
+	// The FilterBar calls this on A/D from an OPEN menu; the Bag's
+	// OnFilterBarSideStep (InventoryPanel.razor:1872) is the recipe.
+	private void OnFilterBarSideStep( Panel trigger, int dir ) { }
 
 	// Mouse wheel — scales the hovered slot's sprite when in slot-edit mode.
 	public override void OnMouseWheel( Vector2 delta )
@@ -815,12 +825,6 @@
 		if ( firstTime )
 		{
 			Instance = this;
-			// Load persisted slot-edit overrides regardless of editor
-			// state — without this, turning the editor OFF means the
-			// slot reverts to the species' base CardScale/CardOffsetX/Y
-			// values from MonsterManager.cs and any tuning you did in
-			// the editor disappears. Loading always means edits stick
-			// even before you commit them to MonsterManager.cs.
 			if ( !_slotArtLoaded )
 			{
 				LoadSavedSlotArt();
@@ -860,7 +864,11 @@
 	public static void Close()
 	{
 		IsVisible = false;
-		if ( Instance != null ) Instance._hoveredKey = null;
+		if ( Instance != null )
+		{
+			Instance._hoveredKey = null;
+			Instance.filterBar?.CloseAllDropdowns();
+		}
 		SoundManager.PlayPopdown();
 	}
 
@@ -870,6 +878,15 @@
 		if ( !IsVisible ) return;
 		if ( !UIModalState.IsTopModal( "TeamPickerPopup" ) ) return;
 
+		// LANE: input — the whole key map below is the run-0 binding kept
+		// alive as a stopgap; the cursor graph (slots ⇄ grid ⇄ header ⇄
+		// EMBARK, one ring) replaces it. Two changes landed here so the
+		// header's R CYCLE cap tells the truth: R cycles the element (was
+		// embark) and Enter embarks (was a second pick key).
+
+		// An OPEN FilterBar menu owns W/S/Space/Q/A/D.
+		if ( filterBar != null && filterBar.IsAnyDropdownOpen && filterBar.HandleKeyboard() ) return;
+
 		// Back / close.
 		if ( Input.Pressed( "Escape" ) || Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 		{
@@ -877,8 +894,14 @@
 			return;
 		}
 
-		// R embarks (OnEmbarkClicked self-guards on CanEmbark).
-		if ( Input.Pressed( "reload" ) )
+		// R = element cycle (the shown cycle key); Z/X (CyclePrev/Next) stay
+		// the silent twins.
+		if ( Input.Pressed( "reload" ) ) { CycleElementFilter( 1 ); return; }
+		if ( Input.Pressed( "CyclePrev" ) ) { CycleElementFilter( -1 ); return; }
+		if ( Input.Pressed( "CycleNext" ) ) { CycleElementFilter( 1 ); return; }
+
+		// Enter embarks (OnEmbarkClicked self-guards on CanEmbark).
+		if ( Input.Pressed( "Enter" ) )
 		{
 			OnEmbarkClicked();
 			return;
@@ -891,7 +914,8 @@
 		if ( Input.Pressed( "View" ) ) { ClearTeam(); StateHasChanged(); return; }
 
 		// 1 / 2 / 3 — preset slots: load if the slot holds a team, else save
-		// the current team into it (deny if there's nothing to save).
+		// the current team into it (deny if there's nothing to save). The
+		// preset BUTTONS were cut in run 1; the keys still work.
 		for ( int p = 0; p < 3; p++ )
 		{
 			if ( !Input.Pressed( "Slot" + ( p + 1 ) ) ) continue;
@@ -904,17 +928,12 @@
 			return;
 		}
 
-		// , / . cycle the element filter (the <,> keys). [ / ] stay reserved
-		// for the global radio track skip.
-		if ( Input.Pressed( "CyclePrev" ) ) { CycleElementFilter( -1 ); return; }
-		if ( Input.Pressed( "CycleNext" ) ) { CycleElementFilter( 1 ); return; }
-
 		var roster = GetFilteredMonsters();
 		if ( roster.Count == 0 ) return;
 		_kbIndex = Math.Clamp( _kbIndex, 0, roster.Count - 1 );
 
-		// Space / Enter adds or removes the highlighted beast.
-		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+		// Space picks / un-picks the highlighted beast.
+		if ( Input.Pressed( "Jump" ) )
 		{
 			OnRosterCardClicked( roster[_kbIndex] );
 			StateHasChanged();
@@ -930,9 +949,9 @@
 		if ( _kbIndex != prev )
 		{
 			SoundManager.PlayHover();
-			// Scroll the row holding the selection into view (the grid renders
-			// fixed 5-wide rows, so row index = card index / CARDS_PER_ROW).
-			UiGridScroll.ScrollIndexIntoView( pickerRosterScroll, _kbIndex / CARDS_PER_ROW, "picker-roster-row" );
+			_hoveredCardId = null; // the keyboard owns focus now (one cursor)
+			// Cards are DIRECT children of the scroll grid — scroll by card index.
+			UiGridScroll.ScrollIndexIntoView( pickerRosterScroll, _kbIndex, "tp-card" );
 			StateHasChanged();
 		}
 	}
@@ -1142,8 +1161,6 @@
 		SoundManager.PlayClick();
 
 		// Tutorial: notify if AutoFill actually added at least one beast.
-		// New players have a single starter that lands here without ever
-		// clicking the roster card path.
 		if ( added > 0 )
 		{
 			Beastborne.Core.TutorialManager.Instance?.NotifyEvent( "team.beast-added" );
@@ -1177,11 +1194,9 @@
 		}
 
 		// Remember this team for next time we open the picker on this zone.
-		// If save data isn't ready (cloud blob not yet hydrated, save quarantined,
-		// or first boot before SaveService.CurrentBlob exists), skip the preset
-		// write and still embark — losing the "last team per zone" convenience is
-		// fine; silently blocking embark is not. The save-quarantine fix (online-2)
-		// addresses the upstream "CurrentBlob is null" cases.
+		// If save data isn't ready, skip the preset write and still embark —
+		// losing the "last team per zone" convenience is fine; silently
+		// blocking embark is not.
 		var data = EnsureSaveData();
 		if ( data != null )
 		{
@@ -1197,13 +1212,9 @@
 		SoundManager.PlayBattleStart();
 
 		// Hand the whole cinematic off to BattleTransition's static orchestrator.
-		// Critical: StartExpedition triggers GameHUD to swap WorldMapPanel out for
-		// ExpeditionPanel, which destroys this picker. If we awaited the sequence
-		// here, the continuation would die and Hide() would never fire, leaving
-		// the screen stuck on the black overlay and BattleView's UI permanently
-		// gated by `!BattleTransition.IsActive`. Running the sequence on
-		// BattleTransition (a persistent GameHUD child) keeps the async chain
-		// alive through the panel swap.
+		// StartExpedition swaps WorldMapPanel out for ExpeditionPanel, which
+		// destroys this picker — running the sequence on BattleTransition (a
+		// persistent GameHUD child) keeps the async chain alive through the swap.
 		var zoneId = PendingExpeditionId;
 		var hardMode = _hardMode; // capture — the picker unmounts during the sequence
 		_ = BattleTransition.PlayEmbarkSequence( () =>
@@ -1220,9 +1231,9 @@
 	// FILTER / SORT  (mirrors MonsterRosterPanel wiring)
 	// ═══════════════════════════════════════════════════════════════
 
-	private void OnElementChanged( string e ) { _currentFilter = e; SoundManager.PlayClick(); }
+	private void OnElementChanged( string e ) { _currentFilter = e; _kbIndex = 0; _hoveredCardId = null; SoundManager.PlayClick(); }
 
-	// Element-filter cycle order for the [ / ] hotkeys.
+	// Element-filter cycle order for R (and the Z/X twins).
 	private static readonly string[] _elementFilterCycle =
 		{ "all", "fire", "water", "earth", "wind", "electric", "ice", "nature", "metal", "shadow", "spirit", "neutral" };
 
@@ -1234,24 +1245,10 @@
 		OnElementChanged( _elementFilterCycle[i] );
 	}
 	private void OnSortChanged( string s ) { _currentSort = s; SoundManager.PlayClick(); }
-	private void OnRarityChanged( string r ) { _currentRarity = r; SoundManager.PlayClick(); }
-	private void OnNameFilterChanged( string n ) { _currentNameFilter = n ?? ""; }
 	private void OnSortDirectionChanged( bool asc ) { _sortAscending = asc; SoundManager.PlayClick(); }
 
-	private List<string> GetMonsterNames()
-	{
-		var mm = MonsterManager.Instance;
-		if ( mm == null ) return new();
-		return mm.OwnedMonsters
-			.Select( m => m.Nickname ?? mm.GetSpecies( m.SpeciesId )?.Name ?? m.SpeciesId )
-			.Where( n => !string.IsNullOrEmpty( n ) )
-			.Distinct()
-			.OrderBy( n => n )
-			.ToList();
-	}
-
 	// Copy of MonsterRosterPanel.GetFilteredMonsters (trimmed: no fusion/beastiary
-	// modes) so filtering/sort behaviour reads identical to the roster panel.
+	// modes, no name search) so filtering/sort behaviour reads identical.
 	private List<Monster> GetFilteredMonsters()
 	{
 		var mm = MonsterManager.Instance;
@@ -1272,7 +1269,6 @@
 				"metal" => ElementType.Metal,
 				"shadow" => ElementType.Shadow,
 				"spirit" => ElementType.Spirit,
-				// "neutral" => ElementType.Neutral,
 				_ => ElementType.Neutral
 			};
 			monsters = monsters.Where( m => mm.GetSpecies( m.SpeciesId )?.Element == elementType ).ToList();
@@ -1291,14 +1287,6 @@
 				_ => Rarity.Common
 			};
 			monsters = monsters.Where( m => mm.GetSpecies( m.SpeciesId )?.BaseRarity == r ).ToList();
-		}
-
-		if ( _currentSort == "name" && !string.IsNullOrEmpty( _currentNameFilter ) )
-		{
-			monsters = monsters.Where( m =>
-				(mm.GetSpecies( m.SpeciesId )?.Name?.Equals( _currentNameFilter, StringComparison.OrdinalIgnoreCase ) ?? false)
-				|| (m.Nickname?.Equals( _currentNameFilter, StringComparison.OrdinalIgnoreCase ) ?? false)
-			).ToList();
 		}
 
 		monsters = _currentSort switch
@@ -1321,85 +1309,6 @@
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	// TYPE COVERAGE HINT
-	// ═══════════════════════════════════════════════════════════════
-
-	public enum TeamAdvantage { Empty, Weak, Disadvantage, Neutral, Advantage, Strong }
-
-	/// <summary>
-	/// Average effectiveness of the team's primary elements attacking into
-	/// the zone's element. Labelled into rough buckets so the player gets a
-	/// quick "are my types good?" read without seeing a matrix.
-	/// </summary>
-	private TeamAdvantage GetTeamCoverage( ElementType zoneElement )
-	{
-		var picks = _team.Where( m => m != null ).ToList();
-		if ( picks.Count == 0 ) return TeamAdvantage.Empty;
-
-		float total = 0f;
-		foreach ( var m in picks )
-		{
-			var species = MonsterManager.Instance?.GetSpecies( m.SpeciesId );
-			if ( species == null ) continue;
-
-			float best = BattleAI.GetTypeEffectiveness( species.Element, zoneElement );
-			if ( species.SecondaryElement.HasValue && species.SecondaryElement.Value != species.Element )
-			{
-				var alt = BattleAI.GetTypeEffectiveness( species.SecondaryElement.Value, zoneElement );
-				if ( alt > best ) best = alt;
-			}
-			total += best;
-		}
-
-		float avg = total / picks.Count;
-		if ( avg >= 1.9f ) return TeamAdvantage.Strong;
-		if ( avg >= 1.3f ) return TeamAdvantage.Advantage;
-		if ( avg >= 0.9f ) return TeamAdvantage.Neutral;
-		if ( avg >= 0.6f ) return TeamAdvantage.Disadvantage;
-		return TeamAdvantage.Weak;
-	}
-
-	private string GetCoverageLabel( TeamAdvantage a ) => a switch
-	{
-		TeamAdvantage.Strong => "STRONG ADVANTAGE",
-		TeamAdvantage.Advantage => "ADVANTAGE",
-		TeamAdvantage.Neutral => "NEUTRAL",
-		TeamAdvantage.Disadvantage => "DISADVANTAGE",
-		TeamAdvantage.Weak => "WEAK MATCHUP",
-		_ => ""
-	};
-
-	private string GetCoverageClass( TeamAdvantage a ) => a switch
-	{
-		TeamAdvantage.Strong => "cov-strong",
-		TeamAdvantage.Advantage => "cov-advantage",
-		TeamAdvantage.Neutral => "cov-neutral",
-		TeamAdvantage.Disadvantage => "cov-disadvantage",
-		TeamAdvantage.Weak => "cov-weak",
-		_ => ""
-	};
-
-	private string GetCoverageIcon( TeamAdvantage a ) => a switch
-	{
-		TeamAdvantage.Strong => "lucide:trending-up",
-		TeamAdvantage.Advantage => "lucide:arrow-up-right",
-		TeamAdvantage.Neutral => "lucide:minus",
-		TeamAdvantage.Disadvantage => "lucide:arrow-down-right",
-		TeamAdvantage.Weak => "lucide:trending-down",
-		_ => "lucide:minus"
-	};
-
-	private string GetCoverageIconColor( TeamAdvantage a ) => a switch
-	{
-		TeamAdvantage.Strong => "#86efac",
-		TeamAdvantage.Advantage => "#bef264",
-		TeamAdvantage.Neutral => "#cbd5e1",
-		TeamAdvantage.Disadvantage => "#fdba74",
-		TeamAdvantage.Weak => "#fca5a5",
-		_ => "#cbd5e1"
-	};
-
-	// ═══════════════════════════════════════════════════════════════
 	// BEAST STATUS HELPERS
 	// ═══════════════════════════════════════════════════════════════
 
@@ -1419,7 +1328,7 @@
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	// PRESETS
+	// PRESETS (keys 1/2/3 — the buttons were cut in run 1)
 	// ═══════════════════════════════════════════════════════════════
 
 	private TeamPresetSaveData GetSaveData() => SaveService.Instance?.CurrentBlob?.TeamPresets;
@@ -1488,7 +1397,7 @@
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	// RERENDER TRIGGERS
+	// RERENDER TRIGGERS — every field that paints (DOC-7 #22)
 	// ═══════════════════════════════════════════════════════════════
 
 	protected override int BuildHash()
@@ -1499,15 +1408,20 @@
 		h.Add( _currentFilter );
 		h.Add( _currentSort );
 		h.Add( _currentRarity );
-		h.Add( _currentNameFilter );
 		h.Add( _sortAscending );
-		foreach ( var t in _team ) h.Add( t?.Id ?? Guid.Empty );
-		h.Add( _hoveredCardId ?? Guid.Empty );
+		foreach ( var t in _team )
+		{
+			h.Add( t?.Id ?? Guid.Empty );
+			h.Add( t?.CurrentHP ?? -1 ); // slot HP bar + KO badge
+		}
+		h.Add( _hoveredCardId ?? Guid.Empty ); // facts column follows the cursor
 		h.Add( _kbIndex );
 		h.Add( _hardMode );
 		h.Add( IsHardUnlocked() );
 		h.Add( _dragSource?.Id ?? Guid.Empty );
 		h.Add( _dragHoverSlot ?? -1 );
+		h.Add( _slotEditTestSpeciesId );
+		h.Add( _slotEditDraggingId );
 		var mm = MonsterManager.Instance;
 		h.Add( mm?.OwnedMonsters?.Count ?? 0 );
 		return h.ToHashCode();
