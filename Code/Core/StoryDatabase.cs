@@ -309,6 +309,15 @@ public static class StoryDirector
 			return;
 		}
 
+		if ( arg.Equals( "skip", StringComparison.OrdinalIgnoreCase ) )
+		{
+			var cur = Current;
+			if ( cur == null ) { Log.Info( "[dev_story] nothing is playing." ); return; }
+			Finish( cur, runOnComplete: false );
+			Log.Info( $"[dev_story] skipped '{cur.Beat.Id}' (marked seen)." );
+			return;
+		}
+
 		if ( arg.Equals( "reset", StringComparison.OrdinalIgnoreCase ) )
 		{
 			ResetSeen();
