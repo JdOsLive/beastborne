@@ -73,9 +73,9 @@
 	LANE MARKERS left for the other passes:
 	  // LANE: motion     header fade · body fade · sell-hold fill · toast ·
 	                      picker enter · balance tick
-	  // LANE: input      category R cycle + header walk-up (CollectHeaderControls)
-	                      · case zone (stepper ↔ SELL hold ↔ primary) · picker
-	                      kb · stepper hold-repeat · travel-guarded device flag
+	  // INPUT (2026-09-03, wired) — cursor graph HEADER · GRID · CASE · PICKER;
+	                      device flag + travel guard; header .kb-focused stamp;
+	                      stepper hold-repeat; kb SELL hold; two-stage Q
 	  // LANE: color      FilterBar rim on a tan page · the E green · tan tints
 	  // LANE: components .sat-card here == .shop-card (ShopPanelContent) —
 	                      capture both into one BbItemCard primitive (DOC-6 #18)
@@ -107,11 +107,14 @@
 		</div>
 
 		@* Right slot (.oh-toolbar position): [IN BATTLE] · FilterBar · R CYCLE ·
-		   balance · BACK · Q. LANE: input — the HEADER zone: W from the top card
-		   row should land on the category chip (`.kb-focused`, no ring — the
-		   roster's CollectHeaderControls + SyncHeaderKbFocus recipe); A/D walk
-		   the controls; S returns to the grid. Not wired here. *@
-		<div class="bag-toolbar">
+		   balance · BACK · Q. INPUT 2026-09-03 — the HEADER zone: W off the top
+		   card row lands here (`.kb-focused` stamped per tick on the focused
+		   control, no ring — the roster's CollectHeaderControls +
+		   SyncHeaderKbFocus recipe); A/D walk CATEGORY · SORT · dir · SEARCH ·
+		   BACK (the balance is read-only, not a stop); Space clicks (a menu
+		   opens and FilterBar.HandleKeyboard owns the keys inside it; SEARCH
+		   focuses the TextEntry); S / Q return to the grid. *@
+		<div @ref="toolbarRef" class="bag-toolbar">
 			@if (IsInBattleMode())
 			{
 				<div class="bag-battle-stamp">
@@ -130,7 +133,8 @@
 					   ShowSearchChip=@true
 					   SearchPlaceholder=@L("ui.inventory.search")
 					   OnNameFilterChanged=@OnSearchChanged
-					   KbMode=@IsKbMode />
+					   KbMode=@IsKbMode
+					   OnKbSideStep=@OnFilterBarSideStep />
 			@* R = category forward (the shown cycle key; Z/X cycle the sort
 			   silently — DOC-5 #1). The roster's .rh-filter-hint recipe, placed
 			   AFTER the bar as the roster does (the mock draws it between
@@ -291,9 +295,10 @@
 					   `off` = the SAME slab desaturated (ghost tier + Disabled; BIG THINGS
 					   BIG — a locked EQUIP stays big and dims). Tuple-computed so the
 					   BbButton only swaps attribute values (ghost-child law).
-					   LANE: input — the CASE zone: D off a row's last card / Space on a
-					   card should park the ring here (r26); S → the SELL group. *@
-					<BbButton Tier="@PrimaryTier(primary.off)" Size=@(56) Label="@primary.label" Icon="@primary.icon" KeyCap="SPACE"
+					   INPUT 2026-09-03 — the CASE zone's top stop: D off a row's last
+					   card / Space on a card parks the ring here (r26); S → the
+					   stepper / SELL; Space acts (an `off` slab denies). *@
+					<BbButton @ref="primaryBtnRef" Tier="@PrimaryTier(primary.off)" Size=@(56) Label="@primary.label" Icon="@primary.icon" KeyCap="SPACE"
 							  Disabled=@primary.off Class="@PrimaryClass(primary.off)" OnClick=@ActivateSelectedItem />
 				}
 
@@ -306,17 +311,21 @@
 					   + hold SELL 282 = 434; singles → hold SELL 434. Absent when SellPrice
 					   0, the relic is equipped, or in battle. The hold button is the
 					   shipped .sat-sell recipe (BbButton has no hold-fill child) restyled
-					   to the danger pair at r11. LANE: input — A/D on the stepper +
-					   hold-repeat (the shop's ArmMouseHold recipe); Space on SELL = hold.
+					   to the danger pair at r11. INPUT 2026-09-03 — the stepper is a kb
+					   stop (A/D ∓1 + hold-repeat 0.35s/8ps on both devices — the shop's
+					   ArmKbHold / ArmMouseHold recipe; W = max only when nothing is
+					   mounted above; the ring wraps − … + as an r21 pill); SELL = hold
+					   Space (kb) or mouse-down 0.9s, release cancels. `.holding` on a
+					   qty button = the repeat is firing (MOTION's heat hook).
 					   LANE: motion — the fill's 0.05s width step + the holding pulse. *@
-					<div class="bag-sell-row">
+					<div @ref="sellRowRef" class="bag-sell-row">
 						@if (qty > 1)
 						{
-							<div class="@QtyBtnClass(sq <= 1)" onclick=@(() => ChangeSellQty(-1)) onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
+							<div class="@QtyBtnClass(sq <= 1, -1)" onclick=@(() => OnQtyClick(-1)) onmousedown=@(() => ArmMouseHold(-1)) onmouseup=@ReleaseMouseHold onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
 								<iconify class="bag-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
 							</div>
 							<div class="bag-qty-value"><span class="bag-qty-num">@sq</span></div>
-							<div class="@QtyBtnClass(sq >= qty)" onclick=@(() => ChangeSellQty(1)) onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
+							<div class="@QtyBtnClass(sq >= qty, 1)" onclick=@(() => OnQtyClick(1)) onmousedown=@(() => ArmMouseHold(1)) onmouseup=@ReleaseMouseHold onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
 								<iconify class="bag-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
 							</div>
 						}
@@ -344,7 +353,9 @@
 	@* THE LIVING VIOLET RING — the one cursor. Wraps the case item's card
 	   (root-level absolute, never clipped by the scroll); position bound from
 	   UpdateRing each tick, wave via imperative Style.Transform. z 60.
-	   LANE: input — the case-zone hosts (stepper pill r21 / SELL / PRIMARY r26). *@
+	   INPUT 2026-09-03 — kb CASE hosts: PRIMARY r26 · stepper − … + pill r21 ·
+	   SELL pill r21 (`.pill`); hidden on the HEADER (`.kb-focused` there) and
+	   while the picker is up (its rows wear the slab cursor). *@
 	<div @ref="ringRef" class="@RingClass()"
 		 style="left: @(ringL)px; top: @(ringT)px; width: @(ringW)px; height: @(ringH)px;"></div>
 
@@ -354,8 +365,10 @@
 	   Rows are DIRECT scroll children (DOC-1 #12); a datum column on the right
 	   shows the ONE number the item is about to change. Title plain, no
 	   subtitle, no seam chip. MOTION: the overlay/panel enter — not wired.
-	   LANE: input — W/S rows · Space pick · Q close; the ring on the focused
-	   row (r21). *@
+	   INPUT 2026-09-03 — W/S rows (scroll-follow) · Space = confirm · Q closes
+	   back to the case; hover moves the same index in mouse mode. Rows wear
+	   the SLAB cursor (`.kb-focused`: violet seam + lift — 8px gaps leave no
+	   room for the ring, DOC-5 #7). *@
 	@if (showPicker && pendingItem != null)
 	{
 		<div class="bag-picker-overlay" onclick=@ClosePicker>
@@ -368,13 +381,15 @@
 						<span class="bag-back-cap">Q</span>
 					</div>
 				</div>
-				<div class="bag-picker-scroll">
+				<div @ref="pickerScrollRef" class="bag-picker-scroll">
 					@{ var pickerMonsters = GetOwnedMonsters(); }
-					@foreach (var monster in pickerMonsters)
+					@for (int pi = 0; pi < pickerMonsters.Count; pi++)
 					{
+						var monster = pickerMonsters[pi];
+						var pidx = pi;
 						var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
 						var datum = GetPickerDatum(monster);
-						<div class="bag-picker-row" onclick=@(() => OnPickerRowClick(monster)) onmouseover=@OnPickerRowHover onmouseout=@OnPickerRowOut>
+						<div class="@PickerRowClass(pidx)" onclick=@(() => OnPickerRowClick(monster)) onmouseover=@(() => OnPickerRowHover(pidx))>
 							<div class="bag-picker-sprite">
 								@if (species != null && !string.IsNullOrEmpty(species.IconPath))
 								{
@@ -431,7 +446,8 @@
 	// Hold-to-sell
 	private bool isHoldingSell = false;
 	private float holdProgress = 0f;
-	private const float HoldDuration = 0.5f;
+	private const float HoldDuration = 0.9f; // INPUT: hold Space / mouse-down 0.9s (the skills reset recipe); release cancels
+	private bool _kbSellHold;                // the hold was armed by the confirm key (release = key up)
 
 	// Toast
 	private string toastMessage = "";
@@ -448,7 +464,7 @@
 
 	// Hover guards (blip once per element)
 	private string hoveredCardId = null;
-	private bool hoveredBack, hoveredQty, hoveredSell, hoveredPickerRow;
+	private bool hoveredBack, hoveredQty, hoveredSell;
 
 	// Balance pulse hook (MOTION) — keyed per sell.
 	private float goldFlashUntil = 0f;
@@ -463,6 +479,9 @@
 	private Panel gridRef;
 	private Panel sbTrackRef, sbThumbRef;
 	private Panel ringRef;
+	// INPUT 2026-09-03 — measured hosts: the header walk (toolbar), the case
+	// stops (primary slab · sell row → − … + / SELL), the picker scroll.
+	private Panel toolbarRef, primaryBtnRef, sellRowRef, pickerScrollRef;
 
 	// ============================================================
 	// LANE: input — THE ONE-DEVICE FLAG (the shop's recipe, ported because
@@ -485,7 +504,15 @@
 		{
 			_kbTakeoverMousePos = Mouse.Position;
 			hoveredCardId = null;
-			hoveredBack = hoveredQty = hoveredSell = hoveredPickerRow = false;
+			hoveredBack = hoveredQty = hoveredSell = false;
+		}
+		else
+		{
+			// The mouse owns the page: the cursor is the selection card again;
+			// every kb hold ends with the device (the shop's recipe).
+			cursorZone = CursorZone.Grid;
+			_kbHoldDir = 0;
+			if ( _kbSellHold ) StopHold();
 		}
 	}
 
@@ -607,8 +634,10 @@
 	private string QtyText( int qty ) => "×" + qty;
 	private string BalanceClass() => "bag-balance" + (IsGoldFlash ? " flash flash-" + sellBeatVersion : "");
 	private string GridClass( bool empty ) => "bag-grid" + (empty ? " empty" : "");
-	private string RingClass() => "sat-ring" + (ringVisible ? " on" : "") + (ringWarm < 2 ? " snap" : "");
-	private string QtyBtnClass( bool off ) => "bag-qty-btn" + (off ? " off" : "");
+	private string RingClass() => "sat-ring" + (ringVisible ? " on" : "") + (ringWarm < 2 ? " snap" : "") + (ringPill ? " pill" : "");
+	// MOTION: `.holding` = the hold-repeat is FIRING on this button (kb or mouse).
+	private string QtyBtnClass( bool off, int dir ) => "bag-qty-btn" + (off ? " off" : "") + (IsHolding( dir ) ? " holding" : "");
+	private string PickerRowClass( int idx ) => "bag-picker-row" + (idx == pickerCursor ? " kb-focused" : "");
 	private string SellBtnClass( bool stack ) => "bag-sell" + (stack ? "" : " wide") + (isHoldingSell ? " holding" : "");
 	private string PrimaryTier( bool off ) => off ? "ghost" : "primary";
 	private string PrimaryClass( bool off ) => "case-primary" + (off ? " off" : "");
@@ -840,6 +869,7 @@
 	{
 		var item = GetCaseItem();
 		if ( item == null ) { SoundManager.PlayDeny(); return; }
+		int idx = GetRenderIndexOf( item.Id );
 		switch ( item.Category )
 		{
 			case ItemCategory.Consumable:
@@ -847,7 +877,7 @@
 				UseItem( item );
 				break;
 			case ItemCategory.HeldItem:
-				if ( IsInBattleMode() ) { SoundManager.PlayDeny(); return; }
+				if ( IsInBattleMode() ) { SoundManager.PlayDeny(); break; }
 				OpenPicker( item, PickerMode.Held );
 				break;
 			case ItemCategory.Relic:
@@ -859,6 +889,20 @@
 				SoundManager.PlayDeny();
 				break;
 		}
+		SettleAfterStackChange( item.Id, idx ); // an immediate USE may have emptied the stack
+	}
+
+	// After a use / sell / equip the stack may be gone: keep the cursor's
+	// PLACE — the card that slid into the index (clamped), else the list is
+	// empty and the cursor falls back to the grid. No-op while the stack lives.
+	private void SettleAfterStackChange( string itemId, int idx )
+	{
+		if ( itemId == null || GetItemQuantity( itemId ) > 0 ) return;
+		var nav = GetNavItems();
+		if ( nav.Count == 0 ) { selectedItem = null; cursorZone = CursorZone.Grid; return; }
+		int n = Math.Clamp( idx < 0 ? 0 : idx, 0, nav.Count - 1 );
+		var def = ItemManager.Instance?.GetItem( nav[n].ItemId );
+		if ( def != null ) { SelectItem( def, silent: true ); RequestScrollFollow(); }
 	}
 
 	// USE — boosts fold into the consumable branch (UseItem / UseBoost
@@ -911,7 +955,6 @@
 		pendingItem = item;
 		pickerMode = mode;
 		showPicker = true;
-		hoveredPickerRow = false;
 		SoundManager.PlayClick();
 	}
 
@@ -929,12 +972,17 @@
 		return pickerMode == PickerMode.Held ? "EQUIP " + name + " TO..." : "USE " + name + " ON...";
 	}
 
-	private void OnPickerRowHover() { if ( IsKbMode || hoveredPickerRow ) return; hoveredPickerRow = true; SoundManager.PlayHover(); }
-	private void OnPickerRowOut() => hoveredPickerRow = false;
+	// ONE CURSOR in the picker: hover moves the SAME index W/S walk (mouse
+	// mode only — kb scroll-follow slides rows under a parked cursor).
+	private void OnPickerRowHover( int idx )
+	{
+		if ( IsKbMode || pickerCursor == idx ) return;
+		pickerCursor = idx;
+		SoundManager.PlayHover();
+	}
 
 	private void OnPickerRowClick( Monster monster )
 	{
-		hoveredPickerRow = false;
 		if ( pickerMode == PickerMode.Held ) EquipHeldTo( monster );
 		else UseConsumableOnMonster( monster );
 	}
@@ -991,16 +1039,21 @@
 	private void EquipHeldTo( Monster monster )
 	{
 		if ( pendingItem == null || monster == null ) return;
+		string id = pendingItem.Id;
+		int idx = GetRenderIndexOf( id );
 		bool ok = ItemManager.Instance?.EquipHeldItem( monster, pendingItem.Id ) == true;
 		if ( ok ) SoundManager.PlayForward();
 		else { ShowToast( L( "ui.inventory.toast_failed" ), false ); SoundManager.PlayDeny(); }
 		showPicker = false;
 		pendingItem = null;
+		SettleAfterStackChange( id, idx ); // the held item left the bag → the cursor keeps its place
 	}
 
 	private void UseConsumableOnMonster( Monster monster )
 	{
 		if ( pendingItem == null || monster == null ) return;
+		string id = pendingItem.Id;
+		int idx = GetRenderIndexOf( id );
 		bool success = IsInBattleMode() && BattleManager.Instance != null
 			? BattleManager.Instance.ExecutePlayerItem( pendingItem.Id, monster )
 			: ItemManager.Instance?.UseItem( pendingItem.Id, monster ) == true;
@@ -1018,6 +1071,7 @@
 		}
 		showPicker = false;
 		pendingItem = null;
+		SettleAfterStackChange( id, idx );
 	}
 
 	private void ShowToast( string message, bool success )
@@ -1029,19 +1083,21 @@
 	}
 
 	// ── Sell — stepper + hold ────────────────────────────────────
-	private void ChangeSellQty( int delta )
+	// Returns false at the clamp (ONE deny blip — the hold-repeat never arms
+	// on a denied press). Device-agnostic: the callers own the device flip.
+	private bool ChangeSellQty( int delta )
 	{
-		SetInputDevice( InputDevice.Mouse );
 		var item = GetCaseItem();
 		int max = item == null ? 1 : Math.Max( 1, GetItemQuantity( item.Id ) );
 		int next = Math.Clamp( sellQty + delta, 1, max );
-		if ( next == sellQty ) { SoundManager.PlayDeny(); return; }
+		if ( next == sellQty ) { SoundManager.PlayDeny(); return false; }
 		sellQty = next;
 		SoundManager.PlayClick();
+		return true;
 	}
 
 	private void OnQtyHover() { if ( IsKbMode || hoveredQty ) return; hoveredQty = true; SoundManager.PlayHover(); }
-	private void OnQtyOut() => hoveredQty = false;
+	private void OnQtyOut() { hoveredQty = false; ReleaseMouseHold(); }
 	private void OnSellHover() { if ( IsKbMode || hoveredSell ) return; hoveredSell = true; SoundManager.PlayHover(); }
 
 	private void StartHoldSell()
@@ -1057,10 +1113,25 @@
 	private void StopHold()
 	{
 		isHoldingSell = false;
+		_kbSellHold = false;
 		holdProgress = 0f;
 		hoveredSell = false;
 		hoveredQty = false;
 	}
+
+	// Keyboard SELL: the confirm key on the SELL stop arms the same hold the
+	// mouse-down does; Tick cancels it the moment the key comes up.
+	private void StartKbHoldSell()
+	{
+		var item = GetCaseItem();
+		if ( item == null || !CanSellItem( item ) ) { SoundManager.PlayDeny(); return; }
+		isHoldingSell = true;
+		_kbSellHold = true;
+		holdProgress = 0f;
+		SoundManager.PlayClick();
+	}
+
+	private static bool ConfirmDown() => Input.Down( "Jump" ) || Input.Down( "Enter" ) || Input.Down( "Use" );
 
 	// ONE beat: SellItem(id, n) once → the balance ticks, the card's ×N steps
 	// (or the card leaves and the case falls to its neighbour).
@@ -1068,12 +1139,15 @@
 	{
 		var item = GetCaseItem();
 		if ( item == null || !CanSellItem( item ) ) return;
+		int idx = GetRenderIndexOf( item.Id );
 		int n = Math.Clamp( sellQty, 1, Math.Max( 1, GetItemQuantity( item.Id ) ) );
 		if ( ItemManager.Instance?.SellItem( item.Id, n ) == true )
 		{
 			SoundManager.PlayGoldReward();
 			sellBeatVersion++;
 			sellQty = 1;
+			ShowToast( "SOLD " + (n > 1 ? n + " × " : "") + item.Name + " · +" + (item.SellPrice * n).ToString( "N0" ) + "G", true );
+			SettleAfterStackChange( item.Id, idx ); // the cursor stays, or slides to the card that took the slot
 		}
 		else
 		{
@@ -1096,6 +1170,7 @@
 	// ============================================================
 	private int ringL, ringT, ringW = 152, ringH = 170;
 	private bool ringVisible;
+	private bool ringPill; // r21 costume on the r11 hosts (stepper group · SELL)
 	private int ringWarm;
 	private const int RingInset = 10; // card r16 + 10 → ring r26
 
@@ -1103,9 +1178,47 @@
 		? new List<Panel>()
 		: gridRef.Children.Where( c => c.HasClass( "sat-card" ) ).ToList();
 
-	private Rect? ResolveRingHost()
+	private Rect? ResolveRingHost( out bool pill )
 	{
+		pill = false;
 		if ( showPicker || gridRef == null ) return null;
+		// HEADER: no ring — the focused control wears `.kb-focused` (SyncHeaderKbFocus).
+		if ( IsKbMode && cursorZone == CursorZone.Header ) return null;
+		// CASE: PRIMARY (r26) · the − … + group as one pill · SELL as a pill.
+		if ( IsKbMode && cursorZone == CursorZone.Case )
+		{
+			switch ( caseStop )
+			{
+				case CaseStop.Stepper:
+				{
+					Panel first = null, last = null;
+					if ( sellRowRef != null )
+					{
+						foreach ( var c in sellRowRef.Children )
+						{
+							if ( !c.HasClass( "bag-qty-btn" ) ) continue;
+							if ( first == null ) first = c;
+							last = c;
+						}
+					}
+					if ( first == null || last == null || first.Box.Rect.Width < 1f ) return null;
+					var a = first.Box.Rect;
+					var b = last.Box.Rect;
+					pill = true;
+					return new Rect( a.Left, a.Top, b.Right - a.Left, a.Height );
+				}
+				case CaseStop.Sell:
+				{
+					var sell = sellRowRef?.Children.FirstOrDefault( c => c.HasClass( "bag-sell" ) );
+					if ( sell == null || sell.Box.Rect.Width < 1f ) return null;
+					pill = true;
+					return sell.Box.Rect;
+				}
+				default:
+					if ( primaryBtnRef == null || primaryBtnRef.Box.Rect.Width < 1f ) return null;
+					return primaryBtnRef.Box.Rect;
+			}
+		}
 		var gr = gridRef.Box.Rect;
 		if ( gr.Width < 2f ) return null;
 		foreach ( var c in gridRef.Children )
@@ -1126,9 +1239,10 @@
 
 		var rr = Box.Rect;
 		if ( rr.Width < 2f ) return;
-		var host = ResolveRingHost();
+		var host = ResolveRingHost( out bool pill );
 		if ( host == null ) return;
 		var cr = host.Value;
+		ringPill = pill;
 
 		float sc = ScaleFromScreen;
 		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
@@ -1248,33 +1362,66 @@
 	}
 
 	// ============================================================
-	// KEYBOARD — polled from Tick while this panel is the top modal (the Bag
-	// is an overlay, not a tab: GameHUD does not route TickInput here).
-	//   Q            close (an open FilterBar menu / the picker eats it first)
-	//   WASD/arrows  the ONE cursor across the true-2D grid (kicker rows are
-	//                not stops; clamped, no wrap)
-	//   Space/Enter  the case item's primary
-	//   R            category forward (shown cap) · Z/X sort cycle (silent)
-	// LANE: input — header walk-up (W off the top row → the FilterBar's
-	// category chip via CollectHeaderControls), the CASE zone (D off a row's
-	// last card → primary ↔ stepper ↔ SELL hold), picker W/S/Space, and the
-	// two-stage Q are not wired here.
+	// KEYBOARD (INPUT 2026-09-03) — polled from Tick while this panel is the
+	// top modal (the Bag is an OVERLAY, not a tab: GameHUD does not route
+	// TickInput here; its own Q handler is gated off by UIModalState).
+	//
+	// KEY MAP (DOC-5 #1):
+	//   WASD / arrows  the ONE cursor (true-2D grid · header controls · case
+	//                  stops · picker rows)        Space / Enter / E  confirm
+	//   Q              back — picker → case · case / header → grid (claims
+	//                  the key) · grid → two-stage (home the case, then close)
+	//   R              category forward (the shown cap) — any zone, an open
+	//                  menu closes first     Z / X  sort cycle, silent
+	//   A / D on the STEPPER stop = − / + (hold repeats 0.35s → 8/s);
+	//   W on the STEPPER = max when nothing is mounted above;
+	//   Space on SELL = HOLD (0.9s; key up cancels);  Tab leaves the search box.
+	//
+	// THE CURSOR GRAPH (DOC-5 #11/#21 — geometry-honest, top to bottom):
+	//   HEADER  CATEGORY ▾ · SORT ▾ · dir · SEARCH · BACK (DOM order; the
+	//           balance is read-only). A/D clamp · Space clicks (a dropdown
+	//           opens and FilterBar.HandleKeyboard owns W/S/Space/Q/A/D until
+	//           it closes; SEARCH focuses its TextEntry; BACK closes) · S / Q
+	//           → grid · W = the overlay's top (silent).
+	//   GRID    the case item's card (selection == cursor); W off the top
+	//           row → HEADER; D off a row's last card → CASE (first mounted
+	//           stop); Space → CASE (PRIMARY); a battle-locked card denies.
+	//   CASE    PRIMARY → STEPPER → SELL, only the mounted stops (the same
+	//           live list the markup builds — DOC-5 #12); W/S between them,
+	//           A → grid, D = nothing right of the case, Q → grid.
+	//   PICKER  W/S rows (clamp + scroll-follow) · Space confirms · Q closes.
 	// ============================================================
+	private enum CursorZone { Grid, Header, Case }
+	private enum CaseStop { Primary = 0, Stepper = 1, Sell = 2 }
+	private CursorZone cursorZone = CursorZone.Grid;
+	private CaseStop caseStop = CaseStop.Primary;
+	private int headerCursor = 0;
+	private bool hdrKbFocusStamped;
+	private int pickerCursor = 0;
+	private bool _pickerWasOpen;
+	private bool _pickerScrollPending;
+	private float pickerScrollGlideTarget = -1f;
+	private int _searchFocusFrames; // > 0 = focus the search chip in N ticks (the confirm key is never typed)
+	private bool _wasVisible;
+
 	private void TickInput()
 	{
 		if ( ChatPanel.IsChatFocused ) return;
-		if ( filterBar != null && filterBar.IsSearchFocused ) return; // typing in the search chip
 
-		// A FilterBar menu owns W/S/Space/Q while open.
-		if ( filterBar != null && filterBar.IsAnyDropdownOpen && filterBar.HandleKeyboard() ) { SetInputDevice( InputDevice.Keyboard ); return; }
-
-		if ( showPicker )
+		// SEARCH owns the keys while its TextEntry has focus — every key types.
+		// Tab hands the keyboard back with the header cursor on the chip
+		// (Enter / Esc blur through the chip's own onsubmit / oncancel — FilterBar).
+		if ( filterBar != null && filterBar.IsSearchFocused )
 		{
-			if ( Input.Pressed( "Menu" ) ) { ClosePicker(); GameHUD.PanelHandledBackKey = true; }
-			return; // LANE: input — picker rows are mouse-only until the kb pass
+			if ( Input.Pressed( "Score" ) ) { filterBar.BlurSearchChip(); ParkHeaderOn( "search-chip" ); }
+			return;
 		}
 
-		if ( Input.Pressed( "Menu" ) ) { Close(); return; }
+		// A FilterBar menu owns W/S/Space/Q/A/D while open; R / Z / X fall
+		// through (their cycles close the menu themselves).
+		if ( filterBar != null && filterBar.IsAnyDropdownOpen && filterBar.HandleKeyboard() ) { SetInputDevice( InputDevice.Keyboard ); return; }
+
+		if ( showPicker ) { HandlePickerKeys(); return; }
 
 		if ( Input.Pressed( "Reload" ) ) { SetInputDevice( InputDevice.Keyboard ); CycleCategory( 1 ); return; }
 		if ( Input.Pressed( "CyclePrev" ) ) { SetInputDevice( InputDevice.Keyboard ); CycleSort( -1 ); return; }
@@ -1286,26 +1433,127 @@
 		else if ( Input.Pressed( "Left" ) ) dir = 2;
 		else if ( Input.Pressed( "Right" ) ) dir = 3;
 		bool confirm = UiInput.ConfirmPressed();
-		if ( dir < 0 && !confirm ) return;
+		bool back = Input.Pressed( "Menu" );
+		if ( dir < 0 && !confirm && !back ) return;
 
 		SetInputDevice( InputDevice.Keyboard );
+		EnsureCursor();
 
-		if ( confirm ) { ActivateSelectedItem(); return; }
+		switch ( cursorZone )
+		{
+			case CursorZone.Header: HandleHeaderKeys( dir, confirm, back ); break;
+			case CursorZone.Case: HandleCaseKeys( dir, confirm, back ); break;
+			default: HandleGridKeys( dir, confirm, back ); break;
+		}
+	}
 
+	// Coerce the cursor onto a stop that is actually mounted (the primary
+	// unmounts for DROPS, the stepper for singles, the SELL row in battle /
+	// for an equipped relic — DOC-5 #12: the same live list as the markup).
+	private void EnsureCursor()
+	{
+		if ( cursorZone == CursorZone.Case )
+		{
+			var stops = MountedCaseStops();
+			if ( stops.Count == 0 ) { cursorZone = CursorZone.Grid; _kbHoldDir = 0; return; }
+			if ( !stops.Contains( caseStop ) ) caseStop = NearestStop( stops, caseStop );
+		}
+		else if ( cursorZone == CursorZone.Header )
+		{
+			int n = CollectHeaderControls().Count;
+			if ( n == 0 ) { cursorZone = CursorZone.Grid; return; }
+			headerCursor = Math.Clamp( headerCursor, 0, n - 1 );
+		}
+	}
+
+	private List<CaseStop> MountedCaseStops()
+	{
+		var list = new List<CaseStop>();
+		var item = GetCaseItem();
+		if ( item == null ) return list;
+		if ( GetPrimaryContent( item ).show ) list.Add( CaseStop.Primary );
+		bool sellable = CanSellItem( item );
+		if ( sellable && GetItemQuantity( item.Id ) > 1 ) list.Add( CaseStop.Stepper );
+		if ( sellable ) list.Add( CaseStop.Sell );
+		return list;
+	}
+
+	// The nearest mounted stop ABOVE the wanted one, else the first below.
+	private static CaseStop NearestStop( List<CaseStop> stops, CaseStop want )
+	{
+		CaseStop best = stops[0];
+		foreach ( var s in stops ) if ( (int)s <= (int)want ) best = s;
+		return best;
+	}
+
+	private bool IsCardLocked( ItemDefinition item ) => item != null && IsInBattleMode() && item.Category != ItemCategory.Consumable;
+
+	// ── GRID zone — the cursor card IS the case item ──
+	private void HandleGridKeys( int dir, bool confirm, bool back )
+	{
 		var nav = GetNavItems();
-		if ( nav.Count == 0 ) return;
 		var caseItem = GetCaseItem();
 		int idx = caseItem == null ? -1 : GetRenderIndexOf( caseItem.Id );
+
+		if ( back )
+		{
+			// Two-stage exit: stage 1 homes the case (first card, qty 1) and
+			// CLAIMS the key; stage 2 (already home) closes the Bag.
+			bool home = nav.Count == 0 || idx <= 0;
+			GameHUD.PanelHandledBackKey = true;
+			if ( !home || sellQty != 1 )
+			{
+				selectedItem = null;
+				sellQty = 1;
+				StopHold();
+				SoundManager.PlayBack();
+				RequestScrollFollow();
+			}
+			else Close();
+			return;
+		}
+
+		if ( nav.Count == 0 ) return;
 		if ( idx < 0 ) { SelectIndex( nav, 0 ); return; }
 
-		int n = dir switch
+		if ( confirm )
 		{
-			2 => GetHorizontalNeighbor( idx, nav.Count, false ),
-			3 => GetHorizontalNeighbor( idx, nav.Count, true ),
-			0 => GetVerticalNeighbor( idx, nav.Count, false ),
-			_ => GetVerticalNeighbor( idx, nav.Count, true ),
-		};
-		if ( n >= 0 ) SelectIndex( nav, n );
+			// Space on a card never acts — it carries the intent INTO the case
+			// (PRIMARY); the second Space commits. A battle-locked card denies.
+			if ( IsCardLocked( caseItem ) ) { SoundManager.PlayDeny(); return; }
+			EnterCase( CaseStop.Primary );
+			return;
+		}
+
+		switch ( dir )
+		{
+			case 2: // A — same row, clamped (silent at the row's first card)
+			{
+				int n = GetHorizontalNeighbor( idx, nav.Count, false );
+				if ( n >= 0 ) SelectIndex( nav, n );
+				return;
+			}
+			case 3: // D — same row, else off the row's last card into the case
+			{
+				int n = GetHorizontalNeighbor( idx, nav.Count, true );
+				if ( n >= 0 ) SelectIndex( nav, n );
+				else EnterCase( CaseStop.Primary );
+				return;
+			}
+			case 0: // W — the row above, else the header controls
+			{
+				int n = GetVerticalNeighbor( idx, nav.Count, false );
+				if ( n >= 0 ) { SelectIndex( nav, n ); return; }
+				if ( FocusHeader() ) gridScrollGlideTarget = 0f; // a cursor leaving upward glides the grid home (DOC-5 #13)
+				return;
+			}
+			case 1: // S — the row below, clamped at the bottom row
+			{
+				int n = GetVerticalNeighbor( idx, nav.Count, true );
+				if ( n >= 0 ) SelectIndex( nav, n );
+				return;
+			}
+		}
 	}
 
 	private void SelectIndex( List<(string ItemId, int Quantity)> nav, int idx )
@@ -1316,6 +1564,349 @@
 		SelectItem( def, silent: true );
 		SoundManager.PlayHover();
 		RequestScrollFollow();
+	}
+
+	// ── CASE zone ──
+	private void EnterCase( CaseStop preferred )
+	{
+		var stops = MountedCaseStops();
+		if ( stops.Count == 0 ) { SoundManager.PlayDeny(); return; } // nothing to act on (a battle-locked drop)
+		cursorZone = CursorZone.Case;
+		caseStop = stops.Contains( preferred ) ? preferred : stops[0];
+		SoundManager.PlayHover();
+	}
+
+	private void LeaveCaseToGrid( bool isBack )
+	{
+		cursorZone = CursorZone.Grid;
+		_kbHoldDir = 0;
+		if ( _kbSellHold ) StopHold();
+		if ( isBack ) { SoundManager.PlayBack(); GameHUD.PanelHandledBackKey = true; }
+		else SoundManager.PlayHover();
+		RequestScrollFollow();
+	}
+
+	private void MoveCaseStop( CaseStop? to )
+	{
+		if ( !to.HasValue ) return; // the edge — silent clamp
+		caseStop = to.Value;
+		_kbHoldDir = 0;
+		SoundManager.PlayHover();
+	}
+
+	private void HandleCaseKeys( int dir, bool confirm, bool back )
+	{
+		if ( back ) { LeaveCaseToGrid( isBack: true ); return; }
+
+		var stops = MountedCaseStops();
+		int at = stops.IndexOf( caseStop );
+		CaseStop? above = at > 0 ? stops[at - 1] : null;
+		CaseStop? below = at >= 0 && at < stops.Count - 1 ? stops[at + 1] : null;
+
+		switch ( caseStop )
+		{
+			case CaseStop.Stepper:
+				if ( confirm ) { MoveCaseStop( below ); return; } // confirm advances to SELL (the shop's stepper grammar)
+				switch ( dir )
+				{
+					case 2: if ( ChangeSellQty( -1 ) ) ArmKbHold( -1 ); return; // clamp = ONE deny blip; never arm on a denied press
+					case 3: if ( ChangeSellQty( 1 ) ) ArmKbHold( 1 ); return;
+					case 1: MoveCaseStop( below ); return;
+					case 0:
+						// W = the stop above when one is mounted (the screen has a
+						// PRIMARY up there — DOC-5 #21); with nothing above (a DROPS
+						// stack) W = jump to the max (the shop's ruling; ChangeSellQty
+						// clamps and blips when already there).
+						if ( above.HasValue ) MoveCaseStop( above );
+						else ChangeSellQty( 1_000_000 );
+						return;
+				}
+				return;
+
+			case CaseStop.Sell:
+				if ( confirm ) { StartKbHoldSell(); return; }
+				switch ( dir )
+				{
+					case 0: MoveCaseStop( above ); return;
+					case 2: LeaveCaseToGrid( isBack: false ); return;
+					// S = the case's floor · D = nothing right of the case
+				}
+				return;
+
+			default: // PRIMARY
+				if ( confirm ) { ActivateSelectedItem(); return; } // an `off` slab denies inside
+				switch ( dir )
+				{
+					case 1: MoveCaseStop( below ); return;
+					case 2: LeaveCaseToGrid( isBack: false ); return;
+					// W = the case's top · D = nothing right of the case
+				}
+				return;
+		}
+	}
+
+	// ── HEADER zone — measured by class at the page layer (the roster's
+	// CollectHeaderControls recipe): the FilterBar's triggers, direction
+	// toggle and search chip, then this page's BACK. The balance is read-only.
+	private List<Panel> CollectHeaderControls()
+	{
+		var outList = new List<Panel>();
+		if ( toolbarRef == null ) return outList;
+		CollectHeaderControlsRec( toolbarRef, outList );
+		return outList;
+	}
+
+	private static void CollectHeaderControlsRec( Panel root, List<Panel> outList )
+	{
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( "dropdown-btn" ) || c.HasClass( "sort-direction-btn" ) || c.HasClass( "search-chip" ) || c.HasClass( "bag-back" ) )
+			{
+				outList.Add( c );
+				continue;
+			}
+			CollectHeaderControlsRec( c, outList );
+		}
+	}
+
+	private bool FocusHeader()
+	{
+		var ctrls = CollectHeaderControls();
+		if ( ctrls.Count == 0 ) return false;
+		cursorZone = CursorZone.Header;
+		headerCursor = Math.Clamp( headerCursor, 0, ctrls.Count - 1 );
+		SoundManager.PlayHover();
+		return true;
+	}
+
+	private void ParkHeaderOn( string cls )
+	{
+		var ctrls = CollectHeaderControls();
+		int i = ctrls.FindIndex( c => c.HasClass( cls ) );
+		if ( i < 0 ) return;
+		SetInputDevice( InputDevice.Keyboard );
+		cursorZone = CursorZone.Header;
+		headerCursor = i;
+		SoundManager.PlayHover();
+	}
+
+	private void HandleHeaderKeys( int dir, bool confirm, bool back )
+	{
+		var hdr = CollectHeaderControls();
+		if ( hdr.Count == 0 ) { cursorZone = CursorZone.Grid; return; }
+		headerCursor = Math.Clamp( headerCursor, 0, hdr.Count - 1 );
+
+		if ( back )
+		{
+			cursorZone = CursorZone.Grid;
+			SoundManager.PlayBack();
+			RequestScrollFollow();
+			GameHUD.PanelHandledBackKey = true;
+			return;
+		}
+		if ( confirm )
+		{
+			var ctl = hdr[headerCursor];
+			if ( ctl.HasClass( "search-chip" ) )
+			{
+				_searchFocusFrames = 1; // focus lands NEXT tick so the confirm key itself is never typed
+				SoundManager.PlayClick();
+				return;
+			}
+			if ( ctl.HasClass( "bag-back" ) )
+			{
+				GameHUD.PanelHandledBackKey = true;
+				SoundManager.PlayClick();
+				Close();
+				return;
+			}
+			// Exactly what a click does: a dropdown opens (its Toggle seeds the
+			// row cursor; FilterBar.HandleKeyboard owns the keys from the next
+			// tick), the direction toggle flips.
+			ctl.CreateEvent( "onclick" );
+			SoundManager.PlayClick();
+			return;
+		}
+		switch ( dir )
+		{
+			case 2: if ( headerCursor > 0 ) { headerCursor--; SoundManager.PlayHover(); } return;
+			case 3: if ( headerCursor < hdr.Count - 1 ) { headerCursor++; SoundManager.PlayHover(); } return;
+			case 1: // S → back down to the grid (the case item's card)
+				cursorZone = CursorZone.Grid;
+				SoundManager.PlayHover();
+				RequestScrollFollow();
+				return;
+			case 0: return; // W — the header is the top of the overlay (silent)
+		}
+	}
+
+	// A/D inside an open FilterBar menu (FilterBar.OnKbSideStep): the menu has
+	// closed; hop the header cursor to the trigger's neighbour. Menubar
+	// convention: a neighbouring dropdown OPENS (CATEGORY ↔ SORT browse with
+	// A/D alone); the direction toggle / SEARCH / BACK just take the cursor.
+	private void OnFilterBarSideStep( Panel trigger, int dir )
+	{
+		var hdr = CollectHeaderControls();
+		if ( hdr.Count == 0 ) return;
+		int from = trigger != null ? hdr.IndexOf( trigger ) : -1;
+		if ( from < 0 ) from = Math.Clamp( headerCursor, 0, hdr.Count - 1 );
+		int to = Math.Clamp( from + dir, 0, hdr.Count - 1 );
+		SetInputDevice( InputDevice.Keyboard );
+		cursorZone = CursorZone.Header;
+		headerCursor = to;
+		if ( to != from && hdr[to].HasClass( "dropdown-btn" ) ) hdr[to].CreateEvent( "onclick" );
+		else SoundManager.PlayHover();
+	}
+
+	// KB-FOCUSED LOOK = THE HOVER LOOK on the header (no ring there), stamped
+	// IMPERATIVELY every tick — a FilterBar re-render rewrites the class
+	// attribute, so a one-shot stamp would be wiped (the roster's
+	// SyncHeaderKbFocus). Cleared from every sibling on index change, on zone
+	// leave, on close and in mouse mode (the CSS is .kbd-mode-gated too).
+	private void SyncHeaderKbFocus()
+	{
+		bool active = IsVisible && IsKbMode && cursorZone == CursorZone.Header && !showPicker;
+		if ( !active && !hdrKbFocusStamped ) return;
+		var ctrls = CollectHeaderControls();
+		bool any = false;
+		for ( int i = 0; i < ctrls.Count; i++ )
+		{
+			bool on = active && i == headerCursor;
+			ctrls[i].SetClass( "kb-focused", on );
+			any |= on;
+		}
+		hdrKbFocusStamped = any;
+	}
+
+	// ── PICKER — W/S over the same live list the markup builds; Space =
+	// confirm (the row's click); Q = back to the case (claims the key).
+	private void HandlePickerKeys()
+	{
+		if ( Input.Pressed( "Menu" ) )
+		{
+			SetInputDevice( InputDevice.Keyboard );
+			ClosePicker();
+			GameHUD.PanelHandledBackKey = true;
+			return;
+		}
+		var rows = GetOwnedMonsters();
+		if ( rows.Count == 0 ) return;
+		pickerCursor = Math.Clamp( pickerCursor, 0, rows.Count - 1 );
+		if ( Input.Pressed( "Up" ) )
+		{
+			SetInputDevice( InputDevice.Keyboard );
+			if ( pickerCursor > 0 ) { pickerCursor--; SoundManager.PlayHover(); }
+			_pickerScrollPending = true;
+			return;
+		}
+		if ( Input.Pressed( "Down" ) )
+		{
+			SetInputDevice( InputDevice.Keyboard );
+			if ( pickerCursor < rows.Count - 1 ) { pickerCursor++; SoundManager.PlayHover(); }
+			_pickerScrollPending = true;
+			return;
+		}
+		if ( UiInput.ConfirmPressed() )
+		{
+			SetInputDevice( InputDevice.Keyboard );
+			OnPickerRowClick( rows[pickerCursor] );
+		}
+	}
+
+	// Picker scroll-follow — the menu recipe: retry until the row has a rect,
+	// then glide 0.30/tick toward the offset that shows it (DOC-5 #13).
+	private void UpdatePickerScrollFollow()
+	{
+		var scroll = pickerScrollRef;
+		if ( scroll == null || !showPicker ) return;
+		if ( _pickerScrollPending && scroll.Box.Rect.Height > 0f )
+		{
+			var t = UiGridScroll.ComputeIndexOffset( scroll, pickerCursor, "bag-picker-row", null, 12f );
+			pickerScrollGlideTarget = t ?? -1f;
+			_pickerScrollPending = false;
+		}
+		if ( pickerScrollGlideTarget < 0f ) return;
+		float cur = scroll.ScrollOffset.y;
+		float delta = pickerScrollGlideTarget - cur;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			scroll.ScrollOffset = new Vector2( scroll.ScrollOffset.x, pickerScrollGlideTarget );
+			pickerScrollGlideTarget = -1f;
+			return;
+		}
+		scroll.ScrollOffset = new Vector2( scroll.ScrollOffset.x, cur + delta * 0.30f );
+	}
+
+	// ============================================================
+	// STEPPER HOLD-REPEAT — the shop's recipe: holding − / + repeats after
+	// 0.35s at ~8/s on BOTH devices; the clamp answers once with the deny
+	// blip and ends the hold (no 8/s deny chatter).
+	// ============================================================
+	private const float HoldDelay = 0.35f;
+	private const float HoldPeriod = 0.125f;
+
+	// Keyboard: armed by the A/D press on the stepper stop, polled in Tick.
+	private int _kbHoldDir;
+	private bool _kbHoldRepeated; // MOTION: mirrors _mouseHoldRepeated for the .holding heat
+	private float _kbHoldNext;
+
+	// Mouse: armed by onmousedown on a qty button, released by mouseup/mouseout.
+	private int _mouseHoldDir;
+	private float _mouseHoldNext;
+	private bool _mouseHoldRepeated;
+	private bool _suppressNextQtyClick;
+
+	private bool IsHolding( int dir ) => (_kbHoldDir == dir && _kbHoldRepeated) || (_mouseHoldDir == dir && _mouseHoldRepeated);
+
+	private void ArmKbHold( int dir )
+	{
+		_kbHoldDir = dir;
+		_kbHoldNext = RealTime.Now + HoldDelay;
+		_kbHoldRepeated = false;
+	}
+
+	private void UpdateKbHold()
+	{
+		if ( _kbHoldDir == 0 ) return;
+		if ( !IsKbMode || cursorZone != CursorZone.Case || caseStop != CaseStop.Stepper ) { _kbHoldDir = 0; return; }
+		if ( !Input.Down( _kbHoldDir < 0 ? "Left" : "Right" ) ) { _kbHoldDir = 0; return; }
+		if ( RealTime.Now < _kbHoldNext ) return;
+		if ( !ChangeSellQty( _kbHoldDir ) ) { _kbHoldDir = 0; return; }
+		_kbHoldRepeated = true;
+		_kbHoldNext = RealTime.Now + HoldPeriod;
+	}
+
+	private void ArmMouseHold( int dir )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		_mouseHoldDir = dir;
+		_mouseHoldNext = RealTime.Now + HoldDelay;
+		_mouseHoldRepeated = false;
+		_suppressNextQtyClick = false;
+	}
+
+	// mouseup fires BEFORE click on the same element: a hold that already
+	// repeated eats the release-click so the count doesn't jump one extra.
+	private void ReleaseMouseHold()
+	{
+		if ( _mouseHoldDir != 0 && _mouseHoldRepeated ) _suppressNextQtyClick = true;
+		_mouseHoldDir = 0;
+	}
+
+	private void UpdateMouseHold()
+	{
+		if ( _mouseHoldDir == 0 ) return;
+		if ( RealTime.Now < _mouseHoldNext ) return;
+		_mouseHoldRepeated = true;
+		if ( !ChangeSellQty( _mouseHoldDir ) ) { _mouseHoldDir = 0; return; }
+		_mouseHoldNext = RealTime.Now + HoldPeriod;
+	}
+
+	private void OnQtyClick( int delta )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		if ( _suppressNextQtyClick ) { _suppressNextQtyClick = false; return; }
+		ChangeSellQty( delta );
 	}
 
 	// TRUE-2D steps — the shop's geometry-honest neighbours (kicker rows are
@@ -1381,12 +1972,55 @@
 		}
 
 		ApplyDevPending();
+
+		// OPEN / CLOSE EDGE (DOC-5 #12/#18 — the Bag opens by click, key and
+		// battle button): the cursor homes on the grid; on close every hold,
+		// menu, picker and the search focus are dropped so nothing lingers.
+		if ( IsVisible != _wasVisible )
+		{
+			_wasVisible = IsVisible;
+			cursorZone = CursorZone.Grid;
+			caseStop = CaseStop.Primary;
+			headerCursor = 0;
+			_kbHoldDir = 0;
+			_mouseHoldDir = 0;
+			StopHold();
+			filterBar?.CloseAllDropdowns();
+			if ( !IsVisible )
+			{
+				showPicker = false;
+				pendingItem = null;
+				filterBar?.BlurSearchChip();
+			}
+		}
+
+		if ( IsVisible )
+		{
+			EnsureCursor();
+			UpdateKbHold();
+			UpdateMouseHold();
+			if ( _searchFocusFrames > 0 && --_searchFocusFrames == 0 ) filterBar?.FocusSearchChip();
+
+			// Picker OPEN EDGE — it opens by mouse too: seed the row cursor on
+			// the first beast and pull it into view.
+			if ( showPicker != _pickerWasOpen )
+			{
+				_pickerWasOpen = showPicker;
+				pickerCursor = 0;
+				_pickerScrollPending = showPicker;
+				pickerScrollGlideTarget = -1f;
+			}
+			UpdatePickerScrollFollow();
+		}
+		SyncHeaderKbFocus();
+
 		UpdateScrollFollow();
 		UpdateRing();
 		ApplyRingWave();
 		UpdateScrollbar();
 
-		// Hold-to-sell — 0.5s to commit; release resets.
+		// Hold-to-sell — 0.9s to commit; release (mouse up / confirm key up) cancels.
+		if ( isHoldingSell && _kbSellHold && !ConfirmDown() ) StopHold();
 		if ( isHoldingSell )
 		{
 			holdProgress += Time.Delta / HoldDuration;
@@ -1473,8 +2107,17 @@
 		hash.Add( ringH );
 		hash.Add( ringVisible );
 		hash.Add( ringWarm < 2 );
-		// One-device flag (root class)
+		hash.Add( ringPill );
+		// One-device flag (root class) + the cursor graph (picker row class,
+		// stepper .holding heat; the header stamp is imperative but the zone
+		// decides the ring)
 		hash.Add( lastInputDevice );
+		hash.Add( cursorZone );
+		hash.Add( caseStop );
+		hash.Add( headerCursor );
+		hash.Add( pickerCursor );
+		hash.Add( IsHolding( -1 ) );
+		hash.Add( IsHolding( 1 ) );
 
 		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
 		if ( relics != null ) foreach ( var r in relics ) hash.Add( r );

@@ -116,8 +116,8 @@
 	<!-- Sort Dropdown -->
 	<div class="dropdown-container">
 		<button class="dropdown-btn sort-btn" @ref="sortBtnRef" onclick=@ToggleSortDropdown onmouseover=@OnTriggerHover>
-			<img class="dropdown-icon-svg" src="@GetSortIconPath(CurrentSort)" />
-			<span class="dropdown-label">@GetSortLabel(CurrentSort)</span>
+			<img class="dropdown-icon-svg" src="@GetSortIconPath(DisplaySortKey)" />
+			<span class="dropdown-label">@GetSortLabel(DisplaySortKey)</span>
 			<span class="dropdown-arrow @(sortDropdownOpen ? "open" : "")">▼</span>
 		</button>
 		@if (sortDropdownOpen)
@@ -131,7 +131,7 @@
 					{
 						<div class="dropdown-divider"></div>
 					}
-					<div class="dropdown-item @(id == "fav" ? "fav" : "") @(CurrentSort == id ? "active" : "") @(idx == focusedItemIndex ? "kb-focused" : "")" onclick=@(() => ActivateSortItem(id)) onmouseover=@(() => OnItemHover(idx))>
+					<div class="dropdown-item @(id == "fav" ? "fav" : "") @(DisplaySortKey == id ? "active" : "") @(idx == focusedItemIndex ? "kb-focused" : "")" onclick=@(() => ActivateSortItem(id)) onmouseover=@(() => OnItemHover(idx))>
 						<img class="item-icon-svg" src="@GetSortIconPath(id)" />
 						<span class="item-label">@GetSortItemLabel(id)</span>
 					</div>
@@ -260,6 +260,50 @@
 	private TextEntry searchChipRef;
 	private string chipText = "";
 
+	// ── SEARCH CHIP KEYBOARD (LANE: input 2026-09-03, the Bag) — the chip is a
+	// header STOP on the host page: Space there calls FocusSearchChip (the
+	// host defers it one tick so the confirm key is never typed); while
+	// focused every key types and the host's TickInput stays out (it reads
+	// IsSearchFocused); Tab (host) / Enter (onsubmit) / Esc (the entry's own
+	// oncancel — no Input "Escape" bind, DOC-5 #2) hand the keyboard back.
+	// The text stays on leave — Enter means "done typing", not "clear".
+	private TextEntry _chipWired;
+
+	/// <summary>Focus the standalone search chip (a page's Space on its SEARCH stop). No-op when the chip is off.</summary>
+	public void FocusSearchChip() { if (ShowSearchChip) searchChipRef?.Focus(); }
+
+	/// <summary>Blur the search chip — Tab from the page, or the page closing (DOC-5 #18: every exit path).</summary>
+	public void BlurSearchChip() { if (searchChipRef != null && searchChipRef.HasFocus) searchChipRef.Blur(); }
+
+	private void WireSearchChip()
+	{
+		if (searchChipRef == null || ReferenceEquals(_chipWired, searchChipRef)) return;
+		_chipWired = searchChipRef;
+		var entry = searchChipRef;
+		entry.AddEventListener("onsubmit", (e) => entry.Blur());
+		entry.AddEventListener("oncancel", (e) => entry.Blur());
+	}
+
+	// The key the SORT trigger shows. On an item page the host's CurrentSort
+	// must be one of ItemSorts; when it is not (a beast default such as
+	// "power" — the Bag's chip read POWER on its first live capture
+	// 2026-09-03) the first item sort stands in, so the chip never leaks the
+	// beast map's label. Beast pages: identical to CurrentSort.
+	private bool _sortKeyWarned;
+	private string DisplaySortKey
+	{
+		get
+		{
+			if (!HasItemSorts || ItemSorts.Any(i => i.Key == CurrentSort)) return CurrentSort;
+			if (!_sortKeyWarned)
+			{
+				_sortKeyWarned = true;
+				Log.Warning("[FilterBar] CurrentSort '" + CurrentSort + "' is not in ItemSorts — showing '" + ItemSorts[0].Key + "' (host binding stale?)");
+			}
+			return ItemSorts[0].Key;
+		}
+	}
+
 	private string GetPrimaryLabel(string key) => PrimaryItems?.FirstOrDefault(i => i.Key == key)?.Label ?? key;
 	private string GetPrimaryIcon(string key) => PrimaryItems?.FirstOrDefault(i => i.Key == key)?.Icon;
 
@@ -369,7 +413,7 @@
 		sortDropdownOpen = !sortDropdownOpen;
 		elementDropdownOpen = false;
 		rarityDropdownOpen = false;
-		if (sortDropdownOpen) SeedMenuCursor(CurrentSort);
+		if (sortDropdownOpen) SeedMenuCursor(DisplaySortKey);
 		SoundManager.PlayClick();
 	}
 
@@ -708,6 +752,7 @@
 		// roster recipe) and notify the host on every change.
 		if (ShowSearchChip && searchChipRef != null)
 		{
+			WireSearchChip();
 			var t = searchChipRef.Text ?? "";
 			if (t != chipText)
 			{
