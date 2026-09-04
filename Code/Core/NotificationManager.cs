@@ -420,14 +420,23 @@ public sealed class NotificationManager : Component
 	/// message is the item's own effect line. Identical fires inside one
 	/// second collapse into one alert (guards a per-quantity double call).
 	/// </summary>
+	private static string LocOr( string key, string fallback, params object[] args )
+	{
+		var t = LocalizationManager.Get( key, args );
+		return string.IsNullOrEmpty( t ) || t == key ? fallback : t;
+	}
+
 	public void NotifyBoostActive( string itemName, string durationText, string effectText, string iconPath = null )
 	{
 		if ( string.IsNullOrWhiteSpace( itemName ) ) return;
 
 		string name = StripTrailingParenthetical( itemName );
+		// The localization table loads once per play session (learnings 2026-09-02),
+		// so a freshly added key reads back as itself until the next restart —
+		// fall back to the literal so the alert never shows "notify.boost_active".
 		string title = string.IsNullOrWhiteSpace( durationText )
-			? LocalizationManager.Get( "notify.boost_active_short", name )
-			: LocalizationManager.Get( "notify.boost_active", name, durationText );
+			? LocOr( "notify.boost_active_short", $"{name} active", name )
+			: LocOr( "notify.boost_active", $"{name} active for {durationText}", name, durationText );
 		string message = effectText ?? "";
 
 		string key = title + "|" + message;
