@@ -203,7 +203,11 @@
 								? editTestSpecies
 								: ( beast != null ? MonsterManager.Instance?.GetSpecies( beast.SpeciesId ) : null );
 
-							<div class="tp-slot @(species != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "") @(IsLeftStop( slotIdx ) ? "focused" : "")"
+							@* LANE: motion — SlotFxClass: `landed` (pick / drop, .4s) · `emptied`
+							   (remove, .3s) · `tp-af0-2` (AUTO-FILL / preset ladder, .5s). Windowed
+							   because `.focused` flips this class string per hop (= remount) —
+							   an un-windowed mount keyframe would replay on every cursor move. *@
+							<div class="tp-slot @(species != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "") @(IsLeftStop( slotIdx ) ? "focused" : "") @SlotFxClass( slotIdx )"
 								 onclick=@(() => OnTeamSlotClicked(slotIdx))
 								 onmousedown=@(() => OnSlotMouseDown(slotIdx))
 								 onmouseup=@(() => OnSlotMouseUp(slotIdx))
@@ -281,7 +285,7 @@
 						@* LANE: input — ONE stop for the pair: A/D arm NORMAL/HARD while
 						   focused (A on NORMAL walks to AUTO-FILL, D on HARD/locked walks
 						   to the grid); Space toggles. Ring r26 wraps the 44 slab. *@
-						<div class="tp-seg @(IsLeftStop( LeftStop.Difficulty ) ? "focused" : "")" @ref="segRef">
+						<div class="tp-seg @(IsLeftStop( LeftStop.Difficulty ) ? "focused" : "") @SegPopClass()" @ref="segRef">
 							<div class="tp-seg-opt @(!_hardMode ? "active" : "")"
 								 onclick=@(() => SetHardMode(false))
 								 onmouseover=@(() => OnSegHover("diff-normal"))>
@@ -338,7 +342,11 @@
 								   only). `.focused` is the ONE cursor class in both modes (hover
 								   moves the same index — DOC-5 #6); the living ring rides it and
 								   self-hides when the card scrolls out (scroll never clips it). *@
-								<div class="tp-card @(isPicked ? "picked" : "") @(isKo ? "ko" : "") @(kbFocused ? "focused" : "")"
+								@* LANE: motion — CardLadderClass: `tp-rrN` while the ladder is armed
+								   (open / element / sort — the list re-forms); the cursor card is
+								   exempt (its class flips per hop). PickPopClass: `pick-pop` /
+								   `unpick-pop` windowed .35s on the beast just (un)picked. *@
+								<div class="tp-card @(isPicked ? "picked" : "") @(isKo ? "ko" : "") @(kbFocused ? "focused" : "") @CardLadderClass( cardIdx, kbFocused ) @PickPopClass( beast.Id )"
 									 onclick=@(() => OnRosterCardClicked(beast))
 									 onmousedown=@(() => OnRosterCardMouseDown(beast))
 									 onmouseover=@(() => OnCardHover(cardIdx))>
@@ -387,14 +395,15 @@
 						var fsp = MonsterManager.Instance?.GetSpecies( focus.SpeciesId );
 						var fel = fsp != null ? ElementKey( fsp.Element ) : "neutral";
 						var ftone = BbTokens.Element( fel );
+						var fkey = "fk-" + focus.Id.ToString( "N" ); // LANE: motion — the render key: a class change IS a remount (DOC-4 #5), so the art + words replay their 0.12s crossfade per beast
 
 						<div class="tp-facts-id">
 							@* Framed beast tile — the pennant fill (page accent blended .70
 							   toward the slab, DOC-6 #11). LANE: color — the blend value. *@
 							<div class="tp-facts-hero" style="background-color: @HeroFill();">
-								<img class="tp-sprite" src="@(fsp?.IconPath ?? "ui/monsters/placeholder.png")" style="@FitStyle( fsp, 120, 120 )" />
+								<img class="tp-sprite tp-facts-art @fkey" src="@(fsp?.IconPath ?? "ui/monsters/placeholder.png")" style="@FitStyle( fsp, 120, 120 )" />
 							</div>
-							<div class="tp-facts-text">
+							<div class="tp-facts-text tp-facts-swap @fkey">
 								<span class="tp-facts-name">@BeastName( focus, fsp )</span>
 								@* LANE: color — element two-tone from BbTokens.Element (fill + rim ink). *@
 								<div class="tp-el-chip" style="background-color: @ftone.Fill;">
@@ -412,7 +421,7 @@
 						</div>
 
 						<span class="tp-facts-kicker">MOVES</span>
-						<div class="tp-moves">
+						<div class="tp-moves tp-facts-swap @fkey">
 							@for ( int mi = 0; mi < Monster.MaxMoves; mi++ )
 							{
 								var mv = focus.Moves != null && mi < focus.Moves.Count ? focus.Moves[mi] : null;
@@ -431,7 +440,7 @@
 							}
 						</div>
 
-						<div class="tp-trait">
+						<div class="tp-trait tp-facts-swap @fkey">
 							<span class="tp-trait-k">TRAIT</span>
 							<span class="tp-trait-v">@TraitText( focus )</span>
 						</div>
@@ -689,6 +698,7 @@
 		}
 		if ( _hardMode == hard ) return;
 		_hardMode = hard;
+		_segPopUntil = RealTime.Now + PopWindow; // LANE: motion — the armed cell pops (+100% pulses when HARD)
 		SoundManager.PlaySelect();
 		StateHasChanged();
 	}
@@ -813,7 +823,7 @@
 	private InputDevice lastInputDevice = InputDevice.Mouse;
 	private bool IsKbMode => lastInputDevice == InputDevice.Keyboard;
 	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
-	private string RootClass => "team-picker-root " + (IsVisible ? "visible " : "") + (IsKbMode ? "kbd-mode" : "mouse-mode");
+	private string RootClass => "team-picker-root " + (IsVisible ? "visible " : "") + (Closing ? "closing " : "") + (IsKbMode ? "kbd-mode" : "mouse-mode"); // LANE: motion — `.closing` = the 0.12s exit latch
 
 	private const int CARDS_PER_ROW = 5; // CENTER 824 = 5 × 150 + 4 × 16 + 10 lane
 	private CursorZone _zone = CursorZone.Grid;
@@ -829,6 +839,129 @@
 	private BbButton autoFillRef, embarkRef;
 	private FilterBar filterBar;
 	private bool hdrKbFocusStamped;
+
+	// ═══════════════════════════════════════════════════════════════
+	// LANE: motion (2026-09-04) — the beats' STATE. Every one-shot on a
+	// volatile host (`.focused` flips the class string per hop = remount,
+	// DOC-4 #14) is WINDOWED: a RealTime deadline stamps a class for just
+	// longer than its keyframe, then the class drops (one remount onto an
+	// already-settled element — the guild's windowed gp-pop recipe).
+	// Deadlines are sign-checked and clamped (the Time-reset law, learnings
+	// 2026-07-01). Everything here sits in BuildHash so a lapsing window
+	// re-renders and drops its class.
+	// ═══════════════════════════════════════════════════════════════
+	private const float LadderWindow = 0.7f;   // tpCard0-7 run 0.62s
+	private const float PopWindow = 0.35f;     // pick / seg pops run 0.18–0.30s
+	private const float LandWindow = 0.4f;     // tpSlotLand 0.30s
+	private const float EmptiedWindow = 0.3f;  // tpSlotEmptied 0.14s
+	private const float AfWindow = 0.5f;       // tpAfSlot0-2 run 0.32s
+	private const float ClosingWindow = 0.12f; // the exit latch (back is faster than forward)
+	private const float EmbarkGoWindow = 0.6f; // the blackout's 0.35s fade-in + margin
+
+	private static bool Win( float until )
+	{
+		if ( until <= 0f ) return false;
+		float dt = until - RealTime.Now;
+		return dt > 0f && dt < 5f; // a stale or future-skewed stamp reads lapsed
+	}
+
+	// CARD LADDER — armed on open and whenever the list re-forms (element /
+	// sort / direction). Rung by index (8 rungs; cards past the cap ride the
+	// last one), EXCEPT the cursor card and any card the cursor has touched
+	// in this window — their class strings changed, and a remount would
+	// replay the rung (hold + fade = a blink), so they mount whole (the
+	// guild RowLadderClass). After the window every card is "" (the one
+	// remount at expiry lands on already-opaque cards).
+	private float _ladderUntil = -1f;
+	private readonly HashSet<int> _ladderTouched = new();
+	private bool LadderArmed => Win( _ladderUntil );
+	private void ArmCardLadder() { _ladderUntil = RealTime.Now + LadderWindow; _ladderTouched.Clear(); }
+
+	private string CardLadderClass( int idx, bool focused )
+	{
+		if ( !LadderArmed ) return "";
+		if ( focused ) { _ladderTouched.Add( idx ); return ""; }
+		if ( _ladderTouched.Contains( idx ) ) return "";
+		return "tp-rr" + Math.Min( idx, 7 );
+	}
+
+	// PICK / UN-PICK pop — the one beast just toggled (dim + check land, or lift).
+	private Guid _pickPopId = Guid.Empty;
+	private bool _pickPopAdd;
+	private float _pickPopUntil = -1f;
+	private void StampPickPop( Guid id, bool add ) { _pickPopId = id; _pickPopAdd = add; _pickPopUntil = RealTime.Now + PopWindow; }
+	private string PickPopClass( Guid id ) => Win( _pickPopUntil ) && _pickPopId == id ? (_pickPopAdd ? "pick-pop" : "unpick-pop") : "";
+
+	// SLOT beats — bit masks per slot (a drop can re-land two slots at once);
+	// the AUTO-FILL / preset ladder stores each slot's rung by fill order.
+	private int _landedMask, _emptiedMask;
+	private float _landedUntil = -1f, _emptiedUntil = -1f;
+	private readonly int[] _afRung = { -1, -1, -1 };
+	private float _afUntil = -1f;
+
+	private void StampLanded( int slot )
+	{
+		if ( slot < 0 || slot > 2 ) return;
+		if ( !Win( _landedUntil ) ) _landedMask = 0;
+		_landedMask |= 1 << slot;
+		_emptiedMask &= ~(1 << slot);
+		_landedUntil = RealTime.Now + LandWindow;
+	}
+
+	private void StampEmptied( int slot )
+	{
+		if ( slot < 0 || slot > 2 ) return;
+		if ( !Win( _emptiedUntil ) ) _emptiedMask = 0;
+		_emptiedMask |= 1 << slot;
+		_landedMask &= ~(1 << slot);
+		_emptiedUntil = RealTime.Now + EmptiedWindow;
+	}
+
+	private void StampAutoFill( List<int> slotsInOrder )
+	{
+		for ( int i = 0; i < 3; i++ ) _afRung[i] = -1;
+		if ( slotsInOrder == null || slotsInOrder.Count == 0 ) return;
+		for ( int k = 0; k < slotsInOrder.Count; k++ )
+		{
+			int s = slotsInOrder[k];
+			if ( s >= 0 && s < 3 ) _afRung[s] = Math.Min( k, 2 );
+		}
+		_afUntil = RealTime.Now + AfWindow;
+	}
+
+	private string SlotFxClass( int slot )
+	{
+		if ( slot < 0 || slot > 2 ) return "";
+		if ( Win( _afUntil ) && _afRung[slot] >= 0 ) return "tp-af" + _afRung[slot];
+		if ( Win( _landedUntil ) && (_landedMask & (1 << slot)) != 0 ) return "landed";
+		if ( Win( _emptiedUntil ) && (_emptiedMask & (1 << slot)) != 0 ) return "emptied";
+		return "";
+	}
+
+	// NORMAL | HARD arm pop — the segment carries the window; the rule targets
+	// the active cell (and "+100%" under HARD).
+	private float _segPopUntil = -1f;
+	private string SegPopClass() => Win( _segPopUntil ) ? "seg-pop" : "";
+
+	// EMBARK press flash — the ONE HDR tick on this page, held under the
+	// blackout's fade-in (the blackout IS the exit; the picker stays up under it).
+	private float _embarkGoUntil = -1f;
+	private bool EmbarkGo => Win( _embarkGoUntil );
+
+	// EXIT LATCH (Close → 0.12s `.closing` fade → Tick flips IsVisible) and the
+	// dev replay hop (dev_pickerfx open: unmount this frame, re-Show the next).
+	private float _closingUntil = -1f;
+	private bool Closing => Win( _closingUntil );
+	private string _reopenId;
+
+	private void ResetMotionWindows()
+	{
+		_pickPopUntil = -1f; _pickPopId = Guid.Empty;
+		_landedUntil = -1f; _emptiedUntil = -1f; _landedMask = 0; _emptiedMask = 0;
+		_afUntil = -1f; for ( int i = 0; i < 3; i++ ) _afRung[i] = -1;
+		_segPopUntil = -1f;
+		_embarkGoUntil = -1f;
+	}
 
 	private bool IsLeftStop( int slot ) => _zone == CursorZone.Left && (int)_leftStop == slot;
 	private bool IsLeftStop( LeftStop s ) => _zone == CursorZone.Left && _leftStop == s;
@@ -857,6 +990,8 @@
 		_hoveredKey = null;
 		_denyFlashUntil = -1f;
 		_openEdge = true;
+		ResetMotionWindows(); // LANE: motion — no beat carries over an open
+		ArmCardLadder();      // LANE: motion — the grid cascades on first render (both open paths land here)
 	}
 
 	// ── Device flag ──────────────────────────────────────────────
@@ -1144,7 +1279,7 @@
 				case LeftStop.Slot2:
 				{
 					int s = (int)stop;
-					if ( _team[s] != null ) { _team[s] = null; SoundManager.PlayClick(); }
+					if ( _team[s] != null ) { StampPickPop( _team[s].Id, false ); StampEmptied( s ); _team[s] = null; SoundManager.PlayClick(); } // LANE: motion — the removal beats
 					else EnterGridNearest( LeftStopRect( stop ) ); // PICK A BEAST — walk to the roster
 					return;
 				}
@@ -1241,7 +1376,7 @@
 	// ── EMBARK by key — deny + the reason on the label for 1.2s ──
 	private float _denyFlashUntil = -1f;
 	private bool EmbarkDenying => RealTime.Now < _denyFlashUntil;
-	private string EmbarkClass() => EmbarkDenying ? "tp-embark deny" : "tp-embark";
+	private string EmbarkClass() => "tp-embark" + (EmbarkDenying ? " deny" : "") + (EmbarkGo ? " go" : ""); // LANE: motion — `.deny` blip · `.go` press flash
 
 	private void TryEmbark()
 	{
@@ -1467,6 +1602,54 @@
 		Log.Info( $"[dev_picker] opened on '{expeditionId}' · cursor={Instance._zone}/{(Instance._zone == CursorZone.Left ? Instance._leftStop.ToString() : Instance._kbIndex.ToString())}" );
 	}
 
+	// ── dev_pickerfx <beat> — LANE: motion. Replay the beats without a mouse
+	// (the dev_fusefx pattern, DOC-4 #20; verify END STATES — every card
+	// present, console clean). Beats:
+	//   open    — unmount this frame, re-Show next tick: modal rise + zone
+	//             ladder + card cascade (the whole open choreography)
+	//   cascade — re-arm the card ladder alone (the element/sort re-form)
+	//   pick    — toggle the first live roster card (pick pop / un-pick lift +
+	//             the slot landing / emptied beats)
+	//   fill    — CLEAR then AUTO-FILL: the 3-rung slot ladder
+	//   clear   — every filled slot crosses to empty
+	//   hard    — toggle NORMAL | HARD (the arm pop; denies when locked)
+	//   deny    — the EMBARK red blip + the 1.2s reason window, forced
+	//   go      — the EMBARK press flash (the HDR tick) WITHOUT embarking
+	//   close   — the 0.12s exit latch
+	[ConCmd( "dev_pickerfx" )]
+	public static void DevPickerFx( string beat = "open" )
+	{
+		var p = Instance;
+		if ( p == null || !IsVisible ) { Log.Warning( "[dev_pickerfx] open the picker first (dev_picker)." ); return; }
+		switch ( (beat ?? "open").ToLowerInvariant() )
+		{
+			case "open":
+				p._closingUntil = -1f;
+				p._reopenId = PendingExpeditionId;
+				IsVisible = false; // the @if unmounts this frame; Tick re-Shows next frame so the mount keyframes replay
+				break;
+			case "cascade": p.ArmCardLadder(); break;
+			case "pick":
+			{
+				var roster = p.GetFilteredMonsters();
+				var first = roster.FirstOrDefault( m => m.CurrentHP > 0 );
+				if ( first == null ) { Log.Warning( "[dev_pickerfx] no live beast in the roster." ); return; }
+				p.OnRosterCardClicked( first );
+				break;
+			}
+			case "fill": p.ClearTeam(); p.AutoFill(); break;
+			case "clear": p.ClearTeam(); break;
+			case "hard": p.SetHardMode( !p._hardMode ); break;
+			case "deny": p._denyFlashUntil = RealTime.Now + 1.2f; SoundManager.PlayDeny(); break;
+			case "go": p._embarkGoUntil = RealTime.Now + EmbarkGoWindow; break;
+			case "close": Close(); break;
+			default:
+				Log.Warning( $"[dev_pickerfx] unknown beat '{beat}' — open | cascade | pick | fill | clear | hard | deny | go | close" );
+				return;
+		}
+		Log.Info( $"[dev_pickerfx] {beat}" );
+	}
+
 
 	// Mouse wheel — scales the hovered slot's sprite when in slot-edit mode.
 	public override void OnMouseWheel( Vector2 delta )
@@ -1510,12 +1693,24 @@
 	// LIFECYCLE
 	// ═══════════════════════════════════════════════════════════════
 
+	// LANE: motion — belt-and-suspenders for the exit latch: if the page is
+	// torn down while the 0.12s fade runs, the static must not stay TRUE
+	// (the next WorldMap mount would re-open the picker unasked).
+	public override void OnDeleted()
+	{
+		if ( Instance == this && _closingUntil > 0f ) { _closingUntil = -1f; IsVisible = false; }
+		base.OnDeleted();
+	}
+
 	public static void Show( string expeditionId )
 	{
 		PendingExpeditionId = expeditionId;
 		IsVisible = true;
 		if ( Instance != null )
 		{
+			Instance._closingUntil = -1f; // LANE: motion — a Show mid-fade cancels the exit latch
+			Instance._reopenId = null;
+			Instance._isEmbarking = false; // re-armed per open (the embark path leaves it true — the blackout owns that exit)
 			Instance._hardMode = false; // difficulty re-arms per open
 			bool fromLastRun = Instance.PreFillTeam( expeditionId );
 			Instance.SeedCursor( fromLastRun ); // EMBARK when the last run's team is back and valid, else card 0
@@ -1524,24 +1719,45 @@
 		SoundManager.PlayPopup();
 	}
 
+	// LANE: motion — the ONE close path (Q, BACK, shield) arms the 0.12s EXIT
+	// LATCH instead of unmounting (the settings sub-view recipe): the root
+	// wears `.closing` (opacity 0, pointer-events none), IsVisible stays true
+	// so the modal keeps painting through the fade and Q stays claimed, and
+	// Tick flips IsVisible when the latch lapses. Idempotent while closing;
+	// a no-op mid-embark (the blackout owns that exit).
 	public static void Close()
 	{
-		IsVisible = false;
-		if ( Instance != null )
-		{
-			Instance._hoveredKey = null;
-			Instance.ringVisible = false;
-			Instance.gridScrollGlideTarget = -1f;
-			Instance._scrollFollowPending = false;
-			Instance.filterBar?.CloseAllDropdowns();
-		}
+		if ( Instance == null ) { IsVisible = false; SoundManager.PlayPopdown(); return; }
+		if ( !IsVisible || Instance._isEmbarking || Instance.Closing ) return;
+		Instance._closingUntil = RealTime.Now + ClosingWindow;
+		Instance._hoveredKey = null;
+		Instance.ringVisible = false;
+		Instance.gridScrollGlideTarget = -1f;
+		Instance._scrollFollowPending = false;
+		Instance.filterBar?.CloseAllDropdowns();
 		SoundManager.PlayPopdown();
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
-		if ( !IsVisible ) { ringVisible = false; return; }
+		if ( !IsVisible )
+		{
+			ringVisible = false;
+			// LANE: motion — dev_pickerfx open: the modal unmounted last frame; re-Show
+			// now so its mount keyframes (rise + zone ladder + cascade) replay.
+			if ( _reopenId != null ) { var id = _reopenId; _reopenId = null; Show( id ); }
+			return;
+		}
+
+		// LANE: motion — EXIT LATCH running: nothing takes input mid-exit, the ring
+		// stays hidden (it fades with the root); the real unmount lands at expiry.
+		if ( _closingUntil > 0f )
+		{
+			if ( !Win( _closingUntil ) ) { _closingUntil = -1f; IsVisible = false; }
+			ringVisible = false;
+			return;
+		}
 
 		// OPEN EDGE (DOC-5 #12) — the refs exist now: the roster starts at its
 		// top and the ring lands (no glide) on the seeded stop.
@@ -1554,9 +1770,14 @@
 			ringWarm = 0;
 		}
 
+		// LANE: motion — EMBARK pressed: the blackout is the exit; the picker holds
+		// still and deaf under it (IsVisible flips inside the blackout callback).
+		if ( _isEmbarking ) { UpdateRing(); ApplyRingWave(); return; }
+
 		// LANE: input — the key map lives in TickInput; only the TOP modal reads
 		// keys (a ConfirmDialog over the picker owns them while it is up).
 		if ( UIModalState.IsTopModal( "TeamPickerPopup" ) ) TickInput();
+		if ( Closing ) return; // LANE: motion — Q / BACK just armed the latch; the ring must not re-show this frame
 
 		if ( !IsKbMode ) SyncButtonHover();
 		SyncHeaderKbFocus();
@@ -1605,8 +1826,8 @@
 			return false;
 		}
 
-		// 3) Auto-pick best
-		AutoFill();
+		// 3) Auto-pick best (silent — the LEFT zone's own rung is the entrance; LANE: motion)
+		AutoFillCore( false );
 		return false;
 	}
 
@@ -1640,6 +1861,8 @@
 		if ( existing >= 0 )
 		{
 			_team[existing] = null;
+			StampPickPop( m.Id, false ); // LANE: motion — the card lifts back, the slot crosses to empty
+			StampEmptied( existing );
 			SoundManager.PlayClick();
 			return;
 		}
@@ -1654,6 +1877,8 @@
 			return;
 		}
 		_team[empty] = m;
+		StampPickPop( m.Id, true ); // LANE: motion — the card dims + the check lands, the slot flashes + its tile fades in
+		StampLanded( empty );
 		SoundManager.PlayClick();
 
 		// Tutorial: notify that a beast was added to the team.
@@ -1673,6 +1898,8 @@
 			_consumeNextClickForSlot = null;
 			return;
 		}
+		StampPickPop( _team[idx].Id, false ); // LANE: motion — the removal beats
+		StampEmptied( idx );
 		_team[idx] = null;
 		SoundManager.PlayClick();
 	}
@@ -1726,6 +1953,8 @@
 			var tmp = _team[idx];
 			_team[idx] = _team[_dragFromSlot.Value];
 			_team[_dragFromSlot.Value] = tmp;
+			StampLanded( idx ); // LANE: motion — both ends re-land (or the source empties)
+			if ( tmp != null ) StampLanded( _dragFromSlot.Value ); else StampEmptied( _dragFromSlot.Value );
 		}
 		else
 		{
@@ -1733,8 +1962,10 @@
 			// whatever was there. If the dragged beast was already picked in a
 			// different slot, clear that other slot first (no duplicates).
 			int existing = _team.FindIndex( t => t?.Id == _dragSource.Id );
-			if ( existing >= 0 && existing != idx ) _team[existing] = null;
+			if ( existing >= 0 && existing != idx ) { _team[existing] = null; StampEmptied( existing ); } // LANE: motion
 			_team[idx] = _dragSource;
+			StampLanded( idx ); // LANE: motion — the drop lands like a pick
+			StampPickPop( _dragSource.Id, true );
 		}
 
 		_consumeNextClickForSlot = idx;
@@ -1752,7 +1983,12 @@
 		_dragHoverSlot = null;
 	}
 
-	private void AutoFill()
+	private void AutoFill() => AutoFillCore( true ); // method group for BbButton.OnClick / F / dev_pickerfx
+
+	// LANE: motion — `animate` false on the open pre-fill (the LEFT zone's own
+	// rung is the entrance there); true from the button / F key: the slots
+	// that were filled land in the 3-rung ladder, in fill order.
+	private void AutoFillCore( bool animate )
 	{
 		var mm = MonsterManager.Instance;
 		if ( mm == null ) return;
@@ -1762,12 +1998,15 @@
 			.OrderByDescending( m => m.PowerRating )
 			.ToList();
 		int added = 0;
+		var addedSlots = new List<int>();
 		for ( int i = 0; i < _team.Count; i++ )
 		{
 			if ( _team[i] != null ) continue;
 			if ( added >= candidates.Count ) break;
 			_team[i] = candidates[added++];
+			addedSlots.Add( i );
 		}
+		if ( animate && addedSlots.Count > 0 ) StampAutoFill( addedSlots );
 		SoundManager.PlayClick();
 
 		// Tutorial: notify if AutoFill actually added at least one beast.
@@ -1779,6 +2018,7 @@
 
 	private void ClearTeam()
 	{
+		for ( int i = 0; i < 3; i++ ) if ( _team[i] != null ) StampEmptied( i ); // LANE: motion — every filled slot crosses to empty
 		_team = new() { null, null, null };
 		SoundManager.PlayClick();
 	}
@@ -1819,6 +2059,7 @@
 		}
 
 		_isEmbarking = true;
+		_embarkGoUntil = RealTime.Now + EmbarkGoWindow; // LANE: motion — the press flash (the ONE HDR tick), held under the blackout's fade-in
 		SoundManager.PlayBattleStart();
 
 		// Hand the whole cinematic off to BattleTransition's static orchestrator.
@@ -1829,19 +2070,23 @@
 		var hardMode = _hardMode; // capture — the picker unmounts during the sequence
 		_ = BattleTransition.PlayEmbarkSequence( () =>
 		{
+			// LANE: motion — the blackout IS the exit: the picker stays up (still,
+			// deaf — Tick short-circuits on _isEmbarking) until the black covers it,
+			// then IsVisible flips HERE. BattleTransition persists, so this runs
+			// even though StartExpedition destroys the picker right after; with no
+			// BattleTransition instance the sequence invokes this synchronously.
+			IsVisible = false;
 			em.SelectTeam( liveTeam );
 			em.StartExpedition( zoneId, hardMode );
 		} );
-
-		IsVisible = false;
-		_isEmbarking = false;
+		// _isEmbarking stays true for this instance's remaining life; Show() re-arms it per open.
 	}
 
 	// ═══════════════════════════════════════════════════════════════
 	// FILTER / SORT  (mirrors MonsterRosterPanel wiring)
 	// ═══════════════════════════════════════════════════════════════
 
-	private void OnElementChanged( string e ) { _currentFilter = e; _kbIndex = 0; if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); }
+	private void OnElementChanged( string e ) { _currentFilter = e; _kbIndex = 0; ArmCardLadder(); if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); } // LANE: motion — the list re-forms: re-cascade
 
 	// Element-filter cycle order for R (and the Z/X twins).
 	private static readonly string[] _elementFilterCycle =
@@ -1854,8 +2099,8 @@
 		i = ( i + dir + _elementFilterCycle.Length ) % _elementFilterCycle.Length;
 		OnElementChanged( _elementFilterCycle[i] );
 	}
-	private void OnSortChanged( string s ) { _currentSort = s; _kbIndex = 0; if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); }
-	private void OnSortDirectionChanged( bool asc ) { _sortAscending = asc; _kbIndex = 0; if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); }
+	private void OnSortChanged( string s ) { _currentSort = s; _kbIndex = 0; ArmCardLadder(); if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); } // LANE: motion — re-cascade
+	private void OnSortDirectionChanged( bool asc ) { _sortAscending = asc; _kbIndex = 0; ArmCardLadder(); if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); } // LANE: motion — re-cascade
 
 	// Copy of MonsterRosterPanel.GetFilteredMonsters (trimmed: no fusion/beastiary
 	// modes, no name search) so filtering/sort behaviour reads identical.
@@ -1994,15 +2239,21 @@
 		var mm = MonsterManager.Instance;
 		if ( mm == null ) return;
 
+		var prevTeam = _team; // LANE: motion — slots that go empty cross over
 		_team = new() { null, null, null };
 		int slot = 0;
+		var landed = new List<int>();
 		foreach ( var id in preset.MonsterIds )
 		{
 			if ( slot >= 3 ) break;
 			var m = mm.OwnedMonsters.FirstOrDefault( x => x.Id == id );
 			if ( m == null ) continue; // silently skip released beasts
-			_team[slot++] = m;
+			_team[slot] = m;
+			landed.Add( slot );
+			slot++;
 		}
+		StampAutoFill( landed ); // LANE: motion — a preset lands like AUTO-FILL (the 3-rung ladder)
+		for ( int i = 0; i < 3; i++ ) if ( prevTeam[i] != null && _team[i] == null ) StampEmptied( i );
 		SoundManager.PlayClick();
 	}
 
@@ -2034,6 +2285,15 @@
 		h.Add( ringWarm );
 		h.Add( ringL ); h.Add( ringT ); h.Add( ringW ); h.Add( ringH );
 		h.Add( EmbarkDenying );
+		// LANE: motion — the windowed beats (a lapsing window must re-render to drop its class)
+		h.Add( LadderArmed );
+		h.Add( PickPopClass( _pickPopId ) );
+		h.Add( Win( _landedUntil ) ? _landedMask : 0 );
+		h.Add( Win( _emptiedUntil ) ? _emptiedMask : 0 );
+		h.Add( Win( _afUntil ) ? (_afRung[0] + 1) * 16 + (_afRung[1] + 1) * 4 + (_afRung[2] + 1) : 0 );
+		h.Add( SegPopClass() );
+		h.Add( EmbarkGo );
+		h.Add( Closing );
 		h.Add( _hardMode );
 		h.Add( IsHardUnlocked() );
 		h.Add( _dragSource?.Id ?? Guid.Empty );
