@@ -465,8 +465,10 @@ public sealed class NotificationManager : Component
 
 		AddNotification(
 			NotificationType.Info,
-			LocalizationManager.Get( "notify.boost_expired", boostName ),
-			LocalizationManager.Get( serverWide ? "notify.boost_expired_server_desc" : "notify.boost_expired_desc" ),
+			LocOr( "notify.boost_expired", $"{boostName} has worn off", boostName ),
+			serverWide
+				? LocOr( "notify.boost_expired_server_desc", "The server-wide bonus has ended." )
+				: LocOr( "notify.boost_expired_desc", "Its bonus no longer applies." ),
 			6f,
 			iconPath,
 			"effects"
