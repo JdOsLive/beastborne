@@ -130,97 +130,98 @@ public class ItemDefinition
 	// Shop/economy
 	public int BuyPrice { get; set; }
 	public int SellPrice { get; set; }
+	public int TokenPrice { get; set; } // Boss Tokens store price (0 = not sold for tokens)
 
 	/// <summary>
-	/// Get a formatted description of the item's effects
+	/// Get a formatted description of the item's effects. EVERY non-zero effect the
+	/// definition carries is listed — primary first, then the secondary — joined
+	/// with " · " (e.g. "+8% ATK · +8% DEF", "+15% ATK · 10% chance to burn on hit").
+	/// Single-effect items read exactly as before. Falls back to Description for
+	/// inert items (materials).
 	/// </summary>
 	public string GetEffectDescription()
 	{
-		var desc = EffectType switch
-		{
-			ItemEffectType.BoostATK => $"+{EffectValue}% ATK for {EffectDuration} waves",
-			ItemEffectType.BoostDEF => $"+{EffectValue}% DEF for {EffectDuration} waves",
-			ItemEffectType.BoostSPD => $"+{EffectValue}% SPD for {EffectDuration} waves",
-			ItemEffectType.BoostSpA => $"+{EffectValue}% SpA for {EffectDuration} waves",
-			ItemEffectType.BoostSpD => $"+{EffectValue}% SpD for {EffectDuration} waves",
-			ItemEffectType.BoostCrit => $"+{EffectValue}% crit chance for {EffectDuration} waves",
-			ItemEffectType.CatchRateBoost => EffectDuration > 0 ? $"+{EffectValue}% contract rate for {EffectDuration} attempts" : $"+{EffectValue}% contract rate",
-			ItemEffectType.XPGrant => $"Grant {EffectValue:N0} XP to a monster",
-			ItemEffectType.GoldBoost => $"+{EffectValue}% gold for {EffectDuration} waves",
-			ItemEffectType.NatureChange => $"Set nature to {(NatureType)(int)EffectValue}",
-			ItemEffectType.TraitReroll => "Randomly reroll one trait from species pool",
-			ItemEffectType.GeneBoost => $"Boost a random gene by +{(int)EffectValue} (max 30)",
-			ItemEffectType.MasterInk => "Guarantees your next capture attempt succeeds",
-			ItemEffectType.ContractInkGrant => $"Grants {(int)EffectValue} Contract Ink",
-			ItemEffectType.EliteInkBuff => $"+{EffectValue}% contract rate for {EffectDuration} minutes",
-			ItemEffectType.PassiveGoldFind => $"+{EffectValue}% gold from all sources",
-			ItemEffectType.PassiveItemFind => $"+{EffectValue}% item drop chance",
-			ItemEffectType.PassiveCatchRate => $"+{EffectValue}% contract rate",
-			ItemEffectType.PassiveXPGain => $"+{EffectValue}% monster XP",
-			ItemEffectType.PassiveATKBoost => $"+{EffectValue}% team ATK",
-			ItemEffectType.PassiveDEFBoost => $"+{EffectValue}% team DEF",
-			ItemEffectType.PassiveSPDBoost => $"+{EffectValue}% team SPD",
-			ItemEffectType.PassiveHPBoost => $"+{EffectValue}% team HP",
-			ItemEffectType.PassiveCritRate => $"+{EffectValue}% crit chance",
-			ItemEffectType.PassiveTamerXP => $"+{EffectValue}% tamer XP",
-			ItemEffectType.PassiveInkSaver => $"+{EffectValue}% ink save chance",
-			ItemEffectType.PassiveHealingBoost => $"+{EffectValue}% healing",
-			ItemEffectType.HeldATKBonus => $"+{EffectValue}% ATK",
-			ItemEffectType.HeldDEFBonus => $"+{EffectValue}% DEF",
-			ItemEffectType.HeldSPDBonus => $"+{EffectValue}% SPD",
-			ItemEffectType.HeldHPBonus => $"+{EffectValue}% HP",
-			ItemEffectType.HeldSpABonus => $"+{EffectValue}% SpA",
-			ItemEffectType.HeldSpDBonus => $"+{EffectValue}% SpD",
-			ItemEffectType.HeldCritChance => $"+{EffectValue}% crit chance",
-			ItemEffectType.HeldCritDamage => $"+{EffectValue}% crit damage",
-			ItemEffectType.HeldXPBonus => $"+{EffectValue}% XP gain",
-			ItemEffectType.HeldGoldBonus => $"+{EffectValue}% gold from waves",
-			ItemEffectType.HeldElementBoost => $"+{EffectValue}% {TargetElement} damage",
-			ItemEffectType.HeldFirstStrike => "Always move first on turn 1",
-			ItemEffectType.HeldPPReduction => $"-{EffectValue} PP cost on all moves",
-			ItemEffectType.HeldLifesteal => $"Heal {EffectValue}% HP on defeating enemy",
-			ItemEffectType.HeldRegeneration => $"Heal {EffectValue}% max HP per turn",
-			ItemEffectType.HeldVsHigherLevel => $"+{EffectValue}% damage vs higher level foes",
-			ItemEffectType.HeldSurvivalTurns => $"+{EffectValue}% all stats after surviving {(int)SecondaryEffectValue} turns",
-			ItemEffectType.HeldEvasion => $"+{EffectValue}% evasion",
-			ItemEffectType.HeldAllyScaling => $"+{EffectValue}% all stats per ally in party",
-			ItemEffectType.HeldBurnChance => $"{EffectValue}% chance to burn on hit",
-			ItemEffectType.ServerTamerXPBoost => $"{EffectValue}x Tamer XP for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerBeastXPBoost => $"{EffectValue}x Beast XP for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerGoldBoost => $"{EffectValue}x Gold for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerLuckyCharm => $"{EffectValue}x Rare Item Drops for {BoostDurationMinutes / 60}h (Server-wide)",
-			ItemEffectType.ServerRareEncounter => $"{EffectValue}x Rare Beast Encounters for {BoostDurationMinutes / 60}h (Server-wide)",
-			_ => Description
-		};
+		var parts = new List<string>();
 
-		// Add secondary effect if present
-		if ( SecondaryEffectType.HasValue )
+		var primary = FormatEffect( EffectType, EffectValue );
+		if ( !string.IsNullOrEmpty( primary ) ) parts.Add( primary );
+
+		if ( SecondaryEffectType.HasValue && SecondaryEffectValue != 0 )
 		{
-			var sign = SecondaryEffectValue >= 0 ? "+" : "";
-			var secondary = SecondaryEffectType.Value switch
-			{
-				ItemEffectType.HeldDamageTaken => $"+{SecondaryEffectValue}% damage taken",
-				ItemEffectType.HeldSPDBonus when SecondaryEffectValue < 0 => $"{SecondaryEffectValue}% SPD",
-				ItemEffectType.HeldAccuracy when SecondaryEffectValue < 0 => $"{SecondaryEffectValue}% accuracy",
-				ItemEffectType.PassiveGoldFind => $"{sign}{SecondaryEffectValue}% gold find",
-				ItemEffectType.PassiveItemFind => $"{sign}{SecondaryEffectValue}% item find",
-				ItemEffectType.PassiveCatchRate => $"{sign}{SecondaryEffectValue}% contract rate",
-				ItemEffectType.PassiveXPGain => $"{sign}{SecondaryEffectValue}% monster XP",
-				ItemEffectType.PassiveATKBoost => $"{sign}{SecondaryEffectValue}% team ATK",
-				ItemEffectType.PassiveDEFBoost => $"{sign}{SecondaryEffectValue}% team DEF",
-				ItemEffectType.PassiveSPDBoost => $"{sign}{SecondaryEffectValue}% team SPD",
-				ItemEffectType.PassiveHPBoost => $"{sign}{SecondaryEffectValue}% team HP",
-				ItemEffectType.PassiveCritRate => $"{sign}{SecondaryEffectValue}% crit chance",
-				ItemEffectType.PassiveTamerXP => $"{sign}{SecondaryEffectValue}% tamer XP",
-				ItemEffectType.PassiveInkSaver => $"{sign}{SecondaryEffectValue}% ink save",
-				ItemEffectType.PassiveHealingBoost => $"{sign}{SecondaryEffectValue}% healing",
-				_ => ""
-			};
-			if ( !string.IsNullOrEmpty( secondary ) )
-				desc += $", {secondary}";
+			var secondary = FormatEffect( SecondaryEffectType.Value, SecondaryEffectValue );
+			if ( !string.IsNullOrEmpty( secondary ) ) parts.Add( secondary );
 		}
 
-		return desc;
+		return parts.Count > 0 ? string.Join( " · ", parts ) : Description;
+	}
+
+	/// <summary>Signed percentage — "+8%" / "-10%".</summary>
+	private static string Pct( float value ) => value >= 0 ? $"+{value}%" : $"{value}%";
+
+	/// <summary>
+	/// One effect → one plain-words fragment. Shared by the primary and secondary
+	/// slots so a stat that appears in either reads the same way.
+	/// </summary>
+	private string FormatEffect( ItemEffectType type, float value )
+	{
+		return type switch
+		{
+			ItemEffectType.BoostATK => $"{Pct( value )} ATK for {EffectDuration} waves",
+			ItemEffectType.BoostDEF => $"{Pct( value )} DEF for {EffectDuration} waves",
+			ItemEffectType.BoostSPD => $"{Pct( value )} SPD for {EffectDuration} waves",
+			ItemEffectType.BoostSpA => $"{Pct( value )} SpA for {EffectDuration} waves",
+			ItemEffectType.BoostSpD => $"{Pct( value )} SpD for {EffectDuration} waves",
+			ItemEffectType.BoostCrit => $"{Pct( value )} crit chance for {EffectDuration} waves",
+			ItemEffectType.CatchRateBoost => EffectDuration > 0 ? $"{Pct( value )} contract rate for {EffectDuration} attempts" : $"{Pct( value )} contract rate",
+			ItemEffectType.XPGrant => $"Grant {value:N0} XP to a beast",
+			ItemEffectType.GoldBoost => $"{Pct( value )} gold for {EffectDuration} waves",
+			ItemEffectType.NatureChange => $"Set nature to {(NatureType)(int)value}",
+			ItemEffectType.TraitReroll => "Randomly reroll one trait from species pool",
+			ItemEffectType.GeneBoost => $"Boost a random gene by +{(int)value} (max 30)",
+			ItemEffectType.MasterInk => "Guarantees your next contract attempt succeeds",
+			ItemEffectType.ContractInkGrant => $"Grants {(int)value} Contract Ink",
+			ItemEffectType.EliteInkBuff => $"{Pct( value )} contract rate for {EffectDuration} minutes",
+			ItemEffectType.PassiveGoldFind => $"{Pct( value )} gold from all sources",
+			ItemEffectType.PassiveItemFind => $"{Pct( value )} item drop chance",
+			ItemEffectType.PassiveCatchRate => $"{Pct( value )} contract rate",
+			ItemEffectType.PassiveXPGain => $"{Pct( value )} beast XP",
+			ItemEffectType.PassiveATKBoost => $"{Pct( value )} team ATK",
+			ItemEffectType.PassiveDEFBoost => $"{Pct( value )} team DEF",
+			ItemEffectType.PassiveSPDBoost => $"{Pct( value )} team SPD",
+			ItemEffectType.PassiveHPBoost => $"{Pct( value )} team HP",
+			ItemEffectType.PassiveCritRate => $"{Pct( value )} crit chance",
+			ItemEffectType.PassiveTamerXP => $"{Pct( value )} tamer XP",
+			ItemEffectType.PassiveInkSaver => $"{Pct( value )} ink save chance",
+			ItemEffectType.PassiveHealingBoost => $"{Pct( value )} healing",
+			ItemEffectType.HeldATKBonus => $"{Pct( value )} ATK",
+			ItemEffectType.HeldDEFBonus => $"{Pct( value )} DEF",
+			ItemEffectType.HeldSPDBonus => $"{Pct( value )} SPD",
+			ItemEffectType.HeldHPBonus => $"{Pct( value )} HP",
+			ItemEffectType.HeldSpABonus => $"{Pct( value )} SpA",
+			ItemEffectType.HeldSpDBonus => $"{Pct( value )} SpD",
+			ItemEffectType.HeldCritChance => $"{Pct( value )} crit chance",
+			ItemEffectType.HeldCritDamage => $"{Pct( value )} crit damage",
+			ItemEffectType.HeldXPBonus => $"{Pct( value )} XP gain",
+			ItemEffectType.HeldGoldBonus => $"{Pct( value )} gold from waves",
+			ItemEffectType.HeldElementBoost => $"{Pct( value )} {TargetElement} damage",
+			ItemEffectType.HeldDamageTaken => $"{Pct( value )} damage taken",
+			ItemEffectType.HeldFirstStrike => "Always move first on turn 1",
+			ItemEffectType.HeldPPReduction => $"-{value} PP cost on all moves",
+			ItemEffectType.HeldLifesteal => $"Heal {value}% HP on defeating enemy",
+			ItemEffectType.HeldRegeneration => $"Heal {value}% max HP per turn",
+			ItemEffectType.HeldVsHigherLevel => $"{Pct( value )} damage vs higher level foes",
+			ItemEffectType.HeldSurvivalTurns => $"{Pct( value )} all stats after surviving {(int)SecondaryEffectValue} turns",
+			ItemEffectType.HeldEvasion => $"{Pct( value )} evasion",
+			ItemEffectType.HeldAccuracy => $"{Pct( value )} accuracy",
+			ItemEffectType.HeldAllyScaling => $"{Pct( value )} all stats per ally in party",
+			ItemEffectType.HeldBurnChance => $"{value}% chance to burn on hit",
+			ItemEffectType.ServerTamerXPBoost => $"{value}x Tamer XP for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerBeastXPBoost => $"{value}x Beast XP for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerGoldBoost => $"{value}x Gold for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerLuckyCharm => $"{value}x Rare Item Drops for {BoostDurationMinutes / 60}h (Server-wide)",
+			ItemEffectType.ServerRareEncounter => $"{value}x Rare Beast Encounters for {BoostDurationMinutes / 60}h (Server-wide)",
+			_ => ""
+		};
 	}
 }
 

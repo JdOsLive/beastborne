@@ -15,6 +15,10 @@ public sealed class ItemManager : Component
 	private Dictionary<string, ItemDefinition> _itemDatabase = new();
 	public IReadOnlyDictionary<string, ItemDefinition> ItemDatabase => _itemDatabase;
 
+	// Boss Tokens store catalogue, in shop display order. The shop reads it via
+	// GetBossTokenGoods(); each good's token price is ItemDefinition.TokenPrice.
+	private readonly List<string> _bossTokenGoodIds = new();
+
 	// Drop tables by expedition element/level
 	private Dictionary<string, DropTable> _dropTables = new();
 
@@ -758,12 +762,14 @@ public sealed class ItemManager : Component
 		// === HELD ITEMS (Monster Equipment) ===
 		InitializeHeldItems();
 
-		// === BOSS SHOP CONSUMABLES ===
-		AddItem( new ItemDefinition
+		// === BOSS TOKENS STORE ===
+		// The shop reads this catalogue via GetBossTokenGoods(); name, copy, icon,
+		// MaxStack and the token price (ItemDefinition.TokenPrice) all live HERE.
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_xp_orb_small",
 			Name = "XP Orb (Small)",
-			Description = "Grants 500 XP to one monster.",
+			Description = "Grants 500 XP to one beast.",
 			IconPath = "ui/items/consumables/xp_orb_small.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Uncommon,
@@ -771,13 +777,13 @@ public sealed class ItemManager : Component
 			EffectValue = 500,
 			MaxStack = 99,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 100 );
 
-		AddItem( new ItemDefinition
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_xp_orb_large",
 			Name = "XP Orb (Large)",
-			Description = "Grants 2000 XP to one monster.",
+			Description = "Grants 2000 XP to one beast.",
 			IconPath = "ui/items/consumables/xp_orb_large.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Rare,
@@ -785,13 +791,13 @@ public sealed class ItemManager : Component
 			EffectValue = 2000,
 			MaxStack = 99,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 300 );
 
-		AddItem( new ItemDefinition
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_elite_ink",
 			Name = "Elite Contract Ink",
-			Description = "+15% catch rate for 10 minutes.",
+			Description = "+15% contract rate for 10 minutes.",
 			IconPath = "ui/items/consumables/elite_ink.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Rare,
@@ -800,13 +806,13 @@ public sealed class ItemManager : Component
 			EffectDuration = 10,
 			MaxStack = 10,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 200 );
 
-		AddItem( new ItemDefinition
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_contract_ink_bundle",
 			Name = "Contract Ink x5",
-			Description = "5 Contract Ink for capturing monsters.",
+			Description = "5 Contract Ink for contracting beasts.",
 			IconPath = "ui/items/consumables/contract_ink_bundle.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Uncommon,
@@ -814,22 +820,22 @@ public sealed class ItemManager : Component
 			EffectValue = 5,
 			MaxStack = 20,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 150 );
 
-		AddItem( new ItemDefinition
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_trait_reroll",
 			Name = "Trait Reroll",
-			Description = "Randomly rerolls one of a monster's traits from its species pool.",
+			Description = "Randomly rerolls one of a beast's traits from its species pool.",
 			IconPath = "ui/items/consumables/trait_reroll.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Epic,
 			EffectType = ItemEffectType.TraitReroll,
 			MaxStack = 10,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 500 );
 
-		AddItem( new ItemDefinition
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_gene_booster",
 			Name = "Gene Booster",
@@ -841,38 +847,42 @@ public sealed class ItemManager : Component
 			EffectValue = 3,
 			MaxStack = 5,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 1000 );
 
-		AddItem( new ItemDefinition
+		AddBossTokenGood( new ItemDefinition
 		{
 			Id = "boss_master_ink",
 			Name = "Master Ink",
-			Description = "Guarantees your next capture attempt succeeds. Limited to 5.",
+			Description = "Guarantees your next contract attempt succeeds. You can hold up to 5.",
 			IconPath = "ui/items/consumables/master_ink.png",
 			Category = ItemCategory.Consumable,
 			Rarity = ItemRarity.Legendary,
 			EffectType = ItemEffectType.MasterInk,
 			MaxStack = 5,
 			SellPrice = 0
-		} );
+		}, tokenPrice: 1200 );
 
-		// Nature Runes
-		AddItem( new ItemDefinition { Id = "boss_rune_ferocious", Name = "Ferocious Rune", Description = "Sets nature to Ferocious (+10% ATK, -10% DEF).", IconPath = "ui/items/consumables/rune_ferocious.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Ferocious, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_stalwart", Name = "Stalwart Rune", Description = "Sets nature to Stalwart (+10% DEF, -10% ATK).", IconPath = "ui/items/consumables/rune_stalwart.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Stalwart, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_restless", Name = "Restless Rune", Description = "Sets nature to Restless (+10% SPD, -10% HP).", IconPath = "ui/items/consumables/rune_restless.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Restless, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_enduring", Name = "Enduring Rune", Description = "Sets nature to Enduring (+10% HP, -10% SPD).", IconPath = "ui/items/consumables/rune_enduring.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Enduring, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_reckless", Name = "Reckless Rune", Description = "Sets nature to Reckless (+10% ATK, -10% SPD).", IconPath = "ui/items/consumables/rune_reckless.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Reckless, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_stoic", Name = "Stoic Rune", Description = "Sets nature to Stoic (+10% DEF, -10% SPD).", IconPath = "ui/items/consumables/rune_stoic.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Stoic, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_skittish", Name = "Skittish Rune", Description = "Sets nature to Skittish (+10% SPD, -10% DEF).", IconPath = "ui/items/consumables/rune_skittish.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Skittish, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_vigorous", Name = "Vigorous Rune", Description = "Sets nature to Vigorous (+10% HP, -10% ATK).", IconPath = "ui/items/consumables/rune_vigorous.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Vigorous, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_ruthless", Name = "Ruthless Rune", Description = "Sets nature to Ruthless (+10% ATK, -10% HP).", IconPath = "ui/items/consumables/rune_ruthless.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Ruthless, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_nimble", Name = "Nimble Rune", Description = "Sets nature to Nimble (+10% SPD, -10% ATK).", IconPath = "ui/items/consumables/rune_nimble.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Nimble, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_mystical", Name = "Mystical Rune", Description = "Sets nature to Mystical (+10% SpA, -10% ATK).", IconPath = "ui/items/consumables/rune_mystical.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Mystical, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_resolute", Name = "Resolute Rune", Description = "Sets nature to Resolute (+10% SpD, -10% SpA).", IconPath = "ui/items/consumables/rune_resolute.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Resolute, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_arcane", Name = "Arcane Rune", Description = "Sets nature to Arcane (+10% SpA, -10% DEF).", IconPath = "ui/items/consumables/rune_arcane.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Arcane, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_warded", Name = "Warded Rune", Description = "Sets nature to Warded (+10% SpD, -10% SPD).", IconPath = "ui/items/consumables/rune_warded.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Warded, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_cunning", Name = "Cunning Rune", Description = "Sets nature to Cunning (+10% SpA, -10% HP).", IconPath = "ui/items/consumables/rune_cunning.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Cunning, MaxStack = 10, SellPrice = 0 } );
-		AddItem( new ItemDefinition { Id = "boss_rune_serene", Name = "Serene Rune", Description = "Sets nature to Serene (+10% SpD, -10% ATK).", IconPath = "ui/items/consumables/rune_serene.png", Category = ItemCategory.Consumable, Rarity = ItemRarity.Rare, EffectType = ItemEffectType.NatureChange, EffectValue = (float)(int)NatureType.Serene, MaxStack = 10, SellPrice = 0 } );
+		// Nature Runes — one per nature (Balanced has none). Id + icon derive from
+		// the enum name (boss_rune_ferocious …); the stat text comes from
+		// Genetics.GetNatureDescription so it cannot drift from the real effect.
+		foreach ( NatureType nature in Enum.GetValues( typeof( NatureType ) ) )
+		{
+			if ( nature == NatureType.Balanced ) continue;
+			var key = nature.ToString().ToLowerInvariant();
+			AddBossTokenGood( new ItemDefinition
+			{
+				Id = $"boss_rune_{key}",
+				Name = $"{nature} Rune",
+				Description = $"Sets nature to {nature} ({Genetics.GetNatureDescription( nature )}).",
+				IconPath = $"ui/items/consumables/rune_{key}.png",
+				Category = ItemCategory.Consumable,
+				Rarity = ItemRarity.Rare,
+				EffectType = ItemEffectType.NatureChange,
+				EffectValue = (float)(int)nature,
+				MaxStack = 10,
+				SellPrice = 0
+			}, tokenPrice: 400 );
+		}
 
 		Log.Info( $"Loaded {_itemDatabase.Count} items" );
 	}
@@ -1902,6 +1912,23 @@ public sealed class ItemManager : Component
 	public IEnumerable<ItemDefinition> GetItemsByCategory( ItemCategory category )
 	{
 		return _itemDatabase.Values.Where( i => i.Category == category );
+	}
+
+	/// <summary>
+	/// Goods sold in the Boss Tokens store, in shop order. The price is
+	/// <see cref="ItemDefinition.TokenPrice"/>; MaxStack is the purchase cap.
+	/// </summary>
+	public List<ItemDefinition> GetBossTokenGoods()
+	{
+		return _bossTokenGoodIds.Select( GetItem ).Where( i => i != null ).ToList();
+	}
+
+	/// <summary>Register an item AND list it in the Boss Tokens store at the given token price.</summary>
+	private void AddBossTokenGood( ItemDefinition item, int tokenPrice )
+	{
+		item.TokenPrice = tokenPrice;
+		AddItem( item );
+		_bossTokenGoodIds.Add( item.Id );
 	}
 
 	/// <summary>

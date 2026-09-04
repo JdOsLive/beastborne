@@ -2879,7 +2879,7 @@
 
 	// ==========================================
 	// SKILLS — 4 subtabs (Earning SP / Branches / Hard Mode / Respec)
-	// Numbers verified against Code/Data/SkillTreeData.cs + Code/Core/Tamer.cs.
+	// Numbers verified against Code/Data/SkillTree.cs + Code/Data/Tamer.cs (2026-09-03).
 	// ==========================================
 
 	private RenderFragment RenderSkillsEarning() => __builder =>
@@ -2897,7 +2897,7 @@
 			<span class="help-section-title">How SP scales</span>
 			<div class="help-callout">
 				<span class="help-callout-eyebrow">The math</span>
-				<span class="help-callout-text">Tamer max level is 50. You start with 5 SP at level 1, and earn 1 SP per level after that — for a total of 55 SP at the cap. The launch tree has 55 nodes worth of cost, so a max-level Tamer can fully fill it.</span>
+				<span class="help-callout-text">Tamer max level is 50. You start with 6 SP at level 1 and earn 1 SP per level after that — 55 SP at the cap. The whole tree costs 55 SP, so a max-level Tamer can fill every skill.</span>
 			</div>
 
 			<span class="help-section-title">How you earn Tamer XP</span>
@@ -2933,31 +2933,31 @@
 			<HelpHero HeroIcon="lucide:git-branch" HeroTitle="The Five Branches" HeroSubtitle="Pick the playstyle you want to lean into" />
 
 			<p class="help-lead">
-				The Skill Tree splits into five thematic branches. Each branch has 3 nodes
-				— a keystone that unlocks the branch and two upgrades that build on it.
+				The Skill Tree splits into five branches. Each branch has 3 skills
+				— a keystone, plus two petals that open once the keystone has a rank.
 			</p>
 
 			<span class="help-section-title">The branches</span>
 			<div class="help-keypoints">
 				<div class="help-keypoint">
 					<iconify icon="lucide:flame" Size=@(16) Color="#ef4444" />
-					<span><strong>Power</strong> — combat stats. ATK, DEF, HP boosts and damage modifiers. The straightforward "hit harder" branch.</span>
+					<span><strong>Power</strong> — combat stats. Might (ATK), Vitality (HP) and Critical Eye (crit chance). The straightforward "hit harder" branch.</span>
 				</div>
 				<div class="help-keypoint">
 					<iconify icon="lucide:dna" Size=@(16) Color="#a855f7" />
-					<span><strong>Fusion</strong> — better gene inheritance, higher mutation chance, fusion-cost reductions. The build-tall path.</span>
+					<span><strong>Fusion</strong> — Gene Surge (+1 to every gene on fusion), Inheritance and Mutation Chance. The build-tall path.</span>
 				</div>
 				<div class="help-keypoint">
 					<iconify icon="lucide:map" Size=@(16) Color="#22c55e" />
-					<span><strong>Expedition</strong> — run-quality bonuses. Faster waves, better drop rates, the Hard Mode unlock. The runner's branch.</span>
+					<span><strong>Expedition</strong> — run-quality bonuses. Prospector (expedition gold), Scout (more wild beasts) and Lucky Find (rarer drops). The runner's branch.</span>
 				</div>
 				<div class="help-keypoint">
 					<iconify icon="lucide:crown" Size=@(16) Color="#fbbf24" />
-					<span><strong>Mastery</strong> — boss-fight bonuses. Extra damage to bosses, bigger token rewards, contract-rate buffs on Legendary and Mythic.</span>
+					<span><strong>Mastery</strong> — boss-fight bonuses. Boss Slayer (damage to bosses), Resilience (less damage from bosses) and Token Collector (more Boss Tokens).</span>
 				</div>
 				<div class="help-keypoint">
 					<iconify icon="lucide:coins" Size=@(16) Color="#7dd3fc" />
-					<span><strong>Fortune</strong> — economy. Gold-find, item-drop, lower fusion costs. The whale's branch.</span>
+					<span><strong>Fortune</strong> — economy. Gold Rush (gold from drops), Bargain Hunter (shop discount) and Jackpot (double drops).</span>
 				</div>
 			</div>
 
@@ -2968,7 +2968,7 @@
 
 			<div class="help-quicktip">
 				<iconify icon="lucide:lightbulb" Size=@(14) Color="#fbbf24" />
-				<span>The full tree is 55 SP and Tamer cap is 50 — meaning at the cap you can max one full branch + some of another, but not all five at once. Choose your specialization.</span>
+				<span>The full tree is 55 SP and a level-50 Tamer has exactly 55 — you can fill everything at the cap. The real choice is what to buy first.</span>
 			</div>
 		</div>
 	};
@@ -4678,193 +4678,123 @@
 		</div>
 	};
 
+	// ==========================================
+	// SKILLS (single legacy page) — rendered FROM the live tree so this page
+	// cannot drift from Code/Data/SkillTree.cs again. SP maths come from
+	// Tamer.GetTotalSkillPointsForLevel.
+	// ==========================================
+	private static SkillTree _helpSkillTree;
+	private static SkillTree HelpSkillTree => TamerManager.Instance?.SkillTree ?? (_helpSkillTree ??= SkillTree.CreateDefault());
+	private static int HelpStartSp => Tamer.GetTotalSkillPointsForLevel( 1 );
+	private static int HelpCapSp => Tamer.GetTotalSkillPointsForLevel( Tamer.MaxLevel );
+	private static int HelpTreeSp( SkillTree tree ) => tree.Nodes.Sum( n => n.MaxRank * n.CostPerRank );
+
+	private static readonly (SkillBranch branch, string emoji, string title, string blurb)[] HelpSkillBranches =
+	{
+		(SkillBranch.Power, "⚔️", "Power", "Your beasts hit harder, last longer and land more crits."),
+		(SkillBranch.Fortune, "💰", "Fortune", "More gold from drops, cheaper shop prices and a chance at double drops."),
+		(SkillBranch.Fusion, "🧬", "Fusion", "Better genes out of every fusion."),
+		(SkillBranch.Expedition, "🗺️", "Expedition", "Richer runs: more gold, more wild beasts and rarer drops."),
+		(SkillBranch.Mastery, "🏆", "Mastery", "Boss fights hurt less, take more damage and pay more tokens."),
+	};
+
+	// One skill → "+3% ATK for all your beasts per rank · 3 ranks · 1 SP each · needs Might"
+	private static string DescribeSkillNode( SkillNode node, SkillTree tree )
+	{
+		var effect = node.Effects?.FirstOrDefault();
+		var text = effect != null ? SkillEffectPerRank( effect ) + " per rank" : node.Description;
+		text += $" · {node.MaxRank} ranks · {node.CostPerRank} SP each";
+		if ( !string.IsNullOrEmpty( node.RequiredSkillId ) )
+		{
+			var req = tree.GetNode( node.RequiredSkillId );
+			if ( req != null ) text += $" · needs {req.Name}" + (node.RequiredSkillRank > 1 ? $" rank {node.RequiredSkillRank}" : "");
+		}
+		return text;
+	}
+
+	// Plain words for the launch-tree effect types (mirrors SkillTreePanel.GetEffectLabel).
+	private static string SkillEffectPerRank( SkillEffect e )
+	{
+		string v = e.Value >= 0 ? $"+{e.Value}" : $"{e.Value}";
+		string abs = $"{Math.Abs( e.Value )}";
+		return e.Type switch
+		{
+			SkillEffectType.AllMonsterATKPercent => $"{v}% ATK for all your beasts",
+			SkillEffectType.AllMonsterHPPercent => $"{v}% HP for all your beasts",
+			SkillEffectType.CritChanceBonus => $"{v}% crit chance",
+			SkillEffectType.GoldDropBonus => $"{v}% gold from drops",
+			SkillEffectType.ShopDiscount => $"{abs}% off shop prices",
+			SkillEffectType.DoubleDropChance => $"{v}% chance to double a drop",
+			SkillEffectType.GeneBonusFlat => $"{v} to every gene on fusion",
+			SkillEffectType.GeneticInheritanceBonus => $"{v}% better gene inheritance",
+			SkillEffectType.MutationChance => $"{v}% beneficial mutation chance",
+			SkillEffectType.ExpeditionGoldBonus => $"{v}% expedition gold",
+			SkillEffectType.EncounterRateBonus => $"{v}% wild beast encounter rate",
+			SkillEffectType.RareItemChance => $"{v}% rare drop weighting",
+			SkillEffectType.BossDamageBonus => $"{v}% damage to bosses",
+			SkillEffectType.BossDamageReduction => $"{abs}% less damage from bosses",
+			SkillEffectType.BossTokenBonus => $"{v}% boss tokens",
+			_ => e.GetDescription().Replace( "monsters", "beasts" )
+		};
+	}
+
 	private RenderFragment RenderSkills() => __builder =>
 	{
 		<div class="content-section">
 			<span class="page-title">Tamer Skills</span>
 			<p class="intro-text">
-				As you level up, you earn Skill Points to unlock permanent bonuses.
-				Skills are organized into 5 branches with tier-based progression!
+				Every Tamer level earns a Skill Point. Spend them in the Skill Tree for permanent bonuses
+				that apply to every beast you own and every expedition you run.
 			</p>
 
 			<div class="section">
 				<h2>Earning Skill Points</h2>
-				<p>Skill points scale with your level - higher levels earn more!</p>
 				<ul class="detail-list">
-					<li><strong>Levels 1-80:</strong> 1 SP per level (80 SP)</li>
-					<li><strong>Levels 81-170:</strong> 2 SP per level (180 SP)</li>
-					<li><strong>Levels 171-250:</strong> 3 SP per level (240 SP)</li>
-					<li><strong>Total at max level:</strong> 501 SP (including 1 starting)</li>
+					<li><strong>Start:</strong> @HelpStartSp SP at level 1</li>
+					<li><strong>Per level:</strong> +1 SP every Tamer level</li>
+					<li><strong>At the cap:</strong> @HelpCapSp SP at level @Tamer.MaxLevel</li>
 				</ul>
-				<p class="note">Max Tamer level is 250 - plenty of points for multiple branches!</p>
+				<p class="note">The whole tree costs @HelpTreeSp(HelpSkillTree) SP, so a max-level Tamer can fill every skill.</p>
 			</div>
 
 			<div class="section">
-				<h2>Skill Tree Structure</h2>
-				<p>Each branch has 3 tiers unlocked by spending points in that branch:</p>
+				<h2>How the Tree Works</h2>
 				<ul class="detail-list">
-					<li><strong>Tier 1 (Foundation):</strong> Always available, 1 SP per rank</li>
-					<li><strong>Tier 2 (Advancement):</strong> Requires 10-15 points in branch</li>
-					<li><strong>Tier 3 (Capstone):</strong> Requires 30-40 points, powerful effects</li>
+					<li><strong>5 branches, 3 skills each:</strong> a keystone on top and two petals under it</li>
+					<li><strong>Keystones:</strong> open from the start - put your first point here</li>
+					<li><strong>Petals:</strong> unlock once their keystone has 1 rank</li>
+					<li><strong>Ranks:</strong> every rank adds the same bonus again, up to the skill's max</li>
+					<li><strong>Reset is free:</strong> hold F (or hold the Reset button) to refund every point, any time</li>
 				</ul>
 			</div>
 
-			<div class="section">
-				<h2>⚔️ Power Branch (Combat Stats)</h2>
-				<p>Boost all your beasts' combat performance:</p>
-
-				<div class="skill-category">
-					<h3>Tier 1 - Foundation</h3>
-					<ul class="skill-list">
-						<li><strong>Might:</strong> +2% ATK per rank (10 ranks)</li>
-						<li><strong>Fortitude:</strong> +2% DEF per rank (10 ranks)</li>
-						<li><strong>Vitality:</strong> +2% HP per rank (10 ranks)</li>
-					</ul>
+			@foreach (var b in HelpSkillBranches)
+			{
+				var tree = HelpSkillTree;
+				var nodes = tree.GetNodesByBranch(b.branch);
+				int branchSp = nodes.Sum(n => n.MaxRank * n.CostPerRank);
+				<div class="section">
+					<h2>@b.emoji @b.title Branch</h2>
+					<p>@b.blurb</p>
+					<div class="skill-category">
+						<h3>@branchSp SP to max</h3>
+						<ul class="skill-list">
+							@foreach (var node in nodes)
+							{
+								<li><strong>@node.Name:</strong> @DescribeSkillNode(node, tree)</li>
+							}
+						</ul>
+					</div>
 				</div>
-
-				<div class="skill-category">
-					<h3>Tier 2 - Advancement (15 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Arcane Power:</strong> +2% SpA per rank (10 ranks)</li>
-						<li><strong>Arcane Shield:</strong> +2% SpD per rank (10 ranks)</li>
-						<li><strong>Swiftness:</strong> +2% SPD per rank (10 ranks)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 3 - Capstone (40 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Critical Eye:</strong> +3% crit chance per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Devastating Blows:</strong> +10% crit damage per rank (5 ranks, requires Crit Eye)</li>
-					</ul>
-				</div>
-			</div>
-
-			<div class="section">
-				<h2>🧬 Fusion Branch (Breeding)</h2>
-				<p>Improve breeding outcomes and genetic inheritance:</p>
-
-				<div class="skill-category">
-					<h3>Tier 1 - Foundation</h3>
-					<ul class="skill-list">
-						<li><strong>Gene Surge:</strong> +1 bonus gene point per rank (10 ranks)</li>
-						<li><strong>Inheritance:</strong> +5% better gene selection per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Fusion Mastery:</strong> -10% fusion cost per rank (5 ranks, 3 SP each)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 2 - Advancement (15 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Mutation Chance:</strong> +2% beneficial mutation per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Trait Affinity:</strong> +4% rare trait chance per rank (5 ranks, 3 SP each)</li>
-						<li><strong>Twin Spirit:</strong> +3% chance for twins per rank (5 ranks, 3 SP each)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 3 - Capstone (35 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Nature Bond:</strong> +25% nature inheritance per rank (3 ranks, 3 SP each)</li>
-						<li><strong>Gene Lock:</strong> Lock 1 gene for guaranteed inheritance per rank (3 ranks, 4 SP each)</li>
-					</ul>
-				</div>
-			</div>
-
-			<div class="section">
-				<h2>🗺️ Expedition Branch</h2>
-				<p>Better exploration rewards and item finds:</p>
-
-				<div class="skill-category">
-					<h3>Tier 1 - Foundation</h3>
-					<ul class="skill-list">
-						<li><strong>Prospector:</strong> +5% gold from expeditions per rank (10 ranks)</li>
-						<li><strong>Treasure Hunter:</strong> +3% item find rate per rank (10 ranks)</li>
-						<li><strong>Scout:</strong> +10% encounter rate per rank (5 ranks, 2 SP each)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 2 - Advancement (15 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Team Spirit:</strong> +5% expedition XP per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Lucky Find:</strong> +5% rare item chance per rank (5 ranks, 3 SP each)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 3 - Capstone (35 pts)</h3>
-					<ul class="skill-list">
-					</ul>
-				</div>
-			</div>
-
-			<div class="section">
-				<h2>🏆 Mastery Branch (Boss Combat)</h2>
-				<p>Specialized skills for boss battles:</p>
-
-				<div class="skill-category">
-					<h3>Tier 1 - Foundation</h3>
-					<ul class="skill-list">
-						<li><strong>Boss Slayer:</strong> +3% damage to bosses per rank (10 ranks)</li>
-						<li><strong>Resilience:</strong> -2% damage from bosses per rank (10 ranks)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 2 - Advancement (10 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Giant Killer:</strong> +5% damage vs higher tier bosses per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Token Collector:</strong> +10% boss tokens per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Phase Breaker:</strong> +10% damage during phase transitions per rank (5 ranks, 3 SP each)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 3 - Capstone (30 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Mythbreaker:</strong> +15% damage vs Mythic bosses per rank (3 ranks, 4 SP each, requires Boss Slayer 5)</li>
-						<li><strong>Boss Hunter:</strong> +5% boss spawn rate per rank (5 ranks, 3 SP each)</li>
-					</ul>
-				</div>
-			</div>
-
-			<div class="section">
-				<h2>💰 Fortune Branch (Economy)</h2>
-				<p>Maximize your gold income and shop efficiency:</p>
-
-				<div class="skill-category">
-					<h3>Tier 1 - Foundation</h3>
-					<ul class="skill-list">
-						<li><strong>Bargain Hunter:</strong> -2% shop prices per rank (10 ranks)</li>
-						<li><strong>Gold Rush:</strong> +5% gold drops per rank (10 ranks)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 2 - Advancement (15 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Savvy Shopper:</strong> +1% extra discount per 100k gold spent per rank (5 ranks, 2 SP each)</li>
-						<li><strong>Jackpot:</strong> +3% double drop chance per rank (5 ranks, 3 SP each)</li>
-						<li><strong>Amplifier:</strong> +5% boost potency per rank (5 ranks, 3 SP each)</li>
-					</ul>
-				</div>
-
-				<div class="skill-category">
-					<h3>Tier 3 - Capstone (35 pts)</h3>
-					<ul class="skill-list">
-						<li><strong>Golden Touch:</strong> +10% gold from ALL sources per rank (3 ranks, 4 SP each)</li>
-					</ul>
-				</div>
-			</div>
+			}
 
 			<div class="section">
 				<h2>Tips</h2>
 				<ul class="tip-list">
-					<li><span class="tip-icon">💡</span> Focus on one branch first to reach powerful capstones</li>
-					<li><span class="tip-icon">💡</span> Power branch is great for faster expedition clears</li>
-					<li><span class="tip-icon">💡</span> Fortune branch pays dividends over time</li>
-					<li><span class="tip-icon">💡</span> Mastery branch is essential for late-game boss farming</li>
+					<li><span class="tip-icon">💡</span> Might and Vitality are baked into every beast's stats - the cheapest early power</li>
+					<li><span class="tip-icon">💡</span> Running one zone on repeat? Prospector and Scout pay out every wave</li>
+					<li><span class="tip-icon">💡</span> Farming a boss? Boss Slayer, Resilience and Token Collector are built for it</li>
+					<li><span class="tip-icon">💡</span> Reset costs nothing - swap builds between expeditions freely</li>
 				</ul>
 			</div>
 		</div>

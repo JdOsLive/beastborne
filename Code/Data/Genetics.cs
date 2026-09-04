@@ -139,27 +139,38 @@ public class Genetics
 		};
 	}
 
-	public string GetNatureDescription()
+	/// <summary>
+	/// The stat a nature raises and the stat it lowers (each by 10%). Balanced
+	/// returns (null, null). ONE source for the rune-shop grouping, the rune
+	/// descriptions and the nature text — never parse strings for this.
+	/// </summary>
+	public static (string Up, string Down) GetNatureStats( NatureType nature ) => nature switch
 	{
-		return Nature switch
-		{
-			NatureType.Ferocious => "+10% ATK, -10% DEF",
-			NatureType.Stalwart => "+10% DEF, -10% ATK",
-			NatureType.Restless => "+10% SPD, -10% HP",
-			NatureType.Enduring => "+10% HP, -10% SPD",
-			NatureType.Reckless => "+10% ATK, -10% SPD",
-			NatureType.Stoic => "+10% DEF, -10% SPD",
-			NatureType.Skittish => "+10% SPD, -10% DEF",
-			NatureType.Vigorous => "+10% HP, -10% ATK",
-			NatureType.Ruthless => "+10% ATK, -10% HP",
-			NatureType.Nimble => "+10% SPD, -10% ATK",
-			NatureType.Mystical => "+10% SpA, -10% ATK",
-			NatureType.Resolute => "+10% SpD, -10% SpA",
-			NatureType.Arcane => "+10% SpA, -10% DEF",
-			NatureType.Warded => "+10% SpD, -10% SPD",
-			NatureType.Cunning => "+10% SpA, -10% HP",
-			NatureType.Serene => "+10% SpD, -10% ATK",
-			_ => "No effect"
-		};
+		NatureType.Ferocious => ("ATK", "DEF"),
+		NatureType.Stalwart => ("DEF", "ATK"),
+		NatureType.Restless => ("SPD", "HP"),
+		NatureType.Enduring => ("HP", "SPD"),
+		NatureType.Reckless => ("ATK", "SPD"),
+		NatureType.Stoic => ("DEF", "SPD"),
+		NatureType.Skittish => ("SPD", "DEF"),
+		NatureType.Vigorous => ("HP", "ATK"),
+		NatureType.Ruthless => ("ATK", "HP"),
+		NatureType.Nimble => ("SPD", "ATK"),
+		NatureType.Mystical => ("SpA", "ATK"),
+		NatureType.Resolute => ("SpD", "SpA"),
+		NatureType.Arcane => ("SpA", "DEF"),
+		NatureType.Warded => ("SpD", "SPD"),
+		NatureType.Cunning => ("SpA", "HP"),
+		NatureType.Serene => ("SpD", "ATK"),
+		_ => (null, null)
+	};
+
+	/// <summary>"+10% ATK, -10% DEF" for a nature; "No effect" for Balanced.</summary>
+	public static string GetNatureDescription( NatureType nature )
+	{
+		var (up, down) = GetNatureStats( nature );
+		return up == null ? "No effect" : $"+10% {up}, -10% {down}";
 	}
+
+	public string GetNatureDescription() => GetNatureDescription( Nature );
 }

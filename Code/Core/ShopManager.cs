@@ -846,7 +846,7 @@ public sealed class ShopManager : Component
 	/// <summary>
 	/// Map a shop boost type to an inventory item ID
 	/// </summary>
-	private string GetInventoryItemIdForBoost( ShopItemType type, int durationMinutes, bool isServerBoost = false )
+	public string GetInventoryItemIdForBoost( ShopItemType type, int durationMinutes, bool isServerBoost = false )
 	{
 		// Determine duration suffix (1h or 2h)
 		var durationSuffix = durationMinutes <= 60 ? "1h" : "2h";
