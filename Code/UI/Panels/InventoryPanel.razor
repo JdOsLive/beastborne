@@ -80,9 +80,10 @@
 	                      inline; tan ladder + census in the SCSS palette header
 	  // LANE: components .sat-card here == .shop-card (ShopPanelContent) —
 	                      capture both into one BbItemCard primitive (DOC-6 #18)
-	  // LANE: systems    GameHUD.OnInventoryClicked still calls
-	                      ItemManager.MarkAllItemsSeen() on open — stop it so
-	                      the NEW stamps survive to the select
+	  // LANE: systems    RESOLVED 2026-09-03 (audit S-1): GameHUD.OnInventoryClicked
+	                      no longer calls ItemManager.MarkAllItemsSeen() on open —
+	                      SelectItem is the ONE seen-marker, so NEW stamps survive
+	                      to the select
 *@
 
 @* Root carries the device class (DOC-5 #5) — onmousemove is the mouse-mode
@@ -148,7 +149,7 @@
 			@* Balance — the shop .sh-balance recipe. MOTION: `.flash flash-N`
 			   (IsGoldFlash, keyed per sell) is the ONE balance pulse hook. *@
 			<div class="@BalanceClass()">
-				<img class="bag-balance-glyph" src="ui/icons/currency/money.svg" />
+				<img class="bag-balance-glyph" src="ui/icons/currency/money.png" />
 				<span class="bag-balance-value">@GoldText()</span>
 			</div>
 			@* BACK · Q — the hub .hb-back recipe. Click = Close; Q already closes. *@
@@ -167,7 +168,14 @@
 			// case column could not see `caseItem` (11 CS0103s on first compile).
 			var groups = GetRenderGroups();
 			var navItems = GetNavItems();
-			var caseItem = GetCaseItem();
+			// L-1 (audit 2026-09-03): the case never blanks. When the filtered
+			// list is empty the LAST shown item stays in the case (identity only —
+			// its PRIMARY / SELL rows unmount, they act on an item not in view);
+			// `caseLive` gates them. Derived — BuildHash untouched.
+			var liveCase = GetCaseItem();
+			bool caseLive = liveCase != null;
+			if (caseLive) lastCaseItem = liveCase;
+			var caseItem = liveCase ?? lastCaseItem;
 			bool battle = IsInBattleMode();
 			bool bagEmpty = GetOwnedStackCount() == 0;
 		}
@@ -238,14 +246,14 @@
 										<span class="sat-card-qty-text">@QtyText(quantity)</span>
 									}
 								</div>
-								<div class="@("sat-strip r-" + GetRarityClass(item.Rarity))" style="background-color: @BbTokens.Rarity(item.Rarity.ToString());"></div>
+								<div class="sat-strip" style="background-color: @BbTokens.Rarity(item.Rarity.ToString());"></div>
 								@if (IsRelicEquipped(itemId))
 								{
 									<div class="sat-equipped"><span class="sat-equipped-text">E</span></div>
 								}
 								@if (IsNewItem(itemId))
 								{
-									<div class="@("sat-new " + NewTiltClass(itemId))"><span class="sat-new-text">NEW</span></div>
+									<div class="sat-new"><span class="sat-new-text">NEW</span></div>
 								}
 							</div>
 						}
@@ -262,9 +270,19 @@
 
 		@* ---- THE CASE — 482 × 950 r22, pad 24 → 434 inner ---- *@
 		@* Never empty (NO NOTHING): the selection, else the first item in render
-		   order. MOTION (2026-09-03): same `open-N` key — the case fades with the goods. *@
+		   order, else the LAST shown item (empty filter — L-1), else the one
+		   in-case empty line. MOTION (2026-09-03): same `open-N` key — the case
+		   fades with the goods. *@
 		<div class="@("bag-case open-" + openVersion)">
-			@if (caseItem != null)
+			@if (caseItem == null)
+			{
+				@* Nothing was ever shown (an empty bag on first open): the art
+				   slab stays and carries the ONE line, 17/700 cream .85 centred. *@
+				<div class="bag-case-art">
+					<span class="bag-case-empty">Nothing to show.</span>
+				</div>
+			}
+			else
 			{
 				int qty = GetItemQuantity(caseItem.Id);
 				var art = ArtPx(caseItem.IconPath, 256);
@@ -278,7 +296,7 @@
 				   strip and effect line stay put. *@
 				<div class="bag-case-art">
 					<img class="@("bag-case-img art-" + caseItem.Id)" src="@caseItem.IconPath" style="width: @(art.w)px; height: @(art.h)px;" />
-					<div class="@("bag-case-strip r-" + GetRarityClass(caseItem.Rarity))" style="background-color: @BbTokens.Rarity(caseItem.Rarity.ToString());"></div>
+					<div class="bag-case-strip" style="background-color: @BbTokens.Rarity(caseItem.Rarity.ToString());"></div>
 				</div>
 				<span class="@("bag-case-name case-" + caseItem.Id)">@caseItem.Name</span>
 				@* ×N line 24 — always mounted so the effect line holds still. *@
@@ -288,13 +306,10 @@
 						<span class="@("bag-case-qty-text case-" + caseItem.Id)">@QtyText(qty)</span>
 					}
 				</div>
-				@* The ONE effect line. LANE: systems (bug rider, data untouched) —
-				   ItemDefinition.GetEffectDescription drops positive HeldDEFBonus /
-				   HeldSpDBonus / HeldBurnChance secondaries (Training Weight prints
-				   "+8% ATK" and hides "+8% DEF"). Fix lives in Item.cs. *@
+				@* The ONE effect line. *@
 				<span class="bag-case-effect">@GetEffectDescription(caseItem)</span>
 
-				@if (primary.show)
+				@if (primary.show && caseLive)
 				{
 					@* PRIMARY 434×56 r16 directly under the effect — the page's one gold.
 					   `off` = the SAME slab desaturated (ghost tier + Disabled; BIG THINGS
@@ -310,12 +325,12 @@
 				@* Slack — a real flex basis (no bg, invisible), so the SELL row sits at the foot. *@
 				<div class="bag-case-slack"></div>
 
-				@if (sellable)
+				@if (sellable && caseLive)
 				{
-					@* SELL row 44 at the foot: stacks > 1 → stepper (− 44 · N 52 · + 44) + 12
-					   + hold SELL 282 = 434; singles → hold SELL 434. Absent when SellPrice
+					@* SELL row 44 at the foot: stacks > 1 → stepper (− 44 · N 60 · + 44) + 12
+					   + hold SELL 274 = 434 (the Shop's stepper values); singles → hold SELL 434. Absent when SellPrice
 					   0, the relic is equipped, or in battle. The hold button is the
-					   shipped .sat-sell recipe (BbButton has no hold-fill child) restyled
+					   pre-rebuild hold-sell recipe (BbButton has no hold-fill child) restyled
 					   to the danger pair at r11. INPUT 2026-09-03 — the stepper is a kb
 					   stop (A/D ∓1 + hold-repeat 0.35s/8ps on both devices — the shop's
 					   ArmKbHold / ArmMouseHold recipe; W = max only when nothing is
@@ -451,6 +466,7 @@
 
 	// Selection — null = the case shows the first item in render order.
 	private ItemDefinition selectedItem;
+	private ItemDefinition lastCaseItem; // L-1: the case's memory across an empty filter (derived display only)
 	private int sellQty = 1;                  // reset to 1 on every selection change
 
 	// Hold-to-sell
@@ -626,6 +642,34 @@
 		SoundManager.PlayClick();
 	}
 
+	// Q on an EMPTY grid (audit I-2): back to ALL, no search, cursor home on
+	// the grid — the case falls to the first item in render order (no
+	// MarkItemSeen: a default is not a look).
+	private void ResetFilters()
+	{
+		SetCategory( "all" );
+		ClearSearch();
+		filterBar?.CloseAllDropdowns();
+		cursorZone = CursorZone.Grid;
+		selectedItem = null;
+		sellQty = 1;
+		StopHold();
+		SoundManager.PlayBack();
+		RequestScrollFollow();
+	}
+
+	// The search text lives in the FilterBar's own TextEntry (polled per tick →
+	// OnNameFilterChanged); the shared component has no clear API, so the
+	// entry is reached through Descendants — its poll then reports "" back.
+	private void ClearSearch()
+	{
+		searchQuery = "";
+		if ( filterBar == null ) return;
+		filterBar.BlurSearchChip();
+		var entry = filterBar.Descendants.OfType<TextEntry>().FirstOrDefault( e => e.HasClass( "search-chip-input" ) );
+		if ( entry != null ) entry.Text = "";
+	}
+
 	// ── Selection — hover IS selection in mouse mode (the shop's grammar) ──
 	private void SelectItem( ItemDefinition item, bool silent )
 	{
@@ -676,8 +720,6 @@
 	private string PrimaryTier( bool off ) => off ? "ghost" : "primary";
 	private string PrimaryClass( bool off ) => "case-primary" + (off ? " off" : "");
 	private string EquippedCountText() => (TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Count ?? 0) + " / " + ItemManager.MaxRelics + " EQUIPPED";
-	private string GetRarityClass( ItemRarity rarity ) => rarity.ToString().ToLower();
-	private string NewTiltClass( string itemId ) => (itemId?.GetHashCode() & 1) == 0 ? "tilt-neg" : "tilt-pos";
 	private bool IsNewItem( string itemId ) => ItemManager.Instance?.IsNewItem( itemId ) == true;
 
 	// Sell label: "SELL 12 · 300G" for a stack, "SELL · 25G" for a single.
@@ -690,7 +732,7 @@
 	}
 
 	// Hold fill in PIXELS (a % width on an absolute paints full — CLAUDE.md).
-	private int SellFillPx( bool stack ) => isHoldingSell ? (int)((stack ? 282 : 434) * Math.Clamp( holdProgress, 0f, 1f )) : 0;
+	private int SellFillPx( bool stack ) => isHoldingSell ? (int)((stack ? 274 : 434) * Math.Clamp( holdProgress, 0f, 1f )) : 0;
 
 	// ── Art at INTEGER scale (DOC-6 #13) — the shop's recipe verbatim ──
 	// Sources are 64×64 / 51×51 PNGs (the material placeholder is an svg →
@@ -1473,7 +1515,7 @@
 		else if ( Input.Pressed( "Left" ) ) dir = 2;
 		else if ( Input.Pressed( "Right" ) ) dir = 3;
 		bool confirm = UiInput.ConfirmPressed();
-		bool back = Input.Pressed( "Menu" );
+		bool back = Input.Pressed( "Menu" ) || Input.Pressed( "run" ); // Q or Shift — the Shop's pair (audit I-1)
 		if ( dir < 0 && !confirm && !back ) return;
 
 		SetInputDevice( InputDevice.Keyboard );
@@ -1537,10 +1579,21 @@
 
 		if ( back )
 		{
+			GameHUD.PanelHandledBackKey = true;
+
+			// EMPTY grid (audit I-2): stage 1 resets the filters (ALL + no
+			// search) and refocuses the grid instead of closing; stage 2 —
+			// nothing left to reset — closes the Bag.
+			if ( nav.Count == 0 )
+			{
+				if ( currentCategory != "all" || !string.IsNullOrEmpty( searchQuery ) ) ResetFilters();
+				else Close();
+				return;
+			}
+
 			// Two-stage exit: stage 1 homes the case (first card, qty 1) and
 			// CLAIMS the key; stage 2 (already home) closes the Bag.
-			bool home = nav.Count == 0 || idx <= 0;
-			GameHUD.PanelHandledBackKey = true;
+			bool home = idx <= 0;
 			if ( !home || sellQty != 1 )
 			{
 				selectedItem = null;
