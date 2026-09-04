@@ -356,11 +356,13 @@ public static class ContractGenerator
 		float skillBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.CatchRateBonus ) ?? 0;
 		bool hasEliteInk = TamerManager.Instance?.CurrentTamer?.EliteInkExpiresAt > DateTime.Now;
 		float eliteInkBonus = hasEliteInk ? 15f : 0f;
+		// Contract Incense / Premium Incense (attempt consumables, +15 / +30; sum if both lit)
+		float incenseBonus = ItemManager.Instance?.GetActiveBoostValue( ItemEffectType.CatchRateBoost ) ?? 0f;
 		bool previouslyCaught = BeastiaryManager.Instance?.IsDiscovered( species.Id ) ?? false;
 		float previousCatchBonus = previouslyCaught ? 15f : 0f;
 		float guildCatchBonus = GuildManager.Instance?.GetCatchRateBonus() ?? 0f;
 
-		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus + previousCatchBonus + guildCatchBonus) / 100f);
+		float finalModifier = hpModifier * rarityModifier * (1 + (skillBonus + eliteInkBonus + incenseBonus + previousCatchBonus + guildCatchBonus) / 100f);
 
 		if ( isRareBoss )
 			finalModifier = Math.Max( finalModifier, 1.2f );
@@ -554,6 +556,10 @@ public static class ContractGenerator
 		var random = new Random();
 		double roll = random.NextDouble();
 		bool success = roll < option.SuccessChance;
+
+		// One contract roll = one Contract Incense use (attempt-typed boosts only).
+		// Reached by the negotiation panel AND smart Auto-Contract (both call this).
+		ItemManager.Instance?.DecrementBoostUse( ItemEffectType.CatchRateBoost );
 
 		// Check for INTIMIDATE critical fail
 		bool criticalFail = false;

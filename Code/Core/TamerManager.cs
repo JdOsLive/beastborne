@@ -167,6 +167,16 @@ public sealed class TamerManager : Component
 			// Purge expired boosts on load.
 			CurrentTamer.ActiveBoosts = CurrentTamer.ActiveBoosts.Where( b => !b.IsExpired ).ToList();
 
+			// Live stat tonics (Berserk Tonic & co.) are baked into owned stats by
+			// MonsterManager.RecalculateStats — re-bake in case the roster hydrated
+			// before this tamer did (no-op on an empty roster).
+			if ( CurrentTamer.ActiveBoosts.Any( b => ItemManager.IsStatBoostType( b.EffectType ) ) )
+			{
+				int rebaked = MonsterManager.Instance?.RecalculateAllOwnedStats() ?? 0;
+				if ( rebaked > 0 )
+					Log.Info( $"[TamerManager] Active consumable stat boosts — re-baked stats for {rebaked} owned beasts" );
+			}
+
 			// Strip any inventory entries whose itemId no longer resolves via
 			// Diagnostic scan only — do NOT mutate the inventory dict.
 			// Previous version of this call deleted any itemId that didn't

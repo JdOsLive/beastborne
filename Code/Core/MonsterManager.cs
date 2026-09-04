@@ -9140,6 +9140,9 @@ public sealed class MonsterManager : Component
 
 			// Apply species mastery bonus (Beastbook-tracked, tamer-wide per species)
 			ApplySpeciesMasteryBonus( monster );
+
+			// Wave-consumable stat tonics (Berserk Tonic & co.) — LAST, same gate.
+			ApplyConsumableBoosts( monster );
 		}
 
 		// Clamp CurrentHP to new MaxHP so a recalc that lowers MaxHP
@@ -9335,6 +9338,33 @@ public sealed class MonsterManager : Component
 		if ( defBonus != 0 ) monster.DEF = (int)(monster.DEF * (1 + defBonus / 100f));
 		if ( spdBonus != 0 ) monster.SPD = (int)(monster.SPD * (1 + spdBonus / 100f));
 		if ( hpBonus != 0 ) monster.MaxHP = (int)(monster.MaxHP * (1 + hpBonus / 100f));
+	}
+
+	/// <summary>
+	/// Wave-consumable stat tonics (Berserk Tonic / Iron Skin Oil / Quickstep
+	/// Powder / Arcane Draught / Warding Salve) — tamer-wide, PLAYER-OWNED beasts
+	/// only (called inside the IsPlayerOwned block of RecalculateStats, the same
+	/// gate as Might/Vitality, so wild waves and bosses never get them). Applied
+	/// LAST — after skills → relics → mastery — as a percentage multiplier on the
+	/// baked stat. Re-baked on use and on expiry via RecalculateAllOwnedStats.
+	/// Before 2026-09-04 ItemManager.GetActiveBoostValue had zero callers.
+	/// </summary>
+	private void ApplyConsumableBoosts( Monster monster )
+	{
+		var items = ItemManager.Instance;
+		if ( items == null ) return;
+
+		float atk = items.GetActiveBoostValue( ItemEffectType.BoostATK );
+		float def = items.GetActiveBoostValue( ItemEffectType.BoostDEF );
+		float spd = items.GetActiveBoostValue( ItemEffectType.BoostSPD );
+		float spa = items.GetActiveBoostValue( ItemEffectType.BoostSpA );
+		float spdef = items.GetActiveBoostValue( ItemEffectType.BoostSpD );
+
+		if ( atk != 0 ) monster.ATK = (int)(monster.ATK * (1 + atk / 100f));
+		if ( def != 0 ) monster.DEF = (int)(monster.DEF * (1 + def / 100f));
+		if ( spd != 0 ) monster.SPD = (int)(monster.SPD * (1 + spd / 100f));
+		if ( spa != 0 ) monster.SpA = (int)(monster.SpA * (1 + spa / 100f));
+		if ( spdef != 0 ) monster.SpD = (int)(monster.SpD * (1 + spdef / 100f));
 	}
 
 	public void ReleaseMonster( Guid monsterId )

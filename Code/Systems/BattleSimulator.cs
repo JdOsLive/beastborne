@@ -78,6 +78,10 @@ public static class BattleSimulator
 		float critBonus = attackerIsPlayer ? (TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritChanceBonus ) ?? 0) : 0;
 		critChance += critBonus / 100f;
 
+		// Hunter's Focus (wave consumable, +N percentage points) — player beasts only.
+		if ( attackerIsPlayer )
+			critChance += (ItemManager.Instance?.GetActiveBoostValue( ItemEffectType.BoostCrit ) ?? 0) / 100f;
+
 		// Add held item crit chance bonus
 		float heldCritBonus = ItemManager.Instance?.GetHeldItemBonus( attacker, ItemEffectType.HeldCritChance ) ?? 0;
 		critChance += heldCritBonus / 100f;
@@ -535,7 +539,12 @@ public static class BattleSimulator
 		// Apply relic bonus
 		float relicGoldBonus = ItemManager.Instance?.GetRelicBonus( ItemEffectType.PassiveGoldFind ) ?? 0;
 
-		int gold = (int)(baseGold * rarityMultiplier * variance * (1 + goldBonus / 100f) * goldBoost * liveEventGoldBoost * (1 + relicGoldBonus / 100f));
+		// Fortune Chime (wave consumable, +N% gold). Multiplication order:
+		//   base × rarity × variance × (1 + skill Gold Drop %) × shop Gold Boost (personal × server)
+		//   × live-event gold × (1 + relic Gold Find %) × (1 + Fortune Chime %) → then the Jackpot ×2 roll.
+		float consumableGoldMult = 1 + (ItemManager.Instance?.GetActiveBoostValue( ItemEffectType.GoldBoost ) ?? 0) / 100f;
+
+		int gold = (int)(baseGold * rarityMultiplier * variance * (1 + goldBonus / 100f) * goldBoost * liveEventGoldBoost * (1 + relicGoldBonus / 100f) * consumableGoldMult);
 
 		// Check for double drop chance (Jackpot skill)
 		float doubleChance = TamerManager.Instance?.GetSkillBonus( SkillEffectType.DoubleDropChance ) ?? 0;
@@ -1080,6 +1089,10 @@ public static class BattleSimulator
 		bool attackerIsPlayer = IsPlayerBeast( attacker );
 		float critBonus = attackerIsPlayer ? (TamerManager.Instance?.GetSkillBonus( SkillEffectType.CritChanceBonus ) ?? 0) : 0;
 		critChance += critBonus / 100f;
+
+		// Hunter's Focus (wave consumable, +N percentage points) — player beasts only.
+		if ( attackerIsPlayer )
+			critChance += (ItemManager.Instance?.GetActiveBoostValue( ItemEffectType.BoostCrit ) ?? 0) / 100f;
 
 		// CritBoost effect on move
 		if ( move.Effects?.Exists( e => e.Type == MoveEffectType.CritBoost ) == true )

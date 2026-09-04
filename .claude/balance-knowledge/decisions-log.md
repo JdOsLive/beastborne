@@ -23,6 +23,43 @@ Template:
 
 ## Entries
 
+## 2026-09-04 — Wave/attempt consumables wired (were INERT): stat tonics, Hunter's Focus, Fortune Chime, Contract Incense
+
+**Scope:** Bug-fix wiring, no number changes. `ItemManager.UseItem` pushed `ActiveItemBoost` rows onto `Tamer.ActiveBoosts`, but `GetActiveBoostValue` and `DecrementBoostUse` had ZERO callers — Berserk Tonic / Iron Skin Oil / Quickstep Powder / Arcane Draught / Warding Salve (+25% stat, 8 waves, 500g), Hunter's Focus (+20 crit, 8 waves, 1000g), Fortune Chime (+50% gold, 12 waves, 2000g), Contract Incense (+15% contract, 12 attempts, 1500g) and Premium Incense (+30%, 8 attempts, 5000g) did nothing while the Bag and the PawPad boost alert promised they did. Just-do-it directive from the coordinator; logged per workflow. Retunes below are PROPOSED ONLY.
+
+### Wiring (follows the 2026-09-01 skill pattern: bake + IsPlayerOwned gate, never per-hit)
+| Effect | Where applied | Gate | Consumed |
+|---|---|---|---|
+| BoostATK/DEF/SPD/SpA/SpD | `MonsterManager.RecalculateStats` → new `ApplyConsumableBoosts` inside the `IsPlayerOwned` block, LAST (species → nature → skills → relics → mastery → **consumable**), `stat × (1 + Σvalue/100)` | player-owned only (bosses/wild never) | once per WON wave |
+| BoostCrit | `BattleSimulator` both crit sites (basic-attack path + move path): `critChance += value/100` after Critical Eye | `attackerIsPlayer` | once per WON wave |
+| GoldBoost | `BattleSimulator.CalculateGoldDrop` (the single per-wave gold site): `× (1 + value/100)` | tamer-wide | once per WON wave |
+| CatchRateBoost | `ContractGenerator.CalculateSuccessChance` (added to the additive sum with skill / Elite Ink / previously-caught / guild) + `ExpeditionManager.TryCatchMonster` (multiplicative factor next to relic) | tamer-wide | once per contract ROLL (`AttemptNegotiation` — panel + smart Auto-Contract — and `TryCatchMonster`); guaranteed paths (Master Ink, tutorial rig) don't roll → don't consume |
+
+**Gold multiplication order (per-wave, `CalculateGoldDrop`):** `base(3 + 1.3·Lv) × rarity × variance(0.8–1.2) × (1 + skill Gold Drop%) × shop Gold Boost (personal × server) × live-event gold × (1 + relic Gold Find%) × (1 + Fortune Chime%)` → Jackpot ×2 roll. Guild gold multiplier applies afterwards inside `TamerManager.AddGold`. Completion gold (`ExpeditionManager.CompleteExpedition`/`RetryExpedition`) is NOT touched by Fortune Chime — the label says "for N waves".
+
+**Wave-end hook:** top of `ExpeditionManager.OnBattleEndBackground`, gated `result?.PlayerWon == true && !IsArenaMode`, placed BEFORE that handler's `!IsRunningInBackground` early-out. `BattleManager.OnBattleEnd` fires for foreground and background waves and the handler is subscribed in both, so every won wave crosses it exactly once — after `DistributeRewards` (so the wave's gold was rolled with the boost live). `ItemManager.DecrementWaveBoosts()` → per boost hitting 0: `NotificationManager.NotifyBoostExpired(item.Name, false, item.IconPath)`, remove, re-bake owned stats if a tonic ended (`RecalculateAllOwnedStats`, HP fraction preserved), `SaveToCloud`. Re-bake also on `UseItem` (stat types) and on tamer hydrate when live stat boosts exist.
+
+**Display (read-only):** `ActiveEffectsPanel` boosts tab lists `Tamer.ActiveBoosts` rows (item icon/name/`GetEffectDescription()`, timer = "8 waves"/"12 attempts", `expiring-soon` at 1 use), counted in the badge + BuildHash; `GetPhoneBoosts` gained an 8th tuple field `RemainingText` ("8 waves left") which `PhoneLauncher` renders instead of the clock (strip fill = uses/EffectDuration).
+
+### Balance sanity (numbers unchanged — PROPOSALS)
+Benchmarks: Might R3 = +9% ATK permanent for 3 SP. Old Saltmoor normal run ≈ 10 waves × ~105g per-wave (Lv30, 2 enemies, ×1.25 rarity) + 480 completion ≈ 1,500g. Rare Radar 1h = 42,500g (gold-sink tier, not comparable).
+- **Stat tonics (500g, +25%, 8 waves)** — one tonic covers a whole Cove (5) / Forest (7) run and 80% of Old Saltmoor (10); ~1/3 of a zone-3 run's income for +25% of one stat (2.8× Might R3, temporary). Physical damage ∝ ATK so Berserk = +25% physical damage. VERDICT: fair "boss push" pricing. No change.
+- **Hunter's Focus (1000g, +20 crit pp, 8 waves)** — move-path base 6.25% → 26.25%; crit ×1.5 → **+10% expected damage on every move** (physical AND special). Half Berserk's payload at double the price; only wins for mixed/special teams. Stacks to ~45% with Critical Eye R3 (+6) + a CritBoost move (+12.5). PROPOSE: 1000 → **700g** (keep +20 / 8).
+- **Fortune Chime (2000g, +50% gold, 12 waves)** — strictly NEGATIVE ROI everywhere: Old Saltmoor +52g/wave → +630g over 12 waves vs 2,000g cost; Cove ≈ +8g/wave. PROPOSE: 2000 → **400g** (→ +630 vs 400, ~+58% over ~1.2 runs). Alternative: keep price, also multiply completion gold and go +100%/20 waves. Needs a user call.
+- **Contract Incense (1500g, +15, 12 attempts) vs Elite Ink (`boss_elite_ink`, +15 for 10 MINUTES)** — same magnitude; Incense is the honest per-attempt version. Premium Incense (5000g, +30, 8 attempts) is 3.3× the price for 2× the lift on fewer attempts — steep but Epic-tagged. No change proposed; revisit with the Hard-Token sink.
+- **Stacking** — `GetActiveBoostValue` SUMS same-type rows, so two Berserk Tonics = +50% ATK for 500g each. PROPOSE: `UseItem` on a live same-`ItemId` boost REFRESHES `RemainingUses` to `EffectDuration` instead of adding a second row (no-stack, refresh). Not applied — behavior change beyond the fix.
+- **Separate finding (not this task):** per-wave gold has NO Hard Mode ×2 — `HARD_MODE_GOLD_MULT` only touches completion gold (`ExpeditionManager` :867/:1571); `BattleSimulator`/`BattleManager` never read `IsHardMode`. The 2026-05-13 entry assumed progression-2 wired it. Flag for the coordinator.
+
+### Files touched
+`Code/Core/ItemManager.cs` (UseItem re-bake; `IsStatBoostType`/`IsWaveBoostType`/`IsAttemptBoostType`; `DecrementBoostUse` rewritten onto `DecrementBoosts`; new `DecrementWaveBoosts`) · `Code/Core/MonsterManager.cs` (`ApplyConsumableBoosts` + call in `RecalculateStats`) · `Code/Systems/BattleSimulator.cs` (2 crit sites, `CalculateGoldDrop`) · `Code/Core/ExpeditionManager.cs` (`OnBattleEndBackground` hook; `TryCatchMonster` factor + decrement) · `Code/Systems/ContractGenerator.cs` (`CalculateSuccessChance` term; `AttemptNegotiation` decrement) · `Code/Core/TamerManager.cs` (hydrate re-bake) · `Code/UI/Components/ActiveEffectsPanel.razor` + `Code/UI/Components/PhoneLauncher.razor` (display rows only, per directive item 4) · `Assets/data/patchnotes-pending.json` (1 fix line). `ItemManager.cs`, `ContractGenerator.cs`, both razor files are OUTSIDE the balance agent's standing allow-list — edited under the coordinator's explicit per-item directive, flagged in the report.
+
+### Red flags triggered
+None. No Power-formula change, no BST/growth/price change, fusion untouched, no Epic+ or roster change. Note: consumable stat bakes ride into online/AI-mirror stats exactly as Might already does (PvP is kill-switched).
+
+**Approved by:** coordinator directive 2026-09-04 ("Wire them … Report call sites … No commits") — just-do-it mode; retunes withheld per item 6.
+
+---
+
 ## 2026-09-01 — Skill tree wiring + math audit (Scout wired, enemy-leak gate, Might double-apply, recalc-on-invest, Gene Surge / Mutation honesty)
 
 **Scope:** Five findings from a read-only trace of the launch skill tree (15 nodes, 55 SP). Code fixes in `Code/Core/MonsterManager.cs`, `Code/Core/TamerManager.cs`, `Code/Systems/BattleSimulator.cs`, `Code/Core/ExpeditionManager.cs`, `Code/Systems/GeneticsCalculator.cs`; data-side label strings in `Code/Data/SkillNode.cs`. No node costs, ranks, or per-rank values changed — max-all is still exactly 55 SP (Power 12 / Fortune 12 / Fusion 11 / Expedition 10 / Mastery 10), so saved max-all trees are untouched by `NormalizeSkillState`. No UI files edited (UI lanes active) — label changes for the UI are REPORTED, see "UI follow-ups".

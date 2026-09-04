@@ -2356,6 +2356,12 @@ public sealed class ItemManager : Component
 					} );
 					success = true;
 
+					// Stat tonics are BAKED into player-owned stats by
+					// MonsterManager.RecalculateStats (same pattern + IsPlayerOwned gate
+					// as Might/Vitality) — re-bake now so the +% lands this wave.
+					if ( IsStatBoostType( item.EffectType ) )
+						MonsterManager.Instance?.RecalculateAllOwnedStats();
+
 					// Phone alert: these count down in waves (contract lures in attempts)
 					NotificationManager.Instance?.NotifyBoostActive(
 						item.Name,
@@ -2392,21 +2398,66 @@ public sealed class ItemManager : Component
 			.Sum( b => b.EffectValue );
 	}
 
+	/// <summary>Stat tonics — baked into player-owned stats by MonsterManager.RecalculateStats.</summary>
+	public static bool IsStatBoostType( ItemEffectType t ) =>
+		t is ItemEffectType.BoostATK or ItemEffectType.BoostDEF or ItemEffectType.BoostSPD
+		  or ItemEffectType.BoostSpA or ItemEffectType.BoostSpD;
+
+	/// <summary>Boosts whose RemainingUses count EXPEDITION WAVES (one use per won wave).</summary>
+	public static bool IsWaveBoostType( ItemEffectType t ) =>
+		IsStatBoostType( t ) || t is ItemEffectType.BoostCrit or ItemEffectType.GoldBoost;
+
+	/// <summary>Boosts whose RemainingUses count CONTRACT ATTEMPTS (one use per roll).</summary>
+	public static bool IsAttemptBoostType( ItemEffectType t ) => t == ItemEffectType.CatchRateBoost;
+
 	/// <summary>
-	/// Decrement a boost's remaining uses (call after battle/catch attempt)
+	/// Decrement every active boost of one effect type by one use. Boosts that
+	/// hit 0 are removed, the player gets a "has worn off" alert, and — if a
+	/// stat tonic ended — owned stats are re-baked so the +% leaves the roster.
+	/// Attempt-typed (Contract Incense): called per contract roll. Wave-typed
+	/// boosts go through DecrementWaveBoosts instead.
 	/// </summary>
 	public void DecrementBoostUse( ItemEffectType effectType )
 	{
-		var boosts = TamerManager.Instance?.CurrentTamer?.ActiveBoosts;
-		if ( boosts == null ) return;
+		DecrementBoosts( b => b.EffectType == effectType );
+	}
 
-		foreach ( var boost in boosts.Where( b => b.EffectType == effectType && !b.IsExpired ) )
+	/// <summary>
+	/// One WON expedition wave → every wave-typed boost loses one use. Called
+	/// from ExpeditionManager.OnBattleEndBackground, which BattleManager.OnBattleEnd
+	/// reaches for foreground AND background waves (it runs before that
+	/// handler's background-mode early-out). Before 2026-09-04 nothing called
+	/// either decrement — every wave consumable was inert.
+	/// </summary>
+	public void DecrementWaveBoosts()
+	{
+		DecrementBoosts( b => IsWaveBoostType( b.EffectType ) );
+	}
+
+	private void DecrementBoosts( System.Func<ActiveItemBoost, bool> match )
+	{
+		var boosts = TamerManager.Instance?.CurrentTamer?.ActiveBoosts;
+		if ( boosts == null || boosts.Count == 0 ) return;
+
+		bool statBoostEnded = false;
+		foreach ( var boost in boosts )
 		{
+			if ( boost == null || boost.IsExpired || !match( boost ) ) continue;
 			boost.RemainingUses--;
+			if ( !boost.IsExpired ) continue;
+
+			var def = GetItem( boost.ItemId );
+			NotificationManager.Instance?.NotifyBoostExpired( def?.Name ?? boost.EffectType.ToString(), false, def?.IconPath );
+			Log.Info( $"[ItemManager] Consumable boost expired: {boost.ItemId} ({boost.EffectType})" );
+			if ( IsStatBoostType( boost.EffectType ) ) statBoostEnded = true;
 		}
 
-		// Remove expired boosts
-		boosts.RemoveAll( b => b.IsExpired );
+		// Remove expired boosts; re-bake stats if a tonic ended; persist the counts.
+		int removed = boosts.RemoveAll( b => b == null || b.IsExpired );
+		if ( statBoostEnded )
+			MonsterManager.Instance?.RecalculateAllOwnedStats();
+		if ( removed > 0 )
+			TamerManager.Instance?.SaveToCloud();
 	}
 
 	// ============================================

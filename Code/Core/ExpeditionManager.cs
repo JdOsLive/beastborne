@@ -968,6 +968,16 @@ public sealed class ExpeditionManager : Component
 			return;
 		}
 
+		// Wave-consumable countdown (Berserk Tonic, Iron Skin Oil, Hunter's Focus,
+		// Fortune Chime, …). BattleManager fires OnBattleEnd for foreground AND
+		// background waves and this handler is subscribed in both modes, so this
+		// is the one wave-end hook every WON wave crosses — it must sit BEFORE the
+		// background-mode early-out below. The wave's gold was already rolled
+		// (BattleSimulator.CalculateGoldDrop, boost live), so a Fortune Chime's
+		// final wave still pays out before it wears off.
+		if ( result?.PlayerWon == true && BattleManager.Instance?.CurrentBattleState?.IsArenaMode != true )
+			ItemManager.Instance?.DecrementWaveBoosts();
+
 		// Only handle automatically if we're in background mode
 		// When NOT in background mode, the ExpeditionPanel.OnBattleComplete handles progression
 		if ( !IsRunningInBackground )
@@ -1863,6 +1873,9 @@ public sealed class ExpeditionManager : Component
 		// Relic catch rate bonus
 		float relicCatchBonus = ItemManager.Instance?.GetRelicBonus( ItemEffectType.PassiveCatchRate ) ?? 0;
 
+		// Contract Incense / Premium Incense (attempt consumables, +15 / +30; sum if both lit)
+		float incenseCatchBonus = ItemManager.Instance?.GetActiveBoostValue( ItemEffectType.CatchRateBoost ) ?? 0;
+
 		// Held item catch rate bonus (e.g. Contract Seal) - check all team monsters
 		float heldCatchBonus = 0;
 		if ( ItemManager.Instance != null )
@@ -1880,7 +1893,7 @@ public sealed class ExpeditionManager : Component
 		// Guild catch rate bonus (Lv6: +5%)
 		float guildCatchBonus = GuildManager.Instance?.GetCatchRateBonus() ?? 0f;
 
-		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + heldCatchBonus / 100f) * (1 + previousCatchBonus / 100f) * (1 + guildCatchBonus / 100f);
+		float finalCatchRate = baseCatchRate * hpModifier * (1 + catchBonus / 100f) * (1 + relicCatchBonus / 100f) * (1 + incenseCatchBonus / 100f) * (1 + heldCatchBonus / 100f) * (1 + previousCatchBonus / 100f) * (1 + guildCatchBonus / 100f);
 		finalCatchRate = Math.Min( 0.95f, finalCatchRate ); // Max 95% catch rate
 
 		// Master Ink guarantees capture
@@ -1895,6 +1908,9 @@ public sealed class ExpeditionManager : Component
 
 		var random = _sharedRandom;
 		bool caught = random.NextDouble() < finalCatchRate;
+
+		// One contract roll = one Incense use (attempt-typed boosts only).
+		ItemManager.Instance?.DecrementBoostUse( ItemEffectType.CatchRateBoost );
 
 		if ( caught )
 		{

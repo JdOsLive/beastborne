@@ -42,6 +42,7 @@
 				@{
 					var boosts = GetActiveBoosts();
 					var hasEliteInk = HasEliteInk();
+					var waveBoosts = GetWaveBoosts();
 				}
 
 				<!-- Boosts Section Header -->
@@ -81,7 +82,7 @@
 					</div>
 				}
 
-				@if (boosts.Count == 0 && !hasEliteInk && !TamerManager.IsDoubleXPActive && !LiveEventManager.IsLaunchWeekXPActive)
+				@if (boosts.Count == 0 && waveBoosts.Count == 0 && !hasEliteInk && !TamerManager.IsDoubleXPActive && !LiveEventManager.IsLaunchWeekXPActive)
 				{
 					<div class="ep-empty-full">
 						<div class="ep-empty-icon">
@@ -134,6 +135,25 @@
 								<span class="boost-desc">@L("ui.effects.elite_ink_desc")</span>
 							</div>
 							<span class="boost-timer @(inkExpiring ? "expiring" : "")">@FormatBoostTime(GetEliteInkRemaining())</span>
+						</div>
+					}
+
+					<!-- Wave / attempt consumables (Berserk Tonic, Contract Incense, …) — read-only from Tamer.ActiveBoosts -->
+					@foreach (var wb in waveBoosts)
+					{
+						@{
+							var wbItem = ItemManager.Instance?.GetItem(wb.ItemId);
+							var wbAttempts = ItemManager.IsAttemptBoostType(wb.EffectType);
+							var wbLast = wb.RemainingUses <= 1;
+						}
+						<div class="boost-card @(wbLast ? "expiring-soon" : "")">
+							<div class="boost-accent @GetWaveBoostClass(wb.EffectType)"></div>
+							<div class="boost-icon @GetWaveBoostClass(wb.EffectType)"><img src="@(wbItem?.IconPath ?? "ui/items/boosts/lucky_clover.png")" /></div>
+							<div class="boost-info">
+								<span class="boost-name">@(wbItem?.Name ?? wb.EffectType.ToString())</span>
+								<span class="boost-desc">@(wbItem?.GetEffectDescription() ?? "")</span>
+							</div>
+							<span class="boost-timer @(wbLast ? "expiring" : "")">@NotificationManager.FormatUseDuration(wb.RemainingUses, wbAttempts)</span>
 						</div>
 					}
 				}
@@ -299,6 +319,11 @@
 			var left = t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : $"{t.Minutes}m {t.Seconds}s";
 			rows.Add( ($"{b.Type} x{b.Multiplier:0.#}", left) );
 		}
+		foreach ( var wb in inst.GetWaveBoosts() )
+		{
+			var def = ItemManager.Instance?.GetItem( wb.ItemId );
+			rows.Add( (def?.Name ?? wb.EffectType.ToString(), NotificationManager.FormatUseDuration( wb.RemainingUses, ItemManager.IsAttemptBoostType( wb.EffectType ) ).ToUpperInvariant()) );
+		}
 		foreach ( var s in inst.GetActiveSkillBonuses() )
 			rows.Add( (s.Name, $"RANK {s.Rank}") );
 		return rows;
@@ -311,9 +336,11 @@
 	/// window), glyph text + icon path. Shop boosts + Elite Ink; the flat
 	/// event flags (double XP / launch week) ride as "ALWAYS ON" skill rows.
 	/// </summary>
-	public static List<(string Key, string Label, string Source, TimeSpan Remaining, float TotalSeconds, string Glyph, string IconPath)> GetPhoneBoosts()
+	/// RemainingText (2026-09-04): non-null for use-counted consumables ("8 waves left") —
+	/// the phone shows it verbatim instead of formatting Remaining as a clock.
+	public static List<(string Key, string Label, string Source, TimeSpan Remaining, float TotalSeconds, string Glyph, string IconPath, string RemainingText)> GetPhoneBoosts()
 	{
-		var rows = new List<(string, string, string, TimeSpan, float, string, string)>();
+		var rows = new List<(string, string, string, TimeSpan, float, string, string, string)>();
 		var inst = Instance;
 		if ( inst == null ) return rows;
 		foreach ( var b in inst.GetActiveBoosts() )
@@ -328,10 +355,20 @@
 				ShopItemType.LuckyCharm => "LK",
 				_ => "B"
 			};
-			rows.Add( ($"{b.Type}:{( b.IsServer ? "srv" : "own" )}", label, source, b.TimeRemaining, PhoneBoostDenominator( b.Type, b.TimeRemaining ), glyph, inst.GetBoostIconPath( b.Type )) );
+			rows.Add( ($"{b.Type}:{( b.IsServer ? "srv" : "own" )}", label, source, b.TimeRemaining, PhoneBoostDenominator( b.Type, b.TimeRemaining ), glyph, inst.GetBoostIconPath( b.Type ), null) );
 		}
 		if ( inst.HasEliteInk() )
-			rows.Add( ("elite-ink", "ELITE INK", "contract bonus", inst.GetEliteInkRemaining(), MathF.Max( 3600f, (float)inst.GetEliteInkRemaining().TotalSeconds ), "INK", "ui/items/boosts/lucky_clover.png") );
+			rows.Add( ("elite-ink", "ELITE INK", "contract bonus", inst.GetEliteInkRemaining(), MathF.Max( 3600f, (float)inst.GetEliteInkRemaining().TotalSeconds ), "INK", "ui/items/boosts/lucky_clover.png", null) );
+		// Wave / attempt consumables — Remaining carries the use count (seconds = uses) so the strip still fills.
+		foreach ( var wb in inst.GetWaveBoosts() )
+		{
+			var def = ItemManager.Instance?.GetItem( wb.ItemId );
+			bool attempts = ItemManager.IsAttemptBoostType( wb.EffectType );
+			int total = Math.Max( def?.EffectDuration ?? wb.RemainingUses, wb.RemainingUses );
+			rows.Add( ($"item:{wb.ItemId}", (def?.Name ?? wb.EffectType.ToString()).ToUpperInvariant(), def?.GetEffectDescription() ?? "consumable",
+				TimeSpan.FromSeconds( wb.RemainingUses ), total, attempts ? "INK" : "USE", def?.IconPath,
+				NotificationManager.FormatUseDuration( wb.RemainingUses, attempts ) + " left") );
+		}
 		return rows;
 	}
 
@@ -428,7 +465,7 @@
 
 	private int GetBoostSectionCount()
 	{
-		return GetActiveBoosts().Count + (HasEliteInk() ? 1 : 0) + (TamerManager.IsDoubleXPActive ? 1 : 0) + (LiveEventManager.IsLaunchWeekXPActive ? 1 : 0);
+		return GetActiveBoosts().Count + GetWaveBoosts().Count + (HasEliteInk() ? 1 : 0) + (TamerManager.IsDoubleXPActive ? 1 : 0) + (LiveEventManager.IsLaunchWeekXPActive ? 1 : 0);
 	}
 
 	private bool HasEliteInk()
@@ -452,6 +489,27 @@
 	private List<(ShopItemType Type, float Multiplier, TimeSpan TimeRemaining, bool IsServer, string ActivatedBy)> GetActiveBoosts()
 	{
 		return ShopManager.Instance?.GetAllActiveBoosts() ?? new();
+	}
+
+	/// <summary>Wave / attempt consumables (Berserk Tonic, Contract Incense, …) — Tamer.ActiveBoosts, read-only.</summary>
+	private List<ActiveItemBoost> GetWaveBoosts()
+	{
+		var result = new List<ActiveItemBoost>();
+		var list = TamerManager.Instance?.CurrentTamer?.ActiveBoosts;
+		if (list == null) return result;
+		foreach (var b in list)
+			if (b != null && !b.IsExpired) result.Add(b);
+		return result;
+	}
+
+	private string GetWaveBoostClass(ItemEffectType type)
+	{
+		return type switch
+		{
+			ItemEffectType.GoldBoost => "gold",
+			ItemEffectType.CatchRateBoost => "ink",
+			_ => "xp"
+		};
 	}
 
 	private string GetBoostIconPath(ShopItemType type)
@@ -684,6 +742,12 @@
 		hash.Add(HasEliteInk());
 		if (HasEliteInk())
 			hash.Add((int)GetEliteInkRemaining().TotalSeconds);
+
+		foreach (var wb in GetWaveBoosts())
+		{
+			hash.Add(wb.ItemId);
+			hash.Add(wb.RemainingUses);
+		}
 
 		hash.Add(LiveEventManager.IsLaunchWeekXPActive);
 		hash.Add(TamerManager.IsDoubleXPActive);
