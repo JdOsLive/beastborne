@@ -56,7 +56,7 @@
 	var expedition = ExpeditionManager.Instance?.GetExpedition( PendingExpeditionId );
 }
 
-<root class="team-picker-root @_rootVisibleClass">
+<root class="@RootClass" onmousemove=@OnRootMouseMove>
 	<div class="tp-shield" onclick=@Close></div>
 
 	@if ( IsVisible && expedition != null )
@@ -68,7 +68,7 @@
 		var hardUnlocked = IsHardUnlocked();
 		var focus = GetFocusedBeast( roster );
 
-		<div class="tp-modal">
+		<div class="tp-modal" @ref="modalRef">
 			@* ═══ DEV: SLOT POSITION EDITOR ════════════════════════
 			   Hidden behind ShowSlotEditor. Retained verbatim (dev tool).
 			   NOTE 2026-09-04: the slot art now uses the house integer-fit /
@@ -136,11 +136,14 @@
 					</div>
 				</div>
 
-				@* LANE: input — the HEADER zone of the cursor graph: W off the
-				   top grid row lands here; A/D walk ELEMENT · SORT · dir · BACK
-				   (OnFilterBarSideStep is the stub); Space opens a menu and
-				   FilterBar.HandleKeyboard owns the keys inside it; S / Q return
-				   to the grid. KbMode is not passed yet (mouse-mode default). *@
+				@* LANE: input (wired 2026-09-04) — the HEADER zone of the cursor
+				   graph: W off the grid's top row (or off slot 0) lands here; A/D
+				   walk ELEMENT · SORT · dir (`.kb-focused` slab, no ring — the Bag
+				   recipe, stamped per tick by SyncHeaderKbFocus); Space opens a
+				   menu and FilterBar.HandleKeyboard owns W/S/Space/Q/A/D inside it;
+				   S returns to where you left; Q closes the picker (an open menu
+				   first). BACK is a Q cap, not a stop. KbMode = the page's ONE
+				   device flag (DOC-5 #5). *@
 				<div class="tp-toolbar" @ref="toolbarRef">
 					@* The shipped ELEMENT dropdown (ElementItems + the two-tone
 					   active chip) — R cycles it (CycleElementFilter). Sort is a
@@ -156,6 +159,7 @@
 							   OnSortDirectionChanged=@OnSortDirectionChanged
 							   ShowRarityFilter=@false
 							   ShowSearchChip=@false
+							   KbMode=@IsKbMode
 							   OnKbSideStep=@OnFilterBarSideStep />
 					<div class="tp-filter-hint">
 						<span class="tp-cap">R</span>
@@ -181,9 +185,12 @@
 						<span class="tp-team-pwr-v">@teamPower</span>
 					</div>
 
-					@* LANE: input — slot ⇄ grid ⇄ header ⇄ EMBARK cursor graph;
-					   `.tp-slot.focused` is the kb slab step, the ring is yours. *@
-					<div class="tp-slots" onmouseup=@CancelDragIfAny>
+					@* LANE: input (wired) — LEFT zone stops 0-2: W/S walk the column
+					   (slot 0 → header above, controls row below), D → the grid's
+					   nearest row by Y, Space removes the beast (an empty slot's Space
+					   walks you to the roster). Hover parks the same cursor here in
+					   mouse mode. `.focused` = the slab step; the living ring wraps it. *@
+					<div class="tp-slots" @ref="slotsRef" onmouseup=@CancelDragIfAny>
 						@for ( int i = 0; i < 3; i++ )
 						{
 							var slotIdx = i;
@@ -196,7 +203,7 @@
 								? editTestSpecies
 								: ( beast != null ? MonsterManager.Instance?.GetSpecies( beast.SpeciesId ) : null );
 
-							<div class="tp-slot @(species != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "")"
+							<div class="tp-slot @(species != null ? "filled" : "empty") @(dragHover ? "drag-hover" : "") @(IsLeftStop( slotIdx ) ? "focused" : "")"
 								 onclick=@(() => OnTeamSlotClicked(slotIdx))
 								 onmousedown=@(() => OnSlotMouseDown(slotIdx))
 								 onmouseup=@(() => OnSlotMouseUp(slotIdx))
@@ -270,16 +277,19 @@
 					@* Controls 400×44: AUTO-FILL · F (secondary 194) · NORMAL | HARD
 					   segmented 194. Pressables are rounded slabs — never skewed. *@
 					<div class="tp-controls">
-						<BbButton Tier="secondary" Size=@(44) Label="AUTO-FILL" KeyCap="F" Class="tp-autofill" OnClick=@AutoFill />
-						<div class="tp-seg">
+						<BbButton @ref="autoFillRef" Tier="secondary" Size=@(44) Label="AUTO-FILL" KeyCap="F" Class="tp-autofill" OnClick=@AutoFill />
+						@* LANE: input — ONE stop for the pair: A/D arm NORMAL/HARD while
+						   focused (A on NORMAL walks to AUTO-FILL, D on HARD/locked walks
+						   to the grid); Space toggles. Ring r26 wraps the 44 slab. *@
+						<div class="tp-seg @(IsLeftStop( LeftStop.Difficulty ) ? "focused" : "")" @ref="segRef">
 							<div class="tp-seg-opt @(!_hardMode ? "active" : "")"
 								 onclick=@(() => SetHardMode(false))
-								 onmouseover=@(() => OnHover("diff-normal"))>
+								 onmouseover=@(() => OnSegHover("diff-normal"))>
 								<span class="tp-seg-label">NORMAL</span>
 							</div>
 							<div class="tp-seg-opt hard @(_hardMode ? "active" : "") @(hardUnlocked ? "" : "locked")"
 								 onclick=@(() => SetHardMode(true))
-								 onmouseover=@(() => OnHover("diff-hard"))>
+								 onmouseover=@(() => OnSegHover("diff-hard"))>
 								@if ( !hardUnlocked )
 								{
 									<iconify class="tp-seg-glyph" icon="lucide:lock" Size=@(12) Color="rgba(214, 206, 236, 0.6)" />
@@ -294,9 +304,13 @@
 					</div>
 
 					@* EMBARK 400×56 — the ONE gold primary; locked it stays big and
-					   dims (DOC-1 #9). LANE: input — KeyCap per the cursor graph
-					   (Enter embarks as the stopgap; Space picks in the grid). *@
-					<BbButton Tier="primary" Size=@(56) Label=@GetEmbarkLabel( filled ) Disabled=@(!CanEmbark()) Class="tp-embark" OnClick=@OnEmbarkClicked />
+					   dims (DOC-1 #9). LANE: input (wired) — the LEFT column's foot:
+					   Space/Enter/E embark when the cursor is here (the universal
+					   confirm — no cap; DOC-5 #1), an invalid team gets a deny blip
+					   and the label reads the reason for 1.2s (`.deny` is the MOTION
+					   hook). The picker opens with the cursor HERE when the last run's
+					   team came back valid, else on the grid's first card. *@
+					<BbButton @ref="embarkRef" Tier="primary" Size=@(56) Label=@GetEmbarkLabel( filled ) Disabled=@(!CanEmbark()) Class=@EmbarkClass() OnClick=@OnEmbarkClicked />
 				</div>
 
 				@* ── CENTER 824: the roster scroll grid — cards are DIRECT children
@@ -310,19 +324,24 @@
 						}
 						else
 						{
-							@foreach ( var m in roster )
+							@for ( int ci = 0; ci < roster.Count; ci++ )
 							{
-								var beast = m;
+								var cardIdx = ci;
+								var beast = roster[cardIdx];
 								var sp = MonsterManager.Instance?.GetSpecies( beast.SpeciesId );
 								var isPicked = _team.Any( t => t?.Id == beast.Id );
 								var isKo = beast.CurrentHP <= 0;
-								var kbFocused = _hoveredCardId == null && _kbIndex >= 0 && _kbIndex < roster.Count && roster[_kbIndex].Id == beast.Id;
-								@* LANE: input — `.tp-card.focused` is the cursor slab step; the
-								   living ring attaches here (inside the card bounds — scroll law). *@
+								var kbFocused = _zone == CursorZone.Grid && _kbIndex == cardIdx;
+								@* LANE: input (wired) — GRID zone, true 2-D: W/S rows (scroll-
+								   follow glide), A/D clamp; W off row 0 → header, A off column 0 →
+								   LEFT nearest by Y, D off column 4 is silent (FACTS is display-
+								   only). `.focused` is the ONE cursor class in both modes (hover
+								   moves the same index — DOC-5 #6); the living ring rides it and
+								   self-hides when the card scrolls out (scroll never clips it). *@
 								<div class="tp-card @(isPicked ? "picked" : "") @(isKo ? "ko" : "") @(kbFocused ? "focused" : "")"
 									 onclick=@(() => OnRosterCardClicked(beast))
 									 onmousedown=@(() => OnRosterCardMouseDown(beast))
-									 onmouseover=@(() => OnCardHover(beast.Id))>
+									 onmouseover=@(() => OnCardHover(cardIdx))>
 									<div class="tp-card-art">
 										<img class="tp-sprite" src="@(sp?.IconPath ?? "ui/monsters/placeholder.png")" style="@FitStyle( sp, 150, 104 )" />
 									</div>
@@ -419,6 +438,16 @@
 					}
 				</div>
 			</div>
+
+			@* LANE: input — THE LIVING VIOLET RING, the one cursor (the Bag/hub
+			   recipe: real bordered child, `4px solid #9b6cff * 5`, r26 = host 16
+			   + inset 10; L/T = host − 10 + 4, W/H = host + 20 − 8). Absolute in
+			   the modal (no padding-box bias: the modal has no border), z 400 —
+			   above both columns, under the header (500) so an open menu paints
+			   over it. Hidden on the HEADER (`.kb-focused` there), while a menu
+			   is open, and when its grid card scrolls out of the viewport. *@
+			<div @ref="ringRef" class="@RingClass()"
+				 style="left: @(ringL)px; top: @(ringT)px; width: @(ringW)px; height: @(ringH)px;"></div>
 		</div>
 
 		@* Drag shield — fullscreen overlay during slot-art drag (dev editor). *@
@@ -637,6 +666,10 @@
 
 	// Team state — fixed-size 3 to keep slot logic simple. nulls = empty slots.
 	private List<Monster> _team = new() { null, null, null };
+	// Drag-and-drop state (slot ⇄ roster) — declarations restored 2026-09-04 after the input lane's cleanup left the handlers orphaned.
+	private Monster _dragSource;
+	private int? _dragFromSlot;
+	private int? _dragHoverSlot;
 
 	// ─── DIFFICULTY ──────────────────────────────────────────────
 	// Hard mode is panel-local UI state passed to StartExpedition at
@@ -672,6 +705,7 @@
 	/// <summary>CTA label — plus the hard-mode variant.</summary>
 	private string GetEmbarkLabel( int filled )
 	{
+		if ( EmbarkDenying && !CanEmbark() ) return filled == 0 ? "PICK A BEAST" : "TEAM IS KO"; // the deny reason (LANE: input)
 		if ( !CanEmbark() ) return filled == 0 ? "PICK A BEAST" : "EMBARK";
 		return _hardMode ? "EMBARK · HARD" : "EMBARK";
 	}
@@ -752,56 +786,687 @@
 	};
 	private static List<FilterBar.MenuItem> BeastSorts => _beastSorts;
 
-	private Guid? _hoveredCardId;
+	// ═══════════════════════════════════════════════════════════════
+	// LANE: input (2026-09-04) — ONE CURSOR, ONE DEVICE FLAG (DOC-5 #5/#6).
+	// Zones: HEADER (FilterBar ELEMENT · SORT · dir — `.kb-focused` slab, no
+	// ring) · LEFT (slot 0-2 · AUTO-FILL · NORMAL|HARD · EMBARK — ring) · GRID
+	// (5-wide cards — ring + scroll-follow glide). FACTS is display-only,
+	// never a stop. Hover moves the SAME cursor in mouse mode; any nav /
+	// confirm key takes the keyboard and stamps the mouse position; the mouse
+	// reclaims only after REAL travel (≥3px, root onmousemove) and the element
+	// already under it becomes the cursor (last input wins). Hover handlers
+	// ignore events in kb mode (DOC-5 #15 — scroll-follow fires synthetic
+	// hovers under a parked cursor).
+	//
+	// GRAPH (spatially honest — W/S follows the vertical order on screen):
+	//   HEADER  [ELEMENT] ⇄A/D⇄ [SORT] ⇄ [dir]      S → back where you left
+	//     ↑W (grid row 0 · slot 0)
+	//   LEFT    slot0 → slot1 → slot2 → {AUTO-FILL ⇄D⇄ NORMAL|HARD} → EMBARK
+	//           D off any LEFT stop → the grid's first-column card nearest by Y
+	//   GRID    W/S rows · A/D clamp · A off column 0 → LEFT stop nearest by Y
+	//           D off column 4 silent (FACTS) · S off the last row silent
+	// ═══════════════════════════════════════════════════════════════
+	private enum InputDevice { Mouse, Keyboard }
+	private enum CursorZone { Grid, Left, Header }
+	private enum LeftStop { Slot0 = 0, Slot1 = 1, Slot2 = 2, AutoFill = 3, Difficulty = 4, Embark = 5 }
+
+	private InputDevice lastInputDevice = InputDevice.Mouse;
+	private bool IsKbMode => lastInputDevice == InputDevice.Keyboard;
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
+	private string RootClass => "team-picker-root " + (IsVisible ? "visible " : "") + (IsKbMode ? "kbd-mode" : "mouse-mode");
+
+	private const int CARDS_PER_ROW = 5; // CENTER 824 = 5 × 150 + 4 × 16 + 10 lane
+	private CursorZone _zone = CursorZone.Grid;
+	private int _kbIndex = 0;                                // GRID card (render order of GetFilteredMonsters)
+	private LeftStop _leftStop = LeftStop.Embark;            // LEFT stop
+	private LeftStop _controlsMemory = LeftStop.Difficulty;  // which half of the 44 row W/S land on
+	private int _headerCursor = 0;                           // index into CollectHeaderControls()
+	private CursorZone _headerReturnZone = CursorZone.Grid;  // S from the header goes back where you left
+	private bool _openEdge;                                  // consumed by Tick once the refs exist
 	private string _hoveredKey;
 
-	// Keyboard navigation. The roster grid is a fixed 5-wide layout
-	// (CENTER 824 = 5 × 150 + 4 × 16 + 10 lane).
-	private const int CARDS_PER_ROW = 5;
-	private int _kbIndex = 0;
-	private Panel pickerRosterScroll;
-	private Panel toolbarRef;
+	private Panel pickerRosterScroll, toolbarRef, modalRef, slotsRef, segRef, ringRef;
+	private BbButton autoFillRef, embarkRef;
 	private FilterBar filterBar;
+	private bool hdrKbFocusStamped;
 
-	// ─── DRAG-DROP STATE ───
-	// _dragSource is the beast currently being dragged (from roster OR a team slot).
-	// _dragFromSlot is the index of the source team slot, or null if dragging from
-	// the roster. _dragHoverSlot drives the drop-target highlight.
-	private Monster _dragSource;
-	private int? _dragFromSlot;
-	private int? _dragHoverSlot;
+	private bool IsLeftStop( int slot ) => _zone == CursorZone.Left && (int)_leftStop == slot;
+	private bool IsLeftStop( LeftStop s ) => _zone == CursorZone.Left && _leftStop == s;
 
+	private void SetLeft( LeftStop s )
+	{
+		_zone = CursorZone.Left;
+		_leftStop = s;
+		if ( s == LeftStop.AutoFill || s == LeftStop.Difficulty ) _controlsMemory = s;
+	}
+
+	/// <summary>Open-edge seed (DOC-5 #12; Show() is reached by mouse and keyboard
+	/// alike): EMBARK when the last run's team came back valid — the fast path is
+	/// one Space — else the grid's first card. Device resets to mouse; the first
+	/// nav key takes it.</summary>
+	private void SeedCursor( bool fromLastRun )
+	{
+		_kbIndex = 0;
+		_headerCursor = 0;
+		_headerReturnZone = CursorZone.Grid;
+		_controlsMemory = LeftStop.Difficulty;
+		_leftStop = LeftStop.Embark;
+		_zone = fromLastRun && CanEmbark() ? CursorZone.Left : CursorZone.Grid;
+		lastInputDevice = InputDevice.Mouse;
+		_kbTakeoverMousePos = new Vector2( -9999f, -9999f );
+		_hoveredKey = null;
+		_denyFlashUntil = -1f;
+		_openEdge = true;
+	}
+
+	// ── Device flag ──────────────────────────────────────────────
+	private void SetInputDevice( InputDevice dev )
+	{
+		if ( lastInputDevice == dev ) return;
+		lastInputDevice = dev;
+		if ( dev == InputDevice.Keyboard )
+		{
+			_kbTakeoverMousePos = Mouse.Position;
+			return;
+		}
+		// The mouse owns the page again: whatever already sits under it is
+		// the cursor (onmouseover only fires on ENTERING an element).
+		SyncCursorToHovered();
+	}
+
+	private void OnRootMouseMove()
+	{
+		if ( IsKbMode && (Mouse.Position - _kbTakeoverMousePos).Length >= 3f )
+			SetInputDevice( InputDevice.Mouse );
+	}
+
+	private void SyncCursorToHovered()
+	{
+		if ( embarkRef != null && embarkRef.HasHovered ) { SetLeft( LeftStop.Embark ); return; }
+		if ( autoFillRef != null && autoFillRef.HasHovered ) { SetLeft( LeftStop.AutoFill ); return; }
+		if ( segRef != null && segRef.HasHovered ) { SetLeft( LeftStop.Difficulty ); return; }
+		for ( int i = 0; i < 3; i++ )
+		{
+			var sp = SlotPanel( i );
+			if ( sp != null && sp.HasHovered ) { SetLeft( (LeftStop)i ); return; }
+		}
+		var cards = CardPanels();
+		for ( int i = 0; i < cards.Count; i++ )
+		{
+			if ( !cards[i].HasHovered ) continue;
+			_zone = CursorZone.Grid;
+			_kbIndex = i;
+			return;
+		}
+	}
+
+	// The two BbButtons expose no page-level onmouseover — poll their hover
+	// per tick in mouse mode (two panels; free). A disabled EMBARK is
+	// pointer-inert, so the mouse can never park the cursor on a dead primary.
+	private void SyncButtonHover()
+	{
+		if ( embarkRef != null && embarkRef.HasHovered && !IsLeftStop( LeftStop.Embark ) ) SetLeft( LeftStop.Embark );
+		else if ( autoFillRef != null && autoFillRef.HasHovered && !IsLeftStop( LeftStop.AutoFill ) ) SetLeft( LeftStop.AutoFill );
+	}
+
+	// ── Hover = the same cursor (mouse mode only) ────────────────
 	private void OnHover( string key )
 	{
+		if ( IsKbMode ) return;
 		if ( _hoveredKey == key ) return;
 		_hoveredKey = key;
 		SoundManager.PlayHover();
 	}
 
-	private void OnCardHover( Guid id )
+	private void OnCardHover( int idx )
 	{
-		if ( _hoveredCardId == id ) return;
-		_hoveredCardId = id;
+		if ( IsKbMode ) return;
+		if ( _zone == CursorZone.Grid && _kbIndex == idx ) return;
+		_zone = CursorZone.Grid;
+		_kbIndex = idx;
 	}
 
-	/// <summary>The beast the FACTS column describes: the hovered card, else
-	/// the keyboard card. Hover == focus (DOC-5 #6); a keyboard move clears
-	/// the hover so the two never fight. LANE: input — device-mode gating.</summary>
+	private void OnSegHover( string key )
+	{
+		OnHover( key );
+		if ( IsKbMode ) return;
+		SetLeft( LeftStop.Difficulty );
+	}
+
+	/// <summary>The beast the FACTS column describes = the beast under the ONE
+	/// cursor: the grid card (hover moves the same index in mouse mode), a filled
+	/// slot when the cursor sits on it, else the first team member, else the grid
+	/// card again. Never null while there is anything to describe.</summary>
 	private Monster GetFocusedBeast( List<Monster> roster )
 	{
-		if ( roster == null || roster.Count == 0 ) return null;
-		if ( _hoveredCardId.HasValue )
+		Monster gridBeast = roster != null && roster.Count > 0 ? roster[Math.Clamp( _kbIndex, 0, roster.Count - 1 )] : null;
+		if ( _zone == CursorZone.Left )
 		{
-			var h = roster.FirstOrDefault( m => m.Id == _hoveredCardId.Value );
-			if ( h != null ) return h;
+			int slot = (int)_leftStop;
+			if ( slot <= 2 && _team[slot] != null ) return _team[slot];
+			return _team.FirstOrDefault( t => t != null ) ?? gridBeast;
 		}
-		return roster[Math.Clamp( _kbIndex, 0, roster.Count - 1 )];
+		return gridBeast ?? _team.FirstOrDefault( t => t != null );
 	}
 
-	// LANE: input — the header cursor graph (ELEMENT · SORT · dir · BACK).
-	// The FilterBar calls this on A/D from an OPEN menu; the Bag's
-	// OnFilterBarSideStep (InventoryPanel.razor:1872) is the recipe.
-	private void OnFilterBarSideStep( Panel trigger, int dir ) { }
+	// ── Geometry (live Box.Rects — the graph encodes what is ON SCREEN, DOC-5 #21) ──
+	private static Rect? PanelRect( Panel p ) => p == null || p.Box.Rect.Width < 1f ? (Rect?)null : p.Box.Rect;
+	private static float CenterY( Rect r ) => (r.Top + r.Bottom) * 0.5f;
+
+	private Panel SlotPanel( int i )
+	{
+		if ( slotsRef == null ) return null;
+		int n = 0;
+		foreach ( var c in slotsRef.Children )
+		{
+			if ( !c.HasClass( "tp-slot" ) ) continue;
+			if ( n == i ) return c;
+			n++;
+		}
+		return null;
+	}
+
+	private List<Panel> CardPanels() => pickerRosterScroll == null
+		? new List<Panel>()
+		: pickerRosterScroll.Children.Where( c => c.HasClass( "tp-card" ) ).ToList();
+
+	private Panel LeftStopPanel( LeftStop s ) => s switch
+	{
+		LeftStop.AutoFill => autoFillRef,
+		LeftStop.Difficulty => segRef,
+		LeftStop.Embark => embarkRef,
+		_ => SlotPanel( (int)s )
+	};
+
+	private Rect? LeftStopRect( LeftStop s ) => PanelRect( LeftStopPanel( s ) );
+
+	// A off the grid's first column → the LEFT stop nearest by Y. The 44 row
+	// is represented by NORMAL|HARD (its grid-side half); AUTO-FILL is one A
+	// further.
+	private void EnterLeftNearest( Rect? from )
+	{
+		LeftStop best = LeftStop.Slot0;
+		float bestD = float.MaxValue;
+		if ( from.HasValue )
+		{
+			float y = CenterY( from.Value );
+			foreach ( var s in new[] { LeftStop.Slot0, LeftStop.Slot1, LeftStop.Slot2, LeftStop.Difficulty, LeftStop.Embark } )
+			{
+				var r = LeftStopRect( s );
+				if ( r == null ) continue;
+				float d = MathF.Abs( CenterY( r.Value ) - y );
+				if ( d < bestD ) { bestD = d; best = s; }
+			}
+		}
+		SetLeft( best );
+		SoundManager.PlayHover();
+	}
+
+	// D off a LEFT stop → the grid's first-column card nearest by Y among the
+	// cards INSIDE the viewport (a scrolled-away row is not on screen).
+	private void EnterGridNearest( Rect? from )
+	{
+		var cards = CardPanels();
+		if ( cards.Count == 0 ) { SoundManager.PlayDeny(); return; }
+		int best = 0;
+		float bestD = float.MaxValue;
+		if ( from.HasValue && pickerRosterScroll != null )
+		{
+			var gr = pickerRosterScroll.Box.Rect;
+			float y = CenterY( from.Value );
+			for ( int i = 0; i < cards.Count; i += CARDS_PER_ROW )
+			{
+				var r = cards[i].Box.Rect;
+				if ( r.Height < 1f || r.Top < gr.Top - 14f || r.Bottom > gr.Bottom + 14f ) continue;
+				float d = MathF.Abs( CenterY( r ) - y );
+				if ( d < bestD ) { bestD = d; best = i; }
+			}
+		}
+		_zone = CursorZone.Grid;
+		_kbIndex = best;
+		RequestScrollFollow();
+		SoundManager.PlayHover();
+	}
+
+	// ── HEADER zone — measured by class at the page layer (the Bag's
+	// CollectHeaderControls recipe): the FilterBar's two triggers + the
+	// direction toggle. BACK is a Q cap, not a stop.
+	private List<Panel> CollectHeaderControls()
+	{
+		var outList = new List<Panel>();
+		if ( toolbarRef != null ) CollectHeaderControlsRec( toolbarRef, outList );
+		return outList;
+	}
+
+	private static void CollectHeaderControlsRec( Panel root, List<Panel> outList )
+	{
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( "dropdown-btn" ) || c.HasClass( "sort-direction-btn" ) )
+			{
+				outList.Add( c );
+				continue;
+			}
+			CollectHeaderControlsRec( c, outList );
+		}
+	}
+
+	private void EnterHeader( CursorZone from )
+	{
+		var hdr = CollectHeaderControls();
+		if ( hdr.Count == 0 ) return;
+		_headerReturnZone = from;
+		_zone = CursorZone.Header;
+		_headerCursor = Math.Clamp( _headerCursor, 0, hdr.Count - 1 );
+		if ( from == CursorZone.Grid ) gridScrollGlideTarget = 0f; // leaving upward glides the grid to its top (DOC-5 #13)
+		SoundManager.PlayHover();
+	}
+
+	private void LeaveHeaderDown()
+	{
+		_zone = _headerReturnZone;
+		if ( _zone == CursorZone.Left ) _leftStop = LeftStop.Slot0; // the only LEFT → header route is off slot 0
+		else RequestScrollFollow();
+		SoundManager.PlayHover();
+	}
+
+	private void HandleHeaderKeys( int dir, bool confirm )
+	{
+		var hdr = CollectHeaderControls();
+		if ( hdr.Count == 0 ) { _zone = _headerReturnZone; return; }
+		_headerCursor = Math.Clamp( _headerCursor, 0, hdr.Count - 1 );
+		if ( confirm )
+		{
+			// Exactly what a click does: a menu opens (its Toggle seeds the row
+			// cursor; FilterBar.HandleKeyboard owns the keys from the next tick),
+			// the direction toggle flips.
+			hdr[_headerCursor].CreateEvent( "onclick" );
+			SoundManager.PlayClick();
+			return;
+		}
+		switch ( dir )
+		{
+			case 2: if ( _headerCursor > 0 ) { _headerCursor--; SoundManager.PlayHover(); } return;
+			case 3: if ( _headerCursor < hdr.Count - 1 ) { _headerCursor++; SoundManager.PlayHover(); } return;
+			case 1: LeaveHeaderDown(); return;
+			case 0: return; // the header is the modal's top edge (silent)
+		}
+	}
+
+	// A/D inside an OPEN FilterBar menu (FilterBar.OnKbSideStep): the menu has
+	// closed; hop the header cursor to the trigger's neighbour. Menubar
+	// convention: a neighbouring dropdown OPENS (ELEMENT ↔ SORT browse with
+	// A/D alone); the direction toggle just takes the cursor.
+	private void OnFilterBarSideStep( Panel trigger, int dir )
+	{
+		var hdr = CollectHeaderControls();
+		if ( hdr.Count == 0 ) return;
+		int from = trigger != null ? hdr.IndexOf( trigger ) : -1;
+		if ( from < 0 ) from = Math.Clamp( _headerCursor, 0, hdr.Count - 1 );
+		int to = Math.Clamp( from + dir, 0, hdr.Count - 1 );
+		SetInputDevice( InputDevice.Keyboard );
+		if ( _zone != CursorZone.Header ) _headerReturnZone = _zone;
+		_zone = CursorZone.Header;
+		_headerCursor = to;
+		if ( to != from && hdr[to].HasClass( "dropdown-btn" ) ) hdr[to].CreateEvent( "onclick" );
+		else SoundManager.PlayHover();
+	}
+
+	// KB-FOCUSED LOOK = THE HOVER LOOK on the header (no ring there), stamped
+	// IMPERATIVELY every tick — a FilterBar re-render rewrites the class
+	// attribute, so a one-shot stamp would be wiped (the Bag's recipe).
+	// Cleared from every chip on index change, zone leave, close, mouse mode.
+	private void SyncHeaderKbFocus()
+	{
+		bool active = IsVisible && IsKbMode && _zone == CursorZone.Header;
+		if ( !active && !hdrKbFocusStamped ) return;
+		var ctrls = CollectHeaderControls();
+		bool any = false;
+		for ( int i = 0; i < ctrls.Count; i++ )
+		{
+			bool on = active && i == _headerCursor;
+			ctrls[i].SetClass( "kb-focused", on );
+			any |= on;
+		}
+		hdrKbFocusStamped = any;
+	}
+
+	// ── LEFT zone ────────────────────────────────────────────────
+	private void HandleLeftKeys( int dir, bool confirm )
+	{
+		var stop = _leftStop;
+		if ( confirm )
+		{
+			switch ( stop )
+			{
+				case LeftStop.Slot0:
+				case LeftStop.Slot1:
+				case LeftStop.Slot2:
+				{
+					int s = (int)stop;
+					if ( _team[s] != null ) { _team[s] = null; SoundManager.PlayClick(); }
+					else EnterGridNearest( LeftStopRect( stop ) ); // PICK A BEAST — walk to the roster
+					return;
+				}
+				case LeftStop.AutoFill: AutoFill(); return;
+				case LeftStop.Difficulty: SetHardMode( !_hardMode ); return; // denies itself when HARD is locked
+				case LeftStop.Embark: TryEmbark(); return;
+			}
+		}
+		switch ( dir )
+		{
+			case 0: // W
+				switch ( stop )
+				{
+					case LeftStop.Slot0: EnterHeader( CursorZone.Left ); return;
+					case LeftStop.Slot1: SetLeft( LeftStop.Slot0 ); break;
+					case LeftStop.Slot2: SetLeft( LeftStop.Slot1 ); break;
+					case LeftStop.AutoFill:
+					case LeftStop.Difficulty: SetLeft( LeftStop.Slot2 ); break;
+					case LeftStop.Embark: SetLeft( _controlsMemory ); break;
+				}
+				SoundManager.PlayHover();
+				return;
+			case 1: // S
+				switch ( stop )
+				{
+					case LeftStop.Slot0: SetLeft( LeftStop.Slot1 ); break;
+					case LeftStop.Slot1: SetLeft( LeftStop.Slot2 ); break;
+					case LeftStop.Slot2: SetLeft( _controlsMemory ); break;
+					case LeftStop.AutoFill:
+					case LeftStop.Difficulty: SetLeft( LeftStop.Embark ); break;
+					default: return; // EMBARK is the column's foot (silent)
+				}
+				SoundManager.PlayHover();
+				return;
+			case 2: // A — the column is the modal's left edge; only the segment reacts
+				if ( stop == LeftStop.Difficulty )
+				{
+					if ( _hardMode ) SetHardMode( false );
+					else { SetLeft( LeftStop.AutoFill ); SoundManager.PlayHover(); }
+				}
+				return;
+			case 3: // D
+				if ( stop == LeftStop.AutoFill ) { SetLeft( LeftStop.Difficulty ); SoundManager.PlayHover(); return; }
+				if ( stop == LeftStop.Difficulty && !_hardMode && IsHardUnlocked() ) { SetHardMode( true ); return; }
+				EnterGridNearest( LeftStopRect( stop ) );
+				return;
+		}
+	}
+
+	// ── GRID zone ────────────────────────────────────────────────
+	private void HandleGridKeys( int dir, bool confirm, List<Monster> roster )
+	{
+		int n = roster.Count;
+		if ( n == 0 )
+		{
+			// Empty under a filter: W → header (R cycles from there too), A → the
+			// LEFT column; the rest is silent, confirm denies.
+			if ( dir == 0 ) EnterHeader( CursorZone.Grid );
+			else if ( dir == 2 ) EnterLeftNearest( PanelRect( pickerRosterScroll ) );
+			else if ( confirm ) SoundManager.PlayDeny();
+			return;
+		}
+		_kbIndex = Math.Clamp( _kbIndex, 0, n - 1 );
+		if ( confirm ) { OnRosterCardClicked( roster[_kbIndex] ); return; }
+
+		int col = _kbIndex % CARDS_PER_ROW;
+		int row = _kbIndex / CARDS_PER_ROW;
+		int lastRow = (n - 1) / CARDS_PER_ROW;
+		int prev = _kbIndex;
+		switch ( dir )
+		{
+			case 0: // W
+				if ( row > 0 ) _kbIndex -= CARDS_PER_ROW;
+				else { EnterHeader( CursorZone.Grid ); return; }
+				break;
+			case 1: // S — the last row is the grid's foot (silent; nothing below)
+				if ( row < lastRow ) _kbIndex = Math.Min( n - 1, _kbIndex + CARDS_PER_ROW );
+				break;
+			case 2: // A
+				if ( col > 0 ) _kbIndex--;
+				else { EnterLeftNearest( PanelRect( CardPanels().ElementAtOrDefault( _kbIndex ) ) ); return; }
+				break;
+			case 3: // D — column 4 is the grid's right edge; FACTS is display-only (silent)
+				if ( col < CARDS_PER_ROW - 1 && _kbIndex + 1 < n ) _kbIndex++;
+				break;
+		}
+		if ( _kbIndex != prev )
+		{
+			SoundManager.PlayHover();
+			RequestScrollFollow();
+		}
+	}
+
+	// ── EMBARK by key — deny + the reason on the label for 1.2s ──
+	private float _denyFlashUntil = -1f;
+	private bool EmbarkDenying => RealTime.Now < _denyFlashUntil;
+	private string EmbarkClass() => EmbarkDenying ? "tp-embark deny" : "tp-embark";
+
+	private void TryEmbark()
+	{
+		if ( !CanEmbark() )
+		{
+			_denyFlashUntil = RealTime.Now + 1.2f;
+			SoundManager.PlayDeny();
+			return;
+		}
+		OnEmbarkClicked();
+	}
+
+	// ── The key map (gated on the top modal by Tick) ─────────────
+	private void TickInput()
+	{
+		bool menuOpen = filterBar != null && filterBar.IsAnyDropdownOpen;
+
+		// R = element cycle (the shown cycle key); Z/X (CyclePrev/Next) the
+		// silent twins. An open menu closes first — the chip then shows the result.
+		if ( Input.Pressed( "Reload" ) ) { SetInputDevice( InputDevice.Keyboard ); if ( menuOpen ) filterBar.CloseAllDropdowns(); CycleElementFilter( 1 ); return; }
+		if ( Input.Pressed( "CyclePrev" ) ) { SetInputDevice( InputDevice.Keyboard ); if ( menuOpen ) filterBar.CloseAllDropdowns(); CycleElementFilter( -1 ); return; }
+		if ( Input.Pressed( "CycleNext" ) ) { SetInputDevice( InputDevice.Keyboard ); if ( menuOpen ) filterBar.CloseAllDropdowns(); CycleElementFilter( 1 ); return; }
+
+		// An OPEN FilterBar menu owns W/S/Space/Q/A/D (Q closes the menu first
+		// and claims PanelHandledBackKey inside HandleKeyboard).
+		if ( menuOpen && filterBar.HandleKeyboard() ) { SetInputDevice( InputDevice.Keyboard ); return; }
+
+		// Q = close the picker (claimed so GameHUD never doubles it). Escape /
+		// Shift are the shell's pre-existing pair — kept, not new bindings.
+		if ( Input.Pressed( "Menu" ) || Input.Pressed( "Escape" ) || Input.Pressed( "run" ) )
+		{
+			if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+			SoundManager.PlayBack();
+			Close();
+			return;
+		}
+
+		// F = Auto-fill, C = Clear. Flashlight/View are the engine actions
+		// bound to the F and C keys — reused here; GameHUD ignores them while
+		// a modal is open, so there's no collision.
+		if ( Input.Pressed( "Flashlight" ) ) { SetInputDevice( InputDevice.Keyboard ); AutoFill(); return; }
+		if ( Input.Pressed( "View" ) ) { SetInputDevice( InputDevice.Keyboard ); ClearTeam(); return; }
+
+		// 1 / 2 / 3 — preset slots: load if the slot holds a team, else save
+		// the current team into it (deny if there's nothing to save). The
+		// preset BUTTONS were cut in run 1; the keys still work.
+		for ( int p = 0; p < 3; p++ )
+		{
+			if ( !Input.Pressed( "Slot" + (p + 1) ) ) continue;
+			SetInputDevice( InputDevice.Keyboard );
+			var preset = GetPreset( p );
+			bool slotHasData = preset != null && preset.MonsterIds.Count > 0;
+			if ( slotHasData ) LoadPreset( p );
+			else if ( _team.Any( t => t != null ) ) SavePreset( p );
+			else SoundManager.PlayDeny();
+			return;
+		}
+
+		int dir = -1; // 0 up · 1 down · 2 left · 3 right
+		if ( Input.Pressed( "Up" ) ) dir = 0;
+		else if ( Input.Pressed( "Down" ) ) dir = 1;
+		else if ( Input.Pressed( "Left" ) ) dir = 2;
+		else if ( Input.Pressed( "Right" ) ) dir = 3;
+		bool confirm = UiInput.ConfirmPressed(); // Space advertised · Enter / E silent twins
+		if ( dir < 0 && !confirm ) return;
+
+		SetInputDevice( InputDevice.Keyboard );
+		switch ( _zone )
+		{
+			case CursorZone.Header: HandleHeaderKeys( dir, confirm ); break;
+			case CursorZone.Left: HandleLeftKeys( dir, confirm ); break;
+			default: HandleGridKeys( dir, confirm, GetFilteredMonsters() ); break;
+		}
+	}
+
+	// ── THE LIVING RING — one costume (every host is r16 → r26) ──
+	private int ringL, ringT, ringW, ringH;
+	private bool ringVisible;
+	private int ringWarm;
+	private const int RingInset = 10; // host r16 + 10 → ring r26
+
+	private string RingClass() => "tp-ring " + (ringVisible ? "on " : "") + (ringWarm < 2 ? "snap" : "");
+
+	private Rect? ResolveRingHost()
+	{
+		if ( filterBar != null && filterBar.IsAnyDropdownOpen ) return null; // the menu owns the keys — no second cursor under it
+		switch ( _zone )
+		{
+			case CursorZone.Header: return null; // the header wears `.kb-focused`
+			case CursorZone.Left: return LeftStopRect( _leftStop );
+			default:
+			{
+				if ( pickerRosterScroll == null ) return null;
+				var gr = pickerRosterScroll.Box.Rect;
+				if ( gr.Width < 2f ) return null;
+				var card = CardPanels().ElementAtOrDefault( _kbIndex );
+				if ( card == null ) return null;
+				var r = card.Box.Rect;
+				// Scrolled out of the viewport → self-hide (a scroll never clips the ring).
+				if ( r.Width < 2f || r.Top < gr.Top - 14f || r.Bottom > gr.Bottom + 14f ) return null;
+				return r;
+			}
+		}
+	}
+
+	private void UpdateRing()
+	{
+		bool wasVisible = ringVisible;
+		ringVisible = false;
+		if ( !IsVisible || modalRef == null ) return;
+		var mr = modalRef.Box.Rect;
+		if ( mr.Width < 2f ) return;
+		var host = ResolveRingHost();
+		if ( host == null ) return;
+		var cr = host.Value;
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		// RING CENTERING LAW: Style.Left/Top place the PADDING box and the 4px
+		// border draws outside it → L/T = host − inset + 4, W/H = host + 2·inset − 8.
+		ringL = (int)((cr.Left - mr.Left) * sc) - RingInset + 4;
+		ringT = (int)((cr.Top - mr.Top) * sc) - RingInset + 4;
+		ringW = (int)(cr.Width * sc) + RingInset * 2 - 8;
+		ringH = (int)(cr.Height * sc) + RingInset * 2 - 8;
+
+		ringVisible = true;
+		if ( !wasVisible ) ringWarm = 0;
+		else if ( ringWarm < 2 ) ringWarm++;
+	}
+
+	// LANE: motion owns the wave's character — the hub numbers verbatim.
+	private void ApplyRingWave()
+	{
+		if ( ringRef == null || !ringVisible ) return;
+		float wt = Time.Now;
+		float skX = (2.0f * MathF.Sin( wt * 2.2f ) + 0.7f * MathF.Sin( wt * 3.5f + 1.1f )) * 0.6f;
+		float skY = (2.3f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.9f * MathF.Sin( wt * 2.9f )) * 0.6f;
+		float rotZ = (1.1f * MathF.Sin( wt * 1.0f ) + 0.5f * MathF.Sin( wt * 2.4f + 0.5f )) * 0.6f;
+		float brX = 1f + 0.013f * MathF.Sin( wt * 1.35f + 0.7f ) + 0.006f * MathF.Sin( wt * 2.7f );
+		float brY = 1f + 0.013f * MathF.Sin( wt * 1.15f + 2.6f ) + 0.006f * MathF.Sin( wt * 2.3f + 1.4f );
+
+		var t = new PanelTransform();
+		t.AddRotation( 0f, 0f, rotZ );
+		t.AddSkew( skX, skY, 0f );
+		t.AddScale( new Vector2( brX, brY ) );
+		ringRef.Style.Transform = t;
+	}
+
+	// ── KB SCROLL-FOLLOW — the Bag's glide recipe (DOC-5 #13): endpoint
+	// rows scroll fully to top / bottom, the middle keeps the card in view;
+	// a 0.30/frame exponential glide, retried until the card has a rect.
+	private bool _scrollFollowPending;
+	private int _scrollFollowFrames;
+	private float gridScrollGlideTarget = -1f;
+
+	private void RequestScrollFollow() { _scrollFollowPending = true; _scrollFollowFrames = 0; }
+
+	private void UpdateScrollFollow()
+	{
+		if ( pickerRosterScroll == null ) return;
+		if ( _scrollFollowPending )
+		{
+			if ( ++_scrollFollowFrames > 12 || _zone != CursorZone.Grid ) _scrollFollowPending = false;
+			var cards = CardPanels();
+			if ( _zone == CursorZone.Grid && _kbIndex >= 0 && _kbIndex < cards.Count && cards[_kbIndex].Box.Rect.Height > 1f )
+			{
+				_scrollFollowPending = false;
+				int row = _kbIndex / CARDS_PER_ROW;
+				int lastRow = (cards.Count - 1) / CARDS_PER_ROW;
+				float curOff = pickerRosterScroll.ScrollOffset.y;
+				float? t;
+				if ( row == 0 ) t = curOff > 0.5f ? 0f : null;
+				else if ( row == lastRow )
+				{
+					float max = Math.Max( 0f, pickerRosterScroll.ScrollSize.y );
+					t = Math.Abs( max - curOff ) > 0.5f ? max : null;
+				}
+				else t = UiGridScroll.ComputeOffset( pickerRosterScroll, cards[_kbIndex] );
+				if ( t.HasValue ) gridScrollGlideTarget = t.Value;
+			}
+		}
+
+		if ( gridScrollGlideTarget < 0f ) return;
+		float now = pickerRosterScroll.ScrollOffset.y;
+		float delta = gridScrollGlideTarget - now;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			pickerRosterScroll.ScrollOffset = new Vector2( pickerRosterScroll.ScrollOffset.x, gridScrollGlideTarget );
+			gridScrollGlideTarget = -1f;
+			return;
+		}
+		pickerRosterScroll.ScrollOffset = new Vector2( pickerRosterScroll.ScrollOffset.x, now + delta * 0.30f );
+	}
+
+	// ── dev_picker [expeditionId] — open the picker from the console so the
+	// session can screenshot it without clicking the map. Default = the
+	// frontier zone (the last one CanStartExpedition allows), else the first.
+	// The picker mounts under the world map: open the EXPEDITION tab first.
+	[ConCmd( "dev_picker" )]
+	public static void DevPicker( string expeditionId = null )
+	{
+		var em = ExpeditionManager.Instance;
+		if ( em == null ) { Log.Warning( "[dev_picker] ExpeditionManager is not up." ); return; }
+		if ( string.IsNullOrWhiteSpace( expeditionId ) )
+		{
+			Expedition pick = null;
+			foreach ( var e in em.Expeditions ) if ( em.CanStartExpedition( e.Id ) ) pick = e;
+			pick ??= em.Expeditions.FirstOrDefault();
+			expeditionId = pick?.Id;
+		}
+		if ( string.IsNullOrEmpty( expeditionId ) || em.GetExpedition( expeditionId ) == null )
+		{
+			Log.Warning( $"[dev_picker] unknown expedition '{expeditionId}'. Known: {string.Join( ", ", em.Expeditions.Select( e => e.Id ) )}" );
+			return;
+		}
+		if ( Instance == null )
+		{
+			Log.Warning( "[dev_picker] the picker is not mounted — open the EXPEDITION tab (world map) first." );
+			return;
+		}
+		Show( expeditionId );
+		Log.Info( $"[dev_picker] opened on '{expeditionId}' · cursor={Instance._zone}/{(Instance._zone == CursorZone.Left ? Instance._leftStop.ToString() : Instance._kbIndex.ToString())}" );
+	}
+
 
 	// Mouse wheel — scales the hovered slot's sprite when in slot-edit mode.
 	public override void OnMouseWheel( Vector2 delta )
@@ -836,7 +1501,7 @@
 			// pre-fill now that the instance exists.
 			if ( IsVisible && !string.IsNullOrEmpty( PendingExpeditionId ) )
 			{
-				PreFillTeam( PendingExpeditionId );
+				SeedCursor( PreFillTeam( PendingExpeditionId ) );
 			}
 		}
 	}
@@ -851,11 +1516,9 @@
 		IsVisible = true;
 		if ( Instance != null )
 		{
-			Instance._hoveredKey = null;
-			Instance._hoveredCardId = null;
-			Instance._kbIndex = 0;
 			Instance._hardMode = false; // difficulty re-arms per open
-			Instance.PreFillTeam( expeditionId );
+			bool fromLastRun = Instance.PreFillTeam( expeditionId );
+			Instance.SeedCursor( fromLastRun ); // EMBARK when the last run's team is back and valid, else card 0
 			Instance.NotifyTutorialIfTeamPopulated();
 		}
 		SoundManager.PlayPopup();
@@ -867,6 +1530,9 @@
 		if ( Instance != null )
 		{
 			Instance._hoveredKey = null;
+			Instance.ringVisible = false;
+			Instance.gridScrollGlideTarget = -1f;
+			Instance._scrollFollowPending = false;
 			Instance.filterBar?.CloseAllDropdowns();
 		}
 		SoundManager.PlayPopdown();
@@ -875,85 +1541,28 @@
 	public override void Tick()
 	{
 		base.Tick();
-		if ( !IsVisible ) return;
-		if ( !UIModalState.IsTopModal( "TeamPickerPopup" ) ) return;
+		if ( !IsVisible ) { ringVisible = false; return; }
 
-		// LANE: input — the whole key map below is the run-0 binding kept
-		// alive as a stopgap; the cursor graph (slots ⇄ grid ⇄ header ⇄
-		// EMBARK, one ring) replaces it. Two changes landed here so the
-		// header's R CYCLE cap tells the truth: R cycles the element (was
-		// embark) and Enter embarks (was a second pick key).
-
-		// An OPEN FilterBar menu owns W/S/Space/Q/A/D.
-		if ( filterBar != null && filterBar.IsAnyDropdownOpen && filterBar.HandleKeyboard() ) return;
-
-		// Back / close.
-		if ( Input.Pressed( "Escape" ) || Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
+		// OPEN EDGE (DOC-5 #12) — the refs exist now: the roster starts at its
+		// top and the ring lands (no glide) on the seeded stop.
+		if ( _openEdge )
 		{
-			Close();
-			return;
+			_openEdge = false;
+			if ( pickerRosterScroll != null ) pickerRosterScroll.ScrollOffset = new Vector2( 0f, 0f );
+			gridScrollGlideTarget = -1f;
+			_scrollFollowPending = false;
+			ringWarm = 0;
 		}
 
-		// R = element cycle (the shown cycle key); Z/X (CyclePrev/Next) stay
-		// the silent twins.
-		if ( Input.Pressed( "reload" ) ) { CycleElementFilter( 1 ); return; }
-		if ( Input.Pressed( "CyclePrev" ) ) { CycleElementFilter( -1 ); return; }
-		if ( Input.Pressed( "CycleNext" ) ) { CycleElementFilter( 1 ); return; }
+		// LANE: input — the key map lives in TickInput; only the TOP modal reads
+		// keys (a ConfirmDialog over the picker owns them while it is up).
+		if ( UIModalState.IsTopModal( "TeamPickerPopup" ) ) TickInput();
 
-		// Enter embarks (OnEmbarkClicked self-guards on CanEmbark).
-		if ( Input.Pressed( "Enter" ) )
-		{
-			OnEmbarkClicked();
-			return;
-		}
-
-		// F = Auto-fill, C = Clear. Flashlight/View are the engine actions
-		// bound to the F and C keys — reused here; GameHUD ignores them while
-		// a modal is open, so there's no collision.
-		if ( Input.Pressed( "Flashlight" ) ) { AutoFill(); StateHasChanged(); return; }
-		if ( Input.Pressed( "View" ) ) { ClearTeam(); StateHasChanged(); return; }
-
-		// 1 / 2 / 3 — preset slots: load if the slot holds a team, else save
-		// the current team into it (deny if there's nothing to save). The
-		// preset BUTTONS were cut in run 1; the keys still work.
-		for ( int p = 0; p < 3; p++ )
-		{
-			if ( !Input.Pressed( "Slot" + ( p + 1 ) ) ) continue;
-			var preset = GetPreset( p );
-			bool slotHasData = preset != null && preset.MonsterIds.Count > 0;
-			if ( slotHasData ) LoadPreset( p );
-			else if ( _team.Any( t => t != null ) ) SavePreset( p );
-			else SoundManager.PlayDeny();
-			StateHasChanged();
-			return;
-		}
-
-		var roster = GetFilteredMonsters();
-		if ( roster.Count == 0 ) return;
-		_kbIndex = Math.Clamp( _kbIndex, 0, roster.Count - 1 );
-
-		// Space picks / un-picks the highlighted beast.
-		if ( Input.Pressed( "Jump" ) )
-		{
-			OnRosterCardClicked( roster[_kbIndex] );
-			StateHasChanged();
-			return;
-		}
-
-		int prev = _kbIndex;
-		if ( Input.Pressed( "Left" ) ) _kbIndex = Math.Max( 0, _kbIndex - 1 );
-		else if ( Input.Pressed( "Right" ) ) _kbIndex = Math.Min( roster.Count - 1, _kbIndex + 1 );
-		else if ( Input.Pressed( "Up" ) ) { if ( _kbIndex >= CARDS_PER_ROW ) _kbIndex -= CARDS_PER_ROW; }
-		else if ( Input.Pressed( "Down" ) ) _kbIndex = Math.Min( roster.Count - 1, _kbIndex + CARDS_PER_ROW );
-
-		if ( _kbIndex != prev )
-		{
-			SoundManager.PlayHover();
-			_hoveredCardId = null; // the keyboard owns focus now (one cursor)
-			// Cards are DIRECT children of the scroll grid — scroll by card index.
-			UiGridScroll.ScrollIndexIntoView( pickerRosterScroll, _kbIndex, "tp-card" );
-			StateHasChanged();
-		}
+		if ( !IsKbMode ) SyncButtonHover();
+		SyncHeaderKbFocus();
+		UpdateScrollFollow();
+		UpdateRing();
+		ApplyRingWave();
 	}
 
 	/// <summary>
@@ -961,13 +1570,15 @@
 	/// 1. The last team used for this zone (from save data)
 	/// 2. ExpeditionManager.SelectedTeam (persisted across in-session clicks)
 	/// 3. Auto-pick: first 3 healthy beasts sorted by power
-	/// All picks skip fainted beasts regardless of source.
+	/// All picks skip fainted beasts regardless of source. Returns true when
+	/// source 1 (the last run's team) filled at least one slot — the cursor
+	/// then opens on EMBARK (one Space re-runs the zone).
 	/// </summary>
-	private void PreFillTeam( string zoneId )
+	private bool PreFillTeam( string zoneId )
 	{
 		_team = new() { null, null, null };
 		var mm = MonsterManager.Instance;
-		if ( mm == null ) return;
+		if ( mm == null ) return false;
 
 		// 1) Last-team-per-zone
 		var lastIds = GetSaveData()?.LastTeamPerZone?.TryGetValue( zoneId, out var ids ) == true ? ids : null;
@@ -981,7 +1592,7 @@
 				if ( m == null || m.CurrentHP <= 0 ) continue;
 				_team[slot++] = m;
 			}
-			if ( _team.Any( t => t != null ) ) return;
+			if ( _team.Any( t => t != null ) ) return true;
 		}
 
 		// 2) Current SelectedTeam (alive)
@@ -991,11 +1602,12 @@
 		if ( current.Count > 0 )
 		{
 			for ( int i = 0; i < Math.Min( 3, current.Count ); i++ ) _team[i] = current[i];
-			return;
+			return false;
 		}
 
 		// 3) Auto-pick best
 		AutoFill();
+		return false;
 	}
 
 	/// <summary>
@@ -1032,19 +1644,16 @@
 			return;
 		}
 
-		// Otherwise, add to first empty slot. If full, swap into slot 0 (most
-		// recent becomes slot 0; others shift). Keeps the click always useful.
+		// Otherwise, add to the first empty slot. A FULL team denies (LANE:
+		// input 2026-09-04 — one honest rule for click and Space alike: un-pick
+		// a card or a slot first; the run-0 silent swap-into-slot-0 is gone).
 		int empty = _team.FindIndex( t => t == null );
-		if ( empty >= 0 )
+		if ( empty < 0 )
 		{
-			_team[empty] = m;
+			SoundManager.PlayDeny();
+			return;
 		}
-		else
-		{
-			_team[2] = _team[1];
-			_team[1] = _team[0];
-			_team[0] = m;
-		}
+		_team[empty] = m;
 		SoundManager.PlayClick();
 
 		// Tutorial: notify that a beast was added to the team.
@@ -1091,6 +1700,7 @@
 	private void OnSlotMouseOver( int idx )
 	{
 		OnHover( "slot-" + idx );
+		if ( !IsKbMode && idx >= 0 && idx < 3 ) SetLeft( (LeftStop)idx ); // hover = the same cursor (DOC-5 #6)
 		if ( _dragSource == null ) return;
 		_dragHoverSlot = idx;
 	}
@@ -1231,7 +1841,7 @@
 	// FILTER / SORT  (mirrors MonsterRosterPanel wiring)
 	// ═══════════════════════════════════════════════════════════════
 
-	private void OnElementChanged( string e ) { _currentFilter = e; _kbIndex = 0; _hoveredCardId = null; SoundManager.PlayClick(); }
+	private void OnElementChanged( string e ) { _currentFilter = e; _kbIndex = 0; if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); }
 
 	// Element-filter cycle order for R (and the Z/X twins).
 	private static readonly string[] _elementFilterCycle =
@@ -1244,8 +1854,8 @@
 		i = ( i + dir + _elementFilterCycle.Length ) % _elementFilterCycle.Length;
 		OnElementChanged( _elementFilterCycle[i] );
 	}
-	private void OnSortChanged( string s ) { _currentSort = s; SoundManager.PlayClick(); }
-	private void OnSortDirectionChanged( bool asc ) { _sortAscending = asc; SoundManager.PlayClick(); }
+	private void OnSortChanged( string s ) { _currentSort = s; _kbIndex = 0; if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); }
+	private void OnSortDirectionChanged( bool asc ) { _sortAscending = asc; _kbIndex = 0; if ( _zone == CursorZone.Grid ) RequestScrollFollow(); SoundManager.PlayClick(); }
 
 	// Copy of MonsterRosterPanel.GetFilteredMonsters (trimmed: no fusion/beastiary
 	// modes, no name search) so filtering/sort behaviour reads identical.
@@ -1414,8 +2024,16 @@
 			h.Add( t?.Id ?? Guid.Empty );
 			h.Add( t?.CurrentHP ?? -1 ); // slot HP bar + KO badge
 		}
-		h.Add( _hoveredCardId ?? Guid.Empty ); // facts column follows the cursor
+		// LANE: input — the one cursor (facts column + `.focused` + ring follow it)
+		h.Add( lastInputDevice );
+		h.Add( _zone );
 		h.Add( _kbIndex );
+		h.Add( _leftStop );
+		h.Add( _headerCursor );
+		h.Add( ringVisible );
+		h.Add( ringWarm );
+		h.Add( ringL ); h.Add( ringT ); h.Add( ringW ); h.Add( ringH );
+		h.Add( EmbarkDenying );
 		h.Add( _hardMode );
 		h.Add( IsHardUnlocked() );
 		h.Add( _dragSource?.Id ?? Guid.Empty );
