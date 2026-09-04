@@ -372,8 +372,8 @@ GuildPanel {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 6px;
-			max-height: 160px;
-			overflow-y: scroll;
+			// max-height + overflow-y CUT (audit closeout) — a nested wrap-scroll
+			// inside .gb-detail-host (itself the slab's scroll child) leaked.
 		}
 
 		.detail-member-chip {
@@ -5614,7 +5614,15 @@ GuildPanel {
 		letter-spacing: 0.5px;
 	}
 
-	.gp-title-row.sm .gp-seam { margin-top: 10px; } // AUDIT run 3: the hub .oh-seam value — same 38/44 title, align-items:center shifts the seam by margin/2 whatever the row height, so 10 = hub parity by derivation (14 sat 2px low)
+	// Row pinned to the 38/44 line box (audit closeout): the column is 90 =
+	// pad-top offset 10 → kicker 14 + 2 + row 44 → title at y 26–70, the
+	// hub's exact seat (the 74 row centred the 44 box at y 41–85 — 15 low).
+	.gp-title-row.sm {
+		height: 44px;
+		flex: 0 0 44px;
+	}
+
+	.gp-title-row.sm .gp-seam { margin-top: 10px; } // AUDIT run 3: the hub .oh-seam value — same 38/44 title, align-items:center shifts the seam by margin/2 whatever the row height (44 now = the hub's own row), so 10 = hub parity exactly
 
 	// Sort chip ACTIVE — the FilterBar two-tone in the page blue (the hub
 	// .hb-seg.on recipe on the house rounded chip).
@@ -5642,12 +5650,25 @@ GuildPanel {
 		pointer-events: none;
 	}
 
-	// ═══ LANDING ═══ body pad 20/40/20/40 → lane 1840 × 928; two slabs
-	// top-aligned (912 + 16 + 912).
+	// ═══ LANDING ═══ body pad 20/40/20/40 → lane 1840 × 928, a COLUMN:
+	//   .gl-pair 1840 × leftH  (the two slabs, row, 912 + 16 + 912)
+	//   gap 16
+	//   .gl-rec  1840 × (928 − 16 − leftH)   RECRUITING NOW (dropped < 2 rows)
 	.gl-body {
-		flex-direction: row;
 		align-items: flex-start;
 		padding: 20px 40px 20px 40px;
+		gap: 16px;
+	}
+
+	// The pair — a row inside the column; height INLINE (leftH ≥ 216, the
+	// left slab grows for invites). flex-basis here would be HEIGHT (column
+	// parent) — auto + the inline height is the explicit form.
+	.gl-pair {
+		width: 1840px;
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: row;
+		align-items: flex-start;
 		gap: 16px;
 	}
 
@@ -5814,6 +5835,71 @@ GuildPanel {
 		justify-content: center;
 		border: 1px solid rgba(244, 241, 234, 0.14);
 		border-radius: 11px;
+	}
+
+	// ── RECRUITING NOW — the third slab (audit closeout). 1840 wide, height
+	// INLINE (928 − 16 − leftH: 696 at 0 invites … dropped under 2 rows).
+	// Band 36 + .gl-rec-list (the .gb-list recipe): pad 16/12/12/12 → row
+	// lane 1816 = .gb-row 1812 + 4 seam. 6 rows: 36 + 16 + 6×88 + 5×12 + 12
+	// = 652 of 696 — 44 slack INSIDE the slab's fill (browse's 76 precedent).
+	// The slab is the browse slab's twin (same fill, r0, column, clip).
+	.gl-rec {
+		width: 1840px;
+		flex: 0 0 auto; // column parent — the inline height is the size
+		background-color: #15121f;
+		border-radius: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	// List — the slab's scroll child (rows + the one empty line are DIRECT
+	// children, DOC-1 §12). Rows never exceed the fit, so this never scrolls;
+	// the recipe is kept so the rows' scroll-clip laws (bg + seam only) hold.
+	.gl-rec-list {
+		flex: 1 1 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow-y: scroll;
+		overflow-x: hidden;
+		padding: 16px 12px 12px 12px;
+	}
+
+	// Row — .gb-row stamped alongside (geometry, colour, cursor, hover, the
+	// ladder / land / sent motion all ride the browse class). This class is
+	// the landing-only hook: the row's press = browse + that guild's detail.
+	.gl-rec-row {
+		cursor: pointer;
+	}
+
+	// SEE ALL · BROWSE — the .gp-chip family sized to the 36 band (26 tall,
+	// 5px air each side; the 32 chip left 2). r9 = the chip ladder's small
+	// step (chip 10–11 is for the 32 chip). Mouse-only; BROWSE is its kb twin.
+	.gl-rec-see {
+		height: 26px;
+		padding: 0 12px;
+		border-radius: 9px;
+	}
+
+	// Empty — ONE honest line (17/700 cream, the .gb-empty-t voice), no
+	// button here: the SEE ALL chip in the band is the slab's action.
+	.gl-rec-empty {
+		width: 1816px;
+		flex: 0 0 auto;
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		padding: 8px 20px 8px 20px;
+	}
+
+	.gl-rec-empty-t {
+		flex: 0 0 auto;
+		font-size: 17px;
+		font-weight: 700;
+		color: rgba(244, 241, 234, 0.85);
+		line-height: 21px;
+		white-space: nowrap;
 	}
 
 	// ═══ BROWSE ═══ body pad 20/40/20/40 → ONE slab 1840 × 928.
@@ -6192,6 +6278,17 @@ GuildPanel {
 		white-space: nowrap;
 	}
 
+	// The HUD PawPad chip sits at x 1846–1904 / y 990–1064 (GameHUD
+	// .hud-phone-btn: right 16, bottom 16, 58×74). Both foot rows ended their
+	// gold primary at x 1896 (under the chip). Neither row declares a width
+	// (they stretch to the 768 column), so this padding costs the SPACER, not
+	// the button: FOUND GUILD / SAVE stay 320×48 and now end at 1832 — 14px
+	// clear of the chip. The cost line rides left with the button (gap 16).
+	.gc-foot,
+	.gs-save-row {
+		padding-right: 64px;
+	}
+
 	// ═══ DEVICE GATE additions — bare hover slab steps for the new stops
 	// (LANE: input owns the device contract; these are the static hover
 	// states the layout lane ships). Same specificity as the plaza gate;
@@ -6240,6 +6337,7 @@ GuildPanel {
 	// same reason.
 	.gl-slab { animation: gpZoneBand 0.28s ease-out; }
 	.gl-slab-create { animation: gpZoneRoster 0.34s ease-out; }
+	.gl-rec { animation: gpZoneWeek 0.4s ease-out; } // RECRUITING NOW — rung 3 (under the pair, lands last); its rows = the .gb-row ladder by class
 	.gb-slab { animation: gpZoneBand 0.28s ease-out; }
 	.gc-foot { animation: gpZoneWeek 0.4s ease-out; }
 
@@ -6256,9 +6354,11 @@ GuildPanel {
 	// swaps the text (no replay — already the loudest thing on the foot).
 	.gc-err-row { animation: gpErrIn 0.22s ease-out; }
 
-	// ── ROW LADDER — browse rows + landing invite rows, 8 rungs (rows past the
-	// cap mount static), classes from RowLadderClass() during the 0.75s arm
-	// window only; the cursor row never carries one (touched rows mount whole).
+	// ── ROW LADDER — browse rows + landing invite rows + landing RECRUITING
+	// rows (gb-row stamped; rungs continue after the invites, n + i), 8 rungs
+	// (rows past the cap mount static), classes from RowLadderClass() during
+	// the 0.75s arm window only; the cursor row never carries one (touched
+	// rows mount whole).
 	.gb-row, .gl-irow {
 		&.gp-rr0 { animation: gpRowIn0 0.7s ease-out; }
 		&.gp-rr1 { animation: gpRowIn1 0.7s ease-out; }
