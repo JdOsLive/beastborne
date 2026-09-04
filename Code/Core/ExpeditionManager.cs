@@ -699,6 +699,23 @@ public sealed class ExpeditionManager : Component
 			return;
 		}
 
+		// STORY — BeforeEmbark (2026-09-04). A stage with an unseen embark beat
+		// plays the dialogue FIRST: we hand BbDialogue a resume action that calls
+		// straight back into StartExpedition with the same arguments, and return
+		// before any run state is touched (CurrentExpedition stays null, so the
+		// HUD keeps the map under the dialogue). The beat is marked seen when it
+		// ends, so the second call falls through here. SelectedTeam survives —
+		// nothing between here and the resume clears it. BbDialogue wraps the
+		// resume in BattleTransition.PlayEmbarkSequence so the run still opens
+		// on the house blackout.
+		var embarkBeat = StoryDatabase.Find( StoryTrigger.BeforeEmbark, expeditionId );
+		if ( embarkBeat != null && !StoryDirector.HasSeen( embarkBeat.Id )
+			&& StoryDirector.PlayNow( embarkBeat.Id, () => StartExpedition( expeditionId, hardMode ) ) )
+		{
+			Log.Info( $"[Story] BeforeEmbark beat '{embarkBeat.Id}' — embark into {expeditionId} resumes after the dialogue." );
+			return;
+		}
+
 		// Clean up any stale battle state
 		if ( BattleManager.Instance?.IsInBattle == true )
 		{
@@ -817,12 +834,21 @@ public sealed class ExpeditionManager : Component
 			// Normal clear — update canonical highest-cleared counter.
 			var realChain = _expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
 			int expeditionIndex = realChain.IndexOf( CurrentExpedition );
+			int highestBefore = tamer.HighestExpeditionCleared;
 			if ( expeditionIndex >= 0 && expeditionIndex >= tamer.HighestExpeditionCleared )
 			{
 				tamer.HighestExpeditionCleared = Math.Min( expeditionIndex + 1, realChain.Count );
 				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestExpeditionCleared, tamer.HighestExpeditionCleared );
 				Stats.SetValue( "expedition-highest", tamer.HighestExpeditionCleared );
 			}
+
+			// STORY — OnAreaUnlocked (2026-09-04). This clear opened the next zone in
+			// the chain (realChain[highest] is the first zone NOT yet cleared, i.e. the
+			// one that just became startable). Queue its arrival beat for the map; the
+			// map's unlock-reveal lane releases the queue with StoryDirector.PlayPending()
+			// once its zoom lands (BbDialogue self-releases after 3.5s idle otherwise).
+			if ( tamer.HighestExpeditionCleared > highestBefore && tamer.HighestExpeditionCleared < realChain.Count )
+				QueueStoryBeat( StoryTrigger.OnAreaUnlocked, realChain[tamer.HighestExpeditionCleared].Id );
 
 			// First Normal clear of this expedition → unlock Hard Mode for it.
 			if ( !tamer.HardModeUnlocked.GetValueOrDefault( CurrentExpedition.Id ) )
@@ -840,6 +866,18 @@ public sealed class ExpeditionManager : Component
 		tamer.TotalExpeditionsCompleted++;
 		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.ExpeditionsCompleted, tamer.TotalExpeditionsCompleted );
 		Stats.SetValue( "expeditions-completed-launch", tamer.TotalExpeditionsCompleted );
+	}
+
+	/// <summary>
+	/// Queue the story beat for (trigger, expedition) if the stage has one the
+	/// player hasn't read. No-op for stages without a beat (most of them).
+	/// </summary>
+	private static void QueueStoryBeat( StoryTrigger trigger, string expeditionId )
+	{
+		var beat = StoryDatabase.Find( trigger, expeditionId );
+		if ( beat == null ) return;
+		if ( StoryDirector.QueueBeat( beat.Id ) )
+			Log.Info( $"[Story] Queued {trigger} beat '{beat.Id}' for the map." );
 	}
 
 	/// <summary>
@@ -885,6 +923,9 @@ public sealed class ExpeditionManager : Component
 			if ( SelectedBoss != null )
 			{
 				AwardBossTokens();
+				// STORY — AfterBoss on the retry path too: the boss WAS beaten; the
+				// beat waits in the queue and plays on the next RETURN TO MAP.
+				QueueStoryBeat( StoryTrigger.AfterBoss, CurrentExpedition.Id );
 			}
 
 			// Track mission progress for expedition completion (retry path)
@@ -1606,6 +1647,13 @@ public sealed class ExpeditionManager : Component
 			if ( SelectedBoss != null )
 			{
 				AwardBossTokens();
+
+				// STORY — AfterBoss (2026-09-04). Queued now, PLAYED on the map: the
+				// result popup keeps CurrentExpedition alive until RETURN TO MAP
+				// (FinalizeExpedition), and BbDialogue only starts a queued beat once
+				// the map is idle — so the reward moment stays clean and the beat
+				// chains after any unlock reveal (the map lane's PlayPending()).
+				QueueStoryBeat( StoryTrigger.AfterBoss, CurrentExpedition.Id );
 			}
 
 			// Track mission progress for expedition completion

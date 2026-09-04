@@ -54,6 +54,9 @@ public static class UIModalState
 			// ── Highest priority: the confirm yes/no. It can stack on anything. ──
 			if ( ConfirmDialog.IsVisible ) return "ConfirmDialog";
 
+			// ── Story dialogue — a beat is playing over the map (Q = hold-to-skip only). ──
+			if ( BbDialogue.IsVisible ) return "BbDialogue";
+
 			// ── System / menu layer ──
 			if ( MenuPopup.Instance?.IsVisible == true ) return "MenuPopup";
 			// OptionsPanel is mounted under BOTH MainMenu and GameHUD, so a

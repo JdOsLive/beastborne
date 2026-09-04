@@ -77,6 +77,13 @@ public class Tamer
 	public Dictionary<string, bool> HardModeCleared { get; set; } = new();
 	public int HighestHardModeCleared { get; set; } = 0;
 
+	// Story beats the player has already read (StoryBeat.Id — see
+	// Core/StoryDatabase.cs). A beat plays once per save; StoryDirector adds
+	// the id here when the dialogue ends or is skipped. Defaults empty for
+	// existing saves — no migration needed. HashSet round-trips through
+	// System.Text.Json like the List<string> fields above.
+	public HashSet<string> SeenStoryBeats { get; set; } = new();
+
 	// Hard Mode token currency — one bucket per zone. Awarded 3-5 per Hard clear.
 	// Tide  = Weaverton  · Loom = Weaverwood · Dawn = Weavermere · Threaded = Whispering Hollow.
 	// Redemption flow ships in a follow-up patch (items-economy lane).

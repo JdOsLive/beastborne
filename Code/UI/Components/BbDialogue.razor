@@ -1,0 +1,467 @@
+@namespace Beastborne.UI.Components
+@using System;
+@using System.Collections.Generic;
+@using System.Linq;
+@using Sandbox;
+@using Sandbox.UI;
+@using Beastborne.Core;
+@using Beastborne.Systems;
+@using Beastborne.UI;
+@inherits Panel
+@attribute [StyleSheet]
+
+@*
+    BbDialogue — the story-beat reader (expedition rebuild, 2026-09-04).
+
+    SHAPE (user rulings 2026-09-04 — NOT the revision-2 card's portrait band):
+      · ONE text slab, r22, 1100×180, bottom-centred (#15121f at .96).
+      · The CHARACTERS OVERLAY the slab: two outline placeholder portrait cards
+        (200×260, 2px cream .14 rim, no fill) straddle the slab's left / right
+        edge and overhang its top by ~60px. Left = the player, right = the other
+        speaker. The active speaker reads at full opacity, the other at .45.
+      · No band, no other backdrop — the SCREEN darkens with a full-screen
+        gradient shield while they talk.
+      · Speaker name = house chipstamp riding the slab's top edge. Beat counter
+        "2 / 5" = darkchip, right. Caps: SPACE (next) + "SKIP · hold Q".
+
+    INPUT (only while UIModalState.TopModal == "BbDialogue"):
+      · Space / Enter / E (UiInput.ConfirmPressed) and a click anywhere on the
+        slab: if the line is mid-reveal → complete it; else → next line, or
+        finish on the last one.
+      · Q is HOLD-TO-SKIP ONLY (0.6s, the house measured-px hold fill). A tap
+        does nothing but brighten the hint — a story beat can't be re-read, so a
+        reflexive Q must not throw it away. Mouse-holding the SKIP chip feeds
+        the same timer. GameHUD.PanelHandledBackKey is claimed every frame Q is
+        down so nothing under us sees the press.
+
+    REVEAL: by WORD at ~14 words/s, written IMPERATIVELY (`Label.Text` from
+    Tick) — the word counter is NOT in BuildHash, so nothing re-renders per
+    tick. Two stacked labels in one box: a ghost carrying the FULL line at .22
+    (so the layout is fixed from frame one — greedy wrapping of a prefix equals
+    the prefix of the greedy wrap) and the bright prefix on top.
+
+    ENGINE LAWS honoured (DOC-7): pointer-events all/none only · no
+    animation-delay (state changes are transitions) · volatile classes live on
+    SIBLINGS of the imperative labels, never on their ancestors (a class-string
+    change can remount the subtree and drop the written text — and the text is
+    re-asserted every tick anyway) · explicit px boxes on every absolute · the
+    fill width is measured px (Length.Percent paints full width on absolutes).
+
+    LIFECYCLE: StoryDirector (Code/Core/StoryDatabase.cs) is the hand-off.
+    This panel polls TakeNext() when the screen is free, plays the request,
+    then Finish()es it (marks seen + saves + runs OnComplete). BeforeEmbark
+    requests are resumed INSIDE BattleTransition.PlayEmbarkSequence so the run
+    still opens on the house blackout. Queued map beats self-release after
+    StoryDirector.AutoReleaseDelay of the map sitting idle unless the map's
+    reveal lane holds them (HoldPending) and chains them (PlayPending).
+*@
+
+<root class="bbd-root @(IsVisible ? "open" : "")">
+    <div class="bbd-shield"></div>
+    <div class="bbd-stage">
+        <div class="bbd-port bbd-port-l @(_side == StorySide.Left ? "speak" : "")">
+            <span class="bbd-port-tag">@_leftName</span>
+        </div>
+        <div class="bbd-port bbd-port-r @(_side == StorySide.Right ? "speak" : "")">
+            <span class="bbd-port-tag">@_rightName</span>
+        </div>
+        <div class="bbd-slab" onclick=@OnSlabClick>
+            <div class="bbd-stamp @(_side == StorySide.Left ? "you" : "")">
+                <span>@_speaker</span>
+            </div>
+            <div class="bbd-counter"><span>@_counterText</span></div>
+            <div class="bbd-body-box">
+                <label @ref="_ghostRef" class="bbd-body bbd-body-ghost"></label>
+                <label @ref="_bodyRef" class="bbd-body bbd-body-live"></label>
+            </div>
+            <div class="bbd-foot">
+                <div class="bbd-skip @(_holdActive ? "holding" : "") @(_holdDraining ? "draining" : "") @(_qTapFlash ? "tapped" : "")"
+                     onclick:stopPropagation
+                     onmousedown=@StartMouseHold onmouseup=@StopMouseHold onmouseout=@StopMouseHold>
+                    <div @ref="_skipFillRef" class="bbd-skip-fill"></div>
+                    <span class="bbd-cap">Q</span>
+                    <span class="bbd-skip-label">SKIP · HOLD</span>
+                </div>
+                <div class="bbd-next">
+                    <span class="bbd-cap">SPACE</span>
+                    <span class="bbd-next-label">@_nextLabel</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</root>
+
+@code {
+    // ── The house pattern: static IsVisible + BuildHash ──
+    public static bool IsVisible { get; private set; }
+
+    private const float WordsPerSecond = 14f;
+    private const float SkipHoldDuration = 0.6f;
+    private const float HoldDrainRate = 3f;   // an early release rewinds at 3× (the SkillTree recipe)
+    private const float QTapFlashDuration = 0.22f;
+
+    // The request being read. Null while idle.
+    private StoryRequest _request;
+    private int _lineIndex;
+    private string[] _words = Array.Empty<string>();
+    private float _wordsShown;          // fractional word counter, accumulates Time.Delta × rate
+    private int _wordsWritten = -1;     // last prefix length written to the label
+    private string _fullLine = "";
+    private string _prefixCache = "";
+
+    // Rendered (BuildHash) state — only changes per LINE, never per word.
+    private string _speaker = "";
+    private StorySide _side = StorySide.Right;
+    private string _leftName = "TAMER";
+    private string _rightName = "";
+    private string _counterText = "";
+    private string _nextLabel = "NEXT";
+
+    // Hold-to-skip — one timer, two feeds (Q held · mouse held on the chip).
+    private float _holdTime;
+    private bool _holdActive;
+    private bool _holdDraining;
+    private bool _mouseHold;
+    private float _qTapFlashUntil;
+    private bool _qTapFlash;
+    private float _lastFillPx = -1f;
+
+    // Auto-release: how long the map has sat idle with beats waiting.
+    private float _mapIdleFor;
+    private float _nextArrivalScan;
+
+    private Label _bodyRef;
+    private Label _ghostRef;
+    private Panel _skipFillRef;
+
+    private bool LineFullyShown => _wordsWritten >= _words.Length;
+
+    // ─────────────────────────────────────────────────────────────────────
+    public override void Tick()
+    {
+        base.Tick();
+
+        // Leaving the game under a beat: drop it without marking it seen, and
+        // release the modal gate (a static IsVisible would hold it over the menu).
+        if ( GameManager.Instance?.IsInGame != true )
+        {
+            if ( _request != null || IsVisible || StoryDirector.IsPlaying || StoryDirector.HasReleased || StoryDirector.HasPending )
+            {
+                StoryDirector.Abort();
+                _request = null;
+                IsVisible = false;
+                ResetHold();
+            }
+            _mapIdleFor = 0f;
+            return;
+        }
+
+        if ( _request == null )
+        {
+            TickIdle();
+            return;
+        }
+
+        // Re-assert the imperative text every frame — cheap string compares,
+        // and it survives any re-render/remount of the label subtree.
+        AssertText();
+
+        // Only the top modal reads the keys (a ConfirmDialog can stack above us).
+        bool topModal = UIModalState.IsTopModal( "BbDialogue" );
+
+        TickReveal();
+        TickSkipHold( topModal );
+        UpdateSkipFill();
+
+        if ( _qTapFlash && Time.Now >= _qTapFlashUntil ) _qTapFlash = false;
+
+        if ( !topModal ) return;
+
+        if ( UiInput.ConfirmPressed() )
+            Advance();
+    }
+
+    // ── Idle: pick up released requests / self-release queued map beats ──
+    private void TickIdle()
+    {
+        if ( !ScreenIsFree() )
+        {
+            _mapIdleFor = 0f;
+            return;
+        }
+
+        // Something immediate (BeforeEmbark resume, dev replay, or a released
+        // map beat) — start it now.
+        var next = StoryDirector.TakeNext();
+        if ( next != null )
+        {
+            Begin( next );
+            return;
+        }
+
+        // Queued map beats with no one to release them: wait out the reveal
+        // window on the idle MAP, then release. The map lane's HoldPending()
+        // pauses this clock; its PlayPending() short-circuits it.
+        if ( StoryDirector.HasPending && !StoryDirector.IsHeld && MapIsIdle() )
+        {
+            _mapIdleFor += Time.Delta;
+            if ( _mapIdleFor >= StoryDirector.AutoReleaseDelay )
+            {
+                _mapIdleFor = 0f;
+                StoryDirector.PlayPending();
+            }
+        }
+        else
+        {
+            _mapIdleFor = 0f;
+        }
+
+        // Arrival safety net: an OnAreaUnlocked beat whose zone is already
+        // startable but was never read (queue lost to a session end, or a save
+        // that unlocked the zone before beats existed) re-queues itself on the
+        // idle map. Throttled to 1 Hz — CanStartExpedition allocates per call.
+        if ( Time.Now >= _nextArrivalScan && MapIsIdle() )
+        {
+            _nextArrivalScan = Time.Now + 1f;
+            var em = ExpeditionManager.Instance;
+            if ( em != null )
+            {
+                foreach ( var beat in StoryDatabase.All )
+                {
+                    if ( beat.Trigger != StoryTrigger.OnAreaUnlocked ) continue;
+                    if ( StoryDirector.HasSeen( beat.Id ) ) continue;
+                    if ( !em.CanStartExpedition( beat.ExpeditionId ) ) continue;
+                    StoryDirector.QueueBeat( beat.Id );
+                }
+            }
+        }
+    }
+
+    /// <summary>No blackout running, no other modal up, and we're in the game.</summary>
+    private static bool ScreenIsFree()
+    {
+        if ( BattleTransition.IsActive ) return false;
+        var top = UIModalState.TopModal;
+        if ( top != null && top != "BbDialogue" ) return false;
+        return true;
+    }
+
+    /// <summary>The world map is the thing on screen — no run, no battle, map panel mounted.</summary>
+    private static bool MapIsIdle()
+    {
+        if ( ExpeditionManager.Instance?.CurrentExpedition != null ) return false;
+        if ( BattleManager.Instance?.IsInBattle == true ) return false;
+        var map = Beastborne.UI.Panels.WorldMapPanel.Instance;
+        if ( map == null || map.Parent == null || !map.IsVisible ) return false; // Panel has no IsDeleted — an unparented panel is gone
+        return true;
+    }
+
+    // ── Playback ──────────────────────────────────────────────────────────
+    private void Begin( StoryRequest request )
+    {
+        _request = request;
+        _lineIndex = 0;
+        ResetHold();
+        _mapIdleFor = 0f;
+
+        // Portrait tags: the left card is always the player; the right card
+        // takes the first non-player speaker's name (placeholder outline art).
+        _leftName = request.Beat.Lines.FirstOrDefault( l => l.Side == StorySide.Left )?.Speaker?.ToUpperInvariant() ?? "TAMER";
+        _rightName = request.Beat.Lines.FirstOrDefault( l => l.Side == StorySide.Right )?.Speaker?.ToUpperInvariant() ?? "";
+
+        LoadLine();
+        IsVisible = true;
+        SoundManager.PlayPopup();
+        Log.Info( $"[Story] Playing '{request.Beat.Id}' ({request.Beat.Lines.Count} lines)" );
+    }
+
+    private void LoadLine()
+    {
+        var line = _request.Beat.Lines[_lineIndex];
+        _speaker = line.Speaker;
+        _side = line.Side;
+        _fullLine = line.Text ?? "";
+        _words = _fullLine.Split( ' ', StringSplitOptions.RemoveEmptyEntries );
+        _wordsShown = 0f;
+        _wordsWritten = -1;
+        _prefixCache = "";
+        _counterText = $"{_lineIndex + 1} / {_request.Beat.Lines.Count}";
+        _nextLabel = _lineIndex + 1 >= _request.Beat.Lines.Count ? "DONE" : "NEXT";
+        AssertText();
+    }
+
+    private void TickReveal()
+    {
+        if ( LineFullyShown ) return;
+        _wordsShown += Time.Delta * WordsPerSecond;
+        int n = Math.Min( _words.Length, (int)_wordsShown );
+        if ( n != _wordsWritten )
+        {
+            _wordsWritten = n;
+            _prefixCache = n <= 0 ? "" : string.Join( ' ', _words, 0, n );
+            if ( _bodyRef != null ) _bodyRef.Text = _prefixCache;
+        }
+    }
+
+    /// <summary>Ghost = the full line; live = the revealed prefix. Idempotent — compares before writing.</summary>
+    private void AssertText()
+    {
+        if ( _ghostRef != null && _ghostRef.Text != _fullLine ) _ghostRef.Text = _fullLine;
+        if ( _bodyRef != null )
+        {
+            var want = _wordsWritten < 0 ? "" : _prefixCache;
+            if ( _bodyRef.Text != want ) _bodyRef.Text = want;
+        }
+    }
+
+    private void CompleteLine()
+    {
+        _wordsShown = _words.Length;
+        _wordsWritten = _words.Length;
+        _prefixCache = _fullLine;
+        if ( _bodyRef != null ) _bodyRef.Text = _prefixCache;
+    }
+
+    /// <summary>Space / click: finish the reveal first, then step; DONE on the last line.</summary>
+    private void Advance()
+    {
+        if ( _request == null ) return;
+        if ( !LineFullyShown )
+        {
+            CompleteLine();
+            SoundManager.PlayClick();
+            return;
+        }
+        if ( _lineIndex + 1 < _request.Beat.Lines.Count )
+        {
+            _lineIndex++;
+            LoadLine();
+            SoundManager.PlayClick();
+            return;
+        }
+        End( skipped: false );
+    }
+
+    private void End( bool skipped )
+    {
+        var req = _request;
+        _request = null;
+        IsVisible = false;
+        ResetHold();
+        if ( skipped ) SoundManager.PlayBack(); else SoundManager.PlayForward();
+        if ( req == null ) return;
+
+        // BeforeEmbark: the resume re-enters StartExpedition; run it under the
+        // house blackout so the battle still opens the way the picker's embark
+        // does (the sequence is static and survives the map→battle panel swap).
+        if ( req.Beat.Trigger == StoryTrigger.BeforeEmbark && req.OnComplete != null )
+        {
+            var resume = req.OnComplete;
+            StoryDirector.Finish( req, runOnComplete: false );   // seen + saved; Current cleared
+            _ = BattleTransition.PlayEmbarkSequence( resume );    // resume fires at blackout
+            return;
+        }
+
+        StoryDirector.Finish( req );
+    }
+
+    // ── Hold-to-skip (ONE timer · Q held or mouse held on the chip) ──
+    private void TickSkipHold( bool topModal )
+    {
+        bool qDown = topModal && Input.Down( "Menu" );
+        if ( topModal && Input.Pressed( "Menu" ) )
+        {
+            // A tap brightens the hint; the hold does the work.
+            _qTapFlash = true;
+            _qTapFlashUntil = Time.Now + QTapFlashDuration;
+        }
+        // Claim Q for the whole press so GameHUD's back handling never sees it
+        // (its modal gate already yields — this is belt-and-braces).
+        if ( qDown || _mouseHold ) GameHUD.PanelHandledBackKey = true;
+
+        if ( qDown || _mouseHold )
+        {
+            _holdActive = true;
+            _holdDraining = false;
+            _holdTime += Time.Delta;
+            if ( _holdTime >= SkipHoldDuration )
+            {
+                _holdTime = SkipHoldDuration;
+                End( skipped: true );
+            }
+        }
+        else if ( _holdTime > 0f )
+        {
+            _holdActive = false;
+            _holdDraining = true;
+            _holdTime = Math.Max( 0f, _holdTime - Time.Delta * HoldDrainRate );
+            if ( _holdTime <= 0f ) _holdDraining = false;
+        }
+        else
+        {
+            _holdActive = false;
+            _holdDraining = false;
+        }
+    }
+
+    /// <summary>
+    /// Fill width in MEASURED PIXELS (Length.Percent on an absolute child paints
+    /// full width in-engine): host live rect × ScaleFromScreen × fraction.
+    /// </summary>
+    private void UpdateSkipFill()
+    {
+        if ( _skipFillRef == null ) return;
+        float frac = Math.Clamp( _holdTime / SkipHoldDuration, 0f, 1f );
+        var host = _skipFillRef.Parent;
+        float w = host?.Box.Rect.Width ?? 0f;
+        if ( w < 1f ) return;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+        float px = MathF.Round( w * sc * frac );
+        if ( px <= 0f && _lastFillPx <= 0f ) return;
+        _skipFillRef.Style.Width = Length.Pixels( px );
+        _lastFillPx = px;
+    }
+
+    private void ResetHold()
+    {
+        _holdTime = 0f;
+        _holdActive = false;
+        _holdDraining = false;
+        _mouseHold = false;
+        _qTapFlash = false;
+        if ( _skipFillRef != null ) { _skipFillRef.Style.Width = Length.Pixels( 0 ); _lastFillPx = 0f; }
+    }
+
+    // ── Mouse ─────────────────────────────────────────────────────────────
+    private void OnSlabClick()
+    {
+        if ( _request == null || !UIModalState.IsTopModal( "BbDialogue" ) ) return;
+        Advance();
+    }
+
+    private void StartMouseHold()
+    {
+        if ( _request == null || !UIModalState.IsTopModal( "BbDialogue" ) ) return;
+        _mouseHold = true;
+    }
+
+    private void StopMouseHold() => _mouseHold = false;
+
+    // ── Render hash: per-LINE state only. The word counter and the fill px are imperative. ──
+    protected override int BuildHash()
+    {
+        var h = new HashCode();
+        h.Add( IsVisible );
+        h.Add( _speaker );
+        h.Add( _side );
+        h.Add( _leftName );
+        h.Add( _rightName );
+        h.Add( _counterText );
+        h.Add( _nextLabel );
+        h.Add( _holdActive );
+        h.Add( _holdDraining );
+        h.Add( _qTapFlash );
+        return h.ToHashCode();
+    }
+}
