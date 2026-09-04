@@ -148,9 +148,7 @@
             if ( _request != null || IsVisible || StoryDirector.IsPlaying || StoryDirector.HasReleased || StoryDirector.HasPending )
             {
                 StoryDirector.Abort();
-                _request = null;
-                IsVisible = false;
-                ResetHold();
+                Dismiss();
             }
             _mapIdleFor = 0f;
             return;
@@ -159,6 +157,18 @@
         if ( _request == null )
         {
             TickIdle();
+            return;
+        }
+
+        // The director is the truth: if the request we are showing is no longer
+        // Current (dev_story skip, Abort, a scene change ended it), close NOW —
+        // same close as the end of a beat minus the Finish (already done
+        // elsewhere). IsVisible drops this frame, so UIModalState stops
+        // reporting "BbDialogue" this frame too. (Live fix 2026-09-04: dev skip
+        // cleared Current but the slab, portraits, gradient and counter stayed.)
+        if ( StoryDirector.Current != _request )
+        {
+            Dismiss();
             return;
         }
 
@@ -190,9 +200,12 @@
             return;
         }
 
-        // Something immediate (BeforeEmbark resume, dev replay, or a released
-        // map beat) — start it now.
-        var next = StoryDirector.TakeNext();
+        // Something waiting: a PlayNow request (BeforeEmbark resume, dev replay)
+        // starts on any free screen; a beat the map lane RELEASED (PlayPending)
+        // is map-only and stays at the head of the line until the expedition tab
+        // is current again — a tab change between release and start must not
+        // play it over another page.
+        var next = StoryDirector.TakeNext( mapIdle: MapIsIdle() );
         if ( next != null )
         {
             Begin( next );
@@ -246,11 +259,21 @@
         return true;
     }
 
-    /// <summary>The world map is the thing on screen — no run, no battle, map panel mounted.</summary>
+    /// <summary>
+    /// The world map is THE thing on screen: the expedition tab is the CURRENT
+    /// tab (live fix 2026-09-04 — WorldMapPanel.Instance stays mounted +
+    /// visible-flagged while another top-level tab is current, so a queued beat
+    /// auto-released over the Online hub), no run, no battle, no popup/picker
+    /// up, and the map panel really mounted.
+    /// </summary>
     private static bool MapIsIdle()
     {
+        if ( NavManager.CurrentTab != "expedition" ) return false;
         if ( ExpeditionManager.Instance?.CurrentExpedition != null ) return false;
         if ( BattleManager.Instance?.IsInBattle == true ) return false;
+        if ( BattleTransition.IsActive ) return false;
+        var top = UIModalState.TopModal;
+        if ( top != null && top != "BbDialogue" ) return false; // picker / result popup / phone / confirm — not idle
         var map = Beastborne.UI.Panels.WorldMapPanel.Instance;
         if ( map == null || map.Parent == null || !map.IsVisible ) return false; // Panel has no IsDeleted — an unparented panel is gone
         return true;
@@ -342,12 +365,19 @@
         End( skipped: false );
     }
 
-    private void End( bool skipped )
+    /// <summary>Close the panel without touching the director — the request was ended elsewhere.</summary>
+    private void Dismiss()
     {
-        var req = _request;
         _request = null;
         IsVisible = false;
         ResetHold();
+        _mapIdleFor = 0f;
+    }
+
+    private void End( bool skipped )
+    {
+        var req = _request;
+        Dismiss();
         if ( skipped ) SoundManager.PlayBack(); else SoundManager.PlayForward();
         if ( req == null ) return;
 

@@ -129,6 +129,12 @@ public sealed class StoryRequest
 	public Action OnComplete { get; init; }
 	/// <summary>Dev replay — the beat plays even if seen (it is still marked seen after).</summary>
 	public bool Force { get; init; }
+	/// <summary>
+	/// A beat released from the MAP queue (PlayPending) — it may only start while
+	/// the expedition tab is current and the map is idle. PlayNow requests
+	/// (BeforeEmbark resume, dev replay) are false and start on any free screen.
+	/// </summary>
+	public bool RequiresMap { get; init; }
 }
 
 /// <summary>
@@ -211,7 +217,7 @@ public static class StoryDirector
 		{
 			var beat = StoryDatabase.Get( id );
 			if ( beat == null || HasSeen( id ) ) continue;
-			_released.Enqueue( new StoryRequest { Beat = beat } );
+			_released.Enqueue( new StoryRequest { Beat = beat, RequiresMap = true } );
 		}
 		_pending.Clear();
 	}
@@ -230,11 +236,16 @@ public static class StoryDirector
 		return true;
 	}
 
-	/// <summary>Component side: claim the next released request. Null when nothing is waiting.</summary>
-	public static StoryRequest TakeNext()
+	/// <summary>
+	/// Component side: claim the next released request. Null when nothing is
+	/// waiting — or when the head of the line is a map-only beat and
+	/// <paramref name="mapIdle"/> is false (it stays queued; order is kept).
+	/// </summary>
+	public static StoryRequest TakeNext( bool mapIdle = true )
 	{
 		if ( Current != null ) return null;
 		if ( _released.Count == 0 ) return null;
+		if ( _released.Peek().RequiresMap && !mapIdle ) return null;
 		Current = _released.Dequeue();
 		return Current;
 	}
