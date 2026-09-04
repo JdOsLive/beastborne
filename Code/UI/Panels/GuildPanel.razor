@@ -3628,16 +3628,33 @@ else if ( guildView == "myguild" )
 	// (pencil / write-row) → PENDING request rows (officers, pinned at the
 	// roster's top; A/D = ACCEPT ↔ DENY, Space fires the focused button) →
 	// ROSTER rows → THE WEEK's goal rows → THE LOG rows (info stops, Space
-	// no-op). W/S flow VERTICALLY as one continuous cursor, crossing zone
-	// boundaries automatically; A/D HOP COLUMNS (unlock ⇄ announcement in
-	// the top band; pending/roster ⇄ week/log at the spatially nearest row —
-	// rect-measured) and step within the chip pair / the ACCEPT-DENY pair.
+	// no-op). W/S flow VERTICALLY as one continuous cursor INSIDE THE COLUMN
+	// the cursor sits in (DOC-5 §21 — the graph encodes the screen; the page
+	// is two columns below the header: LEFT = unlock → pending → roster,
+	// RIGHT = announcement → week → log, the header chips are the shared top
+	// row of both). A/D HOP COLUMNS (unlock ⇄ announcement in the top band;
+	// pending/roster ⇄ week/log at the spatially nearest row — rect-measured)
+	// and step within the chip pair / the ACCEPT-DENY pair.
 	// No Tab (playtest ruling), no AcceptsFocus. Empty zones skip on cross.
 	// Every conditional stop is counted from the SAME live logic as the
 	// markup's if-chain (stale-map law, DOC-5 §12). PENDING is volatile:
 	// folding rows (_prowLeaving) are not stops, and the zone vanishes
 	// cleanly when the list empties (PlazaValidatePendingCursor, in Tick).
-	private static readonly string[] _plazaZones = { "chips", "unlock", "info", "pending", "roster", "week", "log" };
+	private static readonly string[] _plazaZones = { "chips", "unlock", "info", "pending", "roster", "week", "log" }; // membership only — W/S walk the column arrays below
+
+	// LANE: input — the two W/S columns, top → bottom as painted. "chips" is
+	// the header row above BOTH columns (S from a chip lands on the unlock
+	// chip, the top band's first stop, as before). Fix 2026-09-04: W from
+	// THIS WEEK used to land on the roster's LAST row (linear walk through
+	// _plazaZones) — it now climbs to the ANNOUNCEMENT, and S from the
+	// announcement drops into THIS WEEK, not PENDING.
+	private static readonly string[] _plazaLeftColumn  = { "chips", "unlock", "pending", "roster" };
+	private static readonly string[] _plazaRightColumn = { "chips", "info", "week", "log" };
+
+	// The column a zone's W/S walk lives in. "chips" (index 0 in both)
+	// resolves LEFT so S from the header keeps landing on the unlock chip.
+	private static string[] PlazaColumnFor( string zone )
+		=> Array.IndexOf( _plazaRightColumn, zone ) > 0 ? _plazaRightColumn : _plazaLeftColumn;
 
 	private void TickPlazaInput()
 	{
@@ -3754,20 +3771,30 @@ else if ( guildView == "myguild" )
 			UiGridScroll.ScrollIndexIntoView( logScrollRef, _kbIndex, "gp-lrow" );
 	}
 
-	// Cross to the next/previous non-empty plaza zone. Going DOWN lands on the
-	// new zone's FIRST item; going UP lands on its LAST item.
+	// Cross to the next/previous non-empty plaza zone IN THE CURRENT COLUMN
+	// (DOC-5 §21). Going DOWN lands on the new zone's FIRST item; going UP
+	// lands on its LAST item. The bottom of a column is a no-op (roster[last]
+	// S / log[last] S stay put — nothing is painted below them); the top of
+	// the right column with no announcement stop falls back to the header
+	// chips, then the unlock chip (the header row, never the roster).
 	// `quiet` = no hover cue (the automatic slide after a pending row folds —
 	// the ACCEPT/DENY cue already played). Returns false when no zone in that
 	// direction has a stop.
 	private bool PlazaCrossZone( GuildManager gm, List<GuildMemberInfo> members, int dir, bool quiet = false )
 	{
-		int zi = Array.IndexOf( _plazaZones, _kbZone );
+		var column = PlazaColumnFor( _kbZone );
+		int zi = Array.IndexOf( column, _kbZone );
 		if ( zi < 0 ) zi = 0;
-		for ( int step = 0; step < _plazaZones.Length; step++ )
+		for ( int step = 0; step <= column.Length; step++ )
 		{
 			int ni = zi + dir * ( step + 1 );
-			if ( ni < 0 || ni >= _plazaZones.Length ) return false; // top/bottom of page — no-op
-			var zone = _plazaZones[ni];
+			string zone;
+			if ( ni >= 0 && ni < column.Length )
+				zone = column[ni];
+			else if ( dir < 0 && column == _plazaRightColumn && ni == -1 )
+				zone = "unlock";                               // right column ran out above the chips — the header row's other stop
+			else
+				return false;                                  // top/bottom of the column — no-op
 			int c = PlazaZoneCount( zone, gm, members );
 			if ( c <= 0 ) continue;                            // empty zone — skip through
 			_kbZone = zone;
