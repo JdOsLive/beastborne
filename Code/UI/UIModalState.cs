@@ -76,7 +76,11 @@ public static class UIModalState
 			if ( ExpeditionResultPopup.IsVisible ) return "ExpeditionResultPopup";
 
 			// ── Fullscreen info / collection panels ──
-			if ( InventoryPanel.IsVisible ) return "InventoryPanel";
+			// The Bag is a PAGE outside battle (2026-09-04 user ruling: "it acts like a
+			// popup rather than a page") — hotkeys, tabs and the phone stay live and the
+			// tab panel underneath is silenced by GameHUD.TickCurrentPanel instead. In
+			// battle it is a popup over the fight and blocks like one.
+			if ( InventoryPanel.IsVisible && BattleManager.Instance?.IsInBattle == true ) return "InventoryPanel";
 			if ( ProfilePanel.IsVisible ) return "ProfilePanel";
 			if ( AchievementPanel.IsVisible ) return "AchievementPanel";
 			if ( DailyPanel.IsVisible ) return "DailyPanel";
