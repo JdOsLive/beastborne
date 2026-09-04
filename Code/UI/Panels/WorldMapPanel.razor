@@ -36,7 +36,9 @@
 	<div class="map-stage">
 
 		@* ═══ UNLOCK REVEAL GROUP — art frame + markers. Header / vignette / ring stay outside. ═══ *@
-		<div class="map-zoom @(_revealZoneId != null ? "reveal" : "")" style="@RevealOriginStyle()">
+		@* LANE: motion — phase class ON the animated element (class string = remount hedge, learnings
+		   2026-07-05/06): "" → "reveal" (zoom in 0.6s) → "reveal release" (zoom out 0.5s) → "". *@
+		<div class="map-zoom @RevealGroupClass()" style="@RevealOriginStyle()">
 
 			<div class="map-art-frame">
 				<div class="map-base"></div>
@@ -91,13 +93,23 @@
 					<div class="wm-dim" onclick=@CloseTopSurface></div>
 				}
 
+				@* LANE: motion — the REVEAL veil: same .55 veil, mounts with the beat (0.3s mount fade),
+				   `.release` lifts it 0.5s. The revealing pin (.unlocking, z60) stays lit above it. *@
+				@if ( _revealZoneId != null )
+				{
+					<div class="wm-dim rv @(_revealPhase >= RevealRelease ? "release" : "")"></div>
+				}
+
 				@foreach ( var z in Zones )
 				{
 					var zone = z;
 					if ( !IsZoneVisible( zone ) ) { continue; }
 					var zExp = GetExpedition( zone.ExpeditionId );
-					var isUnlocked = IsZoneUnlocked( zone );
-					var isCleared = ExpeditionManager.Instance?.HasClearedExpedition( zone.ExpeditionId ) ?? false;
+					// LANE: motion — the reveal costume: the revealing pin renders LOCKED through the zoom
+					// (t < 0.6) and OPEN + .unlocking from the pop beat on (dev_reveal rides the same override).
+					var rc = RevealCostume( zone.Id );
+					var isUnlocked = rc.ForceOpen || ( !rc.ForceLocked && IsZoneUnlocked( zone ) );
+					var isCleared = !rc.ForceLocked && !rc.ForceOpen && ( ExpeditionManager.Instance?.HasClearedExpedition( zone.ExpeditionId ) ?? false );
 					var hardUnlocked = isCleared && ( ExpeditionManager.Instance?.IsHardModeUnlocked( zone.ExpeditionId ) ?? false );
 					var stateClass = !isUnlocked ? "locked" : ( isCleared ? "cleared" : "current" );
 					var isHovered = _hoveredZoneId == zone.Id;
@@ -111,7 +123,8 @@
 
 					// Pin host 160×106, margin −80/−22 so the 44 diamond's centre sits on the anchor.
 					// Column: diamond 44 · 14 · name 16 · 2 · meta 14 (· 2 · meta 14) = 106 max.
-					<div class="zone-pin @stateClass @(isHovered ? "hovered" : "") @(isKb ? "kb-active" : "") @(isSelected ? "selected" : "")"
+					var chipText = "NEW AREA · " + pinName.ToUpperInvariant();
+					<div class="zone-pin @stateClass @(isHovered ? "hovered" : "") @(isKb ? "kb-active" : "") @(isSelected ? "selected" : "") @(rc.Unlocking ? "unlocking" : "")"
 						 style="left: @(zone.X)%; top: @(zone.Y)%;"
 						 onclick=@(() => SelectZone(zone.Id))
 						 onmouseover=@(() => OnZoneMarkerHover(zone.Id, zoneKey))
@@ -140,6 +153,14 @@
 								<span class="pin-meta hard">HARD UNLOCKED</span>
 							}
 						</div>
+						@* LANE: motion — "NEW AREA · <ZONE>" chipstamp rises under the pin for the pop beat only
+						   (mounts at 0.6s, unmounts at the release beat; the 1.6s keyframe fades it out itself). *@
+						@if ( rc.Unlocking && _revealPhase == RevealPop )
+						{
+							<div class="wm-newchip-host">
+								<div class="wm-newchip"><span class="wm-newchip-text">@chipText</span></div>
+							</div>
+						}
 					</div>
 				}
 
@@ -147,8 +168,9 @@
 				@foreach ( var mini in GetMiniExpeditions() )
 				{
 					var mx = mini;
-					var mUnlocked = ExpeditionManager.Instance?.CanStartExpedition( mx.Id ) ?? false;
-					var mCleared = ExpeditionManager.Instance?.HasClearedExpedition( mx.Id ) ?? false;
+					var mrc = RevealCostume( mx.Id ); // LANE: motion — same costume override (dev_reveal on a mini id)
+					var mUnlocked = mrc.ForceOpen || ( !mrc.ForceLocked && ( ExpeditionManager.Instance?.CanStartExpedition( mx.Id ) ?? false ) );
+					var mCleared = !mrc.ForceLocked && !mrc.ForceOpen && ( ExpeditionManager.Instance?.HasClearedExpedition( mx.Id ) ?? false );
 					var mState = !mUnlocked ? "locked" : ( mCleared ? "cleared" : "current" );
 					var mKey = "mini-" + mx.Id;
 					var mHovered = _hoveredMiniId == mx.Id;
@@ -159,7 +181,7 @@
 					var mLockedMeta = "CLEAR " + ( MiniGateName( mx ) ?? "THE MAIN ZONES" ).ToUpperInvariant();
 
 					// Host 160×88, margin −80/−16: diamond 32 · 12 · name 14 · 2 · meta 14 = 74 (+14 slack).
-					<div class="mini-pin @mState @(mHovered ? "hovered" : "") @(mKb ? "kb-active" : "") @(mSelected ? "selected" : "")"
+					<div class="mini-pin @mState @(mHovered ? "hovered" : "") @(mKb ? "kb-active" : "") @(mSelected ? "selected" : "") @(mrc.Unlocking ? "unlocking" : "")"
 						 style="left: @(mPos.X)%; top: @(mPos.Y)%;"
 						 onclick=@(() => SelectMini(mx.Id))
 						 onmouseover=@(() => OnMiniHover(mx.Id, mKey))
@@ -189,10 +211,13 @@
 				@foreach ( var node in GetVisibleTradeNodes() )
 				{
 					var n = node;
+					// LANE: motion — the pins this clear surfaced stay hidden until the release beat, then
+					// mount with a RARE ladder class (.wm-newreq-N, dropped when the reveal ends — DOC-4 #14).
+					if ( RevealHidesReqPin( n.Id ) ) { continue; }
 					var isDone = TradeNodeManager.Instance?.IsLocked( n.Id ) ?? true;
 					var canAfford = !isDone && ( TradeNodeManager.Instance?.CanAfford( n.Id ) ?? false );
 					var tnKey = "tn-" + n.Id;
-					<div class="req-pin @(isDone ? "done" : "") @(canAfford ? "ready" : "") @(_hoveredTradeNodeId == n.Id ? "hovered" : "") @(KbActiveMarkerId == n.Id ? "kb-active" : "")"
+					<div class="req-pin @(isDone ? "done" : "") @(canAfford ? "ready" : "") @(_hoveredTradeNodeId == n.Id ? "hovered" : "") @(KbActiveMarkerId == n.Id ? "kb-active" : "") @RevealReqClass(n.Id)"
 						 style="left: @(n.MapPosX)%; top: @(n.MapPosY)%;"
 						 onclick=@(() => OpenTradeNode(n.Id))
 						 onmouseover=@(() => OnReqPinHover(n.Id, tnKey))
@@ -243,6 +268,13 @@
 		</div>
 	</div>
 
+	@* LANE: motion — click shield for the reveal window (pins sit above the veil, so the veil alone
+	   cannot swallow clicks). Transparent, root-level, above the card/popup; any click = skip. *@
+	@if ( _revealZoneId != null )
+	{
+		<div class="wm-reveal-shield" onclick=@SkipReveal></div>
+	}
+
 	@* ═══ DETAIL CARD — one card for zones AND minis (the Expedition record carries both) ═══ *@
 	@if ( _selectedExpId != null )
 	{
@@ -264,7 +296,9 @@
 			// ONE formula shared with the kb card stops (DropsLayout — LANE: input).
 			var (dropRows, dropsH, dropsScrolls) = DropsLayout( drops.Count, !string.IsNullOrEmpty( kicker ) );
 
-			<div class="zd-card">
+			@* LANE: motion — mount fade in (branch-swap = fresh element); `.leaving` = the 0.12s exit latch
+			   (CloseCard stamps it, Tick unmounts). *@
+			<div class="zd-card @(_cardLeaving ? "leaving" : "")">
 				@* HERO 412×200 r16 — zone art under a dark veil, BACK · Q top-right (in-flow row above the absolutes). *@
 				<div class="zd-hero">
 					<img class="zd-hero-img" src="@heroImg" />
@@ -539,11 +573,189 @@
 	private string _hoveredLandmarkId;
 	private string _hoveredMiniId;
 
-	// UNLOCK REVEAL — structure only. LANE: motion consumes PendingRevealZoneId
-	// on the map's open edge, sets _revealZoneId for the beat, then clears it.
-	// While set: .map-zoom carries `.reveal` and transform-origin = that zone's %.
+	// ═══════════════════════════════════════════════════════════════
+	// UNLOCK REVEAL — LANE: motion (2026-09-04). ExpeditionManager.UpdateExpeditionStats
+	// latches PendingRevealZoneId when HighestExpeditionCleared rises; Tick consumes it
+	// once the map has settled (mount + 0.35s, nothing open), then runs a RealTime beat
+	// ladder (never animation-delay — re-render law, DOC-4 #6 / DOC-7 #17):
+	//   0.0s  ZOOM     .map-zoom.reveal (scale 1.35 toward the pin, 0.6s ease-out) · veil .55
+	//                  mounts · pin forced LOCKED · click shield up · StoryDirector.HoldPending()
+	//   0.6s  POP      pin → open costume + .unlocking (fill pop w/ the ONE HDR tick, glyph in,
+	//                  LV meta slide) · "NEW AREA · <ZONE>" chip rises (1.6s) · payoff sound
+	//   2.4s  RELEASE  .reveal.release (zoom back 0.5s) · veil lifts · chip unmounts · the
+	//                  cleared zone's request pins pop in (3-rung ladder) · PlayPending() · latch cleared
+	//   2.9s  END      classes drop, shield down, ring lands on the new pin
+	// Any key/click during the window skips straight to END (ReleaseReveal + EndReveal).
+	// ═══════════════════════════════════════════════════════════════
 	public static string PendingRevealZoneId;
 	private string _revealZoneId;
+	private int _revealPhase;           // 0 idle · RevealZoom · RevealPop · RevealRelease
+	private float _revealAt;
+	private float _mountedAt;
+	private readonly List<string> _revealNewReqIds = new();
+
+	private const int RevealZoom = 1;
+	private const int RevealPop = 2;
+	private const int RevealRelease = 3;
+	private const float RevealPopAt = 0.6f;
+	private const float RevealReleaseAt = 2.4f;
+	private const float RevealEndAt = 2.9f;
+	private const float RevealSettle = 0.35f; // the page entrance (header 0.22s) lands first
+
+	private bool RevealLive => _revealZoneId != null;
+
+	private string RevealGroupClass() =>
+		_revealZoneId == null ? "" : ( _revealPhase >= RevealRelease ? "reveal release" : "reveal" );
+
+	/// <summary>Costume override for the revealing marker: LOCKED through the zoom, OPEN + .unlocking from the pop.</summary>
+	private (bool ForceLocked, bool ForceOpen, bool Unlocking) RevealCostume( string markerId )
+	{
+		if ( _revealZoneId == null || markerId != _revealZoneId ) return (false, false, false);
+		if ( _revealPhase <= RevealZoom ) return (true, false, false);
+		return (false, true, true);
+	}
+
+	/// <summary>Request pins surfaced by this clear stay hidden until the release beat.</summary>
+	private bool RevealHidesReqPin( string nodeId ) =>
+		_revealZoneId != null && _revealPhase < RevealRelease && _revealNewReqIds.Contains( nodeId );
+
+	/// <summary>Ladder rung class for a surfaced request pin (only while the reveal is live).</summary>
+	private string RevealReqClass( string nodeId )
+	{
+		if ( _revealZoneId == null ) return "";
+		int i = _revealNewReqIds.IndexOf( nodeId );
+		return i < 0 ? "" : "wm-newreq-" + Math.Min( i, 2 );
+	}
+
+	private bool CanStartReveal()
+	{
+		if ( _selectedExpId != null || _tradePopupNodeId != null ) return false;
+		if ( UIModalState.AnyModalOpen ) return false;
+		if ( BattleTransition.IsActive ) return false;
+		if ( _mountedAt <= 0f ) return false; // Tick before the first OnAfterTreeRender — wait for the stamp
+		return RealTime.Now - _mountedAt >= RevealSettle;
+	}
+
+	private void StartReveal( string id )
+	{
+		var zone = Zones.FirstOrDefault( z => z.Id == id || z.ExpeditionId == id );
+		string markerId = zone != null && IsZoneVisible( zone ) ? zone.Id : ( MiniPositions.ContainsKey( id ) ? id : null );
+		if ( markerId == null )
+		{
+			Log.Warning( $"[WorldMap] Unlock reveal: no visible marker for '{id}' — latch dropped." );
+			PendingRevealZoneId = null;
+			return;
+		}
+
+		// The pins this clear surfaced = the request nodes of the zone BEFORE the new one in
+		// the chain (GetVisibleTradeNodes shows a zone's pins once IT is cleared).
+		_revealNewReqIds.Clear();
+		var em = ExpeditionManager.Instance;
+		var chain = em?.Expeditions.Where( e => !e.TutorialOnly && !e.IsMiniExpedition ).ToList();
+		string expId = zone?.ExpeditionId ?? id;
+		int idx = chain?.FindIndex( e => e.Id == expId ) ?? -1;
+		if ( idx > 0 && TradeNodeManager.Instance != null )
+		{
+			string prevId = chain[idx - 1].Id;
+			foreach ( var node in TradeNodeManager.Instance.AllNodes )
+				if ( node.ZoneId == prevId ) _revealNewReqIds.Add( node.Id );
+		}
+
+		_revealZoneId = markerId;
+		_revealAt = RealTime.Now;
+		_revealPhase = RevealZoom;
+		_kbMarkerId = markerId;   // the ring lands on the new area when the beat ends
+		_hoveredZoneId = null;
+		_hoveredMiniId = null;
+		_hoveredTradeNodeId = null;
+		_hoveredLandmarkId = null;
+		_hoveredKey = null;
+		StoryDirector.HoldPending();
+		StateHasChanged();
+	}
+
+	/// <summary>The release beat: story queue released, latch cleared (idempotent).</summary>
+	private void ReleaseReveal()
+	{
+		if ( _revealPhase >= RevealRelease ) return;
+		_revealPhase = RevealRelease;
+		StoryDirector.PlayPending();
+		PendingRevealZoneId = null;
+	}
+
+	private void EndReveal()
+	{
+		_revealZoneId = null;
+		_revealPhase = 0;
+		_revealNewReqIds.Clear();
+		StateHasChanged();
+	}
+
+	/// <summary>Any key / click during the window: straight to the end state.</summary>
+	private void SkipReveal()
+	{
+		if ( !RevealLive ) return;
+		ReleaseReveal();
+		EndReveal();
+	}
+
+	private void TickReveal()
+	{
+		if ( _revealZoneId == null )
+		{
+			if ( PendingRevealZoneId != null && CanStartReveal() ) StartReveal( PendingRevealZoneId );
+			return;
+		}
+
+		float t = RealTime.Now - _revealAt;
+		if ( t >= RevealEndAt ) { ReleaseReveal(); EndReveal(); return; }
+
+		int want = t < RevealPopAt ? RevealZoom : ( t < RevealReleaseAt ? RevealPop : RevealRelease );
+		if ( want == _revealPhase ) return;
+
+		if ( want == RevealPop )
+		{
+			_revealPhase = RevealPop;
+			SoundManager.PlaySuccess(); // payoff on the REVEAL, silence through the zoom (DOC-4 #17)
+		}
+		else if ( want == RevealRelease )
+		{
+			ReleaseReveal();
+		}
+		StateHasChanged();
+	}
+
+	/// <summary>Leaving the page mid-beat: never leave the story queue held.</summary>
+	public override void OnDeleted()
+	{
+		if ( RevealLive ) { ReleaseReveal(); EndReveal(); }
+		base.OnDeleted();
+	}
+
+	// dev_reveal [zoneId] — replay the unlock reveal on demand (default: saltmoor_forest).
+	// Sets the latch; the mounted map consumes it next tick (dev_page expedition first if
+	// the map is not up). The costume override forces the pin LOCKED through the zoom and
+	// OPEN from the pop beat regardless of save state, so a locked zone previews honestly
+	// and snaps back to its real state when the beat ends.
+	[ConCmd( "dev_reveal" )]
+	public static void DevReveal( string zoneId = "saltmoor_forest" )
+	{
+		PendingRevealZoneId = zoneId;
+		var p = Instance;
+		if ( p == null || p.Parent == null )
+		{
+			Log.Info( $"[dev_reveal] latched '{zoneId}' — open the map (dev_page expedition) to play it." );
+			return;
+		}
+		if ( p.RevealLive ) p.SkipReveal();
+		p.StateHasChanged();
+		Log.Info( $"[dev_reveal] replaying the unlock reveal for '{zoneId}'." );
+	}
+
+	// ── CARD EXIT LATCH — LANE: motion. CloseCard keeps the card mounted with `.leaving` for
+	// 0.12s (wmCardOut), Tick unmounts. Keys/clicks on a leaving card are swallowed.
+	private bool _cardLeaving;
+	private float _cardLeaveAt;
 
 	private string RevealOriginStyle()
 	{
@@ -722,6 +934,8 @@
 			Instance = this;
 			_hoveredKey = null;
 			_selectedExpId = null;
+			_cardLeaving = false;
+			_mountedAt = RealTime.Now; // LANE: motion — the reveal waits for the page entrance
 			_kbMarkerId = SeedMarkerId(); // open edge: the cursor lands on the CURRENT zone
 		}
 	}
@@ -729,6 +943,14 @@
 	public override void Tick()
 	{
 		base.Tick();
+
+		// LANE: motion — the unlock reveal beat ladder + the card's exit latch.
+		TickReveal();
+		if ( _cardLeaving && RealTime.Now >= _cardLeaveAt )
+		{
+			_cardLeaving = false;
+			_selectedExpId = null;
+		}
 
 		// LANE: input — kb scroll-follow on the DROPS slab: 0.30 glide per tick toward the
 		// target row (DOC-5 #13); cleared once landed, or by the wheel / a row hover.
@@ -750,8 +972,9 @@
 		// Esc dismisses the top surface. Leaving the map is the HUD tab bar's job.
 		if ( Input.Pressed( "Escape" ) )
 		{
-			if ( _tradePopupNodeId != null ) CloseTradePopup();
-			else if ( _selectedExpId != null ) CloseCard();
+			if ( RevealLive ) SkipReveal();
+			else if ( _tradePopupNodeId != null ) CloseTradePopup();
+			else if ( _selectedExpId != null && !_cardLeaving ) CloseCard();
 		}
 	}
 
@@ -927,6 +1150,17 @@
 			|| UiInput.ConfirmPressed() || Input.Pressed( "Menu" );
 		if ( navKey ) SetInputDevice( InputDevice.Keyboard );
 
+		// LANE: motion — the reveal window: any key skips to the end state, nothing else fires.
+		if ( RevealLive )
+		{
+			if ( navKey || Input.Pressed( "Escape" ) )
+			{
+				SkipReveal();
+				if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+			}
+			return;
+		}
+
 		// ── Q CHAIN, top surface first: request popup → card → page. ──
 		if ( _tradePopupNodeId != null )
 		{
@@ -950,7 +1184,7 @@
 
 		if ( _selectedExpId != null )
 		{
-			HandleCardKeys();
+			if ( !_cardLeaving ) HandleCardKeys(); // a leaving card swallows its last 0.12s of keys
 			return;
 		}
 
@@ -1052,6 +1286,7 @@
 	private void OpenCard( string expeditionId, string markerId )
 	{
 		_selectedExpId = expeditionId;
+		_cardLeaving = false; // re-opening during the exit latch = a fresh card (class string changes → wmCardIn)
 		_kbMarkerId = markerId;
 		_cardCursor = 0;
 		_dropsGlideTarget = -1f;
@@ -1061,7 +1296,10 @@
 
 	private void CloseCard()
 	{
-		_selectedExpId = null;
+		if ( _selectedExpId == null || _cardLeaving ) return;
+		// LANE: motion — exit latch: the card stays mounted as .leaving for 0.12s, Tick unmounts.
+		_cardLeaving = true;
+		_cardLeaveAt = RealTime.Now + 0.12f;
 		_cardCursor = 0;
 		_dropsGlideTarget = -1f;
 		_hoveredKey = null;
@@ -1072,7 +1310,7 @@
 	private void CloseTopSurface()
 	{
 		if ( _tradePopupNodeId != null ) CloseTradePopup();
-		else if ( _selectedExpId != null ) CloseCard();
+		else if ( _selectedExpId != null && !_cardLeaving ) CloseCard();
 	}
 
 	private void EmbarkSelected()
@@ -1101,6 +1339,7 @@
 		}
 		// The picker owns StartExpedition. Close the card so the popup isn't under the dim.
 		_selectedExpId = null;
+		_cardLeaving = false; // instant — the picker's own entrance is the motion here
 		TeamPickerPopup.Show( expeditionId );
 	}
 
@@ -1277,6 +1516,9 @@
 		h.Add( _cardCursor );
 		h.Add( _revealZoneId );
 		h.Add( PendingRevealZoneId );
+		// LANE: motion — the beat ladder's phase and the card's exit latch (DOC-7 #22).
+		h.Add( _revealPhase );
+		h.Add( _cardLeaving );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Level ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.HighestExpeditionCleared ?? 0 );
 		h.Add( TamerManager.Instance?.CurrentTamer?.Gold ?? 0 );

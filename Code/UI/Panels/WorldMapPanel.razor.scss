@@ -51,9 +51,15 @@ WorldMapPanel {
 	pointer-events: none;
 }
 
-// UNLOCK REVEAL GROUP. Static end state only — LANE: motion adds
-// `transition: transform 0.9s cubic-bezier(.22,1,.36,1)` and the ladder.
-// Box.Rect is pre-transform → the ring stays hidden for the whole beat.
+// UNLOCK REVEAL GROUP — LANE: motion (attached 2026-09-04). The phase class sits ON this
+// element ("" → .reveal → .reveal.release → ""), so whichever way the engine treats a
+// class-string change (fresh mount → the keyframe fires · persistent element → the
+// transition glides; learnings 2026-07-05/06 hedge) the zoom plays. Keyframes fill NONE:
+// each phase's static transform equals its keyframe's end frame, so nothing pops when an
+// animation ends and nothing is held across a phase change (a `both` fill would pin the
+// old end state over the next phase's static value — DOC-4 #12).
+// Box.Rect is pre-transform → the ring stays hidden for the whole beat (INPUT's rule below).
+// Children are absolute-% layers; nothing inside flex-grows (transform-poison law moot).
 .map-zoom {
 	position: absolute;
 	top: 0;
@@ -62,10 +68,30 @@ WorldMapPanel {
 	height: 100%;
 	pointer-events: none;
 	z-index: 1;
+	transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 
+	// 0.0s — zoom in toward the pin (inline transform-origin), 0.6s ease-out.
 	&.reveal {
 		transform: scale(1.35);
+		animation: wmZoomIn 0.6s cubic-bezier(0.22, 1, 0.36, 1);
 	}
+
+	// 2.4s — zoom back, 0.5s. The destination rule's transition runs (DOC-4 #15).
+	&.reveal.release {
+		transform: scale(1);
+		transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+		animation: wmZoomOut 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+	}
+}
+
+@keyframes wmZoomIn {
+	0%   { transform: scale(1); }
+	100% { transform: scale(1.35); }
+}
+
+@keyframes wmZoomOut {
+	0%   { transform: scale(1.35); }
+	100% { transform: scale(1); }
 }
 
 // Art frame — base + landmarks + clouds, all % against this box.
@@ -177,6 +203,14 @@ WorldMapPanel {
 	justify-content: center;
 	pointer-events: none;
 	z-index: 12;
+	// LANE: motion — the host mounts per hover (@if), so a mount fade IS the transition.
+	// Opacity only: the slab inside is an in-flow shrink-wrap child (no transform here).
+	animation: wmTitleIn 0.14s ease-out;
+}
+
+@keyframes wmTitleIn {
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
 }
 
 .lm-title {
@@ -218,6 +252,10 @@ WorldMapPanel {
 	border-bottom: 2px solid rgba(238, 84, 33, 0.55);
 	pointer-events: none;
 	z-index: 20;
+	// LANE: motion — entrance rung 0 (fresh mount per tab visit: GameHUD branch-swaps the
+	// page). OPACITY ONLY on the host — .wm-toolbar is `flex: 1 1 0`, and a transform here
+	// would poison its width (DOC-4 #8 / DOC-7 #15). The hub's gpZoneHeader recipe.
+	animation: wmHeaderIn 0.22s ease-out;
 
 	> * {
 		position: relative;
@@ -249,6 +287,19 @@ WorldMapPanel {
 	flex: 0 1 auto;
 	min-width: 0;
 	height: 60px;
+	// LANE: motion — kicker + title slide in from the left (10px, resolving to 0). Safe to
+	// transform: every descendant is flex 0 0 auto (kicker, title, seams) — nothing grows.
+	animation: wmIdentityIn 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes wmHeaderIn {
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+@keyframes wmIdentityIn {
+	0%   { opacity: 0; transform: translateX(-10px); }
+	100% { opacity: 1; transform: translateX(0px); }
 }
 
 .wm-kicker {
@@ -367,6 +418,41 @@ WorldMapPanel {
 	background-color: rgba(4, 3, 10, 0.55);
 	pointer-events: all;
 	z-index: 40;
+
+	// LANE: motion — the REVEAL veil. Mounts at 0.0s (fade 0.3s), `.release` lifts it 0.5s.
+	// Same hedge shape as .map-zoom: static end values + a keyframe + a transition.
+	&.rv {
+		transition: opacity 0.5s ease-out;
+		animation: wmDimIn 0.3s ease-out;
+	}
+
+	&.rv.release {
+		opacity: 0;
+		animation: wmDimOut 0.5s ease-out;
+	}
+}
+
+@keyframes wmDimIn {
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+@keyframes wmDimOut {
+	0%   { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+// LANE: motion — the reveal's click shield: root-level, transparent, above the card (z60)
+// and the request popup (z65). Explicit full box (absolutes never shrink-wrap). Any click
+// skips to the end state. Pins sit above the veil, so the veil alone cannot shield.
+.wm-reveal-shield {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: all;
+	z-index: 200;
 }
 
 // Zone pin host 160×106: diamond 44 · 14 · name 16 · 2 · meta 14 · 2 · meta 14.
@@ -389,6 +475,9 @@ WorldMapPanel {
 
 	// The open card's pin reads as one selection with the card — above the dim.
 	&.selected { z-index: 60; }
+
+	// LANE: motion — the revealing pin stays lit above the reveal veil (z40).
+	&.unlocking { z-index: 60; }
 }
 
 // Mini pin host 160×88: diamond 32 · 12 · name 14 · 2 · meta 14 (+14 slack).
@@ -406,6 +495,7 @@ WorldMapPanel {
 	z-index: 45;
 
 	&.selected { z-index: 60; }
+	&.unlocking { z-index: 60; } // LANE: motion — above the reveal veil
 }
 
 // The diamond — a 44 square rotated 45°, r8, the page accent. Leaf holder
@@ -425,6 +515,9 @@ WorldMapPanel {
 	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
 	pointer-events: none;
 	z-index: 2;
+	// LANE: motion — hover step eases, colour only (0.14s SNAP). If the hover class remounts
+	// the pin the step lands at 0ms instead — legal SNAP, no hedge keyframe for a colour.
+	transition: background-color 0.14s ease-out;
 
 	&.mini {
 		width: 32px;
@@ -446,6 +539,102 @@ WorldMapPanel {
 .zone-pin.locked .pin-diamond,
 .mini-pin.locked .pin-diamond {
 	background-color: #1c1830;
+}
+
+// ─── UNLOCK REVEAL — the pop beat (0.6s): locked → open costume ─────────────
+// LANE: motion. `.unlocking` joins the pin's class string at the pop beat (its state class
+// flips locked → current in the same write), so the pin re-mounts and these fire as mount
+// keyframes; a persistent element starts them on the name change instead. Fill none — each
+// rests on the static costume. The base rotate(45deg) is baked into EVERY step (DOC-4 #13).
+// The 0% fill is THE ONE HDR TICK on this page (#ee5421 * 2 — a ×2 on a 44 r8 fill keeps
+// the antialiased edge off the white-core trap; DOC-2 HDR ration). 0.32s smash-pop curve.
+.zone-pin.unlocking .pin-diamond,
+.mini-pin.unlocking .pin-diamond {
+	animation: wmPinPop 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes wmPinPop {
+	0%   { transform: rotate(45deg) scale(1.18); background-color: #ee5421 * 2; }
+	100% { transform: rotate(45deg) scale(1);    background-color: #ee5421; }
+}
+
+// The new glyph (swords) fades in over the popped fill — opacity only, so the holder's
+// rotate(-45deg) base is never clobbered. (The lock is an attribute swap on the same
+// iconify, so its own fade-out is the zoom phase — it reads as "lock, then swords".)
+.zone-pin.unlocking .pin-glyph,
+.mini-pin.unlocking .pin-glyph {
+	animation: wmGlyphIn 0.2s ease-out;
+}
+
+@keyframes wmGlyphIn {
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+// LV meta slides up into the label column (leaf span, no base transform).
+.zone-pin.unlocking .pin-meta.lv,
+.mini-pin.unlocking .pin-meta.lv {
+	animation: wmMetaIn 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes wmMetaIn {
+	0%   { opacity: 0; transform: translateY(6px); }
+	100% { opacity: 1; transform: translateY(0px); }
+}
+
+// "NEW AREA · <ZONE>" — the house chipstamp (solid orange, skewX −10°, counter-skewed
+// label, hard offset shadow), mounted under the pin for the pop beat. Host = an explicit
+// 320×28 absolute box centred on the pin host (160 wide → left −80), the chip an in-flow
+// shrink-wrap child. 1.6s: rise 0.16s · hold · fade out from 1.36s; fill forwards keeps it
+// gone until the release beat unmounts it. The skew is baked into every step.
+.wm-newchip-host {
+	position: absolute;
+	left: -80px;
+	top: 108px;
+	width: 320px;
+	height: 28px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 3;
+}
+
+.wm-newchip {
+	flex: 0 0 auto;
+	height: 26px;
+	padding: 0 12px;
+	background-color: #ee5421;
+	border-radius: 4px;
+	transform: skewX(-10deg);
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	pointer-events: none;
+	animation: wmChipRise 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.wm-newchip-text {
+	flex: 0 0 auto;
+	display: flex;
+	transform: skewX(10deg);
+	font-size: 12px;
+	font-weight: 800;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: #2a1605;
+	line-height: 14px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+@keyframes wmChipRise {
+	0%   { opacity: 0; transform: skewX(-10deg) translateY(10px); }
+	10%  { opacity: 1; transform: skewX(-10deg) translateY(0px); }
+	85%  { opacity: 1; transform: skewX(-10deg) translateY(0px); }
+	100% { opacity: 0; transform: skewX(-10deg) translateY(-4px); }
 }
 
 // Bare hover step — brighten, same hue (LANE: motion eases it). Mouse-mode only (DOC-5 #5).
@@ -495,6 +684,9 @@ WorldMapPanel {
 	opacity: 0;
 	pointer-events: none;
 	z-index: 3;
+	// LANE: motion — ring land 0.18s (persistent element → this transition; remounted pin →
+	// the wmRingLand keyframe on the gated rules below: the 2026-07-06 both-mechanisms hedge).
+	transition: opacity 0.18s ease-out;
 
 	// 32 host: box 44 + 8 = 52 outer, r16 = host 6 + 10.
 	&.mini {
@@ -520,11 +712,21 @@ WorldMapPanel {
 .wm-root.kbd-mode .mini-pin.kb-active .pin-ring,
 .wm-root.kbd-mode .req-pin.kb-active .pin-ring {
 	opacity: 1;
+	animation: wmRingLand 0.18s ease-out; // LANE: motion — land (fires when the host remounts)
+}
+
+@keyframes wmRingLand {
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
 }
 
 // Hidden for the whole reveal beat — out-specified (4 classes) so it beats the gates above.
+// LANE: motion — the land keyframe is PAUSED at its 0% (opacity 0) under .reveal: an
+// animation beats a static opacity (DOC-4 #12), so without this the pin's re-mount at the
+// pop beat would flash the ring. When .reveal drops it resumes → the ring lands on the new area.
 .wm-root .map-zoom.reveal .pin-ring {
 	opacity: 0;
+	animation-play-state: paused;
 }
 
 // Label column under the pin — 14 clears the diamond's rotated overhang (≈9).
@@ -596,9 +798,39 @@ WorldMapPanel {
 	pointer-events: all;
 	cursor: pointer;
 	z-index: 44;
+	transition: background-color 0.14s ease-out; // LANE: motion — hover step, colour only
 
 	&.done { background-color: #141021; }
 	&.ready { background-color: #241a1c; }
+
+	// LANE: motion — UNLOCK REVEAL tail: the request pins this clear surfaced mount at the
+	// release beat wearing a RARE rung class (dropped when the reveal ends, so a hover
+	// remount later replays nothing — DOC-4 #14). One 0.5s keyframe per rung from t=0,
+	// 60ms apart as percentage holds (0 / 12 / 24%), 0.14s pop each (28% of 0.5s). Pins are
+	// absolutes in .map-markers, not a scroll — a scale pop is legal here. No base transform.
+	&.wm-newreq-0 { animation: wmReqIn0 0.5s ease-out; }
+	&.wm-newreq-1 { animation: wmReqIn1 0.5s ease-out; }
+	&.wm-newreq-2 { animation: wmReqIn2 0.5s ease-out; }
+}
+
+@keyframes wmReqIn0 {
+	0%   { opacity: 0; transform: scale(0.6); }
+	28%  { opacity: 1; transform: scale(1); }
+	100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes wmReqIn1 {
+	0%   { opacity: 0; transform: scale(0.6); }
+	12%  { opacity: 0; transform: scale(0.6); }
+	40%  { opacity: 1; transform: scale(1); }
+	100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes wmReqIn2 {
+	0%   { opacity: 0; transform: scale(0.6); }
+	24%  { opacity: 0; transform: scale(0.6); }
+	52%  { opacity: 1; transform: scale(1); }
+	100% { opacity: 1; transform: scale(1); }
 }
 
 // Hover lift — mouse-mode only (the kb cursor is the ring, .kb-active above).
@@ -641,7 +873,37 @@ WorldMapPanel {
 	flex-direction: column;
 	align-items: flex-start;
 	z-index: 60;
-	// LANE: motion — card enter.
+	// LANE: motion — card enter/exit. The card is a branch-swap element (fresh mount per
+	// open) → mount keyframe. OPACITY ONLY on the card body: EMBARK is a BbButton Stretch
+	// (`flex: 1 1 0`), and a transform on this ancestor would poison its width (DOC-4 #8 /
+	// DOC-7 #15). The "rise from the right" rides two leaf children (.zd-hero, .zd-title).
+	animation: wmCardIn 0.22s ease-out;
+
+	// Exit latch: CloseCard writes `.leaving` and unmounts 0.12s later (Tick). The class
+	// string change re-mounts (or restarts) → wmCardOut; `both` holds the vanished frame
+	// until the unmount so nothing flashes back. Inert to the pointer while leaving.
+	&.leaving {
+		opacity: 0;
+		pointer-events: none;
+		animation: wmCardOut 0.12s ease-in both;
+	}
+}
+
+@keyframes wmCardIn {
+	0%   { opacity: 0; }
+	100% { opacity: 1; }
+}
+
+@keyframes wmCardOut {
+	0%   { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+// The rise — 16px from the right on the hero and the title (leaves: the hero's children are
+// fixed-size absolutes, the title is a span; nothing under either grows). 0.22s ease-out.
+@keyframes wmCardRise {
+	0%   { transform: translateX(16px); }
+	100% { transform: translateX(0px); }
 }
 
 // HERO 412×200 r16 — zone art under a veil. The BACK row is IN-FLOW (first
@@ -657,6 +919,7 @@ WorldMapPanel {
 	display: flex;
 	flex-direction: column;
 	background-color: #1c1830;
+	animation: wmCardRise 0.22s cubic-bezier(0.22, 1, 0.36, 1); // LANE: motion — the rise
 }
 
 .zd-hero-img {
@@ -705,10 +968,10 @@ WorldMapPanel {
 	background-color: #1c1830;
 	cursor: pointer;
 	pointer-events: all;
-
+	transition: background-color 0.12s ease-out; // LANE: motion — hover/press step, colour only
 }
 
-// Bare hover step — mouse-mode only (LANE: input gate; LANE: motion eases).
+// Bare hover step — mouse-mode only (LANE: input gate; LANE: motion eases 0.12s via the base rule).
 .wm-root.mouse-mode .zd-back:hover { background-color: #262040; }
 .wm-root.mouse-mode .zd-back:active { background-color: #141021; }
 
@@ -765,6 +1028,7 @@ WorldMapPanel {
 	white-space: nowrap;
 	margin-bottom: 4px;
 	padding-right: 8px; // italic overhang
+	animation: wmCardRise 0.22s cubic-bezier(0.22, 1, 0.36, 1); // LANE: motion — the rise
 }
 
 // ONE meta line "LV 10 · 7 WAVES · BOSS" — 14/18, LV gold, sibling spans + gap

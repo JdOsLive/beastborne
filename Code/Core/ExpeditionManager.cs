@@ -848,7 +848,13 @@ public sealed class ExpeditionManager : Component
 			// map's unlock-reveal lane releases the queue with StoryDirector.PlayPending()
 			// once its zoom lands (BbDialogue self-releases after 3.5s idle otherwise).
 			if ( tamer.HighestExpeditionCleared > highestBefore && tamer.HighestExpeditionCleared < realChain.Count )
+			{
 				QueueStoryBeat( StoryTrigger.OnAreaUnlocked, realChain[tamer.HighestExpeditionCleared].Id );
+				// UNLOCK REVEAL latch (LANE: motion, 2026-09-04) — the map consumes it on its
+				// next mount: camera zoom onto the new pin, locked → open costume swap. This
+				// replaces the corner toast (NotificationManager.CheckForNewExpeditionUnlocks).
+				Beastborne.UI.Panels.WorldMapPanel.PendingRevealZoneId = realChain[tamer.HighestExpeditionCleared].Id;
+			}
 
 			// First Normal clear of this expedition → unlock Hard Mode for it.
 			if ( !tamer.HardModeUnlocked.GetValueOrDefault( CurrentExpedition.Id ) )

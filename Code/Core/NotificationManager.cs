@@ -234,7 +234,10 @@ public sealed class NotificationManager : Component
 		{
 			if ( i <= highest && !_previouslyUnlockedExpeditions.Contains( expeditions[i].Id ) )
 			{
-				NotifyExpeditionUnlock( expeditions[i].Name );
+				// The "next zone unlocked" toast is CUT (user ruling, expedition rev-2 2026-09-04):
+				// the map's UNLOCK REVEAL setpiece (WorldMapPanel.PendingRevealZoneId, set by
+				// ExpeditionManager.UpdateExpeditionStats) owns this moment. Bookkeeping stays so
+				// the set still tracks what the player has seen unlocked.
 				_previouslyUnlockedExpeditions.Add( expeditions[i].Id );
 			}
 		}
