@@ -15,629 +15,662 @@
 
 @if ( guildView == "landing" )
 {
+	<!-- ═══ LANDING (no guild) — run 3 LAYOUT, house dialect (the plaza's
+	     gp-* chrome). The hub's FIND A GUILD lands a new player here.
+	     HEADER 1920×110 + 2 seam = 112 · kicker GUILD · title GUILDS 38/44
+	     · polygon seams · blue waves .16/.24 · right slot BACK TO HUB · Q.
+	     BODY pad 20/40/20/40 → lane 1840 × 928 (1080 − 112 − 40).
+	     ONE slab pair, top-aligned (PADDING-BOX — declared INCLUDES padding):
+	       LEFT  JOIN A GUILD   912 × glLeftH   x 40–952
+	       RIGHT START YOUR OWN 912 × 216       x 968–1880   (912+16+912 = 1840 ✓)
+	     Slab anatomy: band 36 + body pad 24 + copy 26 + 20 + BbButton 56 +
+	     16 + status line 14 + pad 24 = 216 ✓.
+	     LEFT grows for PENDING INVITES: + 24 + kicker 24 + 8 + n×72 +
+	     (n−1)×8 + list pad 24 = 288 + 80n (1 → 368 … 8 → 928 = the cap;
+	     9+ scroll). Invite rows = the .gp-prow recipe at 860 (+4 seam =
+	     864 = 912 − 48 pad): 16 + emblem 44 + 20 + text 400 + spacer 144
+	     + ACCEPT 104 + 16 + DECLINE 100 + 16 = 860 ✓ — DIRECT scroll children.
+	     DOC-1 §19 bend: when invites exist the two slab bottoms do NOT
+	     align (right stays 216) — the alternative (a right slab stretched
+	     to match with 700px of nothing in it) breaks §10 harder. The page
+	     black under the slabs is the settings sub-view's precedent.
+	     LANE: input — kb walk: BROWSE (0) · ACCEPT/DECLINE pairs (1+2i /
+	     2+2i) · CREATE (1+2n); W/S already flow that order (TickLandingInput);
+	     A/D column hop BROWSE ⇄ CREATE + the Q chain landing → hub are input's.
+	     LANE: motion — view enter (the gp-header carries gpZoneHeader; the
+	     slabs are static — no rungs assigned here).
+	     LANE: color — the two status lines share TextDim; the gate reads
+	     dim, not red (a locked state is quiet). -->
 	@{
-		var gmL = GuildManager.Instance;
-		var inGuildL = gmL?.IsInGuild ?? false;
-		var guildL = gmL?.Guild;
-		var inviteCount = gmL?.PendingInvites?.Count ?? 0;
-		var visibleGuilds = GetVisibleGuilds();
-		var levelGated = GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN;
+		var glGm = GuildManager.Instance;
+		var glInvites = glGm?.PendingInvites ?? new List<GuildInvite>();
+		int glN = glInvites.Count;
+		int glLevel = GetTamerLevel();
+		int glGold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+		bool glLevelGated = glLevel < GuildManager.MIN_LEVEL_TO_JOIN;
+		bool glCooldown = glGm?.IsOnHopCooldown() ?? false;
+		bool glGoldGated = glGold < GuildManager.GUILD_CREATION_COST;
+		bool glCanJoin = !glLevelGated && !glCooldown;
+		bool glCanCreate = glCanJoin && !glGoldGated;
+		int glOpen = GetVisibleGuilds().Count;
+		// One honest status line per slab — plain words, 12px dim.
+		var glJoinLine = glLevelGated ? $"Level {GuildManager.MIN_LEVEL_TO_JOIN} needed to join · you are Lv {glLevel}"
+			: glCooldown ? string.Format( L("ui.guild.hop_cooldown"), FormatCooldown() )
+			: glOpen > 0 ? $"{glOpen} guilds recruiting right now" : "Browse to see who's recruiting";
+		var glCreateLine = glLevelGated ? $"Level {GuildManager.MIN_LEVEL_TO_JOIN} needed · you are Lv {glLevel}"
+			: glCooldown ? $"You can found a guild in {FormatCooldown()}"
+			: $"Costs {GuildManager.GUILD_CREATION_COST:N0} gold · you have {glGold:N0}";
+		int glLeftH = glN == 0 ? 216 : Math.Min( 928, 288 + 80 * glN );
+		var glLeftStyle = $"height: {glLeftH}px;";
+		var glInvChip = glN == 1 ? "1 INVITE WAITING" : $"{glN} INVITES WAITING";
+		int glCreateIdx = 1 + glN * 2;
 	}
-
-	<!-- GUILD LANDING — Persona-5 style, hero+actions split.
-	     When in a guild: hero card is your guild + actions row of Browse/Invites.
-	     When not in a guild: hero card is "Form a Guild" (browse OR create) + Invites action. -->
-	<div class="guild-landing-v2">
-
-		<!-- LEVEL GATE — fullscreen takeover when below level 10 -->
-		@if ( levelGated )
-		{
-			<div class="landing-gate-card">
-				<div class="landing-gate-icon-wrap">
-					<iconify icon="lucide:lock-keyhole" Size=@(72) Color="rgba(255, 200, 100, 0.85)" />
-				</div>
-				<span class="landing-gate-title">@L("ui.guild.guilds")</span>
-				<span class="landing-gate-rule">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
-				<span class="landing-gate-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
-			</div>
-		}
-		else
-		{
-
-		<!-- PENDING INVITES BANNER (above hero — high-priority alert) -->
-		@if ( inviteCount > 0 )
-		{
-			<div class="landing-invites-banner">
-				<div class="landing-invites-header">
-					<iconify icon="lucide:mailbox" Size=@(16) Color="#fbbf24" />
-					<span class="landing-invites-title">@L("ui.guild.pending_invites")</span>
-					<span class="landing-invites-count">@inviteCount</span>
-				</div>
-				@{ var inviteKbIdx = 0; }
-				@foreach ( var invite in gmL.PendingInvites )
-				{
-					var acceptIdx = inviteKbIdx;
-					var denyIdx = inviteKbIdx + 1;
-					inviteKbIdx += 2;
-					<div class="invite-row">
-						<div class="invite-info">
-							<span class="invite-guild">[@invite.GuildTag] @invite.GuildName</span>
-							<span class="invite-from">@L("ui.guild.from") @invite.InviterName</span>
-						</div>
-						<div class="invite-actions">
-							<div class="guild-btn accept-btn @(IsLandingKb( acceptIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { AcceptInvite( invite ); SoundManager.PlaySelect(); })>
-								<iconify icon="lucide:check" Size=@(13) Color="#ffffff" />
-								<span>@L("ui.guild.accept")</span>
-							</div>
-							<div class="guild-btn deny-btn @(IsLandingKb( denyIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { DeclineInvite( invite ); SoundManager.PlayDeny(); })>
-								<iconify icon="lucide:x" Size=@(13) Color="#ffffff" />
-								<span>@L("ui.guild.deny")</span>
-							</div>
-						</div>
-					</div>
-				}
-			</div>
-		}
-
-		@{ var heroKbIdx = inviteCount * 2; var browseKbIdx = heroKbIdx + 1; }
-		<!-- HERO CARD — adapts to in-guild vs no-guild state -->
-		@if ( inGuildL )
-		{
-			<div class="landing-hero-card has-guild @(IsLandingKb( heroKbIdx ) ? "guild-kb-selected" : "")"
-				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredLandingCard = null)
-				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
-
-				<!-- Halftone bg layer (P5 stamp aesthetic) -->
-				<div class="landing-hero-bg"></div>
-
-				<!-- Big emblem — beast emblems (beast:<id> / leader-favorite
-				     default) render the species sprite as a NATIVE-PX 88×88
-				     viewport crop (BbEmblem, the framed-tile recipe — no
-				     scaling); legacy lucide keys keep the glyph. -->
-				@{
-					var heroEmblemBeast = BbEmblem.ResolveBeast( guildL?.EmblemIcon, guildL?.OwnerSteamId ?? 0, gmL?.Members );
-					// Precomputed (nested call commas are Razor-attribute hazards).
-					var heroEmblemCrop = heroEmblemBeast != null ? BbEmblem.CropStyleFor( heroEmblemBeast, 88, 88 ) : "";
-				}
-				<div class="landing-hero-emblem-wrap">
-					<div class="landing-hero-emblem @(heroEmblemBeast != null ? "beast-tile" : "") shape-@(guildL?.EmblemShape ?? "square")" style="background-color: @(guildL?.EmblemColor ?? "#7c3aed")">
-						@if ( heroEmblemBeast != null )
-						{
-							<img class="emblem-beast-img" src="@heroEmblemBeast.IconPath" style="@heroEmblemCrop" />
-						}
-						else
-						{
-							<iconify icon="@GetEmblemIcon( guildL?.EmblemIcon ?? "shield" )" Size=@(56) Color="#ffffff" />
-						}
-					</div>
-				</div>
-
-				<!-- Guild identity stack -->
-				<div class="landing-hero-info">
-					<div class="landing-hero-titlerow">
-						<span class="landing-hero-name">@(guildL?.Name ?? L("ui.guild.my_guild"))</span>
-						<span class="landing-hero-tag">[@(guildL?.Tag ?? "")]</span>
-					</div>
-					<div class="landing-hero-statsrow">
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:trending-up" Size=@(13) Color="#a78bfa" />
-							<span class="landing-hero-stat-value">Lv @(guildL?.Level ?? 1)</span>
-						</div>
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:users" Size=@(13) Color="#a78bfa" />
-							<span class="landing-hero-stat-value">@(gmL.Members?.Count ?? 0)</span>
-							<span class="landing-hero-stat-label">@L("ui.guild.members")</span>
-						</div>
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:circle" Size=@(11) Color="#4ade80" />
-							<span class="landing-hero-stat-value">@gmL.OnlineCount</span>
-							<span class="landing-hero-stat-label">@L("ui.guild.online")</span>
-						</div>
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:trophy" Size=@(13) Color="@GuildManager.GetGuildRankColor(gmL.GuildRankTier)" />
-							<span class="landing-hero-stat-value" style="color: @GuildManager.GetGuildRankColor(gmL.GuildRankTier)">@gmL.GuildRankTier</span>
-						</div>
-					</div>
-				</div>
-
-				<!-- CTA chevron -->
-				<div class="landing-hero-cta">
-					<span class="landing-hero-cta-text">@L("ui.guild.enter")</span>
-					<iconify icon="lucide:arrow-right" Size=@(20) Color="#ffffff" />
+	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+		<div class="gp-header">
+			<BbHeaderWaves Accent=@("blue") />
+			<div class="gp-h-identity">
+				<span class="gp-kicker">GUILD</span>
+				<div class="gp-title-row sm">
+					<span class="gp-title sm">@L("ui.guild.guilds")</span>
+					<div class="gp-seam"></div>
+					<div class="gp-seam dim"></div>
 				</div>
 			</div>
-		}
-		else
-		{
-			<!-- No guild — Create CTA hero -->
-			<div class="landing-hero-card no-guild @(IsLandingKb( heroKbIdx ) ? "guild-kb-selected" : "")"
-				 onmouseover=@(() => { if (hoveredLandingCard != "myguild") { hoveredLandingCard = "myguild"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredLandingCard = null)
-				 onclick=@(() => { SoundManager.PlayForward(); guildView = "myguild"; errorMessage = ""; })>
-
-				<div class="landing-hero-bg"></div>
-
-				<div class="landing-hero-emblem-wrap">
-					<div class="landing-hero-emblem shape-square placeholder-emblem">
-						<iconify icon="lucide:plus" Size=@(56) Color="#a78bfa" />
-					</div>
-				</div>
-
-				<div class="landing-hero-info">
-					<div class="landing-hero-titlerow">
-						<span class="landing-hero-name">@L("ui.guild.create_a_guild")</span>
-					</div>
-					<div class="landing-hero-statsrow">
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:coins" Size=@(13) Color="#fbbf24" />
-							<span class="landing-hero-stat-value">@($"{GuildManager.GUILD_CREATION_COST:N0}")</span>
-							<span class="landing-hero-stat-label">@L("ui.guild.gold_cost")</span>
-						</div>
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:users" Size=@(13) Color="#a78bfa" />
-							<span class="landing-hero-stat-value">@GuildManager.BASE_MAX_MEMBERS</span>
-							<span class="landing-hero-stat-label">@L("ui.guild.max_members")</span>
-						</div>
-						<div class="landing-hero-stat">
-							<iconify icon="lucide:zap" Size=@(13) Color="#a78bfa" />
-							<span class="landing-hero-stat-value">10</span>
-							<span class="landing-hero-stat-label">@L("ui.guild.tab_perks")</span>
-						</div>
-					</div>
-				</div>
-
-				<div class="landing-hero-cta">
-					<span class="landing-hero-cta-text">@L("ui.guild.start")</span>
-					<iconify icon="lucide:arrow-right" Size=@(20) Color="#ffffff" />
+			<div class="gp-toolbar">
+				<div class="gp-back" onmouseover=@(() => SoundManager.PlayHover()) onclick=@OnBackClicked>
+					<span class="gp-back-label">BACK TO HUB</span>
+					<span class="gp-back-cap">Q</span>
 				</div>
 			</div>
-		}
-
-		<!-- ACTION ROW — Browse + (Invites if not already in banner above) -->
-		<div class="landing-actions-row">
-			<div class="landing-action-card browse-action @(hoveredLandingCard == "browse" ? "selected" : "") @(IsLandingKb( browseKbIdx ) ? "guild-kb-selected" : "")"
-				 onmouseover=@(() => { if (hoveredLandingCard != "browse") { hoveredLandingCard = "browse"; SoundManager.PlayHover(); } })
-				 onmouseout=@(() => hoveredLandingCard = null)
-				 onclick=@(() => { SoundManager.PlayForward(); guildView = "browse"; errorMessage = ""; viewingGuild = null; LoadGuildsFromApi(); })>
-				<div class="landing-action-icon">
-					<iconify icon="lucide:search" Size=@(28) Color="#a78bfa" />
-				</div>
-				<div class="landing-action-text">
-					<span class="landing-action-title">@L("ui.guild.browse")</span>
-					<span class="landing-action-sub">@(visibleGuilds.Count > 0 ? string.Format("{0} {1}", visibleGuilds.Count, L("ui.guild.found")) : L("ui.guild.view_guilds"))</span>
-				</div>
-				<iconify icon="lucide:chevron-right" Size=@(18) Color="rgba(255,255,255,0.5)" />
-			</div>
-
-			@if ( inviteCount == 0 )
-			{
-				<div class="landing-action-card invites-action @(hoveredLandingCard == "invites" ? "selected" : "")"
-					 onmouseover=@(() => { if (hoveredLandingCard != "invites") { hoveredLandingCard = "invites"; SoundManager.PlayHover(); } })
-					 onmouseout=@(() => hoveredLandingCard = null)>
-					<div class="landing-action-icon">
-						<iconify icon="lucide:mailbox" Size=@(28) Color="rgba(255,255,255,0.4)" />
-					</div>
-					<div class="landing-action-text">
-						<span class="landing-action-title">@L("ui.guild.invites")</span>
-						<span class="landing-action-sub">@L("ui.guild.none")</span>
-					</div>
-				</div>
-			}
 		</div>
 
-		<!-- Hop cooldown notice -->
-		@if ( gmL?.IsOnHopCooldown() ?? false )
-		{
-			<div class="hop-cooldown-notice">
-				<iconify icon="lucide:clock" Size=@(14) Color="rgba(255, 200, 100, 0.85)" />
-				<span class="cooldown-text">@string.Format(L("ui.guild.hop_cooldown"), FormatCooldown())</span>
-			</div>
-		}
+		<div class="gp-body gl-body">
 
-		}
+			<!-- LEFT — JOIN A GUILD 912 × glLeftH -->
+			<div class="gl-slab" style="@glLeftStyle">
+				<div class="gp-band">
+					<div class="gp-chipstamp"><span>JOIN A GUILD</span></div>
+					<div class="gp-band-spacer"></div>
+					@if ( glN > 0 )
+					{
+						<div class="gp-darkchip"><span>@glInvChip</span></div>
+					}
+				</div>
+				<div class="gl-slab-body">
+					<span class="gl-copy">Browse every guild that's recruiting and ask to join.</span>
+					<BbButton Tier="primary" Size=@(56) Label=@L("ui.guild.browse") Class="gl-cta" HoverSound=@false Focused=@(IsLandingKb( 0 )) OnClick=@OnBrowsePressed />
+					<span class="gl-sub">@glJoinLine</span>
+
+					@if ( glN > 0 )
+					{
+						<div class="gl-kick-row">
+							<span class="gs-kick">@L("ui.guild.pending_invites")</span>
+							<span class="gs-note">accept to join straight away</span>
+						</div>
+						<!-- Invite rows — flat scroll children. GuildInvite carries
+						     no emblem / level / member count (Core is read-only for
+						     this lane), so the tile is the shield glyph on the
+						     default ground and the sub reads "[TAG] · from Inviter". -->
+						<div class="gl-inv-list">
+							@{ int glIdx = 0; }
+							@foreach ( var invite in glInvites )
+							{
+								var inv = invite;
+								int accIdx = 1 + glIdx * 2;
+								int decIdx = 2 + glIdx * 2;
+								bool rowKb = IsLandingKb( accIdx ) || IsLandingKb( decIdx );
+								var invSub = $"[{inv.GuildTag}] · from {inv.InviterName}";
+								glIdx++;
+								<div class="gl-irow @(glIdx % 2 == 0 ? "alt" : "") @(rowKb ? "guild-kb-selected" : "")">
+									<div class="gl-emblem">
+										<iconify class="gl-emblem-glyph" icon="lucide:shield" Size=@(24) Color="#ffffff" />
+									</div>
+									<div class="gp-prow-text">
+										<span class="gl-irow-name">@inv.GuildName</span>
+										<span class="gp-prow-sub">@invSub</span>
+									</div>
+									<div class="gl-irow-spacer"></div>
+									<BbButton Tier="secondary" Size=@(34) Label=@L("ui.guild.accept") Class="gp-pacc" Disabled=@(!glCanJoin) HoverSound=@false Focused=@(IsLandingKb( accIdx )) OnClick=@(() => { AcceptInvite( inv ); SoundManager.PlaySelect(); }) />
+									<BbButton Tier="ghost" Size=@(34) Label="DECLINE" Class="gl-pdec" HoverSound=@false Focused=@(IsLandingKb( decIdx )) OnClick=@(() => { DeclineInvite( inv ); SoundManager.PlayDeny(); }) />
+								</div>
+							}
+						</div>
+					}
+				</div>
+			</div>
+
+			<!-- RIGHT — START YOUR OWN 912 × 216 -->
+			<div class="gl-slab gl-slab-create">
+				<div class="gp-band">
+					<div class="gp-chipstamp"><span>START YOUR OWN</span></div>
+					<div class="gp-band-spacer"></div>
+				</div>
+				<div class="gl-slab-body">
+					<span class="gl-copy">Found a guild of your own — pick its name, tag and emblem.</span>
+					<BbButton Tier="secondary" Size=@(56) Label=@L("ui.guild.create_a_guild") Class="gl-cta" Disabled=@(!glCanCreate) HoverSound=@false Focused=@(IsLandingKb( glCreateIdx )) OnClick=@OnCreatePressed />
+					<span class="gl-sub">@glCreateLine</span>
+				</div>
+			</div>
+		</div>
 	</div>
 }
 else if ( guildView == "browse" )
 {
-	<!-- BROWSE GUILDS VIEW — P5 stamp slab header + scrollable card list. -->
-	<div class="browse-topbar">
-		<!-- Title slab — angular stamp w/ italic uppercase, matches plaza-banner aesthetic -->
-		<div class="browse-title-slab">
-			<div class="browse-title-cut"></div>
-			<iconify class="browse-title-icon" icon="lucide:search" Size=@(18) Color="#fbbf24" />
-			<span class="browse-title-text">@L("ui.guild.browse_title")</span>
-		</div>
-
-		<!-- Search input — filters visible guilds by name/tag as you type.
-		     Polled in Tick() since TextEntry doesn't expose onchange. -->
-		<div class="browse-search-wrap @(_kbSearchFocused ? "guild-kb-search-focused" : "")">
-			<iconify class="browse-search-icon" icon="lucide:search" Size=@(14) Color="rgba(167, 139, 250, 0.85)" />
-			<TextEntry class="browse-search-input" @ref="browseSearchInput" Text="@browseSearchQuery" Placeholder="Search guild name or tag…" />
-			@if ( !string.IsNullOrEmpty( browseSearchQuery ) )
-			{
-				<button class="browse-search-clear" onclick=@(() => { browseSearchQuery = ""; if (browseSearchInput != null) browseSearchInput.Text = ""; SoundManager.PlayBack(); })>
-					<iconify icon="lucide:x" Size=@(12) Color="rgba(255, 255, 255, 0.65)" />
-				</button>
-			}
-		</div>
-
-		<!-- Refresh -->
-		<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayClick(); LoadGuildsFromApi(); })>
-			<iconify icon="lucide:refresh-cw" Size=@(16) Color="rgba(255,255,255,0.85)" />
-		</button>
-		<!-- Back -->
-		<button class="plaza-icon-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = (GuildManager.Instance?.IsInGuild ?? false) ? "myguild" : "landing"; viewingGuild = null; errorMessage = ""; })>
-			<iconify icon="lucide:arrow-left" Size=@(16) Color="rgba(255,255,255,0.85)" />
-		</button>
-	</div>
-	<div class="guild-content-card" @ref="browseScrollRef">
-	<div class="guild-browse-view">
-
-		@if ( viewingGuild != null )
-		{
-			<!-- GUILD DETAIL -->
-			<div class="guild-detail">
-				<div class="detail-header">
-					<!-- Ads carry no OwnerSteamId, so the leader-favorite default
-					     can't resolve here — beast: picks render, empty falls to
-					     the shield glyph. 80×80 window (.guild-detail override). -->
-					@{
-						var detailEmblemBeast = BbEmblem.ResolveBeast( viewingGuild.EmblemIcon );
-						var detailEmblemCrop = detailEmblemBeast != null ? BbEmblem.CropStyleFor( detailEmblemBeast, 80, 80 ) : "";
-					}
-					<div class="detail-emblem @(detailEmblemBeast != null ? "beast-tile" : "") shape-@(viewingGuild.EmblemShape ?? "square")" style="background-color: @viewingGuild.EmblemColor">
-						@if ( detailEmblemBeast != null )
-						{
-							<img class="emblem-beast-img" src="@detailEmblemBeast.IconPath" style="@detailEmblemCrop" />
-						}
-						else
-						{
-							<iconify class="detail-emblem-icon" icon="@GetEmblemIcon( viewingGuild.EmblemIcon )" Size=@(32) Color="#ffffff" />
-						}
-					</div>
-					<div class="detail-header-info">
-						<div class="detail-name-row">
-							<span class="detail-name">@viewingGuild.GuildName</span>
-							<span class="detail-level-badge">@($"Lv {viewingGuild.Level}")</span>
-							<span class="detail-tag">@($"[{viewingGuild.GuildTag}]")</span>
-						</div>
-						<span class="detail-owner">@L("ui.guild.founded_by") @viewingGuild.OwnerName</span>
-					</div>
+	<!-- ═══ BROWSE GUILDS — run 3 LAYOUT. Same header; title BROWSE GUILDS;
+	     right slot = BACK · Q (→ landing, or the plaza when in a guild) +
+	     the search chip 180 + the MEMBERS · LEVEL sort pair (.gp-chip family;
+	     .on = the FilterBar two-tone in blue). While a guild is open (the
+	     detail) the slot holds BACK TO LIST · Q only.
+	     BODY pad 20/40/20/40 → ONE slab 1840 × 928: band 36 + list 892
+	     (pad 16/12/12/12 → row lane 1816). Row 88 = declared 1812 + 4 seam:
+	       16 + emblem 44 + 16 + name col 480 + spacer 940 + online 120 +
+	       16 + JOIN 160 + 20 = 1812 ✓   (8 rows: 16 + 8×88 + 7×12 + 12 = 816,
+	       76 slack; 9+ scroll).
+	     Brief ruling: a flat ROW list, not the DOC-6 §10 card grid — the
+	     emblem is a 44 tile like the roster's heads, not the row's art.
+	     Join mode from data: Open → JOIN · Request → REQUEST · InviteOnly /
+	     Closed → dim INVITE ONLY / CLOSED text in the button's lane.
+	     Empty = one honest line + a normal-size REFRESH ghost (NO NOTHING).
+	     LANE: input — W/S walk rows (TickBrowseInput, scroll-follow on
+	     .gb-row); Space opens the detail; A/D → a JOIN sub-cursor on the
+	     focused row + the sort pair (R cycle) + Tab ⇄ search are input's.
+	     LANE: layout-next — the DETAIL body (.guild-detail, 2026-04 dialect)
+	     is hosted inside the slab as-is; only its actions moved to BbButtons
+	     and its BACK to the header cap. Full house restyle next run.
+	     LANE: motion — view enter. LANE: color — INVITE ONLY text is dim,
+	     never red (not an error). -->
+	@{
+		var gbGuilds = GetVisibleGuilds();
+		bool gbDetail = viewingGuild != null;
+		bool gbInGuild = InGuildLive();
+		int gbLevel = GetTamerLevel();
+		bool gbGated = gbInGuild || gbLevel < GuildManager.MIN_LEVEL_TO_JOIN || (GuildManager.Instance?.IsOnHopCooldown() ?? false);
+		var gbCountChip = isLoadingGuilds ? "LOADING…" : gbGuilds.Count == 1 ? "1 FOUND" : $"{gbGuilds.Count} FOUND";
+		var gbBandLabel = gbDetail ? "GUILD" : "GUILDS";
+		var gbDetailTag = gbDetail ? $"[{viewingGuild.GuildTag}]" : "";
+		var gbSearchCls = _kbSearchFocused ? "guild-kb-search-focused" : "";
+	}
+	<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+		<div class="gp-header">
+			<BbHeaderWaves Accent=@("blue") />
+			<div class="gp-h-identity">
+				<span class="gp-kicker">GUILD</span>
+				<div class="gp-title-row sm">
+					<span class="gp-title sm">@L("ui.guild.browse_title")</span>
+					<div class="gp-seam"></div>
+					<div class="gp-seam dim"></div>
 				</div>
-
-				@if ( !string.IsNullOrEmpty( viewingGuild.Description ) )
+			</div>
+			<div class="gp-toolbar">
+				@if ( gbDetail )
 				{
-					<div class="detail-description">
-						<span class="detail-desc-text">@viewingGuild.Description</span>
+					<div class="gp-back" onmouseover=@(() => SoundManager.PlayHover()) onclick=@(() => { SoundManager.PlayBack(); viewingGuild = null; ResetKb(); })>
+						<span class="gp-back-label">@L("ui.guild.back_to_list")</span>
+						<span class="gp-back-cap">Q</span>
 					</div>
 				}
+				else
+				{
+					<div class="gp-back" onmouseover=@(() => SoundManager.PlayHover()) onclick=@OnBrowseBackPressed>
+						<span class="gp-back-label">BACK</span>
+						<span class="gp-back-cap">Q</span>
+					</div>
+					<!-- Search chip — a plain 180 TextEntry chip in the .gp-chip
+					     family (the FilterBar ShowSearchChip param is another
+					     lane's — not depended on). Polled in Tick (no onchange). -->
+					<div class="gb-search @gbSearchCls">
+						<iconify class="gb-search-glyph" icon="lucide:search" Size=@(13) Color="#a79dbe" />
+						<TextEntry class="gb-search-input" @ref="browseSearchInput" Text="@browseSearchQuery" Placeholder="Search name or tag" />
+					</div>
+					<div class="gp-chip @(browseSort == "members" ? "on" : "")" onmouseover=@(() => SoundManager.PlayHover()) onclick=@(() => { browseSort = "members"; SoundManager.PlayClick(); })>
+						<span class="gp-chip-label">MEMBERS</span>
+					</div>
+					<div class="gp-chip @(browseSort == "level" ? "on" : "")" onmouseover=@(() => SoundManager.PlayHover()) onclick=@(() => { browseSort = "level"; SoundManager.PlayClick(); })>
+						<span class="gp-chip-label">LEVEL</span>
+					</div>
+				}
+			</div>
+		</div>
 
-				<div class="detail-stats-row">
-					<div class="detail-stat">
-						<span class="detail-stat-value">@viewingGuild.MemberCount</span>
-						<span class="detail-stat-label">@L("ui.guild.members")</span>
-					</div>
-					<div class="detail-stat">
-						<span class="detail-stat-value">@viewingGuild.OnlineCount</span>
-						<span class="detail-stat-label">@L("ui.guild.online")</span>
-					</div>
-					<div class="detail-stat">
-						<span class="detail-stat-value">@($"{viewingGuild.TotalRP:N0}")</span>
-						<span class="detail-stat-label">@L("ui.guild.total_rp")</span>
-					</div>
-				</div>
-
-				<div class="detail-requirements">
-					<span class="detail-req-title">@L("ui.guild.requirements")</span>
-					<div class="detail-req-row">
-						<span class="detail-req-item">Join: @viewingGuild.JoinMode</span>
-						<span class="detail-req-item">Min Level: @(viewingGuild.MinLevel > 1 ? $"Lv {viewingGuild.MinLevel}" : "None")</span>
-						<span class="detail-req-item">Min Rank: @viewingGuild.MinRank</span>
-					</div>
-				</div>
-
-				<div class="detail-members-section">
-					<span class="detail-members-title">@($"Members ({viewingGuildMembers.Count})")</span>
-					@if ( isLoadingMembers )
+		<div class="gp-body gb-body">
+			<div class="gb-slab">
+				<div class="gp-band">
+					<div class="gp-chipstamp"><span>@gbBandLabel</span></div>
+					<div class="gp-band-spacer"></div>
+					@if ( gbDetail )
 					{
-						<span class="detail-members-loading">@L("ui.guild.loading_members")</span>
-					}
-					else if ( viewingGuildMembers.Count > 0 )
-					{
-						<div class="detail-members-list">
-							@foreach ( var member in viewingGuildMembers )
-							{
-								<div class="detail-member-chip">
-									<iconify class="chip-role" icon="@GuildManager.GetRoleIcon( (GuildRole)member.Role )" Size=@(12) Color="@GuildManager.GetRoleColor( (GuildRole)member.Role )" />
-									<span class="chip-name">@member.Name</span>
-									<span class="chip-level">@($"{member.Level}")</span>
-								</div>
-							}
-						</div>
+						<div class="gp-darkchip"><span>@gbDetailTag</span></div>
 					}
 					else
 					{
-						<span class="detail-members-loading">@L("ui.guild.no_members")</span>
+						<div class="gp-darkchip"><span>@gbCountChip</span></div>
 					}
 				</div>
 
-				@{
-					var detailLocked = viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly;
-					var detailCanJoin = !(GuildManager.Instance?.IsInGuild ?? false) && !detailLocked;
-					var detailBackIdx = detailCanJoin ? 1 : 0;
-				}
-				<div class="detail-actions">
-					@if ( !(GuildManager.Instance?.IsInGuild ?? false) )
-					{
-						@if ( detailLocked )
+				@if ( gbDetail )
+				{
+					<!-- GUILD DETAIL — hosted as-is (LANE: layout-next). -->
+					<div class="gb-detail-host">
+					<div class="guild-detail">
+						<div class="detail-header">
+							<!-- Ads carry no OwnerSteamId, so the leader-favorite default
+							     can't resolve here — beast: picks render, empty falls to
+							     the shield glyph. 80×80 window (.guild-detail override). -->
+							@{
+								var detailEmblemBeast = BbEmblem.ResolveBeast( viewingGuild.EmblemIcon );
+								var detailEmblemCrop = detailEmblemBeast != null ? BbEmblem.CropStyleFor( detailEmblemBeast, 80, 80 ) : "";
+								var detailFill = BbEmblem.BlendTowardSlab( viewingGuild.EmblemColor ?? "#3f8fe0", 0.70f );
+							}
+							<div class="detail-emblem @(detailEmblemBeast != null ? "beast-tile" : "")" style="background-color: @detailFill">
+								@if ( detailEmblemBeast != null )
+								{
+									<img class="emblem-beast-img" src="@detailEmblemBeast.IconPath" style="@detailEmblemCrop" />
+								}
+								else
+								{
+									<iconify class="detail-emblem-icon" icon="@GetEmblemIcon( viewingGuild.EmblemIcon )" Size=@(32) Color="#ffffff" />
+								}
+							</div>
+							<div class="detail-header-info">
+								<div class="detail-name-row">
+									<span class="detail-name">@viewingGuild.GuildName</span>
+									<span class="detail-level-badge">@($"Lv {viewingGuild.Level}")</span>
+									<span class="detail-tag">@($"[{viewingGuild.GuildTag}]")</span>
+								</div>
+								<span class="detail-owner">@L("ui.guild.founded_by") @viewingGuild.OwnerName</span>
+							</div>
+						</div>
+
+						@if ( !string.IsNullOrEmpty( viewingGuild.Description ) )
 						{
-							<span class="detail-locked">@L("ui.guild.invite_only")</span>
-						}
-						else
-						{
-							<div class="guild-btn join-btn detail-join-btn @(IsBrowseDetailKb( 0 ) ? "guild-kb-selected" : "")" onclick=@(() => { RequestJoin( viewingGuild ); SoundManager.PlaySelect(); viewingGuild = null; })>
-								<span>@(viewingGuild.JoinMode == GuildJoinMode.Open ? L("ui.guild.join_guild") : L("ui.guild.request_join"))</span>
+							<div class="detail-description">
+								<span class="detail-desc-text">@viewingGuild.Description</span>
 							</div>
 						}
-					}
-					<div class="guild-btn secondary-btn detail-back-btn @(IsBrowseDetailKb( detailBackIdx ) ? "guild-kb-selected" : "")" onclick=@(() => { SoundManager.PlayBack(); viewingGuild = null; })>
-						<span>@L("ui.guild.back_to_list")</span>
-					</div>
-				</div>
-			</div>
-		}
-		else
-		{
-			<!-- GUILD LIST -->
-			@if ( isLoadingGuilds )
-			{
-				<span class="browse-loading">Loading guilds...</span>
-			}
-			@{
-				var guilds = GetVisibleGuilds();
-			}
-			@if ( guilds.Count == 0 && !isLoadingGuilds )
-			{
-				<span class="browse-empty">@L("ui.guild.no_guilds")</span>
-			}
 
-			@* 3-column grid via explicit row triples — flex-wrap on a scroll
-			   container miscalculates height in s&box, so we chunk manually
-			   into rows of 3. Empty placeholders fill incomplete trailing
-			   rows so each row's cards stay 1/3 width. *@
-			@for ( int i = 0; i < guilds.Count; i += 3 )
-			{
-				var iCopy = i;
-				<div class="browse-row-3">
-					@for ( int j = 0; j < 3; j++ )
-					{
-						var idx = iCopy + j;
-						if ( idx < guilds.Count )
-						{
-							var guild = guilds[idx];
-							var isLocked = guild.JoinMode == GuildJoinMode.Closed || guild.JoinMode == GuildJoinMode.InviteOnly;
-							<div class="browse-card-v2 @(IsBrowseGridKb( idx ) ? "guild-kb-selected" : "")" onclick=@(() => ViewGuildDetail( guild ))>
-								<div class="browse-card-edge" style="background-color: @guild.EmblemColor"></div>
+						<div class="detail-stats-row">
+							<div class="detail-stat">
+								<span class="detail-stat-value">@viewingGuild.MemberCount</span>
+								<span class="detail-stat-label">@L("ui.guild.members")</span>
+							</div>
+							<div class="detail-stat">
+								<span class="detail-stat-value">@viewingGuild.OnlineCount</span>
+								<span class="detail-stat-label">@L("ui.guild.online")</span>
+							</div>
+							<div class="detail-stat">
+								<span class="detail-stat-value">@($"{viewingGuild.TotalRP:N0}")</span>
+								<span class="detail-stat-label">@L("ui.guild.total_rp")</span>
+							</div>
+						</div>
 
-								@{
-									var rowEmblemBeast = BbEmblem.ResolveBeast( guild.EmblemIcon );
-									var rowEmblemCrop = rowEmblemBeast != null ? BbEmblem.CropStyleFor( rowEmblemBeast, 48, 48 ) : "";
-								}
-								<div class="browse-card-emblem @(rowEmblemBeast != null ? "beast-tile" : "") shape-@(guild.EmblemShape ?? "square")" style="background-color: @guild.EmblemColor">
-									@if ( rowEmblemBeast != null )
+						<div class="detail-requirements">
+							<span class="detail-req-title">@L("ui.guild.requirements")</span>
+							<div class="detail-req-row">
+								<span class="detail-req-item">Join: @JoinModeLabel( viewingGuild.JoinMode )</span>
+								<span class="detail-req-item">Min Level: @(viewingGuild.MinLevel > 1 ? $"Lv {viewingGuild.MinLevel}" : "None")</span>
+								<span class="detail-req-item">Min Rank: @viewingGuild.MinRank</span>
+							</div>
+						</div>
+
+						<div class="detail-members-section">
+							<span class="detail-members-title">@($"Members ({viewingGuildMembers.Count})")</span>
+							@if ( isLoadingMembers )
+							{
+								<span class="detail-members-loading">@L("ui.guild.loading_members")</span>
+							}
+							else if ( viewingGuildMembers.Count > 0 )
+							{
+								<div class="detail-members-list">
+									@foreach ( var member in viewingGuildMembers )
 									{
-										<img class="emblem-beast-img" src="@rowEmblemBeast.IconPath" style="@rowEmblemCrop" />
+										<div class="detail-member-chip">
+											<iconify class="chip-role" icon="@GuildManager.GetRoleIcon( (GuildRole)member.Role )" Size=@(12) Color="@GuildManager.GetRoleColor( (GuildRole)member.Role )" />
+											<span class="chip-name">@member.Name</span>
+											<span class="chip-level">@($"{member.Level}")</span>
+										</div>
+									}
+								</div>
+							}
+							else
+							{
+								<span class="detail-members-loading">@L("ui.guild.no_members")</span>
+							}
+						</div>
+
+						@{
+							var detailLocked = viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly;
+							var detailCanJoin = !gbInGuild && !detailLocked;
+							var detailBackIdx = detailCanJoin ? 1 : 0;
+							var detailJoinLabel = viewingGuild.JoinMode == GuildJoinMode.Open ? L("ui.guild.join_guild") : L("ui.guild.request_join");
+						}
+						<!-- Actions — BbButtons (run 3): JOIN secondary 44 (Open /
+						     Request) · BACK TO LIST ghost 44. kb: [join], back. -->
+						<div class="gb-dactions">
+							@if ( !gbInGuild )
+							{
+								@if ( detailLocked )
+								{
+									<span class="gb-invonly">@JoinModeLabel( viewingGuild.JoinMode )</span>
+								}
+								else
+								{
+									<BbButton Tier="secondary" Size=@(44) Label=@detailJoinLabel Class="gb-dbtn" Disabled=@gbGated HoverSound=@false Focused=@(IsBrowseDetailKb( 0 )) OnClick=@OnDetailJoinPressed />
+								}
+							}
+							<BbButton Tier="ghost" Size=@(44) Label=@L("ui.guild.back_to_list") Class="gb-dbtn" HoverSound=@false Focused=@(IsBrowseDetailKb( detailBackIdx )) OnClick=@OnDetailBackPressed />
+						</div>
+					</div>
+					</div>
+				}
+				else
+				{
+					<!-- GUILD LIST — flat scroll children (rows + the one empty block). -->
+					<div class="gb-list" @ref="browseScrollRef">
+						@if ( gbGuilds.Count == 0 )
+						{
+							<div class="gb-empty">
+								<span class="gb-empty-t">@(isLoadingGuilds ? "Loading guilds…" : string.IsNullOrWhiteSpace( browseSearchQuery ) ? "No guilds are recruiting yet." : "No guild matches that search.")</span>
+								<BbButton Tier="ghost" Size=@(44) Label="REFRESH" Class="gb-refresh" Disabled=@isLoadingGuilds HoverSound=@false OnClick=@OnRefreshGuildsPressed />
+							</div>
+						}
+						@for ( int gi = 0; gi < gbGuilds.Count; gi++ )
+						{
+							var g = gbGuilds[gi];
+							int gIdx = gi;
+							var gBeast = BbEmblem.ResolveBeast( g.EmblemIcon );
+							var gCrop = gBeast != null ? BbEmblem.CropStyleFor( gBeast, 44, 44 ) : "";
+							var gFill = BbEmblem.BlendTowardSlab( g.EmblemColor ?? "#3f8fe0", 0.70f );
+							var gTag = $"[{g.GuildTag}]";
+							var gSub = $"LV {g.Level} · {g.MemberCount} / {AdCap( g.Level )} · {JoinModeLabel( g.JoinMode )}" + ( g.MinLevel > 1 ? $" · min Lv {g.MinLevel}" : "" );
+							bool gLocked = g.JoinMode == GuildJoinMode.Closed || g.JoinMode == GuildJoinMode.InviteOnly;
+							var gJoinLabel = g.JoinMode == GuildJoinMode.Open ? "JOIN" : "REQUEST";
+							var gOnline = g.OnlineCount > 0 ? $"{g.OnlineCount} ONLINE" : "";
+							bool gRowKb = IsBrowseGridKb( gIdx );
+							<div class="gb-row @(gi % 2 == 1 ? "alt" : "") @(gRowKb ? "guild-kb-selected" : "")" onclick=@(() => OpenGuildRow( g ))>
+								<div class="gb-emblem @(gBeast != null ? "beast-tile" : "")" style="background-color: @gFill">
+									@if ( gBeast != null )
+									{
+										<img class="emblem-beast-img" src="@gBeast.IconPath" style="@gCrop" />
 									}
 									else
 									{
-										<iconify icon="@GetEmblemIcon( guild.EmblemIcon )" Size=@(22) Color="#ffffff" />
+										<iconify class="gb-emblem-glyph" icon="@GetEmblemIcon( g.EmblemIcon )" Size=@(24) Color="#ffffff" />
 									}
 								</div>
-
-								<div class="browse-card-info">
-									<div class="browse-card-titlerow">
-										<div class="browse-card-tag-pill">
-											<span>@guild.GuildTag</span>
-										</div>
-										<span class="browse-card-name">@guild.GuildName</span>
+								<div class="gb-name-col">
+									<div class="gp-mname-row">
+										<span class="gp-mname">@g.GuildName</span>
+										<span class="gb-tag">@gTag</span>
 									</div>
-									<div class="browse-card-meta-row">
-										<div class="browse-card-meta-chip">
-											<iconify icon="lucide:users" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
-											<span>@guild.MemberCount</span>
-										</div>
-										<div class="browse-card-meta-chip">
-											<iconify icon="lucide:trending-up" Size=@(11) Color="rgba(167, 139, 250, 0.9)" />
-											<span>@($"{guild.TotalRP:N0}") RP</span>
-										</div>
-										@if ( isLocked )
-										{
-											<div class="browse-card-meta-chip locked-chip">
-												<iconify icon="lucide:lock" Size=@(10) Color="rgba(252, 165, 165, 0.85)" />
-												<span>@L("ui.guild.invite_only")</span>
-											</div>
-										}
-									</div>
+									<span class="gb-sub">@gSub</span>
 								</div>
-
-								<div class="browse-card-level-stamp">
-									<span>Lv @guild.Level</span>
+								<div class="gb-spacer"></div>
+								<div class="gp-presence @(g.OnlineCount > 0 ? "on" : "")">
+									@if ( g.OnlineCount > 0 )
+									{
+										<div class="gp-dot"></div>
+										<span class="gp-presence-t">@gOnline</span>
+									}
+								</div>
+								<div class="gb-join-host">
+									@if ( gbInGuild )
+									{
+									}
+									else if ( gLocked )
+									{
+										<span class="gb-invonly">@JoinModeLabel( g.JoinMode )</span>
+									}
+									else
+									{
+										<BbButton Tier="secondary" Size=@(34) Label=@gJoinLabel Class="gb-join" Disabled=@gbGated HoverSound=@false OnClick=@(() => RequestJoinRow( g )) />
+									}
 								</div>
 							</div>
 						}
-						else
-						{
-							<div class="browse-card-empty"></div>
-						}
-					}
-				</div>
-			}
-		}
-	</div>
+					</div>
+				}
+			</div>
+		</div>
 	</div>
 }
 else if ( guildView == "myguild" )
 {
-	@if ( !(GuildManager.Instance?.IsInGuild ?? false) )
+	@if ( !InGuildLive() )
 	{
-		<!-- NO GUILD - CREATE (Persona-stamp pass) -->
-		<div class="guild-create-root">
-
-			<!-- Header strip — matches the rest of the Guild sub-panels.
-			     Title slab + skewed yellow corner stamp + back button. -->
-			<div class="create-header-stamp">
-				<div class="create-header-titleblock">
-					<iconify icon="lucide:hammer" Size=@(18) Color="#a78bfa" />
-					<div class="create-header-textcol">
-						<span class="create-header-title">FOUND A GUILD</span>
-						<span class="create-header-sub">Stamp your colors on the Public Square</span>
+		<!-- ═══ CREATE A GUILD — run 3 LAYOUT. The SETTINGS sub-view's
+		     IDENTITY + RECRUITING slabs reused (same gs-* recipes, gc-*
+		     modifiers only where the create form differs), under the same
+		     header (title CREATE A GUILD, BACK · Q → landing).
+		     BODY pad 16/24/24/24, gap 16 → lanes 1872 × 928 (the settings map):
+		       LEFT 1088: IDENTITY 1088×392 + 16 + RECRUITING 1088×520 = 928 ✓
+		       RIGHT 768: spacer (flex) + status 14 + 12 + FOUND row 48 at the foot
+		     IDENTITY (slab-relative y): NAME · TAG kicker 60–74 · fields 80–126
+		     (host 46 = entry 32 + 2 rim + 4 pad ×2 + 2 kb-border ×2; NAME 394 +
+		     16 + TAG 114) · COLOR 158–172 · chips 178–214 · BEAST 250–264 ·
+		     tiles 266–310 · name 320–334 · fallback 362–376 · pad 16 → 392 ✓
+		     RECRUITING: DESCRIPTION 60 · entry 80–328 · JOIN MODE 358–372 ·
+		     chips 384–420 · MIN LEVEL 448–462 · chips 474–510 · slack 10 → 520 ✓
+		     FOUND GUILD = the view's ONE gold primary, 320×48 r16 (gs-save),
+		     right-aligned at x 1576–1896 with the cost line beside it;
+		     Disabled while the gate fails (level 10 · 50,000 gold · hop
+		     cooldown) — the line beside it says which.
+		     Picks made here (colour · beast · description · join mode · min
+		     level) are applied the moment the guild lands (OnRefresh →
+		     ApplyCreatePicks — CreateGuild takes name + tag only, Core untouched).
+		     LANE: input — kb rows (TickCreateInput, CreateRow* consts):
+		     name 0 · tag 1 · color 2 · beast 3 · description 4 · joinmode 5 ·
+		     minlevel 6 · FOUND 7. Name/tag/description are TextEntry stops
+		     (Space focuses, Tab/Enter/Esc hand back); A/D cycle the chip rows.
+		     Q chain create → landing is wired; the hub leg is input's.
+		     LANE: motion — the slabs carry the settings sub-view's gpZone*
+		     rungs by class (gs-ident / gs-recruit); nothing new assigned.
+		     LANE: color — FOUND is the page's one gold; disabled = the
+		     primitive's dim, the status line stays TextDim. -->
+		@{
+			int gcLevel = GetTamerLevel();
+			int gcGold = TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+			bool gcLevelGated = gcLevel < GuildManager.MIN_LEVEL_TO_JOIN;
+			bool gcGoldGated = gcGold < GuildManager.GUILD_CREATION_COST;
+			bool gcCooldown = GuildManager.Instance?.IsOnHopCooldown() ?? false;
+			bool gcCanCreate = !gcLevelGated && !gcGoldGated && !gcCooldown;
+			var gcCostLine = gcLevelGated ? $"Level {GuildManager.MIN_LEVEL_TO_JOIN} needed · you are Lv {gcLevel}"
+				: gcCooldown ? $"You can found a guild in {FormatCooldown()}"
+				: $"Costs {GuildManager.GUILD_CREATION_COST:N0} gold · you have {gcGold:N0}";
+			// Preview resolves the PENDING pick as the live emblem will
+			// (no owner / members yet — beast key → legacy lucide → shield).
+			var gcBeast = BbEmblem.ResolveBeast( emblemIcon );
+			var gcFill = BbEmblem.BlendTowardSlab( emblemColor, 0.70f );
+			var gcCrop112 = gcBeast != null ? BbEmblem.CropStyleFor( gcBeast, 112, 112 ) : "";
+			var gcCrop44 = gcBeast != null ? BbEmblem.CropStyleFor( gcBeast, 44, 44 ) : "";
+			var gcChoices = GetEmblemBeastChoices();
+			var gcActiveBeastId = ( emblemIcon ?? "" ).StartsWith( "beast:" ) ? emblemIcon.Substring( 6 ) : "";
+			int gcActiveTile = gcChoices.FindIndex( s => s.Id == gcActiveBeastId );
+			var gcActiveName = gcActiveTile >= 0 ? gcChoices[gcActiveTile].Name.ToUpper() : "";
+			var gcNameOffset = $"margin-left: {gcActiveTile * 52}px"; // tile 44 + gap 8
+			var gcDescLen = ( createDescription ?? "" ).Length;
+			var gcCounter = $"{gcDescLen} / 200";
+			var gcJoinNote = JoinModeNote( settingsJoinMode );
+			var gcLevelNote = MinLevelNote( settingsMinLevel );
+			bool gcHasError = !string.IsNullOrEmpty( errorMessage );
+		}
+		<div class="gp-page @(_gpKbdMode ? "kbd-mode" : "mouse-mode")" onmousemove=@OnGpPageMouseMove>
+			<div class="gp-header">
+				<BbHeaderWaves Accent=@("blue") />
+				<div class="gp-h-identity">
+					<span class="gp-kicker">GUILD</span>
+					<div class="gp-title-row sm">
+						<span class="gp-title sm">@L("ui.guild.create_title")</span>
+						<div class="gp-seam"></div>
+						<div class="gp-seam dim"></div>
 					</div>
 				</div>
-				<div class="create-header-tag"><span>NEW · GUILD</span></div>
-				<button class="create-back-btn" onclick=@(() => { SoundManager.PlayBack(); guildView = "landing"; errorMessage = ""; })>
-					<iconify icon="lucide:arrow-left" Size=@(13) Color="rgba(255,255,255,0.85)" />
-					<span>BACK</span>
-				</button>
+				<div class="gp-toolbar">
+					<div class="gp-back" onmouseover=@(() => SoundManager.PlayHover()) onclick=@OnCreateBackPressed>
+						<span class="gp-back-label">BACK</span>
+						<span class="gp-back-cap">Q</span>
+					</div>
+				</div>
 			</div>
 
-			@if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN )
-			{
-				<div class="create-level-gate-stamp">
-					<div class="gate-stamp-iconwrap">
-						<iconify icon="lucide:lock" Size=@(28) Color="#fbbf24" />
-					</div>
-					<div class="gate-stamp-text">
-						<span class="gate-stamp-title">@string.Format(L("ui.guild.requires_level"), GuildManager.MIN_LEVEL_TO_JOIN)</span>
-						<span class="gate-stamp-sub">@string.Format(L("ui.guild.your_level"), GetTamerLevel())</span>
-					</div>
-				</div>
-			}
-			else
-			{
-				<div class="create-stamp-grid">
+			<div class="gp-body gs-body">
+				<div class="gs-cols">
 
-					<!-- LEFT: Identity + Emblem stack -->
-					<div class="create-stamp-form">
+					<!-- LEFT 1088 -->
+					<div class="gs-left">
 
-						<!-- Identity card -->
-						<div class="create-stamp-section">
-							<div class="create-stamp-section-head">
-								<iconify icon="lucide:tag" Size=@(13) Color="#a78bfa" />
-								<span>IDENTITY</span>
+						<!-- IDENTITY 1088×392 -->
+						<div class="gs-ident gc-ident">
+							<div class="gp-band">
+								<div class="gp-chipstamp"><span>IDENTITY</span></div>
+								<div class="gp-band-spacer"></div>
+								<div class="gp-darkchip"><span>NAME AND TAG CAN'T BE CHANGED LATER</span></div>
 							</div>
-
-							<!-- LANE: input (S5) — name/tag are kb stops 0/1: Space/Enter/E
-							     focuses the box; Tab / Enter / Esc hand the keyboard back
-							     with the cursor on the field (TickCreateInput). -->
-							<div class="create-stamp-field @(IsCreateKb( 0 ) ? "guild-kb-selected" : "")">
-								<span class="create-stamp-field-label">GUILD NAME</span>
-								<TextEntry class="create-stamp-input" @ref="createNameInput" Text=@createName />
-								<span class="create-stamp-field-hint">3–24 characters · must be unique</span>
-							</div>
-
-							<div class="create-stamp-field @(IsCreateKb( 1 ) ? "guild-kb-selected" : "")">
-								<span class="create-stamp-field-label">TAG</span>
-								<TextEntry class="create-stamp-input tag" @ref="createTagInput" Text=@createTag />
-								<span class="create-stamp-field-hint">2–5 characters · shown next to your name in chat</span>
-							</div>
-						</div>
-
-						<!-- Emblem card -->
-						<div class="create-stamp-section">
-							<div class="create-stamp-section-head">
-								<iconify icon="lucide:shield" Size=@(13) Color="#a78bfa" />
-								<span>EMBLEM</span>
-							</div>
-
-							<span class="create-stamp-pick-caption">COLOR</span>
-							<div class="create-stamp-pick-row @(IsCreateKb( 2 ) ? "guild-kb-selected" : "")">
-								@foreach ( var color in EmblemColors )
-								{
-									<div class="emblem-swatch @(emblemColor == color ? "selected" : "")" style="background-color: @color" onclick=@(() => { emblemColor = color; SoundManager.PlayClick(); })></div>
-								}
-							</div>
-
-							<span class="create-stamp-pick-caption">ICON</span>
-							<div class="create-stamp-pick-row @(IsCreateKb( 3 ) ? "guild-kb-selected" : "")">
-								@foreach ( var icon in EmblemIcons )
-								{
-									<div class="emblem-icon-option @(emblemIcon == icon.Key ? "selected" : "")" onclick=@(() => { emblemIcon = icon.Key; SoundManager.PlayClick(); })>
-										<iconify icon="@icon.Value" Size=@(18) Color="#ffffff" />
+							<div class="gs-ident-body">
+								<div class="gs-preview-col">
+									<div class="gs-preview @(gcBeast != null ? "beast-tile" : "")" style="background-color: @gcFill">
+										@if ( gcBeast != null )
+										{
+											<img class="emblem-beast-img" src="@gcBeast.IconPath" style="@gcCrop112" />
+										}
+										else
+										{
+											<iconify class="gs-preview-glyph" icon="@GetEmblemIcon( emblemIcon )" Size=@(64) Color="#ffffff" />
+										}
 									</div>
-								}
-							</div>
-
-							<span class="create-stamp-pick-caption">SHAPE</span>
-							<div class="create-stamp-pick-row @(IsCreateKb( 4 ) ? "guild-kb-selected" : "")">
-								@foreach ( var shape in EmblemShapes )
-								{
-									<div class="emblem-shape-option @(emblemShape == shape.Key ? "selected" : "")" onclick=@(() => { emblemShape = shape.Key; SoundManager.PlayClick(); })>
-										<iconify icon="@shape.Value" Size=@(16) Color="#ffffff" />
+									<span class="gs-kick dim gs-preview-kick">PREVIEW</span>
+									<div class="gs-twin-row">
+										<div class="gs-twin @(gcBeast != null ? "beast-tile" : "")" style="background-color: @gcFill">
+											@if ( gcBeast != null )
+											{
+												<img class="emblem-beast-img" src="@gcBeast.IconPath" style="@gcCrop44" />
+											}
+											else
+											{
+												<iconify class="gs-twin-glyph" icon="@GetEmblemIcon( emblemIcon )" Size=@(24) Color="#ffffff" />
+											}
+										</div>
+										<div class="gs-twin-note">
+											<span class="gs-note">as the hub</span>
+											<span class="gs-note">sees it · 44</span>
+										</div>
 									</div>
-								}
+								</div>
+								<div class="gs-pick-col">
+									<!-- NAME · TAG — the one place these are set. Two TextEntry
+									     stops (kb rows 0 / 1), each in a .gc-field kb host
+									     (the .gs-entry-wrap recipe at row size). -->
+									<div class="gs-kick-row">
+										<span class="gs-kick">NAME · TAG</span>
+										<span class="gs-note">name 3–24 letters · tag 2–5, shown as [TAG] beside your name</span>
+									</div>
+									<div class="gc-fields">
+										<div class="gc-field @(IsCreateKb( CreateRowName ) ? "guild-kb-selected" : "")">
+											<TextEntry class="gc-name-input" @ref="createNameInput" Text=@createName Placeholder="Guild name" MaxLength=@(24) />
+										</div>
+										<div class="gc-field @(IsCreateKb( CreateRowTag ) ? "guild-kb-selected" : "")">
+											<TextEntry class="gc-tag-input" @ref="createTagInput" Text=@createTag Placeholder="TAG" MaxLength=@(5) />
+										</div>
+									</div>
+									<span class="gs-kick gc-kick-color">COLOR</span>
+									<div class="gs-chips @(IsCreateKb( CreateRowColor ) ? "guild-kb-selected" : "")">
+										@foreach ( var color in EmblemColors )
+										{
+											var c = color;
+											<div class="gs-cchip @(emblemColor == c ? "on" : "")" onclick=@(() => { emblemColor = c; SoundManager.PlayClick(); })>
+												<div class="gs-swatch" style="background-color: @c"></div>
+											</div>
+										}
+										<span class="gs-note gs-row-note">the tile ground behind the beast</span>
+									</div>
+									<span class="gs-kick gs-kick-beast">BEAST</span>
+									<!-- BEAST — your own roster (GetEmblemBeastChoices without a
+									     guild: favorite first, then roster order). -->
+									<div class="gs-chips tiles @(IsCreateKb( CreateRowBeast ) ? "guild-kb-selected" : "")">
+										@foreach ( var species in gcChoices )
+										{
+											var s = species;
+											<div class="gs-btile @(gcActiveBeastId == s.Id ? "on" : "")" onclick=@(() => { emblemIcon = "beast:" + s.Id; SoundManager.PlayClick(); })>
+												<img class="gs-btile-img" src="@s.IconPath" />
+											</div>
+										}
+										@if ( gcChoices.Count == 0 )
+										{
+											<span class="gs-note gs-row-note">no beasts to pick from yet — contract one first</span>
+										}
+									</div>
+									@if ( gcActiveTile >= 0 )
+									{
+										<div class="gs-bname-host" style="@gcNameOffset"><span class="gs-bname">@gcActiveName</span></div>
+									}
+									else
+									{
+										<div class="gs-bname-host"><span class="gs-bname dim">NO PICK</span></div>
+									}
+									<span class="gs-note gs-fallback">No pick — your favorite beast shows</span>
+								</div>
 							</div>
 						</div>
 
+						<!-- RECRUITING 1088×520 -->
+						<div class="gs-recruit gc-recruit">
+							<div class="gp-band">
+								<div class="gp-chipstamp"><span>RECRUITING</span></div>
+								<div class="gp-band-spacer"></div>
+							</div>
+							<div class="gs-recruit-body">
+								<div class="gs-kick-row">
+									<span class="gs-kick">DESCRIPTION</span>
+									<span class="gs-note">what tamers read before they ask to join</span>
+								</div>
+								<div class="gs-entry-wrap @(IsCreateKb( CreateRowDesc ) ? "guild-kb-selected" : "")">
+									<TextEntry class="gs-desc-input" @ref="createDescInput" Text=@createDescription Placeholder="Pitch your guild to recruits…" Multiline=@(true) MaxLength=@(200) />
+									<div class="gs-counter"><span class="gs-counter-t">@gcCounter</span></div>
+								</div>
+								<div class="gs-kick-row gs-gap-join">
+									<span class="gs-kick">JOIN MODE</span>
+								</div>
+								<div class="gs-chips @(IsCreateKb( CreateRowJoin ) ? "guild-kb-selected" : "")">
+									@foreach ( var joinMode in JoinModeChips )
+									{
+										var mode = joinMode;
+										<div class="gs-tchip @(settingsJoinMode == mode ? "on" : "")" onclick=@(() => { settingsJoinMode = mode; SoundManager.PlayClick(); })>
+											<span class="gs-tchip-t">@JoinModeLabel( mode )</span>
+										</div>
+									}
+									<span class="gs-note gs-row-note">@gcJoinNote</span>
+								</div>
+								<div class="gs-kick-row gs-gap-level">
+									<span class="gs-kick">MIN LEVEL</span>
+								</div>
+								<div class="gs-chips @(IsCreateKb( CreateRowLevel ) ? "guild-kb-selected" : "")">
+									@foreach ( var level in MinLevelChips )
+									{
+										var lvl = level;
+										<div class="gs-tchip lvl @(settingsMinLevel == lvl ? "on" : "")" onclick=@(() => { settingsMinLevel = lvl; SoundManager.PlayClick(); })>
+											<span class="gs-tchip-t">@lvl</span>
+										</div>
+									}
+									<span class="gs-note gs-row-note">@gcLevelNote</span>
+								</div>
+							</div>
+						</div>
 					</div>
 
-					<!-- RIGHT: Live preview + cost + CTA -->
-					<div class="create-stamp-preview">
-						<span class="create-stamp-preview-eyebrow">PREVIEW</span>
-						<!-- Create flow only offers lucide keys today, but the preview
-						     goes through the shared resolve so a beast pick renders the
-						     day the beast picker lands (110×110 window — 96px sources
-						     centre with air, native px). -->
-						@{
-							var createEmblemBeast = BbEmblem.ResolveBeast( emblemIcon );
-							var createEmblemCrop = createEmblemBeast != null ? BbEmblem.CropStyleFor( createEmblemBeast, 110, 110 ) : "";
-						}
-						<div class="create-stamp-preview-emblem @(createEmblemBeast != null ? "beast-tile" : "") shape-@emblemShape" style="background-color: @emblemColor">
-							@if ( createEmblemBeast != null )
-							{
-								<img class="emblem-beast-img" src="@createEmblemBeast.IconPath" style="@createEmblemCrop" />
-							}
-							else
-							{
-								<iconify icon="@GetEmblemIcon( emblemIcon )" Size=@(56) Color="#ffffff" />
-							}
-						</div>
-						<span class="create-stamp-preview-name">@(string.IsNullOrEmpty( createNameInput?.Text ) ? "Guild Name" : createNameInput.Text)</span>
-						<div class="create-stamp-preview-meta">
-							<div class="create-stamp-preview-stamp tag-stamp"><span>[@(string.IsNullOrEmpty( createTagInput?.Text ) ? "TAG" : createTagInput.Text)]</span></div>
-							<div class="create-stamp-preview-stamp lv-stamp"><span>LV 1</span></div>
-						</div>
-
-						<div class="create-stamp-cost">
-							<iconify icon="lucide:coins" Size=@(13) Color="#fbbf24" />
-							<span class="cost-amount">@($"{GuildManager.GUILD_CREATION_COST:N0}")</span>
-							<span class="cost-label">gold to found</span>
-						</div>
-
-						<button class="create-stamp-cta @(IsCreateKb( 5 ) ? "guild-kb-selected" : "")" onclick=@OnCreateGuild>
-							<iconify icon="lucide:hammer" Size=@(15) Color="#ffffff" />
-							<span>FOUND GUILD</span>
-						</button>
-
-						@if ( !string.IsNullOrEmpty( errorMessage ) )
+					<!-- RIGHT 768 — deliberately EMPTY above the foot (the settings
+					     sub-view precedent): the error line, then the FOUND row. -->
+					<div class="gs-right">
+						<div class="gs-right-spacer"></div>
+						@if ( gcHasError )
 						{
-							<div class="create-stamp-error">
-								<iconify icon="lucide:triangle-alert" Size=@(12) Color="#fca5a5" />
-								<span>@errorMessage</span>
-							</div>
+							<div class="gc-err-row"><span class="gc-err">@errorMessage</span></div>
 						}
+						<div class="gc-foot">
+							<span class="gc-cost">@gcCostLine</span>
+							<BbButton Tier="primary" Size=@(44) Label="FOUND GUILD" Class="gs-save" Disabled=@(!gcCanCreate) HoverSound=@false Focused=@(IsCreateKb( CreateRowFound )) OnClick=@OnCreateGuild />
+						</div>
 					</div>
-
 				</div>
-
-				@if ( GuildManager.Instance?.IsOnHopCooldown() ?? false )
-				{
-					<div class="create-stamp-cooldown">
-						<iconify icon="lucide:hourglass" Size=@(12) Color="#fbbf24" />
-						<span>@string.Format(L("ui.guild.hop_cooldown"), FormatCooldown())</span>
-					</div>
-				}
-			}
+			</div>
 		</div>
 	}
 	else
@@ -1961,7 +1994,7 @@ else if ( guildView == "myguild" )
 						@{ var pickerIcon = pickerMode == "invite" ? "lucide:user-plus" : "lucide:shield-check"; }
 						<iconify icon="@pickerIcon" Size=@(15) Color="#6fb1f0" />
 						<span class="picker-title">@pickerTitle</span>
-						<button class="settings-modal-close picker-close-btn" onclick=@(() => ClosePicker())>
+						<button class="picker-close-btn" onclick=@(() => ClosePicker())>
 							<iconify icon="lucide:x" Size=@(14) Color="rgba(214, 206, 236, 0.7)" />
 						</button>
 					</div>
@@ -2059,7 +2092,7 @@ else if ( guildView == "myguild" )
 	}
 }
 
-@if ( !string.IsNullOrEmpty( errorMessage ) && guildView == "myguild" )
+@if ( !string.IsNullOrEmpty( errorMessage ) && !( guildView == "myguild" && !InGuildLive() ) )
 {
 	<div class="guild-error-toast">
 		<span>@errorMessage</span>
@@ -2077,7 +2110,20 @@ else if ( guildView == "myguild" )
 
 	// State
 	private string guildView = "landing"; // "landing", "browse", "myguild"
-	private string hoveredLandingCard = null;
+	// ── No-guild views (run 3 LAYOUT) ──
+	// Browse sort — MEMBERS (default) | LEVEL (the header chip pair).
+	private string browseSort = "members";
+	// Create form — description entry + draft (polled in Tick; no onchange).
+	private TextEntry createDescInput;
+	private string createDescription = "";
+	// Picks made on the create form; applied by OnRefresh when the guild lands.
+	private sealed class CreatePicks { public string Color; public string Icon; public GuildJoinMode JoinMode; public int MinLevel; public string Description; }
+	private CreatePicks _createPicks = null;
+	// dev_guildview landing|browse|create — render the no-guild views while in a guild.
+	private bool _devNoGuild = false;
+	// A BbButton inside a .gb-row bubbles its click to the row — the JOIN
+	// handler stamps this window and the row-open handler honours it.
+	private float _rowClickSuppressUntil = -1f;
 	// (dead tab system / member search / permission matrix CUT — guild
 	// rebuild 2026-08-31, guild-systems-review §2 dead code.)
 
@@ -2216,14 +2262,8 @@ else if ( guildView == "myguild" )
 	// Tracks the settings sub-view open edge so the row cursor resets to the
 	// first row whenever the drawer opens — by keyboard OR by mouse click.
 	private bool _settingsWasOpen = false;
-	// Set when the settings row cursor moves; consumed one Tick later so the
-	// scroll-follow reads the NEW focused row's Box.Rect after layout has
-	// re-rendered the `guild-kb-selected` class onto it (deferred-scroll
-	// pattern — same as MonsterRosterPanel's detail scroll-follow).
-	private bool _settingsScrollPending = false;
 	// Scroll containers for keyboard scroll-follow (UiGridScroll).
-	private Panel browseScrollRef;   // .guild-content-card — browse guild list
-	private Panel settingsScrollRef; // (run 2: the settings sub-view does not scroll — stays null; ScrollSettingsRowIntoView no-ops)
+	private Panel browseScrollRef;   // .gb-list — browse guild rows (run 3)
 	private Panel rosterScrollRef;   // .gp-roster-list — roster rows
 	private Panel logScrollRef;      // .gp-log-list — activity log rows
 	private Panel weekBodyRef;       // .gp-week-body — goal rows (A/D column-hop rect math)
@@ -2294,23 +2334,6 @@ else if ( guildView == "myguild" )
 	// PICKER lands with the guild page rebuild).
 	private static Dictionary<string, string> EmblemIcons => BbEmblem.LucideMap;
 
-	private static readonly Dictionary<string, string> EmblemShapes = new()
-	{
-		{ "square",  "lucide:square" },
-		{ "rounded", "ph:square" },
-		{ "circle",  "lucide:circle" }
-	};
-
-	private static IEnumerable<T[]> ChunkArray<T>( T[] source, int size )
-	{
-		for ( int i = 0; i < source.Length; i += size )
-		{
-			var chunk = new T[Math.Min( size, source.Length - i )];
-			Array.Copy( source, i, chunk, 0, chunk.Length );
-			yield return chunk;
-		}
-	}
-
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
 		_devGuild = this; // dev_guildview handle
@@ -2360,6 +2383,7 @@ else if ( guildView == "myguild" )
 		WireTextEntry( settingsDescInput, () => BlurToRow( settingsDescInput ) );
 		WireTextEntry( createNameInput, () => BlurToRow( createNameInput ) );
 		WireTextEntry( createTagInput, () => BlurToRow( createTagInput ) );
+		WireTextEntry( createDescInput, () => BlurToRow( createDescInput ) );
 		// MOTD: Enter SAVES — submit is the natural commit for a one-liner.
 		WireTextEntry( motdDraftInput, () => { SaveMotd(); SoundManager.PlaySuccess(); StateHasChanged(); } );
 		// Invite picker search: Enter/Esc hand the keyboard back to row 0.
@@ -2406,6 +2430,15 @@ else if ( guildView == "myguild" )
 			{
 				settingsDescription = t;
 			}
+		}
+
+		// Poll the CREATE form's description entry (no onchange) — the draft
+		// rides into ApplyCreatePicks when the guild lands. 200-char cap.
+		if ( guildView == "myguild" && !InGuildLive() && createDescInput != null )
+		{
+			var t = createDescInput.Text ?? "";
+			if ( t.Length > 200 ) { t = t.Substring( 0, 200 ); createDescInput.Text = t; }
+			if ( t != createDescription ) createDescription = t;
 		}
 
 		// Overlay scrollbars — imperative geometry (no BuildHash pollution).
@@ -2494,16 +2527,6 @@ else if ( guildView == "myguild" )
 		if ( showPerkLadder && !_ladderWasOpen )
 			_ladderKbIndex = 0;
 		_ladderWasOpen = showPerkLadder;
-
-		// Deferred settings scroll-follow (no-op in run 2: the sub-view does not
-		// scroll; settingsScrollRef stays null) — runs the Tick AFTER the row
-		// cursor moved, so layout has re-rendered `guild-kb-selected` onto the
-		// new focused row and its Box.Rect is current.
-		if ( _settingsScrollPending )
-		{
-			_settingsScrollPending = false;
-			ScrollSettingsRowIntoView();
-		}
 	}
 
 	protected override int BuildHash()
@@ -2540,6 +2563,22 @@ else if ( guildView == "myguild" )
 		hash.Add( GuildManager.Instance?.CanClaimLeadership() ?? false );
 		hash.Add( showPerkLadder );
 		hash.Add( browseSearchQuery );
+		// ── No-guild views (run 3) — every rendered fact: sort, loading, the
+		//    open detail, the create draft, the dev override, the toast, the
+		//    invite count, the gates (level / gold / cooldown), the row count.
+		hash.Add( browseSort );
+		hash.Add( isLoadingGuilds );
+		hash.Add( viewingGuild?.GuildId );
+		hash.Add( isLoadingMembers );
+		hash.Add( viewingGuildMembers.Count );
+		hash.Add( createDescription );
+		hash.Add( _devNoGuild );
+		hash.Add( errorMessage );
+		hash.Add( GuildManager.Instance?.PendingInvites?.Count ?? 0 );
+		hash.Add( GuildManager.Instance?.IsOnHopCooldown() ?? false );
+		hash.Add( TamerManager.Instance?.CurrentTamer?.Gold ?? 0 );
+		hash.Add( GetTamerLevel() );
+		if ( guildView == "browse" || guildView == "landing" ) hash.Add( GetVisibleGuilds().Count );
 		hash.Add( editingMotd );
 		// ── Keyboard nav state — every field that drives a kb-selected cursor
 		//    must be in the hash or the panel won't re-render on key presses.
@@ -2607,15 +2646,15 @@ else if ( guildView == "myguild" )
 	// KEYBOARD NAVIGATION
 	// Dispatched from OnlineHubPanel.TickInput() while the Guild section is up.
 	// Per-view scheme:
-	//   landing — Up/Down walk the invite rows + hero + browse action, Space
-	//             activates. Q falls through to GameHUD (exit Guild section).
-	//   browse  — Tab toggles search-field ⇄ guild grid; arrows nav the 3-col
-	//             grid; in guild-detail Up/Down walks join/back; Q backs out.
+	//   landing — W/S walk BROWSE → invite ACCEPT/DECLINE pairs → CREATE,
+	//             Space activates. Q falls through to GameHUD (exit Guild section).
+	//   browse  — Tab toggles search chip ⇄ guild list; W/S walk the rows,
+	//             Space opens the detail (Up/Down walks join/back there); Q backs out.
 	//   myguild (plaza) — Tab cycles zones (tiles → roster → perks → danger);
 	//             arrows nav within a zone; Space activates; Q backs to landing
 	//             or exits the section if already at the plaza root.
 	//   myguild (raid) — Up/Down through the raid scene actions; Q closes raid.
-	//   create  — Up/Down through emblem pickers + Found button.
+	//   create  — W/S through name/tag/colour/beast/description/join/level/FOUND; A/D cycle chips.
 	// Blocking sub-states (member menu, settings drawer, requests / picker /
 	// raid-team-select / raid-results modals, MOTD / description editors) OWN
 	// the keyboard: their handler runs first and returns.
@@ -2676,19 +2715,18 @@ else if ( guildView == "myguild" )
 		StateHasChanged();
 	}
 
-	// ── LANDING ──────────────────────────────────────────────────────────────
-	// Flat vertical list: [invite rows ×2 each (accept/deny pairs)] then hero,
-	// then browse action. We keep it simple — focus walks a flat index over a
-	// dynamically built action list.
+	// ── LANDING (run 3) ─────────────────────────────────────────────────────
+	// Stops in screen order — the markup shares this map (stale-map law):
+	//   BROWSE (0) · ACCEPT / DECLINE per invite (1+2i / 2+2i) · CREATE (1+2n).
+	// W/S walk it as one column. Q falls through to GameHUD (section exit).
+	// LANE: input — A/D: BROWSE ⇄ CREATE column hop + the ACCEPT ⇄ DECLINE pair.
 	private void TickLandingInput()
 	{
 		var gm = GuildManager.Instance;
-		var levelGated = GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN;
-		if ( levelGated ) return; // nothing actionable — Q exits via GameHUD
-
 		var invites = gm?.PendingInvites ?? new List<GuildInvite>();
-		// Action count: 2 per invite (accept, deny) + hero card + browse action.
 		int count = invites.Count * 2 + 2;
+
+		if ( NavPressed() ) StampKb();
 
 		if ( !_kbActive || _kbZone != "landing" )
 		{
@@ -2702,29 +2740,12 @@ else if ( guildView == "myguild" )
 		if ( UiInput.ConfirmPressed() )
 		{
 			_kbIndex = Math.Clamp( _kbIndex, 0, count - 1 );
-			int inviteSlots = invites.Count * 2;
-			if ( _kbIndex < inviteSlots )
-			{
-				var invite = invites[_kbIndex / 2];
-				if ( _kbIndex % 2 == 0 ) { AcceptInvite( invite ); SoundManager.PlaySelect(); }
-				else { DeclineInvite( invite ); SoundManager.PlayDeny(); }
-			}
-			else if ( _kbIndex == inviteSlots ) // hero card
-			{
-				SoundManager.PlayForward();
-				guildView = "myguild";
-				errorMessage = "";
-				ResetKb();
-			}
-			else // browse action
-			{
-				SoundManager.PlayForward();
-				guildView = "browse";
-				errorMessage = "";
-				viewingGuild = null;
-				LoadGuildsFromApi();
-				ResetKb();
-			}
+			int createIdx = count - 1;
+			if ( _kbIndex == 0 ) { OnBrowsePressed(); return; }
+			if ( _kbIndex == createIdx ) { OnCreatePressed(); return; }
+			var invite = invites[( _kbIndex - 1 ) / 2];
+			if ( ( _kbIndex - 1 ) % 2 == 0 ) { AcceptInvite( invite ); SoundManager.PlaySelect(); }
+			else { DeclineInvite( invite ); SoundManager.PlayDeny(); }
 			StateHasChanged();
 		}
 	}
@@ -2748,20 +2769,17 @@ else if ( guildView == "myguild" )
 			return;
 		}
 
-		// Q — back to plaza/landing (internal back, claim the key).
+		// Q — back to the plaza / landing (internal back, claim the key).
 		if ( Input.Pressed( "Menu" ) )
 		{
-			SoundManager.PlayBack();
-			guildView = (GuildManager.Instance?.IsInGuild ?? false) ? "myguild" : "landing";
-			viewingGuild = null;
-			errorMessage = "";
-			ResetKb();
+			OnBrowseBackPressed();
 			GameHUD.PanelHandledBackKey = true;
-			StateHasChanged();
 			return;
 		}
 
-		// Tab — toggle focus between the search field and the guild grid.
+		if ( NavPressed() ) StampKb();
+
+		// Tab — toggle focus between the search chip and the guild list.
 		if ( Input.Pressed( "Score" ) )
 		{
 			_kbSearchFocused = !_kbSearchFocused;
@@ -2793,11 +2811,11 @@ else if ( guildView == "myguild" )
 			return;
 		}
 
-		const int cols = 3; // browse grid is a fixed 3-col row layout
-		if ( Input.Pressed( "Left" ) ) MoveKb( guilds.Count, -1 );
-		else if ( Input.Pressed( "Right" ) ) MoveKb( guilds.Count, 1 );
-		else if ( Input.Pressed( "Up" ) ) MoveKb( guilds.Count, -cols );
-		else if ( Input.Pressed( "Down" ) ) MoveKb( guilds.Count, cols );
+		// Run 3: ONE flat row list (zone id kept). W/S walk rows; Space opens
+		// the detail. LANE: input — A/D → the focused row's JOIN sub-cursor;
+		// R → the MEMBERS / LEVEL sort pair.
+		if ( Input.Pressed( "Up" ) ) MoveKb( guilds.Count, -1 );
+		else if ( Input.Pressed( "Down" ) ) MoveKb( guilds.Count, 1 );
 		else if ( UiInput.ConfirmPressed() )
 		{
 			_kbIndex = Math.Clamp( _kbIndex, 0, guilds.Count - 1 );
@@ -2806,16 +2824,15 @@ else if ( guildView == "myguild" )
 			return;
 		}
 
-		// Keep the focused card on screen — browse cards live in .browse-row-3
-		// rows inside the .guild-content-card scroll container. Scroll to the
-		// row that holds the focused card.
+		// Keep the focused row on screen — .gb-row rows are the DIRECT
+		// children of the .gb-list scroller.
 		if ( NavPressed() )
-			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex / cols, "browse-row-3" );
+			UiGridScroll.ScrollIndexIntoView( browseScrollRef, _kbIndex, "gb-row" );
 	}
 
 	private void TickBrowseDetailInput()
 	{
-		var inGuild = GuildManager.Instance?.IsInGuild ?? false;
+		var inGuild = InGuildLive();
 		bool locked = viewingGuild.JoinMode == GuildJoinMode.Closed || viewingGuild.JoinMode == GuildJoinMode.InviteOnly;
 		bool canJoin = !inGuild && !locked;
 		int count = canJoin ? 2 : 1; // [join], back  — or just back
@@ -2853,7 +2870,7 @@ else if ( guildView == "myguild" )
 	private void TickMyGuildInput()
 	{
 		// No guild → the create form is shown under guildView == "myguild".
-		if ( !(GuildManager.Instance?.IsInGuild ?? false) ) { TickCreateInput(); return; }
+		if ( !InGuildLive() ) { TickCreateInput(); return; }
 
 		var gm = GuildManager.Instance;
 		var raid = gm?.CurrentRaidBoss;
@@ -3633,36 +3650,33 @@ else if ( guildView == "myguild" )
 		}
 	}
 
-	// ── CREATE FORM ──────────────────────────────────────────────────────────
-	// Rows (S5, top-to-bottom on screen): name(0) · tag(1) · color(2) ·
-	// icon(3) · shape(4) · FOUND(5). Name/tag are TextEntry stops: Space/
-	// Enter/E focuses the box; typing then owns the keyboard until Tab /
-	// Enter / Esc hand it back (cursor stays on the field).
-	private const int CreateRowName = 0, CreateRowTag = 1, CreateRowColor = 2,
-		CreateRowIcon = 3, CreateRowShape = 4, CreateRowFound = 5, CreateRowCount = 6;
+	// ── CREATE FORM (run 3) ─────────────────────────────────────────────────
+	// Rows in screen order (left column top→bottom, then the FOUND foot):
+	//   name 0 · tag 1 · color 2 · beast 3 · description 4 · joinmode 5 ·
+	//   minlevel 6 · FOUND 7.  Name / tag / description are TextEntry stops:
+	// Space/Enter/E focuses the box; typing then owns the keyboard until Tab /
+	// Enter / Esc hand it back (cursor stays on the field). A/D cycle the chip
+	// rows (the settings CycleSettingsRow grammar). Q → landing.
+	private const int CreateRowName = 0, CreateRowTag = 1, CreateRowColor = 2, CreateRowBeast = 3,
+		CreateRowDesc = 4, CreateRowJoin = 5, CreateRowLevel = 6, CreateRowFound = 7, CreateRowCount = 8;
 
 	private void TickCreateInput()
 	{
 		// Typing owns the keyboard (Q types a 'q', it does not leave the form).
 		if ( TypingOwnsKeys( createNameInput, CreateRowName, "create" ) ) return;
 		if ( TypingOwnsKeys( createTagInput, CreateRowTag, "create" ) ) return;
+		if ( TypingOwnsKeys( createDescInput, CreateRowDesc, "create" ) ) return;
 
 		// Q — leave the create form, back to landing.
 		if ( Input.Pressed( "Menu" ) )
 		{
-			SoundManager.PlayBack();
-			guildView = "landing";
-			errorMessage = "";
-			ResetKb();
+			OnCreateBackPressed();
 			GameHUD.PanelHandledBackKey = true;
-			StateHasChanged();
 			return;
 		}
 
-		if ( GetTamerLevel() < GuildManager.MIN_LEVEL_TO_JOIN ) return; // level-gated
+		if ( NavPressed() ) StampKb();
 
-		// Each picker group is one row stepped with Up/Down; Left/Right cycles
-		// the option inside the focused group (no-op on the text rows).
 		const int rowCount = CreateRowCount;
 
 		if ( !_kbActive || _kbZone != "create" )
@@ -3679,40 +3693,57 @@ else if ( guildView == "myguild" )
 		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) )
 		{
 			int dir = Input.Pressed( "Right" ) ? 1 : -1;
-			if ( _kbIndex == CreateRowColor ) // color
+			switch ( _kbIndex )
 			{
-				int ci = Array.IndexOf( EmblemColors, emblemColor );
-				ci = ( ci + dir + EmblemColors.Length ) % EmblemColors.Length;
-				emblemColor = EmblemColors[ci];
-				SoundManager.PlayClick();
+				case CreateRowColor:
+				{
+					int i = Array.IndexOf( EmblemColors, emblemColor );
+					i = ( i + dir + EmblemColors.Length ) % EmblemColors.Length;
+					emblemColor = EmblemColors[i];
+					break;
+				}
+				case CreateRowBeast:
+				{
+					var choices = GetEmblemBeastChoices();
+					if ( choices.Count == 0 ) return;
+					var cur = ( emblemIcon ?? "" ).StartsWith( "beast:" ) ? emblemIcon.Substring( 6 ) : "";
+					int i = choices.FindIndex( s => s.Id == cur );
+					i = i < 0 ? ( dir > 0 ? 0 : choices.Count - 1 ) : ( i + dir + choices.Count ) % choices.Count;
+					emblemIcon = "beast:" + choices[i].Id;
+					break;
+				}
+				case CreateRowJoin:
+				{
+					int i = Array.IndexOf( JoinModeChips, settingsJoinMode );
+					i = ( i + dir + JoinModeChips.Length ) % JoinModeChips.Length;
+					settingsJoinMode = JoinModeChips[i];
+					break;
+				}
+				case CreateRowLevel:
+				{
+					int i = Array.IndexOf( MinLevelChips, settingsMinLevel );
+					if ( i < 0 ) i = 0;
+					i = ( i + dir + MinLevelChips.Length ) % MinLevelChips.Length;
+					settingsMinLevel = MinLevelChips[i];
+					break;
+				}
+				default:
+					return; // text rows / FOUND — not cyclable
 			}
-			else if ( _kbIndex == CreateRowIcon ) // icon
-			{
-				var keys = EmblemIcons.Keys.ToList();
-				int ki = keys.IndexOf( emblemIcon );
-				if ( ki < 0 ) ki = 0;
-				ki = ( ki + dir + keys.Count ) % keys.Count;
-				emblemIcon = keys[ki];
-				SoundManager.PlayClick();
-			}
-			else if ( _kbIndex == CreateRowShape ) // shape
-			{
-				var keys = EmblemShapes.Keys.ToList();
-				int si = keys.IndexOf( emblemShape );
-				if ( si < 0 ) si = 0;
-				si = ( si + dir + keys.Count ) % keys.Count;
-				emblemShape = keys[si];
-				SoundManager.PlayClick();
-			}
+			SoundManager.PlayClick();
 			StateHasChanged();
 			return;
 		}
 
 		if ( UiInput.ConfirmPressed() )
 		{
-			if ( _kbIndex == CreateRowFound ) OnCreateGuild();
-			else if ( _kbIndex == CreateRowName ) RequestEntryFocus( createNameInput );
-			else if ( _kbIndex == CreateRowTag ) RequestEntryFocus( createTagInput );
+			switch ( _kbIndex )
+			{
+				case CreateRowFound: if ( CreateGateOpen() ) OnCreateGuild(); else SoundManager.PlayDeny(); break;
+				case CreateRowName:  RequestEntryFocus( createNameInput ); break;
+				case CreateRowTag:   RequestEntryFocus( createTagInput ); break;
+				case CreateRowDesc:  RequestEntryFocus( createDescInput ); break;
+			}
 		}
 	}
 
@@ -3773,8 +3804,8 @@ else if ( guildView == "myguild" )
 
 		// Up/Down move the row cursor — flag a deferred scroll-follow so the
 		// drawer body keeps the focused row on screen (body is overflow:scroll).
-		if ( Input.Pressed( "Up" ) ) { MoveKb( rows.Count, -1 ); _settingsScrollPending = true; return; }
-		if ( Input.Pressed( "Down" ) ) { MoveKb( rows.Count, 1 ); _settingsScrollPending = true; return; }
+		if ( Input.Pressed( "Up" ) ) { MoveKb( rows.Count, -1 ); return; }
+		if ( Input.Pressed( "Down" ) ) { MoveKb( rows.Count, 1 ); return; }
 
 		var row = rows[_kbIndex];
 
@@ -3871,17 +3902,6 @@ else if ( guildView == "myguild" )
 		var rows = GetSettingsDrawerRows();
 		int i = Math.Clamp( _kbIndex, 0, rows.Count - 1 );
 		return i >= 0 && i < rows.Count && rows[i] == row;
-	}
-
-	// Scroll the settings body so the focused row is visible (run 2: no-op —
-	// the sub-view is fixed-height, settingsScrollRef is null). The row
-	// carries `guild-kb-selected`; scope the search to the drawer body so it
-	// can't pick up a same-class element elsewhere in the panel.
-	private void ScrollSettingsRowIntoView()
-	{
-		if ( settingsScrollRef == null ) return;
-		var target = FindKbPanel( settingsScrollRef, "guild-kb-selected" );
-		UiGridScroll.IntoView( settingsScrollRef, target );
 	}
 
 	// ── MEMBER CONTEXT MENU ──────────────────────────────────────────────────
@@ -4195,25 +4215,6 @@ else if ( guildView == "myguild" )
 		_kbSearchFocused = false;
 	}
 
-	// Tree-walk helper — find the first descendant carrying `cls`. Used for live
-	// column measurement (the roster grid is flex-wrap).
-	private Panel FindKbPanel( string cls )
-	{
-		return FindKbPanel( this, cls );
-	}
-
-	private Panel FindKbPanel( Panel root, string cls )
-	{
-		if ( root == null ) return null;
-		foreach ( var c in root.Children )
-		{
-			if ( c.HasClass( cls ) ) return c;
-			var found = FindKbPanel( c, cls );
-			if ( found != null ) return found;
-		}
-		return null;
-	}
-
 	public override void OnDeleted()
 	{
 		if ( GuildManager.Instance != null )
@@ -4230,6 +4231,8 @@ else if ( guildView == "myguild" )
 		var guild = GuildManager.Instance?.Guild;
 		if ( guild != null )
 		{
+			// The create form's picks land once the guild exists (run 3).
+			if ( _createPicks != null ) { var picks = _createPicks; _createPicks = null; ApplyCreatePicks( picks ); }
 			emblemColor = guild.EmblemColor;
 			emblemIcon = guild.EmblemIcon;
 			emblemShape = guild.EmblemShape;
@@ -4334,6 +4337,12 @@ else if ( guildView == "myguild" )
 			).ToList();
 		}
 
+		// Sort — the header chip pair (run 3): MEMBERS (default) or LEVEL,
+		// biggest first; the other stat then the name break ties.
+		all = browseSort == "level"
+			? all.OrderByDescending( g => g.Level ).ThenByDescending( g => g.MemberCount ).ThenBy( g => g.GuildName ).ToList()
+			: all.OrderByDescending( g => g.MemberCount ).ThenByDescending( g => g.Level ).ThenBy( g => g.GuildName ).ToList();
+
 		return all;
 	}
 
@@ -4353,9 +4362,14 @@ else if ( guildView == "myguild" )
 		errorMessage = "";
 		createName = createNameInput?.Text ?? "";
 		createTag = createTagInput?.Text ?? "";
+		createDescription = createDescInput?.Text ?? createDescription;
 		var result = GuildManager.Instance?.CreateGuild( createName, createTag ) ?? false;
 		if ( result )
+		{
 			SoundManager.PlaySuccess();
+			// Stash the form's picks — OnRefresh applies them when the guild lands.
+			_createPicks = new CreatePicks { Color = emblemColor, Icon = emblemIcon, JoinMode = settingsJoinMode, MinLevel = settingsMinLevel, Description = createDescription };
+		}
 		else if ( string.IsNullOrEmpty( errorMessage ) )
 			errorMessage = "Failed to create guild.";
 	}
@@ -4374,6 +4388,124 @@ else if ( guildView == "myguild" )
 	private void RequestJoin( GuildAdvertisement guild )
 	{
 		GuildManager.Instance?.RequestToJoin( guild );
+	}
+
+	// ── No-guild views (run 3) — one path per action (mouse + kb). ──
+	// dev_guildview landing|browse|create renders the no-guild views while the
+	// dev sits in a guild; every in-guild branch point reads THIS, never
+	// GuildManager.IsInGuild directly.
+	private bool InGuildLive() => !_devNoGuild && ( GuildManager.Instance?.IsInGuild ?? false );
+
+	// Gate for CREATE A GUILD / FOUND GUILD — mirrors GuildManager.CreateGuild's
+	// three checks (level · gold · hop cooldown) so the button dims honestly.
+	private bool CreateGateOpen()
+	{
+		var tamer = TamerManager.Instance?.CurrentTamer;
+		if ( tamer == null ) return false;
+		if ( tamer.Level < GuildManager.MIN_LEVEL_TO_JOIN ) return false;
+		if ( tamer.Gold < GuildManager.GUILD_CREATION_COST ) return false;
+		if ( GuildManager.Instance?.IsOnHopCooldown() ?? false ) return false;
+		return true;
+	}
+
+	private void OnBrowsePressed()
+	{
+		SoundManager.PlayForward();
+		guildView = "browse";
+		errorMessage = "";
+		viewingGuild = null;
+		LoadGuildsFromApi();
+		ResetKb();
+		StateHasChanged();
+	}
+
+	private void OnCreatePressed()
+	{
+		if ( !CreateGateOpen() ) { SoundManager.PlayDeny(); return; }
+		SoundManager.PlayForward();
+		guildView = "myguild"; // no guild → the create form
+		errorMessage = "";
+		ResetKb();
+		StateHasChanged();
+	}
+
+	// BACK · Q from browse → the plaza when in a guild, else the landing.
+	private void OnBrowseBackPressed()
+	{
+		SoundManager.PlayBack();
+		guildView = InGuildLive() ? "myguild" : "landing";
+		viewingGuild = null;
+		errorMessage = "";
+		ResetKb();
+		StateHasChanged();
+	}
+
+	private void OnCreateBackPressed()
+	{
+		SoundManager.PlayBack();
+		guildView = "landing";
+		errorMessage = "";
+		ResetKb();
+		StateHasChanged();
+	}
+
+	private void OnRefreshGuildsPressed()
+	{
+		SoundManager.PlayClick();
+		LoadGuildsFromApi();
+	}
+
+	// Row click → the detail, unless a BbButton inside the row just fired
+	// (clicks bubble; RequestJoinRow stamps a 50ms suppression window).
+	private void OpenGuildRow( GuildAdvertisement g )
+	{
+		if ( RealTime.Now < _rowClickSuppressUntil ) return;
+		ViewGuildDetail( g );
+	}
+
+	private void RequestJoinRow( GuildAdvertisement g )
+	{
+		_rowClickSuppressUntil = RealTime.Now + 0.05f;
+		RequestJoin( g );
+		SoundManager.PlaySelect();
+		StateHasChanged();
+	}
+
+	private void OnDetailJoinPressed()
+	{
+		if ( viewingGuild == null ) return;
+		RequestJoin( viewingGuild );
+		SoundManager.PlaySelect();
+		viewingGuild = null;
+		ResetKb();
+		StateHasChanged();
+	}
+
+	private void OnDetailBackPressed()
+	{
+		SoundManager.PlayBack();
+		viewingGuild = null;
+		ResetKb();
+		StateHasChanged();
+	}
+
+	// Roster cap for a browsed guild — the ad carries no MaxMembers, so it is
+	// read off the WIRED perk ladder (Wider Banner LV 15 → 35, Halls of Renown
+	// LV 35 → 40; BASE_MAX_MEMBERS below). Keep in step with WiredPerks.
+	private static int AdCap( int level ) => level >= 35 ? 40 : level >= 15 ? 35 : GuildManager.BASE_MAX_MEMBERS;
+
+	// The create form's picks land AFTER the guild exists (CreateGuild is
+	// name + tag only; Core untouched): one PUT per changed section.
+	private void ApplyCreatePicks( CreatePicks p )
+	{
+		var gm = GuildManager.Instance;
+		var guild = gm?.Guild;
+		if ( gm == null || guild == null || p == null ) return;
+		bool emblemDirty = p.Color != guild.EmblemColor || p.Icon != guild.EmblemIcon;
+		bool settingsDirty = p.JoinMode != guild.JoinMode || p.MinLevel != guild.MinLevel
+			|| ( p.Description ?? "" ) != ( guild.Description ?? "" );
+		if ( emblemDirty ) gm.UpdateEmblem( p.Color, p.Icon, "square" );
+		if ( settingsDirty ) gm.UpdateGuildSettings( p.JoinMode, p.MinLevel, guild.MinRank, guild.AutoKickInactive, guild.InactiveDays, p.Description ?? "" );
 	}
 
 	// INVITE (header chip) — always the invite picker now (run 2): requests
@@ -4591,13 +4723,40 @@ else if ( guildView == "myguild" )
 				if ( !gm.IsOfficer ) Log.Warning( "[dev_guildview] PENDING renders for officers only — you are not one in this guild." );
 				p.ScrollRosterToPending();
 				break;
+			// Run 3 — the NO-GUILD views, renderable while in a guild (_devNoGuild
+			// makes every in-guild branch point read false; ACCEPT / JOIN / FOUND
+			// would still hit the server — screenshots only).
+			case "landing":
+				p._devNoGuild = true;
+				p.guildView = "landing";
+				p.showSettingsView = false;
+				p.ResetKb();
+				break;
+			case "browse":
+				p._devNoGuild = true;
+				p.guildView = "browse";
+				p.showSettingsView = false;
+				p.viewingGuild = null;
+				p.ResetKb();
+				p.LoadGuildsFromApi();
+				break;
+			case "create":
+				p._devNoGuild = true;
+				p.guildView = "myguild"; // no guild → the create form
+				p.showSettingsView = false;
+				p.ResetKb();
+				break;
 			case "off":
 				p.showSettingsView = false;
+				p._devNoGuild = false;
+				p.guildView = gm.IsInGuild ? "myguild" : "landing";
+				p.viewingGuild = null;
+				p.ResetKb();
 				foreach ( var f in _devFakeRequests ) gm.JoinRequests?.Remove( f );
 				_devFakeRequests.Clear();
 				break;
 			default:
-				Log.Info( "[dev_guildview] modes: settings | pending | off" );
+				Log.Info( "[dev_guildview] modes: settings | pending | landing | browse | create | off" );
 				return;
 		}
 		p.StateHasChanged();
@@ -5043,11 +5202,6 @@ else if ( guildView == "myguild" )
 	private string GetEmblemIcon( string icon )
 	{
 		return BbEmblem.ResolveLucide( icon );
-	}
-
-	private string GetEmblemShapeIcon( string shape )
-	{
-		return EmblemShapes.TryGetValue( shape, out var name ) ? name : "lucide:square";
 	}
 
 	private string GetAvatarIcon( GuildMemberInfo member )
