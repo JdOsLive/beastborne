@@ -13,242 +13,182 @@
 @using Beastborne.UI.Primitives;
 @inherits Panel
 
+@*
+   LEADERBOARDS — the Online hub's takeover (LAYOUT lane rebuild, pipeline run 1,
+   2026-09-04; brief: .claude/design-system/components/leaderboards-redesign-brief.html
+   + leaderboards-mock-page.html, every RECOMMENDED toggle taken).
+
+   ZONE MAP (1920×1080, PADDING-BOX — the hub's .oh-header 88 + 2 strip sits above):
+     header 90 → body pad 20 → carousel 44 → 20 → slabs 874 → 32 bottom pad
+     90 + 20 + 44 + 20 + 874 + 32 = 1080 ✓
+     slabs: 40 pad + 600 + 20 + 600 + 20 + 600 + 40 pad = 1920 ✓
+   The hub header (kicker TAMERLINK · title LEADERBOARDS · REFRESH · F + BACK TO
+   HUB · Q) is the hub's markup — see OnlineHubPanel.razor .oh-header.
+
+   KEPT verbatim: the three-phase slab swap (SpinTo), click-a-neighbour-to-jump
+   (SetGroup), the data path (SetAggregationMax · MaxEntries 100 · WhenAll).
+   CUT (ledger): hint row · refresh pill · 2.5D wheel + count badges · SOCIAL group
+   + Guild RP board · card icon-rim / group tag / your-value / #rank pill · rank
+   diamonds · podium hairline · SHOW TOP 20 + expanded state + W/S card cursor ·
+   FilterMode branches · ColorWithAlpha / RankTitle / entryIndex · page scroll.
+*@
+
 <div class="leaderboard-panel">
 
-	@* Living background: the online glyph drifting at the house angle —
-	   the leaderboards live under the Online hub, so they wear the hub's
-	   glyph. The hub's opaque z-500 header covers this layer's top
-	   overhang; the tiles' baked dark base covers the hub's own drift
-	   beneath. *@
+	@* Living background — the online glyph drifting (the page lives under the
+	   Online hub, so it wears the hub's glyph). The hub's opaque z-500 header
+	   covers this layer's top overhang. *@
 	<BbIconScroll Icon="online" />
 
-	@* Top action bar — refresh only. The 4 group panels themselves act as the
-	   visual "tabs" so the user doesn't need filter pills to navigate. *@
-	@if ( FilterMode == "all" )
-	{
-		<div class="lb-top-bar">
-			<div class="lb-keys">
-				<div class="lb-cap"><span>A</span></div>
-				<div class="lb-cap"><span>D</span></div>
-				<span class="lb-keys-label">GROUPS</span>
-				<div class="lb-cap"><span>W</span></div>
-				<div class="lb-cap"><span>S</span></div>
-				<span class="lb-keys-label">CARDS</span>
-				<div class="lb-cap lb-cap-wide"><span>SPACE</span></div>
-				<span class="lb-keys-label">EXPAND</span>
-			</div>
-			<div class="lb-top-bar-spacer"></div>
-			<div class="lb-refresh-pill"
-				 onmouseover=@(() => SoundManager.PlayHover())
-				 onclick=@RefreshAll>
-				<iconify icon="lucide:refresh-cw" Size=@(13) Color="#9ecdf5" />
-				<span class="lb-refresh-label">@L("ui.leaderboard.refresh")</span>
-				<div class="lb-cap"><span>F</span></div>
-			</div>
+	@* ── CAROUSEL BAND 44 — ‹ 44 ghost · ECONOMY · BATTLE · COLLECTION · › 44 ghost,
+	   centred, gap 12. Chips = the guild .gp-chip recipe (32 r11, two-tone .on —
+	   ACTIONS NEVER SKEW); arrows = BbButton ghost 44 pinned square. All three
+	   groups are visible, so the row IS the counter (no dots, no "2 / 3").
+	   LANE: input — ring hosts: ‹ · the three chips · › (+ the header's REFRESH /
+	   BACK TO HUB chips); A/D rotate from anywhere (TickInput below); device flag
+	   (.kbd-mode/.mouse-mode) + the travel guard are the hub root's. *@
+	<div class="lb-carousel">
+		<BbButton Tier="ghost" Size=@(44) Icon="lucide:chevron-left" OnClick=@PrevGroup Class="lb-arrow" />
+		<div class="lb-groups">
+			@for ( int i = 0; i < GroupMeta.Length; i++ )
+			{
+				var idx = i;
+				var grp = GroupMeta[i];
+				var on = i == currentGroupIndex;
+				<div class="lb-gchip @(on ? "on" : "")"
+					 onmouseover=@(() => { if ( idx != currentGroupIndex ) SoundManager.PlayHover(); })
+					 onclick=@(() => SetGroup( idx ))>
+					<iconify class="lb-gchip-glyph" icon="@grp.Icon" Size=@(16) Color="@(on ? "#ffffff" : "rgba(214, 206, 236, 0.55)")" />
+					<span class="lb-gchip-label">@grp.Name.ToUpper()</span>
+				</div>
+			}
 		</div>
+		<BbButton Tier="ghost" Size=@(44) Icon="lucide:chevron-right" OnClick=@NextGroup Class="lb-arrow" />
+	</div>
+
+	@{
+		var currentCats = GetCurrentGroupCats();
+		var myName = Connection.Local?.DisplayName;
+		var mySteam = GetLocalSteamId();
 	}
 
-	<div class="leaderboard-scroll" @ref="lbScroll">
-		@if ( isLoading )
+	@* ── SLABS — three pinned 600×874 (gap 20). The row carries the three-phase
+	   spin classes (spin-out-* / warp-from-*) — LANE: motion owns the swap
+	   choreography and any cascade; the classes + timings here are the shipped
+	   mechanics, preserved. Nothing inside needs flex-grow WIDTH resolution
+	   (three pinned 600s), so the translateX on this row is safe. *@
+	<div class="lb-slabs @spinClass">
+		@foreach ( var cat in currentCats )
 		{
-			<div class="loading-state">
-				<div class="loading-spinner"></div>
-				<span>@L("ui.leaderboard.loading")</span>
-			</div>
-		}
-		else
-		{
-			@{
-				var visibleCats = GetVisibleCategories();
-				var current = GroupMeta[currentGroupIndex];
-				var currentCats = visibleCats.Where( c => c.Group == current.Name ).ToArray();
-			}
+			var entries = GetEntries( cat.Key );
+			var count = entries.Count;
+			var myEntry = FindMyEntry( entries, mySteam, myName );
+			// YOU is told ONCE: inline while your row is inside the 12-row lane,
+			// pinned under the lane (outside the scroll) when you sit below it or
+			// aren't on the board yet ("—" rank, your local value).
+			var pinYou = !isLoading && ( myEntry == null || myEntry.Rank > VisibleRows );
 
-			@* 2.5D Cover-Flow-style wheel: arrows on the outer edges, all 4 group
-			   cards rendered at once. Each card's position class is derived from
-			   its offset from currentGroupIndex (-1 = left preview, 0 = center,
-			   +1 = right preview, ±2 = hidden behind). Clicking center = no-op,
-			   clicking a side preview jumps to that group, arrows do prev/next. *@
-			<div class="lb-carousel-nav">
-				<div class="lb-arrow lb-arrow-left"
-					 onmouseover=@(() => SoundManager.PlayHover())
-					 onclick=@PrevGroup>
-					<iconify icon="lucide:chevron-left" Size=@(34) Color="#9ecdf5" />
-				</div>
-
-				<div class="lb-wheel">
-					@for ( int i = 0; i < GroupMeta.Length; i++ )
+			<div class="lb-slab">
+				@* Band 36 — chipstamp (category) · spacer · darkchip "N TAMERS"
+				   (entries.Count — the honest population). OPAQUE, gap 0 to the list
+				   (scroll-leak law). *@
+				<div class="lb-band">
+					<div class="lb-stamp"><span>@cat.Label.ToUpper()</span></div>
+					<div class="lb-band-spacer"></div>
+					@if ( !isLoading )
 					{
-						var idx = i;
-						var grp = GroupMeta[i];
-						var groupCatsForWheel = visibleCats.Where( c => c.Group == grp.Name ).ToArray();
-						var offset = ((i - currentGroupIndex + GroupMeta.Length) % GroupMeta.Length);
-						if ( offset > GroupMeta.Length / 2 ) offset -= GroupMeta.Length;
-						var posClass = offset == 0 ? "pos-center" : offset == -1 ? "pos-left" : offset == 1 ? "pos-right" : "pos-back";
-
-						<div class="lb-wheel-item @posClass" style="border-color: @grp.Color"
-							 onmouseover=@(() => { if ( posClass != "pos-center" && posClass != "pos-back" ) SoundManager.PlayHover(); })
-							 onclick=@(() => SetGroup( idx ))>
-							<div class="lb-wheel-icon-wrap" style="border-color: @grp.Color">
-								<iconify icon="@grp.Icon" Size=@(24) Color="@grp.Color" />
-							</div>
-							<span class="lb-wheel-title">@grp.Name.ToUpper()</span>
-							<div class="lb-wheel-count"><span>@groupCatsForWheel.Length</span></div>
-						</div>
+						<div class="lb-darkchip"><span>@($"{count} TAMERS")</span></div>
 					}
 				</div>
 
-				<div class="lb-arrow lb-arrow-right"
-					 onmouseover=@(() => SoundManager.PlayHover())
-					 onclick=@NextGroup>
-					<iconify icon="lucide:chevron-right" Size=@(34) Color="#9ecdf5" />
-				</div>
-			</div>
-
-			<div class="lb-group-cards @spinClass">
-			@for ( int ci = 0; ci < currentCats.Length; ci++ )
-			{
-				var cat = currentCats[ci];
-				var catEntries = GetEntries( cat.Key );
-				var rank = GetPlayerRank( cat.Key );
-				var playerValue = GetPlayerValue( cat.Key );
-				var isExpanded = expanded.ContainsKey( cat.Key ) && expanded[cat.Key];
-				var displayEntries = isExpanded ? catEntries.Take( 20 ).ToList() : catEntries.Take( 10 ).ToList();
-				var playerName = TamerManager.Instance?.CurrentTamer?.Name;
-				var playerInList = displayEntries.Any( e => e.Name == playerName );
-				var playerEntry = catEntries.FirstOrDefault( e => e.Name == playerName );
-
-				<div class="lb-section cat-@cat.Key @(_kbActive && ci == _kbCardIndex ? "lb-kb-selected" : "")">
-					<div class="lb-section-header">
-						<div class="lb-section-left">
-							<div class="lb-section-icon-wrap" style="border-color: @cat.Color">
-								<iconify icon="@cat.Icon" Size=@(18) Color="@cat.Color" />
-							</div>
-							<span class="lb-section-name">@cat.Label</span>
-							<div class="lb-section-tag"><span>@cat.Group.ToUpper()</span></div>
-						</div>
-						<div class="lb-section-right">
-							<span class="lb-your-value" style="color: @cat.Color">@FormatValue( playerValue, cat.Key )</span>
-							<div class="lb-rank-pill"><span class="lb-rank-text">@($"#{rank}")</span></div>
-						</div>
-					</div>
-
-					@if ( catEntries.Count == 0 )
+				@* List zone 838 = 874 − 36; pad 16/12/12/12 → inner 810 × 576.
+				   .lb-lane is THE scroll child (flex 1 1 0; min-height 0), rows its
+				   DIRECT children. Lane = 810 − (8 + 56 pinned) = 746 when YOU is
+				   pinned → 12 × 56 + 11 × 6 = 738 (8 slack); 810 when inline → 13 rows
+				   (806). LANE: input — wheel routes to the lane under the pointer
+				   (OnMouseWheel override), W/S row walk + scroll-follow if adopted. *@
+				<div class="lb-list">
+					@if ( isLoading )
+					{
+						<div class="lb-note"><span class="lb-note-text">Fetching standings…</span></div>
+					}
+					else if ( count == 0 )
 					{
 						<EmptyState Icon="lucide:trophy"
-									Title=@L("ui.leaderboard.no_entries")
+									Title="No one on this board yet."
 									Body="Be the first to set a record."
 									Size="inline" />
 					}
 					else
 					{
-						<div class="lb-entries">
-							@{ var entryIndex = 0; }
-							@foreach ( var entry in displayEntries )
+						<div class="lb-lane">
+							@for ( int ri = 0; ri < entries.Count; ri++ )
 							{
-								// Rank diamond (45° = the house identity shape): gold /
-								// silver-violet / bronze-tan for the podium, dark slab
-								// for the field. Number counter-rotates inside.
-								var rowClass = "lb-entry"
-									+ ( entry.Rank <= 3 ? $" top-{entry.Rank}" : "" )
-									+ ( IsPlayerEntry( entry ) ? " player" : "" );
-								var rdClass = entry.Rank <= 3 ? $"rd-{entry.Rank}" : "rd-n";
-								<div class="@rowClass">
-									@if ( IsPlayerEntry( entry ) )
-									{
-										<div class="lb-entry-rail"></div>
-									}
-									<div class="lb-rank-diamond @rdClass">
-										<span class="rd-num">@entry.Rank</span>
-									</div>
-									@* Avatar render disabled for launch — SteamId always 0 until we verify the s&box leaderboard entry's identifier field name. *@
-									@if ( entry.SteamId > 0 )
-									{
-										<img class="lb-avatar" src="avatar:@entry.SteamId" />
-									}
-									<span class="lb-entry-name">@entry.Name</span>
-									@if ( IsPlayerEntry( entry ) )
-									{
-										<div class="lb-you-badge"><span>YOU</span></div>
-									}
-									<span class="lb-entry-score" style="color: @cat.Color">@FormatValue( entry.Score, cat.Key )</span>
-								</div>
-								@if ( entry.Rank == 3 && displayEntries.Count > 3 )
-								{
-									<span class="lb-divider-line">&nbsp;</span>
-								}
-								entryIndex++;
+								var entry = entries[ri];
+								var isMe = myEntry != null && ReferenceEquals( entry, myEntry );
+								@RenderRow( entry, cat.Key, isMe, ri % 2 == 1, false )
 							}
 						</div>
+					}
 
-						@if ( !playerInList && playerEntry != null )
-						{
-							<div class="lb-entry lb-player-pinned player">
-								<div class="lb-entry-rail"></div>
-								<div class="lb-rank-diamond rd-n">
-									<span class="rd-num">@playerEntry.Rank</span>
-								</div>
-								@if ( playerEntry.SteamId > 0 )
-								{
-									<img class="lb-avatar" src="avatar:@playerEntry.SteamId" />
-								}
-								<span class="lb-entry-name">@playerEntry.Name</span>
-								<div class="lb-you-badge"><span>YOU</span></div>
-								<span class="lb-entry-score" style="color: @cat.Color">@FormatValue( playerEntry.Score, cat.Key )</span>
-							</div>
-						}
-
-						@if ( catEntries.Count > 10 )
-						{
-							<button class="lb-expand-btn" onclick=@(() => ToggleExpand( cat.Key ))>
-								<span>@(isExpanded ? L("ui.leaderboard.show_less") : L("ui.leaderboard.show_top_20"))</span>
-							</button>
-						}
+					@if ( pinYou )
+					{
+						@RenderRow( myEntry, cat.Key, true, false, true )
 					}
 				</div>
-			}
 			</div>
 		}
 	</div>
 </div>
 
 @code {
-	// Localization helper
-	private string L( string key ) => LocalizationManager.Get( key );
-	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
-
+	// Copy is literal this run — the brief's new strings ("Fetching standings…",
+	// "N TAMERS", "No one on this board yet.") have no loc keys yet; the
+	// type/copy lane owns adding them to Assets/localization/*.json.
 	public Action OnBack { get; set; }
-	public string FilterMode { get; set; } = "all"; // "all", "arena", or "guild"
+
+	// INERT — the dormant ArenaPanel (ArenaPanel.razor:788) still passes
+	// FilterMode="arena"; the arena/guild branches are deleted (the hub is the
+	// only live mount and never set it). Kept so the dormant panel compiles.
+	public string FilterMode { get; set; } = "all";
+
+	// How many 56px rows the lane shows before it scrolls — the inline/pinned
+	// YOU decision reads this (see the slab loop). 12 × 56 + 11 × 6 = 738 ≤ 746.
+	private const int VisibleRows = 12;
 
 	private Dictionary<string, List<LeaderboardEntry>> allEntries = new();
-	private Dictionary<string, int> playerRanks = new();
 	// Long-typed because cumulative stats (gold, damage, playtime) can exceed
 	// int.MaxValue and would silently wrap negative when displayed.
 	private Dictionary<string, long> playerBoardValues = new();
-	private Dictionary<string, bool> expanded = new();
 	private bool isLoading = true;
-	private string activeFilter = "all";
-	private string hoveredFilter = null;
+	// Bumped per completed load so a refresh with identical counts still re-renders.
+	private int _loadVersion = 0;
 
-	// Paper-Mario-style carousel state. Index into `GroupMeta` for the active
-	// category group (Battle / Collection / Social / Economy). Arrow buttons
-	// + dot indicators rotate through it. `spinClass` cycles through three
-	// phases per swap: spin-out-X → warp-from-Y (instant teleport, transition
-	// disabled) → "" (transition back). This gives a proper carousel feel
-	// where new content arrives from the opposite side of where old content
-	// went out, instead of bouncing back from the same side.
-	private int currentGroupIndex = 0;
+	// Row identity helpers, built once per load (not per row):
+	// avatar ids BY DISPLAY NAME for entries whose Board2 SteamId is 0 (the hub's
+	// helper, promoted to a shared static) and guild tags by Steam id / name
+	// (own guild Members → session PlayerProfiles → you).
+	private Dictionary<string, long> _avatarByName = new( StringComparer.OrdinalIgnoreCase );
+	private Dictionary<long, string> _tagBySteam = new();
+	private Dictionary<string, string> _tagByName = new( StringComparer.OrdinalIgnoreCase );
+
+	// ── Carousel state ────────────────────────────────────────────────────
+	// Index into GroupMeta for the active group. `spinClass` cycles through
+	// three phases per swap: spin-out-X → warp-from-Y (instant teleport,
+	// transition disabled) → "" (transition back), so new content arrives from
+	// the opposite side of where the old content went out.
+	private int currentGroupIndex = 1; // opens on BATTLE (the middle chip)
 	private string spinClass = "";
 	private bool isSpinning = false;
 
-	private record GroupInfo( string Name, string Icon, string Color );
+	private record GroupInfo( string Name, string Icon );
 
+	// Three groups, no colours (the page is ONE accent). Order = the chip row.
 	private static readonly GroupInfo[] GroupMeta = new[]
 	{
-		new GroupInfo( "Battle", "lucide:swords", "#f87171" ),
-		new GroupInfo( "Collection", "lucide:layers", "#60a5fa" ),
-		new GroupInfo( "Social", "lucide:users", "#c084fc" ),
-		new GroupInfo( "Economy", "lucide:coins", "#fcd34d" )
+		new GroupInfo( "Economy", "lucide:coins" ),
+		new GroupInfo( "Battle", "lucide:swords" ),
+		new GroupInfo( "Collection", "lucide:layers" )
 	};
 
 	private async void PrevGroup()
@@ -273,31 +213,27 @@
 		if ( idx == currentGroupIndex ) return;
 		if ( isSpinning ) return;
 		SoundManager.PlaySelect();
-		// Direction follows index distance — clicking a dot to the right exits left, etc.
+		// Direction follows index distance — clicking a chip to the right exits left, etc.
 		if ( idx > currentGroupIndex )
 			await SpinTo( idx, exitTo: "left", enterFrom: "right" );
 		else
 			await SpinTo( idx, exitTo: "right", enterFrom: "left" );
 	}
 
-	// Three-phase swap:
-	//   Phase 1: cards fade/slide out via spin-out-{exitTo}; wheel rotates
-	//            immediately because currentGroupIndex changes here too (cards
-	//            content changing mid-fade is invisible — they're at opacity 0
-	//            from the spin-out class — so the swap is hidden).
-	//   Phase 2: warp-from-{enterFrom} teleports cards to the opposite side
-	//            with transition disabled, so the next class change animates
-	//            from there instead of reverse-sliding.
-	//   Phase 3: clear class — cards transition back to centre, new content
-	//            visible. Wheel rotation finishes around the same time.
+	// Three-phase swap (preserved verbatim from the shipped page):
+	//   Phase 1: slabs fade/slide out via spin-out-{exitTo}; currentGroupIndex
+	//            changes here too (content swapping mid-fade is invisible — the
+	//            row is at opacity 0 from the spin-out class).
+	//   Phase 2: warp-from-{enterFrom} teleports the row to the opposite side
+	//            with transition disabled.
+	//   Phase 3: clear class — the row transitions back to centre, new content
+	//            visible.
 	private async Task SpinTo( int targetIdx, string exitTo, string enterFrom )
 	{
 		isSpinning = true;
 
 		spinClass = $"spin-out-{exitTo}";
 		currentGroupIndex = targetIdx;
-		// New group → reset the card cursor to the top of the new card list.
-		_kbCardIndex = 0;
 		await System.Threading.Tasks.Task.Delay( 180 );
 
 		spinClass = $"warp-from-{enterFrom}";
@@ -309,54 +245,48 @@
 		isSpinning = false;
 	}
 
-	// Required so the carousel rotation actually re-renders. s&box's Panel
-	// framework only diffs when BuildHash changes — without this, clicking the
-	// arrow flips currentGroupIndex but the visible group can lag behind.
+	// Every field that affects rendering: the carousel, the swap phase, the
+	// load state + version, the identity maps' sizes, and the presence count
+	// (session tags / avatars change as people come and go).
 	protected override int BuildHash()
 	{
 		return System.HashCode.Combine(
 			currentGroupIndex,
 			spinClass,
 			isLoading,
-			activeFilter,
+			_loadVersion,
 			allEntries.Count,
-			expanded.Count,
-			FilterMode,
-			System.HashCode.Combine( _kbCardIndex, _kbActive )
+			System.HashCode.Combine( _avatarByName.Count, _tagBySteam.Count, _tagByName.Count ),
+			Networking.IsActive ? Connection.All.Count : 0,
+			TamerManager.Instance?.CurrentTamer?.CollectedCards?.Count ?? 0
 		);
 	}
 
-	private record CategoryInfo( string Key, string LeaderboardName, string Label, string Icon, string Unit, string Color, string Group );
+	// ── Boards ────────────────────────────────────────────────────────────
+	private record CategoryInfo( string Key, string LeaderboardName, string Label, string Group );
 
+	// Nine boards, three per group. Guild RP left for the guild page (it ranks
+	// players by their GUILD's TotalRP — guildmates tie); Expeditions joined
+	// ECONOMY when SOCIAL was cut.
 	private static readonly CategoryInfo[] Categories = new[]
 	{
-		new CategoryInfo( "guild-ranking", "guild-rp-launch", "Guild RP", "lucide:flag", "RP", "#c084fc", "Social" ),
-		new CategoryInfo( "monsters-caught", "monsters-caught-launch", "Contracted", "lucide:handshake", "", "#60a5fa", "Collection" ),
-		new CategoryInfo( "monsters-bred", "monsters-bred-launch", "Fused", "lucide:atom", "", "#f472b6", "Collection" ),
-		new CategoryInfo( "monsters-evolved", "monsters-evolved-launch", "Evolved", "lucide:sparkles", "", "#c084fc", "Collection" ),
-		new CategoryInfo( "battles-won", "battles-won-launch", "Battles Won", "lucide:shield-check", "", "#f87171", "Battle" ),
-		new CategoryInfo( "total-damage", "total-damage-launch", "Damage", "lucide:flame", "dmg", "#fb923c", "Battle" ),
-		new CategoryInfo( "total-knockouts", "total-knockouts-launch", "Knockouts", "lucide:skull", "KOs", "#cbd5e1", "Battle" ),
-		new CategoryInfo( "total-gold", "total-gold-launch", "Gold Earned", "lucide:coins", "", "#fcd34d", "Economy" ),
-		new CategoryInfo( "expeditions-completed", "expeditions-completed-launch", "Expeditions", "lucide:compass", "", "#5eead4", "Social" ),
-		new CategoryInfo( "total-playtime", "total-playtime-launch", "Playtime", "lucide:clock", "", "#a78bfa", "Economy" )
+		new CategoryInfo( "battles-won", "battles-won-launch", "Battles Won", "Battle" ),
+		new CategoryInfo( "total-damage", "total-damage-launch", "Damage", "Battle" ),
+		new CategoryInfo( "total-knockouts", "total-knockouts-launch", "Knockouts", "Battle" ),
+		new CategoryInfo( "monsters-caught", "monsters-caught-launch", "Contracted", "Collection" ),
+		new CategoryInfo( "monsters-bred", "monsters-bred-launch", "Fused", "Collection" ),
+		new CategoryInfo( "monsters-evolved", "monsters-evolved-launch", "Evolved", "Collection" ),
+		new CategoryInfo( "total-gold", "total-gold-launch", "Gold Earned", "Economy" ),
+		new CategoryInfo( "expeditions-completed", "expeditions-completed-launch", "Expeditions", "Economy" ),
+		new CategoryInfo( "total-playtime", "total-playtime-launch", "Playtime", "Economy" )
 	};
 
-	private CategoryInfo[] GetVisibleCategories()
+	// The three boards of the active group — the ONE source the render and any
+	// keyboard walk both read, so they can never disagree.
+	private CategoryInfo[] GetCurrentGroupCats()
 	{
-		// Honors GuildManager.UiEnabled — guild leaderboards are hidden during the
-		// beta launch alongside the rest of the guild UI surface.
-		var pool = Categories
-			.Where( c => GuildManager.UiEnabled || c.Key != "guild-ranking" )
-			.ToArray();
-
-		if ( FilterMode == "arena" )
-			return Array.Empty<CategoryInfo>();
-		if ( FilterMode == "guild" )
-			return pool.Where( c => c.Key == "guild-ranking" ).ToArray();
-		if ( activeFilter == "all" )
-			return pool;
-		return pool.Where( c => c.Group.ToLower() == activeFilter ).ToArray();
+		var current = GroupMeta[currentGroupIndex];
+		return Categories.Where( c => c.Group == current.Name ).ToArray();
 	}
 
 	protected override async void OnAfterTreeRender( bool firstTime )
@@ -367,11 +297,15 @@
 		}
 	}
 
+	// Logged once per session — answers the "does Board2.Entry.SteamId arrive
+	// non-zero?" question live (three readers in the codebase disagree).
+	private static bool _livenessLogged = false;
+
 	private async Task LoadAllLeaderboards()
 	{
 		isLoading = true;
 		allEntries = new();
-		playerRanks = new();
+		playerBoardValues = new();
 
 		var tasks = Categories.Select( async cat =>
 		{
@@ -379,40 +313,31 @@
 			{
 				var board = Leaderboards.GetFromStat( "publicsquare.beastborne", cat.LeaderboardName );
 				// Explicit aggregation: every Beastborne stat tracked here is a
-				// monotonically-increasing cumulative counter (battles won, damage,
-				// monsters caught, etc) — we want the HIGHEST value the player ever
-				// submitted, not a sum or average. Without this, s&box's default
-				// aggregation can produce wildly inflated numbers (this was the v1.0.1
-				// "hyper-inflated leaderboards" bug). Mirrors the explicit-config
-				// pattern from the Flow project's LeaderboardManager.
+				// monotonically-increasing cumulative counter — we want the HIGHEST
+				// value the player ever submitted, not a sum or average (the v1.0.1
+				// "hyper-inflated leaderboards" bug).
 				board.SetAggregationMax();
 				board.MaxEntries = 100;
 				await board.Refresh();
 
-				var entries = board.Entries.Select( ( e, index ) => new LeaderboardEntry
+				var entries = board.Entries.Select( e => new LeaderboardEntry
 				{
 					Rank = (int)e.Rank,
 					Name = e.DisplayName,
 					// e.Value is double in s&box; cast to long for our integer-only stats.
 					Score = (long)e.Value,
-					// TODO post-launch: avatar resolution needs the player's Steam ID. The
-					// Sandbox.Services leaderboard entry probably exposes it (e.Identifier in
-					// historical APIs), but verify the field name against the current s&box
-					// build before wiring up — building blind here risks breaking launch.
-					SteamId = 0,
+					// The Steam id the hub column already reads (OnlineHubPanel
+					// LoadHubLeaderboards) — drives the row's avatar + YOU match.
+					SteamId = (long)e.SteamId,
 					RankTitle = ""
 				} ).ToList();
 
-				var myName = Connection.Local?.DisplayName;
-				var myEntry = entries.FirstOrDefault( x => x.Name == myName );
-				var rank = myEntry != null ? myEntry.Rank : (entries.Count + 1);
-				var boardValue = myEntry?.Score ?? 0L;
+				var mine = FindMyEntry( entries, GetLocalSteamId(), Connection.Local?.DisplayName );
 
 				lock ( allEntries )
 				{
 					allEntries[cat.Key] = entries;
-					playerRanks[cat.Key] = rank;
-					playerBoardValues[cat.Key] = boardValue;
+					playerBoardValues[cat.Key] = mine?.Score ?? 0L;
 				}
 
 				Log.Info( $"Fetched {entries.Count} entries for '{cat.LeaderboardName}'" );
@@ -423,13 +348,33 @@
 				lock ( allEntries )
 				{
 					allEntries[cat.Key] = new();
-					playerRanks[cat.Key] = 0;
 				}
 			}
 		} );
 
 		await Task.WhenAll( tasks );
+
+		// Identity maps — once per load, not per row.
+		_avatarByName = OnlineHubPanel.BuildAvatarByNameShared( null );
+		BuildTagMaps();
+
+		if ( !_livenessLogged )
+		{
+			_livenessLogged = true;
+			int total = 0, withId = 0;
+			lock ( allEntries )
+			{
+				foreach ( var list in allEntries.Values )
+				{
+					total += list.Count;
+					withId += list.Count( x => x.SteamId > 0 );
+				}
+			}
+			Log.Info( $"[Leaderboards] SteamId liveness: {withId}/{total} entries carry a non-zero Steam id" );
+		}
+
 		isLoading = false;
+		_loadVersion++;
 		StateHasChanged();
 	}
 
@@ -439,108 +384,156 @@
 		await LoadAllLeaderboards();
 	}
 
-	// =========================================================================
-	// Keyboard navigation — called by OnlineHubPanel while the Leaderboards
-	// section is active. A/D rotate the category-group carousel, W/S move a
-	// cursor over the current group's category cards (scroll-follows), Space
-	// toggles the focused card's top-10/top-20 expand, F refreshes. ( , / . are
-	// the hub's section-cycle keys and never reach here.)
-	// =========================================================================
-	private int _kbCardIndex = 0;
-	// The card cursor only renders once a nav key has been pressed, so it never
-	// fights a mouse hover on a fresh open.
-	private bool _kbActive = false;
-	private Panel lbScroll;
+	// [TAG] sources, in authority order (later overwrites): the session's
+	// PlayerProfiles (GuildTag, keyed by connection → Connection.All gives the
+	// Steam id + display name), then your own guild's Members (SteamId + Name →
+	// the guild's Tag), then you. Offline strangers: unknown — honest blank.
+	private void BuildTagMaps()
+	{
+		var bySteam = new Dictionary<long, string>();
+		var byName = new Dictionary<string, string>( StringComparer.OrdinalIgnoreCase );
 
+		if ( Networking.IsActive )
+		{
+			var profiles = ChatManager.Instance?.PlayerProfiles;
+			if ( profiles != null )
+			{
+				foreach ( var c in Connection.All )
+				{
+					if ( c == null ) continue;
+					if ( !profiles.TryGetValue( c.Id.ToString(), out var p ) || string.IsNullOrEmpty( p?.GuildTag ) ) continue;
+					long sid = c.SteamId;
+					if ( sid > 0 ) bySteam[sid] = p.GuildTag;
+					if ( !string.IsNullOrEmpty( c.DisplayName ) ) byName[c.DisplayName] = p.GuildTag;
+				}
+			}
+		}
+
+		var gm = GuildManager.Instance;
+		var ownTag = gm?.Guild?.Tag;
+		if ( !string.IsNullOrEmpty( ownTag ) && gm?.Members != null )
+		{
+			foreach ( var m in gm.Members )
+			{
+				if ( m == null ) continue;
+				if ( m.SteamId > 0 ) bySteam[m.SteamId] = ownTag;
+				if ( !string.IsNullOrEmpty( m.Name ) ) byName[m.Name] = ownTag;
+			}
+		}
+
+		var myTag = gm?.Membership?.GuildTag;
+		if ( !string.IsNullOrEmpty( myTag ) )
+		{
+			long me = GetLocalSteamId();
+			if ( me > 0 ) bySteam[me] = myTag;
+			var steamName = Connection.Local?.DisplayName;
+			if ( !string.IsNullOrEmpty( steamName ) ) byName[steamName] = myTag;
+		}
+
+		_tagBySteam = bySteam;
+		_tagByName = byName;
+	}
+
+	private string TagFor( LeaderboardEntry entry )
+	{
+		if ( entry == null ) return null;
+		if ( entry.SteamId > 0 && _tagBySteam.TryGetValue( entry.SteamId, out var t ) ) return t;
+		if ( !string.IsNullOrEmpty( entry.Name ) && _tagByName.TryGetValue( entry.Name, out var t2 ) ) return t2;
+		return null;
+	}
+
+	// The Steam id a row's head renders from: the entry's own id, else the
+	// by-name map (CollectedCards → presence → you). 0 = the neutral mark.
+	private long AvatarIdFor( LeaderboardEntry entry )
+	{
+		if ( entry == null ) return 0;
+		if ( entry.SteamId > 0 ) return entry.SteamId;
+		if ( !string.IsNullOrEmpty( entry.Name ) && _avatarByName.TryGetValue( entry.Name, out var id ) ) return id;
+		return 0;
+	}
+
+	// ── Row ───────────────────────────────────────────────────────────────
+	// ONE row recipe for the lane rows AND the pinned YOU row (the hub column's
+	// .lb-row / .lb-you at 56). `entry` null = you're not on this board yet:
+	// rank "—", your local value.
+	// (The `__builder =>` form is the one proven in-engine — OptionsPanel
+	// RenderToggleRow; the templated-fragment form is unverified here.)
+	private RenderFragment RenderRow( LeaderboardEntry entry, string catKey, bool isMe, bool alt, bool pinned ) => __builder =>
+	{
+		var rank = entry?.Rank ?? 0;
+		var rankText = rank > 0 ? rank.ToString() : "—";
+		var podium = rank >= 1 && rank <= 3;
+		var discClass = podium ? $"p{rank}" : "none";
+		var name = entry?.Name ?? ( Connection.Local?.DisplayName ?? TamerManager.Instance?.CurrentTamer?.Name ?? "You" );
+		var avatarId = entry != null ? AvatarIdFor( entry ) : GetLocalSteamId();
+		var tag = entry != null ? TagFor( entry ) : GuildManager.Instance?.Membership?.GuildTag;
+		var value = entry?.Score ?? GetPlayerValue( catKey );
+		var rowClass = "lb-row" + ( alt ? " alt" : "" ) + ( isMe ? " me" : "" ) + ( pinned ? " pinned" : "" );
+		<div class="@rowClass">
+			<div class="lb-rank">
+				<div class="lb-disc @discClass"><span class="lb-rank-t @(podium ? "ink" : "")">@rankText</span></div>
+			</div>
+			<div class="lb-head @(isMe ? "me" : "")">
+				@if ( avatarId > 0 )
+				{
+					<img class="lb-head-img" src="avatar:@avatarId" />
+				}
+				else
+				{
+					<div class="lb-head-mark"></div>
+				}
+			</div>
+			<span class="lb-name">@name</span>
+			@if ( !string.IsNullOrEmpty( tag ) )
+			{
+				<span class="lb-tag">@($"[{tag}]")</span>
+			}
+			@if ( isMe )
+			{
+				<div class="lb-you-chip"><span class="lb-you-chip-t">YOU</span></div>
+			}
+			<div class="lb-spacer"></div>
+			<span class="lb-value">@FormatValue( value, catKey )</span>
+		</div>
+	};
+
+	// ── Keyboard (the hub calls this while the takeover has the page) ──────
+	// LANE: input — A/D rotate the group carousel (the arrows do the same);
+	// F refreshes (Flashlight). Q back to hub is the hub's takeover routing —
+	// claim via GameHUD.PanelHandledBackKey only if this panel grows an
+	// internal back stack. W/S row walk + scroll-follow, the ring over the
+	// arrows/chips/header chips, wheel routing to the hovered lane and the
+	// device flag / travel guard are the input lane's to wire.
 	public void TickInput()
 	{
 		if ( isLoading ) return;
 
 		if ( Input.Pressed( "Flashlight" ) ) { RefreshAll(); return; }
 
-		// A / D — rotate the category-group carousel.
-		if ( Input.Pressed( "Left" ) ) { _kbActive = true; PrevGroup(); return; }
-		if ( Input.Pressed( "Right" ) ) { _kbActive = true; NextGroup(); return; }
-
-		var cats = GetCurrentGroupCats();
-		if ( cats.Length == 0 ) return;
-		_kbCardIndex = Math.Clamp( _kbCardIndex, 0, cats.Length - 1 );
-
-		// W / S — move the card cursor, scroll-following.
-		if ( Input.Pressed( "Up" ) )
-		{
-			_kbActive = true;
-			if ( _kbCardIndex > 0 ) { _kbCardIndex--; SoundManager.PlayHover(); ScrollCardIntoView(); }
-			return;
-		}
-		if ( Input.Pressed( "Down" ) )
-		{
-			_kbActive = true;
-			if ( _kbCardIndex < cats.Length - 1 ) { _kbCardIndex++; SoundManager.PlayHover(); ScrollCardIntoView(); }
-			return;
-		}
-
-		// Space / Enter — toggle the focused card's expand (only cards with
-		// more than 10 entries carry an expand control).
-		if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
-		{
-			var cat = cats[_kbCardIndex];
-			if ( GetEntries( cat.Key ).Count > 10 )
-				ToggleExpand( cat.Key );
-			else
-				SoundManager.PlayDeny();
-		}
+		if ( Input.Pressed( "Left" ) ) { PrevGroup(); return; }
+		if ( Input.Pressed( "Right" ) ) { NextGroup(); return; }
 	}
 
-	// The category cards visible for the active carousel group — MUST match the
-	// render's `currentCats` exactly so _kbCardIndex lines up with the cards.
-	private CategoryInfo[] GetCurrentGroupCats()
-	{
-		var current = GroupMeta[currentGroupIndex];
-		return GetVisibleCategories().Where( c => c.Group == current.Name ).ToArray();
-	}
-
-	private void ScrollCardIntoView()
-	{
-		if ( lbScroll == null ) return;
-		var sections = new List<Panel>();
-		CollectByClass( lbScroll, "lb-section", sections );
-		if ( _kbCardIndex >= 0 && _kbCardIndex < sections.Count )
-			UiGridScroll.IntoView( lbScroll, sections[_kbCardIndex] );
-	}
-
-	private void CollectByClass( Panel root, string cls, List<Panel> outList )
-	{
-		foreach ( var c in root.Children )
-		{
-			if ( c.HasClass( cls ) ) outList.Add( c );
-			else CollectByClass( c, cls, outList );
-		}
-	}
-
-	private void OnBackClicked()
-	{
-		SoundManager.PlayBack();
-		OnBack?.Invoke();
-	}
-
-	private void ToggleExpand( string key )
-	{
-		SoundManager.PlayClick();
-		if ( expanded.ContainsKey( key ) )
-			expanded[key] = !expanded[key];
-		else
-			expanded[key] = true;
-	}
+	// ── Data helpers ──────────────────────────────────────────────────────
+	private long GetLocalSteamId() => Connection.Local?.SteamId ?? 0L;
 
 	private List<LeaderboardEntry> GetEntries( string key )
 	{
-		return allEntries.ContainsKey( key ) ? allEntries[key] : new();
+		lock ( allEntries )
+		{
+			return allEntries.TryGetValue( key, out var list ) ? list : new();
+		}
 	}
 
-	private int GetPlayerRank( string key )
+	// Self match by SteamId first (exact), Steam display name as the fallback —
+	// the board's Name IS the Steam display name, never the tamer name.
+	private static LeaderboardEntry FindMyEntry( List<LeaderboardEntry> entries, long mySteam, string myName )
 	{
-		return playerRanks.ContainsKey( key ) ? playerRanks[key] : 0;
+		if ( entries == null || entries.Count == 0 ) return null;
+		LeaderboardEntry hit = null;
+		if ( mySteam > 0 ) hit = entries.FirstOrDefault( x => x.SteamId == mySteam );
+		if ( hit == null && !string.IsNullOrEmpty( myName ) ) hit = entries.FirstOrDefault( x => x.Name == myName );
+		return hit;
 	}
 
 	private long GetPlayerValue( string key )
@@ -550,7 +543,6 @@
 
 		long localValue = key switch
 		{
-			"guild-ranking" => GuildManager.Instance?.TotalRP ?? 0,
 			"monsters-caught" => tamer.TotalMonstersCaught,
 			"monsters-bred" => tamer.TotalMonstersBred,
 			"monsters-evolved" => tamer.TotalMonstersEvolved,
@@ -563,27 +555,22 @@
 			_ => 0L
 		};
 
-		// Use the higher of local tamer value or leaderboard API value to stay consistent with board entries
-		var boardValue = playerBoardValues.ContainsKey( key ) ? playerBoardValues[key] : 0L;
+		// The higher of the local tamer value and the board's value — consistent with the rows.
+		var boardValue = playerBoardValues.TryGetValue( key, out var bv ) ? bv : 0L;
 		return Math.Max( 0L, Math.Max( localValue, boardValue ) );
 	}
 
-	private string FormatValue( long value, string category )
+	// Keyed on the category KEY (the shipped switch listed "-launch" board names
+	// that never matched, so Damage printed 2,412,880 instead of 2.4M).
+	private string FormatValue( long value, string key )
 	{
-		// Clamp to sane maximums for display
-		value = ClampForDisplay( value, category );
+		value = ClampForDisplay( value, key );
 
-		return category switch
+		return key switch
 		{
-			"guild-ranking" => $"{value:N0} RP",
-			"monsters-caught-launch" => $"{value:N0}",
-			"monsters-bred-launch" => $"{value:N0}",
-			"monsters-evolved-launch" => $"{value:N0}",
-			"battles-won-launch" => $"{value:N0}",
-			"total-damage-launch" => FormatLargeNumber( value ),
-			"total-knockouts-launch" => $"{value:N0}",
+			"total-damage" => FormatLargeNumber( value ),
+			// total-gold-launch is pushed in THOUSANDS (TamerManager.cs:597) — the ×1000 is correct.
 			"total-gold" => FormatLargeNumber( value * 1000L ),
-			"expeditions-completed-launch" => $"{value:N0}",
 			"total-playtime" => FormatPlaytime( value ),
 			_ => $"{value:N0}"
 		};
@@ -593,15 +580,14 @@
 	/// Clamp leaderboard values to reasonable maximums to filter out corrupted/cheated entries.
 	/// Negative values (from int overflow on legacy clients) become 0.
 	/// </summary>
-	private long ClampForDisplay( long value, string category )
+	private long ClampForDisplay( long value, string key )
 	{
 		if ( value < 0 ) return 0L;
 
-		return category switch
+		return key switch
 		{
-			// Cap playtime at 5 years (≈ 2.6M minutes). Past that, the source data is
-			// almost certainly a unit error (seconds being stored as minutes, etc.)
-			// or a legacy/abandoned account — clamp keeps the display readable.
+			// Cap playtime at 5 years (≈ 2.6M minutes) — past that the source data is
+			// almost certainly a unit error or an abandoned account.
 			"total-playtime" => Math.Min( value, 5L * 365L * 24L * 60L ),
 			_ => value
 		};
@@ -623,7 +609,7 @@
 		if ( hours < 24 ) return $"{hours}h {mins}m";
 		long days = hours / 24;
 		hours = hours % 24;
-		// For very long playtimes, show years/months instead of "423d" which is unreadable.
+		// For very long playtimes, show years/days instead of "423d".
 		if ( days >= 365 )
 		{
 			long years = days / 365;
@@ -631,20 +617,5 @@
 			return $"{years}y {remDays}d";
 		}
 		return $"{days}d {hours}h";
-	}
-
-	private string ColorWithAlpha( string hex, double alpha )
-	{
-		if ( string.IsNullOrEmpty( hex ) || hex.Length < 7 ) return $"rgba(139, 92, 246, {alpha})";
-		int r = Convert.ToInt32( hex.Substring( 1, 2 ), 16 );
-		int g = Convert.ToInt32( hex.Substring( 3, 2 ), 16 );
-		int b = Convert.ToInt32( hex.Substring( 5, 2 ), 16 );
-		return $"rgba({r}, {g}, {b}, {alpha})";
-	}
-
-	private bool IsPlayerEntry( LeaderboardEntry entry )
-	{
-		var playerName = TamerManager.Instance?.CurrentTamer?.Name;
-		return entry.Name == playerName;
 	}
 }

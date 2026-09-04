@@ -71,7 +71,9 @@
 		<div class="oh-identity">
 			<span class="oh-kicker">TAMERLINK</span>
 			<div class="oh-title-row">
-				<span class="oh-title">ONLINE</span>
+				@* The LEADERBOARDS takeover names itself (the guild does the same
+				   with its own header); the landing reads ONLINE. Kicker stays. *@
+				<span class="oh-title">@(currentSection == "leaderboards" ? "LEADERBOARDS" : "ONLINE")</span>
 				<div class="oh-seam"></div>
 				<div class="oh-seam dim"></div>
 			</div>
@@ -120,6 +122,16 @@
 			     button of its own). Same .hb-back chip the trade board wears,
 			     same header right slot. Hover blip guarded (kb mode ignores). -->
 			<div class="oh-toolbar">
+				@* REFRESH · F — the leaderboards' refresh moved into the chrome
+				   (2026-09-04 rebuild: the body's refresh pill + hint row died).
+				   Same .hb-back chip recipe. LANE: input — ring host alongside
+				   BACK TO HUB; F itself is read in LeaderboardPanel.TickInput. *@
+				<div class="hb-back"
+					 onmouseover=@OnHoverBlip
+					 onclick=@RefreshLeaderboards>
+					<span class="hb-back-label">REFRESH</span>
+					<span class="hb-back-cap">F</span>
+				</div>
 				<div class="hb-back"
 					 onmouseover=@OnHoverBlip
 					 onclick=@BackToHub>
@@ -3007,6 +3019,13 @@
 		ResetSelection();
 	}
 
+	// The header's REFRESH · F chip while the leaderboards takeover has the
+	// page (the panel's own F key reads the same method).
+	private void RefreshLeaderboards()
+	{
+		leaderboardRef?.RefreshAll();
+	}
+
 	private void ResetSelection()
 	{
 		showFavSelector = false;
@@ -3595,6 +3614,13 @@
 	// online presence set, (c) you (Steam display name AND tamer name).
 	// Case-insensitive. Rows with no hit keep the neutral diamond — honest.
 	private Dictionary<string, long> BuildAvatarByName( List<OnlinePlayerInfo> others )
+		=> BuildAvatarByNameShared( others?.Select( p => ( p.Name, p.SteamId ) ) );
+
+	// SHARED (2026-09-04, promoted for the LeaderboardPanel rebuild — both
+	// surfaces resolve heads the same way). `presence` = (Name, SteamId) of the
+	// people online right now; pass null and it reads Connection.All itself
+	// (OnlinePlayerInfo is private to this panel, hence the tuple shape).
+	internal static Dictionary<string, long> BuildAvatarByNameShared( IEnumerable<(string Name, long SteamId)> presence )
 	{
 		var map = new Dictionary<string, long>( StringComparer.OrdinalIgnoreCase );
 
@@ -3608,13 +3634,26 @@
 			}
 		}
 
-		foreach ( var p in others )
+		if ( presence != null )
 		{
-			if ( p.SteamId <= 0 || string.IsNullOrEmpty( p.Name ) ) continue;
-			map[p.Name] = p.SteamId;
+			foreach ( var p in presence )
+			{
+				if ( p.SteamId <= 0 || string.IsNullOrEmpty( p.Name ) ) continue;
+				map[p.Name] = p.SteamId;
+			}
+		}
+		else if ( GameNetworkSystem.IsActive )
+		{
+			foreach ( var c in Connection.All )
+			{
+				if ( c == null ) continue;
+				long sid = c.SteamId;
+				if ( sid <= 0 || string.IsNullOrEmpty( c.DisplayName ) ) continue;
+				map[c.DisplayName] = sid;
+			}
 		}
 
-		long mine = GetLocalSteamId();
+		long mine = Connection.Local?.SteamId ?? 0L;
 		if ( mine > 0 )
 		{
 			var steamName = Connection.Local?.DisplayName;
