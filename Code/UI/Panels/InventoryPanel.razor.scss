@@ -1,516 +1,781 @@
-// ============================================================
-// BAG — InventoryPanel.razor.scss
-// Sweep v2 recomposition. Identity: BAG TAN #d9a054 (the PawPad
-// tile color) worn with conviction — FIELD SATCHEL spine on the
-// left (kicker + big italic title + pouch tabs with 1-7 caps),
-// the item spread in the center (big art, clean slabs), and the
-// inspection card + relic loadout floating on the right.
-// EFFICIENCY-FIRST: find item → use item. Search leads the tools
-// row, categories scan in one column, the gold USE tier sits
-// where the eye lands after selecting.
-// CLEAN-FIRST: solid slabs (#0a0912 / #15121f / #1c1830), no
-// hairlines, no glows. Ink on tan: #2a1605.
-// Panel z-ladder: cards ~1 < living ring 60 < picker 600 < toast 700.
-// ============================================================
+// ═══════════════════════════════════════════════════════════════
+// BAG — the item grid + one case
+// (2026-09-03 pipeline rebuild, LAYOUT lane — brief:
+// .claude/design-system/components/bag-redesign-brief.html +
+// bag-mock-page.html; user 2026-09-02 "same layout as shop is okay")
+//
+// ── PALETTE (LANE: color — placed by the brief, to be audited) ──
+// Page accent TAN #d9a054 (the Bag's PawPad tile, DOC-2 #1): kicker,
+// seams, 2px strip, waves (wave-tan-a/b), section kicker chips, the ×N
+// ink on cards and in the case, the picker datum, the scrollbar thumb.
+// GOLD #ffce3a = the balance numeral + the ONE primary (USE / EQUIP TO… /
+// EQUIP). VIOLET #9b6cff = the living ring + `.kb-focused` only. RED
+// (BbButton danger pair: rgba(224,65,74,.14) ground / #ff8a92 ink) =
+// SELL. GREEN #3fb45e = the E chip (equipped relic). ORANGE = the IN
+// BATTLE stamp (BbStamp). Surfaces are the house ladder (#15121f slab ·
+// #1c1830 raised · #241f38 hover · #2a2344 selected · #141021 press).
+// Text cream #f4f1ea; dim rgba(214,206,236,.6) at the 12px floor, .75
+// inside 11px chips. Ink on tan: GoldInk #2a1605.
+// FLAG (brief §8): tan #d9a054 == BbTokens Earth RIM. No item carries
+// TargetElement so no element badge ever renders here; the collision is
+// the palette lane's (shift Earth, not the tile).
+//
+// ZONE MAP — 1920×1080, PADDING-BOX math (declared width/height INCLUDES
+// padding; only borders add on top):
+//   header   1920×88 + 2px strip                     =   90
+//            (pad 16/32/12/28; kicker 12/14 + 2 + title 38/44 = 60)
+//   body     pad 20/30/20/30                          → column 950
+//            (NO HUD reserve — .inventory-panel is not in GameHUD's
+//            56px ::after list; .bag-body is flex 1 1 0, both columns
+//            stretch: 1080 − 90 − 20 − 20 = 950)
+//   goods    1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 20 lane
+//   gap      48  (the case's margin-left)
+//   case     482 × 950 r22, pad 24 → 434 inner
+//   row      30 + 1330 + 48 + 482 + 30                = 1920 ✓
+//   column   90 + 20 + 950 + 20                       = 1080 ✓
+//
+// GRID RHYTHM (one flat wrap list; kicker rows + cards are DIRECT
+// children of the scroll — the roster / shop scroll-grid recipe):
+//   grid row-gap 8 · card 168 + margin-bottom 8 → card→card 16
+//   kicker 24 + margin-top 8                    → card→kicker 24
+//   kicker → card                               =  8 (the row gap)
+//   Brief scenario (29 stacks, ALL): 5 kickers + 5 card rows =
+//   120 + 32 + 5×176 + 9×8 = 1104 → scrolls 154 in the 950 viewport.
+//
+// CARD = the shop's .shop-card numbers VERBATIM under the Bag's shared
+// class name .sat-card (LANE: components — capture both into ONE
+// BbItemCard primitive, DOC-6 #18; until then the two blocks must stay
+// identical — diff them on every change):
+//   150×168 r16 #1c1830 · art zone 100 (PNG at INTEGER scale) · name
+//   foot 30 (12/700) · third line 26 (×N 13/800 TAN) · 12 breathing
+//   holding the rarity strip 122×4 · E chip 18 r5 GREEN top-right · NEW
+//   stamp top-left tan ±3° · hover/selected = background STEP only ·
+//   every child pointer-inert BY ITS OWN CLASS · NO per-card ring.
+//
+// CASE interior (434): art slab 300 r16 (#1c1830 neutral ground, rarity
+//   strip 122×4 at its foot) · +16 name 30/34 · +6 ×N 20/24 · +8 effect
+//   15/22 (≥44) · +12 PRIMARY 434×56 r16 → 500 from the pad top (y 524
+//   in the case) · slack · SELL row 44 at the foot (y 882..926):
+//   − 44 r11 · 52 · + 44 r11 · 12 · hold SELL 282×44 r11 = 434 ✓
+//   (singles: SELL 434) · ghost glyph .05 centred in the slack.
+//
+// Radii ladder (DOC-1 #3): case 22 · card + art slab + PRIMARY 16 ·
+// back / balance / qty / SELL 11 · corner chips 5–6 · kicker chip 4 ·
+// ring 26 (card 16 + 10 inset).
+//
+// ENGINE LAWS honored:
+// - pointer-events: all / none ONLY, always via a CLASS ON THE CHILD.
+// - Every absolute carries explicit top/left + width/height (the
+//   scrollbar track height + thumb and the hold fill are written in px).
+// - line-height always px; empty spacer/line divs carry explicit size.
+// - No `width: 100%` inside a padded parent — explicit px everywhere.
+// - Wrap grid pins width AND max-width (1310 declared / 1298 inner);
+//   rows inside the scroll are pinned (1298); the kicker hairline has a
+//   REAL flex-basis.
+// - No transform / box-shadow below .bag-body except the root ring and
+//   the picker (outside the scroll).
+// - Motion here = what the copied recipes carry (root fade · ring glide ·
+//   0.14s colour steps · toast rise/fall). Everything else → LANE: motion.
+// Panel z-ladder: cards ~1 < ring 60 < header 500 < picker 600 < toast 700.
+// ═══════════════════════════════════════════════════════════════
 
 InventoryPanel {
 	position: absolute;
-	top: 0;
-	left: 0;
+	top: 0px;
+	left: 0px;
 	width: 100%;
 	height: 100%;
 	// Bag opens over any HUD panel — 9000 leaves headroom for global modals.
 	z-index: 9000;
 	pointer-events: none;
 	opacity: 0;
-	// 2026-07 sweep: bg is the BbIconScroll glyph-drift primitive (first
-	// child in markup) — the root paints NO fill of its own so the drift
-	// layer shows. The tiles are opaque, so the bag still fully covers
-	// whatever HUD panel it opened over.
+	// Bg is the BbIconScroll glyph-drift primitive (first child in markup)
+	// — the root paints NO fill of its own so the drift layer shows; the
+	// header waves + the case slab are opaque, the grid sits on the drift.
 	display: flex;
-	flex-direction: row;
+	flex-direction: column;
+	// LANE: motion — the show/hide fade (the shipped recipe's 0.2s).
 	transition: opacity 0.2s ease-out;
 
 	&.visible {
 		opacity: 1;
 		pointer-events: all;
-
-		.sat-spine {
-			opacity: 1;
-			transform: translateX(0px);
-		}
-
-		.sat-center,
-		.sat-right {
-			opacity: 1;
-		}
 	}
 }
 
-// ROW-FLEX GUARD for the drift strip: the primitive declares
-// `width: 100%` (harmless cross-axis on its verified column hosts) but
-// this root is ROW flex, where width is the MAIN axis — if s&box ever
-// resolves width over the `flex: 0 0 0` basis, the strip would shove
-// the whole satchel row. Pin it to zero here; the drift layer inside
-// overflows the strip regardless, so visuals are unaffected.
-.inventory-panel > .bbis-root {
-	width: 0px;
-}
+// ═══════════════════════════════════════
+// HEADER — the hub .oh-header recipe verbatim, accent → TAN
+// ═══════════════════════════════════════
 
-// ======== LEFT SPINE — identity + pouch tabs ========
-// Entrance slide is safe here: every child carries an explicit width
-// and nothing in the spine relies on flex-grow (transform-on-flex-parent
-// poison law). Ends at identity.
-
-.sat-spine {
-	width: 220px;
-	min-width: 220px;
-	flex: 0 0 220px;
-	padding: 36px 16px 20px 32px;
-	display: flex;
-	flex-direction: column;
-	opacity: 0;
-	transform: translateX(-14px);
-	transition: opacity 0.3s ease-out, transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.sat-ident {
-	flex-shrink: 0;
-}
-
-.sat-battle-stamp {
-	margin-top: 14px;
-	flex-shrink: 0;
-}
-
-.sat-spine-tabs {
-	margin-top: 28px;
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	flex-shrink: 0;
-}
-
-// Pouch tab — skewed slab chip (hud-player-tag dialect: bg + transparent
-// border live ON the 2D skew holder; hover swaps border-color to the
-// violet ring; children counter-skew per-child with flex: 0 0 auto +
-// nowrap — never justify-content math inside a transformed box).
-.sat-tab {
+.bag-header {
+	position: relative;
+	z-index: 500;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 8px;
-	width: 170px;
-	height: 40px;
-	padding: 0 14px;
-	flex: 0 0 auto;
-	border-radius: 10px;
-	background-color: #1c1830;
-	border: 2px solid rgba(0, 0, 0, 0);
-	transform: skewX(-8deg);
-	cursor: pointer;
-	transition: background-color 0.12s ease-out, border-color 0.12s ease-out;
+	padding: 16px 32px 12px 28px;
+	flex-shrink: 0;
+	gap: 24px;
+	// NO own background-color — BbHeaderWaves paints the opaque base
+	// (paint-behind law). The ONE sanctioned panel-signature strip:
+	border-bottom: 2px solid rgba(217, 160, 84, 0.55);
+	// LANE: motion — the hub recipe's opacity-only fade (0.22s) goes here.
 
-	> * { pointer-events: none; }
-
-	.tab-cap {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		min-width: 16px;
-		height: 16px;
-		padding: 0 3px;
-		flex: 0 0 auto;
-		transform: skewX(8deg);
-		font-family: Exo2;
-		font-size: 11px;
-		font-weight: 900;
-		font-style: italic;
-		line-height: 16px;
-		letter-spacing: 0;
-		color: #f4ecd8;
-		background-color: rgba(8, 6, 16, 0.88);
-		border: 2px solid rgba(0, 0, 0, 0.85);
-		border-radius: 4px;
+	// Host recipe (BbHeaderWaves, DOC-6 #3 — the `> *` lift FROM THE HOST
+	// SHEET): the wave root is the absolute underlay, every other child
+	// lifts above it.
+	> * {
+		position: relative;
+		z-index: 1;
 	}
 
-	.tab-label {
-		flex: 0 0 auto;
-		transform: skewX(8deg);
-		font-family: Exo2Italic;
-		font-style: italic;
-		font-size: 12px;
-		font-weight: 800;
-		line-height: 16px;
-		letter-spacing: 0.8px;
-		text-transform: uppercase;
-		color: rgba(214, 206, 236, 0.6);
-		white-space: nowrap;
-		transition: color 0.12s ease-out;
+	> .bhw-root {
+		position: absolute;
+		top: 0px;
+		left: 0px;
+		right: 0px;
+		bottom: 0px;
+		z-index: 0;
 	}
 
-	.tab-count {
-		flex: 0 0 auto;
-		transform: skewX(8deg);
-		font-size: 10px;
-		font-weight: 800;
-		line-height: 14px;
-		padding: 2px 6px;
-		border-radius: 6px;
-		background-color: rgba(8, 6, 16, 0.5);
-		color: #d9a054;
-		white-space: nowrap;
-		transition: color 0.12s ease-out, background-color 0.12s ease-out;
-	}
-
-	&:hover {
-		border-color: #9b6cff;
-
-		.tab-label { color: rgba(244, 241, 234, 0.9); }
-	}
-
-	&:active {
-		transform: skewX(-8deg) scale(0.96);
-	}
-
-	&.active {
-		background-color: #d9a054;
-
-		.tab-label { color: #2a1605; }
-		.tab-count {
-			background-color: rgba(42, 22, 5, 0.28);
-			color: #2a1605;
-		}
-	}
+	// Wave band opacity — the house ladder .16/.24 (tan sits at mid
+	// luminance beside blue/violet/teal). LANE: color — live tune.
+	.bhw-strip.a { opacity: 0.16; }
+	.bhw-strip.b { opacity: 0.24; }
 }
 
-// Gold chip — the satchel's coin pocket (skewed slab, always visible
-// because selling lives here).
-.sat-gold {
-	margin-top: 30px;
+.bag-identity {
 	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 8px;
-	width: 140px;
-	height: 36px;
-	padding: 0 16px;
+	flex-direction: column;
 	flex: 0 0 auto;
-	align-self: flex-start;
-	border-radius: 10px;
-	background-color: #1c1830;
-	transform: skewX(-8deg);
 }
 
-.sat-gold-icon {
-	width: 18px;
-	height: 18px;
-	flex: 0 0 auto;
-	transform: skewX(8deg);
-}
-
-.sat-gold-value {
-	flex: 0 0 auto;
-	transform: skewX(8deg);
-	font-size: 13px;
+.bag-kicker {
+	font-family: Exo2;
+	font-size: 12px;
 	font-weight: 800;
-	line-height: 16px;
-	color: #ffce3a;
-	white-space: nowrap;
+	line-height: 14px;
+	letter-spacing: 2.4px;
+	text-transform: uppercase;
+	color: #d9a054;
+	margin-bottom: 2px;
 }
 
-.sat-hint {
-	margin-top: 12px;
-	font-size: 10px;
-	font-weight: 700;
+.bag-title-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 14px;
+}
+
+.bag-title {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-weight: 900;
+	font-size: 38px;
+	line-height: 44px;
 	letter-spacing: 1px;
-	color: rgba(214, 206, 236, 0.35);
+	text-transform: uppercase;
+	color: #f4f1ea;
 	white-space: nowrap;
-	flex-shrink: 0;
+	padding-right: 10px; // italic overhang protection
 }
 
-// ======== CENTER — tools + the item spread ========
-// Opacity-only entrance: the grid relies on flex-grow sizing and a
-// transform here would poison derived widths (engine law).
+// Accent seam — the .oh-seam BORDER-SHAPE recipe verbatim (engine
+// 26.09.01): the −24° lean is an SDF parallelogram. Box 48 wide with
+// −3/−3 side margins → layout footprint 42; slope 5.34/48 = 11% of W.
+// Dim tail 22 wide, margins −7 / −3 → footprint 12; slope 24%.
+.bag-seam {
+	width: 48px;
+	height: 12px;
+	flex: 0 0 auto;
+	margin-left: -3px;
+	margin-right: -3px;
+	background-color: #d9a054;
+	border-shape: polygon( 11% 0%, 100% 0%, 89% 100%, 0% 100% );
+	margin-top: 10px; // optical baseline alignment with the title
 
-.sat-center {
+	&.dim {
+		width: 22px;
+		margin-left: -7px;
+		background-color: rgba(217, 160, 84, 0.45);
+		border-shape: polygon( 24% 0%, 100% 0%, 76% 100%, 0% 100% );
+	}
+}
+
+// RIGHT SLOT — the .oh-toolbar position: grows to the band's right edge,
+// right-aligned, centred on the band; the header's own 32px right pad is
+// the roster's. Holds [IN BATTLE] · FilterBar · R CYCLE · balance · BACK.
+// z 200 over the wave root (the > * lift is 1).
+.bag-toolbar {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 12px;
 	flex: 1 1 0;
 	min-width: 0;
-	display: flex;
-	flex-direction: column;
-	padding: 36px 8px 24px 24px;
-	opacity: 0;
-	transition: opacity 0.28s ease-out;
+	z-index: 200;
 }
 
-.sat-tools {
+// IN BATTLE — the BbStamp in an explicit-box flex holder (the stamp
+// sizes to its text as a flex child).
+.bag-battle-stamp {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 8px;
-	flex-shrink: 0;
-	margin-bottom: 12px;
-}
-
-// Search leads — "find item" is the panel's job.
-.sat-search {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 7px;
-	width: 180px;
-	padding: 6px 12px;
-	border-radius: 10px;
-	background-color: #15121f;
-	flex-shrink: 0;
-	transition: background-color 0.14s ease-out;
-
-	&:hover {
-		background-color: #1c1830;
-	}
-}
-
-.search-input {
+	height: 32px;
 	flex: 0 0 auto;
-	width: 140px;
-	font-size: 12px;
-	color: rgba(244, 241, 234, 0.85);
-	background-color: rgba(0, 0, 0, 0);
-	border: none;
+	margin-right: 8px;
 }
 
-// Rarity chips — dot + label pills; active = solid rarity fill + ink.
-.sat-rchip {
+// The FilterBar sits in the row as one flex child; the shared component
+// wraps its chips (flex-wrap) — pin no-wrap here so the row never breaks.
+.bag-toolbar .filter-bar {
+	flex: 0 0 auto;
+	flex-wrap: nowrap;
+}
+
+// R · CYCLE hint — the roster .rh-filter-hint recipe verbatim.
+.bag-filter-hint {
+	flex: 0 0 auto;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	gap: 6px;
-	height: 26px;
-	padding: 0 10px;
-	border-radius: 999px;
-	background-color: #15121f;
-	cursor: pointer;
-	flex-shrink: 0;
-	transition: background-color 0.12s ease-out;
-
-	> * { pointer-events: none; }
-
-	.rchip-dot {
-		width: 8px;
-		height: 8px;
-		flex: 0 0 auto;
-		border-radius: 50%;
-		background-color: rgba(244, 241, 234, 0.45);
-	}
-
-	.rchip-label {
-		font-size: 10px;
-		font-weight: 800;
-		line-height: 13px;
-		letter-spacing: 0.8px;
-		text-transform: uppercase;
-		color: rgba(214, 206, 236, 0.6);
-		white-space: nowrap;
-		transition: color 0.12s ease-out;
-	}
-
-	&:hover {
-		background-color: #241f38;
-		.rchip-label { color: rgba(244, 241, 234, 0.9); }
-	}
-
-	&.r-common .rchip-dot    { background-color: #9ca3af; }
-	&.r-uncommon .rchip-dot  { background-color: #22c55e; }
-	&.r-rare .rchip-dot      { background-color: #3b82f6; }
-	&.r-epic .rchip-dot      { background-color: #a855f7; }
-	&.r-legendary .rchip-dot { background-color: #fbbf24; }
-
-	&.active {
-		.rchip-label { color: #0c0a18; }
-		.rchip-dot { background-color: rgba(12, 10, 24, 0.55); }
-	}
-
-	&.r-all.active       { background-color: #d9a054; }
-	&.r-common.active    { background-color: #9ca3af; }
-	&.r-uncommon.active  { background-color: #22c55e; }
-	&.r-rare.active      { background-color: #3b82f6; }
-	&.r-epic.active      { background-color: #a855f7; }
-	&.r-legendary.active { background-color: #fbbf24; }
+	margin-left: -6px; // hugs the bar (the row gap is 12; the roster reads 6)
+	pointer-events: none;
 }
 
-// Dot separator between filter and sort (styled, so no empty-div artifact).
-.sat-tools-div {
-	width: 5px;
-	height: 5px;
-	border-radius: 50%;
-	background-color: rgba(214, 206, 236, 0.18);
-	flex-shrink: 0;
-	margin: 0 4px;
+.bag-cap {
+	flex: 0 0 auto;
+	font-family: Exo2;
+	font-size: 11px; // cap floor (12 is the body floor; 11 lives on chips/caps only)
+	font-weight: 800;
+	color: rgba(214, 206, 236, 0.7);
+	background-color: rgba(0, 0, 0, 0.35);
+	padding: 1px 6px;
+	border-radius: 4px;
+	line-height: 13px;
+	pointer-events: none;
 }
 
-.sat-sort-chip {
+.bag-filter-hint-text {
+	flex: 0 0 auto;
+	font-family: Exo2;
+	font-size: 11px; // cap floor
+	font-weight: 800;
+	letter-spacing: 1px;
+	color: #5e5678;
+	line-height: 13px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+// Balance chip — the shop .sh-balance recipe: 32 r11 panel-slab; coin 18 +
+// the amount in GOLD (currency is a gold role). 12 extra so it reads as
+// its own group. MOTION: `.flash flash-N` (a value change, keyed per
+// sell) is the ONE balance pulse hook — the shop's shBalTick keyframe on
+// .bag-balance.flash .bag-balance-value goes here (LANE: motion).
+.bag-balance {
 	display: flex;
+	flex-direction: row;
 	align-items: center;
-	height: 26px;
-	padding: 0 12px;
-	border-radius: 999px;
+	gap: 6px;
+	height: 32px;
+	padding: 0 12px 0 10px;
+	border-radius: 11px;
 	background-color: #15121f;
-	cursor: pointer;
-	flex-shrink: 0;
-	transition: background-color 0.12s ease-out;
-
-	> * { pointer-events: none; }
-
-	span {
-		font-size: 10px;
-		font-weight: 800;
-		line-height: 13px;
-		letter-spacing: 0.8px;
-		text-transform: uppercase;
-		color: rgba(214, 206, 236, 0.6);
-		white-space: nowrap;
-		transition: color 0.12s ease-out;
-	}
-
-	&:hover {
-		background-color: #241f38;
-		span { color: rgba(244, 241, 234, 0.9); }
-	}
-
-	&.active {
-		background-color: #d9a054;
-		span { color: #2a1605; }
-	}
+	flex: 0 0 auto;
+	margin-left: 12px;
 }
 
-// ======== ITEM GRID ========
-// Cards are DIRECT children of the scroll container (no row wrappers —
-// nested flex-row inside overflow-y: scroll collapses in s&box). 7 per
-// row at 150px + 14px gap in the ~1144px content box — InvGridColumns
-// in the .razor MUST stay in sync = 7.
-// Scroll laws: hover/selected on cards = background swap + the inset
-// hover ring only. NO transforms, NO box-shadows in here; every badge
-// sits INSIDE card bounds.
+.bag-balance-glyph {
+	width: 18px;
+	height: 18px;
+	flex: 0 0 18px;
+}
 
-.sat-grid {
+.bag-balance-value {
+	font-family: Exo2;
+	font-size: 15px;
+	font-weight: 800;
+	line-height: 18px;
+	letter-spacing: 0.3px;
+	color: #ffce3a;
+	white-space: nowrap;
+}
+
+// BACK · Q — the hub .hb-back recipe (filled r11 slab + Q cap). Reused in
+// the picker head. Hover = one slab step (gated under .mouse-mode at the
+// end of the sheet); press dim.
+.bag-back {
+	height: 30px;
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	padding: 0 12px;
+	border-radius: 11px;
+	background-color: #1c1830;
+	cursor: pointer;
+	pointer-events: all;
+	transition: background-color 0.12s ease-out;
+
+	&:active { background-color: #141021; }
+}
+
+.bag-back-label {
+	flex: 0 0 auto;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 12px;
+	font-weight: 900;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: rgba(244, 241, 234, 0.85);
+	line-height: 14px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.bag-back-cap {
+	flex: 0 0 auto;
+	font-family: Exo2;
+	font-size: 11px; // cap floor
+	font-weight: 800;
+	color: rgba(214, 206, 236, 0.7);
+	background-color: rgba(0, 0, 0, 0.35);
+	padding: 1px 6px;
+	border-radius: 4px;
+	line-height: 13px;
+	pointer-events: none;
+}
+
+// ═══════════════════════════════════════
+// BODY — goods column (1330) · 48 · case (482)
+// ═══════════════════════════════════════
+
+.bag-body {
+	display: flex;
+	flex-direction: row;
+	align-items: stretch;
+	flex: 1 1 0;
+	min-height: 0;
+	padding: 20px 30px 20px 30px; // row: 30 + 1330 + 48 + 482 + 30 = 1920
+	overflow: hidden;
+}
+
+// GOODS column — the scroll host (column, overflow hidden) + the 20px lane
+// on the right where the overlay scrollbar lives.
+.bag-goods {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: 1330px; // 12 inset + 1298 row + 20 lane (the shop's latest math)
+	flex: 0 0 1330px;
+	min-width: 1330px;
+	overflow: hidden;
+	// LANE: motion — the shop's shBodyIn (one opacity fade for the column;
+	// no per-card stagger — remount hazard) goes here.
+}
+
+// The scroll child — the roster-grid recipe verbatim: flat wrap list,
+// width AND max-width pinned; padding-box → declared 1310 with a 12px left
+// inset keeps the 1298 inner row (the skewed kicker chips + the ring's
+// 10px reach were clipped at x=0 without it). Items are DIRECT children.
+.bag-grid {
 	flex: 1 1 0;
 	min-height: 0;
 	overflow-y: scroll;
-	padding: 12px;
+	overflow-x: hidden;
+	width: 1310px;
+	max-width: 1310px;
+	padding-left: 12px;
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
 	align-content: flex-start;
-	gap: 16px 14px;
+	align-items: flex-start;
+	gap: 8px 14px;
+
+	// EMPTY STATE — the `.empty` class flips the grid to a centred column
+	// (DOC-6 #9); the two spans are its direct children. Honest and
+	// actionable: whole bag empty → where items come from; filter empty →
+	// the R · CYCLE hint.
+	&.empty {
+		flex-direction: column;
+		flex-wrap: nowrap;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		padding-left: 0px;
+	}
 }
 
-// Section label row (ALL mode) — tan accent bar; width 100% forces the
-// label onto its own flex-wrap row. Column layout avoids the
-// flex-row-in-scroll collapse bug.
-.sat-section-row {
-	width: 100%;
-	flex-basis: 100%;
-	margin-top: 6px;
-	padding: 4px 10px;
-	border-left: 3px solid rgba(217, 160, 84, 0.55);
-	flex-shrink: 0;
+.bag-empty-head {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 22px;
+	font-weight: 900;
+	line-height: 28px;
+	letter-spacing: 0.5px;
+	text-transform: uppercase;
+	color: rgba(244, 241, 234, 0.6);
+	white-space: nowrap;
+}
+
+.bag-empty-sub {
+	font-family: Exo2Medium;
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 22px;
+	color: rgba(214, 206, 236, 0.6);
+	white-space: nowrap;
+}
+
+.bag-empty-hint {
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
+	align-items: center;
+	gap: 6px;
+	height: 16px;
+	flex: 0 0 auto;
 }
 
-.sat-section-text {
-	font-size: 11px;
+// Overlay scrollbar — the roster .col-scrollbar recipe (read-only thumb,
+// imperative height/top; scrollbar-color/-width don't parse). Track in the
+// 20px lane: right 4 → 11px clear of the cards; top 8 + 8 bottom breathing
+// = the 16 trimmed in UpdateScrollbar.
+.bag-scrollbar {
+	position: absolute;
+	right: 4px;
+	top: 8px;
+	width: 5px;
+	height: 200px; // written imperatively (viewport-derived)
+	background-color: rgba(244, 241, 234, 0.05);
+	border-radius: 3px;
+	opacity: 0;
+	transition: opacity 0.2s ease-out;
+	pointer-events: none;
+
+	&.on { opacity: 1; }
+}
+
+.bag-sb-thumb {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 5px;
+	height: 40px; // top + height overwritten per tick
+	background-color: rgba(217, 160, 84, 0.45); // tan — violet is the ring's alone
+	border-radius: 3px;
+}
+
+// ─── Section kicker row — 1298 × 24, a DIRECT child of the wrap list.
+// Pinned width + explicit height in ONE self-contained rule (rows in a
+// scroll column collapse otherwise); the hairline is a spacer lane with a
+// REAL flex-basis. margin-top 8 + the 8 row gap + the card's 8 bottom
+// margin = the 24 section gap; the first row sits flush.
+.bag-kicker-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12px;
+	width: 1298px;
+	flex: 0 0 1298px;
+	min-width: 1298px;
+	height: 24px;
+	margin-top: 8px;
+
+	&:first-child { margin-top: 0px; }
+}
+
+// The section chip — the house section-chip recipe (Skills / Beastbook /
+// shop): a NON-interactive identity mark, so it may skew (−12° slab,
+// counter-skewed label, dark ink on the accent).
+.bag-kicker-chip {
+	display: flex;
+	height: 24px;
+	border-radius: 4px;
+	background-color: #d9a054;
+	transform: skewX(-12deg);
+	flex: 0 0 auto;
+}
+
+.bag-kicker-chip-inner {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	height: 24px;
+	padding: 0 12px 0 10px;
+	transform: skewX(12deg);
+}
+
+.bag-kicker-text {
+	font-family: Exo2;
+	font-size: 11px; // chip recipe — 11 lives inside chips/caps only
 	font-weight: 800;
+	line-height: 14px;
 	letter-spacing: 1.5px;
 	text-transform: uppercase;
-	color: rgba(214, 206, 236, 0.5);
+	color: #2a1605; // GoldInk on tan
+	white-space: nowrap;
 }
 
-@keyframes satCardIn {
-	from { opacity: 0; }
-	to { opacity: 1; }
+// Accent hairline (not a white one — DOC-2 #11). Real basis: the row is
+// 1298; chip ≈ 90–150 + gaps 24 + the count ≈ 120 → ~1000 remains.
+.bag-kicker-line {
+	flex: 1 1 1000px;
+	min-width: 0;
+	height: 1px;
+	background-color: rgba(217, 160, 84, 0.22);
 }
 
-// Item card — one solid slab, art biggest, name at foot, rarity as a
-// bottom strip (never a card-wide border). Explicit width + flex pin
-// (flex-card law) and explicit height (no borders — box = declared).
+// "N / 3 EQUIPPED" — the relic loadout's ONE number, at the row's right end.
+.bag-kicker-count {
+	flex: 0 0 auto;
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 16px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: #d9a054;
+	white-space: nowrap;
+}
+
+// ═══════════════════════════════════════
+// THE CARD — .sat-card == the shop's .shop-card (LANE: components)
+// ═══════════════════════════════════════
+// 150×168 r16, no border (declared == rendered). Explicit width + flex
+// pin (flex-card law), explicit height. margin-bottom 8 makes the 16
+// card→card rhythm with the grid's 8 row gap. Hover/selected = bg step
+// ONLY (scroll-grid law). Every child is pointer-inert via ITS OWN class
+// so onmouseover fires on the card root alone.
+
 .sat-card {
 	width: 150px;
 	min-width: 150px;
 	flex: 0 0 150px;
 	height: 168px;
 	min-height: 168px;
+	margin-bottom: 8px;
 	display: flex;
 	flex-direction: column;
 	position: relative;
 	border-radius: 16px;
 	background-color: #1c1830;
 	cursor: pointer;
-	transition: background-color 0.14s ease-out;
-	animation: satCardIn 0.22s ease-out;
+	pointer-events: all;
+	transition: background-color 0.14s ease-out; // the shared step
 
-	// onmouseover fires only on the card root
-	> * { pointer-events: none; }
+	// (bare &:hover lives in the ONE CURSOR gate at the end of this sheet —
+	// mouse-mode only. Same value as the shop: #241f38.)
 
-	&:hover {
-		background-color: #241f38;
-
-		.sat-hover-ring { opacity: 1; }
-	}
-
+	// The case item — the living ring wraps this card.
 	&.selected {
 		background-color: #2a2344;
 
-		// The living ring wraps the selected card — mute the hover ring.
-		.sat-hover-ring { opacity: 0; }
-
 		.sat-card-name { color: #f4f1ea; }
+	}
+
+	// LOCKED IN BATTLE — non-consumables while BattleManager.IsInBattle:
+	// art + name + ×N drop to .45 (OPACITY on the wrapper divs, never
+	// `filter` on the <img> — DOC-7 #18). The E / NEW chips stay full.
+	&.locked {
+		.sat-card-art,
+		.sat-card-foot,
+		.sat-card-qty { opacity: 0.45; }
 	}
 }
 
+// Art zone 150×100 — the PNG at INTEGER scale (inline width/height from
+// ArtPx: 64 or 51 at 1×), centred. pixelated + no-repeat (img laws).
 .sat-card-art {
-	width: 100%;
-	height: 118px;
+	width: 150px;
+	height: 100px;
+	flex: 0 0 100px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	flex-shrink: 0;
+	pointer-events: none;
 }
 
 .sat-card-icon {
-	width: 84px;
-	height: 84px;
+	image-rendering: pixelated;
 	background-repeat: no-repeat;
+	pointer-events: none;
 }
 
+// Name foot 150×30 — 12/700, nowrap.
 .sat-card-foot {
-	width: 100%;
-	height: 38px;
+	width: 150px;
+	height: 30px;
+	flex: 0 0 30px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	padding: 0 10px;
-	flex-shrink: 0;
+	pointer-events: none;
 }
 
 .sat-card-name {
+	font-family: Exo2;
 	font-size: 12px;
 	font-weight: 700;
 	line-height: 15px;
 	color: rgba(244, 241, 234, 0.78);
 	white-space: nowrap;
+	pointer-events: none;
 	transition: color 0.14s ease-out;
-
-	.sat-card.legendary & {
-		color: #fbbf24;
-	}
 }
 
-// Rarity strip — floating bottom bar, inside card bounds.
+// Third line 150×26 — the shop's price slot carries ×N here (13/800 TAN;
+// empty for qty 1 — the box stays so the strip's 12 breathing holds:
+// 168 − 100 − 30 − 26 = 12).
+.sat-card-qty {
+	width: 150px;
+	height: 26px;
+	flex: 0 0 26px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+}
+
+.sat-card-qty-text {
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 16px;
+	letter-spacing: 0.2px;
+	color: #d9a054; // LANE: color — the tan ×N ink
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+// Rarity strip 122×4 — inside card bounds at the foot (bottom 5, left 14).
 .sat-strip {
 	position: absolute;
 	bottom: 5px;
 	left: 14px;
+	width: 122px;
+	height: 4px;
+	border-radius: 2px;
+	pointer-events: none;
+
+	&.r-common    { background-color: #9ca3af; }
+	&.r-uncommon  { background-color: #22c55e; }
+	&.r-rare      { background-color: #3b82f6; }
+	&.r-epic      { background-color: #a855f7; }
+	&.r-legendary { background-color: #fbbf24; }
+	&.r-mythic    { background-color: #ec4899; }
+}
+
+// E chip — equipped relic, 18 r5 GREEN top-right, INSIDE bounds (scroll
+// law). LANE: color — #3fb45e (BbTokens.Green) + dark ink; violet was the
+// cursor's and died.
+.sat-equipped {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 18px;
+	height: 18px;
+	border-radius: 5px;
+	background-color: #3fb45e;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+}
+
+.sat-equipped-text {
+	font-family: Exo2;
+	font-size: 10px; // chip recipe
+	font-weight: 800;
+	line-height: 12px;
+	color: #04160a;
+	pointer-events: none;
+}
+
+// NEW stamp — tan slab resting at ±3° (BbStamp dialect, miniaturised),
+// top-left, INSIDE bounds. A small static 2D rotate is safe in the clip.
+.sat-new {
+	position: absolute;
+	top: 6px;
+	left: 6px;
+	height: 18px;
+	padding: 0 6px;
+	border-radius: 4px;
+	background-color: #d9a054;
+	display: flex;
+	align-items: center;
+	pointer-events: none;
+
+	&.tilt-neg { transform: rotate(-3deg); }
+	&.tilt-pos { transform: rotate(3deg); }
+}
+
+.sat-new-text {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 9px; // stamp recipe
+	font-weight: 900;
+	line-height: 11px;
+	letter-spacing: 1px;
+	color: #2a1605;
+	pointer-events: none;
+}
+
+// ═══════════════════════════════════════
+// THE CASE — 482 × 950 r22, pad 24 → 434 inner
+// ═══════════════════════════════════════
+
+.bag-case {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	width: 482px;
+	flex: 0 0 482px;
+	min-width: 482px;
+	margin-left: 48px;
+	background-color: #15121f;
+	border-radius: 22px;
+	padding: 24px;
+	// LANE: motion — the case's fade shares the body's (shBodyIn).
+}
+
+// Art slab 434×300 r16 — NEUTRAL dark ground (#1c1830, the raised step;
+// the shop's warm blend is the shop's). The item at INTEGER scale (max
+// 256 → 4× 256 / 5× 255), centred; the rarity strip along the foot.
+.bag-case-art {
+	position: relative;
+	width: 434px;
+	height: 300px;
+	flex: 0 0 300px;
+	border-radius: 16px;
+	background-color: #1c1830;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.bag-case-img {
+	image-rendering: pixelated;
+	background-repeat: no-repeat;
+	// LANE: motion — the shop's shArtIn (0.12s content fade on an
+	// `art-<id>` render key) goes here.
+}
+
+// Rarity strip 122×4 at the slab's foot: bottom 12, left (434 − 122) / 2 = 156.
+.bag-case-strip {
+	position: absolute;
+	bottom: 12px;
+	left: 156px;
 	width: 122px;
 	height: 4px;
 	border-radius: 2px;
@@ -523,353 +788,174 @@ InventoryPanel {
 	&.r-mythic    { background-color: #ec4899; }
 }
 
-// Quantity chip — corner, INSIDE card bounds (scroll law).
-.sat-qty {
-	position: absolute;
-	top: 6px;
-	right: 6px;
-	padding: 2px 6px;
-	border-radius: 6px;
-	background-color: rgba(8, 6, 16, 0.92);
-
-	span {
-		font-size: 11px;
-		font-weight: 800;
-		line-height: 13px;
-		color: #d9a054;
-	}
+// Name 30/34 italic-900 — full name, one line.
+.bag-case-name {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 30px;
+	font-weight: 900;
+	line-height: 34px;
+	text-transform: uppercase;
+	color: #f4f1ea;
+	white-space: nowrap;
+	width: 434px;
+	margin-top: 16px;
+	padding-right: 6px; // italic overhang (inside the 434)
+	flex: 0 0 auto;
 }
 
-// NEW stamp — tan slab resting at ±3° (BbStamp dialect, miniaturized).
-// Small static 2D rotate INSIDE bounds — safe in the scroll grid.
-.sat-new {
-	position: absolute;
-	top: 6px;
-	left: 6px;
-	padding: 2px 6px;
-	border-radius: 4px;
-	background-color: #d9a054;
-
-	&.tilt-neg { transform: rotate(-3deg); }
-	&.tilt-pos { transform: rotate(3deg); }
-
-	span {
-		font-family: Exo2Italic;
-		font-style: italic;
-		font-size: 9px;
-		font-weight: 900;
-		line-height: 11px;
-		letter-spacing: 1px;
-		color: #2a1605;
-	}
-}
-
-// Equipped corner — violet "you have this on" mark.
-.sat-equipped {
-	position: absolute;
-	top: 6px;
-	left: 6px;
-	width: 18px;
-	height: 18px;
-	border-radius: 5px;
-	background-color: #9b6cff;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-
-	span {
-		font-size: 9px;
-		font-weight: 800;
-		line-height: 11px;
-		color: #ffffff;
-	}
-}
-
-// Hover-preview ring — cheap per-card recipe (opacity swap on :hover).
-// Explicit width/height, NOT all-edge offsets (all-edge absolute
-// stretching resolves to zero size on empty elements). INSET inside the
-// card so it can never leak past the scroll viewport. Content-box:
-// 150 − 2×4 inset − 2×3 border = 136 / 168 − 8 − 6 = 154.
-.sat-hover-ring {
-	position: absolute;
-	top: 4px;
-	left: 4px;
-	width: 136px;
-	height: 154px;
-	border: 3px solid #9b6cff;
-	border-radius: 12px;
-	background-color: rgba(0, 0, 0, 0);
-	opacity: 0;
-	transition: opacity 0.14s ease-out;
-	pointer-events: none;
-}
-
-// ======== EMPTY STATE — GRID ========
-
-.empty-inventory {
-	width: 100%;
-	flex-basis: 100%;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	gap: 10px;
-	padding: 80px 0;
-}
-
-.empty-headline {
-	font-size: 18px;
-	font-weight: 600;
-	color: rgba(244, 241, 234, 0.4);
-}
-
-.empty-hint {
-	font-size: 13px;
-	font-weight: 400;
-	color: rgba(214, 206, 236, 0.3);
-}
-
-// ======== RIGHT LANE — inspection card + relic loadout ========
-
-.sat-right {
-	width: 400px;
-	min-width: 400px;
-	flex: 0 0 400px;
-	padding: 24px 32px 24px 20px;
-	display: flex;
-	flex-direction: column;
-	gap: 14px;
-	opacity: 0;
-	transition: opacity 0.28s ease-out;
-}
-
-.sat-close-row {
+// ×N line 434×24 — always mounted (empty for qty 1) so the effect line
+// holds still. 20/24 tan.
+.bag-case-qty {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	justify-content: flex-end;
-	gap: 10px;
-	flex-shrink: 0;
+	width: 434px;
+	height: 24px;
+	flex: 0 0 24px;
+	margin-top: 6px;
 }
 
-// Q key cap — the battle .kb-key dialect, neutral edge.
-.sat-cap {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 16px;
-	height: 16px;
-	padding: 0 4px;
+.bag-case-qty-text {
 	font-family: Exo2;
-	font-size: 11px;
-	font-weight: 900;
-	font-style: italic;
-	line-height: 16px;
-	letter-spacing: 0;
-	color: #f4ecd8;
-	background-color: rgba(8, 6, 16, 0.88);
-	border: 2px solid rgba(0, 0, 0, 0.85);
-	border-radius: 4px;
-	flex-shrink: 0;
+	font-size: 20px;
+	font-weight: 800;
+	line-height: 24px;
+	letter-spacing: 0.3px;
+	color: #d9a054;
+	white-space: nowrap;
 }
 
-.sat-close {
-	width: 40px;
-	height: 40px;
-	min-width: 40px;
+// The ONE effect line 15/22 — Exo2Medium roman (dense reading stays roman;
+// the shop's .sh-case-desc bend). Two lines = 44; a material's lore line
+// may take a third (no primary below it, so it just grows).
+.bag-case-effect {
+	font-family: Exo2Medium;
+	font-size: 15px;
+	font-weight: 500;
+	line-height: 22px;
+	color: rgba(244, 241, 234, 0.75);
+	width: 434px;
+	min-height: 44px;
+	margin-top: 8px;
+	white-space: normal;
 	flex: 0 0 auto;
-	border-radius: 12px;
+}
+
+// PRIMARY — BbButton 56 stretched to the 434 inner. `.off` (Tier=ghost +
+// Disabled from the razor) = the SAME slab, desaturated (a gold you cannot
+// press is a lie): raised #1c1830 + TextDim label, opacity 1 over
+// BbButton's .disabled .45. Children inert BY CLASS (BbButton's `> *`
+// passthrough is the selector form that fails in-engine).
+.bag-case .case-primary {
+	width: 434px;
+	flex: 0 0 56px;
+	margin-top: 12px;
+	z-index: 1;
+
+	.bb-btn-ring,
+	.bb-btn-icon,
+	.bb-btn-label,
+	.bb-btn-keycap,
+	.bb-btn-hold { pointer-events: none; }
+}
+
+.bag-case .case-primary.off {
 	background-color: #1c1830;
-	border: none;
+	opacity: 1;
+	cursor: default;
+
+	.bb-btn-label { color: rgba(214, 206, 236, 0.6); }
+}
+
+// Slack — a REAL flex basis (DOC-1 #14) so the SELL row lands at the foot;
+// no bg, no border → invisible. 950 − 24 − 500 − 44 − 24 = 358.
+.bag-case-slack {
+	width: 434px;
+	flex: 1 1 358px;
+	min-height: 0;
+	pointer-events: none;
+}
+
+// SELL row 434×44 at the foot: − 44 r11 · 52 · + 44 r11 · 12 · SELL 282 = 434 ✓
+// (44 + 52 + 44 = 140; + 12 = 152; + 282 = 434). Singles: SELL 434.
+.bag-sell-row {
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	width: 434px;
+	height: 44px;
+	flex: 0 0 44px;
+	gap: 0px;
+	z-index: 1;
+}
+
+// Stepper button — the shop .sh-qty-btn recipe (44 r11 raised slab).
+// `.off` = at the clamp. LANE: input — A/D + hold-repeat; the ring wraps
+// the − … + group as an r21 pill. MOTION — the `.holding` heat step.
+.bag-qty-btn {
+	width: 44px;
+	height: 44px;
+	flex: 0 0 44px;
+	border-radius: 11px;
+	background-color: #1c1830;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	cursor: pointer;
-	transition: background-color 0.12s ease-out;
+	pointer-events: all;
+	transition: background-color 0.14s ease-out;
 
-	> * { pointer-events: none; }
+	&:active { background-color: #141021; }
 
-	&:hover {
-		background-color: #2a2340;
-	}
-
-	&:active {
-		transform: scale(0.92);
+	&.off {
+		opacity: 0.45; // the house disabled step
+		cursor: default;
 	}
 }
 
-// The inspection card — a floating slab; contents change with selection.
-.sat-detail {
-	background-color: #15121f;
-	border-radius: 26px;
-	padding: 24px 22px;
-	display: flex;
-	flex-direction: column;
-	gap: 14px;
-	flex-shrink: 0;
+.bag-qty-glyph {
+	width: 18px;
+	height: 18px;
+	flex: 0 0 18px;
+	pointer-events: none;
 }
 
-@keyframes satHeroIn {
-	from { opacity: 0; transform: scale(0.88); }
-	to { opacity: 1; transform: scale(1); }
-}
-
-.sat-hero {
-	align-self: center;
-	width: 150px;
-	height: 150px;
-	border-radius: 22px;
-	background-color: #1c1830;
+// The numeral — shrink-wrapped leaf centred by its 52px host (text-align
+// on a sized span is a no-op in-engine).
+.bag-qty-value {
+	width: 52px;
+	height: 44px;
+	flex: 0 0 52px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	position: relative;
-	flex-shrink: 0;
-	animation: satHeroIn 0.25s ease-out;
 }
 
-.sat-hero-img {
-	width: 104px;
-	height: 104px;
-	background-repeat: no-repeat;
-}
-
-.sat-hero-strip {
-	position: absolute;
-	bottom: 8px;
-	left: 35px;
-	width: 80px;
-	height: 4px;
-	border-radius: 2px;
-
-	&.r-common    { background-color: #9ca3af; }
-	&.r-uncommon  { background-color: #22c55e; }
-	&.r-rare      { background-color: #3b82f6; }
-	&.r-epic      { background-color: #a855f7; }
-	&.r-legendary { background-color: #fbbf24; }
-	&.r-mythic    { background-color: #ec4899; }
-}
-
-.sat-detail-name {
-	align-self: center;
-	width: 356px;
+.bag-qty-num {
 	font-family: Exo2Italic;
 	font-style: italic;
 	font-size: 26px;
 	font-weight: 900;
-	line-height: 30px;
+	line-height: 32px;
 	color: #f4f1ea;
-	white-space: normal;
-	text-align: center;
+	white-space: nowrap;
 }
 
-.sat-detail-meta {
-	align-self: center;
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	gap: 10px;
-}
-
-// Rarity tag — solid fill, uppercase 10/800 (the house pill spec).
-.sat-rarity-pill {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: center;
-	height: 22px;
-	padding: 0 10px;
-	border-radius: 6px;
-	flex-shrink: 0;
-
-	span {
-		font-size: 10px;
-		font-weight: 800;
-		letter-spacing: 1.2px;
-		text-transform: uppercase;
-		color: #ffffff;
-		line-height: 12px;
-	}
-
-	&.common    { background-color: #9ca3af; }
-	&.uncommon  { background-color: #22c55e; }
-	&.rare      { background-color: #3b82f6; }
-	&.epic      { background-color: #a855f7; }
-	&.legendary { background-color: #fbbf24; span { color: #2a1605; } }
-	&.mythic    { background-color: #ec4899; }
-}
-
-.sat-detail-qty {
-	font-size: 13px;
-	font-weight: 800;
-	color: #d9a054;
-}
-
-.sat-detail-duration {
-	font-size: 12px;
-	font-weight: 600;
-	color: rgba(214, 206, 236, 0.5);
-}
-
-.sat-effect {
-	background-color: #1c1830;
-	border-radius: 16px;
-	padding: 12px 14px;
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-}
-
-.sat-effect-kicker {
-	font-size: 10px;
-	font-weight: 800;
-	letter-spacing: 2px;
-	text-transform: uppercase;
-	color: #d9a054;
-}
-
-.sat-effect-text {
-	font-size: 13px;
-	font-weight: 400;
-	line-height: 18px;
-	color: rgba(244, 241, 234, 0.75);
-	white-space: normal;
-}
-
-// ======== ACTIONS — the use flow, elevated ========
-// USE/EQUIP = BbButton primary (guiding-star gold tier, PLAY-class 56px).
-// Explicit widths (content-box: detail content 356 − BbButton padding).
-
-.sat-actions {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 10px;
-	margin-top: 2px;
-}
-
-.sat-actions BbButton.size-56 {
-	width: 300px;
-}
-
-.sat-actions BbButton.size-44 {
-	width: 316px;
-}
-
-.sat-action-hint {
-	font-size: 12px;
-	font-weight: 600;
-	color: rgba(214, 206, 236, 0.5);
-	padding: 8px 0;
-}
-
-// Sell — destructive, hold-to-confirm (danger dialect with a real fill).
-.sat-sell {
+// HOLD SELL — the shipped .sat-sell recipe (BbButton has no hold-fill
+// child) in the BbButton DANGER pair at r11: rgba(224,65,74,.14) ground,
+// #ff8a92 ink, the HOLD cap. 282 beside the stepper (margin-left 12 = the
+// row's one gap); `.wide` = 434 for singles. The fill is an absolute child
+// whose width is written in PX from the razor (a % width on an absolute
+// paints full — CLAUDE.md). LANE: motion — the 0.05s width step + the
+// `.holding` pulse (the old sellHoldWarn) go here.
+.bag-sell {
 	position: relative;
-	width: 356px;
+	width: 282px;
 	height: 44px;
-	border-radius: 16px;
-	border: none;
+	flex: 0 0 282px;
+	margin-left: 12px;
+	border-radius: 11px;
 	background-color: rgba(224, 65, 74, 0.14);
 	display: flex;
 	flex-direction: row;
@@ -877,442 +963,364 @@ InventoryPanel {
 	justify-content: center;
 	gap: 10px;
 	cursor: pointer;
+	pointer-events: all;
 	transition: background-color 0.14s ease-out;
 
-	&:hover {
-		background-color: rgba(224, 65, 74, 0.24);
+	&.wide {
+		width: 434px;
+		flex: 0 0 434px;
+		margin-left: 0px;
 	}
 
-	.sat-sell-fill {
-		position: absolute;
-		top: 0;
-		left: 0;
-		height: 100%;
-		border-radius: 16px;
-		background-color: rgba(255, 255, 255, 0.18);
-		transition: width 0.05s linear;
-		z-index: 1;
-	}
-
-	.sat-sell-label {
-		font-family: Exo2Italic;
-		font-style: italic;
-		font-size: 14px;
-		font-weight: 800;
-		line-height: 18px;
-		letter-spacing: 1px;
-		text-transform: uppercase;
-		color: #ff8a92;
-		white-space: nowrap;
-		z-index: 2;
-	}
-
-	.sat-sell-hold {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 14px;
-		padding: 0 4px;
-		font-family: Exo2;
-		font-size: 10px;
-		font-weight: 900;
-		line-height: 14px;
-		letter-spacing: 1px;
-		color: #ff8a92;
-		background-color: rgba(24, 6, 10, 0.9);
-		border: 2px solid rgba(224, 65, 74, 0.35);
-		border-radius: 4px;
-		z-index: 2;
-	}
-
-	&.holding {
-		animation: sellHoldWarn 0.5s ease-in-out infinite;
-	}
+	&:active { background-color: rgba(224, 65, 74, 0.28); }
+	&.holding { background-color: rgba(224, 65, 74, 0.24); }
 }
 
-@keyframes sellHoldWarn {
-	0%, 100% { background-color: rgba(224, 65, 74, 0.2); }
-	50% { background-color: rgba(224, 65, 74, 0.34); }
+.bag-sell-fill {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 0px; // written in px from the razor (SellFillPx)
+	height: 44px;
+	border-radius: 11px;
+	background-color: rgba(255, 255, 255, 0.18);
+	pointer-events: none;
+	z-index: 1;
 }
 
-// ======== RELIC LOADOUT — its own floating slab ========
-
-.sat-relics {
-	background-color: #15121f;
-	border-radius: 22px;
-	padding: 18px;
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
-	flex-shrink: 0;
-}
-
-.sat-section-label {
-	padding: 2px 0 2px 10px;
-	border-left: 3px solid rgba(217, 160, 84, 0.55);
-	font-size: 11px;
-	font-weight: 800;
-	letter-spacing: 1.5px;
+.bag-sell-label {
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 15px;
+	font-weight: 900;
+	line-height: 18px;
+	letter-spacing: 1px;
 	text-transform: uppercase;
-	color: rgba(214, 206, 236, 0.5);
-	flex-shrink: 0;
+	color: #ff8a92;
+	white-space: nowrap;
+	pointer-events: none;
+	z-index: 2;
 }
 
-.relics-slots-row {
+.bag-sell-hold {
 	display: flex;
-	flex-direction: row;
-	gap: 8px;
-}
-
-// Slot — explicit width (flex:1 with 3 siblings is unreliable). Constant
-// transparent border so the selection border-color swap never resizes
-// the content box.
-.relic-slot {
-	width: 108px;
-	min-width: 108px;
-	flex: 0 0 108px;
-	height: 80px;
-	border-radius: 14px;
-	border: 2px solid rgba(0, 0, 0, 0);
-	display: flex;
-	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 4px;
-	cursor: pointer;
-	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
-
-	&.empty {
-		background-color: #131019;
-		cursor: default;
-	}
-
-	&.filled {
-		background-color: #1c1830;
-
-		&:hover {
-			background-color: #241f38;
-		}
-
-		&:active {
-			transform: scale(0.96);
-		}
-	}
-
-	&.selected {
-		border-color: #9b6cff;
-	}
-
-	&.just-equipped {
-		animation: slotEquipFlash 0.6s ease-out;
-	}
+	height: 14px;
+	padding: 0 4px;
+	font-family: Exo2;
+	font-size: 10px; // cap recipe
+	font-weight: 900;
+	line-height: 14px;
+	letter-spacing: 1px;
+	color: #ff8a92;
+	background-color: rgba(24, 6, 10, 0.9);
+	border: 2px solid rgba(224, 65, 74, 0.35);
+	border-radius: 4px;
+	pointer-events: none;
+	z-index: 2;
 }
 
-@keyframes slotEquipFlash {
-	0% { background-color: #1c1830; }
-	30% { background-color: rgba(155, 108, 255, 0.4); border-color: #9b6cff; }
-	100% { background-color: #1c1830; }
+// Ghost watermark — explicit-box absolute holder (160×160) centred in the
+// slack: top 524 + (358 − 160) / 2 = 623; left 24 + (434 − 160) / 2 = 161.
+// The img inside at INTEGER scale (max 160 → 128 / 153), .05, z 0.
+.bag-case-ghost-box {
+	position: absolute;
+	top: 623px;
+	left: 161px;
+	width: 160px;
+	height: 160px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	pointer-events: none;
+	z-index: 0;
 }
 
-.relic-slot-plus {
-	font-size: 20px;
-	font-weight: 300;
-	color: rgba(244, 241, 234, 0.15);
-}
-
-.relic-slot-icon {
-	width: 36px;
-	height: 36px;
+.bag-case-ghost {
+	opacity: 0.05;
+	image-rendering: pixelated;
 	background-repeat: no-repeat;
+	pointer-events: none;
 }
 
-.relic-slot-name {
-	font-size: 9px;
-	font-weight: 700;
-	color: rgba(244, 241, 234, 0.55);
-	text-align: center;
-	white-space: nowrap;
-}
-
-// ======== THE LIVING VIOLET RING ========
-// Root-level absolute; position bound from UpdateGridRing each tick,
-// wave via imperative Style.Transform. z 60: above the grid cards,
-// below the picker (600) / toast (700).
-
+// ═══════════════════════════════════════
+// THE LIVING VIOLET RING — the one cursor (root-level absolute)
+// ═══════════════════════════════════════
+// The shared imperative recipe: L/T rect − 10 + 4, W/H rect + 20 − 8 (the
+// 4px border draws outside the placed padding box), r26 = card 16 + 10.
+// ONE HDR stroke — no outline. z 60: above the cards, below the header
+// (500). The 0.27s glide + 0.15s opacity are the copied recipe's.
 .sat-ring {
 	position: absolute;
-	top: 0;
-	left: 0;
-	border: 4px solid #9b6cff * 5; // THE RING RECIPE (user 2026-09-01): one HDR stroke — *3 too flat, *8 white-cored, an outline halo read as a second ring
-	border-radius: 26px; // card 16 + 10 inset — concentric gap
+	top: 0px;
+	left: 0px;
+	border: 4px solid #9b6cff * 5; // THE RING RECIPE (user 2026-09-01)
+	border-radius: 26px;
 	background-color: rgba(0, 0, 0, 0);
 	pointer-events: none;
 	opacity: 0;
 	z-index: 60;
-	transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1), top 0.27s cubic-bezier(0.22, 1, 0.36, 1), width 0.27s cubic-bezier(0.22, 1, 0.36, 1), height 0.27s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease-out;
+	transition: left 0.27s cubic-bezier(0.22, 1, 0.36, 1), top 0.27s cubic-bezier(0.22, 1, 0.36, 1), width 0.27s cubic-bezier(0.22, 1, 0.36, 1), height 0.27s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.27s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.15s ease-out;
 
-	&.on {
-		opacity: 1;
-	}
+	&.on { opacity: 1; }
 
 	// Warmup / re-appear: land instantly, glide thereafter.
-	&.snap {
-		transition: opacity 0.15s ease-out;
-	}
+	&.snap { transition: opacity 0.15s ease-out; }
+
+	// LANE: input — the stepper host (r11 + 10 → r21 pill).
+	&.pill { border-radius: 21px; }
 }
 
-// ======== MONSTER PICKER (sub-modal) ========
+// ═══════════════════════════════════════
+// BEAST PICKER (sub-modal) — 560 × 640 r22 over a dim shield
+// ═══════════════════════════════════════
+// Rows are DIRECT children of the scroll (DOC-1 #12); the 2-col wrappers
+// died. LANE: motion — the overlay fade + panel rise (the shipped
+// picker-overlay-fade / picker-panel-rise) go here.
 
-.monster-picker-overlay {
+.bag-picker-overlay {
 	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
+	top: 0px;
+	left: 0px;
+	width: 1920px;
+	height: 1080px;
 	background-color: rgba(4, 6, 15, 0.8);
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	z-index: 600;
-	animation: picker-overlay-fade 0.2s ease-out;
+	pointer-events: all;
 }
 
-@keyframes picker-overlay-fade {
-	from { opacity: 0; }
-	to { opacity: 1; }
-}
-
-.monster-picker-panel {
+.bag-picker {
 	width: 560px;
-	height: 480px;
+	height: 640px;
+	flex: 0 0 560px;
 	background-color: #15121f;
 	border-radius: 22px;
-	box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75);
 	display: flex;
 	flex-direction: column;
-	animation: picker-panel-rise 0.22s ease-out;
+	overflow: hidden;
 }
 
-@keyframes picker-panel-rise {
-	from {
-		opacity: 0;
-		transform: translateY(30px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
-}
-
-.picker-header {
+// Head 560×64: title (plain) · spacer · BACK · Q. pad 0 16 → 528 inner.
+.bag-picker-head {
 	height: 64px;
-	min-height: 64px;
+	flex: 0 0 64px;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	padding: 0 18px;
-	flex-shrink: 0;
-}
-
-// Tan seam chip — the panel identity carried into the sub-modal.
-.picker-seam {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	height: 36px;
 	padding: 0 16px;
-	flex: 0 0 auto;
-	border-radius: 10px;
-	background-color: #d9a054;
-	transform: skewX(-8deg);
+	width: 560px;
 }
 
-.picker-title {
+.bag-picker-title {
 	flex: 0 0 auto;
-	transform: skewX(8deg);
 	font-family: Exo2Italic;
 	font-style: italic;
-	font-size: 14px;
+	font-size: 18px;
 	font-weight: 900;
-	line-height: 18px;
-	letter-spacing: 1.5px;
+	line-height: 22px;
+	letter-spacing: 1px;
 	text-transform: uppercase;
-	color: #2a1605;
+	color: #f4f1ea;
 	white-space: nowrap;
+	padding-right: 6px; // italic overhang
 }
 
-.picker-subtitle {
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(214, 206, 236, 0.55);
-	margin-left: 12px;
-	white-space: nowrap;
+// Spacer with a REAL basis (528 − title ≈ 300 − back 96 ≈ 130).
+.bag-picker-spacer {
+	flex: 1 1 130px;
+	min-width: 0;
+	height: 30px;
 }
 
-.picker-close {
-	margin-left: auto;
-	width: 34px;
-	height: 34px;
-	min-width: 34px;
-	flex: 0 0 auto;
-	border-radius: 10px;
-	background-color: #1c1830;
-	border: none;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	transition: background-color 0.12s ease-out;
-
-	> * { pointer-events: none; }
-
-	&:hover {
-		background-color: #2a2340;
-	}
-}
-
-.picker-scroll {
+// The scroll child — rows as DIRECT children. pad 0 16 14 16 → row 528.
+.bag-picker-scroll {
 	flex: 1 1 0;
 	min-height: 0;
 	overflow-y: scroll;
 	overflow-x: hidden;
-	padding: 14px 16px;
+	padding: 0 16px 14px 16px;
+	width: 560px;
+	max-width: 560px;
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 8px;
 }
 
-.picker-row {
-	width: 100%;
-	display: flex;
-	flex-direction: row;
-	gap: 10px;
-	justify-content: center;
-	flex-shrink: 0;
-}
-
-// Scroll laws: hover = background swap only (no transform / box-shadow).
-.picker-monster {
-	width: 248px;
-	min-width: 248px;
-	flex: 0 0 248px;
-	background-color: #1c1830;
+// Row 528×64 r14 — sprite 52 · 12 · info 300 · datum (the rest, right-
+// aligned). Pad 0 12 → 504 inner: 52 + 12 + 300 + 12 + 128 = 504 ✓.
+// Hover = bg step only (scroll law), gated under .mouse-mode below.
+.bag-picker-row {
+	width: 528px;
+	flex: 0 0 64px;
+	min-width: 528px;
+	height: 64px;
+	padding: 0 12px;
 	border-radius: 14px;
-	padding: 12px;
+	background-color: #1c1830;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	gap: 12px;
 	cursor: pointer;
+	pointer-events: all;
 	transition: background-color 0.14s ease-out;
 
-	&:hover {
-		background-color: #2a2340;
-	}
-
-	&:active {
-		background-color: #241f38;
-	}
+	&:active { background-color: #141021; }
 }
 
-.picker-monster-sprite {
+.bag-picker-sprite {
 	width: 52px;
 	height: 52px;
+	flex: 0 0 52px;
 	border-radius: 10px;
 	background-color: #131019;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	flex-shrink: 0;
-
-	img {
-		width: 44px;
-		height: 44px;
-		image-rendering: pixelated;
-		background-repeat: no-repeat;
-	}
+	pointer-events: none;
 }
 
-.sprite-placeholder {
-	font-size: 22px;
-	color: rgba(244, 241, 234, 0.3);
+.bag-picker-sprite-img {
+	width: 44px;
+	height: 44px;
+	image-rendering: pixelated;
+	background-repeat: no-repeat;
+	pointer-events: none;
 }
 
-.picker-monster-info {
+.bag-picker-info {
+	width: 300px;
+	flex: 0 0 300px;
+	margin-left: 12px;
 	display: flex;
 	flex-direction: column;
 	gap: 3px;
-	width: 160px;
-	min-width: 160px;
+	pointer-events: none;
 }
 
-.picker-monster-name {
-	font-size: 14px;
+.bag-picker-name {
+	font-family: Exo2;
+	font-size: 15px;
 	font-weight: 700;
+	line-height: 18px;
 	color: #f4f1ea;
+	white-space: nowrap;
+	pointer-events: none;
 }
 
-.picker-monster-level {
+.bag-picker-sub {
+	font-family: Exo2;
 	font-size: 12px;
-	font-weight: 600;
-	color: rgba(214, 206, 236, 0.5);
+	font-weight: 700;
+	line-height: 14px;
+	letter-spacing: 0.5px;
+	color: rgba(214, 206, 236, 0.6);
+	white-space: nowrap;
+	pointer-events: none;
 }
 
-// ======== TOAST ========
+// Datum column 128 — the ONE number the item changes, right-aligned:
+// label 11 (kicker recipe, dim) over the value 13/800 tan. `.dim` = the
+// empty case ("NOTHING HELD").
+.bag-picker-datum {
+	width: 128px;
+	flex: 0 0 128px;
+	margin-left: 12px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: 3px;
+	pointer-events: none;
+}
 
-.inventory-toast {
+.bag-picker-datum-label {
+	font-family: Exo2;
+	font-size: 11px; // kicker/cap recipe
+	font-weight: 800;
+	line-height: 13px;
+	letter-spacing: 1.2px;
+	text-transform: uppercase;
+	color: rgba(214, 206, 236, 0.5);
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.bag-picker-datum-value {
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 16px;
+	letter-spacing: 0.5px;
+	color: #d9a054;
+	white-space: nowrap;
+	pointer-events: none;
+
+	&.dim { color: rgba(214, 206, 236, 0.5); }
+}
+
+// ═══════════════════════════════════════
+// TOAST — failures + used-on (the shipped recipe, kept)
+// ═══════════════════════════════════════
+
+.bag-toast {
 	position: absolute;
 	bottom: 72px;
-	left: 50%;
-	margin-left: -180px;
+	left: 780px; // (1920 − 360) / 2 — explicit, not a % + negative margin
 	width: 360px;
-	padding: 12px 20px;
+	height: 44px;
+	padding: 0 20px;
 	border-radius: 14px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	z-index: 700;
-	animation: toastRise 0.25s ease-out;
+	pointer-events: none;
+	animation: bagToastRise 0.25s ease-out; // LANE: motion — the shipped toastRise, kept
 
-	span {
-		font-size: 13px;
-		font-weight: 700;
-	}
+	&.success { background-color: rgba(18, 46, 32, 0.97); }
+	&.error { background-color: rgba(52, 18, 22, 0.97); }
 
-	&.success {
-		background-color: rgba(18, 46, 32, 0.97);
-		span { color: #4ade80; }
-	}
-
-	&.error {
-		background-color: rgba(52, 18, 22, 0.97);
-		span { color: #ff8a92; }
-	}
-
-	// Exit animation — slide down and fade
-	&.exiting {
-		animation: toastFall 0.3s ease-in forwards;
-	}
+	&.exiting { animation: bagToastFall 0.3s ease-in forwards; }
 }
 
-@keyframes toastRise {
-	from {
-		opacity: 0;
-		transform: translateY(16px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
+.bag-toast-text {
+	font-family: Exo2;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 16px;
+	white-space: nowrap;
 }
 
-@keyframes toastFall {
-	from {
-		opacity: 1;
-		transform: translateY(0);
-	}
-	to {
-		opacity: 0;
-		transform: translateY(12px);
-	}
+.bag-toast.success .bag-toast-text { color: #4ade80; }
+.bag-toast.error .bag-toast-text { color: #ff8a92; }
+
+@keyframes bagToastRise {
+	from { opacity: 0; transform: translateY(16px); }
+	to { opacity: 1; transform: translateY(0px); }
 }
+
+@keyframes bagToastFall {
+	from { opacity: 1; transform: translateY(0px); }
+	to { opacity: 0; transform: translateY(12px); }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ONE CURSOR — the device gate (DOC-5 #5/#6). The root carries
+// .mouse-mode / .kbd-mode from lastInputDevice. Every :hover this page
+// owns paints ONLY under .mouse-mode (a parked mouse can never keep a
+// second element lit while the keyboard drives). Colour-only steps: the
+// cards live in a scroll clip (DOC-7 #12), so no transform, no shadow.
+// The bare hover slab step is the one static hover state this lane ships.
+// ═══════════════════════════════════════════════════════════════════
+.inventory-panel.mouse-mode .sat-card:hover { background-color: #241f38; }
+.inventory-panel.mouse-mode .sat-card:hover .sat-card-name { color: #f4f1ea; }
+.inventory-panel.mouse-mode .sat-card.selected:hover { background-color: #2a2344; }
+
+.inventory-panel.mouse-mode .bag-back:hover { background-color: #282246; }
+.inventory-panel.mouse-mode .bag-qty-btn:hover { background-color: #241f38; }
+.inventory-panel.mouse-mode .bag-qty-btn.off:hover { background-color: #1c1830; }
+.inventory-panel.mouse-mode .bag-sell:hover { background-color: rgba(224, 65, 74, 0.24); }
+.inventory-panel.mouse-mode .bag-picker-row:hover { background-color: #2a2340; }

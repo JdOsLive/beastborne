@@ -7,283 +7,391 @@
 @using Beastborne.UI;
 @using Beastborne.UI.Components;
 @using Beastborne.UI.Primitives;
+@using System.Linq;
 @inherits Panel
 
-<root class="inventory-panel @(IsVisible ? "visible" : "")">
+@*
+	BAG — the item grid + one case (2026-09-03 pipeline rebuild, LAYOUT lane).
 
-	<!-- Living background: the bag glyph drifting at the house angle
-	     (BbIconScroll supplies the opaque dark base — root paints none).
-	     Row-flex host: the scss pins bbis-root to width 0 so the strip
-	     can't claim main-axis space. -->
+	Brief: .claude/design-system/components/bag-redesign-brief.html +
+	bag-mock-page.html (user 2026-09-02: "same layout as shop is okay" — the
+	mock's DEFAULT toggles are the rulings): the house FilterBar in the
+	header (CATEGORY + R · CYCLE · SORT + dir · SEARCH chip) · kicker rows
+	CONSUMABLES · BOOSTS · HELD ITEMS · RELICS · DROPS in ALL (a picked
+	category collapses the grid to that section, no kicker) · cards = the
+	SHOP's shipped geometry (150×168 r16, art 100, name 30, third line 26 =
+	×N) · EQUIP TO... on held items via the existing beast picker · sell =
+	stepper + hold-to-confirm for stacks · NO sell values on cards · relic
+	loadout = "N / 3 EQUIPPED" on the RELICS kicker + green E chips · kicker
+	TAMER, title BAG · accent TAN #d9a054.
+
+	CUT (16): the 220px spine (7 pouch tabs · counts · 1-7 caps) · FIELD
+	SATCHEL header · spine gold chip + WASD hint · 6 rarity chips · the body
+	toolbar row · per-card hover ring · relic slab + flash · "Equip via
+	Monster Details" · detail rarity pill · duration line · EFFECT: kicker ·
+	"Select an item" · Q cap + X row · picker subtitle + seam chip + 2-col
+	wrappers · "Locked during battle" · the Quest bucket · legendary name
+	recolour · the violet E (→ green).
+	MERGED (5): header → the house recipe · NEW → ItemManager (one source) ·
+	boost USE → the consumable USE branch · corner ×N → the card's third
+	line · search/sort → the FilterBar.
+	ADDED (3): EQUIP TO... · sell stepper · picker datum column.
+
+	ZONE MAP (1920×1080, PADDING-BOX math — declared size includes padding,
+	borders add on top):
+	  header  1920×88 + 2px strip = 90   (pad 16/32/12/28; kicker 12/14 + 2
+	          + title 38/44 = 60 tall; the hub .oh-header recipe, accent tan)
+	  body    pad 20/30/20/30 → column 1080 − 90 − 20 − 20 = 950 (NO HUD
+	          reserve: .inventory-panel is not in GameHUD's 56px ::after list
+	          — checked 2026-09-03, nothing to remove; .bag-body is flex 1 1 0)
+	  goods   1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 20 scrollbar lane
+	  gap     48 (the case's margin-left)
+	  case    482 × 950 r22, pad 24 → 434 inner
+	  row     30 + 1330 + 48 + 482 + 30 = 1920 ✓
+	  column  90 + 20 + 950 + 20 = 1080 ✓
+	Header right slot (flex 1 1 0, right-aligned; 1920 − 28 − ~160 identity
+	  − 24 − 32 ≈ 1676 available): [IN BATTLE stamp] · FilterBar (CATEGORY
+	  ~170 + 12 + SORT ~150 + 8 dir 32 + 12 SEARCH 180 ≈ 564) · R CYCLE hint
+	  · balance 32 r11 (+12) · BACK · Q 30 r11 ≈ 830 → right-aligned.
+	Grid rhythm (flat wrap list; kicker rows + cards DIRECT children):
+	  row-gap 8 · card 168 + margin-bottom 8 → card→card 16 · kicker 24 +
+	  margin-top 8 → card→kicker 24 · kicker→card 8.
+	  The brief's 29-stack scenario: 5 kickers + 5 card rows = 120 + 32 +
+	  5×176 + 9×8 = 1104 (scrolls 154 in the 950 viewport).
+	Case interior (434): art 300 · +16 name 34 · +6 ×N 24 · +8 effect ≥44 ·
+	  +12 PRIMARY 56 → ends at y 524 from the case top (24 + 500); the SELL
+	  row (44) sits at the foot, y 882..926 (950 − 24 − 44); the 358px
+	  between them carries the ghost glyph at .05 and nothing else.
+
+	ENGINE LAWS honored: no AcceptsFocus; pointer-events all/none via a CLASS
+	on every child of a pressable; explicit boxes on every absolute;
+	line-height px; bare text in spans; explicit width + flex pin on every
+	card; no width:100% inside padded parents; wrap grid pins width AND
+	max-width; no transform/box-shadow on scroll-grid cards; `<img>` art
+	carries background-repeat: no-repeat; imperative fills in px.
+
+	LANE MARKERS left for the other passes:
+	  // LANE: motion     header fade · body fade · sell-hold fill · toast ·
+	                      picker enter · balance tick
+	  // LANE: input      category R cycle + header walk-up (CollectHeaderControls)
+	                      · case zone (stepper ↔ SELL hold ↔ primary) · picker
+	                      kb · stepper hold-repeat · travel-guarded device flag
+	  // LANE: color      FilterBar rim on a tan page · the E green · tan tints
+	  // LANE: components .sat-card here == .shop-card (ShopPanelContent) —
+	                      capture both into one BbItemCard primitive (DOC-6 #18)
+	  // LANE: systems    GameHUD.OnInventoryClicked still calls
+	                      ItemManager.MarkAllItemsSeen() on open — stop it so
+	                      the NEW stamps survive to the select
+*@
+
+@* Root carries the device class (DOC-5 #5) — onmousemove is the mouse-mode
+   reclaim (travel-gated, the shop's recipe). *@
+<root class="@RootClass" onmousemove=@OnRootMouseMove>
+
+	@* Living background: the bag glyph drifting at the house angle
+	   (BbIconScroll supplies the opaque dark base — root paints none). *@
 	<BbIconScroll Icon="bag" />
 
-	<!-- ====== LEFT SPINE — identity + category pouch tabs ====== -->
-	<div class="sat-spine">
-		<div class="sat-ident">
-			<BbSectionHeader Kicker="FIELD SATCHEL" Title=@L("ui.inventory.title") Size=@(52) AccentColor="#d9a054" />
+	@* ====================== HEADER — the hub .oh-header recipe, accent TAN ====================== *@
+	<div class="bag-header">
+		@* LANE: color — the TAN bake (Assets/ui/wave-tan-a/b.png); band opacity
+		   .16/.24 in the SCSS (the house ladder). *@
+		<BbHeaderWaves Accent=@("tan") />
+		<div class="bag-identity">
+			<span class="bag-kicker">TAMER</span>
+			<div class="bag-title-row">
+				<span class="bag-title">@L("ui.inventory.title")</span>
+				<div class="bag-seam"></div>
+				<div class="bag-seam dim"></div>
+			</div>
 		</div>
 
-		@if (IsInBattleMode())
-		{
-			<div class="sat-battle-stamp">
-				<BbStamp Text=@L("ui.inventory.battle_mode") Tone="orange" Dot=@true Tilt=@(3) />
+		@* Right slot (.oh-toolbar position): [IN BATTLE] · FilterBar · R CYCLE ·
+		   balance · BACK · Q. LANE: input — the HEADER zone: W from the top card
+		   row should land on the category chip (`.kb-focused`, no ring — the
+		   roster's CollectHeaderControls + SyncHeaderKbFocus recipe); A/D walk
+		   the controls; S returns to the grid. Not wired here. *@
+		<div class="bag-toolbar">
+			@if (IsInBattleMode())
+			{
+				<div class="bag-battle-stamp">
+					<BbStamp Text=@L("ui.inventory.battle_mode") Tone="orange" Dot=@true Tilt=@(3) />
+				</div>
+			}
+			<FilterBar @ref="filterBar"
+					   PrimaryItems=@CategoryMenu
+					   CurrentPrimary=@currentCategory
+					   OnPrimaryChanged=@OnCategoryChanged
+					   ItemSorts=@SortMenu
+					   CurrentSort=@currentSort
+					   SortAscending=@sortAscending
+					   OnSortChanged=@OnSortChanged
+					   OnSortDirectionChanged=@OnSortDirectionChanged
+					   ShowSearchChip=@true
+					   SearchPlaceholder=@L("ui.inventory.search")
+					   OnNameFilterChanged=@OnSearchChanged
+					   KbMode=@IsKbMode />
+			@* R = category forward (the shown cycle key; Z/X cycle the sort
+			   silently — DOC-5 #1). The roster's .rh-filter-hint recipe, placed
+			   AFTER the bar as the roster does (the mock draws it between
+			   CATEGORY and SORT — that slot is inside the shared component and
+			   would need a fourth parameter; roster precedent kept). *@
+			<div class="bag-filter-hint">
+				<span class="bag-cap">R</span>
+				<span class="bag-filter-hint-text">CYCLE</span>
 			</div>
+			@* Balance — the shop .sh-balance recipe. MOTION: `.flash flash-N`
+			   (IsGoldFlash, keyed per sell) is the ONE balance pulse hook. *@
+			<div class="@BalanceClass()">
+				<img class="bag-balance-glyph" src="ui/icons/currency/money.svg" />
+				<span class="bag-balance-value">@GoldText()</span>
+			</div>
+			@* BACK · Q — the hub .hb-back recipe. Click = Close; Q already closes. *@
+			<div class="bag-back" onclick=@OnBackClicked onmouseover=@OnBackHover onmouseout=@OnBackOut>
+				<span class="bag-back-label">BACK</span>
+				<span class="bag-back-cap">Q</span>
+			</div>
+		</div>
+	</div>
+
+	@* ====================== BODY — item grid + the case ====================== *@
+	<div class="bag-body">
+		@{
+			// Hoisted above BOTH columns (2026-09-03): a code block nested inside the
+			// goods <div> compiles into that element's scope in s&box Razor, so the
+			// case column could not see `caseItem` (11 CS0103s on first compile).
+			var groups = GetRenderGroups();
+			var navItems = GetNavItems();
+			var caseItem = GetCaseItem();
+			bool battle = IsInBattleMode();
+			bool bagEmpty = GetOwnedStackCount() == 0;
 		}
 
-		<div class="sat-spine-tabs">
-			@for (int t = 0; t < CategoryKeyOrder.Length; t++)
-			{
-				var cat = CategoryKeyOrder[t];
-				var capNum = t + 1;
-				<div class="sat-tab @(currentCategory == cat ? "active" : "")" onclick=@(() => SetCategory(cat))>
-					<span class="tab-cap">@capNum</span>
-					<span class="tab-label">@GetCategoryTabLabel(cat)</span>
-					@if (GetCategoryTabCount(cat) > 0)
+		@* ---- GOODS — 1330: 12 inset + the 1298 grid + a 20px overlay-scrollbar lane ---- *@
+		@* MOTION: body fade on mount (the shop's shBodyIn) — not wired here. *@
+		<div class="bag-goods">
+			<div @ref="gridRef" class="@GridClass(navItems.Count == 0)">
+				@if (navItems.Count == 0)
+				{
+					@* Empty state — the `.empty` grid flips to a centered column
+					   (DOC-6 #9). Two honest lines: the whole bag is empty, or a
+					   filter emptied it (R · CYCLE gets you out). *@
+					@if (bagEmpty)
 					{
-						<span class="tab-count">@GetCategoryTabCount(cat)</span>
+						<span class="bag-empty-head">Nothing in the bag yet.</span>
+						<span class="bag-empty-sub">Expeditions drop materials, held items and relics.</span>
 					}
-				</div>
-			}
-		</div>
-
-		<div class="sat-gold">
-			<img class="sat-gold-icon" src="ui/icons/currency/money.svg" />
-			<span class="sat-gold-value">@GoldText()</span>
-		</div>
-		<span class="sat-hint">WASD MOVE · SPACE USE</span>
-	</div>
-
-	<!-- ====== CENTER — find tools + the open item spread ====== -->
-	<div class="sat-center">
-		<div class="sat-tools">
-			<div class="sat-search">
-				<iconify icon="lucide:search" Size=@(13) Color="rgba(214, 206, 236, 0.45)" />
-				<TextEntry class="search-input" @ref="searchInput" Text="@searchQuery" Placeholder="@L("ui.inventory.search")" />
-			</div>
-
-			@foreach (var r in RarityKeys)
-			{
-				<button class="sat-rchip r-@r @(currentRarityFilter == r ? "active" : "")" onclick=@(() => SetRarityFilter(r))>
-					<div class="rchip-dot"></div>
-					<span class="rchip-label">@GetRarityChipLabel(r)</span>
-				</button>
-			}
-
-			<div class="sat-tools-div"></div>
-
-			<button class="sat-sort-chip @(currentSort == "name" ? "active" : "")" onclick=@(() => SetSort("name"))><span>@L("ui.inventory.sort_name")</span></button>
-			<button class="sat-sort-chip @(currentSort == "qty" ? "active" : "")" onclick=@(() => SetSort("qty"))><span>@L("ui.inventory.sort_qty")</span></button>
-			<button class="sat-sort-chip @(currentSort == "rarity" ? "active" : "")" onclick=@(() => SetSort("rarity"))><span>@L("ui.inventory.sort_rarity")</span></button>
-		</div>
-
-		<!-- Item grid. Cards are DIRECT children of the scroll container
-		     (scroll-container law: no nested flex-row wrappers). Section
-		     label rows span full width to force wrap breaks. -->
-		<div class="sat-grid" @ref="satGridRef">
-			@foreach (var group in GetRenderGroups())
-			{
-				@if (group.Label != null)
-				{
-					<div class="sat-section-row"><span class="sat-section-text">@group.Label</span></div>
-				}
-				@foreach (var (itemId, quantity) in group.Items)
-				{
-					var item = ItemManager.Instance?.GetItem(itemId);
-					if (item == null) continue;
-					<div class="sat-card @GetRarityClass(item.Rarity) @(selectedItem?.Id == itemId ? "selected" : "")"
-						 onclick=@(() => SelectItem(item))
-						 onmouseover=@(() => OnCardHover(itemId))>
-						<div class="sat-card-art">
-							<img class="sat-card-icon" src="@item.IconPath" onerror="this.style.display='none'" />
+					else
+					{
+						<span class="bag-empty-head">@L("ui.inventory.no_items_found")</span>
+						<div class="bag-empty-hint">
+							<span class="bag-cap">R</span>
+							<span class="bag-filter-hint-text">CYCLE</span>
 						</div>
-						<div class="sat-card-foot"><span class="sat-card-name">@item.Name</span></div>
-						<div class="sat-strip r-@GetRarityClass(item.Rarity)"></div>
-						@if (quantity > 1)
-						{
-							<div class="sat-qty"><span>@QtyText(quantity)</span></div>
-						}
-						@if (IsEquipped(itemId))
-						{
-							<div class="sat-equipped"><span>E</span></div>
-						}
-						else if (IsNewItem(itemId))
-						{
-							<div class="sat-new @NewTiltClass(itemId)"><span>NEW</span></div>
-						}
-						<div class="sat-hover-ring"></div>
-					</div>
+					}
 				}
-			}
-
-			@if (GetFilteredItems().Count == 0)
-			{
-				<div class="empty-inventory">
-					<iconify icon="lucide:package-x" Size=@(64) Color="rgba(214, 206, 236, 0.25)" />
-					<span class="empty-headline">@L("ui.inventory.no_items_found")</span>
-					<span class="empty-hint">@L("ui.inventory.empty_hint")</span>
-				</div>
-			}
-		</div>
-	</div>
-
-	<!-- ====== RIGHT — inspection card + relic loadout ====== -->
-	<div class="sat-right">
-		<div class="sat-close-row">
-			<span class="sat-cap">Q</span>
-			<button class="sat-close" onclick=@Close>
-				<iconify icon="lucide:x" Size=@(18) Color="rgba(244, 241, 234, 0.85)" />
-			</button>
-		</div>
-
-		<div class="sat-detail @(selectedItem != null ? "has-item" : "")">
-			@if (selectedItem != null)
-			{
-				<div class="sat-hero">
-					<img class="sat-hero-img" src="@selectedItem.IconPath" onerror="this.style.display='none'" />
-					<div class="sat-hero-strip r-@GetRarityClass(selectedItem.Rarity)"></div>
-				</div>
-
-				<span class="sat-detail-name">@selectedItem.Name</span>
-				<div class="sat-detail-meta">
-					<div class="sat-rarity-pill @GetRarityClass(selectedItem.Rarity)"><span>@selectedItem.Rarity</span></div>
-					@if (GetItemQuantity(selectedItem.Id) > 0)
-					{
-						<span class="sat-detail-qty">@QtyText(GetItemQuantity(selectedItem.Id))</span>
-					}
-					@if (selectedItem.EffectDuration > 0)
-					{
-						<span class="sat-detail-duration">@DurationText()</span>
-					}
-				</div>
-
-				<div class="sat-effect">
-					<span class="sat-effect-kicker">@L("ui.inventory.effect_label")</span>
-					<span class="sat-effect-text">@GetEffectDescription(selectedItem)</span>
-				</div>
-
-				<div class="sat-actions">
-					@if (selectedItem.Category == ItemCategory.Consumable)
-					{
-						<BbButton Tier="primary" Size=@(56) Label=@L("ui.inventory.action_use") KeyCap="SPACE"
-								  Disabled=@(!CanUseConsumable(selectedItem)) OnClick=@UseSelected />
-					}
-					else if (selectedItem.Category == ItemCategory.Relic)
-					{
-						@if (IsInBattleMode())
-						{
-							<span class="sat-action-hint">@L("ui.inventory.locked_in_battle")</span>
-						}
-						else if (IsRelicEquipped(selectedItem.Id))
-						{
-							<BbButton Tier="danger" Size=@(44) Label=@L("ui.inventory.action_unequip") OnClick=@UnequipSelected />
-						}
-						else
-						{
-							<BbButton Tier="primary" Size=@(56) Label=@EquipLabel() KeyCap="SPACE"
-									  Disabled=@(!CanEquipRelic()) OnClick=@EquipSelected />
-						}
-					}
-					else if (selectedItem.Category == ItemCategory.HeldItem)
-					{
-						<span class="sat-action-hint">@L("ui.inventory.held_hint")</span>
-					}
-					else if (selectedItem.Category == ItemCategory.Boost)
-					{
-						<BbButton Tier="primary" Size=@(56) Label=@L("ui.inventory.action_use") KeyCap="SPACE"
-								  Disabled=@(!CanUseBoost(selectedItem)) OnClick=@BoostSelected />
-					}
-
-					@if (selectedItem.SellPrice > 0 && CanSellItem(selectedItem))
-					{
-						<button class="sat-sell @(isHoldingSell ? "holding" : "")"
-								onmousedown=@StartHoldSell
-								onmouseup=@StopHold
-								onmouseleave=@StopHold>
-							<div class="sat-sell-fill" style="width: @(SellFillPct())%;"></div>
-							<span class="sat-sell-label">@GetSellLabel()</span>
-							<span class="sat-sell-hold">HOLD</span>
-						</button>
-					}
-				</div>
-			}
-			else
-			{
-				<EmptyState Icon="lucide:package-2"
-							Title=@L("ui.inventory.no_selection")
-							Size="inline" />
-			}
-		</div>
-
-		<!-- Relic loadout — its own slab, always present -->
-		<div class="sat-relics">
-			<span class="sat-section-label">@L("ui.inventory.equipped_relics")</span>
-			<div class="relics-slots-row">
-				@for (int i = 0; i < 3; i++)
+				else
 				{
-					var relicId = GetEquippedRelic(i);
-					var relic = relicId != null ? ItemManager.Instance?.GetItem(relicId) : null;
-					<div class="relic-slot @(relic != null ? "filled " + GetRarityClass(relic.Rarity) : "empty") @(selectedItem?.Id == relicId ? "selected" : "") @(justEquippedSlot == i ? "just-equipped" : "")"
-						 onclick=@(() => OnRelicSlotClick(relicId))>
-						@if (relic != null)
+					foreach (var group in groups)
+					{
+						if (group.Label != null)
 						{
-							<img class="relic-slot-icon" src="@relic.IconPath" onerror="this.style.display='none'" />
-							<span class="relic-slot-name">@relic.Name</span>
+							<div class="bag-kicker-row">
+								<div class="bag-kicker-chip">
+									<div class="bag-kicker-chip-inner"><span class="bag-kicker-text">@group.Label</span></div>
+								</div>
+								<div class="bag-kicker-line"></div>
+								@if (group.Key == "relic")
+								{
+									@* Relic loadout = ONE number on the kicker (the slab died). *@
+									<span class="bag-kicker-count">@EquippedCountText()</span>
+								}
+							</div>
 						}
-						else
+						foreach (var (itemId, quantity) in group.Items)
 						{
-							<span class="relic-slot-plus">+</span>
+							var item = ItemManager.Instance?.GetItem(itemId);
+							if (item == null) continue;
+							bool isCase = caseItem != null && caseItem.Id == itemId;
+							bool locked = battle && item.Category != ItemCategory.Consumable;
+							var art = ArtPx(item.IconPath, 100);
+							var cardClass = "sat-card" + (isCase ? " selected" : "") + (locked ? " locked" : "");
+
+							<div class="@cardClass"
+								 onclick=@(() => OnCardClick(item))
+								 onmouseover=@(() => OnCardHover(item))>
+								<div class="sat-card-art">
+									<img class="sat-card-icon" src="@item.IconPath" style="width: @(art.w)px; height: @(art.h)px;" />
+								</div>
+								<div class="sat-card-foot"><span class="sat-card-name">@item.Name</span></div>
+								@* Third line 26 — ×N in tan (the shop's price slot). Always mounted
+								   so the geometry never moves; the span only for stacks. *@
+								<div class="sat-card-qty">
+									@if (quantity > 1)
+									{
+										<span class="sat-card-qty-text">@QtyText(quantity)</span>
+									}
+								</div>
+								<div class="@("sat-strip r-" + GetRarityClass(item.Rarity))"></div>
+								@if (IsRelicEquipped(itemId))
+								{
+									<div class="sat-equipped"><span class="sat-equipped-text">E</span></div>
+								}
+								@if (IsNewItem(itemId))
+								{
+									<div class="@("sat-new " + NewTiltClass(itemId))"><span class="sat-new-text">NEW</span></div>
+								}
+							</div>
 						}
-					</div>
+					}
 				}
 			</div>
+
+			@* Overlay scrollbar — the roster .col-scrollbar recipe: read-only thumb
+			   written per tick (scrollbar-color/-width don't parse). *@
+			<div @ref="sbTrackRef" class="bag-scrollbar">
+				<div @ref="sbThumbRef" class="bag-sb-thumb"></div>
+			</div>
+		</div>
+
+		@* ---- THE CASE — 482 × 950 r22, pad 24 → 434 inner ---- *@
+		@* Never empty (NO NOTHING): the selection, else the first item in render
+		   order. MOTION: the case's fade shares the body's — not wired here. *@
+		<div class="bag-case">
+			@if (caseItem != null)
+			{
+				int qty = GetItemQuantity(caseItem.Id);
+				var art = ArtPx(caseItem.IconPath, 256);
+				var ghost = ArtPx(caseItem.IconPath, 160);
+				var primary = GetPrimaryContent(caseItem);
+				bool sellable = CanSellItem(caseItem);
+				int sq = Math.Clamp(sellQty, 1, Math.Max(1, qty));
+
+				<div class="bag-case-art">
+					<img class="bag-case-img" src="@caseItem.IconPath" style="width: @(art.w)px; height: @(art.h)px;" />
+					<div class="@("bag-case-strip r-" + GetRarityClass(caseItem.Rarity))"></div>
+				</div>
+				<span class="bag-case-name">@caseItem.Name</span>
+				@* ×N line 24 — always mounted so the effect line holds still. *@
+				<div class="bag-case-qty">
+					@if (qty > 1)
+					{
+						<span class="bag-case-qty-text">@QtyText(qty)</span>
+					}
+				</div>
+				@* The ONE effect line. LANE: systems (bug rider, data untouched) —
+				   ItemDefinition.GetEffectDescription drops positive HeldDEFBonus /
+				   HeldSpDBonus / HeldBurnChance secondaries (Training Weight prints
+				   "+8% ATK" and hides "+8% DEF"). Fix lives in Item.cs. *@
+				<span class="bag-case-effect">@GetEffectDescription(caseItem)</span>
+
+				@if (primary.show)
+				{
+					@* PRIMARY 434×56 r16 directly under the effect — the page's one gold.
+					   `off` = the SAME slab desaturated (ghost tier + Disabled; BIG THINGS
+					   BIG — a locked EQUIP stays big and dims). Tuple-computed so the
+					   BbButton only swaps attribute values (ghost-child law).
+					   LANE: input — the CASE zone: D off a row's last card / Space on a
+					   card should park the ring here (r26); S → the SELL group. *@
+					<BbButton Tier="@PrimaryTier(primary.off)" Size=@(56) Label="@primary.label" Icon="@primary.icon" KeyCap="SPACE"
+							  Disabled=@primary.off Class="@PrimaryClass(primary.off)" OnClick=@ActivateSelectedItem />
+				}
+
+				@* Slack — a real flex basis (no bg, invisible), so the SELL row sits at the foot. *@
+				<div class="bag-case-slack"></div>
+
+				@if (sellable)
+				{
+					@* SELL row 44 at the foot: stacks > 1 → stepper (− 44 · N 52 · + 44) + 12
+					   + hold SELL 282 = 434; singles → hold SELL 434. Absent when SellPrice
+					   0, the relic is equipped, or in battle. The hold button is the
+					   shipped .sat-sell recipe (BbButton has no hold-fill child) restyled
+					   to the danger pair at r11. LANE: input — A/D on the stepper +
+					   hold-repeat (the shop's ArmMouseHold recipe); Space on SELL = hold.
+					   LANE: motion — the fill's 0.05s width step + the holding pulse. *@
+					<div class="bag-sell-row">
+						@if (qty > 1)
+						{
+							<div class="@QtyBtnClass(sq <= 1)" onclick=@(() => ChangeSellQty(-1)) onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
+								<iconify class="bag-qty-glyph" icon="lucide:minus" Size=@(18) Color="#f4f1ea" />
+							</div>
+							<div class="bag-qty-value"><span class="bag-qty-num">@sq</span></div>
+							<div class="@QtyBtnClass(sq >= qty)" onclick=@(() => ChangeSellQty(1)) onmouseover=@OnQtyHover onmouseout=@OnQtyOut>
+								<iconify class="bag-qty-glyph" icon="lucide:plus" Size=@(18) Color="#f4f1ea" />
+							</div>
+						}
+						<div class="@SellBtnClass(qty > 1)"
+							 onmousedown=@StartHoldSell
+							 onmouseup=@StopHold
+							 onmouseout=@StopHold
+							 onmouseover=@OnSellHover>
+							<div class="bag-sell-fill" style="width: @(SellFillPx(qty > 1))px;"></div>
+							<span class="bag-sell-label">@GetSellLabel(sq)</span>
+							<span class="bag-sell-hold">HOLD</span>
+						</div>
+					</div>
+				}
+
+				@* Ghost watermark — the item at .05 in the slack (texture, not content).
+				   Explicit-box absolute holder centred in the 358px slack; z 0. *@
+				<div class="bag-case-ghost-box">
+					<img class="bag-case-ghost" src="@caseItem.IconPath" style="width: @(ghost.w)px; height: @(ghost.h)px;" />
+				</div>
+			}
 		</div>
 	</div>
 
-	<!-- THE LIVING VIOLET RING — the one waving selection cursor, wrapping
-	     the selected item card. Root-level absolute so the per-frame wave
-	     never dirties the grid; position bound from UpdateGridRing each
-	     tick, wave via imperative Style.Transform (roster recipe). -->
-	<div @ref="gridRingRef" class="sat-ring @(ringVisible ? "on" : "") @(ringWarm < 2 ? "snap" : "")"
+	@* THE LIVING VIOLET RING — the one cursor. Wraps the case item's card
+	   (root-level absolute, never clipped by the scroll); position bound from
+	   UpdateRing each tick, wave via imperative Style.Transform. z 60.
+	   LANE: input — the case-zone hosts (stepper pill r21 / SELL / PRIMARY r26). *@
+	<div @ref="ringRef" class="@RingClass()"
 		 style="left: @(ringL)px; top: @(ringT)px; width: @(ringW)px; height: @(ringH)px;"></div>
 
-	<!-- Monster Picker for consumables that need a target -->
-	@if (showMonsterPicker && pendingConsumable != null)
+	@* ====================== BEAST PICKER (sub-modal) ====================== *@
+	@* Two doors, one picker: USE <item> ON... (XP orbs, runes, rerolls, gene
+	   boosts) and EQUIP <item> TO... (held items → ItemManager.EquipHeldItem).
+	   Rows are DIRECT scroll children (DOC-1 #12); a datum column on the right
+	   shows the ONE number the item is about to change. Title plain, no
+	   subtitle, no seam chip. MOTION: the overlay/panel enter — not wired.
+	   LANE: input — W/S rows · Space pick · Q close; the ring on the focused
+	   row (r21). *@
+	@if (showPicker && pendingItem != null)
 	{
-		<div class="monster-picker-overlay" onclick=@CloseMonsterPicker>
-			<div class="monster-picker-panel" onclick:stopPropagation>
-				<div class="picker-header">
-					<div class="picker-seam"><span class="picker-title">@L("ui.inventory.picker_title")</span></div>
-					<span class="picker-subtitle">@string.Format(L("ui.inventory.picker_subtitle"), pendingConsumable.Name)</span>
-					<button class="picker-close" onclick=@CloseMonsterPicker>
-						<iconify icon="lucide:x" Size=@(16) Color="rgba(244, 241, 234, 0.85)" />
-					</button>
+		<div class="bag-picker-overlay" onclick=@ClosePicker>
+			<div class="bag-picker" onclick:stopPropagation>
+				<div class="bag-picker-head">
+					<span class="bag-picker-title">@PickerTitle()</span>
+					<div class="bag-picker-spacer"></div>
+					<div class="bag-back" onclick=@ClosePicker onmouseover=@OnBackHover onmouseout=@OnBackOut>
+						<span class="bag-back-label">BACK</span>
+						<span class="bag-back-cap">Q</span>
+					</div>
 				</div>
-				<div class="picker-scroll">
+				<div class="bag-picker-scroll">
 					@{ var pickerMonsters = GetOwnedMonsters(); }
-					@for (int rowStart = 0; rowStart < pickerMonsters.Count; rowStart += 2)
+					@foreach (var monster in pickerMonsters)
 					{
-						<div class="picker-row">
-							@for (int col = 0; col < 2 && rowStart + col < pickerMonsters.Count; col++)
-							{
-								var monster = pickerMonsters[rowStart + col];
-								var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
-								<div class="picker-monster" onclick=@(() => UseConsumableOnMonster(monster))>
-									<div class="picker-monster-sprite">
-										@if (species != null && !string.IsNullOrEmpty(species.IconPath))
-										{
-											<img src="@GetMonsterSprite(monster)" onerror="this.style.display='none'" />
-										}
-										else
-										{
-											<span class="sprite-placeholder">?</span>
-										}
-									</div>
-									<div class="picker-monster-info">
-										<span class="picker-monster-name">@monster.Nickname</span>
-										<span class="picker-monster-level">@string.Format(L("ui.inventory.level_fmt"), monster.Level)</span>
-									</div>
-								</div>
-							}
+						var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
+						var datum = GetPickerDatum(monster);
+						<div class="bag-picker-row" onclick=@(() => OnPickerRowClick(monster)) onmouseover=@OnPickerRowHover onmouseout=@OnPickerRowOut>
+							<div class="bag-picker-sprite">
+								@if (species != null && !string.IsNullOrEmpty(species.IconPath))
+								{
+									<img class="bag-picker-sprite-img" src="@GetMonsterSprite(monster)" />
+								}
+							</div>
+							<div class="bag-picker-info">
+								<span class="bag-picker-name">@monster.Nickname</span>
+								<span class="bag-picker-sub">@PickerSubText(monster, species)</span>
+							</div>
+							<div class="bag-picker-datum">
+								@if (datum.label != null)
+								{
+									<span class="bag-picker-datum-label">@datum.label</span>
+									<span class="@("bag-picker-datum-value" + (datum.dim ? " dim" : ""))">@datum.value</span>
+								}
+							</div>
 						</div>
 					}
 				</div>
@@ -291,925 +399,656 @@
 		</div>
 	}
 
-	<!-- Unified toast -->
+	@* Toast — FAILURES + used-on (the success sell beat is the balance tick).
+	   MOTION: the shipped toastRise/toastFall recipe is kept in the SCSS. *@
 	@if (!string.IsNullOrEmpty(toastMessage))
 	{
-		<div class="inventory-toast @(toastSuccess ? "success" : "error") @(toastExiting ? "exiting" : "")">
-			<span>@toastMessage</span>
+		<div class="@("bag-toast " + (toastSuccess ? "success" : "error") + (toastExiting ? " exiting" : ""))">
+			<span class="bag-toast-text">@toastMessage</span>
 		</div>
 	}
 </root>
 
 @code {
+	// Localization — routed only where keys already exist. LANE: audit (loc) —
+	// "TAMER" · "BACK" · "CYCLE" · "EQUIP TO..." · "SELL" · "HOLD" · "VALUE" ·
+	// "N / 3 EQUIPPED" · the empty-state lines · the picker titles have no
+	// keys. Dead ui.inventory.* keys are listed in the lane report (not deleted).
 	private string L( string key ) => LocalizationManager.Get( key );
-	private string L( string key, params object[] args ) => LocalizationManager.Get( key, args );
 
 	public static bool IsVisible { get; set; } = false;
-	private string currentCategory = "all";
-	private ItemDefinition selectedItem;
-	private string currentRarityFilter = "all";
-	private string currentSort = "default";
-	private string searchQuery = "";
-	private TextEntry searchInput;
 
-	// Hold-to-sell state
+	// ── Filter state (the FilterBar rebinds from these) ──────────
+	private string currentCategory = "all";   // all · consumable · boost · held · relic · material
+	private string currentSort = "recent";    // recent · name · quantity · value · rarity
+	private bool sortAscending = false;       // false = the natural order (newest / most / A→Z first)
+	private string searchQuery = "";
+
+	// Selection — null = the case shows the first item in render order.
+	private ItemDefinition selectedItem;
+	private int sellQty = 1;                  // reset to 1 on every selection change
+
+	// Hold-to-sell
 	private bool isHoldingSell = false;
 	private float holdProgress = 0f;
 	private const float HoldDuration = 0.5f;
 
-	// Unified toast
+	// Toast
 	private string toastMessage = "";
 	private bool toastSuccess = false;
+	private bool toastExiting = false;
 	private float toastTimer = 0f;
 	private const float ToastDuration = 3f;
 
-	// Monster picker for consumables
-	private bool showMonsterPicker = false;
-	private ItemDefinition pendingConsumable = null;
+	// Beast picker — two doors, one overlay.
+	private enum PickerMode { Consumable, Held }
+	private bool showPicker = false;
+	private PickerMode pickerMode = PickerMode.Consumable;
+	private ItemDefinition pendingItem = null;
 
-	// Hover debounce — only play hover sound when moving to a DIFFERENT card
-	private string lastHoveredItemId = null;
+	// Hover guards (blip once per element)
+	private string hoveredCardId = null;
+	private bool hoveredBack, hoveredQty, hoveredSell, hoveredPickerRow;
 
-	// Equip flash — set slot index on equip, cleared after 0.6s
-	private int justEquippedSlot = -1;
-	private float justEquippedTimer = 0f;
-
-	// Toast exit animation
-	private bool toastExiting = false;
+	// Balance pulse hook (MOTION) — keyed per sell.
+	private float goldFlashUntil = 0f;
+	private int lastGoldValue = -1;
+	private int sellBeatVersion = 0;
+	private bool IsGoldFlash => RealTime.Now < goldFlashUntil;
 
 	private static string _pendingBattleCategory = null;
 
-	// ── NEW-item tracking (session-local) ────────────────────────────────
-	// Seeded with the full inventory on first open so nothing screams NEW
-	// on a fresh session; items acquired AFTER that get a tilted NEW stamp
-	// until the player selects (inspects) them.
-	private static HashSet<string> _seenItemIds = new();
-	private static bool _seenSeeded = false;
+	// Refs
+	private FilterBar filterBar;
+	private Panel gridRef;
+	private Panel sbTrackRef, sbThumbRef;
+	private Panel ringRef;
 
-	private static void SeedSeenIfNeeded()
+	// ============================================================
+	// LANE: input — THE ONE-DEVICE FLAG (the shop's recipe, ported because
+	// FilterBar.KbMode and every .mouse-mode gate in the SCSS read it).
+	// Root .kbd-mode / .mouse-mode; any nav / confirm / back key takes the
+	// keyboard and stamps the mouse position; the mouse reclaims only after
+	// REAL travel (≥3px). Hover handlers ignore events in kb mode.
+	// ============================================================
+	private enum InputDevice { Mouse, Keyboard }
+	private InputDevice lastInputDevice = InputDevice.Mouse;
+	private bool IsKbMode => lastInputDevice == InputDevice.Keyboard;
+	private Vector2 _kbTakeoverMousePos = new Vector2( -9999f, -9999f );
+	private string RootClass => "inventory-panel " + (IsVisible ? "visible " : "") + (IsKbMode ? "kbd-mode" : "mouse-mode");
+
+	private void SetInputDevice( InputDevice dev )
 	{
-		if (_seenSeeded) return;
-		var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
-		if (inv == null) return;
-		foreach (var k in inv.Keys) _seenItemIds.Add(k);
-		_seenSeeded = true;
+		if ( lastInputDevice == dev ) return;
+		lastInputDevice = dev;
+		if ( dev == InputDevice.Keyboard )
+		{
+			_kbTakeoverMousePos = Mouse.Position;
+			hoveredCardId = null;
+			hoveredBack = hoveredQty = hoveredSell = hoveredPickerRow = false;
+		}
 	}
 
-	private bool IsNewItem(string itemId) => _seenSeeded && !_seenItemIds.Contains(itemId);
-	private void MarkSeen(string itemId) { if (_seenSeeded && !string.IsNullOrEmpty(itemId)) _seenItemIds.Add(itemId); }
-	// Stable per-item tilt so the stamps read hand-placed, not uniform.
-	private string NewTiltClass(string itemId) => (itemId?.GetHashCode() & 1) == 0 ? "tilt-neg" : "tilt-pos";
+	private void OnRootMouseMove()
+	{
+		if ( IsKbMode && (Mouse.Position - _kbTakeoverMousePos).Length >= 3f )
+			SetInputDevice( InputDevice.Mouse );
+	}
 
+	// ── Open / close ─────────────────────────────────────────────
 	public static void Show()
 	{
 		IsVisible = true;
-		SeedSeenIfNeeded();
-		if (IsInBattleMode()) _pendingBattleCategory = "consumable";
+		if ( IsInBattleMode() ) _pendingBattleCategory = "consumable";
 		SoundManager.PlayPopup();
 	}
 	public static void Close() { IsVisible = false; SoundManager.PlayPopdown(); }
 	public static void Toggle()
 	{
-		IsVisible = !IsVisible;
-		if (IsVisible)
-		{
-			SeedSeenIfNeeded();
-			if (IsInBattleMode()) _pendingBattleCategory = "consumable";
-			SoundManager.PlayPopup();
-		}
-		else
-		{
-			SoundManager.PlayPopdown();
-		}
+		if ( IsVisible ) Close(); else Show();
 	}
 
-	private void SetCategory(string category)
+	private void OnBackClicked() { SetInputDevice( InputDevice.Mouse ); SoundManager.PlayClick(); Close(); }
+	private void OnBackHover() { if ( IsKbMode || hoveredBack ) return; hoveredBack = true; SoundManager.PlayHover(); }
+	private void OnBackOut() => hoveredBack = false;
+
+	// ── FilterBar menus — built once; labels via the existing keys ──
+	private List<FilterBar.MenuItem> _categoryMenu;
+	private List<FilterBar.MenuItem> CategoryMenu => _categoryMenu ??= new()
 	{
-		currentCategory = category;
-		selectedItem = null;
+		new FilterBar.MenuItem { Key = "all",        Label = L( "ui.inventory.all_items" ),   Icon = "ui/icons/sort/collection.svg" },
+		new FilterBar.MenuItem { Key = "consumable", Label = L( "ui.inventory.consumables" ), Icon = "ui/icons/sort/burst.svg" },
+		new FilterBar.MenuItem { Key = "boost",      Label = L( "ui.inventory.boosts" ),      Icon = "ui/icons/sort/arrow-up.svg" },
+		new FilterBar.MenuItem { Key = "held",       Label = L( "ui.inventory.held_items" ),  Icon = "ui/icons/sort/shield-check.svg" },
+		new FilterBar.MenuItem { Key = "relic",      Label = L( "ui.inventory.relics" ),      Icon = "ui/icons/sort/star.svg" },
+		new FilterBar.MenuItem { Key = "material",   Label = L( "ui.inventory.drops" ),       Icon = "ui/icons/sort/box.svg" },
+	};
+
+	private List<FilterBar.MenuItem> _sortMenu;
+	private List<FilterBar.MenuItem> SortMenu => _sortMenu ??= new()
+	{
+		new FilterBar.MenuItem { Key = "recent",   Label = L( "ui.filter.sort_recent" ),     Icon = "ui/icons/sort/clock.svg" },
+		new FilterBar.MenuItem { Key = "name",     Label = L( "ui.inventory.sort_name" ),    Icon = "ui/icons/sort/search.svg" },
+		new FilterBar.MenuItem { Key = "quantity", Label = L( "ui.inventory.sort_qty" ),     Icon = "ui/icons/sort/chart.svg" },
+		new FilterBar.MenuItem { Key = "value",    Label = "Value",                          Icon = "ui/icons/sort/money-white.svg" },
+		new FilterBar.MenuItem { Key = "rarity",   Label = L( "ui.inventory.sort_rarity" ),  Icon = "ui/icons/sort/star.svg" },
+	};
+
+	// R cycles category in DOM order (ALL is a stop); Z/X cycle the sort silently.
+	private static readonly string[] CategoryCycle = { "all", "consumable", "boost", "held", "relic", "material" };
+	private static readonly string[] SortCycle = { "recent", "name", "quantity", "value", "rarity" };
+
+	private void OnCategoryChanged( string key ) { SetCategory( key ); }
+	private void OnSortChanged( string key ) { currentSort = key; RequestScrollFollow(); }
+	private void OnSortDirectionChanged( bool asc ) { sortAscending = asc; RequestScrollFollow(); }
+	private void OnSearchChanged( string text ) { searchQuery = text ?? ""; RequestScrollFollow(); }
+
+	private void SetCategory( string key )
+	{
+		if ( currentCategory == key ) return;
+		currentCategory = key;
+		sellQty = 1;
+		RequestScrollFollow();
+	}
+
+	private void CycleCategory( int dir )
+	{
+		int idx = Array.IndexOf( CategoryCycle, currentCategory );
+		idx = idx < 0 ? 0 : (idx + dir + CategoryCycle.Length) % CategoryCycle.Length;
+		SetCategory( CategoryCycle[idx] );
+		filterBar?.CloseAllDropdowns();
 		SoundManager.PlayTabSwitch();
 	}
 
-	private void SetRarityFilter(string rarity)
+	private void CycleSort( int dir )
 	{
-		currentRarityFilter = rarity;
-		selectedItem = null;
-		SoundManager.PlayTabSwitch();
-	}
-
-	private void SetSort(string sort)
-	{
-		currentSort = currentSort == sort ? "default" : sort;
+		int idx = Array.IndexOf( SortCycle, currentSort );
+		idx = idx < 0 ? 0 : (idx + dir + SortCycle.Length) % SortCycle.Length;
+		currentSort = SortCycle[idx];
+		filterBar?.CloseAllDropdowns();
+		RequestScrollFollow();
 		SoundManager.PlayClick();
 	}
 
-	private void SelectItem(ItemDefinition item)
+	// ── Selection — hover IS selection in mouse mode (the shop's grammar) ──
+	private void SelectItem( ItemDefinition item, bool silent )
 	{
-		selectedItem = item;
-		MarkSeen(item?.Id);
-		SoundManager.PlaySelect();
-	}
-
-	// ────────────────────── DISPLAY HELPERS ──────────────────────
-	// No $"..." interpolation in markup (razor generator law) — every
-	// dynamic string is computed here and bound with @Helper().
-
-	private string GoldText() => (TamerManager.Instance?.CurrentTamer?.Gold ?? 0).ToString("N0");
-	private string QtyText(int qty) => "x" + qty;
-	private string DurationText() => selectedItem == null ? "" : selectedItem.EffectDuration + " waves";
-	private string GetSellLabel() => selectedItem == null ? "" : (isHoldingSell ? "..." : "SELL · " + selectedItem.SellPrice.ToString("N0") + "G");
-	private int SellFillPct() => isHoldingSell ? (int)(holdProgress * 100) : 0;
-	private string EquipLabel() => CanEquipRelic() ? L("ui.inventory.action_equip") : L("ui.inventory.action_full");
-
-	private string GetCategoryTabLabel(string cat) => cat switch
-	{
-		"all" => L("ui.inventory.all_items"),
-		"consumable" => L("ui.inventory.consumables"),
-		"relic" => L("ui.inventory.relics"),
-		"held" => L("ui.inventory.held_items"),
-		"boost" => L("ui.inventory.boosts"),
-		"material" => L("ui.inventory.drops"),
-		"quest" => L("ui.inventory.quest"),
-		_ => cat
-	};
-
-	private int GetCategoryTabCount(string cat) => cat == "all" ? GetTotalItemCount() : GetCategoryItemCount(cat);
-
-	private static readonly string[] RarityKeys = { "all", "common", "uncommon", "rare", "epic", "legendary" };
-	private string GetRarityChipLabel(string r) => L("ui.inventory.rarity_" + r);
-
-	// ────────────────────── KEYBOARD NAVIGATION ──────────────────────
-	// Scheme (handled entirely in HandleInventoryKeyboardInput, polled
-	// from Tick while this panel is the top modal):
-	//   1-7      → switch category tab (Slot1..Slot7 input actions)
-	//   W/A/S/D  → move the grid cursor (Forward/Backward/Left/Right actions)
-	//   Space    → use/activate the selected item (Jump action == space)
-	//   Q        → close the panel (Menu action == Q)
-	// Selection reuses the existing `selectedItem` field + the living ring —
-	// no parallel cursor state. Navigation order follows RENDER order
-	// (grouped in ALL mode) so the cursor walks the grid as displayed.
-	//
-	// Grid column count: 150px cards + 14px gap in the ~1184px grid content
-	// box (1920 page − 248 spine − 24 gap − 400 right lane − 40 right pad −
-	// 24px grid padding) → 7 per row. MUST stay in sync with the .sat-card
-	// layout in the .scss.
-	private const int InvGridColumns = 7;
-
-	// Category order for the 1-7 number keys — must match the .sat-tab loop.
-	private static readonly string[] CategoryKeyOrder =
-		{ "all", "consumable", "relic", "held", "boost", "material", "quest" };
-
-	private void HandleInventoryKeyboardInput()
-	{
-		// Don't steal keys while the player is typing in the search box or chat.
-		if (ChatPanel.IsChatFocused) return;
-		if (searchInput != null && searchInput.HasFocus) return;
-
-		// ── Q → close (Menu action is bound to Q). ──
-		if (Input.Pressed("Menu"))
-		{
-			Close();
-			return;
-		}
-
-		// ── 1-7 → category tab switch (Slot1..Slot7). ──
-		for (int i = 0; i < CategoryKeyOrder.Length; i++)
-		{
-			if (Input.Pressed($"Slot{i + 1}"))
-			{
-				if (currentCategory != CategoryKeyOrder[i])
-					SetCategory(CategoryKeyOrder[i]);
-				return;
-			}
-		}
-
-		// ── Space / Enter → use/activate the selected item. ──
-		if (Input.Pressed("Jump") || Input.Pressed("Enter"))
-		{
-			var spaceItems = GetNavItems();
-			if (selectedItem == null && spaceItems.Count > 0)
-				SelectFilteredItem(spaceItems, 0);
-			else
-				ActivateSelectedItem();
-			return;
-		}
-
-		// ── W/A/S/D → grid cursor. No-op on an empty category. ──
-		var items = GetNavItems();
-		if (items.Count == 0) return;
-
-		int idx = selectedItem == null
-			? -1
-			: items.FindIndex(t => t.ItemId == selectedItem.Id);
-
-		bool up    = Input.Pressed("Forward");
-		bool down  = Input.Pressed("Backward");
-		bool left  = Input.Pressed("Left");
-		bool right = Input.Pressed("Right");
-
-		if (left)
-		{
-			idx = idx <= 0 ? 0 : idx - 1;
-			SelectFilteredItem(items, idx);
-		}
-		else if (right)
-		{
-			idx = idx < 0 ? 0 : Math.Min(items.Count - 1, idx + 1);
-			SelectFilteredItem(items, idx);
-		}
-		else if (up)
-		{
-			idx = idx < 0 ? 0 : Math.Max(0, idx - InvGridColumns);
-			SelectFilteredItem(items, idx);
-		}
-		else if (down)
-		{
-			idx = idx < 0 ? 0 : Math.Min(items.Count - 1, idx + InvGridColumns);
-			SelectFilteredItem(items, idx);
-		}
-	}
-
-	private void SelectFilteredItem(List<(string ItemId, int Quantity)> items, int idx)
-	{
-		idx = Math.Clamp(idx, 0, items.Count - 1);
-		var def = ItemManager.Instance?.GetItem(items[idx].ItemId);
-		if (def != null)
-		{
-			SelectItem(def);
-			_scrollFollowPending = true;
-		}
-	}
-
-	/// <summary>
-	/// Fire the highlighted item's category-appropriate primary action —
-	/// mirrors whatever button the detail panel currently shows for it.
-	/// </summary>
-	private void ActivateSelectedItem()
-	{
-		if (selectedItem == null) { SoundManager.PlayDeny(); return; }
-		switch (selectedItem.Category)
-		{
-			case ItemCategory.Consumable:
-				OnUsePressed(selectedItem);
-				break;
-			case ItemCategory.Relic:
-				if (IsInBattleMode()) SoundManager.PlayDeny();
-				else if (IsRelicEquipped(selectedItem.Id)) UnequipRelic(selectedItem);
-				else OnEquipPressed(selectedItem);
-				break;
-			case ItemCategory.Boost:
-				OnBoostPressed(selectedItem);
-				break;
-			default:
-				// Held / Material / Quest items have no primary action.
-				SoundManager.PlayDeny();
-				break;
-		}
-	}
-
-	private void OnCardHover(string itemId)
-	{
-		if (itemId == lastHoveredItemId) return;
-		lastHoveredItemId = itemId;
-		SoundManager.PlayHover();
-	}
-
-	private void OnRelicSlotClick(string relicId)
-	{
-		if (string.IsNullOrEmpty(relicId)) return;
-		var item = ItemManager.Instance?.GetItem(relicId);
-		if (item != null)
+		if ( item == null ) return;
+		if ( selectedItem?.Id != item.Id )
 		{
 			selectedItem = item;
-			SoundManager.PlaySelect();
+			sellQty = 1;
+			StopHold();
 		}
+		// NEW = one source: an inspected item is a seen item.
+		ItemManager.Instance?.MarkItemSeen( item.Id );
+		if ( !silent ) SoundManager.PlaySelect();
 	}
 
-	private void OnUsePressed(ItemDefinition item)
+	private void OnCardHover( ItemDefinition item )
 	{
-		if (!CanUseConsumable(item))
-		{
-			SoundManager.PlayDeny();
-			return;
-		}
-		UseConsumable(item);
+		if ( IsKbMode || item == null ) return;
+		if ( hoveredCardId == item.Id ) return;
+		hoveredCardId = item.Id;
+		SoundManager.PlayHover();
+		SelectItem( item, silent: true );
 	}
 
-	private void OnEquipPressed(ItemDefinition item)
+	private void OnCardClick( ItemDefinition item )
 	{
-		if (!CanEquipRelic())
-		{
-			SoundManager.PlayDeny();
-			return;
-		}
-		EquipRelic(item);
+		SetInputDevice( InputDevice.Mouse );
+		SelectItem( item, silent: true );
+		SoundManager.PlayClick();
 	}
 
-	private void OnBoostPressed(ItemDefinition item)
+	// ── Display helpers (no $"..." in markup — razor generator law) ──
+	private int GetGold() => TamerManager.Instance?.CurrentTamer?.Gold ?? 0;
+	private string GoldText() => GetGold().ToString( "N0" );
+	private string QtyText( int qty ) => "×" + qty;
+	private string BalanceClass() => "bag-balance" + (IsGoldFlash ? " flash flash-" + sellBeatVersion : "");
+	private string GridClass( bool empty ) => "bag-grid" + (empty ? " empty" : "");
+	private string RingClass() => "sat-ring" + (ringVisible ? " on" : "") + (ringWarm < 2 ? " snap" : "");
+	private string QtyBtnClass( bool off ) => "bag-qty-btn" + (off ? " off" : "");
+	private string SellBtnClass( bool stack ) => "bag-sell" + (stack ? "" : " wide") + (isHoldingSell ? " holding" : "");
+	private string PrimaryTier( bool off ) => off ? "ghost" : "primary";
+	private string PrimaryClass( bool off ) => "case-primary" + (off ? " off" : "");
+	private string EquippedCountText() => (TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Count ?? 0) + " / " + ItemManager.MaxRelics + " EQUIPPED";
+	private string GetRarityClass( ItemRarity rarity ) => rarity.ToString().ToLower();
+	private string NewTiltClass( string itemId ) => (itemId?.GetHashCode() & 1) == 0 ? "tilt-neg" : "tilt-pos";
+	private bool IsNewItem( string itemId ) => ItemManager.Instance?.IsNewItem( itemId ) == true;
+
+	// Sell label: "SELL 12 · 300G" for a stack, "SELL · 25G" for a single.
+	private string GetSellLabel( int n )
 	{
-		if (!CanUseBoost(item))
-		{
-			SoundManager.PlayDeny();
-			return;
-		}
-		UseBoost(item);
+		var item = GetCaseItem();
+		if ( item == null ) return "";
+		int total = item.SellPrice * Math.Max( 1, n );
+		return (n > 1 ? "SELL " + n + " · " : "SELL · ") + total.ToString( "N0" ) + "G";
 	}
 
-	// No-arg wrappers so BbButton OnClick gets clean delegates.
-	private void UseSelected() => OnUsePressed(selectedItem);
-	private void EquipSelected() => OnEquipPressed(selectedItem);
-	private void UnequipSelected() => UnequipRelic(selectedItem);
-	private void BoostSelected() => OnBoostPressed(selectedItem);
+	// Hold fill in PIXELS (a % width on an absolute paints full — CLAUDE.md).
+	private int SellFillPx( bool stack ) => isHoldingSell ? (int)((stack ? 282 : 434) * Math.Clamp( holdProgress, 0f, 1f )) : 0;
 
-	// ────────────────────── THE LIVING RING ──────────────────────
-	// Roster recipe adapted: root-level absolute bordered div, position
-	// recomputed every Tick from live Box.Rects (the grid scrolls +
-	// reflows on filter changes), ink-lean wave via imperative
-	// Style.Transform (flat panel — per-frame writes are cheap outside a
-	// perspective lean). Self-hides when the card scrolls out of the grid
-	// viewport (s&box never clips a root-level ring to the scroll clip).
-	private Panel satGridRef;
-	private Panel gridRingRef;
-	private int ringL, ringT, ringW = 150, ringH = 164;
-	private bool ringVisible;
-	private int ringWarm; // <2 = snap to position (no glide) while first rects land
-	private const int RingInset = 10;
-	private bool _scrollFollowPending = false;
+	// ── Art at INTEGER scale (DOC-6 #13) — the shop's recipe verbatim ──
+	// Sources are 64×64 / 51×51 PNGs (the material placeholder is an svg →
+	// fallback 64). Card max 100 → 1×; case slab max 256 → 4× 256 / 5× 255;
+	// ghost max 160 → 2× 128 / 3× 153.
+	private static readonly Dictionary<string, (int w, int h)> _artDims = new();
 
-	private void UpdateGridRing()
+	private static (int w, int h) ArtDims( string path )
 	{
-		bool wasVisible = ringVisible;
-		ringVisible = false;
-
-		if (!IsVisible || showMonsterPicker || selectedItem == null || satGridRef == null) return;
-
-		int wantIdx = GetRenderIndexOf(selectedItem.Id);
-		if (wantIdx < 0) return;
-
-		Panel target = null;
-		int n = 0;
-		foreach (var c in satGridRef.Children)
+		if ( string.IsNullOrEmpty( path ) ) return (64, 64);
+		string key = path.TrimStart( '/' );
+		if ( !_artDims.TryGetValue( key, out var d ) )
 		{
-			if (!c.HasClass("sat-card")) continue;
-			if (n == wantIdx) { target = c; break; }
-			n++;
-		}
-		if (target == null) return;
-
-		var rr = Box.Rect;
-		var gr = satGridRef.Box.Rect;
-		var cr = target.Box.Rect;
-		if (rr.Width < 1f || cr.Width < 1f) return;
-
-		// Keyboard scroll-follow — keep the cursor card inside the viewport.
-		if (_scrollFollowPending && gr.Height > 0f && cr.Height > 0f)
-		{
-			float curOff = satGridRef.ScrollOffset.y;
-			float top = cr.Top - gr.Top + curOff;
-			float bot = top + cr.Height;
-			const float margin = 24f;
-			float newOff = curOff;
-			if (top - margin < curOff) newOff = top - margin;
-			else if (bot + margin > curOff + gr.Height) newOff = bot + margin - gr.Height;
-			newOff = Math.Max(0f, newOff);
-			if (Math.Abs(newOff - curOff) > 0.5f)
-				satGridRef.ScrollOffset = new Vector2(satGridRef.ScrollOffset.x, newOff);
-			_scrollFollowPending = false;
-		}
-
-		// Scroll-clip discipline: hide once the card has scrolled far enough
-		// out that the ring would draw over the tools row / page bottom.
-		if (cr.Top < gr.Top - 14f || cr.Bottom > gr.Bottom + 14f) return;
-
-		float sc = ScaleFromScreen;
-		if (sc <= 0.01f || float.IsNaN(sc) || float.IsInfinity(sc)) sc = 1f;
-
-		// Content-box math: declared width = target + 2×inset − 2×4px border.
-		ringL = (int)((cr.Left - rr.Left) * sc) - RingInset;
-		ringT = (int)((cr.Top - rr.Top) * sc) - RingInset;
-		ringW = (int)(cr.Width * sc) + RingInset * 2 - 8;
-		ringH = (int)(cr.Height * sc) + RingInset * 2 - 8;
-
-		ringVisible = true;
-		if (!wasVisible) ringWarm = 0;
-		else if (ringWarm < 2) ringWarm++;
-	}
-
-	// The liquid ink-lean — menu cursor multi-sine at the PawPad's ×0.6
-	// amplitude + out-of-phase breathing. Imperative transform: repaints
-	// the ring alone, never re-renders.
-	private void ApplyGridRingWave()
-	{
-		if (gridRingRef == null || !ringVisible) return;
-		float wt = Time.Now;
-		float skX = (2.0f * MathF.Sin(wt * 2.2f) + 0.7f * MathF.Sin(wt * 3.5f + 1.1f)) * 0.6f;
-		float skY = (2.3f * MathF.Sin(wt * 1.8f + 1.9f) + 0.9f * MathF.Sin(wt * 2.9f)) * 0.6f;
-		float rotZ = (1.1f * MathF.Sin(wt * 1.0f) + 0.5f * MathF.Sin(wt * 2.4f + 0.5f)) * 0.6f;
-		float brX = 1f + 0.013f * MathF.Sin(wt * 1.35f + 0.7f) + 0.006f * MathF.Sin(wt * 2.7f);
-		float brY = 1f + 0.013f * MathF.Sin(wt * 1.15f + 2.6f) + 0.006f * MathF.Sin(wt * 2.3f + 1.4f);
-
-		var t = new PanelTransform();
-		t.AddRotation(0f, 0f, rotZ);
-		t.AddSkew(skX, skY, 0f);
-		t.AddScale(new Vector2(brX, brY));
-		gridRingRef.Style.Transform = t;
-	}
-
-	public override void Tick()
-	{
-		base.Tick();
-
-		// Keyboard navigation — only while this panel is the top open modal.
-		// (Escape is NOT bound — s&box reserves it; Q closes instead.) The
-		// monster picker is a sub-modal; leave it mouse-only so a stray
-		// keypress can't target the wrong beast.
-		if (IsVisible && !showMonsterPicker && UIModalState.IsTopModal("InventoryPanel"))
-		{
-			HandleInventoryKeyboardInput();
-		}
-
-		// Apply pending battle category override (set in Show/Toggle, consumed
-		// here because SetCategory plays a sound we don't want on open)
-		if (_pendingBattleCategory != null)
-		{
-			currentCategory = _pendingBattleCategory;
-			selectedItem = null;
-			_pendingBattleCategory = null;
-		}
-
-		// The living ring — recompute position + apply the wave.
-		UpdateGridRing();
-		ApplyGridRingWave();
-
-		// Search query polling
-		if (searchInput != null && searchInput.Text != searchQuery)
-		{
-			searchQuery = searchInput.Text;
-		}
-
-		// Hold-to-sell progress
-		if (isHoldingSell && selectedItem != null)
-		{
-			holdProgress += Time.Delta / HoldDuration;
-			if (holdProgress >= 1f)
+			d = (64, 64);
+			try
 			{
-				holdProgress = 1f;
-				SellSelectedItem();
-				isHoldingSell = false;
-				holdProgress = 0f;
+				var tex = Texture.Load( FileSystem.Mounted, key );
+				if ( tex != null && tex.Width > 0 && tex.Height > 0 ) d = (tex.Width, tex.Height);
 			}
+			catch { }
+			_artDims[key] = d;
 		}
-
-		// Toast countdown — start exit animation 0.3s before clear
-		if (toastTimer > 0f)
-		{
-			toastTimer -= Time.Delta;
-			if (toastTimer <= 0.3f && !toastExiting)
-			{
-				toastExiting = true;
-			}
-			if (toastTimer <= 0f)
-			{
-				toastTimer = 0f;
-				toastMessage = "";
-				toastSuccess = false;
-				toastExiting = false;
-			}
-		}
-
-		// Equip flash timer
-		if (justEquippedTimer > 0f)
-		{
-			justEquippedTimer -= Time.Delta;
-			if (justEquippedTimer <= 0f)
-			{
-				justEquippedSlot = -1;
-				justEquippedTimer = 0f;
-			}
-		}
+		return d;
 	}
 
-	private int GetTotalItemCount()
+	private static (int w, int h) ArtPx( string path, int max )
+	{
+		var d = ArtDims( path );
+		int longest = Math.Max( d.w, d.h );
+		int scale = Math.Max( 1, max / Math.Max( 1, longest ) );
+		return (d.w * scale, d.h * scale);
+	}
+
+	// ============================================================
+	// THE LIST — filter · sort · group. Render order is the ONE source the
+	// grid, the keyboard cursor and the ring all walk.
+	// ============================================================
+	private int GetOwnedStackCount()
+	{
+		var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
+		if ( inv == null ) return 0;
+		return inv.Count( kvp => kvp.Value > 0 && ItemManager.Instance?.GetItem( kvp.Key ) != null );
+	}
+
+	private static bool MatchesCategory( ItemDefinition item, string key ) => key switch
+	{
+		"consumable" => item.Category == ItemCategory.Consumable,
+		"boost" => item.Category == ItemCategory.Boost,
+		"held" => item.Category == ItemCategory.HeldItem,
+		"relic" => item.Category == ItemCategory.Relic,
+		"material" => item.Category == ItemCategory.Material,
+		_ => true
+	};
+
+	private List<(string ItemId, int Quantity, ItemDefinition Def)> GetFilteredItems()
 	{
 		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
-		if (inventory == null) return 0;
-		// Only count items that actually resolve via ItemManager — the grid
-		// silently skips unresolvable IDs, so a raw sum would over-count and
-		// produce "ALL ITEMS 573" while the grid shows fewer cards (ghost-ID
-		// law). Filtering here makes the badge match the visible count by
-		// construction, without touching the player's inventory dict.
-		return inventory
-			.Where( kvp => kvp.Value > 0 && ItemManager.Instance?.GetItem( kvp.Key ) != null )
-			.Sum( kvp => kvp.Value );
-	}
+		if ( inventory == null ) return new();
 
-	private int GetCategoryItemCount(string category)
-	{
-		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
-		if (inventory == null) return 0;
-
-		return inventory.Where(kvp => kvp.Value > 0)
-			.Sum(kvp =>
-			{
-				var item = ItemManager.Instance?.GetItem(kvp.Key);
-				if (item == null) return 0;
-				bool matches = category switch
-				{
-					"consumable" => item.Category == ItemCategory.Consumable,
-					"relic" => item.Category == ItemCategory.Relic,
-					"held" => item.Category == ItemCategory.HeldItem,
-					"boost" => item.Category == ItemCategory.Boost,
-					"material" => item.Category == ItemCategory.Material,
-					"quest" => item.Category == ItemCategory.QuestItem,
-					_ => false
-				};
-				return matches ? kvp.Value : 0;
-			});
-	}
-
-	private int GetRarityCount(string rarity)
-	{
-		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
-		if (inventory == null) return 0;
-		return inventory.Where(kvp => kvp.Value > 0).Sum(kvp =>
+		var rows = new List<(string ItemId, int Quantity, ItemDefinition Def)>();
+		foreach ( var kvp in inventory )
 		{
-			var item = ItemManager.Instance?.GetItem(kvp.Key);
-			if (item == null) return 0;
-			return item.Rarity.ToString().ToLower() == rarity ? kvp.Value : 0;
-		});
-	}
-
-	private List<(string ItemId, int Quantity)> GetFilteredItems()
-	{
-		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
-		if (inventory == null) return new();
-
-		var items = inventory.Where(kvp => kvp.Value > 0).ToList();
-
-		if (currentCategory != "all")
-		{
-			items = items.Where(kvp =>
-			{
-				var item = ItemManager.Instance?.GetItem(kvp.Key);
-				if (item == null) return false;
-				return currentCategory switch
-				{
-					"consumable" => item.Category == ItemCategory.Consumable,
-					"relic" => item.Category == ItemCategory.Relic,
-					"held" => item.Category == ItemCategory.HeldItem,
-					"boost" => item.Category == ItemCategory.Boost,
-					"material" => item.Category == ItemCategory.Material,
-					"quest" => item.Category == ItemCategory.QuestItem,
-					_ => true
-				};
-			}).ToList();
+			if ( kvp.Value <= 0 ) continue;
+			var def = ItemManager.Instance?.GetItem( kvp.Key );
+			if ( def == null ) continue;
+			if ( !MatchesCategory( def, currentCategory ) ) continue;
+			if ( !string.IsNullOrEmpty( searchQuery ) && !(def.Name ?? "").ToLower().Contains( searchQuery.ToLower() ) ) continue;
+			rows.Add( (kvp.Key, kvp.Value, def) );
 		}
 
-		if (currentRarityFilter != "all")
+		// Natural orders: recent = newest first (reverse insertion) · name =
+		// A→Z · quantity / value / rarity = most first. SortAscending flips.
+		IEnumerable<(string ItemId, int Quantity, ItemDefinition Def)> ordered = currentSort switch
 		{
-			items = items.Where(kvp =>
-			{
-				var item = ItemManager.Instance?.GetItem(kvp.Key);
-				if (item == null) return false;
-				return item.Rarity.ToString().ToLower() == currentRarityFilter;
-			}).ToList();
-		}
-
-		if (!string.IsNullOrEmpty(searchQuery))
-		{
-			var q = searchQuery.ToLower();
-			items = items.Where(kvp =>
-			{
-				var item = ItemManager.Instance?.GetItem(kvp.Key);
-				if (item == null) return false;
-				return item.Name.ToLower().Contains(q);
-			}).ToList();
-		}
-
-		var result = currentSort switch
-		{
-			"name" => items.OrderBy(x => ItemManager.Instance?.GetItem(x.Key)?.Name ?? "").ToList(),
-			"qty" => items.OrderByDescending(x => x.Value).ToList(),
-			"rarity" => items.OrderByDescending(x => (int)(ItemManager.Instance?.GetItem(x.Key)?.Rarity ?? 0)).ToList(),
-			_ => items
+			"name" => rows.OrderBy( r => r.Def.Name ?? "" ),
+			"quantity" => rows.OrderByDescending( r => r.Quantity ),
+			"value" => rows.OrderByDescending( r => r.Def.SellPrice * r.Quantity ),
+			"rarity" => rows.OrderByDescending( r => (int)r.Def.Rarity ),
+			_ => Enumerable.Reverse( rows )
 		};
-
-		return result.Select(kvp => (kvp.Key, kvp.Value)).ToList();
+		var list = ordered.ToList();
+		if ( sortAscending ) list.Reverse();
+		return list;
 	}
 
-	private List<KeyValuePair<ItemCategory, List<(string ItemId, int Quantity)>>> GetGroupedItems()
+	// Section order = the ruling: USE things · EQUIP things · SELL-only last.
+	private static readonly (string Key, ItemCategory Cat)[] SectionOrder =
+	{
+		("consumable", ItemCategory.Consumable),
+		("boost", ItemCategory.Boost),
+		("held", ItemCategory.HeldItem),
+		("relic", ItemCategory.Relic),
+		("material", ItemCategory.Material),
+	};
+
+	private string SectionLabel( string key ) => key switch
+	{
+		"consumable" => L( "ui.inventory.consumables" ).ToUpperInvariant(),
+		"boost" => L( "ui.inventory.boosts" ).ToUpperInvariant(),
+		"held" => L( "ui.inventory.held_items" ).ToUpperInvariant(),
+		"relic" => L( "ui.inventory.relics" ).ToUpperInvariant(),
+		"material" => L( "ui.inventory.drops" ).ToUpperInvariant(),
+		_ => key.ToUpperInvariant()
+	};
+
+	public class RenderGroup
+	{
+		public string Key { get; set; }
+		public string Label { get; set; } // null = no kicker (a picked category)
+		public List<(string ItemId, int Quantity)> Items { get; set; } = new();
+	}
+
+	private List<RenderGroup> GetRenderGroups()
 	{
 		var filtered = GetFilteredItems();
-		var grouped = new Dictionary<ItemCategory, List<(string ItemId, int Quantity)>>();
-		var categoryOrder = new[] { ItemCategory.Consumable, ItemCategory.Relic, ItemCategory.HeldItem, ItemCategory.Boost, ItemCategory.Material, ItemCategory.QuestItem };
-
-		foreach (var (itemId, qty) in filtered)
+		var result = new List<RenderGroup>();
+		if ( currentCategory != "all" )
 		{
-			var item = ItemManager.Instance?.GetItem(itemId);
-			if (item == null) continue;
-			if (!grouped.ContainsKey(item.Category))
-				grouped[item.Category] = new();
-			grouped[item.Category].Add((itemId, qty));
+			result.Add( new RenderGroup { Key = currentCategory, Label = null, Items = filtered.Select( r => (r.ItemId, r.Quantity) ).ToList() } );
+			return result;
 		}
-
-		return categoryOrder
-			.Where(c => grouped.ContainsKey(c))
-			.Select(c => new KeyValuePair<ItemCategory, List<(string ItemId, int Quantity)>>(c, grouped[c]))
-			.ToList();
-	}
-
-	// ── Render-order source of truth — the grid, the keyboard cursor and
-	// the living ring all walk THIS order, so they can never disagree.
-	// ALL mode = grouped sections; any other tab = the flat filtered list.
-	private List<(string Label, List<(string ItemId, int Quantity)> Items)> GetRenderGroups()
-	{
-		if (currentCategory == "all")
+		foreach ( var (key, cat) in SectionOrder )
 		{
-			return GetGroupedItems()
-				.Select(g => (GetCategorySectionLabel(g.Key), g.Value))
-				.ToList();
+			var items = filtered.Where( r => r.Def.Category == cat ).Select( r => (r.ItemId, r.Quantity) ).ToList();
+			if ( items.Count == 0 ) continue;
+			result.Add( new RenderGroup { Key = key, Label = SectionLabel( key ), Items = items } );
 		}
-		return new() { ((string)null, GetFilteredItems()) };
+		return result;
 	}
 
 	private List<(string ItemId, int Quantity)> GetNavItems()
 	{
 		var list = new List<(string ItemId, int Quantity)>();
-		foreach (var g in GetRenderGroups()) list.AddRange(g.Items);
+		foreach ( var g in GetRenderGroups() ) list.AddRange( g.Items );
 		return list;
 	}
 
-	private int GetRenderIndexOf(string itemId)
+	private int GetRenderIndexOf( string itemId ) => GetNavItems().FindIndex( t => t.ItemId == itemId );
+
+	// The case NEVER empties: the selection if it is still in the list, else
+	// the first item in render order (no MarkItemSeen — a default is not a look).
+	private ItemDefinition GetCaseItem()
 	{
-		int i = 0;
-		foreach (var g in GetRenderGroups())
-		{
-			foreach (var it in g.Items)
-			{
-				if (it.ItemId == itemId) return i;
-				i++;
-			}
-		}
-		return -1;
+		var nav = GetNavItems();
+		if ( nav.Count == 0 ) return null;
+		if ( selectedItem != null && nav.Any( t => t.ItemId == selectedItem.Id ) ) return selectedItem;
+		return ItemManager.Instance?.GetItem( nav[0].ItemId );
 	}
 
-	private string GetEquippedRelic(int slot)
-	{
-		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
-		if (relics == null || slot >= relics.Count) return null;
-		return relics[slot];
-	}
-
-	private bool IsEquipped(string itemId)
-	{
-		var item = ItemManager.Instance?.GetItem(itemId);
-		if (item == null) return false;
-		if (item.Category == ItemCategory.Relic)
-			return TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Contains(itemId) ?? false;
-		return false;
-	}
-
-	private bool IsRelicEquipped(string itemId)
-	{
-		return TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Contains(itemId) ?? false;
-	}
-
-	private int GetItemQuantity(string itemId)
-	{
-		return TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault(itemId, 0) ?? 0;
-	}
-
-	private string GetRarityClass(ItemRarity rarity)
-	{
-		return rarity.ToString().ToLower();
-	}
-
-	private string GetCategorySectionLabel(ItemCategory category)
-	{
-		return category switch
-		{
-			ItemCategory.Consumable => "Consumables",
-			ItemCategory.Relic => "Relics",
-			ItemCategory.HeldItem => "Held Items",
-			ItemCategory.Boost => "Boosts",
-			ItemCategory.Material => "Drops",
-			ItemCategory.QuestItem => "Quest Items",
-			_ => category.ToString()
-		};
-	}
-
-	private string GetEffectDescription(ItemDefinition item)
-	{
-		if (item == null) return "";
-		return item.GetEffectDescription();
-	}
-
-	private bool CanUseConsumable(ItemDefinition item)
-	{
-		if (item.Category != ItemCategory.Consumable) return false;
-		if (item.EffectType == ItemEffectType.MasterInk) return false;
-		return GetItemQuantity(item.Id) > 0;
-	}
-
-	private bool NeedsTarget(ItemDefinition item)
-	{
-		return item.EffectType == ItemEffectType.XPGrant
-			|| item.EffectType == ItemEffectType.NatureChange
-			|| item.EffectType == ItemEffectType.TraitReroll
-			|| item.EffectType == ItemEffectType.GeneBoost;
-	}
-
-	private void UseConsumable(ItemDefinition item)
-	{
-		if (!CanUseConsumable(item)) return;
-
-		if (NeedsTarget(item))
-		{
-			pendingConsumable = item;
-			showMonsterPicker = true;
-			SoundManager.PlayClick();
-			return;
-		}
-
-		// In battle, route through BattleManager so the turn is consumed.
-		if (IsInBattleMode() && BattleManager.Instance != null)
-		{
-			if (BattleManager.Instance.ExecutePlayerItem(item.Id, null))
-			{
-				SoundManager.PlaySuccess();
-				Close();
-			}
-			else
-			{
-				SoundManager.PlayDeny();
-			}
-			return;
-		}
-
-		if (ItemManager.Instance?.UseItem(item.Id, null) == true)
-		{
-			SoundManager.PlaySuccess();
-		}
-		else
-		{
-			SoundManager.PlayDeny();
-		}
-	}
-
-	private void CloseMonsterPicker()
-	{
-		showMonsterPicker = false;
-		pendingConsumable = null;
-		SoundManager.PlayBack();
-	}
-
+	private int GetItemQuantity( string itemId ) => TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault( itemId, 0 ) ?? 0;
+	private bool IsRelicEquipped( string itemId ) => TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Contains( itemId ) ?? false;
+	private string GetEffectDescription( ItemDefinition item ) => item?.GetEffectDescription() ?? "";
 	private static bool IsInBattleMode() => BattleManager.Instance?.IsInBattle == true;
 
-	private List<Monster> GetOwnedMonsters()
+	// ============================================================
+	// THE PRIMARY — one tuple per category (ghost-child law): USE · EQUIP TO...
+	// · EQUIP / UNEQUIP · FULL; materials show none. `off` = same slab, dim.
+	// ============================================================
+	private (bool show, string label, string icon, bool off) GetPrimaryContent( ItemDefinition item )
 	{
-		if (IsInBattleMode())
+		if ( item == null ) return (false, "", "", true);
+		switch ( item.Category )
 		{
-			var party = BattleManager.Instance?.PlayerTeam;
-			if (party == null) return new();
-			return party.Where(m => m != null && m.CurrentHP > 0).ToList();
+			case ItemCategory.Consumable:
+			case ItemCategory.Boost:
+				return (true, L( "ui.inventory.action_use" ).ToUpperInvariant(), "lucide:sparkles", !CanUse( item ));
+			case ItemCategory.HeldItem:
+				return (true, "EQUIP TO...", "lucide:link", IsInBattleMode());
+			case ItemCategory.Relic:
+				if ( IsRelicEquipped( item.Id ) ) return (true, L( "ui.inventory.action_unequip" ).ToUpperInvariant(), "lucide:unlink", IsInBattleMode());
+				if ( IsInBattleMode() ) return (true, L( "ui.inventory.action_equip" ).ToUpperInvariant(), "lucide:lock", true);
+				if ( !CanEquipRelic() ) return (true, L( "ui.inventory.action_full" ).ToUpperInvariant(), "lucide:x", true);
+				return (true, L( "ui.inventory.action_equip" ).ToUpperInvariant(), "lucide:star", false);
+			default:
+				return (false, "", "", true);
 		}
-
-		var monsters = MonsterManager.Instance?.OwnedMonsters;
-		if (monsters == null) return new();
-		return monsters.OrderByDescending(m => m.Level).ToList();
 	}
 
-	private string GetMonsterSprite(Monster monster)
+	private bool CanUse( ItemDefinition item )
 	{
-		var species = MonsterManager.Instance?.GetSpecies(monster.SpeciesId);
-		if (species == null) return "";
-		if (species.AnimationFrames != null && species.AnimationFrames.Count > 0)
-			return species.AnimationFrames[0];
-		return species.IconPath ?? "";
+		if ( item == null ) return false;
+		if ( item.Category != ItemCategory.Consumable && item.Category != ItemCategory.Boost ) return false;
+		if ( item.EffectType == ItemEffectType.MasterInk ) return false;
+		return GetItemQuantity( item.Id ) > 0;
 	}
 
-	private void UseConsumableOnMonster(Monster monster)
-	{
-		if (pendingConsumable == null || monster == null) return;
-
-		bool success;
-		// In battle, route through BattleManager so the turn is consumed and the enemy gets to act.
-		if (IsInBattleMode() && BattleManager.Instance != null)
-		{
-			success = BattleManager.Instance.ExecutePlayerItem(pendingConsumable.Id, monster);
-		}
-		else
-		{
-			success = ItemManager.Instance?.UseItem(pendingConsumable.Id, monster) == true;
-		}
-
-		if (success)
-		{
-			toastMessage = string.Format(L("ui.inventory.toast_used"), pendingConsumable.Name, monster.Nickname);
-			toastSuccess = true;
-			toastTimer = ToastDuration;
-			SoundManager.PlaySuccess();
-
-			if (GetItemQuantity(pendingConsumable.Id) <= 0)
-				selectedItem = null;
-
-			// Close the bag in battle so the player sees the turn play out
-			if (IsInBattleMode()) Close();
-		}
-		else
-		{
-			toastMessage = L("ui.inventory.toast_failed");
-			toastSuccess = false;
-			toastTimer = ToastDuration;
-			SoundManager.PlayDeny();
-		}
-
-		showMonsterPicker = false;
-		pendingConsumable = null;
-	}
-
-	private bool CanUseBoost(ItemDefinition item)
-	{
-		if (item == null || item.Category != ItemCategory.Boost) return false;
-		return GetItemQuantity(item.Id) > 0;
-	}
-
-	private void UseBoost(ItemDefinition item)
-	{
-		if (!CanUseBoost(item)) return;
-		if (ItemManager.Instance == null) return;
-
-		var result = ItemManager.Instance.UseBoost(item.Id);
-		toastMessage = result.Message;
-		toastSuccess = result.Success;
-		toastTimer = ToastDuration;
-
-		if (result.Success)
-		{
-			SoundManager.PlaySuccess();
-			if (GetItemQuantity(item.Id) <= 0)
-				selectedItem = null;
-		}
-		else
-		{
-			SoundManager.PlayDeny();
-		}
-	}
+	private bool NeedsTarget( ItemDefinition item ) =>
+		item.EffectType == ItemEffectType.XPGrant
+		|| item.EffectType == ItemEffectType.NatureChange
+		|| item.EffectType == ItemEffectType.TraitReroll
+		|| item.EffectType == ItemEffectType.GeneBoost;
 
 	private bool CanEquipRelic()
 	{
-		if (IsInBattleMode()) return false;
+		if ( IsInBattleMode() ) return false;
 		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
-		return relics == null || relics.Count < 3;
+		return relics == null || relics.Count < ItemManager.MaxRelics;
 	}
 
-	private void EquipRelic(ItemDefinition item)
+	private bool CanSellItem( ItemDefinition item )
 	{
-		if (item.Category != ItemCategory.Relic) return;
-		if (!CanEquipRelic()) return;
+		if ( item == null || item.SellPrice <= 0 ) return false;
+		if ( IsInBattleMode() ) return false;
+		if ( item.Category == ItemCategory.Relic && IsRelicEquipped( item.Id ) ) return false;
+		return GetItemQuantity( item.Id ) > 0;
+	}
 
-		if (ItemManager.Instance?.EquipRelic(item.Id) == true)
+	// Fires the case item's primary (BbButton OnClick + Space).
+	private void ActivateSelectedItem()
+	{
+		var item = GetCaseItem();
+		if ( item == null ) { SoundManager.PlayDeny(); return; }
+		switch ( item.Category )
 		{
-			SoundManager.PlayForward();
-			// Flash the slot that just received this relic
-			var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
-			if (relics != null)
-			{
-				var idx = relics.IndexOf(item.Id);
-				if (idx >= 0) { justEquippedSlot = idx; justEquippedTimer = 0.6f; }
-			}
+			case ItemCategory.Consumable:
+			case ItemCategory.Boost:
+				UseItem( item );
+				break;
+			case ItemCategory.HeldItem:
+				if ( IsInBattleMode() ) { SoundManager.PlayDeny(); return; }
+				OpenPicker( item, PickerMode.Held );
+				break;
+			case ItemCategory.Relic:
+				if ( IsInBattleMode() ) SoundManager.PlayDeny();
+				else if ( IsRelicEquipped( item.Id ) ) UnequipRelic( item );
+				else EquipRelic( item );
+				break;
+			default:
+				SoundManager.PlayDeny();
+				break;
+		}
+	}
+
+	// USE — boosts fold into the consumable branch (UseItem / UseBoost
+	// dispatch on the definition); targeted consumables open the picker.
+	private void UseItem( ItemDefinition item )
+	{
+		if ( !CanUse( item ) ) { SoundManager.PlayDeny(); return; }
+
+		if ( item.Category == ItemCategory.Boost )
+		{
+			var mgr = ItemManager.Instance;
+			if ( mgr == null ) { SoundManager.PlayDeny(); return; }
+			var result = mgr.UseBoost( item.Id );
+			if ( result.Success ) SoundManager.PlaySuccess();
+			else { ShowToast( result.Message, false ); SoundManager.PlayDeny(); }
+			return;
+		}
+
+		if ( NeedsTarget( item ) ) { OpenPicker( item, PickerMode.Consumable ); return; }
+
+		// In battle, route through BattleManager so the turn is consumed.
+		if ( IsInBattleMode() && BattleManager.Instance != null )
+		{
+			if ( BattleManager.Instance.ExecutePlayerItem( item.Id, null ) ) { SoundManager.PlaySuccess(); Close(); }
+			else SoundManager.PlayDeny();
+			return;
+		}
+
+		if ( ItemManager.Instance?.UseItem( item.Id, null ) == true ) SoundManager.PlaySuccess();
+		else { ShowToast( L( "ui.inventory.toast_failed" ), false ); SoundManager.PlayDeny(); }
+	}
+
+	private void EquipRelic( ItemDefinition item )
+	{
+		if ( item.Category != ItemCategory.Relic || !CanEquipRelic() ) { SoundManager.PlayDeny(); return; }
+		if ( ItemManager.Instance?.EquipRelic( item.Id ) == true ) SoundManager.PlayForward();
+		else { ShowToast( L( "ui.inventory.toast_failed" ), false ); SoundManager.PlayDeny(); }
+	}
+
+	private void UnequipRelic( ItemDefinition item )
+	{
+		if ( item == null || item.Category != ItemCategory.Relic ) return;
+		if ( ItemManager.Instance?.UnequipRelic( item.Id ) == true ) SoundManager.PlayBack();
+		else SoundManager.PlayDeny();
+	}
+
+	// ── Beast picker ─────────────────────────────────────────────
+	private void OpenPicker( ItemDefinition item, PickerMode mode )
+	{
+		pendingItem = item;
+		pickerMode = mode;
+		showPicker = true;
+		hoveredPickerRow = false;
+		SoundManager.PlayClick();
+	}
+
+	private void ClosePicker()
+	{
+		showPicker = false;
+		pendingItem = null;
+		SoundManager.PlayBack();
+	}
+
+	private string PickerTitle()
+	{
+		if ( pendingItem == null ) return "";
+		string name = (pendingItem.Name ?? "").ToUpperInvariant();
+		return pickerMode == PickerMode.Held ? "EQUIP " + name + " TO..." : "USE " + name + " ON...";
+	}
+
+	private void OnPickerRowHover() { if ( IsKbMode || hoveredPickerRow ) return; hoveredPickerRow = true; SoundManager.PlayHover(); }
+	private void OnPickerRowOut() => hoveredPickerRow = false;
+
+	private void OnPickerRowClick( Monster monster )
+	{
+		hoveredPickerRow = false;
+		if ( pickerMode == PickerMode.Held ) EquipHeldTo( monster );
+		else UseConsumableOnMonster( monster );
+	}
+
+	private List<Monster> GetOwnedMonsters()
+	{
+		if ( IsInBattleMode() )
+		{
+			var party = BattleManager.Instance?.PlayerTeam;
+			if ( party == null ) return new();
+			return party.Where( m => m != null && m.CurrentHP > 0 ).ToList();
+		}
+		var monsters = MonsterManager.Instance?.OwnedMonsters;
+		if ( monsters == null ) return new();
+		return monsters.OrderByDescending( m => m.Level ).ToList();
+	}
+
+	private string GetMonsterSprite( Monster monster )
+	{
+		var species = MonsterManager.Instance?.GetSpecies( monster.SpeciesId );
+		if ( species == null ) return "";
+		if ( species.AnimationFrames != null && species.AnimationFrames.Count > 0 ) return species.AnimationFrames[0];
+		return species.IconPath ?? "";
+	}
+
+	private string PickerSubText( Monster monster, MonsterSpecies species )
+	{
+		string lv = string.Format( L( "ui.inventory.level_fmt" ), monster.Level ).ToUpperInvariant();
+		return species != null ? species.Name + " · " + lv : lv;
+	}
+
+	// ADD 3 — the ONE number the item is about to change: LEVEL for XP orbs ·
+	// NATURE for runes · HOLDING for EQUIP TO... · nothing for rerolls / genes.
+	private (string label, string value, bool dim) GetPickerDatum( Monster monster )
+	{
+		if ( pendingItem == null || monster == null ) return (null, "", false);
+		if ( pickerMode == PickerMode.Held )
+		{
+			var held = string.IsNullOrEmpty( monster.HeldItemId ) ? null : ItemManager.Instance?.GetItem( monster.HeldItemId );
+			return ("HOLDING", held != null ? held.Name.ToUpperInvariant() : "NOTHING HELD", held == null);
+		}
+		switch ( pendingItem.EffectType )
+		{
+			case ItemEffectType.XPGrant:
+				return ("LEVEL", "LV " + monster.Level, false);
+			case ItemEffectType.NatureChange:
+				return ("NATURE", (monster.Genetics?.Nature.ToString() ?? "").ToUpperInvariant(), false);
+			default:
+				return (null, "", false);
+		}
+	}
+
+	// EQUIP TO... — one call: EquipHeldItem swaps and returns the old item to the bag.
+	private void EquipHeldTo( Monster monster )
+	{
+		if ( pendingItem == null || monster == null ) return;
+		bool ok = ItemManager.Instance?.EquipHeldItem( monster, pendingItem.Id ) == true;
+		if ( ok ) SoundManager.PlayForward();
+		else { ShowToast( L( "ui.inventory.toast_failed" ), false ); SoundManager.PlayDeny(); }
+		showPicker = false;
+		pendingItem = null;
+	}
+
+	private void UseConsumableOnMonster( Monster monster )
+	{
+		if ( pendingItem == null || monster == null ) return;
+		bool success = IsInBattleMode() && BattleManager.Instance != null
+			? BattleManager.Instance.ExecutePlayerItem( pendingItem.Id, monster )
+			: ItemManager.Instance?.UseItem( pendingItem.Id, monster ) == true;
+
+		if ( success )
+		{
+			ShowToast( string.Format( L( "ui.inventory.toast_used" ), pendingItem.Name, monster.Nickname ), true );
+			SoundManager.PlaySuccess();
+			if ( IsInBattleMode() ) Close(); // the turn plays out
 		}
 		else
 		{
-			SoundManager.PlayBack();
-		}
-	}
-
-	private void UnequipRelic(ItemDefinition item)
-	{
-		if (item == null || item.Category != ItemCategory.Relic) return;
-
-		if (ItemManager.Instance?.UnequipRelic(item.Id) == true)
-		{
-			SoundManager.PlayBack();
-		}
-		else
-		{
+			ShowToast( L( "ui.inventory.toast_failed" ), false );
 			SoundManager.PlayDeny();
 		}
+		showPicker = false;
+		pendingItem = null;
 	}
 
-	private bool CanSellItem(ItemDefinition item)
+	private void ShowToast( string message, bool success )
 	{
-		if (item == null || item.SellPrice <= 0) return false;
-		if (IsInBattleMode()) return false;
-		if (item.Category == ItemCategory.Relic && IsRelicEquipped(item.Id)) return false;
-		return GetItemQuantity(item.Id) > 0;
+		toastMessage = message ?? "";
+		toastSuccess = success;
+		toastExiting = false;
+		toastTimer = ToastDuration;
 	}
+
+	// ── Sell — stepper + hold ────────────────────────────────────
+	private void ChangeSellQty( int delta )
+	{
+		SetInputDevice( InputDevice.Mouse );
+		var item = GetCaseItem();
+		int max = item == null ? 1 : Math.Max( 1, GetItemQuantity( item.Id ) );
+		int next = Math.Clamp( sellQty + delta, 1, max );
+		if ( next == sellQty ) { SoundManager.PlayDeny(); return; }
+		sellQty = next;
+		SoundManager.PlayClick();
+	}
+
+	private void OnQtyHover() { if ( IsKbMode || hoveredQty ) return; hoveredQty = true; SoundManager.PlayHover(); }
+	private void OnQtyOut() => hoveredQty = false;
+	private void OnSellHover() { if ( IsKbMode || hoveredSell ) return; hoveredSell = true; SoundManager.PlayHover(); }
 
 	private void StartHoldSell()
 	{
-		if (selectedItem == null || !CanSellItem(selectedItem)) return;
+		SetInputDevice( InputDevice.Mouse );
+		var item = GetCaseItem();
+		if ( item == null || !CanSellItem( item ) ) { SoundManager.PlayDeny(); return; }
 		isHoldingSell = true;
 		holdProgress = 0f;
 		SoundManager.PlayClick();
@@ -1219,65 +1058,438 @@
 	{
 		isHoldingSell = false;
 		holdProgress = 0f;
+		hoveredSell = false;
+		hoveredQty = false;
 	}
 
+	// ONE beat: SellItem(id, n) once → the balance ticks, the card's ×N steps
+	// (or the card leaves and the case falls to its neighbour).
 	private void SellSelectedItem()
 	{
-		if (selectedItem == null) return;
-
-		if (ItemManager.Instance?.SellItem(selectedItem.Id, 1) == true)
+		var item = GetCaseItem();
+		if ( item == null || !CanSellItem( item ) ) return;
+		int n = Math.Clamp( sellQty, 1, Math.Max( 1, GetItemQuantity( item.Id ) ) );
+		if ( ItemManager.Instance?.SellItem( item.Id, n ) == true )
 		{
 			SoundManager.PlayGoldReward();
-			if (GetItemQuantity(selectedItem.Id) <= 0)
-				selectedItem = null;
+			sellBeatVersion++;
+			sellQty = 1;
 		}
+		else
+		{
+			ShowToast( L( "ui.inventory.toast_failed" ), false );
+			SoundManager.PlayDeny();
+		}
+	}
+
+	private void CheckGoldFlash()
+	{
+		int gold = GetGold();
+		if ( lastGoldValue >= 0 && gold != lastGoldValue ) goldFlashUntil = RealTime.Now + 0.6f;
+		lastGoldValue = gold;
+	}
+
+	// ============================================================
+	// THE LIVING VIOLET RING — imperative position (the shop recipe), waving
+	// via Style.Transform. Wraps the case item's card; self-hides when the
+	// card scrolls out of the grid viewport (a root ring is never clipped).
+	// ============================================================
+	private int ringL, ringT, ringW = 152, ringH = 170;
+	private bool ringVisible;
+	private int ringWarm;
+	private const int RingInset = 10; // card r16 + 10 → ring r26
+
+	private List<Panel> CardPanels() => gridRef == null
+		? new List<Panel>()
+		: gridRef.Children.Where( c => c.HasClass( "sat-card" ) ).ToList();
+
+	private Rect? ResolveRingHost()
+	{
+		if ( showPicker || gridRef == null ) return null;
+		var gr = gridRef.Box.Rect;
+		if ( gr.Width < 2f ) return null;
+		foreach ( var c in gridRef.Children )
+		{
+			if ( !c.HasClass( "sat-card" ) || !c.HasClass( "selected" ) ) continue;
+			var r = c.Box.Rect;
+			if ( r.Top < gr.Top - 14f || r.Bottom > gr.Bottom + 14f ) return null;
+			return r.Width < 2f ? (Rect?)null : r;
+		}
+		return null;
+	}
+
+	private void UpdateRing()
+	{
+		bool wasVisible = ringVisible;
+		ringVisible = false;
+		if ( !IsVisible ) return;
+
+		var rr = Box.Rect;
+		if ( rr.Width < 2f ) return;
+		var host = ResolveRingHost();
+		if ( host == null ) return;
+		var cr = host.Value;
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		// RING CENTERING LAW: Style.Left/Top place the PADDING box and the 4px
+		// border draws outside it → L/T = host − inset + 4, W/H = host + 2·inset − 8.
+		ringL = (int)((cr.Left - rr.Left) * sc) - RingInset + 4;
+		ringT = (int)((cr.Top - rr.Top) * sc) - RingInset + 4;
+		ringW = (int)(cr.Width * sc) + RingInset * 2 - 8;
+		ringH = (int)(cr.Height * sc) + RingInset * 2 - 8;
+
+		ringVisible = true;
+		if ( !wasVisible ) ringWarm = 0;
+		else if ( ringWarm < 2 ) ringWarm++;
+	}
+
+	private void ApplyRingWave()
+	{
+		if ( ringRef == null || !ringVisible ) return;
+		float wt = Time.Now;
+		float skX = (2.0f * MathF.Sin( wt * 2.2f ) + 0.7f * MathF.Sin( wt * 3.5f + 1.1f )) * 0.6f;
+		float skY = (2.3f * MathF.Sin( wt * 1.8f + 1.9f ) + 0.9f * MathF.Sin( wt * 2.9f )) * 0.6f;
+		float rotZ = (1.1f * MathF.Sin( wt * 1.0f ) + 0.5f * MathF.Sin( wt * 2.4f + 0.5f )) * 0.6f;
+		float brX = 1f + 0.013f * MathF.Sin( wt * 1.35f + 0.7f ) + 0.006f * MathF.Sin( wt * 2.7f );
+		float brY = 1f + 0.013f * MathF.Sin( wt * 1.15f + 2.6f ) + 0.006f * MathF.Sin( wt * 2.3f + 1.4f );
+
+		var t = new PanelTransform();
+		t.AddRotation( 0f, 0f, rotZ );
+		t.AddSkew( skX, skY, 0f );
+		t.AddScale( new Vector2( brX, brY ) );
+		ringRef.Style.Transform = t;
+	}
+
+	// ============================================================
+	// KB SCROLL-FOLLOW — the shop's glide recipe (DOC-5 #13).
+	// ============================================================
+	private bool _scrollFollowPending;
+	private int _scrollFollowFrames;
+	private float gridScrollGlideTarget = -1f;
+
+	private void RequestScrollFollow() { _scrollFollowPending = true; _scrollFollowFrames = 0; }
+
+	private void UpdateScrollFollow()
+	{
+		if ( gridRef == null ) return;
+		if ( _scrollFollowPending )
+		{
+			if ( ++_scrollFollowFrames > 12 ) _scrollFollowPending = false;
+			var c = GetCaseItem();
+			int idx = c == null ? -1 : GetRenderIndexOf( c.Id );
+			var panels = CardPanels();
+			if ( idx >= 0 && idx < panels.Count && panels[idx].Box.Rect.Height > 1f )
+			{
+				_scrollFollowPending = false;
+				var cur = panels[idx].Box.Rect;
+				bool topRow = !panels.Any( p => p.Box.Rect.Top < cur.Top - 1f );
+				bool bottomRow = !panels.Any( p => p.Box.Rect.Top > cur.Top + 1f );
+				float curOff = gridRef.ScrollOffset.y;
+				float? t;
+				if ( topRow ) t = curOff > 0.5f ? 0f : null;
+				else if ( bottomRow )
+				{
+					float max = Math.Max( 0f, gridRef.ScrollSize.y );
+					t = Math.Abs( max - curOff ) > 0.5f ? max : null;
+				}
+				else t = UiGridScroll.ComputeOffset( gridRef, panels[idx] );
+				if ( t.HasValue ) gridScrollGlideTarget = t.Value;
+			}
+		}
+
+		if ( gridScrollGlideTarget < 0f ) return;
+		float now = gridRef.ScrollOffset.y;
+		float delta = gridScrollGlideTarget - now;
+		if ( Math.Abs( delta ) < 1.5f )
+		{
+			gridRef.ScrollOffset = new Vector2( gridRef.ScrollOffset.x, gridScrollGlideTarget );
+			gridScrollGlideTarget = -1f;
+			return;
+		}
+		gridRef.ScrollOffset = new Vector2( gridRef.ScrollOffset.x, now + delta * 0.30f );
+	}
+
+	// ============================================================
+	// OVERLAY SCROLLBAR — the roster UpdateScrollbar recipe (read-only thumb,
+	// imperative Style writes, only-on-change caches).
+	// ============================================================
+	private int _sbTop = int.MinValue, _sbH = int.MinValue, _sbTrackH = int.MinValue;
+	private Panel _sbSeen;
+
+	private void UpdateScrollbar()
+	{
+		if ( !ReferenceEquals( _sbSeen, sbThumbRef ) ) { _sbSeen = sbThumbRef; _sbTop = _sbH = _sbTrackH = int.MinValue; }
+		var scroll = gridRef;
+		var track = sbTrackRef;
+		var thumb = sbThumbRef;
+		if ( track == null || thumb == null ) return;
+
+		float maxOff = scroll?.ScrollSize.y ?? 0f;
+		float viewH = scroll?.Box.Rect.Height ?? 0f;
+		if ( scroll == null || maxOff < 2f || viewH <= 0f ) { track.SetClass( "on", false ); return; }
+
+		float sc = ScaleFromScreen;
+		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+		int trackH = (int)(viewH * sc) - 16;
+		if ( trackH < 40 ) { track.SetClass( "on", false ); return; }
+
+		float contentH = viewH + maxOff;
+		int h = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
+		float t01 = Math.Clamp( scroll.ScrollOffset.y / maxOff, 0f, 1f );
+		int top = (int)((trackH - h) * t01);
+
+		if ( trackH != _sbTrackH ) { _sbTrackH = trackH; track.Style.Height = Length.Pixels( trackH ); }
+		if ( h != _sbH ) { _sbH = h; thumb.Style.Height = Length.Pixels( h ); }
+		if ( top != _sbTop ) { _sbTop = top; thumb.Style.Top = Length.Pixels( top ); }
+		track.SetClass( "on", true );
+	}
+
+	// ============================================================
+	// KEYBOARD — polled from Tick while this panel is the top modal (the Bag
+	// is an overlay, not a tab: GameHUD does not route TickInput here).
+	//   Q            close (an open FilterBar menu / the picker eats it first)
+	//   WASD/arrows  the ONE cursor across the true-2D grid (kicker rows are
+	//                not stops; clamped, no wrap)
+	//   Space/Enter  the case item's primary
+	//   R            category forward (shown cap) · Z/X sort cycle (silent)
+	// LANE: input — header walk-up (W off the top row → the FilterBar's
+	// category chip via CollectHeaderControls), the CASE zone (D off a row's
+	// last card → primary ↔ stepper ↔ SELL hold), picker W/S/Space, and the
+	// two-stage Q are not wired here.
+	// ============================================================
+	private void TickInput()
+	{
+		if ( ChatPanel.IsChatFocused ) return;
+		if ( filterBar != null && filterBar.IsSearchFocused ) return; // typing in the search chip
+
+		// A FilterBar menu owns W/S/Space/Q while open.
+		if ( filterBar != null && filterBar.IsAnyDropdownOpen && filterBar.HandleKeyboard() ) { SetInputDevice( InputDevice.Keyboard ); return; }
+
+		if ( showPicker )
+		{
+			if ( Input.Pressed( "Menu" ) ) { ClosePicker(); GameHUD.PanelHandledBackKey = true; }
+			return; // LANE: input — picker rows are mouse-only until the kb pass
+		}
+
+		if ( Input.Pressed( "Menu" ) ) { Close(); return; }
+
+		if ( Input.Pressed( "Reload" ) ) { SetInputDevice( InputDevice.Keyboard ); CycleCategory( 1 ); return; }
+		if ( Input.Pressed( "CyclePrev" ) ) { SetInputDevice( InputDevice.Keyboard ); CycleSort( -1 ); return; }
+		if ( Input.Pressed( "CycleNext" ) ) { SetInputDevice( InputDevice.Keyboard ); CycleSort( 1 ); return; }
+
+		int dir = -1; // 0 up · 1 down · 2 left · 3 right
+		if ( Input.Pressed( "Up" ) ) dir = 0;
+		else if ( Input.Pressed( "Down" ) ) dir = 1;
+		else if ( Input.Pressed( "Left" ) ) dir = 2;
+		else if ( Input.Pressed( "Right" ) ) dir = 3;
+		bool confirm = UiInput.ConfirmPressed();
+		if ( dir < 0 && !confirm ) return;
+
+		SetInputDevice( InputDevice.Keyboard );
+
+		if ( confirm ) { ActivateSelectedItem(); return; }
+
+		var nav = GetNavItems();
+		if ( nav.Count == 0 ) return;
+		var caseItem = GetCaseItem();
+		int idx = caseItem == null ? -1 : GetRenderIndexOf( caseItem.Id );
+		if ( idx < 0 ) { SelectIndex( nav, 0 ); return; }
+
+		int n = dir switch
+		{
+			2 => GetHorizontalNeighbor( idx, nav.Count, false ),
+			3 => GetHorizontalNeighbor( idx, nav.Count, true ),
+			0 => GetVerticalNeighbor( idx, nav.Count, false ),
+			_ => GetVerticalNeighbor( idx, nav.Count, true ),
+		};
+		if ( n >= 0 ) SelectIndex( nav, n );
+	}
+
+	private void SelectIndex( List<(string ItemId, int Quantity)> nav, int idx )
+	{
+		if ( idx < 0 || idx >= nav.Count ) return;
+		var def = ItemManager.Instance?.GetItem( nav[idx].ItemId );
+		if ( def == null ) return;
+		SelectItem( def, silent: true );
+		SoundManager.PlayHover();
+		RequestScrollFollow();
+	}
+
+	// TRUE-2D steps — the shop's geometry-honest neighbours (kicker rows are
+	// not cards, so W/S skip them; A/D stay in the row). -1 = the edge.
+	private int GetVerticalNeighbor( int idx, int itemCount, bool down )
+	{
+		var panels = CardPanels();
+		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count ) return -1;
+		var cur = panels[idx].Box.Rect;
+		float curCentreX = cur.Left + cur.Width * 0.5f;
+		int best = -1;
+		float bestRowDist = float.MaxValue, bestDX = float.MaxValue;
+		for ( int i = 0; i < panels.Count; i++ )
+		{
+			if ( i == idx ) continue;
+			var r = panels[i].Box.Rect;
+			if ( down ? r.Top <= cur.Top + 1f : r.Top >= cur.Top - 1f ) continue;
+			float rowDist = Math.Abs( r.Top - cur.Top );
+			float dx = Math.Abs( (r.Left + r.Width * 0.5f) - curCentreX );
+			if ( rowDist < bestRowDist - 1f || (rowDist <= bestRowDist + 1f && dx < bestDX) ) { best = i; bestRowDist = rowDist; bestDX = dx; }
+		}
+		return best;
+	}
+
+	private int GetHorizontalNeighbor( int idx, int itemCount, bool right )
+	{
+		var panels = CardPanels();
+		if ( panels.Count != itemCount || idx < 0 || idx >= panels.Count )
+		{
+			int flat = right ? idx + 1 : idx - 1;
+			return flat >= 0 && flat < itemCount ? flat : -1;
+		}
+		var cur = panels[idx].Box.Rect;
+		int best = -1;
+		float bestDX = float.MaxValue;
+		for ( int i = 0; i < panels.Count; i++ )
+		{
+			if ( i == idx ) continue;
+			var r = panels[i].Box.Rect;
+			if ( Math.Abs( r.Top - cur.Top ) > 1f ) continue;
+			float dx = right ? r.Left - cur.Left : cur.Left - r.Left;
+			if ( dx <= 1f || dx >= bestDX ) continue;
+			best = i;
+			bestDX = dx;
+		}
+		return best;
+	}
+
+	// ============================================================
+	// TICK
+	// ============================================================
+	public override void Tick()
+	{
+		base.Tick();
+
+		if ( IsVisible && UIModalState.IsTopModal( "InventoryPanel" ) ) TickInput();
+
+		// Battle open → land on CONSUMABLES (the rest of the grid dims .45).
+		if ( _pendingBattleCategory != null )
+		{
+			currentCategory = _pendingBattleCategory;
+			_pendingBattleCategory = null;
+		}
+
+		ApplyDevPending();
+		UpdateScrollFollow();
+		UpdateRing();
+		ApplyRingWave();
+		UpdateScrollbar();
+
+		// Hold-to-sell — 0.5s to commit; release resets.
+		if ( isHoldingSell )
+		{
+			holdProgress += Time.Delta / HoldDuration;
+			if ( holdProgress >= 1f )
+			{
+				holdProgress = 0f;
+				isHoldingSell = false;
+				SellSelectedItem();
+			}
+		}
+
+		// Toast countdown — the exit class 0.3s before clear.
+		if ( toastTimer > 0f )
+		{
+			toastTimer -= Time.Delta;
+			if ( toastTimer <= 0.3f && !toastExiting ) toastExiting = true;
+			if ( toastTimer <= 0f ) { toastTimer = 0f; toastMessage = ""; toastSuccess = false; toastExiting = false; }
+		}
+	}
+
+	// ============================================================
+	// DEV HOOK — `dev_bag [category|<itemId>]` opens the bag and parks the
+	// case (screenshot instrument; the dev_shop pattern).
+	//   dev_bag                  → open the bag
+	//   dev_bag relic            → open on the RELICS category
+	//   dev_bag held_ember_fang  → open ALL, select that item
+	// REMOVE after the redesign is user-approved.
+	// ============================================================
+	private static string _devPending;
+
+	[ConCmd( "dev_bag" )]
+	public static void DevOpenBag( string arg = "" )
+	{
+		var gm = Beastborne.Core.GameManager.Instance;
+		if ( gm != null && !gm.IsInGame ) gm.StartGame();
+		PhoneLauncher.Close();
+		if ( !IsVisible ) Show();
+		_devPending = arg ?? "";
+		Log.Info( $"[Bag] dev_bag → '{_devPending}'" );
+	}
+
+	private void ApplyDevPending()
+	{
+		if ( _devPending == null ) return;
+		if ( Box.Rect.Width < 2f ) return;
+		string arg = _devPending;
+		_devPending = null;
+
+		if ( string.IsNullOrEmpty( arg ) ) { SetCategory( "all" ); return; }
+		if ( Array.IndexOf( CategoryCycle, arg ) >= 0 ) { SetCategory( arg ); return; }
+		var def = ItemManager.Instance?.GetItem( arg );
+		if ( def != null && GetItemQuantity( arg ) > 0 ) { SetCategory( "all" ); SelectItem( def, silent: true ); RequestScrollFollow(); return; }
+		Log.Warning( $"[Bag] dev_bag: no owned item or category '{arg}'" );
 	}
 
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
-		hash.Add(IsVisible);
-		// currentCategory + selectedItem?.Id below ALSO cover the keyboard
-		// navigation state — 1-7 mutate currentCategory, WASD mutates
-		// selectedItem.
-		hash.Add(currentCategory);
-		hash.Add(currentRarityFilter);
-		hash.Add(currentSort);
-		hash.Add(searchQuery);
-		hash.Add(selectedItem?.Id);
-		hash.Add(GetTotalItemCount());
-		hash.Add(isHoldingSell);
-		hash.Add(justEquippedSlot);
-		hash.Add(toastExiting);
-		hash.Add(holdProgress);
-		hash.Add(toastMessage);
-		hash.Add(showMonsterPicker);
-		hash.Add(IsInBattleMode());
-		hash.Add(TamerManager.Instance?.CurrentTamer?.Gold ?? 0);
-
-		// Living ring position + NEW-stamp state
-		hash.Add(ringL);
-		hash.Add(ringT);
-		hash.Add(ringW);
-		hash.Add(ringH);
-		hash.Add(ringVisible);
-		hash.Add(ringWarm < 2);
-		hash.Add(_seenItemIds.Count);
+		hash.Add( IsVisible );
+		hash.Add( currentCategory );
+		hash.Add( currentSort );
+		hash.Add( sortAscending );
+		hash.Add( searchQuery );
+		hash.Add( selectedItem?.Id );
+		hash.Add( sellQty );
+		hash.Add( isHoldingSell );
+		hash.Add( (int)(holdProgress * 100) );
+		hash.Add( toastMessage );
+		hash.Add( toastExiting );
+		hash.Add( showPicker );
+		hash.Add( pendingItem?.Id );
+		hash.Add( IsInBattleMode() );
+		hash.Add( GetGold() );
+		CheckGoldFlash();
+		hash.Add( IsGoldFlash );
+		hash.Add( sellBeatVersion );
+		// NEW stamps (one source) + the search chip's focus rim
+		hash.Add( ItemManager.Instance?.NewItemCount ?? 0 );
+		hash.Add( filterBar != null && filterBar.IsSearchFocused );
+		// Living ring — markup-bound position + visibility class
+		hash.Add( ringL );
+		hash.Add( ringT );
+		hash.Add( ringW );
+		hash.Add( ringH );
+		hash.Add( ringVisible );
+		hash.Add( ringWarm < 2 );
+		// One-device flag (root class)
+		hash.Add( lastInputDevice );
 
 		var relics = TamerManager.Instance?.CurrentTamer?.EquippedRelics;
-		if (relics != null)
-		{
-			foreach (var r in relics) hash.Add(r);
-		}
+		if ( relics != null ) foreach ( var r in relics ) hash.Add( r );
 
 		var inventory = TamerManager.Instance?.CurrentTamer?.Inventory;
-		if (inventory != null)
+		if ( inventory != null )
 		{
-			foreach (var kvp in inventory)
-			{
-				hash.Add(kvp.Key);
-				hash.Add(kvp.Value);
-			}
+			foreach ( var kvp in inventory ) { hash.Add( kvp.Key ); hash.Add( kvp.Value ); }
+		}
+
+		// Held items move between beasts (EQUIP TO...) — the picker's HOLDING column.
+		if ( showPicker && pickerMode == PickerMode.Held )
+		{
+			var owned = MonsterManager.Instance?.OwnedMonsters;
+			if ( owned != null ) foreach ( var m in owned ) hash.Add( m.HeldItemId );
 		}
 
 		return hash.ToHashCode();

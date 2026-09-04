@@ -14,7 +14,50 @@
    scss gates hover under .mouse-mode and the class under .kbd-mode so a
    parked mouse and the keyboard never light two rows (DOC-5 #5/#6). *@
 <root class="filter-bar @(KbMode ? "kbd-mode" : "mouse-mode")">
-	<!-- Element Dropdown -->
+	@if (HasPrimary)
+	{
+		@* PRIMARY menu (LAYOUT 2026-09-03, additive — the Bag's CATEGORY list).
+		   Replaces the element menu in the FIRST slot when a host passes
+		   PrimaryItems; the same .dropdown-btn / .dropdown-menu / .dropdown-item
+		   classes so CollectHeaderControls + HandleKeyboard() see one family.
+		   Shares the first slot's open flag (elementDropdownOpen) — one slot,
+		   one flag. Hosts that never pass PrimaryItems render the element menu
+		   below unchanged. *@
+		<div class="dropdown-container">
+			<button class="dropdown-btn primary-btn @(CurrentPrimary != "all" ? "on" : "")" @ref="elementBtnRef" onclick=@ToggleElementDropdown onmouseover=@OnTriggerHover>
+				@if (!string.IsNullOrEmpty(GetPrimaryIcon(CurrentPrimary)))
+				{
+					<img class="dropdown-icon-svg" src="@GetPrimaryIcon(CurrentPrimary)" />
+				}
+				<span class="dropdown-label">@GetPrimaryLabel(CurrentPrimary)</span>
+				<span class="dropdown-arrow @(elementDropdownOpen ? "open" : "")">▼</span>
+			</button>
+			@if (elementDropdownOpen)
+			{
+				<div class="dropdown-menu primary-menu" @ref="elementMenuRef">
+					@for (int pi = 0; pi < PrimaryItems.Count; pi++)
+					{
+						var it = PrimaryItems[pi];
+						var idx = pi;
+						if (pi == 1)
+						{
+							<div class="dropdown-divider"></div>
+						}
+						<div class="dropdown-item @(CurrentPrimary == it.Key ? "active" : "") @(idx == focusedItemIndex ? "kb-focused" : "")" onclick=@(() => SelectPrimary(it.Key)) onmouseover=@(() => OnItemHover(idx))>
+							@if (!string.IsNullOrEmpty(it.Icon))
+							{
+								<img class="item-icon-svg" src="@it.Icon" />
+							}
+							<span class="item-label">@it.Label</span>
+						</div>
+					}
+				</div>
+			}
+		</div>
+	}
+	else
+	{
+	@* Element Dropdown — the shipped first slot, untouched. *@
 	<div class="dropdown-container">
 		<button class="dropdown-btn element-btn @GetElementClass(CurrentElement)" @ref="elementBtnRef" onclick=@ToggleElementDropdown onmouseover=@OnTriggerHover>
 			<img class="dropdown-icon" src="ui/icons/elements/background/@(GetElementIconPath(CurrentElement)).png" />
@@ -39,6 +82,7 @@
 			</div>
 		}
 	</div>
+	}
 
 	<!-- Rarity Dropdown (optional) -->
 	@if (ShowRarityFilter)
@@ -83,7 +127,7 @@
 				@foreach (var id in sortItems)
 				{
 					var idx = sortItems.IndexOf(id);
-					if (id == "fav" || id == "name")
+					if (!HasItemSorts && (id == "fav" || id == "name"))
 					{
 						<div class="dropdown-divider"></div>
 					}
@@ -100,6 +144,22 @@
 	<button class="sort-direction-btn" onclick=@ToggleSortDirection onmouseover=@OnTriggerHover>
 		@(SortAscending ? "↑" : "↓")
 	</button>
+
+	@if (ShowSearchChip)
+	{
+		@* SEARCH CHIP (LAYOUT 2026-09-03, additive — the Bag ruling "search is
+		   KEPT"). A standalone 180×36 chip holding a live TextEntry, polled in
+		   Tick (TextEntry has no onchange) → OnNameFilterChanged(text) on every
+		   change. ROUNDED, not skewed: a TextEntry under a skew transform
+		   misplaces its caret, and the search box is a field, not a trigger
+		   (actions-never-skew). Hosts read IsSearchFocused to stop stealing
+		   keys while the player types. Off by default — no other page changes.
+		   LANE: color — rim colour on a tan page (the family's violet-dim rest). *@
+		<div class="search-chip @(IsSearchFocused ? "focused" : "")">
+			<iconify class="search-chip-glyph" icon="lucide:search" Size=@(13) Color="rgba(214, 206, 236, 0.45)" />
+			<TextEntry class="search-chip-input" @ref="searchChipRef" Text="@chipText" Placeholder="@SearchPlaceholderText" />
+		</div>
+	}
 
 	<!-- Name Search Popup -->
 	@if (nameSearchOpen)
@@ -163,6 +223,54 @@
 	// Available names for search (set by parent)
 	[Property] public List<string> AvailableNames { get; set; } = new();
 
+	// ── ITEM-PAGE PARAMETERS (LAYOUT 2026-09-03, additive; the Bag rebuild) ──
+	// All three default OFF/null → every existing page renders exactly as
+	// before (element menu · beast sort list · no search chip).
+	//
+	//   PrimaryItems     a custom FIRST menu (key · label · optional svg icon)
+	//                    that REPLACES the element menu; CurrentPrimary /
+	//                    OnPrimaryChanged mirror CurrentElement / OnElementChanged.
+	//   ItemSorts        a custom sort list that REPLACES GetSortItems' beast
+	//                    list (labels + icons ride the items; "name" is a plain
+	//                    sort here — the name-search popup is beast-only).
+	//   ShowSearchChip   a standalone live-search TextEntry chip after the
+	//                    direction toggle → OnNameFilterChanged(text) per change.
+	//   SearchPlaceholder the chip's placeholder (defaults to the shared key).
+	public class MenuItem
+	{
+		public string Key { get; set; }
+		public string Label { get; set; }
+		public string Icon { get; set; } // svg path under ui/icons, or null
+	}
+
+	[Property] public List<MenuItem> PrimaryItems { get; set; } = null;
+	[Property] public string CurrentPrimary { get; set; } = "all";
+	[Property] public Action<string> OnPrimaryChanged { get; set; }
+	[Property] public List<MenuItem> ItemSorts { get; set; } = null;
+	[Property] public bool ShowSearchChip { get; set; } = false;
+	[Property] public string SearchPlaceholder { get; set; } = "";
+
+	private bool HasPrimary => PrimaryItems != null && PrimaryItems.Count > 0;
+	private bool HasItemSorts => ItemSorts != null && ItemSorts.Count > 0;
+	private string SearchPlaceholderText => string.IsNullOrEmpty(SearchPlaceholder) ? L("ui.filter.type_to_filter") : SearchPlaceholder;
+
+	/// <summary>True while the standalone search chip's TextEntry has focus — hosts skip their key handling.</summary>
+	public bool IsSearchFocused => ShowSearchChip && searchChipRef != null && searchChipRef.HasFocus;
+
+	private TextEntry searchChipRef;
+	private string chipText = "";
+
+	private string GetPrimaryLabel(string key) => PrimaryItems?.FirstOrDefault(i => i.Key == key)?.Label ?? key;
+	private string GetPrimaryIcon(string key) => PrimaryItems?.FirstOrDefault(i => i.Key == key)?.Icon;
+
+	private void SelectPrimary(string key)
+	{
+		CurrentPrimary = key;
+		elementDropdownOpen = false;
+		OnPrimaryChanged?.Invoke(key);
+		SoundManager.PlaySelect();
+	}
+
 	// ── KEYBOARD INSIDE THE MENUS (LANE: input 2026-09-02; user: "when I
 	// open the tabs at the top — elements, rarity, power — I can't scroll
 	// through them with W and S") ──────────────────────────────────────
@@ -195,6 +303,7 @@
 	// screen (DOC-5 #12: same live list, same order).
 	private List<string> GetSortItems()
 	{
+		if (HasItemSorts) return ItemSorts.Select(i => i.Key).ToList();
 		var list = new List<string>();
 		if (ShowBeastiarySort) list.Add("beastiary");
 		if (!HideMonsterOnlySorts) { list.Add("power"); list.Add("level"); list.Add("genes"); }
@@ -206,7 +315,7 @@
 
 	private List<string> GetOpenMenuItems()
 	{
-		if (elementDropdownOpen) return ElementItems.ToList();
+		if (elementDropdownOpen) return HasPrimary ? PrimaryItems.Select(i => i.Key).ToList() : ElementItems.ToList();
 		if (rarityDropdownOpen) return RarityItems.ToList();
 		if (sortDropdownOpen) return GetSortItems();
 		return new List<string>();
@@ -251,7 +360,7 @@
 		elementDropdownOpen = !elementDropdownOpen;
 		sortDropdownOpen = false;
 		rarityDropdownOpen = false;
-		if (elementDropdownOpen) SeedMenuCursor(CurrentElement);
+		if (elementDropdownOpen) SeedMenuCursor(HasPrimary ? CurrentPrimary : CurrentElement);
 		SoundManager.PlayClick();
 	}
 
@@ -356,14 +465,14 @@
 	// which also closes the menu — the page's header cursor stays on the trigger.
 	private void ActivateFocusedItem(string id)
 	{
-		if (elementDropdownOpen) SelectElement(id);
+		if (elementDropdownOpen) { if (HasPrimary) SelectPrimary(id); else SelectElement(id); }
 		else if (rarityDropdownOpen) SelectRarity(id);
 		else if (sortDropdownOpen) ActivateSortItem(id);
 	}
 
 	private void ActivateSortItem(string id)
 	{
-		if (id == "name") OpenNameSearch();
+		if (id == "name" && !HasItemSorts) OpenNameSearch();
 		else SelectSort(id);
 	}
 
@@ -508,6 +617,11 @@
 
 	private string GetSortIconPath(string sort)
 	{
+		if (HasItemSorts)
+		{
+			var icon = ItemSorts.FirstOrDefault(i => i.Key == sort)?.Icon;
+			if (!string.IsNullOrEmpty(icon)) return icon;
+		}
 		return sort switch
 		{
 			"power" => "ui/icons/sort/power.svg",
@@ -525,6 +639,11 @@
 
 	private string GetSortLabel(string sort)
 	{
+		if (HasItemSorts)
+		{
+			var lbl = ItemSorts.FirstOrDefault(i => i.Key == sort)?.Label;
+			if (!string.IsNullOrEmpty(lbl)) return lbl;
+		}
 		return sort switch
 		{
 			"power" => L("ui.filter.sort_power"),
@@ -544,7 +663,7 @@
 	// SEARCH NAME (the trigger label is what shows the picked name).
 	private string GetSortItemLabel(string sort)
 	{
-		if (sort == "name") return L("ui.filter.search_name");
+		if (sort == "name" && !HasItemSorts) return L("ui.filter.search_name");
 		return GetSortLabel(sort);
 	}
 
@@ -585,6 +704,18 @@
 			searchText = searchInput.Text ?? "";
 		}
 
+		// Standalone search chip — poll (TextEntry has no onchange; the
+		// roster recipe) and notify the host on every change.
+		if (ShowSearchChip && searchChipRef != null)
+		{
+			var t = searchChipRef.Text ?? "";
+			if (t != chipText)
+			{
+				chipText = t;
+				OnNameFilterChanged?.Invoke(chipText);
+			}
+		}
+
 		UpdateMenuScrollFollow();
 	}
 
@@ -603,6 +734,13 @@
 		hash.Add(searchText);
 		hash.Add(focusedItemIndex); // menu row cursor (DOC-7 #22)
 		hash.Add(KbMode);           // root .kbd-mode / .mouse-mode gate
+		// Item-page parameters (2026-09-03) — the primary key + the chip text.
+		hash.Add(CurrentPrimary);
+		hash.Add(chipText);
+		hash.Add(HasPrimary);
+		hash.Add(HasItemSorts);
+		hash.Add(ShowSearchChip);
+		hash.Add(IsSearchFocused);
 		return hash.ToHashCode();
 	}
 }
