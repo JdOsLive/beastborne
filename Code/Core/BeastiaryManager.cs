@@ -200,6 +200,37 @@ public sealed class BeastiaryManager : Component
 		}
 	}
 
+	// dev_fullbook [all|seen|reset] — fills the Beastbook for screenshots/testing
+	// (2026-09-07 user: "give me every beast so I can have a full beastbook").
+	// `all` (default) marks every species in the game SEEN + DISCOVERED through the
+	// real DiscoverSpecies path (saves, fires the same hooks a contract would);
+	// `seen` = silhouettes lit but not discovered; `reset` clears both sets.
+	[ConCmd( "dev_fullbook" )]
+	public static void DevFullBook( string mode = "all" )
+	{
+		var bm = Instance;
+		var mm = MonsterManager.Instance;
+		if ( bm == null || mm == null ) { Log.Warning( "[dev_fullbook] managers not ready." ); return; }
+		mode = (mode ?? "all").Trim().ToLowerInvariant();
+		var all = mm.GetAllSpecies();
+		if ( mode == "reset" )
+		{
+			bm.DiscoveredSpecies.Clear();
+			bm.SeenSpecies.Clear();
+			Log.Info( "[dev_fullbook] Beastbook cleared (seen + discovered)." );
+			return;
+		}
+		int n = 0;
+		foreach ( var sp in all )
+		{
+			if ( sp == null || string.IsNullOrEmpty( sp.Id ) ) continue;
+			bm.SeeSpecies( sp.Id );
+			if ( mode != "seen" ) bm.DiscoverSpecies( sp.Id );
+			n++;
+		}
+		Log.Info( $"[dev_fullbook] {n} species marked {( mode == "seen" ? "SEEN" : "SEEN + DISCOVERED" )} — {bm.GetCompletionText()}" );
+	}
+
 	public bool IsDiscovered( string speciesId )
 	{
 		return DiscoveredSpecies.Contains( speciesId );
