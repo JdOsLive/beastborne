@@ -44,7 +44,8 @@
 	  body    pad 20/30/20/30 → column 1080 − 90 − 20 − 20 = 950 (NO HUD
 	          reserve: .inventory-panel is not in GameHUD's 56px ::after list
 	          — checked 2026-09-03, nothing to remove; .bag-body is flex 1 1 0)
-	  goods   1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 20 scrollbar lane
+	  goods   1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 16 pad + 4 NATIVE
+	          scrollbar lane (engine bar, scrollbar-gutter: stable — 2026-09-11)
 	  gap     48 (the case's margin-left)
 	  case    482 × 950 r22, pad 24 → 434 inner
 	  row     30 + 1330 + 48 + 482 + 30 = 1920 ✓
@@ -194,7 +195,7 @@
 			bool bagEmpty = GetOwnedStackCount() == 0;
 		}
 
-		@* ---- GOODS — 1330: 12 inset + the 1298 grid + a 20px overlay-scrollbar lane ---- *@
+		@* ---- GOODS — 1330: 12 inset + the 1298 grid + 16 pad + the 4px NATIVE scrollbar lane (engine bar, 2026-09-11) ---- *@
 		@* MOTION (2026-09-03): `open-N` render key — the column remounts per
 		   Show() so bagBodyIn (the shop's shBodyIn) replays on every open. *@
 		<div class="@("bag-goods open-" + openVersion)">
@@ -273,12 +274,6 @@
 						}
 					}
 				}
-			</div>
-
-			@* Overlay scrollbar — the roster .col-scrollbar recipe: read-only thumb
-			   written per tick (scrollbar-color/-width don't parse). *@
-			<div @ref="sbTrackRef" class="bag-scrollbar">
-				<div @ref="sbThumbRef" class="bag-sb-thumb"></div>
 			</div>
 		</div>
 
@@ -545,7 +540,6 @@
 	// Refs
 	private FilterBar filterBar;
 	private Panel gridRef;
-	private Panel sbTrackRef, sbThumbRef;
 	private Panel ringRef;
 	// INPUT 2026-09-03 — measured hosts: the header walk (toolbar), the case
 	// stops (primary slab · stepper row → − … + · sell row → SELL), the picker scroll.
@@ -1436,42 +1430,6 @@
 	}
 
 	// ============================================================
-	// OVERLAY SCROLLBAR — the roster UpdateScrollbar recipe (read-only thumb,
-	// imperative Style writes, only-on-change caches).
-	// ============================================================
-	private int _sbTop = int.MinValue, _sbH = int.MinValue, _sbTrackH = int.MinValue;
-	private Panel _sbSeen;
-
-	private void UpdateScrollbar()
-	{
-		if ( !ReferenceEquals( _sbSeen, sbThumbRef ) ) { _sbSeen = sbThumbRef; _sbTop = _sbH = _sbTrackH = int.MinValue; }
-		var scroll = gridRef;
-		var track = sbTrackRef;
-		var thumb = sbThumbRef;
-		if ( track == null || thumb == null ) return;
-
-		float maxOff = scroll?.ScrollSize.y ?? 0f;
-		float viewH = scroll?.Box.Rect.Height ?? 0f;
-		if ( scroll == null || maxOff < 2f || viewH <= 0f ) { track.SetClass( "on", false ); return; }
-
-		float sc = ScaleFromScreen;
-		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-
-		int trackH = (int)(viewH * sc) - 16;
-		if ( trackH < 40 ) { track.SetClass( "on", false ); return; }
-
-		float contentH = viewH + maxOff;
-		int h = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
-		float t01 = Math.Clamp( scroll.ScrollOffset.y / maxOff, 0f, 1f );
-		int top = (int)((trackH - h) * t01);
-
-		if ( trackH != _sbTrackH ) { _sbTrackH = trackH; track.Style.Height = Length.Pixels( trackH ); }
-		if ( h != _sbH ) { _sbH = h; thumb.Style.Height = Length.Pixels( h ); }
-		if ( top != _sbTop ) { _sbTop = top; thumb.Style.Top = Length.Pixels( top ); }
-		track.SetClass( "on", true );
-	}
-
-	// ============================================================
 	// KEYBOARD (INPUT 2026-09-03) — polled from Tick while this panel is the
 	// top modal (the Bag is an OVERLAY, not a tab: GameHUD does not route
 	// TickInput here; its own Q handler is gated off by UIModalState).
@@ -2142,7 +2100,6 @@
 		UpdateScrollFollow();
 		UpdateRing();
 		ApplyRingWave();
-		UpdateScrollbar();
 
 		// Hold-to-sell — 0.9s to commit; release (mouse up / confirm key up) cancels.
 		if ( isHoldingSell && _kbSellHold && !ConfirmDown() ) StopHold();
@@ -2172,6 +2129,12 @@
 	//   dev_bag                  → open the bag
 	//   dev_bag relic            → open on the RELICS category
 	//   dev_bag held_ember_fang  → open ALL, select that item
+	//   dev_bag fill[:n]         → grant n (default 3) of EVERY item first, so the
+	//                              grid overflows (native-scrollbar check, 2026-09-11)
+	//   dev_bag scroll:<px>      → glide the grid to <px> (clamped) through the kb
+	//                              scroll-follow path — the native thumb must follow
+	//   dev_bag picker           → open EQUIP TO… on the first owned held item
+	//                              (the picker list is the page's second scroller)
 	// REMOVE after the redesign is user-approved.
 	// ============================================================
 	private static string _devPending;
@@ -2193,6 +2156,18 @@
 		var gm = Beastborne.Core.GameManager.Instance;
 		if ( gm != null && !gm.IsInGame ) gm.StartGame();
 		PhoneLauncher.Close();
+		if ( arg != null && arg.StartsWith( "fill" ) )
+		{
+			int n = 3;
+			int colon = arg.IndexOf( ':' );
+			if ( colon >= 0 && !int.TryParse( arg.Substring( colon + 1 ), out n ) ) n = 3;
+			n = Math.Max( 1, n );
+			var mgr = ItemManager.Instance;
+			int added = 0;
+			if ( mgr != null ) foreach ( var id in mgr.ItemDatabase.Keys.ToList() ) if ( mgr.AddItem( id, n, markAsNew: false ) ) added++;
+			Log.Info( $"[Bag] dev_bag fill → {added} item ids × {n}" );
+			arg = "";
+		}
 		if ( !IsVisible ) Show();
 		_devPending = arg ?? "";
 		Log.Info( $"[Bag] dev_bag → '{_devPending}'" );
@@ -2206,6 +2181,20 @@
 		_devPending = null;
 
 		if ( string.IsNullOrEmpty( arg ) ) { SetCategory( "all" ); return; }
+		if ( arg.StartsWith( "scroll:" ) && float.TryParse( arg.Substring( 7 ), out float px ) )
+		{
+			gridScrollGlideTarget = Math.Clamp( px, 0f, Math.Max( 0f, gridRef?.ScrollSize.y ?? 0f ) );
+			return;
+		}
+		if ( arg == "picker" )
+		{
+			var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
+			var held = inv?.Keys.Select( id => ItemManager.Instance?.GetItem( id ) )
+				.FirstOrDefault( d => d != null && d.Category == ItemCategory.HeldItem && GetItemQuantity( d.Id ) > 0 );
+			if ( held == null ) { Log.Warning( "[Bag] dev_bag picker: no owned held item" ); return; }
+			SetCategory( "all" ); SelectItem( held, silent: true ); OpenPicker( held, PickerMode.Held );
+			return;
+		}
 		if ( Array.IndexOf( CategoryCycle, arg ) >= 0 ) { SetCategory( arg ); return; }
 		var def = ItemManager.Instance?.GetItem( arg );
 		if ( def != null && GetItemQuantity( arg ) > 0 ) { SetCategory( "all" ); SelectItem( def, silent: true ); RequestScrollFollow(); return; }

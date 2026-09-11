@@ -60,7 +60,8 @@
 //            (NO HUD reserve — .inventory-panel is not in GameHUD's
 //            56px ::after list; .bag-body is flex 1 1 0, both columns
 //            stretch: 1080 − 90 − 20 − 20 = 950)
-//   goods    1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 20 lane
+//   goods    1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 16 pad
+//            + 4 NATIVE scrollbar lane (scrollbar-gutter: stable, 2026-09-11)
 //   gap      48  (the case's margin-left)
 //   case     482 × 950 r22, pad 24 → 434 inner
 //   row      30 + 1330 + 48 + 482 + 30                = 1920 ✓
@@ -100,11 +101,12 @@
 //
 // ENGINE LAWS honored:
 // - pointer-events: all / none ONLY, always via a CLASS ON THE CHILD.
-// - Every absolute carries explicit top/left + width/height (the
-//   scrollbar track height + thumb and the hold fill are written in px).
+// - Every absolute carries explicit top/left + width/height (the hold
+//   fill is written in px). Scrollbars are the ENGINE's native bar
+//   (26.09.08b, opt-in via scrollbar-width) — no overlay track/thumb here.
 // - line-height always px; empty spacer/line divs carry explicit size.
 // - No `width: 100%` inside a padded parent — explicit px everywhere.
-// - Wrap grid pins width AND max-width (1310 declared / 1298 inner);
+// - Wrap grid pins width AND max-width (1330 declared / 1298 inner);
 //   rows inside the scroll are pinned (1298); the kicker hairline has a
 //   REAL flex-basis.
 // - No transform / box-shadow below .bag-body except the root ring and
@@ -557,13 +559,14 @@ InventoryPanel {
 	overflow: hidden;
 }
 
-// GOODS column — the scroll host (column, overflow hidden) + the 20px lane
-// on the right where the overlay scrollbar lives.
+// GOODS column — the scroll host (column, overflow hidden). The native
+// scrollbar lives INSIDE .bag-grid (its engine-made last child) — the
+// column carries no lane of its own any more (2026-09-11).
 .bag-goods {
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	width: 1330px; // 12 inset + 1298 row + 20 lane (the shop's latest math)
+	width: 1330px; // = .bag-grid: 12 inset + 1298 row + 16 pad + 4 native lane
 	flex: 0 0 1330px;
 	min-width: 1330px;
 	overflow: hidden;
@@ -574,17 +577,30 @@ InventoryPanel {
 }
 
 // The scroll child — the roster-grid recipe verbatim: flat wrap list,
-// width AND max-width pinned; padding-box → declared 1310 with a 12px left
-// inset keeps the 1298 inner row (the skewed kicker chips + the ring's
-// 10px reach were clipped at x=0 without it). Items are DIRECT children.
+// width AND max-width pinned; padding-box → declared 1330 = 12 left inset
+// (the skewed kicker chips + the ring's 10px reach were clipped at x=0
+// without it) + 1298 row + 16 right pad + 4 NATIVE scrollbar lane.
+// scrollbar-gutter: stable consumes the lane whether or not the list
+// overflows, so the 8-card row never re-wraps when a filter shortens it.
+// Items are DIRECT children; the engine appends its `scrollbar` panel
+// LAST (absolute — outside the wrap flow; CardPanels() and UiGridScroll
+// filter by class, so the walks are unaffected).
+// NATIVE SCROLLBAR (2026-09-11, engine 26.09.08b — learnings 2026-09-10):
+// 4px lane → 2px thumb; thumb = the tan ladder's tail (the overlay
+// thumb's own value), track = the house .12 cream; scrollbar-color lands
+// INLINE so it beats any stylesheet colour — one mechanism per page.
 .bag-grid {
 	flex: 1 1 0;
 	min-height: 0;
 	overflow-y: scroll;
 	overflow-x: hidden;
-	width: 1310px;
-	max-width: 1310px;
+	width: 1330px;
+	max-width: 1330px;
 	padding-left: 12px;
+	padding-right: 16px;
+	scrollbar-width: 4px;
+	scrollbar-color: rgba(217, 160, 84, 0.45) rgba(244, 241, 234, 0.12);
+	scrollbar-gutter: stable;
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
@@ -603,6 +619,7 @@ InventoryPanel {
 		justify-content: center;
 		gap: 10px;
 		padding-left: 0px;
+		padding-right: 0px;
 	}
 }
 
@@ -645,34 +662,18 @@ InventoryPanel {
 	animation: bagEmptyIn 0.25s ease-out both;
 }
 
-// Overlay scrollbar — the roster .col-scrollbar recipe (read-only thumb,
-// imperative height/top; scrollbar-color/-width don't parse). Track in the
-// 20px lane: right 4 → 11px clear of the cards; top 8 + 8 bottom breathing
-// = the 16 trimmed in UpdateScrollbar.
-.bag-scrollbar {
-	position: absolute;
-	right: 4px;
-	top: 8px;
-	width: 5px;
-	height: 200px; // written imperatively (viewport-derived)
-	background-color: rgba(244, 241, 234, 0.05);
-	border-radius: 3px;
-	opacity: 0;
-	transition: opacity 0.2s ease-out;
-	pointer-events: none;
-
-	&.on { opacity: 1; }
-}
-
-.bag-sb-thumb {
-	position: absolute;
-	top: 0px;
-	left: 0px;
-	width: 5px;
-	height: 40px; // top + height overwritten per tick
-	background-color: rgba(217, 160, 84, 0.45); // tan — violet is the ring's alone
-	border-radius: 3px;
-}
+// The engine's native bar inside the grid — its default sheet rests the
+// bar at opacity .5 and the thumb at .7 (→ 1 on hover/drag) and pills
+// the thumb at 100px; these two rules are the verified overrides
+// (learnings 2026-09-10, cell G1). Flat descendant selectors — the
+// probe-verified form.
+// z 70 (2026-09-11, live): the engine sheet pins every bar at z 10000,
+// which paints THROUGH anything layered above the grid — the EQUIP TO
+// shield (600) and the PawPad (9500+) both showed the bar at full
+// strength over their dim. 70 = above the cards (1–2) and the ring (60),
+// under the header (500) and the shield (600).
+.bag-grid scrollbar { opacity: 1; z-index: 70; }
+.bag-grid scrollbar > .thumb { opacity: 1; border-radius: 2px; }
 
 // ─── Section kicker row — 1298 × 24, a DIRECT child of the wrap list.
 // Pinned width + explicit height in ONE self-contained rule (rows in a
@@ -1435,19 +1436,31 @@ InventoryPanel {
 	height: 30px;
 }
 
-// The scroll child — rows as DIRECT children. pad 0 16 14 16 → row 528.
+// The scroll child — rows as DIRECT children. Padding-box with the
+// NATIVE lane (2026-09-11): 16 left + row 528 + 12 right + 4 scrollbar
+// lane = 560 (was pad 0 16 14 16 with no bar at all; the right pad gives
+// up 4 to the lane so the row keeps its declared 528 — its 3px
+// border-left overhang still lands in the pad, 9px clear of the bar).
+// Same tan/cream bar recipe as .bag-grid.
 .bag-picker-scroll {
 	flex: 1 1 0;
 	min-height: 0;
 	overflow-y: scroll;
 	overflow-x: hidden;
-	padding: 0 16px 14px 16px;
+	padding: 0 12px 14px 16px;
 	width: 560px;
 	max-width: 560px;
+	scrollbar-width: 4px;
+	scrollbar-color: rgba(217, 160, 84, 0.45) rgba(244, 241, 234, 0.12);
+	scrollbar-gutter: stable;
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 }
+// z 610: inside the 600 shield, under the 700 toast and the PawPad —
+// the engine's 10000 would paint over both (see .bag-grid scrollbar).
+.bag-picker-scroll scrollbar { opacity: 1; z-index: 610; }
+.bag-picker-scroll scrollbar > .thumb { opacity: 1; border-radius: 2px; }
 
 // Row 528×64 r14 — sprite 52 · 12 · info 300 · datum (the rest, right-
 // aligned). Pad 0 12 → 504 inner: 52 + 12 + 300 + 12 + 128 = 504 ✓.
