@@ -155,6 +155,57 @@ public class ItemDefinition
 		return parts.Count > 0 ? string.Join( " · ", parts ) : Description;
 	}
 
+	/// <summary>
+	/// The same fragments GetEffectDescription() joins, ONE PER SLOT, each tagged with
+	/// its sign so a UI can draw a glyph instead of colouring the words (user ruling
+	/// 2026-09-11: up = buff, down = penalty, dash = neutral). Positive / Negative come
+	/// from the effect TYPE's polarity × the value's sign — never from the text — so a
+	/// penalty that prints with a plus (HeldDamageTaken "+20% damage taken") reads as a
+	/// penalty and a buff that prints with a minus (HeldPPReduction "-2 PP cost") reads
+	/// as a buff. Neutral = text-only effects with no better/worse ("Set nature to X",
+	/// "Randomly reroll one trait"). Inert items (materials, EffectType.None) return an
+	/// EMPTY list — callers fall back to Description for those. GetEffectDescription()
+	/// is unchanged for callers that want the sentence.
+	/// </summary>
+	public List<(bool Positive, bool Neutral, string Text)> GetEffectParts()
+	{
+		var parts = new List<(bool Positive, bool Neutral, string Text)>();
+		AddPart( EffectType, EffectValue );
+		if ( SecondaryEffectType.HasValue && SecondaryEffectValue != 0 )
+			AddPart( SecondaryEffectType.Value, SecondaryEffectValue );
+		return parts;
+
+		void AddPart( ItemEffectType type, float value )
+		{
+			var text = FormatEffect( type, value );
+			if ( string.IsNullOrEmpty( text ) ) return;
+			var (positive, neutral) = Polarity( type, value );
+			parts.Add( (positive, neutral, text) );
+		}
+	}
+
+	/// <summary>
+	/// Sign of one effect slot. Default = the value's sign (every "+N% stat" / "-N% stat"
+	/// fragment, the grants, heals and multipliers all carry a positive value). The
+	/// special cases are the types whose PRINTED sign and real polarity disagree, and
+	/// the text-only neutrals.
+	/// </summary>
+	private static (bool Positive, bool Neutral) Polarity( ItemEffectType type, float value )
+	{
+		switch ( type )
+		{
+			case ItemEffectType.NatureChange:
+			case ItemEffectType.TraitReroll:
+				return (false, true);        // text-only — neither better nor worse
+			case ItemEffectType.HeldDamageTaken:
+				return (value < 0, false);   // a penalty even when it prints "+20%"
+			case ItemEffectType.HeldPPReduction:
+				return (value > 0, false);   // prints "-2 PP cost" but is a buff
+			default:
+				return (value >= 0, false);
+		}
+	}
+
 	/// <summary>Signed percentage — "+8%" / "-10%".</summary>
 	private static string Pct( float value ) => value >= 0 ? $"+{value}%" : $"{value}%";
 

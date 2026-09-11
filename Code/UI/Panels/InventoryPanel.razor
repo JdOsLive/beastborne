@@ -44,11 +44,16 @@
 	  body    pad 20/30/20/30 → column 1080 − 90 − 20 − 20 = 950 (NO HUD
 	          reserve: .inventory-panel is not in GameHUD's 56px ::after list
 	          — checked 2026-09-03, nothing to remove; .bag-body is flex 1 1 0)
-	  goods   1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 16 pad + 4 NATIVE
-	          scrollbar lane (engine bar, scrollbar-gutter: stable — 2026-09-11)
-	  gap     48 (the case's margin-left)
+	  goods   1342 = the 1330 .bag-grid scroller (12 inset + grid 1298 (8 × 150
+	          + 7 × 14) + 16 pad + 4 NATIVE scrollbar lane, engine bar with
+	          scrollbar-gutter: stable) + its 12 margin-right — the 12px inset
+	          ruling (learnings 2026-09-11, a MARGIN on the scroller, never
+	          padding: the bar hugs the scroller's outer edge); margin-top /
+	          bottom 12 too, so the bar's ends sit 12 inside the body clip
+	          (viewport 932 → 908, first card row at y 140)
+	  gap     36 (the case's margin-left; + the 12 lane = the 48 the eye reads)
 	  case    482 × 950 r22, pad 24 → 434 inner
-	  row     30 + 1330 + 48 + 482 + 30 = 1920 ✓
+	  row     30 + 1342 + 36 + 482 + 30 = 1920 ✓
 	  column  90 + 20 + 950 + 20 = 1080 ✓
 	Header right slot (flex 1 1 0, right-aligned; 1920 − 28 − ~160 identity
 	  − 24 − 32 ≈ 1676 available): [IN BATTLE stamp] · FilterBar (CATEGORY
@@ -60,7 +65,8 @@
 	  margin-top 8 → card→kicker 24 · kicker→card 8.
 	  The brief's 29-stack scenario: 5 kickers + 5 card rows = 120 + 32 +
 	  5×176 + 9×8 = 1104 (scrolls 154 in the 950 viewport).
-	Case interior (434): art 300 · +16 name 34 · +6 ×N 24 · +8 effect ≥44 ·
+	Case interior (434): art 300 · +16 name 34 · +6 ×N 24 · +8 effect SIGN
+	  chips in a ≥44 host (24 r8 per slot, 2026-09-11; 54 if a pair wraps — none does) ·
 	  +12 PRIMARY 56 → ends at y 524 from the case top (24 + 500); the foot
 	  is TWO stacked rows (2026-09-04 — the Shop's own vertical order,
 	  stepper → SELL, so S on the stepper really goes DOWN, DOC-5 #21):
@@ -195,7 +201,7 @@
 			bool bagEmpty = GetOwnedStackCount() == 0;
 		}
 
-		@* ---- GOODS — 1330: 12 inset + the 1298 grid + 16 pad + the 4px NATIVE scrollbar lane (engine bar, 2026-09-11) ---- *@
+		@* ---- GOODS — 1342: the 1330 scroller (12 inset + the 1298 grid + 16 pad + the 4px NATIVE scrollbar lane) + 12 outside the bar (inset ruling 2026-09-11) ---- *@
 		@* MOTION (2026-09-03): `open-N` render key — the column remounts per
 		   Show() so bagBodyIn (the shop's shBodyIn) replays on every open. *@
 		<div class="@("bag-goods open-" + openVersion)">
@@ -315,8 +321,30 @@
 						<span class="@("bag-case-qty-text case-" + caseItem.Id)">@QtyText(qty)</span>
 					}
 				</div>
-				@* The ONE effect line. *@
-				<span class="bag-case-effect">@GetEffectDescription(caseItem)</span>
+				@* The effect ROW (user ruling 2026-09-11: sign GLYPHS, not coloured
+				   words) — 434 × ≥44 host, ALWAYS mounted so PRIMARY holds still. One
+				   24 r8 chip per effect slot (Item.GetEffectParts): a 14px arrow-up in
+				   success green = buff · arrow-down in the house red ink = penalty ·
+				   minus in TextDim = neutral, then the fragment 13/700 cream .85 (never
+				   coloured — the glyph carries the meaning). Wraps to a second row (54)
+				   only if a pair overruns 434; no shipped pair does. Inert items
+				   (materials) have no parts → their lore line sits in the same host as
+				   the old 15/22 span. Glyph = ONE iconify with tuple-swapped attributes. *@
+				<div class="bag-case-effects">
+					@{ var fxParts = GetEffectParts(caseItem); }
+					@if (fxParts.Count == 0)
+					{
+						<span class="bag-case-effect">@GetEffectDescription(caseItem)</span>
+					}
+					@foreach (var part in fxParts)
+					{
+						var fxGlyph = FxGlyph(part);
+						<div class="bag-fx-chip">
+							<iconify class="bag-fx-glyph" icon="@fxGlyph.icon" Size=@(14) Color="@fxGlyph.color" />
+							<span class="bag-fx-text">@part.Text</span>
+						</div>
+					}
+				</div>
 
 				@if (primary.show && caseLive)
 				{
@@ -905,6 +933,19 @@
 	private int GetItemQuantity( string itemId ) => TamerManager.Instance?.CurrentTamer?.Inventory?.GetValueOrDefault( itemId, 0 ) ?? 0;
 	private bool IsRelicEquipped( string itemId ) => TamerManager.Instance?.CurrentTamer?.EquippedRelics?.Contains( itemId ) ?? false;
 	private string GetEffectDescription( ItemDefinition item ) => item?.GetEffectDescription() ?? "";
+
+	// Effect SIGN chips (2026-09-11): one (Positive, Neutral, Text) per effect slot;
+	// EMPTY for inert items (materials) → the case shows the lore line instead.
+	private static readonly List<(bool Positive, bool Neutral, string Text)> NoParts = new();
+	private List<(bool Positive, bool Neutral, string Text)> GetEffectParts( ItemDefinition item ) => item?.GetEffectParts() ?? NoParts;
+
+	// The glyph is the ONLY carrier of the sign (text stays cream). Tuple-computed
+	// so each chip renders ONE iconify with swapped attributes (ghost-child law).
+	// LANE: color — success green #3fb45e · house red ink #ff8a92 · TextDim .6.
+	private static (string icon, string color) FxGlyph( (bool Positive, bool Neutral, string Text) part )
+		=> part.Neutral ? ("lucide:minus", "rgba(214, 206, 236, 0.6)")
+		 : part.Positive ? ("lucide:arrow-up", "#3fb45e")
+		 : ("lucide:arrow-down", "#ff8a92");
 	private static bool IsInBattleMode() => BattleManager.Instance?.IsInBattle == true;
 
 	// ============================================================
@@ -2166,6 +2207,15 @@
 
 		if ( string.IsNullOrEmpty( arg ) ) { SetCategory( "all" ); return; }
 		if ( Array.IndexOf( CategoryCycle, arg ) >= 0 ) { SetCategory( arg ); return; }
+		// `picker` — opens the EQUIP TO... / USE ON... list for the item in the case
+		// (read-only: nothing is equipped or used until a row is picked). Screenshot
+		// instrument for the picker's native bar (the 12px inset ruling, 2026-09-11).
+		if ( arg == "picker" )
+		{
+			var inCase = GetCaseItem() ?? lastCaseItem;
+			if ( inCase != null ) OpenPicker( inCase, inCase.Category == ItemCategory.HeldItem ? PickerMode.Held : PickerMode.Consumable );
+			return;
+		}
 		var def = ItemManager.Instance?.GetItem( arg );
 		if ( def != null && GetItemQuantity( arg ) > 0 ) { SetCategory( "all" ); SelectItem( def, silent: true ); RequestScrollFollow(); return; }
 		Log.Warning( $"[Bag] dev_bag: no owned item or category '{arg}'" );
