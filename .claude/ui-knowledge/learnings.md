@@ -1554,3 +1554,6 @@ Symptom: every panel rendered UNSTYLED (text one glyph per line, raw flex strips
 
 ## 2026-09-11 — Native scrollbar vs rounded slabs (user ruling: inset the bar, keep the radii)
 On an r22/r16 slab a native bar flush to the slab's edge gets its ends clipped by the corner arc (user saw it live on the migrated pages). Arc intrusion into a 4px bar = r − √(r² − (r − d)²) for inset d: at d = 4 on r22 it is ~8px (visible cut); at d = 12 it is ~2.4px (hidden by the thumb's r2). RULE: inside a rounded slab the scroll region keeps a **12px lane between the bar and the slab edge** (scroller `padding-right: 12px` with `scrollbar-gutter: stable`, or the scroller inset by margin), and the scroller's top/bottom padding stays ≥ 12 so the thumb never reaches the arc. Never shrink the radius ladder for this.
+
+## 2026-09-11 — native bars must be z-pinned: the engine sets every `scrollbar` to z 10000
+z-index is flat/global for paint + hit-test in s&box, so an unpinned native bar on the page UNDER a popup (Bag root z 9000 over the Roster tab) paints through it — the user saw "a line down the middle of the Bag". Recipe now includes `scrollbar { opacity: 1; z-index: 5 }` (last child, so 5 still beats the rows). Verified by the migration verifier via ui_hit_test at (716,500): `scrollbar.vertical` under `div.roster-grid` beneath the Bag entries.
