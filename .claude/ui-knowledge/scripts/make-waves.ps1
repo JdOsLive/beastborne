@@ -30,6 +30,7 @@ $accents = [ordered]@{
     'appink' = '#FF6BD6'   # skills (Tamer Talents — the PawPad SKILLS app pink)
     'teal'   = '#2DD4BF'   # beastbook (Specimen Hall — the PawPad BEASTBOOK app teal, 2026-07-12)
     'blue'   = '#3F8FE0'   # online (TamerLink — the PawPad ONLINE app blue, 2026-08-28)
+    'quests' = '#3fb45e'   # quests (the PawPad QUESTS app green, 2026-09-11) — NOT 'green' (#4ADE80 = expedition)
     # PawPad in-phone APP accents (2026-08-28) - phone-scale header wave strips for the
     # four apps; the 512px screen crops the 1600 tile at native size (no scaling).
     'chat'    = '#4AA8FF'

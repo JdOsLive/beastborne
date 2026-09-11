@@ -40,6 +40,12 @@ public sealed class DailyRewardManager : Component
 	/// <summary>Whether today's daily reward has already been claimed</summary>
 	public bool TodayRewardClaimed { get; private set; }
 
+	/// <summary>DEV (dev_quests streak): un-claim today's login reward so the CLAIM DAY n state can be shot. Session-only.</summary>
+	public void DevResetToday() => TodayRewardClaimed = false;
+
+	/// <summary>DEV (dev_quests empty): mark today's login reward claimed without granting it. Session-only.</summary>
+	public void DevMarkTodayClaimed() => TodayRewardClaimed = true;
+
 	/// <summary>Which milestone day-counts have been claimed</summary>
 	public List<int> MilestonesClaimed { get; private set; } = new();
 

@@ -231,6 +231,9 @@ public sealed class SideQuestManager : Component
 
 	public bool IsCompletedOneShot( string id ) => _completedOneShots.Contains( id );
 
+	/// <summary>DEV (dev_quests side): bypass the zone-cleared gate so ACCEPT rows can be shot. Session-only, never persisted.</summary>
+	public bool DevForceAvailable { get; set; }
+
 	/// <summary>True when the player has never accepted this quest, or has
 	/// already claimed it and it isn't repeatable. Also gated on the player
 	/// having cleared the quest's zone at least once — keeps first-playthrough
@@ -241,7 +244,8 @@ public sealed class SideQuestManager : Component
 		if ( def == null ) return false;
 		if ( IsAccepted( id ) ) return false;
 		if ( !def.Repeatable && _completedOneShots.Contains( id ) ) return false;
-		if ( !string.IsNullOrEmpty( def.ZoneId )
+		if ( !DevForceAvailable
+			&& !string.IsNullOrEmpty( def.ZoneId )
 			&& ExpeditionManager.Instance?.HasClearedExpedition( def.ZoneId ) != true )
 			return false;
 		return true;

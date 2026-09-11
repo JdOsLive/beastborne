@@ -33,6 +33,20 @@ public sealed class MissionManager : Component
 	public bool DailyBonusClaimed { get; private set; }
 	public bool WeeklyBonusClaimed { get; private set; }
 
+	// Bonus payouts — ONE source of truth (ClaimDailyBonus / ClaimWeeklyBonus
+	// grant these; QuestPanel reads them for the band chips — never re-typed).
+	public const int DailyBonusGold = 10000;
+	public const int DailyBonusGems = 5;
+	public const int DailyBonusXP = 1000;
+	public const int WeeklyBonusGold = 50000;
+	public const int WeeklyBonusGems = 10;
+
+	// Ranked arena is kill-switched at launch (PvP scope A, UI dormant):
+	// arena_* missions are excluded from the Generate* picks while false, and
+	// any already-rolled arena_* state wears QuestPanel's .dormant costume.
+	// Flip to true when CompetitiveManager's ranked flow goes live.
+	public static bool ArenaMissionsEnabled => false;
+
 	// Events
 	public Action OnMissionsUpdated;
 	public Action<string> OnMissionCompleted; // mission ID
