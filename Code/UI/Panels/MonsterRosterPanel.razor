@@ -321,14 +321,11 @@
 				</div>
 			}
 			</div>
-			@* Overlay scrollbar — read-only thumb driven per-tick from the
-			   grid's ScrollOffset/ScrollSize (UpdateScrollbars). s&box's
-			   scrollbar-color/-width don't parse (learnings 2026-04-15), so
-			   this IS the scrollbar visual; pointer-events: none so wheel and
-			   hover pass straight through to the grid. *@
-			<div @ref="gridSbTrackRef" class="col-scrollbar">
-				<div @ref="gridSbThumbRef" class="col-sb-thumb"></div>
-			</div>
+			@* Scrollbar: NATIVE (engine 26.09.08b, learnings 2026-09-10) — the
+			   bar is the grid's own last child (scrollbar.vertical > .thumb),
+			   opted in via scrollbar-width on .roster-grid. No overlay markup,
+			   no per-tick thumb writes; the house wheel + kb glide still write
+			   ScrollOffset and the native thumb follows. *@
 		</div>
 
 		@* ────── STAGE + FACTS (shared ancestor = the ring's detail walk) ────── *@
@@ -1075,9 +1072,6 @@
 					<div class="pb-hint">
 						<span>Click a fusion to highlight the beasts that can make it. Fusing uses up both beasts.</span>
 					</div>
-				</div>
-				<div @ref="factsSbTrackRef" class="col-scrollbar">
-					<div @ref="factsSbThumbRef" class="col-sb-thumb"></div>
 				</div>
 			</div>
 		}
@@ -1893,9 +1887,6 @@
 						</div>
 					}
 				</div>
-				<div @ref="factsSbTrackRef" class="col-scrollbar">
-					<div @ref="factsSbThumbRef" class="col-sb-thumb"></div>
-				</div>
 			</div>
 		}
 		else
@@ -2646,72 +2637,14 @@
 	private bool hdrKbFocusStamped; // a header control currently wears the imperative .kb-focused (LANE: input 2026-09-02)
 	private int gridRingWarm; // <2 = snap to position (no glide) while first rects land
 
-	// ── OVERLAY SCROLLBARS (2026-07-05) ─────────────────────────────────
-	// s&box's scrollbar-color/-width don't parse (learnings 2026-04-15),
-	// so both scroll columns carry a hand-rolled overlay: an absolute
-	// track pinned to the column's right edge + a thumb whose top/height
-	// are written IMPERATIVELY per tick (OnlineHubPanel ring precedent —
-	// Style writes fire CSS transitions and need no BuildHash input).
-	// Geometry from the scroll panel's proven API surface: ScrollOffset.y
-	// (current), ScrollSize.y (max offset = content − viewport; proven by
-	// ScrollFocusedDetailIntoView's scroll-to-bottom), Box.Rect (screen
-	// px — commensurate with ScrollOffset per UiGridScroll's math).
-	private Panel gridSbTrackRef, gridSbThumbRef, factsSbTrackRef, factsSbThumbRef;
-	private int _gridSbTop = int.MinValue, _gridSbH = int.MinValue, _gridSbTrackH = int.MinValue;
-	private int _factsSbTop = int.MinValue, _factsSbH = int.MinValue, _factsSbTrackH = int.MinValue;
-	// Cache-identity guards: template swaps (normal <-> fusion <-> empty)
-	// REMOUNT the track/thumb elements — a stale only-on-change cache
-	// would then skip writing onto the fresh element, leaving the thumb
-	// at its CSS default. Reset the caches whenever the instance changes.
-	private Panel _gridSbSeen, _factsSbSeen;
-
-	private void UpdateScrollbars()
-	{
-		if ( !ReferenceEquals( _gridSbSeen, gridSbThumbRef ) )
-		{ _gridSbSeen = gridSbThumbRef; _gridSbTop = _gridSbH = _gridSbTrackH = int.MinValue; }
-		if ( !ReferenceEquals( _factsSbSeen, factsSbThumbRef ) )
-		{ _factsSbSeen = factsSbThumbRef; _factsSbTop = _factsSbH = _factsSbTrackH = int.MinValue; }
-
-		// Grid track top 12 (SCSS) + 12 bottom breathing = 24 trimmed.
-		UpdateScrollbar( rosterGridRef, gridSbTrackRef, gridSbThumbRef, 24,
-			ref _gridSbTop, ref _gridSbH, ref _gridSbTrackH );
-		// Facts track top 12 (caps retired 2026-09-01) + 12 bottom = 24, same as the grid.
-		UpdateScrollbar( factsScrollRef, factsSbTrackRef, factsSbThumbRef, 24,
-			ref _factsSbTop, ref _factsSbH, ref _factsSbTrackH );
-	}
-
-	private void UpdateScrollbar( Panel scroll, Panel track, Panel thumb, int trimLayoutPx,
-		ref int lastTop, ref int lastH, ref int lastTrackH )
-	{
-		if ( track == null || thumb == null ) return;
-
-		float maxOff = scroll?.ScrollSize.y ?? 0f;
-		float viewH = scroll?.Box.Rect.Height ?? 0f;
-		if ( scroll == null || maxOff < 2f || viewH <= 0f )
-		{
-			track.SetClass( "on", false ); // content fits — hide entirely
-			return;
-		}
-
-		float sc = ScaleFromScreen;
-		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-
-		// Track height derives from the scroll viewport (explicit Style
-		// write — absolute top+bottom stretch is unproven in-engine, an
-		// explicit height is deterministic).
-		int trackH = (int)(viewH * sc) - trimLayoutPx;
-		if ( trackH < 40 ) { track.SetClass( "on", false ); return; }
-
-		float contentH = viewH + maxOff;
-		int h = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
-		float t01 = Math.Clamp( scroll.ScrollOffset.y / maxOff, 0f, 1f );
-		int top = (int)((trackH - h) * t01);
-
-		if ( trackH != lastTrackH ) { lastTrackH = trackH; track.Style.Height = Length.Pixels( trackH ); }
-		if ( h != lastH ) { lastH = h; thumb.Style.Height = Length.Pixels( h ); }
-		if ( top != lastTop ) { lastTop = top; thumb.Style.Top = Length.Pixels( top ); }
-		track.SetClass( "on", true );
-	}
+	// ── SCROLLBARS — NATIVE (2026-09-10) ────────────────────────────────
+	// Engine 26.09.08b grows a real scrollbar child on every scroller that
+	// declares scrollbar-width (learnings 2026-09-10). The hand-rolled
+	// overlay (the track/thumb refs, their caches and the per-tick thumb
+	// writer) is DELETED — the native thumb follows every
+	// ScrollOffset write (wheel, kb glide, sub-view reset) on its own.
+	// Children walkers filter by class (monster-card-wrapper / kb-focused)
+	// so the bar — appended LAST — never collides with a row index.
 
 	// 10px box inset each side; the 4px border lives in SCSS. RING
 	// CENTERING LAW (learnings 2026-08-29; LANE: input 2026-09-02, audit
@@ -3408,7 +3341,8 @@
 	}
 
 	// Scroll the FACTS column so the currently-focused control is fully
-	// visible. s&box has no scroll-into-view; we compute the target offset
+	// visible. Panel.ScrollIntoView is public since 26.09.08b, but the house
+	// GLIDE is the feel (user 2026-07-12) — kept; we compute the target offset
 	// from screen-space Box.Rect. Called from Tick() one frame AFTER the
 	// cursor moved, so layout has positioned the new focused element.
 	// Stage controls never scroll (the stage is a fixed column), so the
@@ -6453,8 +6387,6 @@
 		UpdateGridRing();
 		ApplyGridRingWave();
 
-		// Overlay scrollbar thumbs (both columns) — imperative, cheap.
-		UpdateScrollbars();
 	}
 
 	/// <summary>
