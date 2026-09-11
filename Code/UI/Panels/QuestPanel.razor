@@ -28,11 +28,18 @@
 	  · side ×3). Lists are sorted at OPEN only — a claimed row settles in
 	  place, it never jumps.
 
-	LANE: input — stops are the pressables only (CLAIM DAY n · CLAIM BONUS ·
-	CLAIM · ACCEPT), rebuilt from the same @if list the markup draws; one
-	imperative ring at page root (mount it as the LAST child of .qp-page);
-	device flag kbd-mode/mouse-mode on .qp-page + 3px travel guard; W/S/A/D
-	+ Space/E/Enter; Q closes (PanelHandledBackKey claimed in Tick below).
+	LANE: input (built 2026-09-11) — stops are the pressables only (CLAIM DAY
+	n · CLAIM BONUS · CLAIM · ACCEPT) as ACTION STRINGS ("login" · "b:daily" ·
+	"d:<id>" · "b:weekly" · "w:<id>" · "m" · "s:<id>" · "a:<id>"), rebuilt every
+	Tick from the SAME conditions the markup draws (BuildStops); each pressable
+	sits in a .qp-stop wrapper (hover + ring host). ONE imperative ring
+	(.qp-ring, last child of .qp-page, z60 above the slabs) · device flag
+	kbd-mode/mouse-mode on .qp-page + 3px travel guard (OnPageMouseMove) ·
+	W/S prev/next stop (LEFT column top→bottom, then RIGHT) · A/D the other
+	column's nearest stop by y · Space/E/Enter press · Q closes (claims
+	PanelHandledBackKey) · R/Z/X no job. Open edge seeds stop 0. A pressed
+	stop leaves the list; the ring glides to the next, else previous, else
+	hides. No scroll region → no scroll-follow.
 	LANE: motion — zone rungs qpZone*, row ladder qpRowIn0-7 (WINDOWED
 	classes from code, never static), qpClaimBeat / qpClaimInk /
 	qpAccentTick (the .row-accent strip is the HDR host) / qpChipIn /
@@ -42,7 +49,7 @@
 *@
 
 <root class="quest-panel-root @_rootVisibleClass">
-	<div class="qp-page">
+	<div class="@_pageClass" onmousemove=@OnPageMouseMove>
 		<!-- Living background — the quests glyph drifting. First child; the
 		     page paints NO fill of its own (opaque pattern tiles). -->
 		<BbIconScroll Icon="quests" />
@@ -82,9 +89,12 @@
 					@RenderSide()
 				</div>
 			</div>
-			<!-- LANE: input — the one imperative ring mounts HERE (last child of
-			     .qp-page, z above the slabs so their overflow never clips it). -->
 		}
+		<!-- THE living ring — one imperative element, last child of .qp-page,
+		     z60 above the slabs (their overflow never sees it). Position from
+		     UpdateRing each Tick; costumes: default r26 (r16 BbButtons) /
+		     .small r21 (the r11 CLAIM BONUS chip). -->
+		<div @ref="ringRef" class="qp-ring"></div>
 	</div>
 </root>
 
@@ -95,6 +105,31 @@
 	// Pre-computed class names used in attribute values — s&box Razor chokes on
 	// nested double-quotes like class="@(IsVisible ? "visible" : "")".
 	private string _rootVisibleClass => IsVisible ? "visible" : "";
+	private string _pageClass => "qp-page " + (_kbdMode ? "kbd-mode" : "mouse-mode");
+
+	// ── LANE: input — the one cursor ──
+	// _kbStop = the ACTION STRING under the cursor (null = no stop / ring
+	// hidden). _stops is rebuilt every Tick from the same conditions the
+	// markup draws. Device flag + the parked-pointer travel guard (learnings
+	// 2026-09-01: the engine re-sends onmousemove on every re-render).
+	private string _kbStop;
+	private int _kbStopIdx = -1;
+	private List<string> _stops = new();
+	private bool _kbdMode;
+	private Vector2 _kbTakeoverPos;
+	private bool _wasOpen;
+
+	// Ring geometry cache (imperative; only written on change).
+	private Panel ringRef;
+	private Panel _ringElem; // the element the cache below was written to
+	private const int RingInset = 10; // ring radius = host radius + 10 (r26 / r21)
+	private int _ringL = int.MinValue, _ringT = int.MinValue, _ringW = -1, _ringH = -1;
+	private bool _ringOn;
+	private int _ringWarm; // < 2 → .snap (land instantly), then glide
+
+	// LANE: motion — the last press, for the claim / accept beat classes.
+	private string _pressedStop;
+	private float _pressedAt = -100f;
 
 	private const string Accent = "#3fb45e";
 	private const int BarW = 320; // .qp-bar declared width — fills arrive as px
@@ -149,11 +184,21 @@
 	public override void Tick()
 	{
 		base.Tick();
-		if ( !IsVisible || !UIModalState.IsTopModal( "QuestPanel" ) ) return;
+
+		// OPEN EDGE (tracked bool, not the keystroke — the page opens by
+		// mouse too): rebuild the stops and seed the cursor on stop 0.
+		bool open = IsVisible;
+		if ( open && !_wasOpen ) OnOpenEdge();
+		_wasOpen = open;
+
+		UpdateRing();
+
+		if ( !open || !UIModalState.IsTopModal( "QuestPanel" ) ) return;
+
+		SyncStops();
 
 		// Q = back, always (one stage). Claim it so GameHUD does not also flip
 		// into its own Menu handling. Escape (s&box-reserved) and run close too.
-		// LANE: input — W/S/A/D + Space/E/Enter stop walking attaches here;
 		// LANE: motion — the exit latch (.qp-leaving) commits IsVisible=false
 		// from Tick after its window instead of this immediate Close().
 		if ( Input.Pressed( "Menu" ) )
@@ -163,7 +208,289 @@
 			return;
 		}
 		if ( Input.Pressed( "Escape" ) || Input.Pressed( "run" ) )
+		{
 			Close();
+			return;
+		}
+
+		TickNav();
+	}
+
+	// ══════════════════════════════════════════════
+	// LANE: input — THE ONE CURSOR
+	// ══════════════════════════════════════════════
+
+	private void OnOpenEdge()
+	{
+		_stops = BuildStops();
+		_kbStop = _stops.Count > 0 ? _stops[0] : null;
+		_kbStopIdx = _stops.Count > 0 ? 0 : -1;
+		_ringWarm = 0;
+		_kbTakeoverPos = Mouse.Position;
+		StateHasChanged();
+	}
+
+	// The stop list = the pressables, in SCREEN order: LEFT column top→bottom
+	// (CLAIM DAY n → daily CLAIM BONUS → daily CLAIMs) then RIGHT (weekly
+	// CLAIM BONUS → weekly CLAIMs → monthly → side CLAIM / ACCEPT). Every
+	// condition here mirrors the @if that draws the button (DOC-5 #12).
+	private List<string> BuildStops()
+	{
+		var stops = new List<string>();
+		var mm = MissionManager.Instance;
+		var drm = DailyRewardManager.Instance;
+		var sq = SideQuestManager.Instance;
+
+		if ( drm != null && !drm.TodayRewardClaimed ) stops.Add( "login" );
+
+		if ( mm != null )
+		{
+			if ( !mm.DailyBonusClaimed && mm.AreAllDailiesComplete() ) stops.Add( "b:daily" );
+			foreach ( var m in Ordered( mm.ActiveDailyMissions ?? new(), x => x.MissionId, _dailyOrder ) )
+				if ( IsClaimable( m ) ) stops.Add( "d:" + m.MissionId );
+
+			if ( !mm.WeeklyBonusClaimed && mm.AreAllWeekliesComplete() ) stops.Add( "b:weekly" );
+			foreach ( var m in Ordered( mm.ActiveWeeklyMissions ?? new(), x => x.MissionId, _weeklyOrder ) )
+				if ( IsClaimable( m ) ) stops.Add( "w:" + m.MissionId );
+
+			if ( mm.ActiveMonthlyChallenge is { } mc && IsClaimable( mc ) ) stops.Add( "m" );
+		}
+
+		if ( sq != null )
+		{
+			foreach ( var def in Ordered( sq.AllDefinitions ?? new List<SideQuest>(), d => d.Id, _sideOrder ) )
+			{
+				var state = sq.GetState( def.Id );
+				var doneOneShot = sq.IsCompletedOneShot( def.Id );
+				if ( state != null && state.Completed && !state.RewardClaimed ) stops.Add( "s:" + def.Id );
+				else if ( state == null && !doneOneShot && sq.IsAvailable( def.Id ) ) stops.Add( "a:" + def.Id );
+			}
+		}
+		return stops;
+	}
+
+	private static bool IsClaimable( MissionState m )
+	{
+		var def = MissionManager.Instance?.GetDefinition( m.MissionId );
+		return def != null && m.Completed && !m.Claimed && !IsDormant( def );
+	}
+
+	// Rebuild each Tick; if the cursor's stop left the list (a claim landed),
+	// glide to the stop now at the same index (= next), else the previous,
+	// else hide. A stop appearing later (a mission completes while open) is
+	// reachable by W/S — the cursor never teleports onto it.
+	private void SyncStops()
+	{
+		_stops = BuildStops();
+		if ( _kbStop == null ) { _kbStopIdx = -1; return; }
+		int idx = _stops.IndexOf( _kbStop );
+		if ( idx >= 0 ) { _kbStopIdx = idx; return; }
+		int n = Math.Min( _kbStopIdx, _stops.Count - 1 );
+		_kbStop = n >= 0 ? _stops[n] : null;
+		_kbStopIdx = n;
+		StateHasChanged();
+	}
+
+	// 0 = LEFT column (login · daily) · 1 = RIGHT (weekly · monthly · side)
+	private static int ColumnOf( string key )
+		=> key == "login" || key == "b:daily" || key.StartsWith( "d:" ) ? 0 : 1;
+
+	// Class-safe form of the action string — the wrapper carries qs-<key> so
+	// UpdateRing can find the live host by class.
+	private static string StopClass( string key )
+		=> "qp-stop qs-" + key.Replace( ':', '-' ) + (key == "login" ? " col" : "");
+
+	private void TickNav()
+	{
+		bool up = Input.Pressed( "Up" ), down = Input.Pressed( "Down" );
+		bool left = Input.Pressed( "Left" ), right = Input.Pressed( "Right" );
+		bool confirm = UiInput.ConfirmPressed();
+		if ( !(up || down || left || right || confirm) ) return;
+
+		StampKb();
+		if ( _stops.Count == 0 ) return; // EMPTY GRAPH — silent
+
+		int idx = _kbStop == null ? -1 : _stops.IndexOf( _kbStop );
+
+		if ( confirm )
+		{
+			if ( idx >= 0 ) PressStop( _kbStop );
+			return;
+		}
+
+		if ( up || down )
+		{
+			int n = idx < 0 ? 0 : Math.Clamp( idx + (down ? 1 : -1), 0, _stops.Count - 1 );
+			MoveTo( _stops[n] );
+			return;
+		}
+
+		// A/D — the other column's nearest stop by y; silent when there is
+		// none or the cursor already sits in that column.
+		int col = right ? 1 : 0;
+		if ( idx >= 0 && ColumnOf( _kbStop ) == col ) return;
+		var target = NearestInColumn( col );
+		if ( target != null ) MoveTo( target );
+	}
+
+	private string NearestInColumn( int col )
+	{
+		float cy = 0f;
+		var cur = _kbStop != null ? ResolveStopHost( _kbStop ) : null;
+		if ( cur != null ) cy = cur.Box.Rect.Center.y;
+
+		string best = null;
+		float bestD = float.MaxValue;
+		foreach ( var s in _stops )
+		{
+			if ( ColumnOf( s ) != col ) continue;
+			var h = ResolveStopHost( s );
+			float d = h != null ? MathF.Abs( h.Box.Rect.Center.y - cy ) : float.MaxValue - 1f;
+			if ( d < bestD ) { bestD = d; best = s; }
+		}
+		return best;
+	}
+
+	private void MoveTo( string key )
+	{
+		if ( key == _kbStop ) return;
+		_kbStop = key;
+		_kbStopIdx = _stops.IndexOf( key );
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// Hover IS selection (mouse mode only — a parked pointer under a kb
+	// re-render must never move the cursor).
+	private void HoverStop( string key )
+	{
+		if ( _kbdMode ) return;
+		if ( key == _kbStop ) return;
+		_kbStop = key;
+		_kbStopIdx = _stops.IndexOf( key );
+		SoundManager.PlayHover();
+		StateHasChanged();
+	}
+
+	// Keyboard drove last: stamp the pointer's parked position so mouse
+	// mode is reclaimed only by REAL travel.
+	private void StampKb()
+	{
+		_kbTakeoverPos = Mouse.Position;
+		if ( _kbdMode ) return;
+		_kbdMode = true;
+		StateHasChanged();
+	}
+
+	private void OnPageMouseMove()
+	{
+		if ( !_kbdMode ) return;
+		if ( (Mouse.Position - _kbTakeoverPos).Length < 3f ) return;
+		_kbdMode = false;
+		StateHasChanged();
+	}
+
+	// The ONE press path — mouse clicks and Space/E/Enter both land here, so
+	// LANE: motion has a single hook (_pressedStop / _pressedAt) for the
+	// claim / accept beats.
+	private void PressStop( string key )
+	{
+		if ( string.IsNullOrEmpty( key ) ) return;
+		_pressedStop = key;
+		_pressedAt = RealTime.Now;
+
+		if ( key == "login" ) ClaimStreak();
+		else if ( key == "b:daily" ) ClaimDailyBonus();
+		else if ( key == "b:weekly" ) ClaimWeeklyBonus();
+		else if ( key == "m" )
+		{
+			var id = MissionManager.Instance?.ActiveMonthlyChallenge?.MissionId;
+			if ( id != null ) ClaimMission( id );
+		}
+		else if ( key.StartsWith( "d:" ) || key.StartsWith( "w:" ) ) ClaimMission( key.Substring( 2 ) );
+		else if ( key.StartsWith( "s:" ) ) ClaimSideQuest( key.Substring( 2 ) );
+		else if ( key.StartsWith( "a:" ) ) AcceptSideQuest( key.Substring( 2 ) );
+
+		// The stop leaves the list at t0 → the ring glides on this frame.
+		SyncStops();
+		StateHasChanged();
+	}
+
+	// The ring host = the BbButton inside the stop's wrapper (the wrapper
+	// hugs it, but the button is the honest rect).
+	private Panel ResolveStopHost( string key )
+	{
+		var wrap = FindDescendantByClass( this, "qs-" + key.Replace( ':', '-' ) );
+		if ( wrap == null ) return null;
+		return wrap.Children.FirstOrDefault() ?? wrap;
+	}
+
+	private static Panel FindDescendantByClass( Panel root, string cls )
+	{
+		foreach ( var c in root.Children )
+		{
+			if ( c.HasClass( cls ) ) return c;
+			var d = FindDescendantByClass( c, cls );
+			if ( d != null ) return d;
+		}
+		return null;
+	}
+
+	// RING CENTERING LAW (learnings 2026-08-29): Style.Left/Top place the
+	// PADDING box, so L/T = host − inset + 4 (the ring's border) and W/H =
+	// host + 2·inset − 8. Written only on change; the CSS transition glides.
+	private void UpdateRing()
+	{
+		if ( ringRef == null ) return;
+
+		// The geometry cache belongs to ONE element: if the razor diff (or a
+		// hotload) hands @ref a fresh panel, the cached l/t/w/h would skip the
+		// writes and the new element would sit at its -500 rest (seen live
+		// 2026-09-11: ring class .on, Inline {} — invisible).
+		if ( !ReferenceEquals( ringRef, _ringElem ) )
+		{
+			_ringElem = ringRef;
+			_ringL = int.MinValue; _ringT = int.MinValue; _ringW = -1; _ringH = -1;
+			_ringWarm = 0;
+		}
+
+		bool was = _ringOn;
+		_ringOn = false;
+		bool small = false;
+
+		if ( IsVisible && _kbStop != null )
+		{
+			var host = ResolveStopHost( _kbStop );
+			if ( host != null )
+			{
+				var rr = Box.Rect;
+				var cr = host.Box.Rect;
+				if ( rr.Width > 1f && cr.Width > 1f )
+				{
+					float sc = ScaleFromScreen;
+					if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+					int l = (int)((cr.Left - rr.Left) * sc) - RingInset + 4;
+					int t = (int)((cr.Top - rr.Top) * sc) - RingInset + 4;
+					int w = (int)(cr.Width * sc) + RingInset * 2 - 8;
+					int h = (int)(cr.Height * sc) + RingInset * 2 - 8;
+
+					if ( l != _ringL ) { _ringL = l; ringRef.Style.Left = Length.Pixels( l ); }
+					if ( t != _ringT ) { _ringT = t; ringRef.Style.Top = Length.Pixels( t ); }
+					if ( w != _ringW ) { _ringW = w; ringRef.Style.Width = Length.Pixels( w ); }
+					if ( h != _ringH ) { _ringH = h; ringRef.Style.Height = Length.Pixels( h ); }
+
+					_ringOn = true;
+					small = _kbStop.StartsWith( "b:" ); // the r11 CLAIM BONUS chip → r21
+					if ( !was ) _ringWarm = 0;
+					else if ( _ringWarm < 2 ) _ringWarm++;
+				}
+			}
+		}
+
+		ringRef.SetClass( "on", _ringOn );
+		ringRef.SetClass( "snap", _ringWarm < 2 );
+		ringRef.SetClass( "small", _ringOn && small );
 	}
 
 	// ══════════════════════════════════════════════
@@ -224,8 +551,11 @@
 		foreach ( var def in SideQuestManager.Instance?.AllDefinitions ?? new List<SideQuest>() )
 			h.Add( SideQuestManager.Instance.IsAvailable( def.Id ) ? 1 : 0 );
 
-		// LANE: input — add _kbStop + lastInputDevice. LANE: motion — add the
-		// beat / tick windows (RealTime.Now < until bools).
+		// LANE: input — the cursor + device (every field that paints).
+		h.Add( _kbStop ?? "" );
+		h.Add( _kbdMode );
+		// LANE: motion — add the beat / tick windows (RealTime.Now < until bools;
+		// _pressedStop / _pressedAt are the press hook).
 		return h.ToHashCode();
 	}
 
@@ -476,7 +806,9 @@
 					}
 					else
 					{
-						<BbButton Tier="primary" Size=@(56) Label="@claimLabel" KeyCap="SPACE" Class="qp-login-btn" OnClick=@ClaimStreak />
+						<div class="@StopClass( "login" )" onmouseover=@(() => HoverStop( "login" ))>
+							<BbButton Tier="primary" Size=@(56) Label="@claimLabel" KeyCap="SPACE" Class="qp-login-btn" HoverSound=@false OnClick=@(() => PressStop( "login" )) />
+						</div>
 					}
 				</div>
 			</div>
@@ -512,7 +844,9 @@
 				}
 				else if ( allDone )
 				{
-					<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" OnClick=@ClaimDailyBonus />
+					<div class="@StopClass( "b:daily" )" onmouseover=@(() => HoverStop( "b:daily" ))>
+						<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" HoverSound=@false OnClick=@(() => PressStop( "b:daily" )) />
+					</div>
 				}
 				else
 				{
@@ -536,7 +870,7 @@
 				}
 				@for ( int i = 0; i < dailies.Count; i++ )
 				{
-					@MissionRow( dailies[i], i, true )
+					@MissionRow( dailies[i], i, true, "d:" + dailies[i].MissionId )
 				}
 			</div>
 		</div>
@@ -569,7 +903,9 @@
 				}
 				else if ( allDone )
 				{
-					<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" OnClick=@ClaimWeeklyBonus />
+					<div class="@StopClass( "b:weekly" )" onmouseover=@(() => HoverStop( "b:weekly" ))>
+						<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" HoverSound=@false OnClick=@(() => PressStop( "b:weekly" )) />
+					</div>
 				}
 				else
 				{
@@ -591,7 +927,7 @@
 				}
 				@for ( int i = 0; i < weeklies.Count; i++ )
 				{
-					@MissionRow( weeklies[i], i, false )
+					@MissionRow( weeklies[i], i, false, "w:" + weeklies[i].MissionId )
 				}
 			</div>
 		</div>
@@ -613,7 +949,7 @@
 			<div class="qp-list">
 				@if ( monthly != null )
 				{
-					@MissionRow( monthly, 0, false )
+					@MissionRow( monthly, 0, false, "m" )
 				}
 				else
 				{
@@ -651,7 +987,7 @@
 	//              · bar 320×8 + 8 + counter 108 = 436
 	// ══════════════════════════════════════════════
 
-	private RenderFragment MissionRow( MissionState m, int idx, bool roomy ) => __builder =>
+	private RenderFragment MissionRow( MissionState m, int idx, bool roomy, string stopKey ) => __builder =>
 	{
 		var def = MissionManager.Instance?.GetDefinition( m.MissionId );
 		if ( def == null ) return;
@@ -705,7 +1041,9 @@
 				}
 				else if ( claimable )
 				{
-					<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" OnClick=@(() => ClaimMission( missionId )) />
+					<div class="@StopClass( stopKey )" onmouseover=@(() => HoverStop( stopKey ))>
+						<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" HoverSound=@false OnClick=@(() => PressStop( stopKey )) />
+					</div>
 				}
 			</div>
 		</div>
@@ -735,6 +1073,8 @@
 		var openNote = "OPEN · " + zone.ToUpperInvariant() + " CLEARED";
 		var byline = "· " + def.NpcName;
 		var questId = def.Id;
+		var claimKey = "s:" + questId;
+		var acceptKey = "a:" + questId;
 
 		// A1 — item rewards on side rows (Contract Incense ×2 / Premium Incense ×1).
 		var itemParts = new List<(string Icon, string Text)>();
@@ -785,11 +1125,15 @@
 				}
 				else if ( claimable )
 				{
-					<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" OnClick=@(() => ClaimSideQuest( questId )) />
+					<div class="@StopClass( claimKey )" onmouseover=@(() => HoverStop( claimKey ))>
+						<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" HoverSound=@false OnClick=@(() => PressStop( claimKey )) />
+					</div>
 				}
 				else if ( available )
 				{
-					<BbButton Tier="secondary" Size=@(44) Label="ACCEPT" Icon="lucide:check" IconTint="@Accent" Class="qp-accept" OnClick=@(() => AcceptSideQuest( questId )) />
+					<div class="@StopClass( acceptKey )" onmouseover=@(() => HoverStop( acceptKey ))>
+						<BbButton Tier="secondary" Size=@(44) Label="ACCEPT" Icon="lucide:check" IconTint="@Accent" Class="qp-accept" HoverSound=@false OnClick=@(() => PressStop( acceptKey )) />
+					</div>
 				}
 			</div>
 		</div>
@@ -806,6 +1150,7 @@
 	//   dev_quests side    → zone gate bypassed (ACCEPT) + first active side quest Completed
 	//   dev_quests empty   → everything claimed, both bonuses paid, login claimed
 	//   dev_quests reset   → re-roll all mission tiers + un-claim login (shoot again)
+	//   dev_quests next | prev | press | left | right → drive the kb cursor (LANE: input)
 	//   dev_quests off     → close
 	// Session-only mutations (MissionManager persists on real claims only).
 	// REMOVE after the redesign is user-approved.
@@ -828,6 +1173,36 @@
 				if ( IsVisible ) Close();
 				Log.Info( "[Quests] dev_quests off" );
 				return;
+
+			case "next":
+			case "prev":
+			case "left":
+			case "right":
+			case "press":
+			{
+				var p = Instance;
+				if ( p == null || !IsVisible ) { Log.Warning( "[Quests] dev_quests " + arg + ": page not open" ); return; }
+				p.StampKb();
+				p.SyncStops();
+				int idx = p._kbStop == null ? -1 : p._stops.IndexOf( p._kbStop );
+				if ( arg == "press" ) { if ( idx >= 0 ) p.PressStop( p._kbStop ); }
+				else if ( arg == "left" || arg == "right" )
+				{
+					int col = arg == "right" ? 1 : 0;
+					if ( p._stops.Count > 0 && !(idx >= 0 && ColumnOf( p._kbStop ) == col) )
+					{
+						var t = p.NearestInColumn( col );
+						if ( t != null ) p.MoveTo( t );
+					}
+				}
+				else if ( p._stops.Count > 0 )
+				{
+					int n = idx < 0 ? 0 : Math.Clamp( idx + (arg == "next" ? 1 : -1), 0, p._stops.Count - 1 );
+					p.MoveTo( p._stops[n] );
+				}
+				Log.Info( $"[Quests] dev_quests {arg} → stop '{p._kbStop ?? "(none)"}' [{p._stops.Count} stops: {string.Join( " ", p._stops )}]" );
+				return;
+			}
 
 			case "claim":
 			{
@@ -909,6 +1284,7 @@
 		}
 
 		PhoneLauncher.Close();
+		if ( InventoryPanel.IsVisible ) InventoryPanel.Close(); // the Bag (z 9000) covers this page (z 1000) — clear the screen for a shot
 		if ( !IsVisible ) Show();
 		else CaptureOrder();
 		Log.Info( $"[Quests] dev_quests → '{arg}' (unclaimed badge = {GetTotalUnclaimedCount()})" );
