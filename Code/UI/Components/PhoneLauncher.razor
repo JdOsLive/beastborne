@@ -186,7 +186,11 @@
     ends and the home grid FADES in (mount keyframe) instead of popping.
 *@
 
-<root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "") @(_fx != FxPhase.Idle ? "fx-live" : "")">
+@* `closed` (2026-09-11, open-glitch fix): while the phone is not open the
+   surface-stack layers SNAP to whatever state the code sets (0s transitions)
+   — ParkResetTick resets them off-screen, and a fast re-open (< 0.3s after
+   the park) must not catch the disc mid-collapse or the tint mid-fade. *@
+<root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "closed") @(_fx != FxPhase.Idle ? "fx-live" : "")">
     @* onmousedown (closeout 2026-09-10): the radio volume slider DRAGS — the
        device subtree is pointer-transparent, so the press lands here, the
        router resolves hit-vol, TickApps follows the mouse, the click (mouse
@@ -226,9 +230,9 @@
                      PRE-MOUNTED and opacity 0 on the home grid; they rise on the
                      .on class-toggle UNDER the bloom disc (next block). Effects wears
                      the "hot" opacities (yellow runs hot). -->
-                <div class="pl-app-tint @(_bloomLive ? "on" : "")" style="background-color: @BloomTint();"></div>
-                <div class="pl-app-wash @(_bloomLive ? "on" : "")" style="background-image: @WashGradient();"></div>
-                <div class="pl-app-ghost @(_bloomLive ? "on" : "") @(BloomApp() == "effects" ? "hot" : "")">
+                <div class="pl-app-tint @(_bloomLive ? "on" : "")" style="background-color: @BloomTint();" @ref="_tintRef"></div>
+                <div class="pl-app-wash @(_bloomLive ? "on" : "")" style="background-image: @WashGradient();" @ref="_washRef"></div>
+                <div class="pl-app-ghost @(_bloomLive ? "on" : "") @(BloomApp() == "effects" ? "hot" : "")" @ref="_ghostRef">
                     <iconify class="pl-app-ghost-icon" icon="@GhostIconOf( BloomApp() )" Size=@(260) Color="@BloomAccent()" />
                 </div>
                 <!-- THE BLOOM DISC (live 2026-08-30) — an accent disc that grows out of
@@ -243,7 +247,7 @@
                      the tint/wash/ghost, under the status row + the app view. left/top
                      ALWAYS emitted + value-swapped (never-cleared inline-style law). -->
                 <div class="pl-bloom-clip">
-                    <div class="pl-bloom-circle @(_bloomCircleGrow ? "grow" : "") @(_bloomCircleFade ? "fade" : "")" style="left: @(DiscLeft())px; top: @(DiscTop())px; background-color: @BloomAccent();"></div>
+                    <div class="pl-bloom-circle @(_bloomCircleGrow ? "grow" : "") @(_bloomCircleFade ? "fade" : "")" style="left: @(DiscLeft())px; top: @(DiscTop())px; background-color: @BloomAccent();" @ref="_discRef"></div>
                 </div>
                 <!-- v7 "3a Graphite" status row (design handoff spec): clock
                      left; right group = GOLD signal bars · battery · divider
@@ -784,21 +788,6 @@
                             }
                         }
 
-                        @* OVERLAY SCROLLBAR (rev 7.1, 2026-08-29 — user: "shouldn't we have a
-                           side scrollbar?") — the Beastbook dossier recipe ported: a 4px track
-                           at the app view's right edge (x 508) + a 4px thumb, geometry written
-                           in px ONLY when it changes (UpdateAppScrollbar) on wheel / the 1 Hz
-                           tick / once after the cascade. Lives in the APP VIEW, never inside
-                           the scroller (flat-children law); the view paints no fill, so the
-                           absolute child stacks ABOVE the list by DOM order. .on is markup-
-                           driven (hashed) — hidden entirely when the content fits. No pl-hit:
-                           the backdrop router never sees it; wheel is the input. *@
-                        @if ( _appView != "radio" )
-                        {
-                            <div class="pl-sb-track @(_sbOn ? "on" : "")" @ref="_sbTrackRef">
-                                <div class="pl-sb-thumb" @ref="_sbThumbRef"></div>
-                            </div>
-                        }
                     </div>
                 }
                 else
@@ -969,9 +958,23 @@
     {
         if ( IsVisible ) return;
         IsVisible = true;
+        // OPEN-GLITCH FIX (2026-09-11, dev_phonediag-proven): a re-open that lands
+        // while the previous close is still sliding out (< 0.18s) keeps the app
+        // view — the surface stack (tint / wash / ghost / disc) is still landed
+        // on screen, and resetting it here would play every layer's transition
+        // over the slide-in. After the park, ParkResetTick has already reset the
+        // stack off-screen, so a normal open lands on a rest-state grid.
+        bool midClose = Time.Now < _closingUntil;
         _closingUntil = 0f;
         SoundManager.PlayPopup();
-        Instance?.ResetForOpen();
+        if ( Instance != null )
+        {
+            // dev_phonediag open (2026-09-11): snapshot the layer state BEFORE the
+            // reset so the log shows what the previous close left behind.
+            if ( _openDiagArmed ) { _openDiagArmed = false; Instance._openDiagFrames = 8; Instance.LogOpenDiag( "pre-reset" ); }
+            Instance.ResetForOpen( keepView: midClose );
+            if ( Instance._openDiagFrames > 0 ) Instance.LogOpenDiag( $"post-reset(keepView={midClose})" );
+        }
     }
 
     public static void Close()
@@ -1100,6 +1103,7 @@
         var gm = Beastborne.Core.GameManager.Instance;
         if ( gm != null && !gm.IsInGame ) gm.StartGame();
         if ( id == "close" ) { Close(); Log.Info( "[dev_pawpad] closed" ); return; }
+        if ( id == "home" ) { Show(); Log.Info( "[dev_pawpad] home (Show() only — the M-key path)" ); return; }
         OpenToApp( id );
         Log.Info( $"[dev_pawpad] -> {id}" );
     }
@@ -1110,6 +1114,81 @@
         // rev-7 apps: the same OpenApp path the grid uses (bloom + per-app
         // open hooks); Show() already played the popup sound.
         Instance?.OpenApp( id, playSound: false, fromTile: false ); // no tile under the cursor — the disc blooms from the screen centre
+    }
+
+    // ── DEV: open-glitch inspector (2026-09-11, user: "it quickly transforms
+    // from something to the phone"). `dev_phonediag open` arms ONE logger: the
+    // next Show() dumps the surface-stack layers (tint / wash / ghost / disc /
+    // swipe) + the wrap's computed opacity/transform + the fx/app latches,
+    // once before ResetForOpen, once after, then every frame for 8 frames.
+    // Off by default; nothing here runs unless armed. ────────────────────
+    private static bool _openDiagArmed;
+    private static bool _traceOpen;      // dev_phonediag trace — OpenApp/CloseApp log their caller (off by default)
+    private int _openDiagFrames;
+    private int _openDiagFrame;
+    private Panel _tintRef, _washRef, _ghostRef, _discRef;
+
+    [ConCmd( "dev_phonediag" )]
+    public static void DevPhoneDiag( string arg = "open" )
+    {
+        if ( arg == "off" ) { _openDiagArmed = false; if ( Instance != null ) Instance._openDiagFrames = 0; Log.Info( "[phonediag] off" ); return; }
+        if ( arg == "trace" )
+        {
+            _traceOpen = !_traceOpen;
+            Log.Info( $"[phonediag] OpenApp/CloseApp caller trace {( _traceOpen ? "ON — reproduce the sequence, then read the console" : "off" )}" );
+            return;
+        }
+        if ( arg == "state" )
+        {
+            // One-shot dump of the app-view state machine (JOB 3 forensics: "Q from
+            // RADIO went back to CHAT").
+            var me = Instance;
+            if ( me == null ) { Log.Info( "[phonediag] state: not mounted" ); return; }
+            Log.Info( $"[phonediag] state vis={IsVisible} app={me._appView ?? "-"} bloomApp={me._bloomApp ?? "-"} hop={me._hopTo ?? "-"} hopAt={me._hopAt:F2} routeAt={me._routeAt:F2} pendingRoute={me._pendingRoute} pendingPopup={me._pendingPopup ?? "-"} swipeNext={me._swipeNextFrame} closing={me._appClosingUntil:F2} unmountAt={me._appUnmountAt:F2} kb={me._kb} appKb={me._appKb ?? "-"} fx={me._fx} chatFocus={ChatPanel.IsChatFocused} t={Time.Now:F2}" );
+            return;
+        }
+        _openDiagArmed = true;
+        if ( Instance != null ) Instance._openDiagFrame = 0;
+        Log.Info( "[phonediag] armed — the next Show() logs 8 frames (dev_pawpad home | chat, or press M)." );
+    }
+
+    private static string Inl( Panel p )
+    {
+        if ( p == null ) return "null";
+        var s = p.Style;
+        var parts = new List<string>();
+        if ( s.Left.HasValue ) parts.Add( $"l={s.Left.Value.Value:F0}" );
+        if ( s.Top.HasValue ) parts.Add( $"t={s.Top.Value.Value:F0}" );
+        if ( s.Width.HasValue ) parts.Add( $"w={s.Width.Value.Value:F0}" );
+        if ( s.Height.HasValue ) parts.Add( $"h={s.Height.Value.Value:F0}" );
+        if ( s.Opacity.HasValue ) parts.Add( $"op={s.Opacity.Value:F2}" );
+        if ( s.Transform.HasValue ) parts.Add( "tf=set" );
+        return parts.Count == 0 ? "-" : string.Join( ',', parts );
+    }
+
+    private static string Layer( string name, Panel p )
+    {
+        if ( p == null ) return $"{name}=null";
+        var r = p.Box.Rect;
+        return $"{name}[{string.Join( '.', p.Class )}] cop={p.ComputedStyle?.Opacity?.ToString( "F2" ) ?? "-"} rect={r.Width:F0}x{r.Height:F0} inl={Inl( p )}";
+    }
+
+    private void LogOpenDiag( string tag )
+    {
+        var wop = _wrapRef?.ComputedStyle?.Opacity;
+        var wtf = _wrapRef?.ComputedStyle?.Transform;
+        Log.Info( $"[phonediag] {tag} t={Time.Now:F3} root=[{string.Join( '.', Class )}] wrap cop={wop?.ToString( "F2" ) ?? "-"} tf={( wtf.HasValue ? wtf.Value.ToString() : "-" )} | fx={_fx} app={_appView ?? "-"} hop={_hopTo ?? "-"} routeAt={_routeAt:F2} closing={_appClosingUntil:F2} bloomLive={_bloomLive} grow={_bloomCircleGrow} fade={_bloomCircleFade} arm={_bloomArmFrames} uiOn={_appUiOn}" );
+        Log.Info( $"[phonediag]   {Layer( "tint", _tintRef )} | {Layer( "wash", _washRef )}" );
+        Log.Info( $"[phonediag]   {Layer( "ghost", _ghostRef )} | {Layer( "disc", _discRef )}" );
+        Log.Info( $"[phonediag]   {Layer( "swipe", _swipe )} | appview={( _appviewRef == null ? "null" : $"[{string.Join( '.', _appviewRef.Class )}] cop={_appviewRef.ComputedStyle?.Opacity?.ToString( "F2" ) ?? "-"}" )}" );
+    }
+
+    private void DiagOpenTick()
+    {
+        if ( _openDiagFrames <= 0 ) return;
+        _openDiagFrames--;
+        LogOpenDiag( $"f{_openDiagFrame++}" );
+        if ( _openDiagFrames == 0 ) _openDiagFrame = 0;
     }
 
     // ── DEV: bloom-disc inspector (the dev_fusefx pattern) ───────────────
@@ -1844,9 +1923,12 @@
     private string FormatBadge( int n ) => n > 99 ? "99+" : n.ToString();
 
     // ── Open/close plumbing ──────────────────────────────────────────────
-    private void ResetForOpen()
+    private void ResetForOpen( bool keepView = false )
     {
-        ResetAppState(); // rev-7: every open lands on the grid (OpenToApp re-opens its app right after)
+        // rev-7: every open lands on the grid (OpenToApp re-opens its app right
+        // after). 2026-09-11: except a re-open caught mid-slide-out — the view
+        // stays (see Show); the stack was otherwise reset at the park.
+        if ( !keepView || _appView == null ) ResetAppState();
         // Land the cursor on the CURRENT tab's tile (tabs occupy tiles 0-5
         // in NavManager order) so Enter re-launches where you are.
         var idx = NavManager.IndexOf( NavManager.CurrentTab );
@@ -1895,7 +1977,10 @@
             // Clicked outside the phone = close entirely. The app view STAYS
             // mounted for the 180ms slide-out (polish pass 2026-08-30: resetting
             // here mounted the home grid under the departing phone — the "goes
-            // into one form" flash); ResetForOpen resets on the next Show().
+            // into one form" flash); ParkResetTick resets it OFF-SCREEN the frame
+            // the root parks (2026-09-11 — resetting in Show() played the disc /
+            // tint transitions over the slide-in, the "transforms from something
+            // to the phone" glitch).
             Close();
             return;
         }
@@ -1985,63 +2070,7 @@
     private Panel _listScrollRef;        // effects / alerts scroller — the wheel routes to the ACTIVE app's ref
     private ChatInputBox _phoneChatBox;
 
-    // ── Overlay scrollbar (rev 7.1) — the Beastbook dossier recipe. Track +
-    // thumb geometry is written imperatively in px, only when a value
-    // changes; the writes are gated to wheel / 1 Hz / post-cascade so the
-    // leaned subtree is never dirtied per frame (the 7fps law). ──
-    private Panel _sbTrackRef, _sbThumbRef;
-    private Panel _sbSeenTrack;                 // ReferenceEquals guard — a remount invalidates the caches
-    private int _sbTrackTop = -1, _sbTrackH = -1, _sbThumbTop = -1, _sbThumbH = -1;
-    private bool _sbOn;                         // markup-driven .on (hashed) — false when the content fits
-    private int _sbDirtyFrames;                 // frames left to re-measure (wheel / auto-scroll / open)
-    private float _sbRefreshAt = -1f;           // one-shot re-measure after the cascade settles
-
     private Panel ActiveScroller() => _appView == "chat" ? _chatScrollRef : ( _appView is "effects" or "alerts" ? _listScrollRef : null );
-
-    private void ArmScrollbar( int frames = 2 ) => _sbDirtyFrames = Math.Max( _sbDirtyFrames, frames );
-
-    // Thumb math (proven ratio recipe): rect px and scroll px are commensurate,
-    // so viewH / (viewH + maxOff) and offset / maxOff are unit-free — only the
-    // track length is converted to style px (× ScaleFromScreen). Box.Rect is
-    // LAYOUT space (pre-transform, log-proven in v5), and the track lives in
-    // the same leaned subtree as the list, so the flat delta needs no projection.
-    private void UpdateAppScrollbar()
-    {
-        var sref = ActiveScroller();
-        if ( _sbTrackRef == null || _sbThumbRef == null || sref == null || _appviewRef == null ) return;
-
-        if ( !ReferenceEquals( _sbSeenTrack, _sbTrackRef ) )
-        {
-            // Fresh mount (app switch re-keyed the view) — the caches describe a dead panel.
-            _sbSeenTrack = _sbTrackRef;
-            _sbTrackTop = _sbTrackH = _sbThumbTop = _sbThumbH = -1;
-        }
-
-        float maxOff = sref.ScrollSize.y;
-        if ( maxOff < 2f ) { _sbOn = false; return; }
-
-        var ar = _appviewRef.Box.Rect;
-        var sr = sref.Box.Rect;
-        if ( ar.Height < 1f || sr.Height < 1f ) return;
-
-        float sc = ScaleFromScreen;
-        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-
-        int trackTop = (int)( ( sr.Top - ar.Top ) * sc );
-        int trackH = (int)( sr.Height * sc );
-        if ( trackH < 30 ) return;
-        float viewH = sr.Height;
-        float contentH = viewH + maxOff;
-        int thumbH = Math.Max( 24, (int)( trackH * ( viewH / contentH ) ) );
-        int thumbTop = (int)( ( trackH - thumbH ) * ( sref.ScrollOffset.y / maxOff ) );
-        thumbTop = Math.Clamp( thumbTop, 0, Math.Max( 0, trackH - thumbH ) ); // a wheel write can overshoot until the engine clamps
-
-        if ( trackTop != _sbTrackTop ) { _sbTrackRef.Style.Top = Length.Pixels( trackTop ); _sbTrackTop = trackTop; }
-        if ( trackH != _sbTrackH ) { _sbTrackRef.Style.Height = Length.Pixels( trackH ); _sbTrackH = trackH; }
-        if ( thumbH != _sbThumbH ) { _sbThumbRef.Style.Height = Length.Pixels( thumbH ); _sbThumbH = thumbH; }
-        if ( thumbTop != _sbThumbTop ) { _sbThumbRef.Style.Top = Length.Pixels( thumbTop ); _sbThumbTop = thumbTop; }
-        _sbOn = true;
-    }
 
     // ── Identity — accent / derived bg / kicker / title box per app ──────
     private string AppViewTitle() => _appView switch { "chat" => "CHAT", "radio" => "RADIO", "effects" => "EFFECTS", _ => "ALERTS" };
@@ -2147,8 +2176,11 @@
     private string BloomTint() => DerivedOf( BloomApp() );
     private string BloomAccent() => AccentOf( BloomApp() );
 
-    private void OpenApp( string id, bool playSound = true, bool fromTile = true, bool fromLatch = false )
+    private void OpenApp( string id, bool playSound = true, bool fromTile = true, bool fromLatch = false, [System.Runtime.CompilerServices.CallerMemberName] string caller = "" )
     {
+        // dev_phonediag trace (2026-09-11, JOB 3 forensics): every app open names
+        // its caller — the ONLY way to catch "Q from RADIO went back to CHAT" live.
+        if ( _traceOpen ) Log.Info( $"[phonediag] OpenApp({id}) caller={caller} fromTile={fromTile} fromLatch={fromLatch} | was app={_appView ?? "-"} closing={_appClosingUntil:F2} hop={_hopTo ?? "-"} kb={_kb} t={Time.Now:F2}" );
         // An in-phone hop (alerts → effects) cross-fades the tint under a
         // 0.12s view-leave LATCH (motion lane 2026-09-07: the view fades out on
         // .pl-leaving, TickApps commits the swap, the new view fades back in on
@@ -2221,13 +2253,6 @@
         _stops.Clear();
         _kbScrollPending = 0;
         BlurPhoneInput();
-        // Overlay scrollbar: forget the previous app's geometry, measure over the
-        // first frames of the new view, and once more after the cascade (0.7s).
-        _sbOn = false;
-        _sbSeenTrack = null;
-        _sbTrackTop = _sbTrackH = _sbThumbTop = _sbThumbH = -1;
-        _sbDirtyFrames = 4;
-        _sbRefreshAt = Time.Now + 0.8f;
         if ( !switching )
         {
             _bloomLive = false;
@@ -2264,8 +2289,9 @@
     // The disc must be full for this — a close mid-launch holds .grow (the
     // width transition simply continues toward full). Beat 2 = UnmountApp at
     // +120, beat 3 = LandCloseApp at +360 (both from TickApps).
-    private void CloseApp()
+    private void CloseApp( [System.Runtime.CompilerServices.CallerMemberName] string caller = "" )
     {
+        if ( _traceOpen ) Log.Info( $"[phonediag] CloseApp() caller={caller} app={_appView ?? "-"} closing={_appClosingUntil:F2} hop={_hopTo ?? "-"} routeAt={_routeAt:F2} pendingRoute={_pendingRoute} kb={_kb} t={Time.Now:F2}" );
         if ( _appView == null || _appClosingUntil > 0f ) return;
         _appUiOn = false;
         _appUiAt = -1f;
@@ -2294,6 +2320,19 @@
     private void UnmountApp()
     {
         _appView = null;
+        // 2026-09-11 (user: Q from RADIO "went back to CHAT"): the grid is level
+        // zero — NO app memory survives its mount. The hop latch and the deep-link
+        // GO latch are the only fields that can re-open an app on their own; both
+        // are cleared in CloseApp already, this makes the grid mount the second
+        // guard (a hop armed in the same frame as the Q, or a stale stamp from a
+        // hotload, can no longer commit onto the grid). _pendingRoute stays: it is
+        // a PAGE tile (TapAlert maps routes to tabs 0-3 only, never a widget app)
+        // and LandCloseApp consumes it into the accent swipe.
+        _hopTo = null;
+        _hopAt = -1f;
+        _routeAt = -1f;
+        _chanPending = null;
+        _chanSwapAt = -1f;
         _ringWarmup = 0;
         _ringDirty = true; // the home grid's ring re-locks
         if ( _pendingRoute >= 0 ) _kb = _pendingRoute; // the grid mounts with the cursor already on the destination
@@ -2322,6 +2361,26 @@
         {
             _swipeNextFrame = true; // the grid is up; the accent swipe launches next frame — exactly a home-grid launch
         }
+        StateHasChanged();
+    }
+
+    // OPEN-GLITCH FIX (2026-09-11, dev_phonediag-proven — user: "it quickly
+    // transforms from something to the phone"). Close() from a landed app view
+    // leaves the surface stack landed (tint / wash / ghost .on, disc grow+fade
+    // at 1440px, the app view mounted) so the 180ms slide-out shows the app;
+    // the reset used to happen in the next Show(), which flipped every layer to
+    // rest ON SCREEN — the disc's width transition ran 1440 → 0 with its opacity
+    // rising to 1 (a solid accent disc collapsing to a point) and the tint faded
+    // out, all under the wrap's slide-in. Now the stack resets the frame the
+    // root PARKS (Shown false: the wrap is already at opacity 0 at -10000px),
+    // so those transitions run off-screen and the next open lands on a grid
+    // that is already at rest. Idempotent: nothing to do once the state is clean.
+    private void ParkResetTick()
+    {
+        if ( IsVisible || _fx != FxPhase.Idle || Time.Now < _closingUntil ) return;
+        bool stale = _appView != null || _bloomLive || _bloomCircleGrow || _bloomCircleFade || _bloomApp != null || _appClosingUntil > 0f || _bloomArmFrames > 0;
+        if ( !stale ) return;
+        ResetAppState();
         StateHasChanged();
     }
 
@@ -2498,7 +2557,6 @@
                 float next = cur + ( _scrollGlideTo - cur ) * 0.30f;
                 if ( MathF.Abs( _scrollGlideTo - next ) < 1.5f ) { next = _scrollGlideTo; _scrollGlideTo = -1f; }
                 gsc.ScrollOffset = new Vector2( 0f, next );
-                ArmScrollbar();
             }
         }
 
@@ -2569,7 +2627,6 @@
             {
                 _chatScrollRef.ScrollOffset = new Vector2( 0f, _chatScrollRef.ScrollSize.y );
                 _chatScrollPending--;
-                ArmScrollbar(); // the thumb rides the auto-scroll to newest
             }
             if ( _chatGlideArm > 0 && --_chatGlideArm == 0 ) _chatGlideToEnd = true;
             if ( _chatGlideToEnd && _chatScrollRef != null )
@@ -2579,7 +2636,6 @@
                 float next = cur + ( target - cur ) * 0.30f;
                 if ( MathF.Abs( target - next ) < 1.5f ) { next = target; _chatGlideToEnd = false; }
                 _chatScrollRef.ScrollOffset = new Vector2( 0f, next );
-                ArmScrollbar();
             }
         }
         else if ( _appView == "effects" )
@@ -2596,7 +2652,6 @@
                 else Beastborne.Core.NotificationManager.Instance?.ClearHistory();
                 _readIds.Clear();
                 dirty = true;
-                ArmScrollbar(); // the list empties — the track hides on the next measure
             }
             // An arrival WHILE the app is open is read on sight — the HUD badge
             // must not climb behind an open ALERTS (audit M10).
@@ -2608,20 +2663,6 @@
             }
         }
 
-        // Overlay scrollbar upkeep — measured on the 1 Hz tick, on armed
-        // frames (wheel / auto-scroll / open), and once after the cascade has
-        // settled (+0.8s). Never every frame. _sbOn flips are picked up by
-        // BuildHash; the px writes go straight to the refs.
-        if ( _appView is "chat" or "effects" or "alerts" )
-        {
-            if ( _sbRefreshAt > Time.Now + 2f ) _sbRefreshAt = -1f;   // stale stamp from a prior session
-            if ( _sbRefreshAt > 0f && Time.Now >= _sbRefreshAt ) { _sbRefreshAt = -1f; ArmScrollbar( 1 ); }
-            if ( ticked || _sbDirtyFrames > 0 )
-            {
-                if ( _sbDirtyFrames > 0 ) _sbDirtyFrames--;
-                UpdateAppScrollbar();
-            }
-        }
 
         if ( dirty ) StateHasChanged();
     }
@@ -3648,6 +3689,8 @@
         }
 
         StepFx();
+        DiagOpenTick();    // dev_phonediag open — no-op unless armed
+        ParkResetTick();   // 2026-09-11: the surface stack resets OFF-SCREEN, the frame the root parks
 
         if ( !IsVisible ) return;
 
@@ -4232,7 +4275,7 @@
             if ( _appView != null )
             {
                 var sref = ActiveScroller(); // radio → null (a stale _listScrollRef from the previous app must not take the wheel)
-                if ( sref != null ) { sref.ScrollOffset += new Vector2( 0f, delta.y * 40f ); ArmScrollbar(); }
+                if ( sref != null ) { sref.ScrollOffset += new Vector2( 0f, delta.y * 40f ); }
                 _scrollGlideTo = -1f;     // the wheel wins over any running glide
                 _chatGlideToEnd = false;
             }
@@ -4279,7 +4322,7 @@
                 HashCode.Combine( _casPrimeFrames, _openWasHop, DevChipLeaving() ) ),
             // + the one cursor and the hovered hit (2026-08-30; both are class stamps) — HashCode.Combine caps at 8 args.
             HashCode.Combine( _appView == "chat" ? ChanCounts() : default, _seenGlobal, _seenGuild, _seenTrade, ChatPanel.IsChatFocused, _appKb, _hoverHit ),
-            HashCode.Combine( ClearArmed, _clearingAt > 0f, _readIds.Count, _fxExpired.Count, ActiveEffectsPanel.TotalEffectCount, _alertsSeenBefore, _sbOn,
+            HashCode.Combine( ClearArmed, _clearingAt > 0f, _readIds.Count, _fxExpired.Count, ActiveEffectsPanel.TotalEffectCount, _alertsSeenBefore,
                 // motion lane 2026-09-07: every windowed beat / latch the views render (nested — the outer Combine caps at 8 args).
                 HashCode.Combine(
                     HashCode.Combine( _hopTo, _chanPending, _sendLive, _sendKey, _goLive, _goKey, _kbLandLive, _kbDriven ),
