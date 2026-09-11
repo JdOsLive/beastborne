@@ -326,7 +326,7 @@
 		     2026-07-12: the hover tooltip fired on mouse-LEAVE — the
 		     tooltip machinery is deleted, a trait is now a register row).
 		     ============================================================ -->
-		<div @ref="bbDossierRef" class="bb-dossier entered">
+		<div class="bb-dossier entered">
 			@if (selectedSpecies == null)
 			{
 				<div class="bb-empty">
@@ -848,14 +848,11 @@
 						}
 					}
 				</div>
-
-				<!-- Hand-rolled overlay scrollbar (scrollbar-color/-width don't
-				     parse) — track/thumb geometry written per tick in
-				     UpdateDossierScrollbar (anchored 12px in, the roster's
-				     .col-scrollbar top). Read-only (wheel scrolls). -->
-				<div @ref="bbSbTrackRef" class="bbf-sb">
-					<div @ref="bbSbThumbRef" class="bbf-sb-thumb"></div>
-				</div>
+				<!-- (Overlay scrollbar RETIRED 2026-09-11 — the NATIVE bar is
+				     opted in on .bbf-scroll via scrollbar-width (engine
+				     26.09.08b); the engine appends it as the scroller's last
+				     child. Wheel glide unchanged; the thumb follows every
+				     ScrollOffset write. No markup, no tick, no hash.) -->
 			}
 		</div>
 	</div>
@@ -1345,21 +1342,18 @@
 	private int selectPulseVersion = 0;
 
 	// ───────────────────── THE DOSSIER (ground-up 2026-07-12) ─────────────
-	// The reading column's plumbing: refs for the column root / scroll /
-	// overlay scrollbar, the wheel-glide target, and the sub-view band's
-	// text helpers. Sibling of the roster facts column (fd-* architecture,
-	// teal chapter).
-	private Panel bbDossierRef;
+	// The reading column's plumbing: the scroll ref, the wheel-glide target,
+	// and the sub-view band's text helpers. Sibling of the roster facts
+	// column (fd-* architecture, teal chapter).
+	// (Overlay scrollbar refs + per-tick geometry caches RETIRED 2026-09-11
+	// — the native bar on .bbf-scroll is engine-owned: no refs, no tick,
+	// nothing in BuildHash.)
 	private Panel bbDetailScrollRef;
-	private Panel bbSbTrackRef, bbSbThumbRef;
 	private bool _isMouseOverDossier;
 	// Wheel GLIDE (roster facts recipe): the wheel writes a target offset,
-	// Tick() steps toward it exponentially. -1 = inactive.
+	// Tick() steps toward it exponentially. -1 = inactive. The native thumb
+	// follows every ScrollOffset write, so the glide needs no bar plumbing.
 	private float dossierScrollTarget = -1f;
-	// Only-on-change caches for the imperative scrollbar writes; reset when
-	// the template swap remounts the track (ReferenceEquals guard).
-	private Panel _sbSeenTrack;
-	private int _sbTrackTop = -1, _sbTrackH = -1, _sbThumbTop = -1, _sbThumbH = -1;
 
 	// (Sub-view band + its kicker/badge helpers REMOVED 2026-07-12 — user
 	// ruling: the details column gets no header/title band. Keyboard Q
@@ -1401,48 +1395,10 @@
 		return $"{(int)(386f * Math.Clamp( progressPct, 0f, 100f ) / 100f)}px";
 	}
 
-	// Hand-rolled overlay scrollbar (scrollbar-color/-width don't parse in
-	// s&box). Track top/height follow the scroll viewport (the band comes
-	// and goes); thumb geometry from the proven ratio math: rect px and
-	// scroll px are commensurate, so viewH/contentH and offset/maxOff are
-	// unit-free ratios — only the track length needs style-space px.
-	private void UpdateDossierScrollbar()
-	{
-		if ( bbSbTrackRef == null || bbSbThumbRef == null || bbDetailScrollRef == null || bbDossierRef == null ) return;
-
-		if ( !ReferenceEquals( _sbSeenTrack, bbSbTrackRef ) )
-		{
-			// Fresh mount (template swap) — the caches describe a dead panel.
-			_sbSeenTrack = bbSbTrackRef;
-			_sbTrackTop = _sbTrackH = _sbThumbTop = _sbThumbH = -1;
-		}
-
-		float maxOff = bbDetailScrollRef.ScrollSize.y;
-		if ( maxOff < 2f ) { bbSbTrackRef.SetClass( "on", false ); return; }
-
-		var dr = bbDossierRef.Box.Rect;
-		var sr = bbDetailScrollRef.Box.Rect;
-		if ( dr.Width < 1f || sr.Height < 1f ) return;
-
-		float sc = ScaleFromScreen;
-		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-
-		// Caps retired 2026-09-01: the scroll now starts at the column top, so
-		// the track anchors 12px in and trims 24 — the roster .col-scrollbar law.
-		int trackTop = (int)((sr.Top - dr.Top) * sc) + 12;
-		int trackH = (int)(sr.Height * sc) - 24;
-		if ( trackH < 30 ) return;
-		float viewH = sr.Height;
-		float contentH = viewH + maxOff;
-		int thumbH = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
-		int thumbTop = (int)((trackH - thumbH) * (bbDetailScrollRef.ScrollOffset.y / maxOff));
-
-		if ( trackTop != _sbTrackTop ) { bbSbTrackRef.Style.Top = Length.Pixels( trackTop ); _sbTrackTop = trackTop; }
-		if ( trackH != _sbTrackH ) { bbSbTrackRef.Style.Height = Length.Pixels( trackH ); _sbTrackH = trackH; }
-		if ( thumbH != _sbThumbH ) { bbSbThumbRef.Style.Height = Length.Pixels( thumbH ); _sbThumbH = thumbH; }
-		if ( thumbTop != _sbThumbTop ) { bbSbThumbRef.Style.Top = Length.Pixels( thumbTop ); _sbThumbTop = thumbTop; }
-		bbSbTrackRef.SetClass( "on", true );
-	}
+	// (UpdateDossierScrollbar RETIRED 2026-09-11 — the hand-rolled track/
+	// thumb geometry is the engine's job now: .bbf-scroll opts into the
+	// native bar with `scrollbar-width: 4px` and the thumb tracks
+	// ScrollOffset on its own. See learnings.md 2026-09-10.)
 
 	// Detail-pane entrance — bumped each time the selected species changes so
 	// the `detail-rev-N` class remounts the `.bb-detail-fixed` subtree and its
@@ -2021,9 +1977,6 @@
 				bbDetailScrollRef.ScrollOffset = new Vector2( 0f, cur + diff * 0.30f );
 			}
 		}
-
-		// Overlay scrollbar — imperative geometry (no BuildHash pollution).
-		UpdateDossierScrollbar();
 
 		// Living ring — per-tick position (rail scrolls/reflows) + imperative wave.
 		// The header's imperative .kb-focused stamp runs first so the ring

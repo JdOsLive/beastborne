@@ -753,6 +753,21 @@ BeastiaryPanel {
 	justify-content: flex-start;
 	border-radius: 0;
 	pointer-events: all;
+	// NATIVE SCROLLBAR (2026-09-11): the rail's 4px teal lane. Row math
+	// (padding-box): rail 384 − 2×12 side padding = 360 → the stable gutter
+	// consumes 4 → 356 content lane. Tile 76 declared + 2×2 border = 80 on
+	// paper → 4 × 80 + 3 × 10 gap = 350 ≤ 356 (five would be 440). LIVE
+	// (ui_panel_dump, 26 species): tile rects x36 / 122 / 208 / 294, w76 —
+	// an 86 pitch (the 2px border paints inside the 76 here), 334 of the
+	// 356 used; four per row under either reading, exactly as before the
+	// bar. With ≤ 36 species the rail never overflows, so the lane is a
+	// reserved-but-unpainted 4px (stable); the bar appears only past the
+	// fold. The bar is an absolute engine child, so it never joins the wrap.
+	scrollbar-width: 4px;
+	scrollbar-color: rgba(45, 212, 191, 0.55) rgba(244, 241, 234, 0.12);
+	scrollbar-gutter: stable;
+	scrollbar { opacity: 1; }
+	scrollbar > .thumb { opacity: 1; border-radius: 2px; }
 }
 
 // Edit-mode: disable grid scroll so wheel events reach
@@ -1161,8 +1176,9 @@ BeastiaryPanel {
 //   · class families are bb-prefixed — the roster's fd-*/fsub-* names
 //     are GLOBAL across stylesheets; sharing them is cross-sheet tie
 //     roulette (the earlier .fd-cut reuse was exactly that bug).
-// WIDTH MATH (padding-box): column 460 → zone side padding 24 → inner
-// 412 — EVERY zone child declares it explicitly (S3: width:100% resolves
+// WIDTH MATH (padding-box): column 464 = 460 content lane + 4 native
+// scrollbar lane (stable gutter, 2026-09-11) → zone 460 → side padding 24
+// → inner 412 — EVERY zone child declares it explicitly (S3: width:100% resolves
 // against the padded parent's OUTER width). Bordered cards: 412 − 2×1
 // border = 410 declared. Stats: 44 label + 288 gauge + 56 value + 2×12
 // gaps = 412.
@@ -1177,9 +1193,16 @@ BeastiaryPanel {
 }
 
 .bb-dossier {
-	width: 460px;
-	min-width: 460px;
-	flex: 0 0 460px;
+	// NATIVE SCROLLBAR LANE (2026-09-11): 464 = 460 content lane + 4 bar.
+	// .bbf-scroll runs `scrollbar-width: 4px` + `scrollbar-gutter: stable`,
+	// which CONSUMES 4px of the scroller's padding box for the bar, so the
+	// column grows by exactly the lane and every zone keeps its declared
+	// 460 (→ inner 412; the whole dossier ledger below is unchanged). The
+	// 4px come out of .bb-stage (flex 1 1 0): 1920 − 24 − 384 − 18 − 18 −
+	// 464 − 24 = 988 (was 992); the 460 exhibit centres with 264 a side.
+	width: 464px;
+	min-width: 464px;
+	flex: 0 0 464px;
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
@@ -1320,13 +1343,25 @@ BeastiaryPanel {
 	// 2026-09-01: roof/foot caps retired — the vertical inset lives HERE
 	// (22, the roster facts-scroll value) and scrolls with the content.
 	padding: 22px 0 22px 0;
+	// NATIVE SCROLLBAR (2026-09-11, engine 26.09.08b — CLAUDE.md row +
+	// learnings 2026-09-10): opt-in 4px lane (2px thumb), the page-accent
+	// TEAL thumb (the old overlay's rgba(45,212,191) hue at the house .55)
+	// over the cream .12 track; gutter STABLE so the 460 content lane is
+	// held even when a short dossier fits (no width jump on species swap).
+	// Lane math (padding-box): scroller 464 (column) − 4 bar = 460 = zone.
+	scrollbar-width: 4px;
+	scrollbar-color: rgba(45, 212, 191, 0.55) rgba(244, 241, 234, 0.12);
+	scrollbar-gutter: stable;
+	// The engine sheet rests the bar at .5 and the thumb at .7 — assert full.
+	scrollbar { opacity: 1; }
+	scrollbar > .thumb { opacity: 1; border-radius: 2px; }
 }
 
 // Zones — transparent, side padding = the container inset; the 2px
 // vertical padding is COLLAPSE INSURANCE (padding-less wrappers under a
 // scroll collapse children's layout height — the .info-pills law).
 .bbf-scroll > .bbf-zone {
-	width: 460px; // the column (scroll has no side padding) → 24 pad each side → inner 412
+	width: 460px; // the content lane (column 464 − 4 native bar lane; scroll has no side padding) → 24 pad each side → inner 412
 	flex: 0 0 auto;
 	display: flex;
 	flex-direction: column;
@@ -1669,38 +1704,8 @@ BeastiaryPanel {
 	white-space: nowrap;
 }
 
-// ── Overlay scrollbar — track/thumb geometry written per tick
-// (UpdateDossierScrollbar); read-only, wheel is the input.
-.bbf-sb {
-	position: absolute;
-	right: 4px;
-	top: 0;
-	width: 5px;
-	height: 200px; // overwritten per tick
-	background-color: rgba(255, 255, 255, 0.05);
-	border-radius: 3px;
-	opacity: 0;
-	transition: opacity 0.2s ease-out;
-	pointer-events: none;
-	z-index: 6;
-
-	&.on { opacity: 1; }
-}
-
-.bbf-sb-thumb {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 5px;
-	height: 40px; // top + height overwritten per tick
-	background-color: rgba(45, 212, 191, 0.4);
-	border-radius: 3px;
-	transition: background-color 0.16s ease;
-}
-
-.bb-dossier:hover .bbf-sb-thumb {
-	background-color: rgba(45, 212, 191, 0.72);
-}
+// (.bbf-sb / .bbf-sb-thumb overlay scrollbar RETIRED 2026-09-11 — the
+// dossier scroll opts into the engine's native bar; recipe on .bbf-scroll.)
 
 // Empty / undiscovered centered state — clean transparent pane. Previous
 // version had a purple top-down gradient halo which the style guide flags
@@ -3658,8 +3663,8 @@ BeastiaryPanel {
 // hover by source order, it is re-asserted here at the gate's specificity.
 //
 // DELIBERATELY UNGATED: the dev art-editor toolbar (.bb-art-editor-*,
-// mouse-only tooling) and the dossier scrollbar-thumb brighten (cosmetic
-// readout, roster precedent).
+// mouse-only tooling). (The dossier scrollbar-thumb brighten died with the
+// overlay bar 2026-09-11 — the native thumb is engine-owned.)
 // ═══════════════════════════════════════════════════════════════════════
 
 // ── Stage portrait lift (opens the art viewer).
