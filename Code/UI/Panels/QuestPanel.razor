@@ -137,7 +137,7 @@
 	private const int RingInset = 10; // ring radius = host radius + 10 (r26 / r21)
 	private int _ringL = int.MinValue, _ringT = int.MinValue, _ringW = -1, _ringH = -1;
 	private bool _ringOn;
-	private int _ringWarm; // < 2 → .snap (land instantly), then glide
+	private int _ringWarm; // 0 PRIME (no rect, hidden) · 1 SEED (rect lands on the rest list, .on) · 2 GLIDE (.glide worn)
 
 	// ── LANE: motion — beat windows · open ladder · exit latch · ring land ──
 	// A beat = (fired at, version, window). Phase 1 (BEAT, `window` long): the
@@ -168,6 +168,7 @@
 	private bool _fxFreeze;
 	private float _fxFrozenAt;
 	private int _reopenIn;
+	private int _ringLogFrames; // dev_questsfx open log — trace the ring's classes + rendered rect per Tick
 	private float Now => _fxFreeze ? _fxFrozenAt : RealTime.Now;
 	private bool IsLadderLive => _ladderPrime == 0 && Now < _openAt + LadderWindow;
 
@@ -622,11 +623,11 @@
 		// hotload) hands @ref a fresh panel, the cached l/t/w/h would skip the
 		// writes and the new element would sit at its -500 rest (seen live
 		// 2026-09-11: ring class .on, Inline {} — invisible).
-		if ( !ReferenceEquals( ringRef, _ringElem ) )
+		bool fresh = !ReferenceEquals( ringRef, _ringElem );
+		if ( fresh )
 		{
 			_ringElem = ringRef;
 			_ringL = int.MinValue; _ringT = int.MinValue; _ringW = -1; _ringH = -1;
-			_ringWarm = 0;
 		}
 
 		bool was = _ringOn;
@@ -642,32 +643,56 @@
 				var cr = host.Box.Rect;
 				if ( rr.Width > 1f && cr.Width > 1f )
 				{
-					float sc = ScaleFromScreen;
-					if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-
-					int l = (int)((cr.Left - rr.Left) * sc) - RingInset + 4;
-					int t = (int)((cr.Top - rr.Top) * sc) - RingInset + 4;
-					int w = (int)(cr.Width * sc) + RingInset * 2 - 8;
-					int h = (int)(cr.Height * sc) + RingInset * 2 - 8;
-
-					if ( l != _ringL ) { _ringL = l; ringRef.Style.Left = Length.Pixels( l ); }
-					if ( t != _ringT ) { _ringT = t; ringRef.Style.Top = Length.Pixels( t ); }
-					if ( w != _ringW ) { _ringW = w; ringRef.Style.Width = Length.Pixels( w ); }
-					if ( h != _ringH ) { _ringH = h; ringRef.Style.Height = Length.Pixels( h ); }
-
 					_ringOn = true;
 					small = _kbStop.StartsWith( "b:" ); // the r11 CLAIM BONUS chip → r21
-					if ( !was ) _ringWarm = 0;
+
+					// RE-APPEAR (audit M-1, 2026-09-11): the base .qp-ring rule
+					// transitions opacity/border-color ONLY; the left/top/width/
+					// height glide lives on `.glide`, which the ring wears only
+					// from the Tick AFTER its rect landed. (A `.snap` class that
+					// REPLACED the list did not remove the base entries in this
+					// engine — traced live with `dev_questsfx open log`: two Ticks
+					// of .snap, then a 14-frame glide from the stale rest anyway.)
+					//   warm 0  PRIME — NO rect, .on off, no .glide
+					//   warm 1  SEED  — rect written on the rest list → lands · .on
+					//   warm 2  GLIDE — .glide added; every later hop glides
+					if ( !was || fresh ) _ringWarm = 0;
 					else if ( _ringWarm < 2 ) _ringWarm++;
+
+					if ( _ringWarm > 0 )
+					{
+						float sc = ScaleFromScreen;
+						if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+
+						int l = (int)((cr.Left - rr.Left) * sc) - RingInset + 4;
+						int t = (int)((cr.Top - rr.Top) * sc) - RingInset + 4;
+						int w = (int)(cr.Width * sc) + RingInset * 2 - 8;
+						int h = (int)(cr.Height * sc) + RingInset * 2 - 8;
+
+						if ( l != _ringL ) { _ringL = l; ringRef.Style.Left = Length.Pixels( l ); }
+						if ( t != _ringT ) { _ringT = t; ringRef.Style.Top = Length.Pixels( t ); }
+						if ( w != _ringW ) { _ringW = w; ringRef.Style.Width = Length.Pixels( w ); }
+						if ( h != _ringH ) { _ringH = h; ringRef.Style.Height = Length.Pixels( h ); }
+					}
 				}
 			}
 		}
 
-		ringRef.SetClass( "on", _ringOn );
-		ringRef.SetClass( "snap", _ringWarm < 2 );
+		bool shown = _ringOn && _ringWarm > 0; // the PRIME frame stays invisible
+		ringRef.SetClass( "on", shown );
+		ringRef.SetClass( "glide", _ringOn && _ringWarm >= 2 ); // never while hidden → the next seed lands
 		ringRef.SetClass( "small", _ringOn && small );
 		// LANE: motion — kb land flash (the .kbd-mode gate lives in the scss).
-		ringRef.SetClass( "lit", _ringOn && _ringLitUntil > 0f && RealTime.Now < _ringLitUntil );
+		ringRef.SetClass( "lit", shown && _ringLitUntil > 0f && RealTime.Now < _ringLitUntil );
+
+		// Dev trace (dev_questsfx open log): one line per Tick — a glide shows
+		// as box.Left walking toward target over ~16 frames, a snap as one jump.
+		if ( _ringLogFrames > 0 )
+		{
+			_ringLogFrames--;
+			var b = ringRef.Box.Rect;
+			Log.Info( $"[Quests] ring warm={_ringWarm} on={shown} glide={_ringOn && _ringWarm >= 2} target=({_ringL},{_ringT} {_ringW}x{_ringH}) box=({b.Left:0},{b.Top:0} {b.Width:0}x{b.Height:0}) stop={_kbStop ?? "-"}" );
+		}
 	}
 
 	// ══════════════════════════════════════════════
@@ -1534,7 +1559,7 @@
 	//   dev_questsfx accept        → accept beat on the first ACCEPT stop
 	//   dev_questsfx land          → kb land flash on the ring
 	//   dev_questsfx ladder        → re-arm the row ladder (2 priming frames)
-	//   dev_questsfx open          → close + re-open across frames (zone rungs replay)
+	//   dev_questsfx open [log]    → close + re-open across frames (zone rungs replay); `log` traces the ring's re-appear 40 Ticks
 	//   dev_questsfx exit          → the exit latch
 	//   dev_questsfx freeze        → hold every window at its END frame (`both`)
 	//   dev_questsfx settle        → (frozen) jump the live beats to their settle phase
@@ -1584,7 +1609,8 @@
 			case "open":
 				if ( IsVisible ) Close();
 				p._reopenIn = 2;
-				Log.Info( "[Quests] dev_questsfx open → re-open in 2 frames" );
+				if ( key == "log" ) p._ringLogFrames = 40; // `dev_questsfx open log` — trace the ring's re-appear
+				Log.Info( "[Quests] dev_questsfx open → re-open in 2 frames" + (key == "log" ? " (ring trace armed, 40 frames)" : "") );
 				return;
 			case "exit":
 				p.BeginExit();
