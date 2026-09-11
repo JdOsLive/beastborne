@@ -2129,13 +2129,9 @@
 	//   dev_bag                  → open the bag
 	//   dev_bag relic            → open on the RELICS category
 	//   dev_bag held_ember_fang  → open ALL, select that item
-	//   dev_bag fill[:n]         → grant n (default 3) of EVERY item first, so the
-	//                              grid overflows (native-scrollbar check, 2026-09-11)
-	//   dev_bag scroll:<px>      → glide the grid to <px> (clamped) through the kb
-	//                              scroll-follow path — the native thumb must follow
-	//   dev_bag picker           → open EQUIP TO… on the first owned held item
-	//                              (the picker list is the page's second scroller)
-	// REMOVE after the redesign is user-approved.
+	// Read-only: it never touches the save. The `fill[:n]` / `scroll:<px>` /
+	// `picker` probe hooks were REMOVED at the native-scrollbar closeout
+	// (2026-09-11) — `fill` granted n of every item to the LIVE inventory.
 	// ============================================================
 	private static string _devPending;
 
@@ -2156,18 +2152,6 @@
 		var gm = Beastborne.Core.GameManager.Instance;
 		if ( gm != null && !gm.IsInGame ) gm.StartGame();
 		PhoneLauncher.Close();
-		if ( arg != null && arg.StartsWith( "fill" ) )
-		{
-			int n = 3;
-			int colon = arg.IndexOf( ':' );
-			if ( colon >= 0 && !int.TryParse( arg.Substring( colon + 1 ), out n ) ) n = 3;
-			n = Math.Max( 1, n );
-			var mgr = ItemManager.Instance;
-			int added = 0;
-			if ( mgr != null ) foreach ( var id in mgr.ItemDatabase.Keys.ToList() ) if ( mgr.AddItem( id, n, markAsNew: false ) ) added++;
-			Log.Info( $"[Bag] dev_bag fill → {added} item ids × {n}" );
-			arg = "";
-		}
 		if ( !IsVisible ) Show();
 		_devPending = arg ?? "";
 		Log.Info( $"[Bag] dev_bag → '{_devPending}'" );
@@ -2181,20 +2165,6 @@
 		_devPending = null;
 
 		if ( string.IsNullOrEmpty( arg ) ) { SetCategory( "all" ); return; }
-		if ( arg.StartsWith( "scroll:" ) && float.TryParse( arg.Substring( 7 ), out float px ) )
-		{
-			gridScrollGlideTarget = Math.Clamp( px, 0f, Math.Max( 0f, gridRef?.ScrollSize.y ?? 0f ) );
-			return;
-		}
-		if ( arg == "picker" )
-		{
-			var inv = TamerManager.Instance?.CurrentTamer?.Inventory;
-			var held = inv?.Keys.Select( id => ItemManager.Instance?.GetItem( id ) )
-				.FirstOrDefault( d => d != null && d.Category == ItemCategory.HeldItem && GetItemQuantity( d.Id ) > 0 );
-			if ( held == null ) { Log.Warning( "[Bag] dev_bag picker: no owned held item" ); return; }
-			SetCategory( "all" ); SelectItem( held, silent: true ); OpenPicker( held, PickerMode.Held );
-			return;
-		}
 		if ( Array.IndexOf( CategoryCycle, arg ) >= 0 ) { SetCategory( arg ); return; }
 		var def = ItemManager.Instance?.GetItem( arg );
 		if ( def != null && GetItemQuantity( arg ) > 0 ) { SetCategory( "all" ); SelectItem( def, silent: true ); RequestScrollFollow(); return; }
