@@ -40,10 +40,22 @@
 	PanelHandledBackKey) · R/Z/X no job. Open edge seeds stop 0. A pressed
 	stop leaves the list; the ring glides to the next, else previous, else
 	hides. No scroll region → no scroll-follow.
-	LANE: motion — zone rungs qpZone*, row ladder qpRowIn0-7 (WINDOWED
-	classes from code, never static), qpClaimBeat / qpClaimInk /
-	qpAccentTick (the .row-accent strip is the HDR host) / qpChipIn /
-	qpAcceptBeat, exit latch .qp-leaving. Static states only here.
+	LANE: motion (built 2026-09-11) — OPEN: header + slabs mount fresh under
+	the IsVisible branch (qpZone* rungs, slab class strings STATIC so a
+	later state flip never replays them); rows wear a WINDOWED rung
+	(qp-rr0-7, 0.7s from open, RowLadderClass — rows a beat touched carry
+	none). PRESS (one path, PressStop → FireBeat): the pressed BbButton
+	stays MOUNTED for the 0.5s window wearing `qp-beat beat-N` + label
+	CLAIMED (qpClaimBeat white → gold → green; ACCEPT 0.3s qpAcceptBeat),
+	the row's .row-accent strip ticks (qp-tick — THE one HDR frame), the
+	stop leaves the list at t0 so the ring glides on. SETTLE (0.3s phase
+	after the window): the row / login body / band wear `qp-settle` so the
+	DONE chip · CLAIMED ghost · BONUS CLAIMED chip pop in (qpChipIn) once,
+	while the row's bg/opacity + reward ink transition to rest. EXIT:
+	BeginExit → `.qp-leaving` 0.12s (identity + toolbar + body + ring fade)
+	→ Close() → root fade. KB LAND: the ring's stroke flashes (.lit one
+	frame → border-color transition) under .kbd-mode only. dev_questsfx
+	replays every beat without touching save state.
 	LANE: color — page accent #3fb45e applied where the brief declares it;
 	gold on primaries / claimable numerals / DONE ink; violet = ring only.
 *@
@@ -70,7 +82,7 @@
 					</div>
 				</div>
 				<div class="qp-toolbar">
-					<div class="qp-back" onmouseover=@OnBackHover onclick=@Close>
+					<div class="qp-back" onmouseover=@OnBackHover onclick=@BeginExit>
 						<span class="qp-back-label">BACK</span>
 						<span class="qp-back-cap">Q</span>
 					</div>
@@ -105,7 +117,7 @@
 	// Pre-computed class names used in attribute values — s&box Razor chokes on
 	// nested double-quotes like class="@(IsVisible ? "visible" : "")".
 	private string _rootVisibleClass => IsVisible ? "visible" : "";
-	private string _pageClass => "qp-page " + (_kbdMode ? "kbd-mode" : "mouse-mode");
+	private string _pageClass => "qp-page " + (_kbdMode ? "kbd-mode" : "mouse-mode") + (Leaving ? " qp-leaving" : "");
 
 	// ── LANE: input — the one cursor ──
 	// _kbStop = the ACTION STRING under the cursor (null = no stop / ring
@@ -127,9 +139,37 @@
 	private bool _ringOn;
 	private int _ringWarm; // < 2 → .snap (land instantly), then glide
 
-	// LANE: motion — the last press, for the claim / accept beat classes.
-	private string _pressedStop;
-	private float _pressedAt = -100f;
+	// ── LANE: motion — beat windows · open ladder · exit latch · ring land ──
+	// A beat = (fired at, version, window). Phase 1 (BEAT, `window` long): the
+	// pressed BbButton stays mounted wearing qp-beat beat-N, the strip ticks.
+	// Phase 2 (SETTLE, +0.3s): the host wears qp-settle so the chip that
+	// replaces the button pops in ONCE (never on a later re-render). Keyed by
+	// the action string so rapid Space presses stack independent beats.
+	private readonly Dictionary<string, (float at, int ver, float window)> _beats = new();
+	private int _beatVersion;
+	private const float ClaimWindow = 0.5f;   // qpClaimBeat 0.30s `both`, held to the row settle
+	private const float AcceptWindow = 0.3f;  // qpAcceptBeat 0.20s + the bar's 0.2s fade-in
+	private const float SettleWindow = 0.3f;  // qpChipIn 0.18s + slack
+	// Row ladder — armed 0.7s from open; rows a beat touched mount whole.
+	private float _openAt = -100f;
+	private const float LadderWindow = 0.7f;
+	private readonly HashSet<string> _ladderTouched = new();
+	private int _ladderPrime;                 // dev replay: frames rendered rung-less before re-arming
+	// Exit latch — the root wears .qp-leaving for 0.12s, then Tick commits Close().
+	private float _leaveUntil = -1f;
+	private const float LeaveWindow = 0.12f;
+	private bool Leaving => _leaveUntil > 0f && Now < _leaveUntil;
+	// KB land — the ring wears .lit for ~3 frames; dropping it runs the
+	// border-color transition back to violet (a transition, so it re-fires
+	// on every hop without relying on an imperative class change restarting
+	// a keyframe).
+	private float _ringLitUntil = -1f;
+	// Dev: frozen clock (windows never expire) · deferred re-open.
+	private bool _fxFreeze;
+	private float _fxFrozenAt;
+	private int _reopenIn;
+	private float Now => _fxFreeze ? _fxFrozenAt : RealTime.Now;
+	private bool IsLadderLive => _ladderPrime == 0 && Now < _openAt + LadderWindow;
 
 	private const string Accent = "#3fb45e";
 	private const int BarW = 320; // .qp-bar declared width — fills arrive as px
@@ -175,10 +215,23 @@
 		SoundManager.PlayPopdown();
 	}
 
+	// Toggle-off goes through the exit latch when the panel is rooted (the
+	// PawPad tile / key 7 path); Close() stays the immediate commit.
 	public static void Toggle()
 	{
-		if ( IsVisible ) Close();
+		if ( IsVisible ) { if ( Instance != null ) Instance.BeginExit(); else Close(); }
 		else Show();
+	}
+
+	// LANE: motion — THE EXIT LATCH. The root wears .qp-leaving for 0.12s
+	// (identity + toolbar + body + ring fade to 0, pointer-events none), then
+	// TickMotion commits Close() → the shipped 0.15s root fade. Idempotent
+	// while leaving; input is ignored mid-exit (Q stays claimed).
+	private void BeginExit()
+	{
+		if ( !IsVisible || Leaving ) return;
+		_leaveUntil = RealTime.Now + LeaveWindow;
+		StateHasChanged();
 	}
 
 	public override void Tick()
@@ -191,29 +244,135 @@
 		if ( open && !_wasOpen ) OnOpenEdge();
 		_wasOpen = open;
 
+		TickMotion();
 		UpdateRing();
 
 		if ( !open || !UIModalState.IsTopModal( "QuestPanel" ) ) return;
+
+		// Mid-exit: swallow input (Q stays claimed so GameHUD never sees it).
+		if ( Leaving )
+		{
+			if ( Input.Pressed( "Menu" ) ) GameHUD.PanelHandledBackKey = true;
+			return;
+		}
 
 		SyncStops();
 
 		// Q = back, always (one stage). Claim it so GameHUD does not also flip
 		// into its own Menu handling. Escape (s&box-reserved) and run close too.
-		// LANE: motion — the exit latch (.qp-leaving) commits IsVisible=false
-		// from Tick after its window instead of this immediate Close().
+		// All three leave through the latch; Close() commits from TickMotion.
 		if ( Input.Pressed( "Menu" ) )
 		{
 			GameHUD.PanelHandledBackKey = true;
-			Close();
+			BeginExit();
 			return;
 		}
 		if ( Input.Pressed( "Escape" ) || Input.Pressed( "run" ) )
 		{
-			Close();
+			BeginExit();
 			return;
 		}
 
 		TickNav();
+	}
+
+	// ══════════════════════════════════════════════
+	// LANE: motion — WINDOW CLOCK
+	// Every windowed class is a pure function of (Now, the tables below);
+	// BuildHash carries the phase sums, so each expiry is ONE re-render that
+	// drops the class (the Guild RowLadderClass / phone RowMotion recipe).
+	// ══════════════════════════════════════════════
+
+	private void TickMotion()
+	{
+		float now = RealTime.Now;
+
+		// Dev: deferred re-open (a real unmount → the zone rungs replay).
+		if ( _reopenIn > 0 && --_reopenIn == 0 ) Show();
+
+		// Dev: ladder priming — N rung-less frames, then re-arm (a finished
+		// class left in the DOM would not restart on an identical string).
+		if ( _ladderPrime > 0 && --_ladderPrime == 0 )
+		{
+			_openAt = now;
+			_ladderTouched.Clear();
+			StateHasChanged();
+		}
+
+		// Exit latch commit.
+		if ( _leaveUntil > 0f && now >= _leaveUntil )
+		{
+			_leaveUntil = -1f;
+			Close();
+		}
+
+		// Ring land: drop .lit after its frames → the transition runs.
+		if ( _ringLitUntil > 0f && now >= _ringLitUntil ) _ringLitUntil = -1f;
+
+		// Beats past their settle phase leave the table.
+		if ( !_fxFreeze && _beats.Count > 0 )
+		{
+			List<string> dead = null;
+			foreach ( var kv in _beats )
+				if ( now >= kv.Value.at + kv.Value.window + SettleWindow ) (dead ??= new()).Add( kv.Key );
+			if ( dead != null ) foreach ( var k in dead ) _beats.Remove( k );
+		}
+	}
+
+	// 0 = no beat · 1 = BEAT (button mounted, strip ticking) · 2 = SETTLE.
+	private int BeatPhase( string key )
+	{
+		if ( key == null || !_beats.TryGetValue( key, out var b ) ) return 0;
+		float t = Now - b.at;
+		if ( t < b.window ) return 1;
+		if ( t < b.window + SettleWindow ) return 2;
+		return 0;
+	}
+	private bool IsBeat( string key ) => BeatPhase( key ) == 1;
+	private bool IsSettle( string key ) => BeatPhase( key ) == 2;
+
+	// Class fragments (all start with a space; "" when idle).
+	private string BeatClass( string key )
+		=> IsBeat( key ) && _beats.TryGetValue( key, out var b ) ? " qp-beat beat-" + b.ver : "";
+	private string AccentClass( string key )
+		=> "row-accent" + (IsBeat( key ) && _beats.TryGetValue( key, out var b ) ? " qp-tick tick-" + b.ver : "");
+	private string SettleClass( string key ) => IsSettle( key ) ? " qp-settle" : "";
+
+	// Fire a beat on a stop that just committed — visual only; the claim
+	// itself already happened (or, from dev_questsfx, never does).
+	private void FireBeat( string key )
+	{
+		_beatVersion++;
+		float window = key.StartsWith( "a:" ) ? AcceptWindow : ClaimWindow;
+		_beats[key] = (RealTime.Now, _beatVersion, window);
+		_ladderTouched.Add( key ); // a row whose class string changes mid-ladder mounts whole
+		if ( _fxFreeze ) _fxFrozenAt = RealTime.Now;
+		StateHasChanged();
+	}
+
+	// Row ladder rung for a list row (slab-local index, 8 rungs; rows past
+	// the cap and rows a beat touched mount static). The row's OWN state
+	// classes (.done / .locked / .dormant) select the twin that ends on the
+	// row's rest opacity — a keyframe must end on the host's rest value.
+	private string RowLadderClass( int idx, params string[] rowKeys )
+	{
+		if ( !IsLadderLive || idx >= 8 ) return "";
+		foreach ( var k in rowKeys ) if ( k != null && _ladderTouched.Contains( k ) ) return "";
+		return " qp-rr" + idx;
+	}
+
+	// Hash of every live window (phase flips = the expiry re-renders).
+	private int MotionHash()
+	{
+		var h = new HashCode();
+		h.Add( _beatVersion );
+		h.Add( _beats.Count );
+		foreach ( var kv in _beats ) { h.Add( kv.Key ); h.Add( BeatPhase( kv.Key ) ); }
+		h.Add( IsLadderLive );
+		h.Add( _ladderPrime );
+		h.Add( Leaving );
+		h.Add( _fxFreeze );
+		return h.ToHashCode();
 	}
 
 	// ══════════════════════════════════════════════
@@ -227,6 +386,12 @@
 		_kbStopIdx = _stops.Count > 0 ? 0 : -1;
 		_ringWarm = 0;
 		_kbTakeoverPos = Mouse.Position;
+		// LANE: motion — arm the row ladder, clear stale windows.
+		_openAt = RealTime.Now;
+		_ladderTouched.Clear();
+		_beats.Clear();
+		_leaveUntil = -1f;
+		_ringLitUntil = -1f;
 		StateHasChanged();
 	}
 
@@ -356,6 +521,8 @@
 		if ( key == _kbStop ) return;
 		_kbStop = key;
 		_kbStopIdx = _stops.IndexOf( key );
+		// LANE: motion — kb land flash on the ring (three frames of .lit).
+		_ringLitUntil = RealTime.Now + 0.05f;
 		SoundManager.PlayHover();
 		StateHasChanged();
 	}
@@ -366,6 +533,10 @@
 	{
 		if ( _kbdMode ) return;
 		if ( key == _kbStop ) return;
+		// LANE: motion — a button held mounted by its beat is no longer a stop;
+		// hovering it must not park the cursor on a key SyncStops would then
+		// resolve to null (= ring hidden).
+		if ( !_stops.Contains( key ) ) return;
 		_kbStop = key;
 		_kbStopIdx = _stops.IndexOf( key );
 		SoundManager.PlayHover();
@@ -396,20 +567,24 @@
 	private void PressStop( string key )
 	{
 		if ( string.IsNullOrEmpty( key ) ) return;
-		_pressedStop = key;
-		_pressedAt = RealTime.Now;
+		if ( Leaving || IsBeat( key ) ) return; // a beating button is not pressable twice
 
-		if ( key == "login" ) ClaimStreak();
-		else if ( key == "b:daily" ) ClaimDailyBonus();
-		else if ( key == "b:weekly" ) ClaimWeeklyBonus();
+		bool ok = false;
+		if ( key == "login" ) ok = ClaimStreak();
+		else if ( key == "b:daily" ) ok = ClaimDailyBonus();
+		else if ( key == "b:weekly" ) ok = ClaimWeeklyBonus();
 		else if ( key == "m" )
 		{
 			var id = MissionManager.Instance?.ActiveMonthlyChallenge?.MissionId;
-			if ( id != null ) ClaimMission( id );
+			if ( id != null ) ok = ClaimMission( id );
 		}
-		else if ( key.StartsWith( "d:" ) || key.StartsWith( "w:" ) ) ClaimMission( key.Substring( 2 ) );
-		else if ( key.StartsWith( "s:" ) ) ClaimSideQuest( key.Substring( 2 ) );
-		else if ( key.StartsWith( "a:" ) ) AcceptSideQuest( key.Substring( 2 ) );
+		else if ( key.StartsWith( "d:" ) || key.StartsWith( "w:" ) ) ok = ClaimMission( key.Substring( 2 ) );
+		else if ( key.StartsWith( "s:" ) ) ok = ClaimSideQuest( key.Substring( 2 ) );
+		else if ( key.StartsWith( "a:" ) ) ok = AcceptSideQuest( key.Substring( 2 ) );
+
+		// LANE: motion — the beat rides ONLY a committed verb (a refused claim
+		// must never read CLAIMED).
+		if ( ok ) FireBeat( key );
 
 		// The stop leaves the list at t0 → the ring glides on this frame.
 		SyncStops();
@@ -491,6 +666,8 @@
 		ringRef.SetClass( "on", _ringOn );
 		ringRef.SetClass( "snap", _ringWarm < 2 );
 		ringRef.SetClass( "small", _ringOn && small );
+		// LANE: motion — kb land flash (the .kbd-mode gate lives in the scss).
+		ringRef.SetClass( "lit", _ringOn && _ringLitUntil > 0f && RealTime.Now < _ringLitUntil );
 	}
 
 	// ══════════════════════════════════════════════
@@ -554,8 +731,8 @@
 		// LANE: input — the cursor + device (every field that paints).
 		h.Add( _kbStop ?? "" );
 		h.Add( _kbdMode );
-		// LANE: motion — add the beat / tick windows (RealTime.Now < until bools;
-		// _pressedStop / _pressedAt are the press hook).
+		// LANE: motion — beat phases · ladder window · exit latch · dev freeze.
+		h.Add( MotionHash() );
 		return h.ToHashCode();
 	}
 
@@ -632,35 +809,42 @@
 		return (n / 1000f).ToString( "0.#" ) + "K";
 	}
 
-	private void ClaimMission( string id )
+	// Each verb returns whether it committed (LANE: motion fires the beat on true).
+	private bool ClaimMission( string id )
 	{
-		if ( MissionManager.Instance?.ClaimReward( id ) == true )
-			SoundManager.PlaySuccess();
+		bool ok = MissionManager.Instance?.ClaimReward( id ) == true;
+		if ( ok ) SoundManager.PlaySuccess();
+		return ok;
 	}
-	private void ClaimStreak()
+	private bool ClaimStreak()
 	{
-		if ( DailyRewardManager.Instance?.ClaimDailyReward() == true )
-			SoundManager.PlaySuccess();
+		bool ok = DailyRewardManager.Instance?.ClaimDailyReward() == true;
+		if ( ok ) SoundManager.PlaySuccess();
+		return ok;
 	}
-	private void ClaimDailyBonus()
+	private bool ClaimDailyBonus()
 	{
-		if ( MissionManager.Instance?.ClaimDailyBonus() == true )
-			SoundManager.PlaySuccess();
+		bool ok = MissionManager.Instance?.ClaimDailyBonus() == true;
+		if ( ok ) SoundManager.PlaySuccess();
+		return ok;
 	}
-	private void ClaimWeeklyBonus()
+	private bool ClaimWeeklyBonus()
 	{
-		if ( MissionManager.Instance?.ClaimWeeklyBonus() == true )
-			SoundManager.PlaySuccess();
+		bool ok = MissionManager.Instance?.ClaimWeeklyBonus() == true;
+		if ( ok ) SoundManager.PlaySuccess();
+		return ok;
 	}
-	private void AcceptSideQuest( string id )
+	private bool AcceptSideQuest( string id )
 	{
-		if ( SideQuestManager.Instance?.Accept( id ) == true )
-			SoundManager.PlayClick();
+		bool ok = SideQuestManager.Instance?.Accept( id ) == true;
+		if ( ok ) SoundManager.PlayClick();
+		return ok;
 	}
-	private void ClaimSideQuest( string id )
+	private bool ClaimSideQuest( string id )
 	{
-		if ( SideQuestManager.Instance?.Claim( id ) == true )
-			SoundManager.PlaySuccess();
+		bool ok = SideQuestManager.Instance?.Claim( id ) == true;
+		if ( ok ) SoundManager.PlaySuccess();
+		return ok;
 	}
 
 	private string GetDailyTimer() => "RESETS " + FormatDuration( MissionManager.Instance?.GetDailyTimeRemaining() ?? TimeSpan.Zero );
@@ -751,7 +935,12 @@
 	{
 		var drm = DailyRewardManager.Instance;
 		var streak = drm?.DailyStreak ?? 0;
-		var claimed = drm?.TodayRewardClaimed ?? true;
+		var claimedNow = drm?.TodayRewardClaimed ?? true;
+		// LANE: motion — the CLAIM DAY n button stays mounted (wearing the beat,
+		// reading CLAIMED) for the window; the ghost slab mounts at settle. The
+		// pips read the REAL flag (today's pip transitions gold → green at t0).
+		var beating = IsBeat( "login" );
+		var claimed = claimedNow && !beating;
 		var day = drm?.GetStreakDay() ?? 1;
 		var mult = drm?.GetWeekMultiplier() ?? 1f;
 		var (gold, gems, ink) = drm?.GetTodayReward() ?? (0, 0, 0);
@@ -766,15 +955,20 @@
 		if ( !string.IsNullOrEmpty( itemId ) ) parts.Add( (ItemIcon( itemId ), ItemName( itemId ) + " ×1") );
 		if ( day == 7 ) parts.Add( (ItemIcon( "boss_master_ink" ), ItemName( "boss_master_ink" ) + " ×1") );
 
-		var slabClass = "qp-slab login" + (claimed ? " claimed" : "");
+		// The slab's class string stays STATIC (it carries the qpZoneLogin mount
+		// rung); claimed / qp-settle ride the body instead.
+		var bodyClass = "qp-login-body" + (claimed ? " claimed" : "") + SettleClass( "login" );
 		var rwClass = "qp-login-rewards" + (claimed ? "" : " gold");
 		var heroText = "DAY " + day;
 		var streakText = streak + (streak == 1 ? " DAY" : " DAYS");
 		var multText = "×" + mult.ToString( "0.#" ) + " GOLD";
-		var claimLabel = "CLAIM DAY " + day;
+		var claimLabel = beating ? "CLAIMED" : "CLAIM DAY " + day;
+		var claimCap = beating ? "" : "SPACE";
+		var claimCls = "qp-login-btn" + BeatClass( "login" );
+		var accentCls = AccentClass( "login" );
 
-		<div class="@slabClass">
-			<div class="row-accent"></div>
+		<div class="qp-slab login">
+			<div class="@accentCls"></div>
 			<div class="qp-band">
 				<div class="qp-chipstamp"><span>LOGIN STREAK</span></div>
 				@DarkChip( streakText, "" )
@@ -783,14 +977,14 @@
 					@DarkChip( multText, "gold" )
 				}
 			</div>
-			<div class="qp-login-body">
+			<div class="@bodyClass">
 				<div class="qp-login-left">
 					<span class="qp-hero">@heroText</span>
 					<div class="qp-pips">
 						@for ( int d = 1; d <= 7; d++ )
 						{
-							var pipDone = d < day || (d == day && claimed);
-							var pipToday = d == day && !claimed;
+							var pipDone = d < day || (d == day && claimedNow);
+							var pipToday = d == day && !claimedNow;
 							var pipClass = "qp-pip" + (pipDone ? " done" : pipToday ? " today" : " future");
 							<div class="@pipClass"></div>
 						}
@@ -807,7 +1001,7 @@
 					else
 					{
 						<div class="@StopClass( "login" )" onmouseover=@(() => HoverStop( "login" ))>
-							<BbButton Tier="primary" Size=@(56) Label="@claimLabel" KeyCap="SPACE" Class="qp-login-btn" HoverSound=@false OnClick=@(() => PressStop( "login" )) />
+							<BbButton Tier="primary" Size=@(56) Label="@claimLabel" KeyCap="@claimCap" Class="@claimCls" HoverSound=@false OnClick=@(() => PressStop( "login" )) />
 						</div>
 					}
 				</div>
@@ -826,14 +1020,21 @@
 		var dailies = Ordered( mm?.ActiveDailyMissions ?? new(), m => m.MissionId, _dailyOrder );
 		var claimedCount = dailies.Count( m => m.Claimed );
 		var allDone = mm?.AreAllDailiesComplete() ?? false;
-		var bonusClaimed = mm?.DailyBonusClaimed ?? false;
+		var bonusClaimedNow = mm?.DailyBonusClaimed ?? false;
 		var countText = claimedCount + " / " + dailies.Count;
 		var bonusGold = MissionManager.DailyBonusGold.ToString( "N0" );
 		var bonusGems = MissionManager.DailyBonusGems.ToString( "N0" );
 		var bonusXp = MissionManager.DailyBonusXP.ToString( "N0" ) + " XP";
+		// LANE: motion — the CLAIM BONUS chip holds through its beat (CLAIMED),
+		// then the BONUS CLAIMED darkchip pops in under the band's qp-settle.
+		var bonusBeating = IsBeat( "b:daily" );
+		var bonusClaimed = bonusClaimedNow && !bonusBeating;
+		var bonusLabel = bonusBeating ? "CLAIMED" : "CLAIM BONUS";
+		var bonusCls = "qp-bonus-btn" + BeatClass( "b:daily" );
+		var bandClass = "qp-band" + SettleClass( "b:daily" );
 
 		<div class="qp-slab daily">
-			<div class="qp-band">
+			<div class="@bandClass">
 				<div class="qp-chipstamp"><span>DAILY</span></div>
 				@DarkChip( GetDailyTimer(), "" )
 				<div class="qp-band-spacer"></div>
@@ -842,10 +1043,10 @@
 				{
 					@DarkChip( "BONUS CLAIMED", "green" )
 				}
-				else if ( allDone )
+				else if ( allDone || bonusBeating )
 				{
 					<div class="@StopClass( "b:daily" )" onmouseover=@(() => HoverStop( "b:daily" ))>
-						<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" HoverSound=@false OnClick=@(() => PressStop( "b:daily" )) />
+						<BbButton Tier="primary" Size=@(34) Label="@bonusLabel" Class="@bonusCls" HoverSound=@false OnClick=@(() => PressStop( "b:daily" )) />
 					</div>
 				}
 				else
@@ -886,13 +1087,19 @@
 		var weeklies = Ordered( mm?.ActiveWeeklyMissions ?? new(), m => m.MissionId, _weeklyOrder );
 		var claimedCount = weeklies.Count( m => m.Claimed );
 		var allDone = mm?.AreAllWeekliesComplete() ?? false;
-		var bonusClaimed = mm?.WeeklyBonusClaimed ?? false;
+		var bonusClaimedNow = mm?.WeeklyBonusClaimed ?? false;
 		var countText = claimedCount + " / " + weeklies.Count;
 		var bonusGold = MissionManager.WeeklyBonusGold.ToString( "N0" );
 		var bonusGems = MissionManager.WeeklyBonusGems.ToString( "N0" );
+		// LANE: motion — see RenderDaily.
+		var bonusBeating = IsBeat( "b:weekly" );
+		var bonusClaimed = bonusClaimedNow && !bonusBeating;
+		var bonusLabel = bonusBeating ? "CLAIMED" : "CLAIM BONUS";
+		var bonusCls = "qp-bonus-btn" + BeatClass( "b:weekly" );
+		var bandClass = "qp-band" + SettleClass( "b:weekly" );
 
 		<div class="qp-slab weekly">
-			<div class="qp-band">
+			<div class="@bandClass">
 				<div class="qp-chipstamp"><span>WEEKLY</span></div>
 				@DarkChip( GetWeeklyTimer(), "" )
 				<div class="qp-band-spacer"></div>
@@ -901,10 +1108,10 @@
 				{
 					@DarkChip( "BONUS CLAIMED", "green" )
 				}
-				else if ( allDone )
+				else if ( allDone || bonusBeating )
 				{
 					<div class="@StopClass( "b:weekly" )" onmouseover=@(() => HoverStop( "b:weekly" ))>
-						<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" HoverSound=@false OnClick=@(() => PressStop( "b:weekly" )) />
+						<BbButton Tier="primary" Size=@(34) Label="@bonusLabel" Class="@bonusCls" HoverSound=@false OnClick=@(() => PressStop( "b:weekly" )) />
 					</div>
 				}
 				else
@@ -993,20 +1200,31 @@
 		if ( def == null ) return;
 
 		var dormant = IsDormant( def );
-		var done = m.Claimed;
-		var claimable = m.Completed && !m.Claimed && !dormant;
+		// LANE: motion — the claimable costume (gold numerals, CLAIM mounted)
+		// holds through the beat window; .done lands at settle so the row's
+		// bg/opacity + reward ink TRANSITION there. Rung / tick / settle are
+		// windowed fragments (a class change is a remount — rows a beat
+		// touched carry no rung).
+		var beating = IsBeat( stopKey );
+		var done = m.Claimed && !beating;
+		var claimable = (m.Completed && !m.Claimed && !dormant) || beating;
 		var rowClass = "qp-row " + (roomy ? "roomy" : "dense")
 			+ (idx % 2 == 1 ? " alt" : "")
 			+ (claimable ? " claimable" : "")
 			+ (done ? " done" : "")
-			+ (dormant ? " dormant" : "");
+			+ (dormant ? " dormant" : "")
+			+ RowLadderClass( idx, stopKey )
+			+ SettleClass( stopKey );
 		var desc = dormant ? "Ranked battles are not open yet." : def.Description;
 		var fillStyle = "width: " + FillPx( m.Progress, def.Target ) + "px;";
 		var counter = FormatCounter( m.Progress, def.Target );
 		var missionId = m.MissionId;
+		var accentCls = AccentClass( stopKey );
+		var claimLabel = beating ? "CLAIMED" : "CLAIM";
+		var claimCls = "qp-claim" + BeatClass( stopKey );
 
 		<div class="@rowClass">
-			<div class="row-accent"></div>
+			<div class="@accentCls"></div>
 			<div class="qp-tile">
 				<iconify class="qp-glyph" icon="@GetGlyph( def )" Size=@(22) Color="@Accent" />
 			</div>
@@ -1042,7 +1260,7 @@
 				else if ( claimable )
 				{
 					<div class="@StopClass( stopKey )" onmouseover=@(() => HoverStop( stopKey ))>
-						<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" HoverSound=@false OnClick=@(() => PressStop( stopKey )) />
+						<BbButton Tier="primary" Size=@(44) Label="@claimLabel" Class="@claimCls" HoverSound=@false OnClick=@(() => PressStop( stopKey )) />
 					</div>
 				}
 			</div>
@@ -1053,28 +1271,42 @@
 	{
 		var mgr = SideQuestManager.Instance;
 		var state = mgr?.GetState( def.Id );
-		var doneOneShot = mgr?.IsCompletedOneShot( def.Id ) == true;
-		var claimable = state != null && state.Completed && !state.RewardClaimed;
-		var available = state == null && !doneOneShot && mgr?.IsAvailable( def.Id ) == true;
-		var locked = state == null && !doneOneShot && !available;
+		var questId = def.Id;
+		var claimKey = "s:" + questId;
+		var acceptKey = "a:" + questId;
+		// LANE: motion — CLAIM holds its costume through the claim beat; ACCEPT
+		// holds its button through the accept beat while the text lane already
+		// shows the bar (fading in under qp-accepted). Row keeps its slot.
+		var beatingClaim = IsBeat( claimKey );
+		var beatingAccept = IsBeat( acceptKey );
+		var doneOneShotNow = mgr?.IsCompletedOneShot( def.Id ) == true;
+		var doneOneShot = doneOneShotNow && !beatingClaim;
+		var claimable = (state != null && state.Completed && !state.RewardClaimed) || beatingClaim;
+		var available = state == null && !doneOneShotNow && mgr?.IsAvailable( def.Id ) == true;
+		var showAccept = available || beatingAccept;
+		var locked = state == null && !doneOneShotNow && !available;
 
 		var rowClass = "qp-row dense"
 			+ (idx % 2 == 1 ? " alt" : "")
 			+ (claimable ? " claimable" : "")
 			+ (doneOneShot ? " done" : "")
 			+ (locked ? " locked" : "")
-			+ (available ? " avail" : "");
+			+ (showAccept ? " avail" : "")
+			+ (beatingAccept ? " qp-accepted" : "")
+			+ RowLadderClass( idx, claimKey, acceptKey )
+			+ SettleClass( claimKey );
 
 		var zone = ZoneName( def.ZoneId );
 		var desc = locked ? "Clear " + zone + " once to unlock." : def.Description;
-		var progress = doneOneShot ? def.Target : (state?.Progress ?? 0);
+		var progress = doneOneShotNow ? def.Target : (state?.Progress ?? 0);
 		var fillStyle = "width: " + FillPx( progress, def.Target ) + "px;";
 		var counter = FormatCounter( progress, def.Target );
 		var openNote = "OPEN · " + zone.ToUpperInvariant() + " CLEARED";
 		var byline = "· " + def.NpcName;
-		var questId = def.Id;
-		var claimKey = "s:" + questId;
-		var acceptKey = "a:" + questId;
+		var accentCls = AccentClass( claimKey );
+		var claimLabel = beatingClaim ? "CLAIMED" : "CLAIM";
+		var claimCls = "qp-claim" + BeatClass( claimKey );
+		var acceptCls = "qp-accept" + BeatClass( acceptKey );
 
 		// A1 — item rewards on side rows (Contract Incense ×2 / Premium Incense ×1).
 		var itemParts = new List<(string Icon, string Text)>();
@@ -1082,7 +1314,7 @@
 			itemParts.Add( (ItemIcon( itemId ), ItemName( itemId ) + " ×" + qty) );
 
 		<div class="@rowClass">
-			<div class="row-accent"></div>
+			<div class="@accentCls"></div>
 			<div class="qp-tile">
 				<iconify class="qp-glyph" icon="lucide:scroll-text" Size=@(22) Color="@Accent" />
 			</div>
@@ -1126,13 +1358,13 @@
 				else if ( claimable )
 				{
 					<div class="@StopClass( claimKey )" onmouseover=@(() => HoverStop( claimKey ))>
-						<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" HoverSound=@false OnClick=@(() => PressStop( claimKey )) />
+						<BbButton Tier="primary" Size=@(44) Label="@claimLabel" Class="@claimCls" HoverSound=@false OnClick=@(() => PressStop( claimKey )) />
 					</div>
 				}
-				else if ( available )
+				else if ( showAccept )
 				{
 					<div class="@StopClass( acceptKey )" onmouseover=@(() => HoverStop( acceptKey ))>
-						<BbButton Tier="secondary" Size=@(44) Label="ACCEPT" Icon="lucide:check" IconTint="@Accent" Class="qp-accept" HoverSound=@false OnClick=@(() => PressStop( acceptKey )) />
+						<BbButton Tier="secondary" Size=@(44) Label="ACCEPT" Icon="lucide:check" IconTint="@Accent" Class="@acceptCls" HoverSound=@false OnClick=@(() => PressStop( acceptKey )) />
 					</div>
 				}
 			</div>
@@ -1288,5 +1520,100 @@
 		if ( !IsVisible ) Show();
 		else CaptureOrder();
 		Log.Info( $"[Quests] dev_quests → '{arg}' (unclaimed badge = {GetTotalUnclaimedCount()})" );
+	}
+
+	// ══════════════════════════════════════════════
+	// LANE: motion — dev_questsfx <beat> (the dev_fusefx / dev_pawpadfx pattern)
+	// Replays every beat WITHOUT touching save state: a visual-only beat keeps
+	// the button mounted reading CLAIMED for its window, then the row returns
+	// to whatever the managers say.
+	//   dev_questsfx claim  [key] → claim beat on the cursor stop (or the given
+	//                               action string, e.g. d:daily_battle_3)
+	//   dev_questsfx login         → CLAIM DAY n beat (button shows even if claimed)
+	//   dev_questsfx bonus         → daily CLAIM BONUS beat (chip shows regardless)
+	//   dev_questsfx accept        → accept beat on the first ACCEPT stop
+	//   dev_questsfx land          → kb land flash on the ring
+	//   dev_questsfx ladder        → re-arm the row ladder (2 priming frames)
+	//   dev_questsfx open          → close + re-open across frames (zone rungs replay)
+	//   dev_questsfx exit          → the exit latch
+	//   dev_questsfx freeze        → hold every window at its END frame (`both`)
+	//   dev_questsfx settle        → (frozen) jump the live beats to their settle phase
+	//   dev_questsfx off           → release the clock, clear beats
+	// REMOVE after the redesign is user-approved.
+	// ══════════════════════════════════════════════
+
+	[ConCmd( "dev_questsfx" )]
+	public static void DevQuestsFx( string arg = "", string key = "" )
+	{
+		var p = Instance;
+		if ( p == null ) { Log.Warning( "[Quests] dev_questsfx: panel not rooted" ); return; }
+		arg = (arg ?? "").Trim().ToLowerInvariant();
+		if ( arg != "open" && !IsVisible ) DevQuests();
+
+		p.SyncStops();
+		switch ( arg )
+		{
+			case "claim":
+			{
+				var k = !string.IsNullOrEmpty( key ) ? key : (p._kbStop ?? p._stops.FirstOrDefault( s => s != "login" && !s.StartsWith( "b:" ) && !s.StartsWith( "a:" ) ));
+				if ( k == null ) { Log.Warning( "[Quests] dev_questsfx claim: no stop to beat" ); return; }
+				p.FireBeat( k );
+				Log.Info( $"[Quests] dev_questsfx claim → beat on '{k}' (v{p._beatVersion})" );
+				return;
+			}
+			case "login": p.FireBeat( "login" ); Log.Info( "[Quests] dev_questsfx login → CLAIM DAY n beat" ); return;
+			case "bonus": p.FireBeat( "b:daily" ); Log.Info( "[Quests] dev_questsfx bonus → daily CLAIM BONUS beat" ); return;
+			case "accept":
+			{
+				var k = p._stops.FirstOrDefault( s => s.StartsWith( "a:" ) );
+				if ( k == null ) { Log.Warning( "[Quests] dev_questsfx accept: no ACCEPT stop (dev_quests side first)" ); return; }
+				p.FireBeat( k );
+				Log.Info( $"[Quests] dev_questsfx accept → beat on '{k}'" );
+				return;
+			}
+			case "land":
+				p.StampKb();
+				p._ringLitUntil = RealTime.Now + 0.05f;
+				Log.Info( "[Quests] dev_questsfx land → ring flash" );
+				return;
+			case "ladder":
+				p._ladderPrime = 2;
+				p.StateHasChanged();
+				Log.Info( "[Quests] dev_questsfx ladder → re-armed (2 priming frames)" );
+				return;
+			case "open":
+				if ( IsVisible ) Close();
+				p._reopenIn = 2;
+				Log.Info( "[Quests] dev_questsfx open → re-open in 2 frames" );
+				return;
+			case "exit":
+				p.BeginExit();
+				Log.Info( "[Quests] dev_questsfx exit → latch 0.12s" );
+				return;
+			case "freeze":
+				p._fxFreeze = true;
+				p._fxFrozenAt = RealTime.Now;
+				p.StateHasChanged();
+				Log.Info( "[Quests] dev_questsfx freeze → windows held" );
+				return;
+			case "settle":
+			{
+				if ( !p._fxFreeze ) { Log.Warning( "[Quests] dev_questsfx settle: freeze first" ); return; }
+				float at = p._beats.Count > 0 ? p._beats.Values.Max( b => b.at + b.window ) : RealTime.Now;
+				p._fxFrozenAt = at + 0.01f;
+				p.StateHasChanged();
+				Log.Info( "[Quests] dev_questsfx settle → beats in phase 2" );
+				return;
+			}
+			case "off":
+				p._fxFreeze = false;
+				p._beats.Clear();
+				p.StateHasChanged();
+				Log.Info( "[Quests] dev_questsfx off → clock released" );
+				return;
+			default:
+				Log.Warning( "[Quests] dev_questsfx: claim [key] | login | bonus | accept | land | ladder | open | exit | freeze | settle | off" );
+				return;
+		}
 	}
 }
