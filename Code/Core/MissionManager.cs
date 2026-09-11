@@ -112,7 +112,7 @@ public sealed class MissionManager : Component
 
 	private static readonly List<MissionDefinition> MonthlyPool = new()
 	{
-		new() { Id = "expedition_master", Name = "Expedition Master", Description = "Complete all 16 expeditions", Category = MissionCategory.Expedition, Tier = MissionTier.Monthly, Target = 16, GoldReward = 150000, GemReward = 20, Icon = "ui/icons/missions/expedition.svg" },
+		new() { Id = "expedition_master", Name = "Expedition Master", Description = "Clear 16 expeditions", Category = MissionCategory.Expedition, Tier = MissionTier.Monthly, Target = 16, GoldReward = 150000, GemReward = 20, Icon = "ui/icons/missions/expedition.svg" },
 		new() { Id = "beast_collector", Name = "Beast Collector", Description = "Contract 200 monsters", Category = MissionCategory.Collection, Tier = MissionTier.Monthly, Target = 200, GoldReward = 200000, GemReward = 30, Icon = "ui/icons/missions/collection.svg" },
 		new() { Id = "battle_legend", Name = "Battle Legend", Description = "Win 100 battles", Category = MissionCategory.Battle, Tier = MissionTier.Monthly, Target = 100, GoldReward = 175000, GemReward = 25, Icon = "ui/icons/missions/battle.svg" },
 		new() { Id = "fusion_expert", Name = "Fusion Expert", Description = "Fuse 50 monsters", Category = MissionCategory.Collection, Tier = MissionTier.Monthly, Target = 50, GoldReward = 200000, GemReward = 30, Icon = "ui/icons/missions/collection.svg" },
@@ -206,7 +206,7 @@ public sealed class MissionManager : Component
 
 		foreach ( MissionCategory category in Enum.GetValues<MissionCategory>() )
 		{
-			var candidates = DailyPool.Where( m => m.Category == category ).ToList();
+			var candidates = DailyPool.Where( m => m.Category == category && (ArenaMissionsEnabled || !m.Id.StartsWith( "arena_" )) ).ToList();
 			if ( candidates.Count == 0 ) continue;
 
 			var picked = candidates[random.Next( candidates.Count )];
@@ -232,7 +232,7 @@ public sealed class MissionManager : Component
 		WeeklyBonusClaimed = false;
 		var random = new Random();
 
-		var shuffled = WeeklyPool.OrderBy( _ => random.Next() ).Take( 3 ).ToList();
+		var shuffled = WeeklyPool.Where( m => ArenaMissionsEnabled || !m.Id.StartsWith( "arena_" ) ).OrderBy( _ => random.Next() ).Take( 3 ).ToList();
 		foreach ( var def in shuffled )
 		{
 			ActiveWeeklyMissions.Add( new MissionState
@@ -254,7 +254,8 @@ public sealed class MissionManager : Component
 	public void GenerateMonthlyChallenge()
 	{
 		var random = new Random();
-		var picked = MonthlyPool[random.Next( MonthlyPool.Count )];
+		var pool = MonthlyPool.Where( m => ArenaMissionsEnabled || !m.Id.StartsWith( "arena_" ) ).ToList();
+		var picked = pool[random.Next( pool.Count )];
 
 		ActiveMonthlyChallenge = new MissionState
 		{

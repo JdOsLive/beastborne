@@ -1,70 +1,45 @@
-// ═══════════════════════════════════════════════════════════════
-// QUEST PANEL — the notice board (efficiency-first sweep, 2026-07)
+// ═══════════════════════════════════════════════════════════════════════
+// QUEST PANEL — rebuild 2026-09-11 (LAYOUT lane, quests-redesign-brief.html)
 //
-// Accent: QUEST GREEN #3fb45e (the panel's PawPad tile color).
-// Gold #ffce3a stays the universal "claim/GO".
+// Accent: QUESTS GREEN #3fb45e (the PawPad QUESTS tile). Gold #ffce3a =
+// primaries / claimable numerals / DONE ink. Violet = the ring only (LANE:
+// input mounts it). TextDim rgba(214,206,236,.6) at the 12px floor.
 //
-// Composition: ONE chrome rail (identity header + tab pegs + timer),
-// angled green seam, then a full-bleed two-column board of quest
-// slips. In-progress slips rest at a whisper tilt (±~1°); claimable
-// and claimed slips sit FLAT (actionable/done states scan instantly).
-// Claiming animates the settle via the transform transition.
+// Surfaces: #0a0912 page (baked into the BbIconScroll tiles) · #15121f slab
+// · #110d1a band + status chips · #1c1830 row / darkchip · #181429 alt row
+// · #0a0714 bar track · #262040 future pip / ACCEPT slab.
 //
-// Engine laws honored:
-// - Tilted slips are 2D-transform ancestors → every text/bar row
-//   inside carries EXPLICIT px width (see SlipBarW consts in razor);
-//   progress fills arrive as computed px, never %.
-// - Slips live in a scroll container → hover is brighten + inset
-//   violet ring, NEVER a transform; rings/badges sit INSIDE bounds.
-// - No hairline outlines (vector rule) — separation by fill contrast.
-//   Permitted lines: violet ring, gold left accent on ready bonus,
-//   pin edges (physical object), keycap-style timer slab.
-// ═══════════════════════════════════════════════════════════════
+// ZONE MAP (1920×1080, PADDING-BOX — declared w/h INCLUDE padding; only
+// borders add on top):
+//   HEADER  y 0-90     .qp-header 88 declared + 2px strip
+//                      = pad 16 + kicker 14 + 2 + title row 44 + pad 12 = 88
+//   BODY    y 90-1080  .qp-body 990 declared, pad 20/40 → inner 1840 × 950
+//                      columns 912 + 16 + 912 = 1840
+//   LEFT    LOGIN 240 + 16 + DAILY 694 = 950
+//   RIGHT   WEEKLY 378 + 16 + MONTHLY 162 + 16 + SIDE 378 = 950
+//   slab    = .qp-band 36 + .qp-list (pad 16, gap 14)
+//     LOGIN   36 + 204 body (pad 16 → inner 880 × 172)          = 240
+//     DAILY   36 + 16 + 5×114 + 4×14 + 16 = 36 + 16 + 570 + 56 + 16 = 694
+//     WEEKLY  36 + 16 + 3×94 + 2×14 + 16 = 36 + 16 + 282 + 28 + 16 = 378
+//     MONTHLY 36 + 16 + 94 + 16                                 = 162
+//     SIDE    = WEEKLY                                           = 378
+//   ROW 880 = 16 + tile 40 + 16 + text 436 + 16 + rewards 204 + 16 +
+//             action 120 + 16
+//   text lane 436 = bar 320 + 8 + counter 108
+//
+// LANE: motion — no keyframes here yet. Attach: qpZoneHeader/Login/Daily/
+// Weekly/MonthlySide (the gpZone* holds), qpRowIn0-7 (windowed classes),
+// qpClaimBeat/qpClaimInk on the pressed BbButton, qpAccentTick on
+// .row-accent (THE one HDR tick), qpChipIn on .qp-chip / .qp-login-claimed
+// / band chip swaps, .qp-leaving exit latch. The root fade (0.15s) and the
+// bar-fill width transition (0.35s) are the two SHIPPED transitions kept.
+// LANE: input — every :hover on this page goes under .qp-page.mouse-mode;
+// the ring costumes (r26 on r16 buttons / r21 on the r11 bonus chip) and
+// the kbd-mode/mouse-mode root classes attach there.
+// LANE: color — accent applications audited against the brief §1 table.
+// ═══════════════════════════════════════════════════════════════════════
 
-// ─── Keyframes (infinite ambient loops + first-mount pops) ─────
-
-@keyframes questBadgePulse {
-	0%, 100% { transform: scale(1); }
-	50% { transform: scale(1.14); }
-}
-
-@keyframes questClaimBreath {
-	0%, 100% { transform: scale(1); }
-	50% { transform: scale(1.03); }
-}
-
-@keyframes questTodayPulse {
-	0%, 100% { border-color: rgba(255, 206, 58, 0.9); }
-	50% { border-color: rgba(255, 233, 140, 1); }
-}
-
-@keyframes questBonusShimmer {
-	0%, 100% { border-color: rgba(255, 206, 58, 0.75); }
-	50% { border-color: rgba(255, 229, 138, 1); }
-}
-
-@keyframes questCheckPop {
-	0% { transform: scale(0); }
-	60% { transform: scale(1.2); }
-	100% { transform: scale(1); }
-}
-
-// Opacity-only tab entrance — a transform here would poison derived
-// widths in every descendant for the duration of the animation.
-@keyframes questTabFadeIn {
-	from { opacity: 0; }
-	to { opacity: 1; }
-}
-
-// The ring's quiet life — tiny skew/rotate breathe, safely inside
-// the slip's inset bounds.
-@keyframes qRingBreathe {
-	0%, 100% { transform: skewX(0deg) rotate(0deg); }
-	33% { transform: skewX(0.4deg) rotate(0.2deg); }
-	66% { transform: skewX(-0.4deg) rotate(-0.2deg); }
-}
-
-// ─── Root + entrance (opacity only — transitions re-fire on open) ─
+// ─── Root (shipped: opacity-only open/close, transitions re-fire) ───────
 
 QuestPanel {
 	position: absolute;
@@ -75,1202 +50,843 @@ QuestPanel {
 	z-index: 1000;
 	pointer-events: none;
 	opacity: 0;
-	transition: opacity 0.15s ease-out;
-
-	.quest-page {
-		opacity: 0;
-		transition: opacity 0.22s ease-out;
-	}
+	transition: opacity 0.15s ease-out; // shipped root fade (brief §5.1)
 
 	&.visible {
 		opacity: 1;
 		pointer-events: all;
-
-		.quest-page {
-			opacity: 1;
-		}
 	}
 }
 
-.quest-page {
+// The page paints NO fill — the BbIconScroll pattern tiles (first child)
+// are opaque #0a0912 with the drifting glyph baked in.
+.qp-page {
 	position: absolute;
 	top: 0;
 	left: 0;
 	width: 100%;
 	height: 100%;
-	// 2026-07 sweep: bg is the BbIconScroll glyph-drift primitive (first
-	// child in markup) — quest-page paints NO fill of its own so the
-	// drift layer shows. The qp-header below keeps its opaque #0a0912
-	// (scroll-leak law: tilted slips scrolled past the board must land
-	// behind opaque chrome).
 	display: flex;
 	flex-direction: column;
+	font-family: Exo2;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// THE RAIL — identity + tab pegs + timer + close, one chrome band
-// ═══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// HEADER — the hub .oh-header recipe (OnlineHubPanel.razor.scss:97-220)
+// 88 declared + 2 strip = 90. pad 16/32/12/28, gap 24.
+// ═══════════════════════════════════════════════════════════════════════
 
 .qp-header {
+	height: 88px;
+	flex: 0 0 88px;
+	position: relative;
+	z-index: 500;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	padding: 20px 40px 12px 40px;
-	background-color: #0a0912; // opaque — covers slip-tilt leaks from the scroll below
-	flex-shrink: 0;
-	z-index: 50;
-}
+	padding: 16px 32px 12px 28px;
+	gap: 24px;
+	// The ONE sanctioned panel-signature strip — solid 2px, the accent.
+	border-bottom: 2px solid rgba(63, 180, 94, 0.55);
 
-.qp-head-left {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	flex: 0 0 auto;
-}
-
-.peg-tabs {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	flex: 1 1 0;
-	min-width: 0;
-	margin-left: 48px;
-}
-
-// Tab peg — skewed slab chip (ChatPanel .ch-tab dialect): bg + ring
-// border live ON the skew holder, content counter-skewed inside.
-.qtab {
-	height: 44px;
-	margin-right: 10px;
-	background-color: #15121f;
-	border: 2px solid rgba(0, 0, 0, 0);
-	border-radius: 10px;
-	transform: skewX(-8deg);
-	cursor: pointer;
-	flex-shrink: 0;
-	transition: background-color 0.14s ease-out, border-color 0.14s ease-out;
-
-	// hover-flicker rule: the inner passes the cursor through
+	// Host recipe (BbHeaderWaves): position the wave root from the host
+	// sheet, lift every other child above it. Host paints NO fill.
 	> * {
-		pointer-events: none;
+		position: relative;
+		z-index: 1;
 	}
 
-	&:hover {
-		background-color: #1c1830;
-		border-color: #9b6cff; // the living ring, hugging the parallelogram
+	> .bhw-root {
+		position: absolute;
+		top: 0px;
+		left: 0px;
+		right: 0px;
+		bottom: 0px;
+		z-index: 0;
 	}
 
-	&.active {
-		background-color: #3fb45e;
-	}
-
-	&.active:hover {
-		background-color: #4cc46c;
-	}
+	// Louder wave band (the Beastbook/hub values — component defaults read
+	// as trim).
+	.bhw-strip.a { opacity: 0.16; }
+	.bhw-strip.b { opacity: 0.24; }
 }
 
-.qtab-inner {
+// Identity column PINNED at 60 = kicker 14 + 2 + title row 44 (the Guild
+// .gp-h-identity lesson: an unpinned column resolves taller and the
+// header's centring shoves the kicker up).
+.qp-identity {
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-start;
+	flex: 0 1 auto;
+	min-width: 0;
+	height: 60px;
+}
+
+.qp-kicker {
+	font-family: Exo2;
+	font-size: 12px;
+	font-weight: 800;
+	line-height: 14px;
+	letter-spacing: 2.4px;
+	text-transform: uppercase;
+	color: #3fb45e;
+	margin-bottom: 2px;
+}
+
+.qp-title-row {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	height: 100%;
-	padding: 0 16px;
-	transform: skewX(8deg);
+	gap: 14px;
+	min-width: 0;
+	height: 44px;
+	flex: 0 0 44px;
 }
 
-.qtab-icon {
-	flex-shrink: 0;
-}
-
-.qtab-label {
+// 38/44 italic-900 UPPERCASE cream — the hub title / .gp-title.sm seat.
+.qp-title {
 	font-family: Exo2Italic;
 	font-style: italic;
-	font-size: 13px;
-	font-weight: 800;
-	line-height: 16px;
+	font-weight: 900;
+	font-size: 38px;
+	line-height: 44px;
 	letter-spacing: 1px;
 	text-transform: uppercase;
-	color: rgba(214, 206, 236, 0.75);
-	margin-left: 8px;
+	color: #f4f1ea;
 	white-space: nowrap;
-}
-
-.qtab.active .qtab-label,
-.qtab:hover .qtab-label {
-	color: #ffffff;
-}
-
-.qtab-badge {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 20px;
-	height: 20px;
-	min-width: 20px;
-	margin-left: 8px;
-	background-color: #e0414a;
-	border-radius: 999px;
-	font-size: 11px;
-	font-weight: 800;
-	color: white;
-	flex-shrink: 0;
-	animation: questBadgePulse 1.6s ease-in-out infinite;
-}
-
-.qp-head-right {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
 	flex: 0 0 auto;
+	padding-right: 10px; // italic overhang protection
 }
 
-.peg-meta-lbl {
-	font-family: Exo2;
-	font-size: 10px;
-	font-weight: 800;
-	line-height: 12px;
-	letter-spacing: 1.5px;
-	color: rgba(214, 206, 236, 0.55);
-	margin-right: 8px;
-	white-space: nowrap;
-}
-
-// Reset timer — keycap-style slab (its dark border is a physical cap
-// edge, not a decorative hairline — allowed).
-.timer-pill {
-	padding: 6px 12px;
-	margin-right: 16px;
-	background-color: rgba(8, 6, 16, 0.9);
-	border: 2px solid rgba(0, 0, 0, 0.85);
-	border-radius: 6px;
-	font-family: Exo2Italic;
-	font-style: italic;
-	font-size: 13px;
-	font-weight: 800;
-	color: #7fd99a;
-	letter-spacing: 1.2px;
-	text-transform: uppercase;
-	line-height: 14px;
-	white-space: nowrap;
-}
-
-BbStamp.qp-ready-stamp {
-	margin-right: 16px;
-}
-
-// .close-btn — universal recipe from GameHUD (canonical iconify-spin)
-
-// ─── Angled seam under the rail ────────────────────────────────
-
+// Accent seam — two angled slab dashes trailing the title (the hub
+// .oh-seam verbatim). BORDER-SHAPE polygon (sharp silhouette; a polygon's
+// paint sits INSIDE the box): 48×12 with −3/−3 side margins → layout
+// footprint 42; slope 11%. Dim tail 22 wide, margins −7/−3 → footprint 12.
 .qp-seam {
-	display: flex;
-	flex-direction: row;
-	height: 6px;
-	margin: 0 40px;
-	flex-shrink: 0;
-	z-index: 50;
-}
-
-.qp-seam-a {
-	width: 240px;
-	height: 6px;
-	background-color: #3fb45e;
-	border-radius: 2px;
-	transform: skewX(-30deg);
-	flex-shrink: 0;
-}
-
-.qp-seam-b {
-	flex: 1 1 0;
-	height: 6px;
-	background-color: #15121f;
-	border-radius: 2px;
-	margin-left: 14px;
-	transform: skewX(-30deg);
-}
-
-// ═══════════════════════════════════════════════════════════════
-// THE BOARD — scrolling field of slips
-// ═══════════════════════════════════════════════════════════════
-
-.board {
-	flex: 1 1 0;
-	min-height: 0;
-	overflow-y: scroll;
-	overflow-x: hidden;
-	pointer-events: all;
-	display: flex;
-	flex-direction: column;
-	padding: 26px 0 140px 94px; // 94 = (1920 - 1732) / 2 — board content centered at design width
-	z-index: 1;
-}
-
-.tab-content {
-	display: flex;
-	flex-direction: column;
-	width: 1732px;
-	flex-shrink: 0;
-	animation: questTabFadeIn 0.22s ease-out;
-}
-
-// Row-loop container — keeps the @for loops inside a markup element
-// (generator dialect) and groups a section's rows.
-.rowset {
-	display: flex;
-	flex-direction: column;
-	width: 1732px;
-	flex-shrink: 0;
-}
-
-.board-row {
-	display: flex;
-	flex-direction: row;
-	align-items: flex-start;
-	width: 1732px;
-	margin-bottom: 30px;
-	flex-shrink: 0;
-
-	.slip {
-		margin-right: 32px;
-	}
-
-	.slip:last-child {
-		margin-right: 0;
-	}
-}
-
-// centered single-slip rows
-.board-row.single .slip.wide {
-	margin-left: 316px; // (1732 - 1100) / 2
-	margin-right: 0;
-}
-
-// ─── Section chips — skewed green slabs (the board's labels) ───
-
-.section-label-row {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	justify-content: space-between;
-	width: 1732px;
-	margin: 4px 0 18px 0;
-	flex-shrink: 0;
-}
-
-.section-label-left {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-.section-chip {
-	display: flex;
-	align-items: center;
-	padding: 6px 16px;
-	background-color: #3fb45e;
-	border-radius: 6px;
-	transform: skewX(-8deg);
-	flex-shrink: 0;
-
-	span {
-		font-family: Exo2;
-		font-size: 11px;
-		font-weight: 900;
-		line-height: 13px;
-		letter-spacing: 1.5px;
-		text-transform: uppercase;
-		color: #08240f;
-		transform: skewX(8deg);
-		white-space: nowrap;
-	}
-}
-
-.section-count {
-	font-size: 13px;
-	font-weight: 700;
-	color: rgba(214, 206, 236, 0.6);
-	line-height: 15px;
-	letter-spacing: 0.5px;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// THE SLIP — a pinned quest notice
-// Geometry (content-box): declared width 802 + 2×24 padding = 850
-// outer; two slips + 32 gap = 1732 = board width.
-// ═══════════════════════════════════════════════════════════════
-
-.slip {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	width: 802px;
-	padding: 30px 24px 0 24px; // top clears the pin; bottom 0 so gem tags hang
-	background-color: #16131f;
-	border-radius: 14px;
-	flex-shrink: 0;
-	transition: transform 0.4s ease-out, background-color 0.15s ease-out, opacity 0.2s ease-out;
-
-	&:hover {
-		background-color: #1d1930;
-	}
-
-	// Rest tilts — in-progress slips only (pre-rotated rest states;
-	// hover never transforms inside the scroller).
-	&.rot-a {
-		transform: rotate(-1.2deg);
-	}
-
-	&.rot-b {
-		transform: rotate(0.9deg);
-	}
-
-	&.rot-flat {
-		transform: rotate(0deg);
-	}
-
-	// CLAIMABLE — flat, lit: brighter paper + the gold moment.
-	&.completed {
-		background-color: #221c2a;
-	}
-
-	&.completed:hover {
-		background-color: #292234;
-	}
-
-	// CLAIMED — settled flat, quiet.
-	&.claimed {
-		background-color: #110f18;
-		opacity: 0.62;
-	}
-
-	// Monthly hero slip: declared 1052 + 48 = 1100 outer.
-	&.wide {
-		width: 1052px;
-	}
-
-	// Slips without hanging gem tags need their own floor.
-	&.no-tags {
-		padding-bottom: 18px;
-	}
-}
-
-// ─── The pin ───────────────────────────────────────────────────
-
-.pin {
-	position: absolute;
-	top: 9px;
-	left: 50%;
-	margin-left: -8px;
-	width: 12px;
+	width: 48px;
 	height: 12px;
-	border: 2px solid #14161c;
-	border-radius: 999px;
-	background-color: #3a3e48;
-	transition: background-color 0.2s ease-out;
+	flex: 0 0 auto;
+	margin-left: -3px;
+	margin-right: -3px;
+	background-color: #3fb45e;
+	border-shape: polygon( 11% 0%, 100% 0%, 89% 100%, 0% 100% );
+	margin-top: 10px; // optical baseline alignment with the 38 title
 
-	&.gold {
-		background-color: #ffce3a;
-		border-color: #7a5a10;
-	}
-
-	&.done {
-		background-color: #3fb45e;
-		border-color: #1c5b30;
-	}
-}
-
-// ─── Slip anatomy ──────────────────────────────────────────────
-
-.slip-head {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-bottom: 8px;
-}
-
-.mission-icon-wrap {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 40px;
-	height: 40px;
-	min-width: 40px;
-	margin-right: 12px;
-	background-color: rgba(63, 180, 94, 0.14);
-	border-radius: 10px;
-	flex-shrink: 0;
-}
-
-// Per-category identity tints (color carries meaning)
-.slip.cat-battle .mission-icon-wrap { background-color: rgba(239, 68, 68, 0.18); }
-.slip.cat-expedition .mission-icon-wrap { background-color: rgba(245, 158, 11, 0.18); }
-.slip.cat-collection .mission-icon-wrap { background-color: rgba(14, 165, 233, 0.18); }
-.slip.cat-economy .mission-icon-wrap { background-color: rgba(234, 179, 8, 0.18); }
-.slip.cat-social .mission-icon-wrap { background-color: rgba(217, 70, 239, 0.18); }
-
-.mission-name-row {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-.mission-name {
-	font-family: Exo2;
-	font-size: 15px;
-	font-weight: 800;
-	color: #f4f1ea;
-	line-height: 18px;
-	letter-spacing: 0.3px;
-	margin-right: 10px;
-}
-
-.mission-cat-chip {
-	font-family: Exo2;
-	font-size: 9px;
-	font-weight: 800;
-	color: rgba(226, 214, 255, 0.85);
-	line-height: 11px;
-	letter-spacing: 0.8px;
-	padding: 3px 7px;
-	background-color: rgba(155, 108, 255, 0.16);
-	border-radius: 4px;
-	white-space: nowrap;
-}
-
-.slip.cat-battle .mission-cat-chip { color: #fca5a5; background-color: rgba(239, 68, 68, 0.14); }
-.slip.cat-expedition .mission-cat-chip { color: #fcd34d; background-color: rgba(245, 158, 11, 0.14); }
-.slip.cat-collection .mission-cat-chip { color: #7dd3fc; background-color: rgba(14, 165, 233, 0.14); }
-.slip.cat-economy .mission-cat-chip { color: #fde047; background-color: rgba(234, 179, 8, 0.14); }
-.slip.cat-social .mission-cat-chip { color: #f0abfc; background-color: rgba(217, 70, 239, 0.14); }
-
-// Row wrappers with EXPLICIT-width children — a tilted slip is a
-// transform ancestor, so derived widths inside are untrustworthy.
-.slip-descrow {
-	display: flex;
-	flex-direction: row;
-	margin-bottom: 12px;
-}
-
-.mission-desc {
-	width: 802px;
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(214, 206, 236, 0.7);
-	line-height: 16px;
-	white-space: normal;
-}
-
-.slip.wide .mission-desc {
-	width: 1052px;
-}
-
-// ─── Progress — the bold green strip across the slip ──────────
-
-.slip-barrow {
-	display: flex;
-	flex-direction: row;
-	margin-bottom: 4px;
-}
-
-.mission-progress-bar {
-	width: 802px;
-	height: 10px;
-	background-color: rgba(0, 0, 0, 0.55);
-	border-radius: 5px;
-}
-
-.slip.wide .mission-progress-bar {
-	width: 1052px;
-}
-
-.mission-progress-fill {
-	height: 10px;
-	background-color: #3fb45e; // SOLID, no glow
-	border-radius: 5px;
-	transition: width 0.35s ease-out;
-}
-
-.slip.claimed .mission-progress-fill {
-	background-color: rgba(63, 180, 94, 0.35);
-}
-
-// ─── Foot — the state slot ─────────────────────────────────────
-
-.slip-foot {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	min-height: 44px;
-	margin-bottom: 4px;
-}
-
-.mission-target {
-	font-family: Exo2Italic;
-	font-style: italic;
-	font-size: 18px;
-	font-weight: 900;
-	color: #7fd99a;
-	line-height: 22px;
-	letter-spacing: 0.5px;
-	white-space: nowrap;
-}
-
-// CLAIM — the gold moment. Subtle breath pulse; hover brightens,
-// press dims. No transforms beyond the breath (scroll container).
-.claim-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	height: 40px;
-	padding: 0 26px;
-	background: linear-gradient(to bottom, #ffd95a 0%, #ffb330 55%, #f59312 100%);
-	border-radius: 12px;
-	cursor: pointer;
-	flex-shrink: 0;
-	animation: questClaimBreath 1.6s ease-in-out infinite;
-
-	&:hover {
-		background: linear-gradient(to bottom, #ffe98c 0%, #ffc453 55%, #ffa42e 100%);
-	}
-
-	&:active {
-		background: linear-gradient(to bottom, #f3c94a 0%, #eda226 55%, #d97f0c 100%);
-	}
-
-	span {
-		font-family: Exo2Italic;
-		font-style: italic;
-		font-size: 14px;
-		font-weight: 900;
-		color: #2a1605;
-		line-height: 17px;
-		letter-spacing: 1.2px;
-		text-transform: uppercase;
-		white-space: nowrap;
+	&.dim {
+		width: 22px;
+		margin-left: -7px;
+		background-color: rgba(63, 180, 94, 0.45);
+		border-shape: polygon( 24% 0%, 100% 0%, 76% 100%, 0% 100% );
 	}
 }
 
-// ACCEPT — the panel's own green (not a claim; gold stays "claim").
-.claim-btn.accept-btn {
-	background: linear-gradient(to bottom, #4cc46c 0%, #3fb45e 60%, #339950 100%);
-	animation: none;
-
-	&:hover {
-		background: linear-gradient(to bottom, #5fd37e 0%, #4cc46c 60%, #3fb45e 100%);
-	}
-
-	&:active {
-		background: linear-gradient(to bottom, #3fa95a 0%, #349450 60%, #2a7f43 100%);
-	}
-
-	span {
-		color: #08240f;
-	}
-}
-
-BbStamp.q-done {
-	margin: 2px 0;
-}
-
-// ─── Gem tags — hanging off the slip's bottom edge ─────────────
-// Negative bottom margin (engine-proven overlay pattern) lets the
-// solid chips break past the paper edge onto the board.
-
-.slip-tags {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-top: 10px;
-	margin-bottom: -14px;
-	margin-left: 4px;
-}
-
-// transparent row inside the tags fragment (markup-context wrapper)
-.tagrow {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-.q-reward {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	padding: 5px 12px 5px 8px;
-	margin-right: 10px;
-	background-color: #0d0b14;
-	border-radius: 8px;
-	flex-shrink: 0;
-}
-
-.q-gem {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 18px;
-	height: 18px;
-	min-width: 18px;
-	border-radius: 4px;
-	transform: rotate(45deg);
-	background-color: rgba(155, 108, 255, 0.2);
-	flex-shrink: 0;
-}
-
-.q-gem-in {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 18px;
-	height: 18px;
-	transform: rotate(-45deg);
-}
-
-.q-gem-img {
-	width: 12px;
-	height: 12px;
-	background-repeat: no-repeat;
-}
-
-.q-amt {
-	font-family: Exo2;
-	font-size: 12px;
-	font-weight: 800;
-	line-height: 14px;
-	color: rgba(244, 241, 234, 0.92);
-	margin-left: 8px;
-	white-space: nowrap;
-}
-
-.q-reward.gold .q-gem { background-color: rgba(255, 206, 58, 0.22); }
-.q-reward.gold .q-amt { color: #ffd95a; }
-.q-reward.tokens .q-gem { background-color: rgba(110, 231, 183, 0.2); }
-.q-reward.tokens .q-amt { color: #6ee7b7; }
-.q-reward.ink .q-gem { background-color: rgba(155, 108, 255, 0.22); }
-.q-reward.ink .q-amt { color: #c4b5fd; }
-.q-reward.xp .q-gem { background-color: rgba(63, 180, 94, 0.22); }
-.q-reward.xp .q-amt { color: #7fd99a; }
-
-// ─── The living violet ring — hover cursor, inset (scroller law) ─
-
-.q-ring {
-	position: absolute;
-	top: 4px;
-	left: 4px;
-	right: 4px;
-	bottom: 4px;
-	border: 3px solid #9b6cff;
-	border-radius: 10px;
-	background-color: rgba(0, 0, 0, 0);
-	opacity: 0;
-	transition: opacity 0.16s ease-out;
-	pointer-events: none;
-	animation: qRingBreathe 2.6s ease-in-out infinite;
-	z-index: 5;
-}
-
-.slip:hover .q-ring {
-	opacity: 1;
-}
-
-.slip.claimed:hover .q-ring {
-	opacity: 0.3;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// THE PINNED CALENDAR CARD — daily login streak
-// Declared 1312 + 48 padding = 1360 outer, centered in the 1732 row.
-// ═══════════════════════════════════════════════════════════════
-
-.slip.streak-card {
-	width: 1312px;
-	margin-left: 186px;
-	margin-right: 0;
-	padding: 32px 24px 26px 24px;
-
-	&.rot-s {
-		transform: rotate(-0.5deg);
-	}
-
-	&:hover {
-		background-color: #16131f; // not an interactive card — no hover lift
-	}
-}
-
-.streak-head {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-bottom: 16px;
-}
-
-.streak-title {
-	font-family: Exo2;
-	font-size: 13px;
-	font-weight: 900;
-	line-height: 16px;
-	letter-spacing: 2px;
-	text-transform: uppercase;
-	color: #7fd99a;
-	white-space: nowrap;
-}
-
-.streak-count {
-	font-size: 12px;
-	font-weight: 700;
-	color: rgba(214, 206, 236, 0.55);
-	line-height: 14px;
-	margin-left: 18px;
-	white-space: nowrap;
-}
-
-// Week multiplier — keycap slab, gold digits (earned bonus)
-.multiplier-badge {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-left: 14px;
-	padding: 5px 10px 5px 8px;
-	background-color: rgba(8, 6, 16, 0.9);
-	border: 2px solid rgba(0, 0, 0, 0.85);
-	border-radius: 6px;
-	animation: questBadgePulse 2s ease-in-out infinite;
-
-	span {
-		font-family: Exo2Italic;
-		font-style: italic;
-		font-size: 11px;
-		font-weight: 900;
-		color: #ffd95a;
-		line-height: 13px;
-		letter-spacing: 1.2px;
-		text-transform: uppercase;
-		margin-left: 4px;
-		white-space: nowrap;
-	}
-}
-
-// ─── 7-day strip (explicit widths — tilted ancestor) ───────────
-// 7 × (160 + 12 padding + 4 border = 176) + 6 × 12 gap ≈ 1304.
-
-.cal-strip {
-	display: flex;
-	flex-direction: row;
-	margin-bottom: 18px;
-	flex-shrink: 0;
-}
-
-.cal-day {
-	position: relative;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	width: 160px;
-	min-width: 160px;
-	padding: 12px 6px;
-	margin-right: 12px;
-	background-color: #1c1830;
-	border: 2px solid rgba(0, 0, 0, 0); // constant border — today swaps color, no layout shift
-	border-radius: 12px;
-	flex-shrink: 0;
-	transition: background-color 0.18s ease-out, border-color 0.18s ease-out;
-
-	&:last-child {
-		margin-right: 0;
-	}
-
-	&.claimed {
-		background-color: rgba(63, 180, 94, 0.1);
-	}
-
-	&.today {
-		background-color: rgba(255, 206, 58, 0.1);
-		border-color: #ffce3a;
-		animation: questTodayPulse 1.8s ease-in-out infinite;
-	}
-
-	&.future {
-		background-color: #131019;
-	}
-
-	&.legendary {
-		background-color: rgba(255, 206, 58, 0.07);
-	}
-
-	&.legendary.today {
-		background-color: rgba(255, 206, 58, 0.16);
-	}
-}
-
-.cal-day-lbl {
-	font-family: Exo2;
-	font-size: 11px;
-	font-weight: 800;
-	color: rgba(244, 241, 234, 0.85);
-	line-height: 13px;
-	letter-spacing: 1.2px;
-	margin-bottom: 8px;
-}
-
-.cal-day.today .cal-day-lbl {
-	color: #ffd95a;
-}
-
-.cal-day.claimed .cal-day-lbl {
-	color: #7fd99a;
-}
-
-.cal-day.future .cal-day-lbl {
-	color: rgba(214, 206, 236, 0.5);
-}
-
-.cal-day-icon {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 44px;
-	height: 44px;
-	min-width: 44px;
-	margin-bottom: 8px;
-	background-color: rgba(0, 0, 0, 0.4);
-	border-radius: 10px;
-}
-
-.cal-day-rewards {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-}
-
-.cal-day-amt {
-	font-family: Exo2;
-	font-size: 12px;
-	font-weight: 800;
-	line-height: 14px;
-	letter-spacing: 0.3px;
-
-	&.gold { color: #ffd95a; }
-	&.gem { color: #6ee7b7; margin-top: 3px; }
-}
-
-.cal-day.claimed .cal-day-amt,
-.cal-day.future .cal-day-amt {
-	color: rgba(244, 241, 234, 0.45);
-}
-
-.cal-day-check {
-	position: absolute;
-	top: 6px;
-	right: 6px;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 20px;
-	height: 20px;
-	background-color: rgba(63, 180, 94, 0.25);
-	border-radius: 999px;
-	animation: questCheckPop 0.32s ease-out;
-}
-
-// Day 7 — the Master Ink tag, solid gold stamp language
-.cal-day-legendary-tag {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	margin-top: 8px;
-	padding: 3px 8px;
-	background-color: #ffce3a;
-	border-radius: 4px;
-
-	span {
-		font-family: Exo2;
-		font-size: 9px;
-		font-weight: 900;
-		color: #2a1605;
-		line-height: 11px;
-		letter-spacing: 0.8px;
-		white-space: nowrap;
-	}
-}
-
-// ─── Streak claim CTA — the daily gold hero ────────────────────
-
-.claim-streak-btn {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	height: 52px;
-	padding: 0 36px;
-	background: linear-gradient(to bottom, #ffd95a 0%, #ffb330 55%, #f59312 100%);
-	border-radius: 16px;
-	cursor: pointer;
-	flex-shrink: 0;
-	animation: questClaimBreath 1.6s ease-in-out infinite;
-
-	&:hover {
-		background: linear-gradient(to bottom, #ffe98c 0%, #ffc453 55%, #ffa42e 100%);
-	}
-
-	&:active {
-		background: linear-gradient(to bottom, #f3c94a 0%, #eda226 55%, #d97f0c 100%);
-	}
-
-	span {
-		font-family: Exo2Italic;
-		font-style: italic;
-		font-size: 16px;
-		font-weight: 900;
-		color: #2a1605;
-		line-height: 20px;
-		letter-spacing: 1.5px;
-		text-transform: uppercase;
-		margin-left: 10px;
-		white-space: nowrap;
-	}
-}
-
-.claim-streak-done {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	height: 44px;
-	padding: 0 24px;
-	background-color: rgba(63, 180, 94, 0.1);
-	border-radius: 12px;
-	flex-shrink: 0;
-
-	span {
-		font-size: 13px;
-		font-weight: 600;
-		color: #7fd99a;
-		line-height: 16px;
-		margin-left: 8px;
-		white-space: nowrap;
-	}
-}
-
-// ═══════════════════════════════════════════════════════════════
-// BONUS SLAB — daily/weekly "complete everything" payoff (Claim All)
-// FLAT (functional bar), full board width: 1680 + 48 + 4 = 1732.
-// The left accent bar is a permitted line; gold = ready.
-// ═══════════════════════════════════════════════════════════════
-
-.slip.bonus-card {
-	width: 1680px;
-	margin-left: 0;
-	margin-right: 0;
-	padding: 26px 24px 24px 24px;
-	background-color: #1c1830;
-	border-left: 4px solid rgba(0, 0, 0, 0);
-	border-radius: 18px;
-
-	&:hover {
-		background-color: #1c1830;
-	}
-
-	&.ready {
-		background-color: rgba(255, 206, 58, 0.08);
-		border-left: 4px solid rgba(255, 206, 58, 0.9);
-		animation: questBonusShimmer 1.4s ease-in-out infinite;
-	}
-
-	&.ready:hover {
-		background-color: rgba(255, 206, 58, 0.12);
-	}
-
-	&.claimed {
-		background-color: #14111d;
-		border-left: 4px solid rgba(63, 180, 94, 0.5);
-		opacity: 0.75;
-	}
-}
-
-.bonus-row {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-}
-
-.bonus-icon-wrap {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 52px;
-	height: 52px;
-	min-width: 52px;
-	margin-right: 16px;
-	background-color: rgba(0, 0, 0, 0.35);
-	border-radius: 12px;
-	flex-shrink: 0;
-}
-
-.bonus-info {
-	display: flex;
-	flex-direction: column;
-	width: 600px;
-	flex-shrink: 0;
-}
-
-.bonus-title {
-	font-family: Exo2Italic;
-	font-style: italic;
-	font-size: 17px;
-	font-weight: 900;
-	color: #f4f1ea;
-	line-height: 21px;
-	letter-spacing: 1px;
-	text-transform: uppercase;
-}
-
-.bonus-sub {
-	font-size: 12px;
-	font-weight: 500;
-	color: rgba(214, 206, 236, 0.7);
-	line-height: 15px;
-	margin-top: 3px;
-}
-
-.bonus-dots {
-	display: flex;
-	flex-direction: row;
-	align-items: center;
-	margin-top: 8px;
-}
-
-.bonus-dot {
-	width: 20px;
-	height: 6px;
-	margin-right: 5px;
-	background-color: rgba(255, 255, 255, 0.1);
-	border-radius: 3px;
-	transition: background-color 0.25s ease-out;
-
-	&.filled {
-		background-color: #3fb45e;
-	}
-}
-
-.slip.bonus-card.ready .bonus-dot.filled {
-	background-color: #ffce3a;
-}
-
-// bonus rewards ride inline (no hang — the slab is a flat bar)
-.bonus-rewards {
+// Right slot — grows to the band's right edge (.rh-toolbar seat); the
+// header's own 32px right pad puts the cap's right edge at x 1888.
+.qp-toolbar {
 	display: flex;
 	flex-direction: row;
 	align-items: center;
 	justify-content: flex-end;
+	gap: 12px;
 	flex: 1 1 0;
 	min-width: 0;
-	margin-right: 24px;
+	z-index: 200;
 }
 
-.bonus-state {
+// BACK · Q — the Guild .gp-back cap verbatim (GuildPanel.razor.scss:4616):
+// 30 r11 #1c1830, italic-900 12 label, 11/800 cap on black .35.
+// Mouse-only affordance — Q is the key. NOT a ring stop.
+.qp-back {
+	height: 30px;
+	flex: 0 0 auto;
 	display: flex;
 	flex-direction: row;
 	align-items: center;
-	flex-shrink: 0;
+	gap: 8px;
+	padding: 0 12px;
+	border-radius: 11px;
+	background-color: #1c1830;
+	cursor: pointer;
+	pointer-events: all;
+
+	// LANE: input — :hover (#282246) lives under .qp-page.mouse-mode.
+	&:active { background-color: #141021; }
 }
 
-.claim-btn.bonus-claim-btn {
-	height: 48px;
-	padding: 0 32px;
-	border-radius: 14px;
+.qp-back-label {
+	flex: 0 0 auto;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-size: 12px;
+	font-weight: 900;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: rgba(244, 241, 234, 0.85);
+	line-height: 14px;
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+.qp-back-cap {
+	flex: 0 0 auto;
+	font-size: 11px; // cap floor (house chip/cap recipe)
+	font-weight: 800;
+	letter-spacing: 0.5px;
+	color: rgba(214, 206, 236, 0.85);
+	line-height: 13px;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background-color: rgba(0, 0, 0, 0.35);
+	white-space: nowrap;
+	pointer-events: none;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// BODY — 990 declared (y 90-1080), pad 20/40 → inner 1840 × 950.
+// Two pinned columns 912 + gap 16 + 912. No scroll container anywhere.
+// ═══════════════════════════════════════════════════════════════════════
+
+.qp-body {
+	height: 990px;
+	flex: 0 0 990px;
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	padding: 20px 40px;
+	gap: 16px;
+	z-index: 1;
+}
+
+.qp-col {
+	width: 912px;
+	min-width: 912px;
+	flex: 0 0 912px;
+	height: 950px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SLABS — filled #15121f r22, overflow hidden (pinned heights; nothing
+// inside may overhang — the ring lives at page root, above).
+// ═══════════════════════════════════════════════════════════════════════
+
+.qp-slab {
+	position: relative; // .row-accent anchor (LOGIN's claim tick host)
+	width: 912px;
+	min-width: 912px;
+	flex: 0 0 auto;
+	background-color: #15121f;
+	border-radius: 22px;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+
+	&.login   { height: 240px; flex: 0 0 240px; }
+	&.daily   { height: 694px; flex: 0 0 694px; }
+	&.weekly  { height: 378px; flex: 0 0 378px; }
+	&.monthly { height: 162px; flex: 0 0 162px; }
+	&.side    { height: 378px; flex: 0 0 378px; }
+}
+
+// The 4px accent strip — a real absolute CHILD (a polygon/slab border is
+// one uniform stroke; per-side accents are strip children, learnings
+// 2026-09-01). Transparent at rest; LANE: motion's qpAccentTick paints it
+// (THE one HDR tick on the page).
+.row-accent {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 4px;
+	height: 100%;
+	background-color: rgba(0, 0, 0, 0);
+	pointer-events: none;
+	z-index: 2;
+}
+
+// ── Recessed band — the Guild .gp-band recipe (36 #110d1a, pad 0 14, gap 12).
+.qp-band {
+	height: 36px;
+	flex: 0 0 36px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 0 14px;
+	gap: 12px;
+	background-color: #110d1a;
+	border-radius: 0;
+}
+
+.qp-band-spacer {
+	flex: 1 1 0;
+	min-width: 0;
+}
+
+// Section chip — the Guild .gp-chipstamp recipe (23 tall, skew −12°,
+// counter-skewed 11/700 ls 3 ink #0a0912, hard offset shadow). Identity
+// mark, non-interactive — skew is licensed here.
+.qp-chipstamp {
+	flex: 0 0 auto;
+	height: 23px;
+	padding: 0 12px;
+	background-color: #3fb45e;
+	border-radius: 4px;
+	transform: skewX(-12deg);
+	box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.45);
+	display: flex;
+	align-items: center;
 
 	span {
-		font-size: 15px;
-		line-height: 19px;
+		flex: 0 0 auto;
+		display: flex;
+		transform: skewX(12deg);
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 3px;
+		text-transform: uppercase;
+		color: #0a0912;
+		line-height: 13px;
+		white-space: nowrap;
+		pointer-events: none;
 	}
 }
 
-.bonus-locked {
-	font-family: Exo2;
-	font-size: 11px;
-	font-weight: 800;
+// Dark meta chip — the Guild .gp-darkchip recipe (#1c1830, pad 3/10 r6,
+// 12/800 #a79dbe). Tones: .gold (×N GOLD) · .green (BONUS CLAIMED
+// #7fd99a) · .dim (the unlit bonus line, .45 ink) · .bonus (icon row).
+.qp-darkchip {
+	flex: 0 0 auto;
+	padding: 3px 10px;
+	border-radius: 6px;
+	background-color: #1c1830;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 5px;
+
+	span {
+		flex: 0 0 auto;
+		font-size: 12px;
+		font-weight: 800;
+		letter-spacing: 0.6px;
+		color: #a79dbe;
+		line-height: 14px;
+		white-space: nowrap;
+		pointer-events: none;
+	}
+
+	&.gold span { color: #ffce3a; }
+	&.green span { color: #7fd99a; }
+	&.dim span { color: rgba(214, 206, 236, 0.45); }
+	&.dim .qp-bonus-icon { opacity: 0.45; }
+}
+
+.qp-bonus-icon {
+	width: 14px;
+	height: 14px;
+	flex: 0 0 14px;
+	background-repeat: no-repeat;
+	pointer-events: none;
+}
+
+.qp-sep {
 	color: rgba(214, 206, 236, 0.45);
-	line-height: 13px;
-	letter-spacing: 1.5px;
-	padding: 9px 16px;
-	background-color: rgba(0, 0, 0, 0.3);
+}
+
+// CLAIM BONUS — a BbButton primary re-seated at the .gp-back height (30
+// r11) so the band shows 3px above/below; NOT a fourth BbButton size. The
+// ring wears its r21 costume here (LANE: input). Label 12 italic-900 ink
+// #2a1605 from the primary tier.
+.qp-band .qp-bonus-btn {
+	height: 30px;
+	padding: 0 12px;
+	border-radius: 11px;
+	flex: 0 0 auto;
+
+	.bb-btn-label {
+		font-size: 12px;
+		line-height: 14px;
+		letter-spacing: 1px;
+	}
+}
+
+// ── List — pad 16, rows gap 14 (direct children; no wrappers).
+.qp-list {
+	flex: 1 1 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	padding: 16px;
+	gap: 14px;
+}
+
+// Honest empty copy (only when a manager has nothing rolled — never a hint).
+.qp-empty {
+	flex: 0 0 auto;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 16px;
+	color: rgba(214, 206, 236, 0.6);
+	padding: 4px 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LOGIN body — 204 declared (pad 16 → inner 880 × 172)
+//   left : pad-top 28 → hero 84 (inner y 28-112) → gap 32 → pips 20 (144-164)
+//   right (320 wide): pad-top 76 → reward line 16 (76-92) → gap 20 →
+//          button 56 (112-168)
+// ═══════════════════════════════════════════════════════════════════════
+
+.qp-login-body {
+	height: 204px;
+	flex: 0 0 204px;
+	display: flex;
+	flex-direction: row;
+	align-items: flex-start;
+	padding: 16px;
+}
+
+.qp-login-left {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 172px;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-start;
+	padding-top: 28px;
+}
+
+// THE page's one setpiece numeral — 76/84 italic-900 cream.
+.qp-hero {
+	flex: 0 0 auto;
+	font-family: Exo2Italic;
+	font-style: italic;
+	font-weight: 900;
+	font-size: 76px;
+	line-height: 84px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: #f4f1ea;
+	white-space: nowrap;
+	padding-right: 12px; // italic overhang
+}
+
+// 7 pips 20 r999 gap 12 = 212 wide. done green / today gold / future slab.
+.qp-pips {
+	flex: 0 0 auto;
+	margin-top: 32px;
+	height: 20px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 12px;
+}
+
+.qp-pip {
+	width: 20px;
+	height: 20px;
+	flex: 0 0 20px;
+	border-radius: 999px;
+	background-color: #262040;
+
+	&.done  { background-color: #3fb45e; }
+	&.today { background-color: #ffce3a; } // LANE: motion — transition background-color 0.2s gold → green on claim
+	&.future { background-color: #262040; }
+}
+
+.qp-login-right {
+	width: 320px;
+	min-width: 320px;
+	flex: 0 0 320px;
+	height: 172px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	justify-content: flex-start;
+	padding-top: 76px;
+}
+
+// Today's reward line — 13/800, right-aligned, GOLD while unclaimed,
+// cream .85 once claimed.
+.qp-login-rewards {
+	flex: 0 0 auto;
+	height: 16px;
+	display: flex;
+	flex-direction: row;
+	justify-content: flex-end;
+	align-items: center;
+	margin-bottom: 20px;
+
+	.qp-rw { color: rgba(244, 241, 234, 0.85); }
+	&.gold .qp-rw { color: #ffce3a; }
+}
+
+// CLAIM DAY n — BbButton primary 56, pinned 320 wide (r16 from the tier).
+// Host is a COLUMN → flex-basis is the HEIGHT (56), never the width
+// (live shot 1: `0 0 320px` here made a 320-tall slab and clipped the label).
+.qp-login-right .qp-login-btn {
+	width: 320px;
+	min-width: 320px;
+	height: 56px;
+	flex: 0 0 56px;
+	padding: 0;
+	justify-content: center;
+}
+
+// Claimed → the same 320×56 slab, ghost-dim (#1c1830 .7), reading CLAIMED.
+// A locked primary stays BIG (DOC-1 #9).
+.qp-login-claimed {
+	width: 320px;
+	min-width: 320px;
+	height: 56px;
+	flex: 0 0 56px;
+	border-radius: 16px;
+	background-color: #1c1830;
+	opacity: 0.7;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+
+	span {
+		flex: 0 0 auto;
+		font-family: Exo2Italic;
+		font-style: italic;
+		font-weight: 900;
+		font-size: 20px;
+		line-height: 24px;
+		letter-spacing: 1.2px;
+		text-transform: uppercase;
+		color: rgba(214, 206, 236, 0.6);
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// THE ROW — 880 wide, r8, #1c1830 / alt #181429. NOT a hover target, NOT
+// a stop (the button inside is). Two stops: ROOMY 114 · DENSE 94.
+//   16 · tile 40 · 16 · text 436 · 16 · rewards 204 · 16 · action 120 · 16
+// ═══════════════════════════════════════════════════════════════════════
+
+.qp-row {
+	position: relative; // .row-accent anchor
+	width: 880px;
+	min-width: 880px;
+	flex: 0 0 auto;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	padding: 0 16px;
+	gap: 16px;
 	border-radius: 8px;
+	background-color: #1c1830;
+	overflow: hidden; // the strip child is in-bounds; nothing overhangs
+
+	&.alt { background-color: #181429; }
+
+	&.roomy { height: 114px; flex: 0 0 114px; }
+	&.dense { height: 94px;  flex: 0 0 94px; }
+
+	// Done rows settle to .55; locked / dormant sit at .6.
+	&.done { opacity: 0.55; }
+	&.locked, &.dormant { opacity: 0.6; }
+
+	// LANE: motion — transition background-color, opacity 0.2s on the
+	// claimable → done settle; qpRowIn0-7 windowed ladder on mount.
+}
+
+// Explicit strip heights (absolutes never shrink-wrap; % heights are the
+// derived-size family — pin them).
+.qp-slab.login > .row-accent { height: 240px; }
+.qp-row .row-accent { height: 114px; }
+.qp-row.dense .row-accent { height: 94px; }
+
+// Icon tile 40×40 r11, accent .14 fill, 22 lucide glyph.
+.qp-tile {
+	width: 40px;
+	height: 40px;
+	flex: 0 0 40px;
+	border-radius: 11px;
+	background-color: rgba(63, 180, 94, 0.14);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.qp-glyph {
+	pointer-events: none;
+}
+
+// Text lane 436 — a column pinned to the row height so the bar row sits
+// at a FIXED y whether the desc is one line or two.
+//   ROOMY: pad-top 20 → name 21 (20-41) → 2 → desc 16 (43-59) → 19 →
+//          barrow 20 (78-98; bar 8 centred → 84-92) → 16 bottom
+//   DENSE: pad-top 11 → name 21 (11-32) → 2 → desc 32 (34-66) → 4 →
+//          barrow 20 (70-90; bar 74-82) → 4 bottom
+.qp-text {
+	width: 436px;
+	min-width: 436px;
+	flex: 0 0 436px;
+	display: flex;
+	flex-direction: column;
+	justify-content: flex-start;
+}
+
+.qp-row.roomy .qp-text {
+	height: 114px;
+	padding-top: 20px;
+}
+
+.qp-row.dense .qp-text {
+	height: 94px;
+	padding-top: 11px;
+}
+
+.qp-nameline {
+	height: 21px;
+	flex: 0 0 21px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+}
+
+// Name 17/21/800 cream UPPERCASE.
+.qp-name {
+	flex: 0 0 auto;
+	font-size: 17px;
+	font-weight: 800;
+	line-height: 21px;
+	letter-spacing: 0.4px;
+	text-transform: uppercase;
+	color: #f4f1ea;
 	white-space: nowrap;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// EMPTY STATES — a pinned note on the board
-// Declared 752 + 48 = 800 outer, centered: margin-left 466.
-// ═══════════════════════════════════════════════════════════════
-
-.slip.empty-note {
-	width: 752px;
-	margin-left: 466px;
-	margin-right: 0;
-	padding: 40px 24px 34px 24px;
-	align-items: center;
-
-	&:hover {
-		background-color: #16131f;
-	}
+// Byline "· Loomkeeper Bram" — 13 TextDim on the name line.
+.qp-by {
+	flex: 0 1 auto;
+	min-width: 0;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 16px;
+	color: rgba(214, 206, 236, 0.6);
+	white-space: nowrap;
 }
 
-.note-row {
+// Desc 13/16 TextDim, wraps (1 line roomy / 2 lines dense — height pinned
+// so the bar row never moves).
+.qp-desc {
+	flex: 0 0 auto;
+	margin-top: 2px;
+	width: 436px;
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 16px;
+	color: rgba(214, 206, 236, 0.6);
+	white-space: normal;
+}
+
+.qp-row.roomy .qp-desc {
+	height: 16px;
+	margin-bottom: 19px;
+}
+
+.qp-row.dense .qp-desc {
+	height: 32px;
+	margin-bottom: 4px;
+}
+
+// Bar row 20 tall: bar 320 + 8 + counter 108 = 436.
+.qp-barrow {
+	height: 20px;
+	flex: 0 0 20px;
 	display: flex;
 	flex-direction: row;
-	justify-content: center;
-	margin-top: 6px;
-}
-
-.empty-illus {
-	display: flex;
 	align-items: center;
-	justify-content: center;
-	width: 110px;
-	height: 110px;
-	min-width: 110px;
-	margin-bottom: 16px;
-	background-color: rgba(63, 180, 94, 0.08);
-	border-radius: 26px;
-	flex-shrink: 0;
+	gap: 8px;
 }
 
-.empty-title {
+.qp-bar {
+	width: 320px;
+	min-width: 320px;
+	height: 8px;
+	flex: 0 0 320px;
+	border-radius: 4px;
+	background-color: #0a0714;
+	overflow: hidden; // clips the in-flow fill child (crop recipe)
+	display: flex;
+	flex-direction: row;
+}
+
+// Fill — px width from code (320 × pct). .35 on done rows.
+.qp-fill {
+	height: 8px;
+	flex: 0 0 auto;
+	border-radius: 4px;
+	background-color: #3fb45e;
+	transition: width 0.35s ease-out; // shipped bar-fill glide (brief §5.13)
+}
+
+.qp-row.done .qp-fill {
+	opacity: 0.35;
+}
+
+// Counter 108, right-aligned at the bar's end (shrink-wrapped span in an
+// explicit-px flex host — text-align is a no-op in-engine).
+.qp-counter {
+	width: 108px;
+	min-width: 108px;
+	flex: 0 0 108px;
+	height: 20px;
+	display: flex;
+	flex-direction: row;
+	justify-content: flex-end;
+	align-items: center;
+}
+
+.qp-count {
+	flex: 0 0 auto;
 	font-family: Exo2Italic;
 	font-style: italic;
-	font-size: 19px;
+	font-weight: 900;
+	font-size: 16px;
+	line-height: 20px;
+	letter-spacing: 0.5px;
+	color: #f4f1ea;
+	white-space: nowrap;
+	padding-right: 2px; // italic overhang
+}
+
+// OPEN · WEAVERWOOD CLEARED — 12/800 TextDim in the bar's slot (available
+// side quests: no bar, no counter).
+.qp-note {
+	flex: 0 0 auto;
+	font-size: 12px;
 	font-weight: 800;
-	color: rgba(244, 241, 234, 0.95);
-	line-height: 24px;
-	text-align: center;
+	line-height: 14px;
+	letter-spacing: 0.6px;
+	color: rgba(214, 206, 236, 0.6);
+	white-space: nowrap;
 }
 
-.note-row .empty-body {
-	width: 640px;
-}
-
-.empty-body {
-	font-size: 13px;
-	font-weight: 500;
-	color: rgba(214, 206, 236, 0.65);
-	line-height: 18px;
-	text-align: center;
-	white-space: normal;
-	margin-top: 4px;
-}
-
-// small inline loader state (unrotated, quiet)
-.empty-state {
+// Rewards lane 204 — two 13/800 lines (currencies · items), cream .85 at
+// rest, GOLD on a claimable row.
+.qp-rewards {
+	width: 204px;
+	min-width: 204px;
+	flex: 0 0 204px;
 	display: flex;
 	flex-direction: column;
-	align-items: center;
 	justify-content: center;
-	width: 1732px;
-	padding: 40px 0;
-	flex-shrink: 0;
+	gap: 4px;
+}
 
-	&.small {
-		padding: 24px 0;
+.qp-rwline {
+	flex: 0 0 auto;
+	height: 16px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+}
+
+.qp-rwicon {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	background-repeat: no-repeat;
+	pointer-events: none;
+}
+
+.qp-rw {
+	flex: 0 0 auto;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 16px;
+	letter-spacing: 0.3px;
+	color: rgba(244, 241, 234, 0.85);
+	white-space: nowrap;
+}
+
+.qp-rwsep {
+	flex: 0 0 auto;
+	font-size: 13px;
+	font-weight: 800;
+	line-height: 16px;
+	color: rgba(214, 206, 236, 0.45);
+	padding: 0 2px;
+}
+
+.qp-row.claimable .qp-rw {
+	color: #ffce3a;
+}
+
+// Action lane 120 — CLAIM (BbButton primary 44×120) / DONE / LOCKED /
+// NOT OPEN YET / nothing. Right-aligned so chips share the button's edge.
+.qp-action {
+	width: 120px;
+	min-width: 120px;
+	flex: 0 0 120px;
+	height: 44px;
+	display: flex;
+	flex-direction: row;
+	align-items: center;
+	justify-content: flex-end;
+}
+
+.qp-action .qp-claim {
+	width: 120px;
+	min-width: 120px;
+	flex: 0 0 120px;
+	padding: 0;
+	justify-content: center;
+}
+
+// ACCEPT — BbButton secondary 44 + green diamond, squeezed into the 120
+// lane (diamond box 22×1.45 ≈ 32 + gap 6 + label ≈ 62 + pad 2×8 = 116).
+.qp-action .qp-accept {
+	width: 120px;
+	min-width: 120px;
+	flex: 0 0 120px;
+	padding: 0 6px;
+	gap: 6px;
+	justify-content: center;
+	background-color: #262040;
+
+	// 32 + 6 + label ≈ 67 + 12 = 117 ≤ 120 — never wrap (live shot 1 broke
+	// "ACCEP/T" across two lines; BbButton's label has no nowrap of its own).
+	.bb-btn-label {
+		white-space: nowrap;
+		flex: 0 0 auto;
+	}
+}
+
+// Status chip — the Guild gold-ink darkchip on the .gp-darkchip shape
+// (GuildPanel.razor.scss:4245 / :3537): #110d1a fill, pad 3/10 r6, 11/800.
+// .gold = DONE (a reached state is gold INK on the slab) · .dim = LOCKED /
+// NOT OPEN YET (TextDim).
+.qp-chip {
+	flex: 0 0 auto;
+	padding: 3px 10px;
+	border-radius: 6px;
+	background-color: #110d1a;
+	display: flex;
+	align-items: center;
+
+	span {
+		flex: 0 0 auto;
+		font-size: 11px; // chip recipe floor
+		font-weight: 800;
+		letter-spacing: 0.6px;
+		line-height: 14px;
+		white-space: nowrap;
+		color: rgba(214, 206, 236, 0.6);
+		pointer-events: none;
 	}
 
-	.empty-title {
-		margin-top: 10px;
-	}
+	&.gold span { color: #ffce3a; }
+	&.dim span { color: rgba(214, 206, 236, 0.6); }
 }

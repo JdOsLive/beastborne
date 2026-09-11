@@ -5,116 +5,90 @@
 @using Beastborne.Data;
 @using Beastborne.Systems;
 @using Beastborne.UI;
+@using Beastborne.UI.Components;
 @using Beastborne.UI.Primitives;
 @inherits Panel
 
 @*
-	QUESTS — the notice board, efficiency-first.
-	One chrome rail (identity + tabs + timer), then the whole screen is a
-	two-column board of quest slips. Sort order = claimable first, then
-	in-progress, then claimed — the common action (claim) is always the
-	first thing under the cursor. Claimable slips sit FLAT and gold-lit;
-	in-progress slips rest at a whisper tilt (board identity); claimed
-	slips settle flat, dim, and wear a green DONE stamp. The daily streak
-	is its own pinned calendar card at the top of the Daily board.
+	QUESTS — rebuild 2026-09-11 (LAYOUT lane, quests-redesign-brief.html).
+	"The player is here to claim what they have earned and see what is left
+	to do." Five control kinds only: CLAIM · CLAIM BONUS · ACCEPT · BACK·Q ·
+	nothing. No tabs, no calendar, no bonus slabs, no scroll, no hint rows.
 
-	Engine notes (learned laws honored here):
-	- Tilted slip = 2D transform ancestor, so DERIVED widths inside are
-	  untrustworthy: every text/bar row inside a slip is a ROW-flex wrapper
-	  whose child carries an EXPLICIT px width; progress fill widths are
-	  computed in C# as px (never % under a transform).
-	- Board rows chunk slips in pairs in code — flex-wrap miscalculates
-	  height in s&box.
-	- Hover never transforms (slips live in a scroll container) — hover =
-	  brighten + the violet ring (inset absolute child).
-	- Gem tags hang off the slip's bottom edge via a negative bottom
-	  margin (engine-proven negative-margin overlay pattern).
+	ZONE MAP (1920×1080, PADDING-BOX — declared sizes INCLUDE padding,
+	borders add on top):
+	  HEADER  y 0-90    .qp-header 88 declared (pad 16/32/12/28) + 2px strip
+	  BODY    y 90-1080 .qp-body 990 declared (pad 20/40) → inner 1840×950
+	                    columns 912 + 16 + 912
+	  LEFT  x 40-952 : LOGIN 240 @ y110 · gap 16 · DAILY 694 @ y366 → 1060
+	  RIGHT x 968-1880: WEEKLY 378 @ y110 · 16 · MONTHLY 162 @ y504 · 16 ·
+	                    SIDE QUESTS 378 @ y682 → 1060
+	  Each slab = .qp-band 36 + .qp-list (pad 16, rows gap 14).
+	  Rows 880 wide: ROOMY 114 (daily ×5) / DENSE 94 (weekly ×3 · monthly ×1
+	  · side ×3). Lists are sorted at OPEN only — a claimed row settles in
+	  place, it never jumps.
+
+	LANE: input — stops are the pressables only (CLAIM DAY n · CLAIM BONUS ·
+	CLAIM · ACCEPT), rebuilt from the same @if list the markup draws; one
+	imperative ring at page root (mount it as the LAST child of .qp-page);
+	device flag kbd-mode/mouse-mode on .qp-page + 3px travel guard; W/S/A/D
+	+ Space/E/Enter; Q closes (PanelHandledBackKey claimed in Tick below).
+	LANE: motion — zone rungs qpZone*, row ladder qpRowIn0-7 (WINDOWED
+	classes from code, never static), qpClaimBeat / qpClaimInk /
+	qpAccentTick (the .row-accent strip is the HDR host) / qpChipIn /
+	qpAcceptBeat, exit latch .qp-leaving. Static states only here.
+	LANE: color — page accent #3fb45e applied where the brief declares it;
+	gold on primaries / claimable numerals / DONE ink; violet = ring only.
 *@
 
 <root class="quest-panel-root @_rootVisibleClass">
-	<div class="quest-page">
-
-		<!-- Living background: the quests glyph drifting at the house
-		     angle. Mounted INSIDE quest-page (not the root) because
-		     quest-page is the absolute full-size surface that painted the
-		     fill — a root-level mount would sit under it. -->
+	<div class="qp-page">
+		<!-- Living background — the quests glyph drifting. First child; the
+		     page paints NO fill of its own (opaque pattern tiles). -->
 		<BbIconScroll Icon="quests" />
 
-		<!-- THE RAIL — identity, tabs, timer, close: one chrome band -->
-		<div class="qp-header">
-			<div class="qp-head-left">
-				<BbSectionHeader Kicker="@GetTabKicker()" Title="Quests" Size=@(52) AccentColor="#3fb45e" />
-			</div>
-			<div class="peg-tabs">
-				@foreach ( var tab in Tabs )
-				{
-					var badge = GetBadgeCount( tab.Id );
-					var isActive = _currentTab == tab.Id;
-					var tabIconColor = isActive ? "#ffffff" : "#6fd08c";
-					var tabActiveClass = isActive ? "active" : "";
-					<div class="qtab @tabActiveClass"
-						 onclick=@(() => SelectTab(tab.Id))
-						 onmouseover=@(() => OnHover("tab-" + tab.Id))>
-						<div class="qtab-inner">
-							<iconify class="qtab-icon" icon="@tab.Icon" Size=@(16) Color="@tabIconColor" />
-							<span class="qtab-label">@tab.Name</span>
-							@if ( badge > 0 )
-							{
-								<div class="qtab-badge">@badge</div>
-							}
-						</div>
+		@if ( IsVisible )
+		{
+			<!-- HEADER — the hub .oh-header recipe: waves (host paints no
+			     fill) · kicker · italic title · polygon seams · BACK·Q in the
+			     right slot. Fresh mount under the IsVisible branch. -->
+			<div class="qp-header">
+				<BbHeaderWaves Accent=@("quests") />
+				<div class="qp-identity">
+					<span class="qp-kicker">TAMER</span>
+					<div class="qp-title-row">
+						<span class="qp-title">QUESTS</span>
+						<div class="qp-seam"></div>
+						<div class="qp-seam dim"></div>
 					</div>
-				}
+				</div>
+				<div class="qp-toolbar">
+					<div class="qp-back" onmouseover=@OnBackHover onclick=@Close>
+						<span class="qp-back-label">BACK</span>
+						<span class="qp-back-cap">Q</span>
+					</div>
+				</div>
 			</div>
-			<div class="qp-head-right">
-				@if ( GetActiveTimerLabel() != null )
-				{
-					<span class="peg-meta-lbl">RESETS IN</span>
-					<span class="timer-pill">@GetActiveTimerLabel()</span>
-				}
-				@if ( GetTotalUnclaimedCount() > 0 )
-				{
-					<BbStamp Text="@ReadyStampText" Tone="gold" Tilt=@(3) Class="qp-ready-stamp" />
-				}
-				<button class="close-btn" onclick=@Close>
-					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
-				</button>
-			</div>
-		</div>
 
-		<!-- angled seam under the rail -->
-		<div class="qp-seam">
-			<div class="qp-seam-a"></div>
-			<div class="qp-seam-b"></div>
-		</div>
-
-		<!-- THE BOARD — scrolling field of pinned slips -->
-		<div class="board" @ref="ContentInner">
-			@switch ( _currentTab )
-			{
-				case "main":
-					@RenderMain()
-					break;
-				case "side":
-					@RenderSide()
-					break;
-				case "daily":
+			<!-- BODY — two pinned columns, no scroll container anywhere. -->
+			<div class="qp-body">
+				<div class="qp-col">
+					@RenderLogin()
 					@RenderDaily()
-					break;
-				case "weekly":
+				</div>
+				<div class="qp-col">
 					@RenderWeekly()
-					break;
-				case "monthly":
 					@RenderMonthly()
-					break;
-				}
-		</div>
+					@RenderSide()
+				</div>
+			</div>
+			<!-- LANE: input — the one imperative ring mounts HERE (last child of
+			     .qp-page, z above the slabs so their overflow never clips it). -->
+		}
 	</div>
 </root>
 
 @code {
-	private string L( string key ) => LocalizationManager.Get( key );
-
 	public static QuestPanel Instance { get; private set; }
 	public static bool IsVisible { get; private set; }
 
@@ -122,72 +96,29 @@
 	// nested double-quotes like class="@(IsVisible ? "visible" : "")".
 	private string _rootVisibleClass => IsVisible ? "visible" : "";
 
-	// Header stamp copy — computed in C# (never interpolate in attributes).
-	private string ReadyStampText => GetTotalUnclaimedCount() + " READY";
+	private const string Accent = "#3fb45e";
+	private const int BarW = 320; // .qp-bar declared width — fills arrive as px
 
-	// Hover-sound state guard. s&box has no onmouseenter, so onmouseover bubbles
-	// from every child mousemove — naive PlayHover() fires repeatedly. Track the
-	// last-hovered key and only play the sound when it actually changes.
-	private string _hoveredKey;
-	private void OnHover( string key )
+	// ── OPEN-TIME ORDER (brief §4: lists sorted at OPEN only) ──
+	// Captured when the page opens; rows render in this order until the next
+	// open, so a claim settles a row in place instead of re-sorting the list.
+	private static List<string> _dailyOrder = new();
+	private static List<string> _weeklyOrder = new();
+	private static List<string> _sideOrder = new();
+	private static int _orderStamp;
+
+	// Hover-sound guard for the one mouse-only cap (no onmouseenter in s&box).
+	private bool _backHovered;
+	private void OnBackHover()
 	{
-		if ( _hoveredKey == key ) return;
-		_hoveredKey = key;
+		if ( _backHovered ) return;
+		_backHovered = true;
 		SoundManager.PlayHover();
 	}
 
-	private string _currentTab = "daily";
-	private Panel ContentInner;
-
-	private record QuestTab( string Id, string Icon, string Name, string Sub );
-
-	private static readonly QuestTab[] Tabs = new[]
-	{
-		new QuestTab("main",    "lucide:book-open-text", "Main",    "Story chapters"),
-		new QuestTab("side",    "lucide:map-pin",        "Side",    "Optional tales"),
-		new QuestTab("daily",   "lucide:sun",            "Daily",   "Resets in 24h"),
-		new QuestTab("weekly",  "lucide:calendar-days",  "Weekly",  "Resets Monday"),
-		new QuestTab("monthly", "lucide:trophy",         "Monthly", "Big challenge"),
-		// Guild tab CUT (2026-08-31 guild rebuild) — weekly guild goals render
-		// in ONE place now: the Guild page's THE WEEK zone (GuildPanel.razor).
-	};
-
-	// Board-slip geometry constants — content-box inner widths used for the
-	// explicit-px rows inside rotated slips (see doc comment up top).
-	private const int SlipBarW = 802;   // standard slip inner width (850 - 2*24 padding)
-	private const int WideBarW = 1052;  // monthly hero slip inner width (1100 - 2*24)
-
-	private string GetTabKicker() => _currentTab switch
-	{
-		"main" => "THE TAMER'S ROAD",
-		"side" => "BOUNTY BOARD",
-		"daily" => "FIELD JOURNAL",
-		"weekly" => "STANDING CONTRACTS",
-		"monthly" => "THE BIG GAME",
-		_ => "FIELD JOURNAL",
-	};
-
-	private string GetActiveTimerLabel() => _currentTab switch
-	{
-		"daily" => GetDailyTimer(),
-		"weekly" => GetWeeklyTimer(),
-		"monthly" => GetMonthlyTimer(),
-		_ => null,
-	};
-
-	// Rest rotation for a slip — in-progress slips alternate a whisper tilt
-	// (the board identity); SETTLED slips (claimable or claimed) sit FLAT
-	// so the actionable/done states scan instantly. The transform transition
-	// on .slip animates the settle when a quest completes or is claimed.
-	private string GetSlipRot( int idx, bool settled )
-	{
-		if ( settled ) return "rot-flat";
-		return idx % 2 == 0 ? "rot-a" : "rot-b";
-	}
-
-	// Board sort — the common action first: claimable → in-progress → claimed.
-	private static int ClaimSortKey( MissionState s )
-		=> (s.Completed && !s.Claimed) ? 0 : s.Claimed ? 2 : 1;
+	// ══════════════════════════════════════════════
+	// LIFECYCLE
+	// ══════════════════════════════════════════════
 
 	protected override void OnAfterTreeRender( bool firstTime )
 	{
@@ -196,883 +127,790 @@
 
 	public static void Show()
 	{
+		CaptureOrder();
 		IsVisible = true;
-		if ( Instance != null ) Instance._hoveredKey = null;
+		if ( Instance != null ) Instance._backHovered = false;
 		SoundManager.PlayPopup();
 	}
 
 	public static void Close()
 	{
 		IsVisible = false;
-		if ( Instance != null ) Instance._hoveredKey = null;
+		if ( Instance != null ) Instance._backHovered = false;
 		SoundManager.PlayPopdown();
 	}
 
 	public static void Toggle()
 	{
-		IsVisible = !IsVisible;
-		if ( Instance != null ) Instance._hoveredKey = null;
-		if ( IsVisible ) SoundManager.PlayPopup();
-		else SoundManager.PlayPopdown();
+		if ( IsVisible ) Close();
+		else Show();
 	}
 
 	public override void Tick()
 	{
 		base.Tick();
-		// Escape (s&box-reserved) AND the canonical Menu/run "back" keys close.
-		if ( IsVisible && UIModalState.IsTopModal( "QuestPanel" )
-			&& ( Input.Pressed( "Escape" ) || Input.Pressed( "Menu" ) || Input.Pressed( "run" ) ) )
-			Close();
+		if ( !IsVisible || !UIModalState.IsTopModal( "QuestPanel" ) ) return;
 
-	}
-
-	private void SelectTab( string tabId )
-	{
-		if ( _currentTab == tabId ) return;
-		_currentTab = tabId;
-		_hoveredKey = null; // content swaps — reset hover guard
-		SoundManager.PlayClick();
-		if ( ContentInner != null )
-			ContentInner.ScrollOffset = new Vector2( 0, 0 );
-
-	}
-
-	private int GetBadgeCount( string tabId )
-	{
-		var m = MissionManager.Instance;
-		return tabId switch
+		// Q = back, always (one stage). Claim it so GameHUD does not also flip
+		// into its own Menu handling. Escape (s&box-reserved) and run close too.
+		// LANE: input — W/S/A/D + Space/E/Enter stop walking attaches here;
+		// LANE: motion — the exit latch (.qp-leaving) commits IsVisible=false
+		// from Tick after its window instead of this immediate Close().
+		if ( Input.Pressed( "Menu" ) )
 		{
-			"daily" => (m?.ActiveDailyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0)
-					 + ((DailyRewardManager.Instance != null && !DailyRewardManager.Instance.TodayRewardClaimed) ? 1 : 0),
-			"weekly" => m?.ActiveWeeklyMissions.Count( x => x.Completed && !x.Claimed ) ?? 0,
-			"monthly" => (m?.ActiveMonthlyChallenge is { Completed: true, Claimed: false }) ? 1 : 0,
-			"side" => SideQuestManager.Instance?.ActiveQuests?.Count( q => q.Completed && !q.RewardClaimed ) ?? 0,
-			_ => 0,
-		};
+			GameHUD.PanelHandledBackKey = true;
+			Close();
+			return;
+		}
+		if ( Input.Pressed( "Escape" ) || Input.Pressed( "run" ) )
+			Close();
 	}
 
-	/// <summary>Total unclaimed across streak + missions, used by GameHUD button badge.</summary>
+	// ══════════════════════════════════════════════
+	// BADGE (P2 — honest count: today's login + missions incl. both bonuses
+	// + claimable side quests; milestones are DailyPanel's, never drawn here)
+	// ══════════════════════════════════════════════
+
+	/// <summary>Total unclaimed on THIS page — GameHUD / PawPad badge.</summary>
 	public static int GetTotalUnclaimedCount()
 	{
 		int count = 0;
-		count += DailyRewardManager.Instance?.GetUnclaimedCount() ?? 0;
+		if ( DailyRewardManager.Instance != null && !DailyRewardManager.Instance.TodayRewardClaimed ) count++;
 		count += MissionManager.Instance?.GetUnclaimedCount() ?? 0;
+		count += ClaimableSideCount();
 		return count;
+	}
+
+	// Only states with a LIVE definition count — a save can carry states for
+	// retired quest ids (live 2026-09-11: `cove_twigs`), which never render
+	// and can never be claimed (SideQuestManager.Claim returns false on a
+	// null def), so they must not light the badge.
+	private static int ClaimableSideCount()
+	{
+		var sq = SideQuestManager.Instance;
+		if ( sq == null ) return 0;
+		return sq.ActiveQuests.Count( q => q.Completed && !q.RewardClaimed && sq.GetDefinition( q.Id ) != null );
 	}
 
 	protected override int BuildHash()
 	{
 		var h = new HashCode();
 		h.Add( IsVisible );
-		h.Add( _currentTab );
-		h.Add( GetBadgeCount( "daily" ) );
-		h.Add( GetBadgeCount( "weekly" ) );
-		h.Add( GetBadgeCount( "monthly" ) );
-		h.Add( GetBadgeCount( "side" ) );
+		h.Add( _orderStamp );
 		h.Add( GetTotalUnclaimedCount() );
-		h.Add( GetActiveTimerLabel() );
-		h.Add( MissionManager.Instance?.GetUnclaimedCount() ?? 0 );
 		h.Add( MissionManager.Instance?.DailyBonusClaimed ?? false );
 		h.Add( MissionManager.Instance?.WeeklyBonusClaimed ?? false );
+		h.Add( MissionManager.Instance?.AreAllDailiesComplete() ?? false );
+		h.Add( MissionManager.Instance?.AreAllWeekliesComplete() ?? false );
 		h.Add( DailyRewardManager.Instance?.TodayRewardClaimed ?? false );
 		h.Add( DailyRewardManager.Instance?.DailyStreak ?? 0 );
 		h.Add( DailyRewardManager.Instance?.GetWeekMultiplier() ?? 1f );
+		h.Add( SideQuestManager.Instance?.DevForceAvailable ?? false );
 
-		// Include mission progress so bar refreshes when we track events.
+		// Reset timers tick once a minute (the darkchips read minutes).
+		h.Add( GetDailyTimer() );
+		h.Add( GetWeeklyTimer() );
+		h.Add( GetMonthlyTimer() );
+
 		foreach ( var mn in MissionManager.Instance?.ActiveDailyMissions ?? new() )
-			h.Add( mn.Progress + (mn.Claimed ? 1_000_000 : 0) );
+			h.Add( mn.Progress + (mn.Completed ? 500_000 : 0) + (mn.Claimed ? 1_000_000 : 0) );
 		foreach ( var mn in MissionManager.Instance?.ActiveWeeklyMissions ?? new() )
-			h.Add( mn.Progress + (mn.Claimed ? 1_000_000 : 0) );
+			h.Add( mn.Progress + (mn.Completed ? 500_000 : 0) + (mn.Claimed ? 1_000_000 : 0) );
 		if ( MissionManager.Instance?.ActiveMonthlyChallenge is { } mc )
-			h.Add( mc.Progress + (mc.Claimed ? 1_000_000 : 0) );
+			h.Add( mc.Progress + (mc.Completed ? 500_000 : 0) + (mc.Claimed ? 1_000_000 : 0) );
 
-		// Side quest state — re-render on accept/progress/claim.
 		foreach ( var sq in SideQuestManager.Instance?.ActiveQuests ?? new List<SideQuestState>() )
-			h.Add( sq.Progress + (sq.Completed ? 1_000_000 : 0) + (sq.RewardClaimed ? 2_000_000 : 0) );
+			h.Add( sq.Id + sq.Progress + (sq.Completed ? 1_000_000 : 0) + (sq.RewardClaimed ? 2_000_000 : 0) );
+		foreach ( var def in SideQuestManager.Instance?.AllDefinitions ?? new List<SideQuest>() )
+			h.Add( SideQuestManager.Instance.IsAvailable( def.Id ) ? 1 : 0 );
 
+		// LANE: input — add _kbStop + lastInputDevice. LANE: motion — add the
+		// beat / tick windows (RealTime.Now < until bools).
 		return h.ToHashCode();
 	}
 
 	// ══════════════════════════════════════════════
-	// MISSION HELPERS
+	// ORDER CAPTURE (open only)
 	// ══════════════════════════════════════════════
 
-	private List<MissionState> GetDailyMissions() => MissionManager.Instance?.ActiveDailyMissions ?? new();
-	private List<MissionState> GetWeeklyMissions() => MissionManager.Instance?.ActiveWeeklyMissions ?? new();
-	private MissionState GetMonthlyMission() => MissionManager.Instance?.ActiveMonthlyChallenge;
+	private static int ClaimSortKey( MissionState s )
+		=> (s.Completed && !s.Claimed) ? 0 : s.Claimed ? 2 : 1;
 
-	private string GetMissionName( MissionState s ) => MissionManager.Instance?.GetDefinition( s.MissionId )?.Name ?? s.MissionId;
-	private string GetMissionDesc( MissionState s ) => MissionManager.Instance?.GetDefinition( s.MissionId )?.Description ?? "";
-	private int GetMissionTarget( MissionState s ) => MissionManager.Instance?.GetDefinition( s.MissionId )?.Target ?? 1;
-	private float GetMissionPercent( MissionState s )
-	{
-		var t = GetMissionTarget( s );
-		if ( t <= 0 ) return 100f;
-		return Math.Min( 100f, (float)s.Progress / t * 100f );
-	}
-
-	// Progress fill width in PX — computed in code because %-derived widths
-	// are untrustworthy inside a rotated (transformed) slip.
-	private int GetMissionFillPx( MissionState s, bool large = false )
-		=> (int)(GetMissionPercent( s ) / 100f * (large ? WideBarW : SlipBarW));
-	private int GetPctFillPx( float pct )
-		=> (int)(Math.Min( 100f, Math.Max( 0f, pct ) ) / 100f * SlipBarW);
-
-	private string GetMissionIconify( MissionState s )
-	{
-		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
-		if ( def == null ) return "lucide:star";
-		return def.Category switch
-		{
-			MissionCategory.Battle => "lucide:swords",
-			MissionCategory.Expedition => "lucide:compass",
-			MissionCategory.Collection => "lucide:package",
-			MissionCategory.Economy => "lucide:coins",
-			MissionCategory.Social => "lucide:users",
-			_ => "lucide:star",
-		};
-	}
-
-	private string GetCategoryClass( MissionState s )
-	{
-		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
-		if ( def == null ) return "cat-other";
-		return def.Category switch
-		{
-			MissionCategory.Battle => "cat-battle",
-			MissionCategory.Expedition => "cat-expedition",
-			MissionCategory.Collection => "cat-collection",
-			MissionCategory.Economy => "cat-economy",
-			MissionCategory.Social => "cat-social",
-			_ => "cat-other",
-		};
-	}
-
-	private string GetCategoryIconColor( MissionState s )
-	{
-		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
-		if ( def == null ) return "#c4b5fd";
-		return def.Category switch
-		{
-			MissionCategory.Battle => "#fca5a5",
-			MissionCategory.Expedition => "#fcd34d",
-			MissionCategory.Collection => "#7dd3fc",
-			MissionCategory.Economy => "#fde047",
-			MissionCategory.Social => "#f0abfc",
-			_ => "#c4b5fd",
-		};
-	}
-
-	private string GetCategoryLabel( MissionState s )
-	{
-		var def = MissionManager.Instance?.GetDefinition( s.MissionId );
-		if ( def == null ) return "";
-		return def.Category switch
-		{
-			MissionCategory.Battle => "BATTLE",
-			MissionCategory.Expedition => "EXPEDITION",
-			MissionCategory.Collection => "COLLECTION",
-			MissionCategory.Economy => "ECONOMY",
-			MissionCategory.Social => "SOCIAL",
-			_ => "",
-		};
-	}
-	private void ClaimMission( string id )
-	{
-		SoundManager.PlaySuccess();
-		MissionManager.Instance?.ClaimReward( id );
-	}
-	private string GetDailyTimer() => FormatDuration( MissionManager.Instance?.GetDailyTimeRemaining() ?? TimeSpan.Zero );
-	private string GetWeeklyTimer() => FormatDuration( MissionManager.Instance?.GetWeeklyTimeRemaining() ?? TimeSpan.Zero );
-	private string GetMonthlyTimer() => FormatDuration( MissionManager.Instance?.GetMonthlyTimeRemaining() ?? TimeSpan.Zero );
-
-	private static string FormatDuration( TimeSpan ts )
-	{
-		if ( ts.TotalDays >= 1 ) return $"{(int)ts.TotalDays}d {ts.Hours:D2}h";
-		if ( ts.TotalHours >= 1 ) return $"{(int)ts.TotalHours}h {ts.Minutes:D2}m";
-		return $"{ts.Minutes}m";
-	}
-
-	// ══════════════════════════════════════════════
-	// TAB RENDERERS
-	// ══════════════════════════════════════════════
-
-	private RenderFragment RenderMain() => __builder =>
-	{
-		<div class="tab-content">
-			<div class="board-row single">
-				<div class="slip empty-note rot-a">
-					<div class="pin"></div>
-					<div class="empty-illus">
-						<iconify icon="lucide:book-open-text" Size=@(64) Color="#2e7d46" />
-					</div>
-					<div class="note-row"><span class="empty-title">Chapter 1 — Coming Soon</span></div>
-					<div class="note-row"><span class="empty-body">The main storyline arrives after launch. For now, explore the three expeditions, complete side quests, and build a team worthy of what lies ahead.</span></div>
-				</div>
-			</div>
-		</div>
-	};
-
-	private RenderFragment RenderSide() => __builder =>
+	// claimable → active → available → locked → done
+	private static int SideSortKey( SideQuest def )
 	{
 		var mgr = SideQuestManager.Instance;
-		var allDefs = mgr?.AllDefinitions ?? new List<SideQuest>();
-		var active = (mgr?.ActiveQuests?.ToList() ?? new List<SideQuestState>())
-			.OrderBy( s => s.Completed ? 0 : 1 ).ToList();
-		var available = allDefs.Where( d => mgr != null && mgr.IsAvailable( d.Id ) ).ToList();
-		var completed = allDefs.Where( d => mgr != null && mgr.IsCompletedOneShot( d.Id ) ).ToList();
+		var st = mgr?.GetState( def.Id );
+		if ( st != null && st.Completed && !st.RewardClaimed ) return 0;
+		if ( st != null ) return 1;
+		if ( mgr?.IsCompletedOneShot( def.Id ) == true ) return 4;
+		if ( mgr?.IsAvailable( def.Id ) == true ) return 2;
+		return 3;
+	}
 
-		<div class="tab-content">
-			@if ( active.Count == 0 && available.Count == 0 && completed.Count == 0 )
-			{
-				<div class="board-row single">
-					<div class="slip empty-note rot-b">
-						<div class="pin"></div>
-						<div class="empty-illus">
-							<iconify icon="lucide:map-pin" Size=@(64) Color="#2e7d46" />
-						</div>
-						<div class="note-row"><span class="empty-title">No side quests yet</span></div>
-						<div class="note-row"><span class="empty-body">Visit the world map and accept requests posted by the locals.</span></div>
-					</div>
-				</div>
-			}
-
-			@if ( active.Count > 0 )
-			{
-				<div class="section-label-row">
-					<div class="section-label-left">
-						<div class="section-chip"><span>IN PROGRESS</span></div>
-					</div>
-					<span class="section-count">@active.Count active</span>
-				</div>
-				<div class="rowset">
-					@for ( int i = 0; i < active.Count; i += 2 )
-					{
-						var i0 = i;
-						var i1 = i + 1;
-						<div class="board-row">
-							@SideQuestCard( active[i0], i0 )
-							@if ( i1 < active.Count )
-							{
-								@SideQuestCard( active[i1], i1 )
-							}
-						</div>
-					}
-				</div>
-			}
-
-			@if ( available.Count > 0 )
-			{
-				<div class="section-label-row">
-					<div class="section-label-left">
-						<div class="section-chip"><span>AVAILABLE</span></div>
-					</div>
-					<span class="section-count">@available.Count open</span>
-				</div>
-				<div class="rowset">
-					@for ( int i = 0; i < available.Count; i += 2 )
-					{
-						var i0 = i;
-						var i1 = i + 1;
-						<div class="board-row">
-							@AvailableSideQuestCard( available[i0], i0 + 1 )
-							@if ( i1 < available.Count )
-							{
-								@AvailableSideQuestCard( available[i1], i1 + 1 )
-							}
-						</div>
-					}
-				</div>
-			}
-
-			@if ( completed.Count > 0 )
-			{
-				<div class="section-label-row">
-					<div class="section-label-left">
-						<div class="section-chip"><span>COMPLETED</span></div>
-					</div>
-					<span class="section-count">@completed.Count done</span>
-				</div>
-				<div class="rowset">
-					@for ( int i = 0; i < completed.Count; i += 2 )
-					{
-						var i0 = i;
-						var i1 = i + 1;
-						<div class="board-row">
-							@CompletedSideQuestCard( completed[i0] )
-							@if ( i1 < completed.Count )
-							{
-								@CompletedSideQuestCard( completed[i1] )
-							}
-						</div>
-					}
-				</div>
-			}
-		</div>
-	};
-
-	private RenderFragment SideQuestCard( SideQuestState state, int idx ) => __builder =>
+	private static void CaptureOrder()
 	{
-		var def = SideQuestManager.Instance?.GetDefinition( state.Id );
-		if ( def == null ) return;
+		var mm = MissionManager.Instance;
+		_dailyOrder = (mm?.ActiveDailyMissions ?? new()).OrderBy( ClaimSortKey ).Select( m => m.MissionId ).ToList();
+		_weeklyOrder = (mm?.ActiveWeeklyMissions ?? new()).OrderBy( ClaimSortKey ).Select( m => m.MissionId ).ToList();
+		_sideOrder = (SideQuestManager.Instance?.AllDefinitions ?? new List<SideQuest>()).OrderBy( SideSortKey ).Select( d => d.Id ).ToList();
+		_orderStamp++;
+	}
 
-		var pct = def.Target > 0 ? (state.Progress * 100f / def.Target) : 0f;
-		var claimable = state.Completed;
-		var cardClass = (claimable ? "completed" : "") + " " + GetSlipRot( idx, claimable );
-		var pinClass = claimable ? "gold" : "";
-
-		<div class="slip @cardClass" onmouseover=@(() => OnHover("sq-" + state.Id))>
-			<div class="pin @pinClass"></div>
-			<div class="slip-head">
-				<div class="mission-icon-wrap">
-					<iconify icon="lucide:scroll-text" Size=@(22) Color="#7fd99a" />
-				</div>
-				<div class="mission-name-row">
-					<span class="mission-name">@def.Title</span>
-					@if ( !string.IsNullOrEmpty( def.NpcName ) )
-					{
-						<span class="mission-cat-chip">@def.NpcName</span>
-					}
-				</div>
-			</div>
-			<div class="slip-descrow"><span class="mission-desc">@def.Description</span></div>
-			<div class="slip-barrow">
-				<div class="mission-progress-bar">
-					<div class="mission-progress-fill" style="width: @(GetPctFillPx(pct))px"></div>
-				</div>
-			</div>
-			<div class="slip-foot">
-				@if ( claimable )
-				{
-					<button class="claim-btn" onclick=@(() => ClaimSideQuest(state.Id)) onmouseover=@(() => OnHover("claim-sq-" + state.Id))>
-						<span>CLAIM</span>
-					</button>
-				}
-				else
-				{
-					<span class="mission-target">@state.Progress / @def.Target</span>
-				}
-			</div>
-			<div class="slip-tags">
-				@SideQuestRewardTags( def )
-			</div>
-			<div class="q-ring"></div>
-		</div>
-	};
-
-	private RenderFragment AvailableSideQuestCard( SideQuest def, int idx ) => __builder =>
+	private static List<T> Ordered<T>( IEnumerable<T> items, Func<T, string> id, List<string> order )
 	{
-		var rotClass = GetSlipRot( idx, false );
-		<div class="slip @rotClass" onmouseover=@(() => OnHover("sq-avail-" + def.Id))>
-			<div class="pin"></div>
-			<div class="slip-head">
-				<div class="mission-icon-wrap">
-					<iconify icon="lucide:map-pin" Size=@(22) Color="#7fd99a" />
-				</div>
-				<div class="mission-name-row">
-					<span class="mission-name">@def.Title</span>
-					@if ( !string.IsNullOrEmpty( def.NpcName ) )
-					{
-						<span class="mission-cat-chip">@def.NpcName</span>
-					}
-				</div>
-			</div>
-			<div class="slip-descrow"><span class="mission-desc">@def.Description</span></div>
-			<div class="slip-foot">
-				<button class="claim-btn accept-btn" onclick=@(() => AcceptSideQuest(def.Id)) onmouseover=@(() => OnHover("accept-sq-" + def.Id))>
-					<span>ACCEPT</span>
-				</button>
-			</div>
-			<div class="slip-tags">
-				@SideQuestRewardTags( def )
-			</div>
-			<div class="q-ring"></div>
-		</div>
-	};
+		var list = items.ToList();
+		return list.OrderBy( x => { var i = order.IndexOf( id( x ) ); return i < 0 ? int.MaxValue : i; } ).ToList();
+	}
 
-	private RenderFragment CompletedSideQuestCard( SideQuest def ) => __builder =>
+	// ══════════════════════════════════════════════
+	// HELPERS
+	// ══════════════════════════════════════════════
+
+	private static string GetGlyph( MissionDefinition def ) => def?.Category switch
 	{
-		<div class="slip claimed no-tags rot-flat">
-			<div class="pin done"></div>
-			<div class="slip-head">
-				<div class="mission-icon-wrap">
-					<iconify icon="lucide:check-circle-2" Size=@(22) Color="#3fb45e" />
-				</div>
-				<div class="mission-name-row">
-					<span class="mission-name">@def.Title</span>
-				</div>
-			</div>
-			<div class="slip-descrow"><span class="mission-desc">@def.Description</span></div>
-			<div class="slip-foot">
-				<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
-			</div>
-		</div>
+		MissionCategory.Battle => "lucide:swords",
+		MissionCategory.Expedition => "lucide:compass",
+		MissionCategory.Collection => "lucide:package",
+		MissionCategory.Economy => "lucide:coins",
+		MissionCategory.Social => "lucide:users",
+		_ => "lucide:star",
 	};
 
-	private RenderFragment SideQuestRewardTags( SideQuest def ) => __builder =>
+	// arena_* rolls while ranked is kill-switched — the row wears .dormant.
+	private static bool IsDormant( MissionDefinition def )
+		=> def != null && !MissionManager.ArenaMissionsEnabled && def.Id.StartsWith( "arena_" );
+
+	private static int FillPx( int progress, int target )
 	{
-		<div class="tagrow">
-			@if ( def.GoldReward > 0 )
-			{
-				<div class="q-reward gold">
-					<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.png" /></div></div>
-					<span class="q-amt">@($"{def.GoldReward / 1000f:0.#}K")</span>
-				</div>
-			}
-			@if ( def.XPReward > 0 )
-			{
-				<div class="q-reward xp">
-					<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:arrow-up" Size=@(11) Color="#ffffff" /></div></div>
-					<span class="q-amt">@($"{def.XPReward:N0}")</span>
-				</div>
-			}
-			@if ( def.SkillPointReward > 0 )
-			{
-				<div class="q-reward ink">
-					<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:sparkles" Size=@(11) Color="#ffffff" /></div></div>
-					<span class="q-amt">@def.SkillPointReward SP</span>
-				</div>
-			}
-		</div>
-	};
+		if ( target <= 0 ) return BarW;
+		var pct = Math.Clamp( (float)progress / target, 0f, 1f );
+		return (int)(pct * BarW);
+	}
 
+	// n / N — targets ≥ 10,000 read "31.2K / 50K" (the counter lane is 108).
+	private static string FormatCounter( int progress, int target )
+	{
+		if ( target >= 10000 )
+			return $"{FormatK( progress )} / {FormatK( target )}";
+		return $"{progress:N0} / {target:N0}";
+	}
+
+	private static string FormatK( int n )
+	{
+		if ( n < 1000 ) return n.ToString( "N0" );
+		return (n / 1000f).ToString( "0.#" ) + "K";
+	}
+
+	private void ClaimMission( string id )
+	{
+		if ( MissionManager.Instance?.ClaimReward( id ) == true )
+			SoundManager.PlaySuccess();
+	}
+	private void ClaimStreak()
+	{
+		if ( DailyRewardManager.Instance?.ClaimDailyReward() == true )
+			SoundManager.PlaySuccess();
+	}
+	private void ClaimDailyBonus()
+	{
+		if ( MissionManager.Instance?.ClaimDailyBonus() == true )
+			SoundManager.PlaySuccess();
+	}
+	private void ClaimWeeklyBonus()
+	{
+		if ( MissionManager.Instance?.ClaimWeeklyBonus() == true )
+			SoundManager.PlaySuccess();
+	}
 	private void AcceptSideQuest( string id )
 	{
 		if ( SideQuestManager.Instance?.Accept( id ) == true )
-		{
 			SoundManager.PlayClick();
-		}
 	}
-
 	private void ClaimSideQuest( string id )
 	{
 		if ( SideQuestManager.Instance?.Claim( id ) == true )
-		{
 			SoundManager.PlaySuccess();
-		}
 	}
 
-	private RenderFragment RenderDaily() => __builder =>
+	private string GetDailyTimer() => "RESETS " + FormatDuration( MissionManager.Instance?.GetDailyTimeRemaining() ?? TimeSpan.Zero );
+	private string GetWeeklyTimer() => "RESETS " + FormatDuration( MissionManager.Instance?.GetWeeklyTimeRemaining() ?? TimeSpan.Zero );
+	private string GetMonthlyTimer() => "RESETS " + FormatDuration( MissionManager.Instance?.GetMonthlyTimeRemaining() ?? TimeSpan.Zero );
+
+	private static string FormatDuration( TimeSpan ts )
+	{
+		if ( ts.TotalDays >= 1 ) return $"{(int)ts.TotalDays}D {ts.Hours:D2}H";
+		if ( ts.TotalHours >= 1 ) return $"{(int)ts.TotalHours}H {ts.Minutes:D2}M";
+		return $"{ts.Minutes}M";
+	}
+
+	private static string ItemName( string itemId )
+		=> ItemManager.Instance?.GetItem( itemId )?.Name ?? itemId;
+	private static string ItemIcon( string itemId )
+		=> ItemManager.Instance?.GetItem( itemId )?.IconPath ?? "";
+	private static string ZoneName( string zoneId )
+		=> ExpeditionManager.Instance?.GetExpedition( zoneId )?.Name ?? zoneId;
+
+	// Reward parts — (icon path or "", text). Currencies + XP/SP on line 1,
+	// items on line 2. N0 everywhere; the word "gem" never appears.
+	private static List<(string Icon, string Text)> MissionCurrencyParts( MissionDefinition def )
+	{
+		var parts = new List<(string, string)>();
+		if ( def.GoldReward > 0 ) parts.Add( ("ui/icons/currency/money.png", def.GoldReward.ToString( "N0" )) );
+		if ( def.InkReward > 0 ) parts.Add( ("ui/icons/currency/ink.png", def.InkReward.ToString( "N0" )) );
+		if ( def.GemReward > 0 ) parts.Add( ("ui/icons/currency/token.png", def.GemReward.ToString( "N0" )) );
+		if ( def.XPReward > 0 ) parts.Add( ("", def.XPReward.ToString( "N0" ) + " XP") );
+		return parts;
+	}
+
+	private static List<(string Icon, string Text)> SideCurrencyParts( SideQuest def )
+	{
+		var parts = new List<(string, string)>();
+		if ( def.GoldReward > 0 ) parts.Add( ("ui/icons/currency/money.png", def.GoldReward.ToString( "N0" )) );
+		if ( def.XPReward > 0 ) parts.Add( ("", def.XPReward.ToString( "N0" ) + " XP") );
+		if ( def.SkillPointReward > 0 ) parts.Add( ("", def.SkillPointReward.ToString( "N0" ) + " SP") );
+		return parts;
+	}
+
+	// ══════════════════════════════════════════════
+	// SHARED FRAGMENTS
+	// ══════════════════════════════════════════════
+
+	// One line of reward parts joined by "·". Every text node is its own span
+	// (bare-text law); the img is 16px.
+	private RenderFragment RewardLine( List<(string Icon, string Text)> parts ) => __builder =>
+	{
+		<div class="qp-rwline">
+			@for ( int i = 0; i < parts.Count; i++ )
+			{
+				var p = parts[i];
+				if ( i > 0 )
+				{
+					<span class="qp-rwsep">&middot;</span>
+				}
+				if ( !string.IsNullOrEmpty( p.Icon ) )
+				{
+					<img class="qp-rwicon" src="@p.Icon" />
+				}
+				<span class="qp-rw">@p.Text</span>
+			}
+		</div>
+	};
+
+	// Band darkchip — the Guild .gp-darkchip shape. Tone: "" | gold | green
+	private RenderFragment DarkChip( string text, string tone ) => __builder =>
+	{
+		var cls = "qp-darkchip " + tone;
+		<div class="@cls"><span>@text</span></div>
+	};
+
+	// Action-slot status chip (DONE gold ink / LOCKED · NOT OPEN YET dim ink).
+	private RenderFragment StatusChip( string text, string tone ) => __builder =>
+	{
+		var cls = "qp-chip " + tone;
+		<div class="@cls"><span>@text</span></div>
+	};
+
+	// ══════════════════════════════════════════════
+	// LOGIN — 912×240: band 36 + body 204 (pad 16 → inner 880×172)
+	//   left : hero 76/84 at inner y28 · pips 20 at inner y144
+	//   right: reward line 16 at inner y76 · CLAIM DAY n 320×56 at inner y112
+	// ══════════════════════════════════════════════
+
+	private RenderFragment RenderLogin() => __builder =>
 	{
 		var drm = DailyRewardManager.Instance;
 		var streak = drm?.DailyStreak ?? 0;
-		var totalDays = drm?.TotalLoginDays ?? 0;
-		var todayClaimed = drm?.TodayRewardClaimed ?? true;
-		var dayInCycle = drm?.GetStreakDay() ?? 1;
-		var dailies = GetDailyMissions().OrderBy( ClaimSortKey ).ToList();
-		var weekMult = drm?.GetWeekMultiplier() ?? 1f;
-		var weekMultLabel = weekMult.ToString( "0.#" );
-		var streakPinClass = todayClaimed ? "" : "gold";
+		var claimed = drm?.TodayRewardClaimed ?? true;
+		var day = drm?.GetStreakDay() ?? 1;
+		var mult = drm?.GetWeekMultiplier() ?? 1f;
+		var (gold, gems, ink) = drm?.GetTodayReward() ?? (0, 0, 0);
+		var itemId = drm?.GetDayItemReward( day );
 
-		<div class="tab-content">
+		// A2 — today's full reward: gold ×mult, ink, tokens, the day item, and
+		// the day-7 Master Ink grant (DailyRewardManager.GrantDay7MasterInk).
+		var parts = new List<(string Icon, string Text)>();
+		if ( gold > 0 ) parts.Add( ("ui/icons/currency/money.png", gold.ToString( "N0" )) );
+		if ( ink > 0 ) parts.Add( ("ui/icons/currency/ink.png", ink.ToString( "N0" )) );
+		if ( gems > 0 ) parts.Add( ("ui/icons/currency/token.png", gems.ToString( "N0" )) );
+		if ( !string.IsNullOrEmpty( itemId ) ) parts.Add( (ItemIcon( itemId ), ItemName( itemId ) + " ×1") );
+		if ( day == 7 ) parts.Add( (ItemIcon( "boss_master_ink" ), ItemName( "boss_master_ink" ) + " ×1") );
 
-			<!-- THE PINNED CALENDAR CARD — login streak -->
-			<div class="board-row single">
-				<div class="slip streak-card rot-s">
-					<div class="pin @streakPinClass"></div>
-					<div class="streak-head">
-						<span class="streak-title">LOGIN STREAK</span>
-						@if ( weekMult > 1f )
-						{
-							<div class="multiplier-badge">
-								<iconify icon="lucide:zap" Size=@(12) Color="#ffce3a" />
-								<span>&times;@weekMultLabel GOLD</span>
-							</div>
-						}
-						<span class="streak-count">@streak days &middot; @totalDays total</span>
-					</div>
+		var slabClass = "qp-slab login" + (claimed ? " claimed" : "");
+		var rwClass = "qp-login-rewards" + (claimed ? "" : " gold");
+		var heroText = "DAY " + day;
+		var streakText = streak + (streak == 1 ? " DAY" : " DAYS");
+		var multText = "×" + mult.ToString( "0.#" ) + " GOLD";
+		var claimLabel = "CLAIM DAY " + day;
 
-					<div class="cal-strip">
+		<div class="@slabClass">
+			<div class="row-accent"></div>
+			<div class="qp-band">
+				<div class="qp-chipstamp"><span>LOGIN STREAK</span></div>
+				@DarkChip( streakText, "" )
+				@if ( mult > 1f )
+				{
+					@DarkChip( multText, "gold" )
+				}
+			</div>
+			<div class="qp-login-body">
+				<div class="qp-login-left">
+					<span class="qp-hero">@heroText</span>
+					<div class="qp-pips">
 						@for ( int d = 1; d <= 7; d++ )
 						{
-							var day = d;
-							var isClaimed = day < dayInCycle || (day == dayInCycle && todayClaimed);
-							var isToday = day == dayInCycle && !todayClaimed;
-							var isFuture = day > dayInCycle || (day == dayInCycle && todayClaimed && day != dayInCycle);
-							var reward = drm?.GetDayReward( day ) ?? (0, 0, 0);
-							var isLegendary = day == 7;
-
-							var calDayClass = (isClaimed ? "claimed" : "") + " " + (isToday ? "today" : "") + " " + (isFuture ? "future" : "") + " " + (isLegendary ? "legendary" : "");
-							var calIcon = isLegendary ? "lucide:trophy" : reward.Gems > 0 ? "lucide:gem" : "lucide:coins";
-							var calIconColor = isClaimed
-								? "#4d8f63"
-								: isLegendary
-									? (isToday ? "#ffce3a" : "#ffe9a3")
-									: reward.Gems > 0 ? "#6ee7b7" : "#ffce3a";
-							<div class="cal-day @calDayClass">
-								<span class="cal-day-lbl">DAY @day</span>
-								<div class="cal-day-icon">
-									<iconify icon="@calIcon" Size=@(isLegendary ? 26 : 24) Color="@calIconColor" />
-								</div>
-								<div class="cal-day-rewards">
-									@if ( reward.Gold > 0 )
-									{
-										<span class="cal-day-amt gold">@($"{reward.Gold / 1000f:0.#}K")</span>
-									}
-									@if ( reward.Gems > 0 )
-									{
-										<span class="cal-day-amt gem">@reward.Gems&nbsp;&#9672;</span>
-									}
-								</div>
-								@if ( isLegendary )
-								{
-									<div class="cal-day-legendary-tag">
-										<span>&#9733; MASTER INK</span>
-									</div>
-								}
-								@if ( isClaimed )
-								{
-									<div class="cal-day-check">
-										<iconify icon="lucide:check" Size=@(14) Color="#7fd99a" />
-									</div>
-								}
-							</div>
+							var pipDone = d < day || (d == day && claimed);
+							var pipToday = d == day && !claimed;
+							var pipClass = "qp-pip" + (pipDone ? " done" : pipToday ? " today" : " future");
+							<div class="@pipClass"></div>
 						}
 					</div>
-
-					@if ( !todayClaimed )
+				</div>
+				<div class="qp-login-right">
+					<div class="@rwClass">
+						@RewardLine( parts )
+					</div>
+					@if ( claimed )
 					{
-						<button class="claim-streak-btn" onclick=@ClaimStreak onmouseover=@(() => OnHover("claim-streak"))>
-							<iconify icon="lucide:gift" Size=@(18) Color="#2a1605" />
-							<span>CLAIM DAY @dayInCycle REWARD</span>
-						</button>
+						<div class="qp-login-claimed"><span>CLAIMED</span></div>
 					}
 					else
 					{
-						<div class="claim-streak-done">
-							<iconify icon="lucide:check-circle" Size=@(16) Color="#7fd99a" />
-							<span>Today's reward claimed &mdash; come back tomorrow!</span>
-						</div>
+						<BbButton Tier="primary" Size=@(56) Label="@claimLabel" KeyCap="SPACE" Class="qp-login-btn" OnClick=@ClaimStreak />
 					}
 				</div>
 			</div>
-
-			<!-- Daily mission slips -->
-			<div class="section-label-row">
-				<div class="section-label-left">
-					<div class="section-chip"><span>MISSIONS</span></div>
-				</div>
-				<span class="section-count">@dailies.Count( m => m.Completed && m.Claimed ) / @dailies.Count</span>
-			</div>
-
-			@if ( dailies.Count == 0 )
-			{
-				<div class="empty-state small">
-					<iconify icon="lucide:loader" Size=@(32) Color="#2e7d46" />
-					<span class="empty-title">No daily missions</span>
-				</div>
-			}
-			else
-			{
-				<div class="rowset">
-					@for ( int i = 0; i < dailies.Count; i += 2 )
-					{
-						var i0 = i;
-						var i1 = i + 1;
-						<div class="board-row">
-							@MissionCard( dailies[i0], i0 )
-							@if ( i1 < dailies.Count )
-							{
-								@MissionCard( dailies[i1], i1 )
-							}
-						</div>
-					}
-				</div>
-
-				var claimedCount = dailies.Count( m => m.Claimed );
-				var totalCount = dailies.Count;
-				var allDone = MissionManager.Instance?.AreAllDailiesComplete() ?? false;
-				var bonusClaimed = MissionManager.Instance?.DailyBonusClaimed ?? false;
-				var bonusIcon = bonusClaimed ? "lucide:check-circle" : "lucide:gift";
-				var bonusColor = bonusClaimed ? "#7fd99a" : allDone ? "#ffce3a" : "#6fd08c";
-				var bonusCardClass = (allDone && !bonusClaimed ? "ready" : "") + " " + (bonusClaimed ? "claimed" : "");
-				var bonusPinClass = bonusClaimed ? "done" : allDone ? "gold" : "";
-				<div class="board-row single">
-					<div class="slip bonus-card @bonusCardClass">
-						<div class="pin @bonusPinClass"></div>
-						<div class="bonus-row">
-							<div class="bonus-icon-wrap">
-								<iconify icon="@bonusIcon" Size=@(30) Color="@bonusColor" />
-							</div>
-							<div class="bonus-info">
-								<span class="bonus-title">DAILY BONUS</span>
-								<span class="bonus-sub">Complete all @totalCount missions &middot; @claimedCount / @totalCount</span>
-								<div class="bonus-dots">
-									@for ( int i = 0; i < totalCount; i++ )
-									{
-										var dotFill = i < claimedCount ? "filled" : "";
-										<div class="bonus-dot @dotFill"></div>
-									}
-								</div>
-							</div>
-							<div class="bonus-rewards">
-								<div class="q-reward gold">
-									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.png" /></div></div>
-									<span class="q-amt">10K</span>
-								</div>
-								<div class="q-reward tokens">
-									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/token.png" /></div></div>
-									<span class="q-amt">5</span>
-								</div>
-								<div class="q-reward xp">
-									<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:arrow-up" Size=@(11) Color="#ffffff" /></div></div>
-									<span class="q-amt">1,000</span>
-								</div>
-							</div>
-							<div class="bonus-state">
-								@if ( bonusClaimed )
-								{
-									<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
-								}
-								else if ( allDone )
-								{
-									<button class="claim-btn bonus-claim-btn" onclick=@ClaimDailyBonus onmouseover=@(() => OnHover("claim-daily-bonus"))>
-										<span>CLAIM ALL</span>
-									</button>
-								}
-								else
-								{
-									<span class="bonus-locked">LOCKED</span>
-								}
-							</div>
-						</div>
-					</div>
-				</div>
-			}
 		</div>
 	};
-
-	private void ClaimStreak()
-	{
-		SoundManager.PlaySuccess();
-		DailyRewardManager.Instance?.ClaimDailyReward();
-	}
-
-	private void ClaimDailyBonus()
-	{
-		SoundManager.PlaySuccess();
-		MissionManager.Instance?.ClaimDailyBonus();
-	}
-
-	private void ClaimWeeklyBonus()
-	{
-		SoundManager.PlaySuccess();
-		MissionManager.Instance?.ClaimWeeklyBonus();
-	}
-
-	private RenderFragment RenderWeekly() => __builder =>
-	{
-		var weeklies = GetWeeklyMissions().OrderBy( ClaimSortKey ).ToList();
-
-		<div class="tab-content">
-			@if ( weeklies.Count == 0 )
-			{
-				<div class="board-row single">
-					<div class="slip empty-note rot-a">
-						<div class="pin"></div>
-						<div class="empty-illus">
-							<iconify icon="lucide:calendar-days" Size=@(64) Color="#2e7d46" />
-						</div>
-						<div class="note-row"><span class="empty-title">No weekly missions</span></div>
-					</div>
-				</div>
-			}
-			else
-			{
-				<div class="section-label-row">
-					<div class="section-label-left">
-						<div class="section-chip"><span>CHALLENGES</span></div>
-					</div>
-					<span class="section-count">@weeklies.Count( m => m.Completed && m.Claimed ) / @weeklies.Count</span>
-				</div>
-				<div class="rowset">
-					@for ( int i = 0; i < weeklies.Count; i += 2 )
-					{
-						var i0 = i;
-						var i1 = i + 1;
-						<div class="board-row">
-							@MissionCard( weeklies[i0], i0 )
-							@if ( i1 < weeklies.Count )
-							{
-								@MissionCard( weeklies[i1], i1 )
-							}
-						</div>
-					}
-				</div>
-
-				var wClaimed = weeklies.Count( m => m.Claimed );
-				var wTotal = weeklies.Count;
-				var wAllDone = MissionManager.Instance?.AreAllWeekliesComplete() ?? false;
-				var wBonusClaimed = MissionManager.Instance?.WeeklyBonusClaimed ?? false;
-				var wBonusIcon = wBonusClaimed ? "lucide:check-circle" : "lucide:gift";
-				var wBonusColor = wBonusClaimed ? "#7fd99a" : wAllDone ? "#ffce3a" : "#6fd08c";
-				var wBonusCardClass = (wAllDone && !wBonusClaimed ? "ready" : "") + " " + (wBonusClaimed ? "claimed" : "");
-				var wBonusPinClass = wBonusClaimed ? "done" : wAllDone ? "gold" : "";
-				<div class="board-row single">
-					<div class="slip bonus-card @wBonusCardClass">
-						<div class="pin @wBonusPinClass"></div>
-						<div class="bonus-row">
-							<div class="bonus-icon-wrap">
-								<iconify icon="@wBonusIcon" Size=@(30) Color="@wBonusColor" />
-							</div>
-							<div class="bonus-info">
-								<span class="bonus-title">WEEKLY BONUS</span>
-								<span class="bonus-sub">Complete all @wTotal challenges &middot; @wClaimed / @wTotal</span>
-								<div class="bonus-dots">
-									@for ( int i = 0; i < wTotal; i++ )
-									{
-										var wDotFill = i < wClaimed ? "filled" : "";
-										<div class="bonus-dot @wDotFill"></div>
-									}
-								</div>
-							</div>
-							<div class="bonus-rewards">
-								<div class="q-reward gold">
-									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.png" /></div></div>
-									<span class="q-amt">50K</span>
-								</div>
-								<div class="q-reward tokens">
-									<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/token.png" /></div></div>
-									<span class="q-amt">10</span>
-								</div>
-							</div>
-							<div class="bonus-state">
-								@if ( wBonusClaimed )
-								{
-									<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
-								}
-								else if ( wAllDone )
-								{
-									<button class="claim-btn bonus-claim-btn" onclick=@ClaimWeeklyBonus onmouseover=@(() => OnHover("claim-weekly-bonus"))>
-										<span>CLAIM ALL</span>
-									</button>
-								}
-								else
-								{
-									<span class="bonus-locked">LOCKED</span>
-								}
-							</div>
-						</div>
-					</div>
-				</div>
-			}
-		</div>
-	};
-
-	private RenderFragment RenderMonthly() => __builder =>
-	{
-		var monthly = GetMonthlyMission();
-
-		<div class="tab-content">
-			@if ( monthly == null )
-			{
-				<div class="board-row single">
-					<div class="slip empty-note rot-b">
-						<div class="pin"></div>
-						<div class="empty-illus">
-							<iconify icon="lucide:trophy" Size=@(64) Color="#2e7d46" />
-						</div>
-						<div class="note-row"><span class="empty-title">No monthly challenge</span></div>
-					</div>
-				</div>
-			}
-			else
-			{
-				<div class="board-row single">
-					@MissionCard( monthly, 0, true )
-				</div>
-			}
-		</div>
-	};
-
-	// (RenderGuild / GuildGoalCard / ClaimGuildGoal / guild timer + icon +
-	// color helpers CUT 2026-08-31 — guild weekly goals render in ONE place:
-	// the Guild page's THE WEEK zone, GuildPanel.razor.)
 
 	// ══════════════════════════════════════════════
-	// MISSION SLIP (shared)
+	// DAILY — 912×694: band (timer · x/5 · bonus tri-state) + 5 ROOMY rows
+	//   36 + 16 + 5×114 + 4×14 + 16 = 694
 	// ══════════════════════════════════════════════
 
-	private RenderFragment MissionCard( MissionState m, int idx, bool large = false ) => __builder =>
+	private RenderFragment RenderDaily() => __builder =>
 	{
-		var def = MissionManager.Instance?.GetDefinition( m.MissionId );
-		var claimable = m.Completed && !m.Claimed;
-		var missionCardClass = GetCategoryClass(m)
-			+ (m.Claimed ? " claimed" : "")
-			+ (claimable ? " completed" : "")
-			+ (large ? " wide" : "")
-			+ " " + GetSlipRot( idx, m.Claimed || claimable );
-		var pinClass = m.Claimed ? "done" : claimable ? "gold" : "";
+		var mm = MissionManager.Instance;
+		var dailies = Ordered( mm?.ActiveDailyMissions ?? new(), m => m.MissionId, _dailyOrder );
+		var claimedCount = dailies.Count( m => m.Claimed );
+		var allDone = mm?.AreAllDailiesComplete() ?? false;
+		var bonusClaimed = mm?.DailyBonusClaimed ?? false;
+		var countText = claimedCount + " / " + dailies.Count;
+		var bonusGold = MissionManager.DailyBonusGold.ToString( "N0" );
+		var bonusGems = MissionManager.DailyBonusGems.ToString( "N0" );
+		var bonusXp = MissionManager.DailyBonusXP.ToString( "N0" ) + " XP";
 
-		<div class="slip @missionCardClass" onmouseover=@(() => OnHover("mission-" + m.MissionId))>
-			<div class="pin @pinClass"></div>
-
-			<div class="slip-head">
-				<div class="mission-icon-wrap">
-					<iconify icon="@GetMissionIconify(m)" Size=@(large ? 30 : 22) Color="@(GetCategoryIconColor(m))" />
-				</div>
-				<div class="mission-name-row">
-					<span class="mission-name">@GetMissionName( m )</span>
-					<span class="mission-cat-chip">@(GetCategoryLabel(m))</span>
-				</div>
-			</div>
-
-			<div class="slip-descrow"><span class="mission-desc">@GetMissionDesc( m )</span></div>
-
-			<div class="slip-barrow">
-				<div class="mission-progress-bar">
-					<div class="mission-progress-fill" style="width: @(GetMissionFillPx(m, large))px"></div>
-				</div>
-			</div>
-
-			<div class="slip-foot">
-				@if ( m.Claimed )
+		<div class="qp-slab daily">
+			<div class="qp-band">
+				<div class="qp-chipstamp"><span>DAILY</span></div>
+				@DarkChip( GetDailyTimer(), "" )
+				<div class="qp-band-spacer"></div>
+				@DarkChip( countText, "" )
+				@if ( bonusClaimed )
 				{
-					<BbStamp Text="DONE" Tone="green" Tilt=@(-3) Class="q-done" />
+					@DarkChip( "BONUS CLAIMED", "green" )
 				}
-				else if ( m.Completed )
+				else if ( allDone )
 				{
-					<button class="claim-btn" onclick=@(() => ClaimMission(m.MissionId)) onmouseover=@(() => OnHover("claim-mission-" + m.MissionId))>
-						<span>CLAIM</span>
-					</button>
+					<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" OnClick=@ClaimDailyBonus />
 				}
 				else
 				{
-					<span class="mission-target">@m.Progress / @GetMissionTarget( m )</span>
-				}
-			</div>
-
-			<div class="slip-tags">
-				@if ( def?.GoldReward > 0 )
-				{
-					<div class="q-reward gold">
-						<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/money.png" /></div></div>
-						<span class="q-amt">@($"{def.GoldReward / 1000f:0.#}K")</span>
-					</div>
-				}
-				@if ( def?.GemReward > 0 )
-				{
-					<div class="q-reward tokens">
-						<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/token.png" /></div></div>
-						<span class="q-amt">@def.GemReward</span>
-					</div>
-				}
-				@if ( def?.InkReward > 0 )
-				{
-					<div class="q-reward ink">
-						<div class="q-gem"><div class="q-gem-in"><img class="q-gem-img" src="ui/icons/currency/ink.png" /></div></div>
-						<span class="q-amt">@def.InkReward</span>
-					</div>
-				}
-				@if ( def?.XPReward > 0 )
-				{
-					<div class="q-reward xp">
-						<div class="q-gem"><div class="q-gem-in"><iconify icon="lucide:arrow-up" Size=@(11) Color="#ffffff" /></div></div>
-						<span class="q-amt">@($"{def.XPReward:N0}")</span>
+					<div class="qp-darkchip dim bonus">
+						<img class="qp-bonus-icon" src="ui/icons/currency/money.png" />
+						<span>@bonusGold</span>
+						<span class="qp-sep">&middot;</span>
+						<img class="qp-bonus-icon" src="ui/icons/currency/token.png" />
+						<span>@bonusGems</span>
+						<span class="qp-sep">&middot;</span>
+						<span>@bonusXp</span>
+						<span class="qp-sep">&middot;</span>
+						<span>BONUS</span>
 					</div>
 				}
 			</div>
-			<div class="q-ring"></div>
+			<div class="qp-list">
+				@if ( dailies.Count == 0 )
+				{
+					<span class="qp-empty">New missions arrive at the reset.</span>
+				}
+				@for ( int i = 0; i < dailies.Count; i++ )
+				{
+					@MissionRow( dailies[i], i, true )
+				}
+			</div>
 		</div>
 	};
+
+	// ══════════════════════════════════════════════
+	// WEEKLY — 912×378: band + 3 DENSE rows (36 + 16 + 3×94 + 2×14 + 16)
+	// ══════════════════════════════════════════════
+
+	private RenderFragment RenderWeekly() => __builder =>
+	{
+		var mm = MissionManager.Instance;
+		var weeklies = Ordered( mm?.ActiveWeeklyMissions ?? new(), m => m.MissionId, _weeklyOrder );
+		var claimedCount = weeklies.Count( m => m.Claimed );
+		var allDone = mm?.AreAllWeekliesComplete() ?? false;
+		var bonusClaimed = mm?.WeeklyBonusClaimed ?? false;
+		var countText = claimedCount + " / " + weeklies.Count;
+		var bonusGold = MissionManager.WeeklyBonusGold.ToString( "N0" );
+		var bonusGems = MissionManager.WeeklyBonusGems.ToString( "N0" );
+
+		<div class="qp-slab weekly">
+			<div class="qp-band">
+				<div class="qp-chipstamp"><span>WEEKLY</span></div>
+				@DarkChip( GetWeeklyTimer(), "" )
+				<div class="qp-band-spacer"></div>
+				@DarkChip( countText, "" )
+				@if ( bonusClaimed )
+				{
+					@DarkChip( "BONUS CLAIMED", "green" )
+				}
+				else if ( allDone )
+				{
+					<BbButton Tier="primary" Size=@(34) Label="CLAIM BONUS" Class="qp-bonus-btn" OnClick=@ClaimWeeklyBonus />
+				}
+				else
+				{
+					<div class="qp-darkchip dim bonus">
+						<img class="qp-bonus-icon" src="ui/icons/currency/money.png" />
+						<span>@bonusGold</span>
+						<span class="qp-sep">&middot;</span>
+						<img class="qp-bonus-icon" src="ui/icons/currency/token.png" />
+						<span>@bonusGems</span>
+						<span class="qp-sep">&middot;</span>
+						<span>BONUS</span>
+					</div>
+				}
+			</div>
+			<div class="qp-list">
+				@if ( weeklies.Count == 0 )
+				{
+					<span class="qp-empty">New challenges arrive on Monday.</span>
+				}
+				@for ( int i = 0; i < weeklies.Count; i++ )
+				{
+					@MissionRow( weeklies[i], i, false )
+				}
+			</div>
+		</div>
+	};
+
+	// ══════════════════════════════════════════════
+	// MONTHLY — 912×162: band + 1 DENSE row (36 + 16 + 94 + 16)
+	// ══════════════════════════════════════════════
+
+	private RenderFragment RenderMonthly() => __builder =>
+	{
+		var monthly = MissionManager.Instance?.ActiveMonthlyChallenge;
+
+		<div class="qp-slab monthly">
+			<div class="qp-band">
+				<div class="qp-chipstamp"><span>MONTHLY</span></div>
+				@DarkChip( GetMonthlyTimer(), "" )
+			</div>
+			<div class="qp-list">
+				@if ( monthly != null )
+				{
+					@MissionRow( monthly, 0, false )
+				}
+				else
+				{
+					<span class="qp-empty">The next challenge arrives on the 1st.</span>
+				}
+			</div>
+		</div>
+	};
+
+	// ══════════════════════════════════════════════
+	// SIDE QUESTS — 912×378: band + 3 DENSE rows (always the 3 definitions)
+	// ══════════════════════════════════════════════
+
+	private RenderFragment RenderSide() => __builder =>
+	{
+		var defs = Ordered( SideQuestManager.Instance?.AllDefinitions ?? new List<SideQuest>(), d => d.Id, _sideOrder );
+
+		<div class="qp-slab side">
+			<div class="qp-band">
+				<div class="qp-chipstamp"><span>SIDE QUESTS</span></div>
+			</div>
+			<div class="qp-list">
+				@for ( int i = 0; i < defs.Count; i++ )
+				{
+					@SideRow( defs[i], i )
+				}
+			</div>
+		</div>
+	};
+
+	// ══════════════════════════════════════════════
+	// THE ROW — one recipe, two stops (ROOMY 114 / DENSE 94), 880 wide:
+	//   16 · tile 40 · 16 · text 436 · 16 · rewards 204 · 16 · action 120 · 16
+	//   text lane: name 17/21 · desc 13/16 (1 line roomy / 2 lines dense)
+	//              · bar 320×8 + 8 + counter 108 = 436
+	// ══════════════════════════════════════════════
+
+	private RenderFragment MissionRow( MissionState m, int idx, bool roomy ) => __builder =>
+	{
+		var def = MissionManager.Instance?.GetDefinition( m.MissionId );
+		if ( def == null ) return;
+
+		var dormant = IsDormant( def );
+		var done = m.Claimed;
+		var claimable = m.Completed && !m.Claimed && !dormant;
+		var rowClass = "qp-row " + (roomy ? "roomy" : "dense")
+			+ (idx % 2 == 1 ? " alt" : "")
+			+ (claimable ? " claimable" : "")
+			+ (done ? " done" : "")
+			+ (dormant ? " dormant" : "");
+		var desc = dormant ? "Ranked battles are not open yet." : def.Description;
+		var fillStyle = "width: " + FillPx( m.Progress, def.Target ) + "px;";
+		var counter = FormatCounter( m.Progress, def.Target );
+		var missionId = m.MissionId;
+
+		<div class="@rowClass">
+			<div class="row-accent"></div>
+			<div class="qp-tile">
+				<iconify class="qp-glyph" icon="@GetGlyph( def )" Size=@(22) Color="@Accent" />
+			</div>
+			<div class="qp-text">
+				<div class="qp-nameline">
+					<span class="qp-name">@def.Name</span>
+				</div>
+				<span class="qp-desc">@desc</span>
+				<div class="qp-barrow">
+					@if ( !dormant )
+					{
+						<div class="qp-bar"><div class="qp-fill" style="@fillStyle"></div></div>
+						<div class="qp-counter"><span class="qp-count">@counter</span></div>
+					}
+				</div>
+			</div>
+			<div class="qp-rewards">
+				@RewardLine( MissionCurrencyParts( def ) )
+				@if ( !string.IsNullOrEmpty( def.ItemReward ) )
+				{
+					@RewardLine( new List<(string, string)> { (ItemIcon( def.ItemReward ), ItemName( def.ItemReward ) + " ×1") } )
+				}
+			</div>
+			<div class="qp-action">
+				@if ( done )
+				{
+					@StatusChip( "DONE", "gold" )
+				}
+				else if ( dormant )
+				{
+					@StatusChip( "NOT OPEN YET", "dim" )
+				}
+				else if ( claimable )
+				{
+					<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" OnClick=@(() => ClaimMission( missionId )) />
+				}
+			</div>
+		</div>
+	};
+
+	private RenderFragment SideRow( SideQuest def, int idx ) => __builder =>
+	{
+		var mgr = SideQuestManager.Instance;
+		var state = mgr?.GetState( def.Id );
+		var doneOneShot = mgr?.IsCompletedOneShot( def.Id ) == true;
+		var claimable = state != null && state.Completed && !state.RewardClaimed;
+		var available = state == null && !doneOneShot && mgr?.IsAvailable( def.Id ) == true;
+		var locked = state == null && !doneOneShot && !available;
+
+		var rowClass = "qp-row dense"
+			+ (idx % 2 == 1 ? " alt" : "")
+			+ (claimable ? " claimable" : "")
+			+ (doneOneShot ? " done" : "")
+			+ (locked ? " locked" : "")
+			+ (available ? " avail" : "");
+
+		var zone = ZoneName( def.ZoneId );
+		var desc = locked ? "Clear " + zone + " once to unlock." : def.Description;
+		var progress = doneOneShot ? def.Target : (state?.Progress ?? 0);
+		var fillStyle = "width: " + FillPx( progress, def.Target ) + "px;";
+		var counter = FormatCounter( progress, def.Target );
+		var openNote = "OPEN · " + zone.ToUpperInvariant() + " CLEARED";
+		var byline = "· " + def.NpcName;
+		var questId = def.Id;
+
+		// A1 — item rewards on side rows (Contract Incense ×2 / Premium Incense ×1).
+		var itemParts = new List<(string Icon, string Text)>();
+		foreach ( var (itemId, qty) in def.ItemRewards ?? new() )
+			itemParts.Add( (ItemIcon( itemId ), ItemName( itemId ) + " ×" + qty) );
+
+		<div class="@rowClass">
+			<div class="row-accent"></div>
+			<div class="qp-tile">
+				<iconify class="qp-glyph" icon="lucide:scroll-text" Size=@(22) Color="@Accent" />
+			</div>
+			<div class="qp-text">
+				<div class="qp-nameline">
+					<span class="qp-name">@def.Title</span>
+					@if ( !string.IsNullOrEmpty( def.NpcName ) )
+					{
+						<span class="qp-by">@byline</span>
+					}
+				</div>
+				<span class="qp-desc">@desc</span>
+				<div class="qp-barrow">
+					@if ( available )
+					{
+						<span class="qp-note">@openNote</span>
+					}
+					else if ( !locked )
+					{
+						<div class="qp-bar"><div class="qp-fill" style="@fillStyle"></div></div>
+						<div class="qp-counter"><span class="qp-count">@counter</span></div>
+					}
+				</div>
+			</div>
+			<div class="qp-rewards">
+				@RewardLine( SideCurrencyParts( def ) )
+				@if ( itemParts.Count > 0 )
+				{
+					@RewardLine( itemParts )
+				}
+			</div>
+			<div class="qp-action">
+				@if ( doneOneShot )
+				{
+					@StatusChip( "DONE", "gold" )
+				}
+				else if ( locked )
+				{
+					@StatusChip( "LOCKED", "dim" )
+				}
+				else if ( claimable )
+				{
+					<BbButton Tier="primary" Size=@(44) Label="CLAIM" Class="qp-claim" OnClick=@(() => ClaimSideQuest( questId )) />
+				}
+				else if ( available )
+				{
+					<BbButton Tier="secondary" Size=@(44) Label="ACCEPT" Icon="lucide:check" IconTint="@Accent" Class="qp-accept" OnClick=@(() => AcceptSideQuest( questId )) />
+				}
+			</div>
+		</div>
+	};
+
+	// ══════════════════════════════════════════════
+	// DEV HOOK — dev_quests [ (none) | claim | bonus | streak | side | empty | reset | off ]
+	// The dev_bag pattern (InventoryPanel): close the phone, open the page,
+	// mutate live state through the managers' public setters / dev hooks.
+	//   dev_quests         → open
+	//   dev_quests claim   → first in-progress daily → Completed (CLAIM lights)
+	//   dev_quests bonus   → all 5 dailies Completed + Claimed (CLAIM BONUS lights)
+	//   dev_quests streak  → today's login reward un-claimed (CLAIM DAY n)
+	//   dev_quests side    → zone gate bypassed (ACCEPT) + first active side quest Completed
+	//   dev_quests empty   → everything claimed, both bonuses paid, login claimed
+	//   dev_quests reset   → re-roll all mission tiers + un-claim login (shoot again)
+	//   dev_quests off     → close
+	// Session-only mutations (MissionManager persists on real claims only).
+	// REMOVE after the redesign is user-approved.
+	// ══════════════════════════════════════════════
+
+	[ConCmd( "dev_quests" )]
+	public static void DevQuests( string arg = "" )
+	{
+		var gm = Beastborne.Core.GameManager.Instance;
+		if ( gm != null && !gm.IsInGame ) gm.StartGame();
+
+		var mm = MissionManager.Instance;
+		var drm = DailyRewardManager.Instance;
+		var sq = SideQuestManager.Instance;
+		arg = (arg ?? "").Trim().ToLowerInvariant();
+
+		switch ( arg )
+		{
+			case "off":
+				if ( IsVisible ) Close();
+				Log.Info( "[Quests] dev_quests off" );
+				return;
+
+			case "claim":
+			{
+				var target = mm?.ActiveDailyMissions.FirstOrDefault( m => !m.Completed && !m.MissionId.StartsWith( "arena_" ) );
+				if ( target == null ) { Log.Warning( "[Quests] dev_quests claim: no in-progress daily" ); break; }
+				var def = mm.GetDefinition( target.MissionId );
+				target.Progress = def?.Target ?? target.Progress;
+				target.Completed = true;
+				Log.Info( $"[Quests] dev_quests claim → {target.MissionId} completed" );
+				break;
+			}
+
+			case "bonus":
+				foreach ( var m in mm?.ActiveDailyMissions ?? new() ) { m.Completed = true; m.Claimed = true; }
+				Log.Info( "[Quests] dev_quests bonus → all dailies claimed (CLAIM BONUS lights)" );
+				break;
+
+			case "streak":
+				drm?.DevResetToday();
+				Log.Info( "[Quests] dev_quests streak → today's login reward un-claimed" );
+				break;
+
+			case "side":
+			{
+				if ( sq == null ) break;
+				sq.DevForceAvailable = true;
+				// First active quest that still HAS a definition; if none, accept the
+				// first available definition so a CLAIM row exists to shoot.
+				var first = sq.ActiveQuests.FirstOrDefault( q => !q.Completed && sq.GetDefinition( q.Id ) != null );
+				if ( first == null )
+				{
+					var avail = sq.AllDefinitions.FirstOrDefault( d => sq.IsAvailable( d.Id ) );
+					if ( avail != null && sq.Accept( avail.Id ) ) first = sq.GetState( avail.Id );
+				}
+				if ( first != null )
+				{
+					var def = sq.GetDefinition( first.Id );
+					first.Progress = def?.Target ?? first.Progress;
+					first.Completed = true;
+				}
+				Log.Info( $"[Quests] dev_quests side → gate bypassed; {(first != null ? first.Id + " completed" : "no quest to complete")}" );
+				break;
+			}
+
+			case "reset":
+				// Re-roll every mission tier (public Generate* verbs — they also clear
+				// the bonus flags), un-claim today's login, drop the zone bypass.
+				mm?.GenerateDailyMissions();
+				mm?.GenerateWeeklyMissions();
+				mm?.GenerateMonthlyChallenge();
+				drm?.DevResetToday();
+				if ( sq != null ) sq.DevForceAvailable = false;
+				Log.Info( "[Quests] dev_quests reset → missions re-rolled, login un-claimed" );
+				break;
+
+			case "empty":
+			{
+				foreach ( var m in mm?.ActiveDailyMissions ?? new() ) { m.Completed = true; m.Claimed = true; }
+				foreach ( var m in mm?.ActiveWeeklyMissions ?? new() ) { m.Completed = true; m.Claimed = true; }
+				if ( mm?.ActiveMonthlyChallenge is { } mc ) { mc.Completed = true; mc.Claimed = true; }
+				mm?.ClaimDailyBonus();
+				mm?.ClaimWeeklyBonus();
+				drm?.DevMarkTodayClaimed();
+				if ( sq != null )
+				{
+					sq.DevForceAvailable = false;
+					foreach ( var q in sq.ActiveQuests.ToList() ) { q.Completed = true; sq.Claim( q.Id ); }
+				}
+				Log.Info( "[Quests] dev_quests empty → everything claimed" );
+				break;
+			}
+
+			case "":
+				break;
+
+			default:
+				Log.Warning( "[Quests] dev_quests: (none) | claim | bonus | streak | side | empty | reset | off" );
+				return;
+		}
+
+		PhoneLauncher.Close();
+		if ( !IsVisible ) Show();
+		else CaptureOrder();
+		Log.Info( $"[Quests] dev_quests → '{arg}' (unclaimed badge = {GetTotalUnclaimedCount()})" );
+	}
 }
