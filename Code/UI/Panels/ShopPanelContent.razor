@@ -40,10 +40,14 @@
 	          GameHUD's 56px ::after PawPad reserve on .shop-panel-content was
 	          REMOVED — the case sits clear of the chip. Nothing pins the
 	          height: .sh-body is flex 1 1 0, both columns stretch)
-	  goods   1310 = grid 1298 (8 × 150 + 7 × 14) + 12 scrollbar lane
+	  goods   1330 = the .sh-grid scroller: pad-left 12 + row 1298 (8 × 150
+	          + 7 × 14) + pad-right 16 + NATIVE scrollbar lane 4
+	          (scrollbar-width 4px + scrollbar-gutter stable, 2026-09-11 —
+	          the engine consumes the 4 from the padding box, so the row
+	          keeps 1298 whether or not the store overflows)
 	  gap     48
 	  case    482 × 950 r22, pad 24 → 434 inner
-	  row     40 + 1310 + 48 + 482 + 40 = 1920 ✓
+	  row     30 + 1330 + 48 + 482 + 30 = 1920 ✓
 	  column  90 + 20 + 950 + 20 = 1080 ✓
 	Grid rhythm (flat wrap list, kicker rows + cards as DIRECT children):
 	  grid row-gap 8 · card 168 + margin-bottom 8 → card→card 16 ·
@@ -128,7 +132,7 @@
 	@* ====================== BODY — goods grid + the case ====================== *@
 	<div class="sh-body">
 
-		@* ---- GOODS — 1310: the 1298 grid + a 12px overlay-scrollbar lane ---- *@
+		@* ---- GOODS — 1330: 12 + the 1298 grid + 16 + the 4px NATIVE scrollbar lane ---- *@
 		@* MOTION: `store-<view>` render key — the goods column remounts on a store swap
 			   so shBodyIn replays (ONE fade; no per-card stagger — remount hazard). *@
 			<div class="@("sh-goods store-" + shopView)">
@@ -265,13 +269,10 @@
 					}
 				}
 			</div>
-
-			@* Overlay scrollbar — the roster .col-scrollbar recipe: read-only thumb
-			   written per tick (scrollbar-color/-width don't parse). Lives in the
-			   12px lane right of the 1298 grid. *@
-			<div @ref="sbTrackRef" class="sh-scrollbar">
-				<div @ref="sbThumbRef" class="sh-sb-thumb"></div>
-			</div>
+			@* Scrollbar: NATIVE (engine 26.09.08b) — the engine appends
+			   `scrollbar.vertical > .thumb` as the grid's LAST child while it
+			   overflows; the SCSS recipe on .sh-grid (scrollbar-width / -color /
+			   -gutter) is the whole opt-in. No markup, no tick. *@
 		</div>
 
 		@* ---- THE CASE — 482 × 950 r22, pad 24 → 434 inner ---- *@
@@ -486,7 +487,6 @@
 
 	// Refs
 	private Panel shopGridRef;
-	private Panel sbTrackRef, sbThumbRef;
 	private Panel shopRingRef;
 	// Case-zone ring hosts — one of the two razor branches mounts each.
 	private Panel qtyRowRef;
@@ -723,7 +723,6 @@
 		UpdateScrollFollow();
 		UpdateShopRing();
 		ApplyShopRingWave();
-		UpdateScrollbar();
 	}
 
 	// The ring's host this tick, or null to hide. Mouse mode / GRID zone: the
@@ -878,49 +877,12 @@
 		shopRingRef.Style.Transform = t;
 	}
 
-	// ============================================================
-	// OVERLAY SCROLLBAR — the roster UpdateScrollbar recipe (read-only
-	// thumb, imperative Style writes, only-on-change caches; caches reset
-	// when a template swap remounts the track).
-	// ============================================================
-	private int _sbTop = int.MinValue, _sbH = int.MinValue, _sbTrackH = int.MinValue;
-	private Panel _sbSeen;
-
-	private void UpdateScrollbar()
-	{
-		if ( !ReferenceEquals( _sbSeen, sbThumbRef ) )
-		{ _sbSeen = sbThumbRef; _sbTop = _sbH = _sbTrackH = int.MinValue; }
-
-		var scroll = shopGridRef;
-		var track = sbTrackRef;
-		var thumb = sbThumbRef;
-		if ( track == null || thumb == null ) return;
-
-		float maxOff = scroll?.ScrollSize.y ?? 0f;
-		float viewH = scroll?.Box.Rect.Height ?? 0f;
-		if ( scroll == null || maxOff < 2f || viewH <= 0f )
-		{
-			track.SetClass( "on", false ); // content fits — hide entirely
-			return;
-		}
-
-		float sc = ScaleFromScreen;
-		if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
-
-		// Track top 8 (SCSS) + 8 bottom breathing = 16 trimmed.
-		int trackH = (int)(viewH * sc) - 16;
-		if ( trackH < 40 ) { track.SetClass( "on", false ); return; }
-
-		float contentH = viewH + maxOff;
-		int h = Math.Max( 24, (int)(trackH * (viewH / contentH)) );
-		float t01 = Math.Clamp( scroll.ScrollOffset.y / maxOff, 0f, 1f );
-		int top = (int)((trackH - h) * t01);
-
-		if ( trackH != _sbTrackH ) { _sbTrackH = trackH; track.Style.Height = Length.Pixels( trackH ); }
-		if ( h != _sbH ) { _sbH = h; thumb.Style.Height = Length.Pixels( h ); }
-		if ( top != _sbTop ) { _sbTop = top; thumb.Style.Top = Length.Pixels( top ); }
-		track.SetClass( "on", true );
-	}
+	// (2026-09-11: the overlay scrollbar tick — UpdateScrollbar, the _sb*
+	// caches, sbTrackRef/sbThumbRef — is GONE. The native bar is an engine
+	// child of .sh-grid that follows every ScrollOffset write above: the kb
+	// glide in UpdateScrollFollow and the wheel path both move it for free.
+	// Every Children walk on this page filters on `.shop-card`, so the bar
+	// being the grid's last child never enters the cursor graph.)
 
 	// ============================================================
 	// KEYBOARD — called by GameHUD.TickCurrentPanel() (already gated on
@@ -1896,10 +1858,12 @@
 		if ( string.IsNullOrEmpty( arg ) || arg == "gold" ) { SwitchShopView( "gold" ); return; }
 		if ( arg == "boss" ) { SwitchShopView( "boss" ); return; }
 
+		// Selecting by id arms the house scroll-follow like a real selection
+		// would (2026-09-11: proves the native thumb tracks the kb glide).
 		var gold = GetGoldItems().FirstOrDefault( i => i.Id == arg );
-		if ( gold != null ) { SwitchShopView( "gold" ); selectedItem = gold; purchaseQty = 1; detailVersion++; return; }
+		if ( gold != null ) { SwitchShopView( "gold" ); selectedItem = gold; purchaseQty = 1; detailVersion++; RequestScrollFollow(); return; }
 		var boss = consumables.FirstOrDefault( c => c.Id == arg );
-		if ( boss != null ) { SwitchShopView( "boss" ); selectedConsumable = boss; purchaseQty = 1; detailVersion++; return; }
+		if ( boss != null ) { SwitchShopView( "boss" ); selectedConsumable = boss; purchaseQty = 1; detailVersion++; RequestScrollFollow(); return; }
 		Log.Warning( $"[Shop] dev_shop: no good with id '{arg}'" );
 	}
 

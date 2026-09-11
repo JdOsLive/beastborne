@@ -42,7 +42,11 @@
 //            chip; 1080 − 90 − 20 − 20 = 950. NOTHING pins this height:
 //            .sh-body is flex 1 1 0 and both columns stretch, so the
 //            goods viewport + case grew 894 → 950 with no rule change.)
-//   goods    1330 = 12 inset + grid 1298 (8 × 150 + 7 × 14) + 20 scrollbar lane
+//   goods    1330 = .sh-grid: pad-left 12 + row 1298 (8 × 150 + 7 × 14)
+//            + pad-right 16 + NATIVE scrollbar lane 4 (2026-09-11:
+//            scrollbar-width 4px + scrollbar-gutter stable — the engine
+//            consumes the 4 out of the padding box and reserves it even
+//            when the store fits, so the 1298 row never jumps)
 //   gap      48  (the case's margin-left)
 //   case     482 × 950 r22, pad 24 → 434 inner
 //   row      30 + 1330 + 48 + 482 + 30                = 1920 ✓
@@ -77,7 +81,7 @@
 // - pointer-events: all / none ONLY, always via a CLASS ON THE CHILD
 //   (`> *` and bare element selectors fail to land in-engine).
 // - Every absolute carries explicit top/left + width/height (the
-//   scrollbar track height + thumb are written imperatively).
+//   scrollbar is the ENGINE's — native, no absolute of ours).
 // - line-height always px; empty spacer/line divs carry explicit size.
 // - No `width: 100%` inside a padded parent — explicit px everywhere.
 // - Wrap grid pins width AND max-width (1298); rows inside the scroll
@@ -131,7 +135,7 @@ ShopPanelContent {
 //   shOwnChip  0.20s  0% gold fill → rest            .sat-qty.owned.pop (bought card)
 //   shOwnPop   0.20s  0% dark ink → cream            .sat-qty.owned.pop span
 //
-// State changes (hover / press / hold / ring / scrollbar) are
+// State changes (hover / press / hold / ring) are
 // `transition:` (both directions, re-fire on every class toggle —
 // DOC-4 #4): 0.14s ease-out colour steps, the ring's 0.27s glide.
 // ═══════════════════════════════════════════════════════════════
@@ -478,18 +482,19 @@ ShopPanelContent {
 	align-items: stretch;
 	flex: 1 1 0;
 	min-height: 0;
-	padding: 20px 30px 20px 30px; // 2026-09-02: side pads 40 → 30 to fund the grid's 12px left inset + 20px right lane (row: 30 + 1330 + 48 + 482 + 30 = 1920)
+	padding: 20px 30px 20px 30px; // 2026-09-02: side pads 40 → 30 to fund the grid's 12px left inset + right lane (row: 30 + 1330 + 48 + 482 + 30 = 1920)
 	overflow: hidden;
 }
 
-// GOODS column — the scroll host (column, overflow hidden) + the 12px
-// lane on the right where the overlay scrollbar lives.
+// GOODS column — the scroll host (column, overflow hidden). The grid
+// below is its only child and carries the native scrollbar lane itself.
 .sh-goods {
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	// 2026-09-02: 1330 = grid 1310 (12 inset + 1298 row) + 20 right lane (user: "too
-	// close to the scroll bar" at the old 12). Track stays at right 4 → 11px clear of the cards.
+	// 2026-09-11: 1330 = the .sh-grid scroller (12 + 1298 + 16 + 4 native lane) —
+	// the old 20px overlay-track lane is folded INTO the grid's padding-right 16
+	// + the engine's 4px gutter, so the column width and the row sum are unchanged.
 	width: 1330px;
 	flex: 0 0 1330px;
 	min-width: 1330px;
@@ -503,6 +508,13 @@ ShopPanelContent {
 // The scroll child — the roster-grid recipe verbatim: flat wrap list,
 // width AND max-width pinned to the 8-card row (8 × 150 + 7 × 14 = 1298),
 // items as DIRECT children. Row gap 8 (see the rhythm table above).
+//
+// PADDING-BOX math (2026-09-11, native scrollbar):
+//   declared 1330 = pad-left 12 + row 1298 + pad-right 16 + native lane 4
+//   The engine's `scrollbar-gutter: stable` consumes the 4px lane out of
+//   the declared box (probe: 292 → 288 at 4px) and reserves it while the
+//   BOSS store fits (880 < 950), so the row is 1298 in both stores and the
+//   card→bar clearance is the 16 pad (the old track sat 11 off the cards).
 .sh-grid {
 	flex: 1 1 0;
 	min-height: 0;
@@ -510,48 +522,35 @@ ShopPanelContent {
 	overflow-x: hidden;
 	// 2026-09-02 (user: "cutting off the little headers on the left"): the skewed
 	// kicker chips and the ring's 10px reach were clipped at x=0 of this viewport.
-	// 12px left inset; padding-box → declared 1310 keeps the 1298 inner row.
-	width: 1310px;
-	max-width: 1310px;
+	// 12px left inset; padding-box → declared 1330 keeps the 1298 inner row.
+	width: 1330px;
+	max-width: 1330px;
 	padding-left: 12px;
+	padding-right: 16px;
 	display: flex;
 	flex-direction: row;
 	flex-wrap: wrap;
 	align-content: flex-start;
 	align-items: flex-start;
 	gap: 8px 14px;
+
+	// NATIVE SCROLLBAR — the house recipe (learnings 2026-09-10; opt-in via
+	// scrollbar-width: unset = 0px = no bar). 4px lane → 2px thumb, engine-
+	// inline inset. Thumb = the page ACCENT (amber — violet is the ring's
+	// alone, as the old overlay thumb was); track = the house .12 cream.
+	// Both land as INLINE background-color on the engine's bar/thumb.
+	scrollbar-width: 4px;
+	scrollbar-color: rgba(224, 160, 48, 0.55) rgba(244, 241, 234, 0.12);
+	scrollbar-gutter: stable;
 }
 
-// Overlay scrollbar — the roster .col-scrollbar recipe (read-only thumb,
-// imperative height/top; scrollbar-color/-width don't parse). Track in
-// the 12px lane: right 4 → x 1301..1306 of the 1310 column; top 8 + 8
-// bottom breathing = the 16 trimmed in UpdateScrollbar.
-.sh-scrollbar {
-	position: absolute;
-	right: 4px;
-	top: 8px;
-	width: 5px;
-	height: 200px; // written imperatively (viewport-derived)
-	background-color: rgba(244, 241, 234, 0.05); // cream, not white (census)
-	border-radius: 3px;
-	opacity: 0;
-	transition: opacity 0.2s ease-out;
-	pointer-events: none;
-
-	&.on { opacity: 1; }
-}
-
-.sh-sb-thumb {
-	position: absolute;
-	top: 0px;
-	left: 0px;
-	width: 5px;
-	height: 40px; // top + height overwritten per tick
-	background-color: rgba(224, 160, 48, 0.45); // amber — violet is the ring's alone
-	border-radius: 3px;
-	// (The ruling's .8 step is the thumb's DRAG state; this thumb is
-	// read-only — imperative, no hover — so .45 is its only state.)
-}
+// The engine's `/inline:scrollbar` sheet rests the bar at opacity .5 and
+// the thumb at .7 (→ 1 on hover/drag) — a set colour would read at 35%.
+// Flat selectors (verified matched + winning in the probe, cell G1).
+// LANE: motion — the engine's own 0.15s opacity transitions stay; a
+// hover/drag step, if wanted, goes here (opacity only — colour is inline).
+.sh-grid scrollbar { opacity: 1; }
+.sh-grid scrollbar > .thumb { opacity: 1; border-radius: 2px; }
 
 // ─── Section kicker row — 1298 × 24, a DIRECT child of the wrap list.
 // Pinned width + explicit height in ONE self-contained rule (rows in a
