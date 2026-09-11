@@ -535,6 +535,26 @@
         // reverse bloom lands (the razor's if/else) — a mount keyframe fades it
         // in under the ring's own 0.2s fade instead of popping.
         animation: plFadeIn 0.2s ease-out;
+        // LANE: motion (2026-09-11 zoom-from-tile): the grid SINKS under the growing
+        // rect — opacity to 0 (0.18s) while every tile drops 6px (the .pl-app margins
+        // below; never a transform, the grid hosts flex children). The reverse
+        // re-mounts it PRIMED with .sink for two frames and it rises the same way
+        // (plFadeIn runs alongside — both end at 1, DOC-4 #12 holds).
+        transition: opacity 0.18s ease-in;
+
+        &.sink {
+            opacity: 0;
+        }
+
+        // The GHOST is absolute (live 2026-09-11: as a second in-flow child it stacked
+        // under the 618px app view and painted over the chin): pinned at its measured
+        // rest top (inline from the razor) + the content origin, margins zeroed so
+        // the offset is the top alone. Sinks in place; unmounts at +0.22s.
+        &.ghost {
+            position: absolute;
+            left: 13px;
+            margin-top: 0px;
+        }
     }
 
     .pl-row {
@@ -563,12 +583,22 @@
         padding-top: 8px;
         flex: 0 0 160px;
         cursor: pointer;
+        // zoom-from-tile sink (2026-09-11): +6 top / −6 bottom = the tile drops 6px
+        // INSIDE its row with zero reflow (row height, dock position unchanged).
+        margin-top: 0px;
+        margin-bottom: 0px;
+        transition: margin-top 0.18s cubic-bezier(0.22, 1, 0.36, 1), margin-bottom 0.18s cubic-bezier(0.22, 1, 0.36, 1);
         pointer-events: all; // NOT `auto` — s&box parses only none/all; `auto` silently reads back as None (probe-proven 2026-08-29)
 
         // Hover-flicker rule — every child passes the cursor through.
         > * {
             pointer-events: none;
         }
+    }
+
+    .pl-grid.sink .pl-app {
+        margin-top: 6px;
+        margin-bottom: -6px;
     }
 
     // Icon anchor — holds the icon square and the badge. HARD-centered:
@@ -840,6 +870,24 @@
         margin-top: 8px;
         margin-bottom: 12px;
         animation: plFadeIn 0.2s ease-out; // mounts with the grid (see .pl-grid)
+        // Sinks / rises with the grid (zoom-from-tile 2026-09-11). The dock is the one
+        // grid element the rect's 512×618 landing box does NOT cover (it sits at
+        // y 625–673, the box ends at 666 — live: dock glyphs peeked under the rect's
+        // bottom edge for ~150ms), so it sinks faster (0.12s ease-out) than the
+        // tiles the rect hides; the rise takes the grid's 0.18s (DOC-4 #15).
+        transition: opacity 0.18s ease-in;
+
+        &.sink {
+            opacity: 0;
+            transition: opacity 0.12s ease-out;
+        }
+
+        &.ghost {
+            position: absolute; // pinned like the grid ghost (inline top from the razor)
+            left: 13px;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
     }
 
     .pl-dock-app {
@@ -1015,37 +1063,84 @@
     border-radius: 30px;
     overflow: hidden;
     pointer-events: none;
+    // zoom-from-tile (2026-09-11): paint order among siblings = SiblingIndex + ZIndex
+    // (engine source, learnings 2026-08-29) — 8 lifts the clip over the grid + dock
+    // ghost (indices 6-8 while both branches are mounted) so the rect grows OVER the
+    // sinking tiles; .pl-appview wears 10 so the app lands over the rect. No fill
+    // here, pointer-transparent — the status row (index 5) is never overlapped.
+    z-index: 8;
 }
 
-/* The disc: explicit-px class-toggle TRANSITION (no transform — device law).
-   Rest = a 0×0 point at the tile centre (left/top inline from the razor);
-   .grow = a 1440px disc whose inline left/top step back by the radius (720) so
-   it stays centred on the tile — width/height/left/top/radius all glide on the
-   signature ease (260ms out; 240ms back when .grow drops). The radius rides the
-   same transition so it is always half the box (a true circle at every frame).
-   Opacity: .fade dissolves the full disc onto the landed tint (180ms); LEAVING
-   .fade (the reverse bloom's first beat) rides the .grow rule's 120ms so the
-   app UI dissolves INTO the accent cover before the collapse. ── */
+/* THE ZOOM RECT (USER RULING 2026-09-10 "zoom from tile"; LANE: motion 2026-09-11) —
+   the disc element, now a morphing rounded rect. left/top/width/height/radius/fill
+   are ALL inline from the razor (value-swapped on a persisted element — the rules
+   here only carry the transitions): rest = the tapped tile's painted icon rect
+   (r23 accent + its glyph), .grow = the app view's 512×618 box (r30), the fill
+   washing accent → app surface on the +100ms inline swap. Each STATE rule carries
+   its own transition (DOC-4 #15 — the destination's runs):
+     base        = leaving .grow (the reverse): 0.22s back into the tile, fill 0.20s
+     .grow       = the launch: 0.26s glide; opacity 0s so the rect APPEARS exactly
+                   over its tile (a fade-in would dip the tile's read against the
+                   sinking grid) — the reverse's re-solidify is invisible anyway
+                   (same colour as the tint)
+     .grow.fade  = the landing dissolve (0.18s)
+     .grow.hold  = dev_bloom hold — everything snaps to the interpolated inline value
+     .parked     = rest between launches: invisible + snap, so the next seed snaps
+   SNAP = 0.02s, NEVER 0s (live 2026-09-11, dev_bloom hold mid-glide): a 0s transition
+   that interrupts an IN-FLIGHT transition on the same property leaves the value
+   NaN — the rect vanished until the next value change (a 0s snap from a settled
+   state is fine, which is why the .closed rules worked). 0.02s is one frame and
+   restarts cleanly from the interpolated value (the radio progress `.snap` idiom).
+   `dev_bloom style circle` drives the same element as the 2026-08-30 disc (0×0 point
+   → 1440px, r720, accent only, glyph hidden). No transform anywhere (device law). ── */
 .phone-root .pl-bloom-circle {
     position: absolute;
-    width: 0px;
-    height: 0px;
-    border-radius: 0px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     opacity: 1;
     pointer-events: none;
-    transition: width 0.24s cubic-bezier(0.22, 1, 0.36, 1), height 0.24s cubic-bezier(0.22, 1, 0.36, 1), left 0.24s cubic-bezier(0.22, 1, 0.36, 1), top 0.24s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.12s ease-out;
+    transition: width 0.22s cubic-bezier(0.22, 1, 0.36, 1), height 0.22s cubic-bezier(0.22, 1, 0.36, 1), left 0.22s cubic-bezier(0.22, 1, 0.36, 1), top 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.22s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease-out, opacity 0.12s ease-out;
 
     &.grow {
-        width: 1440px;
-        height: 1440px;
-        border-radius: 720px;
-        transition: width 0.26s cubic-bezier(0.22, 1, 0.36, 1), height 0.26s cubic-bezier(0.22, 1, 0.36, 1), left 0.26s cubic-bezier(0.22, 1, 0.36, 1), top 0.26s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.12s ease-out;
+        transition: width 0.26s cubic-bezier(0.22, 1, 0.36, 1), height 0.26s cubic-bezier(0.22, 1, 0.36, 1), left 0.26s cubic-bezier(0.22, 1, 0.36, 1), top 0.26s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.26s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease-out, opacity 0.02s linear;
     }
 
     &.grow.fade {
         opacity: 0;
-        transition: width 0.26s cubic-bezier(0.22, 1, 0.36, 1), height 0.26s cubic-bezier(0.22, 1, 0.36, 1), left 0.26s cubic-bezier(0.22, 1, 0.36, 1), top 0.26s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease-out;
+        transition: width 0.26s cubic-bezier(0.22, 1, 0.36, 1), height 0.26s cubic-bezier(0.22, 1, 0.36, 1), left 0.26s cubic-bezier(0.22, 1, 0.36, 1), top 0.26s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.26s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease-out, opacity 0.18s ease-out;
     }
+
+    &.grow.hold {
+        transition: width 0.02s linear, height 0.02s linear, left 0.02s linear, top 0.02s linear, border-radius 0.02s linear, background-color 0.02s linear, opacity 0.02s linear;
+    }
+
+    &.parked {
+        opacity: 0;
+        transition: width 0.02s linear, height 0.02s linear, left 0.02s linear, top 0.02s linear, border-radius 0.02s linear, background-color 0.02s linear, opacity 0.02s linear;
+    }
+}
+
+/* THE RIDING GLYPH — the tapped tile's own static WebP at the tile's 88px glyph box,
+   centred in the growing rect; .glyph-off fades it from +100ms (0.12s) and drops for
+   the reverse's landing so the rect parks over an identical tile. display:none in
+   the circle style (the circle grows from a 0×0 point). ── */
+.phone-root .pl-bloom-glyph {
+    width: 88px;
+    height: 88px;
+    flex: 0 0 auto;
+    background-repeat: no-repeat;
+    opacity: 1;
+    pointer-events: none;
+    transition: opacity 0.12s ease-out;
+}
+
+.phone-root .pl-bloom-circle.glyph-off .pl-bloom-glyph {
+    opacity: 0;
+}
+
+.phone-root .pl-bloom-circle.circle .pl-bloom-glyph {
+    display: none;
 }
 
 /* ── CLOSED SNAP (2026-09-11, open-glitch fix — dev_phonediag-proven). While
@@ -1057,7 +1152,15 @@
    `.grow.fade` (4 classes) still outranks this during the slide-out, where the
    disc is static anyway. The house zero-duration idiom (MainMenu `opacity 0s`). ── */
 .phone-root.closed .pl-bloom-circle {
-    transition: width 0s linear, height 0s linear, left 0s linear, top 0s linear, border-radius 0s linear, opacity 0s linear;
+    // 0.02s, not 0s (zoom-from-tile 2026-09-11): a 0s snap interrupting an in-flight
+    // transition NaNs the value — a phone closed mid-morph would re-open with an
+    // invisible rect if the next seed happened to repeat the same tile. Off-screen
+    // anyway; one frame is as instant as the park needs.
+    transition: width 0.02s linear, height 0.02s linear, left 0.02s linear, top 0.02s linear, border-radius 0.02s linear, background-color 0.02s linear, opacity 0.02s linear;
+}
+
+.phone-root.closed .pl-bloom-glyph {
+    transition: opacity 0.02s linear;
 }
 
 .phone-root.closed .pl-app-tint {
@@ -1091,6 +1194,7 @@
     display: flex;
     flex-direction: column;
     position: relative; // (the rev-7.1 overlay scrollbar track it anchored is retired 2026-09-11 — native bars live in the scrollers)
+    z-index: 10; // zoom-from-tile (2026-09-11): over the bloom clip (z 8) — the app lands OVER the rect; paint order = SiblingIndex + ZIndex
     width: 512px;
     height: 618px;
     flex: 0 0 auto;

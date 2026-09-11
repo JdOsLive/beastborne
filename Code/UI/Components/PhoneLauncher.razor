@@ -246,8 +246,24 @@
                      hidden (flex-child collapse law). DOM order = paint order: above
                      the tint/wash/ghost, under the status row + the app view. left/top
                      ALWAYS emitted + value-swapped (never-cleared inline-style law). -->
+                <!-- LANE: motion (2026-09-11, USER RULING "zoom from tile could be cool"): the
+                     disc is now a morphing ROUNDED RECT. Rest = the tapped tile's own icon rect
+                     as PAINTED (Box.Rect is pre-transform, so the focus pop's lift/scale are
+                     folded in - the ring's recipe); .grow = the app view's 512x618 box. All
+                     five geometry props are INLINE (value-swapped on a persisted element, so
+                     the class-rule transitions glide them, exactly as left/top always did);
+                     the fill washes tile ACCENT -> app surface (DiscFill, +100ms); the tile's
+                     glyph rides inside for the first ~100ms (.glyph-off); .parked = opacity 0
+                     with 0s transitions between launches (the rest rect snaps under it, so a
+                     replay starts ON its tile); .hold = the dev_bloom freeze. `dev_bloom style
+                     circle` restores the 1440px disc on the same element + class machinery.
+                     z ladder (paint order = SiblingIndex + ZIndex, engine source): the clip
+                     carries z 8 so the rect grows OVER the sinking home grid (a ghost mount for
+                     0.22s), the app view z 10 so it lands OVER the rect. -->
                 <div class="pl-bloom-clip">
-                    <div class="pl-bloom-circle @(_bloomCircleGrow ? "grow" : "") @(_bloomCircleFade ? "fade" : "")" style="left: @(DiscLeft())px; top: @(DiscTop())px; background-color: @BloomAccent();" @ref="_discRef"></div>
+                    <div class="pl-bloom-circle @DiscClasses()" style="left: @(DiscL())px; top: @(DiscT())px; width: @(DiscW())px; height: @(DiscH())px; border-radius: @(DiscR())px; background-color: @DiscFill();" @ref="_discRef">
+                        <img class="pl-bloom-glyph" src="@DiscGlyphSrc()" />
+                    </div>
                 </div>
                 <!-- v7 "3a Graphite" status row (design handoff spec): clock
                      left; right group = GOLD signal bars · battery · divider
@@ -260,7 +276,7 @@
                      chrome — a 28px app-accent circle with a cream ‹ FIRST in
                      the row (hit-back rides with it; Q stays); the right group
                      shrinks 438 → 406 and the row's mb 20 → 12. -->
-                <div class="pl-top @(AppChrome ? "app" : "")">
+                <div class="pl-top @(AppChrome ? "app" : "")" @ref="_topRef">
                     <span class="pl-clock">@ClockText</span>
                     <div class="pl-right @(AppChrome ? "app" : "")">
                         <!-- 2026-08-30 (user): the fake signal bars + battery are gone - the
@@ -790,9 +806,14 @@
 
                     </div>
                 }
-                else
+                @* LANE: motion (2026-09-11 zoom-from-tile): the home grid stays mounted as a
+                   GHOST for the rect's first 0.22s (_gridGhost) wearing .sink - opacity to 0
+                   and every tile 6px down (margins, never a transform: the grid hosts flex
+                   children) UNDER the growing rect; the reverse re-mounts it PRIMED with
+                   .sink for two frames, then it rises the same way. *@
+                @if ( _appView == null || _gridGhost )
                 {
-                <div class="pl-grid" @ref="_gridRef">
+                <div class="pl-grid @(_gridGhost ? "ghost" : "") @(_gridSink ? "sink" : "")" style="top: @(_gridGhost ? _gridGhostTop : 0)px;" @ref="_gridRef">
                     @for ( int r = 0; r < 4; r++ )
                     {
                         <div class="pl-row">
@@ -872,7 +893,7 @@
                      the ring + glyphs carry it. Indices 12-15 in the one
                      cursor space. justify-content: center is LEGAL here:
                      every child is an explicit 56px box (doctrine rule 2). -->
-                <div class="pl-dock" @ref="_dockRef">
+                <div class="pl-dock @(_gridGhost ? "ghost" : "") @(_gridSink ? "sink" : "")" style="top: @(_gridGhost ? _dockGhostTop : 0)px;" @ref="_dockRef">
                     @for ( int d = 0; d < Dock.Length; d++ )
                     {
                         var di = GridCount + d;
@@ -1127,6 +1148,7 @@
     private int _openDiagFrames;
     private int _openDiagFrame;
     private Panel _tintRef, _washRef, _ghostRef, _discRef;
+    private Panel _topRef; // the status row — its height places the zoom rect's landing box
 
     [ConCmd( "dev_phonediag" )]
     public static void DevPhoneDiag( string arg = "open" )
@@ -1145,6 +1167,7 @@
             var me = Instance;
             if ( me == null ) { Log.Info( "[phonediag] state: not mounted" ); return; }
             Log.Info( $"[phonediag] state vis={IsVisible} app={me._appView ?? "-"} bloomApp={me._bloomApp ?? "-"} hop={me._hopTo ?? "-"} hopAt={me._hopAt:F2} routeAt={me._routeAt:F2} pendingRoute={me._pendingRoute} pendingPopup={me._pendingPopup ?? "-"} swipeNext={me._swipeNextFrame} closing={me._appClosingUntil:F2} unmountAt={me._appUnmountAt:F2} kb={me._kb} appKb={me._appKb ?? "-"} fx={me._fx} chatFocus={ChatPanel.IsChatFocused} t={Time.Now:F2}" );
+            Log.Info( $"[phonediag] zoom style={_bloomStyle} parked={me._bloomParked} grow={me._bloomCircleGrow} fade={me._bloomCircleFade} wash={me._bloomWash} glyphOff={me._bloomGlyphOff} hold={me._bloomHoldPct} gridGhost={me._gridGhost} sink={me._gridSink} prime={me._gridPrime} uiOn={me._appUiOn} rest=({me._bloomRestX},{me._bloomRestY} {me._bloomRestW}x{me._bloomRestH} r{me._bloomRestR:F0}) tgt=({me._bloomTgtX},{me._bloomTgtY} {me._bloomTgtW}x{me._bloomTgtH}) inline=({me.DiscL()},{me.DiscT()} {me.DiscW()}x{me.DiscH()} r{me.DiscR()} {me.DiscFill()}) classes=[{me.DiscClasses()}]" );
             return;
         }
         _openDiagArmed = true;
@@ -1191,62 +1214,119 @@
         if ( _openDiagFrames == 0 ) _openDiagFrame = 0;
     }
 
-    // ── DEV: bloom-disc inspector (the dev_fusefx pattern) ───────────────
-    // dev_bloom hold   — freeze the launch bloom at the FULL opaque disc (opens
-    //                    Chat if no app is up) so a screenshot can inspect the
-    //                    clip host + the disc geometry at leisure
-    // dev_bloom play   — replay the launch bloom on the current app (last seed)
-    // dev_bloom off    — release a hold (the disc fade proceeds)
-    // dev_bloom close  — run the reverse bloom (CloseApp)
+    // ── DEV: bloom inspector (the dev_fusefx pattern; zoom-from-tile 2026-09-11) ──
+    // dev_bloom hold [pct]   — freeze the launch morph at pct% GEOMETRIC progress
+    //                          (default 40; 100 = the old full opaque cover). Opens
+    //                          Chat if no app is up. Below 100 the app view stays
+    //                          hidden and the layers landed, so the rect reads alone
+    //                          (its fill / glyph follow the TIME that progress maps to).
+    // dev_bloom off          — release a hold (the rect finishes growing, the view lands)
+    // dev_bloom play         — replay the launch on the current app from the last seed
+    // dev_bloom close        — run the reverse (CloseApp)
+    // dev_bloom tile [idx|id] — launch a widget app THROUGH ITS TILE (the grid tap path:
+    //                          rect seeded from the tile, grid sinks) — 8 chat · 9 radio ·
+    //                          10 effects · 11 alerts; needs the grid up
+    // dev_bloom style [circle|rect] — flip the morph shape live (no arg toggles);
+    //                          rect is the ruling, circle the 2026-08-30 disc
     [ConCmd( "dev_bloom" )]
-    public static void DevBloom( string mode = "hold" )
+    public static void DevBloom( string mode = "hold", string arg = null )
     {
         var me = Instance;
         if ( me == null ) { Log.Warning( "[dev_bloom] PhoneLauncher not mounted." ); return; }
         switch ( mode )
         {
             case "hold":
+            {
+                int pct = 40;
+                if ( arg != null && int.TryParse( arg, out var p ) ) pct = Math.Clamp( p, 0, 100 );
                 if ( me._appView == null || !IsVisible ) { DevOpenApp( "chat" ); me = Instance; if ( me == null ) return; }
                 me._devBloomHold = true;
-                if ( me._bloomArmFrames <= 0 && me._appView != null )
-                {
-                    // Already landed: re-raise the disc and hold it there.
-                    me._bloomCircleGrow = true;
-                    me._bloomCircleFade = false;
-                    me._bloomCircleFadeAt = -1f;
-                    me._appUiOn = true;
-                    me._appUiAt = -1f;
-                }
+                me._bloomHoldPct = pct;
+                me._bloomArmFrames = 0;
+                me._bloomLive = true;
+                me._bloomParked = false;
+                me._bloomCircleGrow = true;
+                me._bloomCircleFade = false;
+                me._bloomCircleFadeAt = -1f;
+                me._bloomWashAt = -1f;
+                me._bloomWash = false;     // the freeze reads by TIME (DiscFill / DiscClasses) — not by whatever the stamps had reached
+                me._bloomGlyphOff = false;
+                me._appUiAt = -1f;
+                me._appUiOn = pct >= 100; // the full cover shows the view over it (the old hold); a mid-morph freeze shows the rect alone
+                me._gridGhost = false;
+                me._gridSink = false;
+                me._gridGhostUntil = -1f;
                 me.StateHasChanged();
-                Log.Info( "[dev_bloom] HOLD — disc full + opaque (dev_bloom off releases it)." );
+                Log.Info( $"[dev_bloom] HOLD at {pct}% ({_bloomStyle}: {me.DiscL()},{me.DiscT()} {me.DiscW()}x{me.DiscH()} r{me.DiscR()} fill {me.DiscFill()}) — dev_bloom off releases it." );
                 break;
+            }
             case "play":
-                if ( me._appView == null || !IsVisible ) { DevOpenApp( "chat" ); Log.Info( "[dev_bloom] PLAY — opened Chat (launch bloom from the screen centre)." ); return; }
+                if ( me._appView == null || !IsVisible ) { DevOpenApp( "chat" ); Log.Info( $"[dev_bloom] PLAY — opened Chat ({_bloomStyle} morph from the screen centre)." ); return; }
                 me._devBloomHold = false;
+                me._bloomHoldPct = -1;
                 me._bloomLive = false;
                 me._appUiOn = false;
                 me._appUiAt = -1f;
                 me._bloomCircleGrow = false;
                 me._bloomCircleFade = false;
                 me._bloomCircleFadeAt = -1f;
+                me._bloomParked = true;      // snaps the rect back onto its seed (0s) for the two arm frames
+                me._bloomWash = false;
+                me._bloomGlyphOff = false;
+                me._bloomWashAt = -1f;
+                me._bloomGlyphOnAt = -1f;
+                me._gridGhost = false;       // no grid to sink on a replay (the view is up)
+                me._gridSink = false;
+                me._gridGhostUntil = -1f;
                 me._appClosingUntil = -1f;
                 me._appUnmountAt = -1f;
                 me._bloomArmFrames = 2;
                 me.StateHasChanged();
-                Log.Info( "[dev_bloom] PLAY — replaying the launch bloom from the last seed." );
+                Log.Info( $"[dev_bloom] PLAY — replaying the {_bloomStyle} launch from the last seed ({me._bloomRestX},{me._bloomRestY} {me._bloomRestW}x{me._bloomRestH} -> {me._bloomTgtX},{me._bloomTgtY} {me._bloomTgtW}x{me._bloomTgtH})." );
                 break;
             case "off":
                 me._devBloomHold = false;
-                if ( me._bloomCircleGrow && !me._bloomCircleFade ) me._bloomCircleFadeAt = Time.Now;
+                if ( me._bloomHoldPct >= 0 )
+                {
+                    // Released mid-morph: the .hold 0s rule drops, the .grow glide finishes the
+                    // rect (0.26s), then the ruling's beats from here.
+                    me._bloomHoldPct = -1;
+                    me._bloomWashAt = Time.Now + 0.05f;
+                    me._appUiAt = Time.Now + 0.18f;
+                    me._bloomCircleFadeAt = Time.Now + 0.30f;
+                    me.StateHasChanged();
+                }
+                else if ( me._bloomCircleGrow && !me._bloomCircleFade ) me._bloomCircleFadeAt = Time.Now;
                 Log.Info( "[dev_bloom] released." );
                 break;
             case "close":
                 me._devBloomHold = false;
+                me._bloomHoldPct = -1;
                 me.CloseApp();
-                Log.Info( "[dev_bloom] CLOSE — reverse bloom." );
+                Log.Info( "[dev_bloom] CLOSE — the reverse." );
+                break;
+            case "tile":
+            {
+                // The REAL grid tap path (LaunchIndex → OpenApp fromTile) — the only way to
+                // seed the rect from a TILE without a mouse. Default: the CHAT tile (8).
+                if ( !IsVisible ) { DevOpenApp( "home" ); me = Instance; if ( me == null ) return; }
+                if ( me._appView != null ) { Log.Warning( "[dev_bloom] tile: an app is up — dev_bloom close (or Q) first, then re-run once the grid has landed." ); return; }
+                int idx = 8;
+                if ( arg != null && !int.TryParse( arg, out idx ) ) idx = Array.FindIndex( Apps, a => a.Id == arg );
+                if ( idx < 0 || idx >= GridCount || !IsWidgetApp( Apps[idx].Id ) ) { Log.Warning( "[dev_bloom] tile: needs a widget tile — 8 chat · 9 radio · 10 effects · 11 alerts (or the id)." ); return; }
+                me._kb = idx;
+                me._ringDirty = true;
+                me.LaunchIndex( idx );
+                Log.Info( $"[dev_bloom] TILE {idx} ({Apps[idx].Id}) — grid tap path; rect seeded at ({me._bloomRestX},{me._bloomRestY} {me._bloomRestW}x{me._bloomRestH} r{me._bloomRestR:F0}) -> ({me._bloomTgtX},{me._bloomTgtY} {me._bloomTgtW}x{me._bloomTgtH}); ghost tops grid {me._gridGhostTop} dock {me._dockGhostTop}." );
+                break;
+            }
+            case "style":
+                _bloomStyle = arg != null ? ( arg == "circle" ? "circle" : "rect" ) : ( _bloomStyle == "circle" ? "rect" : "circle" );
+                me.StateHasChanged();
+                Log.Info( $"[dev_bloom] style = {_bloomStyle} — open an app from the grid (or dev_bloom play) to see it." );
                 break;
             default:
-                Log.Warning( "[dev_bloom] modes: hold | play | off | close" );
+                Log.Warning( "[dev_bloom] modes: hold [pct] | play | off | close | tile [idx|id] | style [circle|rect]" );
                 break;
         }
     }
@@ -2134,6 +2214,8 @@
     }
 
     // ── THE ACCENT BLOOM — launch/return transition + the bg model ────────
+    // 2026-09-11: the DISC below is the `dev_bloom style circle` form; the live
+    // default is the ZOOM-FROM-TILE rect — timeline in the rect block further down.
     // LIVE (2026-08-30). LAUNCH (t = the arm, two frames after the tap):
     //   t0     tint/wash/ghost rise (240ms) UNDER the disc, which grows out of
     //          the tile centre 0 -> 1440px on the glide ease (260ms)
@@ -2166,11 +2248,116 @@
     private const int DiscRadius = 720;  // 1440px disc: covers the 538x692 screen from any tile centre (corner tile to the far corner is ~712)
     private const int ScreenCx = 269, ScreenCy = 346; // the screen's centre (538x692 padding box)
 
-    // The disc's inline box origin: at rest a 0x0 point ON the centre; grown,
-    // the centre minus the radius (width/height come from the .grow class, so
-    // all four glide together and the disc stays centred on the tile).
-    private int DiscLeft() => _bloomCircleGrow ? _bloomCx - DiscRadius : _bloomCx;
-    private int DiscTop() => _bloomCircleGrow ? _bloomCy - DiscRadius : _bloomCy;
+    // ── ZOOM-FROM-TILE (USER RULING 2026-09-10 "zoom from tile could be cool";
+    // LANE: motion 2026-09-11). The disc element morphs as a ROUNDED RECT:
+    // rest = the tapped tile's icon rect as PAINTED (Box.Rect is pre-transform —
+    // the focus pop's lift 6 / scale 1.06 are folded in, the ring's recipe);
+    // .grow = the app view's box (13, 22 + status row, 512 × 618 — the row's
+    // height measured at the seed, constants as the fallback); radius r22·1.06 →
+    // r30. Deep-links (no tile) seed an 88px r22 square on the screen centre.
+    // LAUNCH (t0 = the arm, two frames after the tap):
+    //   t0     grid .sink (opacity 0.18s, tiles +6px) · rect leaves .parked + .grow
+    //          (0.26s glide, the tile's glyph riding centred) · tint/wash/ghost .on (0.24s)
+    //   +100   .wash: fill accent → app surface (0.20s) · .glyph-off (0.12s)
+    //   +180   app view .on (0.12s) — lands OVER the rect (z ladder), header rungs
+    //          from the mount at ~+190/+220/+240, rows from +240 (existing ladders)
+    //   +220   the grid ghost unmounts (sunk since +180)
+    //   +300   rect .fade (0.18s) — same colour as the landed tint by now
+    // REVERSE (tc = CloseApp):
+    //   tc     app view .on drops (0.12s) · rect .fade drops (0s: it is the surface
+    //          colour under the tint, so re-solidifying is invisible) · AppChrome flips
+    //   +120   view unmounts · grid mounts PRIMED .sink · rect leaves .grow (→ the tile
+    //          rect, 0.22s) and .wash (→ accent, 0.20s) · layers .on drop (0.24s)
+    //   +2f    grid .sink drops → rises (opacity 0.18s, tiles 6 → 0)
+    //   +220   .glyph-off drops → the glyph returns for the landing (0.12s)
+    //   +360   LandCloseApp → .parked (opacity 0, 0s) exactly over the identical tile
+    // Class-toggle transitions on inline px, Time stamps in TickApps — no transforms,
+    // no animation-delay (DOC-4 #4/#6/#15, DOC-7 #15).
+    private static string _bloomStyle = "rect"; // dev_bloom style circle|rect — static: survives hotload, flips live
+    private int _bloomRestX = ScreenCx - 44, _bloomRestY = ScreenCy - 44, _bloomRestW = 88, _bloomRestH = 88; // the tile rect (surface padding-box px)
+    private float _bloomRestR = 22f;
+    private int _bloomTgtX = 13, _bloomTgtY = 54, _bloomTgtW = 512, _bloomTgtH = 618; // the app view box
+    private const float ScreenRadius = 30f;
+    private bool _bloomParked = true;    // rest between launches: invisible, 0s transitions (the rect waits ON its tile)
+    private bool _bloomWash;             // fill = the app surface colour (else the tile accent)
+    private bool _bloomGlyphOff;         // the riding glyph has faded
+    private float _bloomWashAt = -1f;    // stamp: wash + glyph fade (arm + 100ms)
+    private float _bloomGlyphOnAt = -1f; // stamp: the glyph returns during the reverse (unmount + 100ms)
+    private int _bloomHoldPct = -1;      // dev_bloom hold N — frozen at N% GEOMETRIC progress (-1 = live)
+    private bool _gridGhost;             // the home grid stays mounted under the growing rect
+    private bool _gridSink;              // .sink on the grid + dock
+    private float _gridGhostUntil = -1f;
+    private int _gridPrime;              // reverse: frames the re-mounted grid wears .sink before rising
+    // The ghost is ABSOLUTE (live 2026-09-11: as a second in-flow child it stacked
+    // under the 618px app view and painted over the chin) — pinned at its measured
+    // rest top so the status row's margin glide (20 → 0, AppChrome) cannot move it.
+    // Measured against the status row (padding-box y 22), never the surface border.
+    private int _gridGhostTop = 92, _dockGhostTop = 660;
+
+    private bool RectStyle => _bloomStyle != "circle";
+    private float HoldF => _bloomHoldPct < 0 ? -1f : Math.Clamp( _bloomHoldPct, 0, 100 ) / 100f;
+
+    // Inline geometry — every prop ALWAYS emitted (never-cleared inline-style law).
+    private float DiscGeo( float rest, float grown )
+    {
+        if ( HoldF >= 0f ) return rest + ( grown - rest ) * HoldF;
+        return _bloomCircleGrow ? grown : rest;
+    }
+    private int DiscL() => (int)MathF.Round( RectStyle ? DiscGeo( _bloomRestX, _bloomTgtX ) : DiscGeo( _bloomCx, _bloomCx - DiscRadius ) );
+    private int DiscT() => (int)MathF.Round( RectStyle ? DiscGeo( _bloomRestY, _bloomTgtY ) : DiscGeo( _bloomCy, _bloomCy - DiscRadius ) );
+    private int DiscW() => (int)MathF.Round( RectStyle ? DiscGeo( _bloomRestW, _bloomTgtW ) : DiscGeo( 0f, DiscRadius * 2f ) );
+    private int DiscH() => (int)MathF.Round( RectStyle ? DiscGeo( _bloomRestH, _bloomTgtH ) : DiscGeo( 0f, DiscRadius * 2f ) );
+    private int DiscR() => (int)MathF.Round( RectStyle ? DiscGeo( _bloomRestR, ScreenRadius ) : DiscGeo( 0f, DiscRadius ) );
+
+    private string DiscClasses()
+    {
+        var s = _bloomCircleGrow ? "grow" : "";
+        if ( _bloomCircleFade ) s += " fade";
+        if ( _bloomParked && !_bloomCircleGrow ) s += " parked";
+        if ( HoldF >= 0f ) s += " hold";
+        if ( !RectStyle ) s += " circle";
+        else if ( _bloomGlyphOff || ( HoldF >= 0f && HoldTime() >= 0.10f ) ) s += " glyph-off";
+        return s;
+    }
+
+    // The fill: tile accent → app surface. A hold blends by its TIME on the arc.
+    private string DiscFill()
+    {
+        if ( !RectStyle ) return BloomAccent();
+        if ( HoldF >= 0f ) return LerpHex( BloomAccent(), BloomTint(), Math.Clamp( ( HoldTime() - 0.10f ) / 0.20f, 0f, 1f ) );
+        return _bloomWash ? BloomTint() : BloomAccent();
+    }
+
+    private string DiscGlyphSrc() => "ui/icons/pawpad/static/" + BloomApp() + ".webp";
+
+    // dev_bloom hold N freezes GEOMETRIC progress; the wash / glyph read by TIME on
+    // the 0.26s cubic-bezier(0.22, 1, 0.36, 1) arc — invert the ease by bisection
+    // (y(t) = 1 − (1 − t)³ for P1y = P2y = 1; x(t) is the time fraction).
+    private float HoldTime()
+    {
+        float p = HoldF;
+        if ( p < 0f ) return 0f;
+        float lo = 0f, hi = 1f;
+        for ( int i = 0; i < 24; i++ )
+        {
+            float t = ( lo + hi ) * 0.5f;
+            if ( 1f - MathF.Pow( 1f - t, 3f ) < p ) lo = t; else hi = t;
+        }
+        float tt = ( lo + hi ) * 0.5f, u = 1f - tt;
+        float x = 3f * u * u * tt * 0.22f + 3f * u * tt * tt * 0.36f + tt * tt * tt;
+        return x * 0.26f;
+    }
+
+    private static int HexByte( string h, int at ) => h != null && h.Length == 7 && h[0] == '#' ? Convert.ToInt32( h.Substring( at, 2 ), 16 ) : ( at == 1 ? 155 : at == 3 ? 108 : 255 );
+    private static string LerpHex( string a, string b, float f )
+    {
+        if ( f <= 0f ) return a;
+        if ( f >= 1f ) return b;
+        int rr = (int)MathF.Round( HexByte( a, 1 ) + ( HexByte( b, 1 ) - HexByte( a, 1 ) ) * f );
+        int gg = (int)MathF.Round( HexByte( a, 3 ) + ( HexByte( b, 3 ) - HexByte( a, 3 ) ) * f );
+        int bb = (int)MathF.Round( HexByte( a, 5 ) + ( HexByte( b, 5 ) - HexByte( a, 5 ) ) * f );
+        return "rgba(" + rr + ", " + gg + ", " + bb + ", 1)";
+    }
 
     private string BloomApp() => _bloomApp ?? _appView ?? "chat";
     private string BloomTint() => DerivedOf( BloomApp() );
@@ -2259,6 +2446,20 @@
             _appUiOn = false;
             _appUiAt = -1f;
             _bloomArmFrames = 2;
+            // zoom-from-tile (2026-09-11): the rect waits PARKED on the seed (0s snap)
+            // for the two arm frames; the grid sinks under it only when a tile was
+            // tapped — a deep-link has the whole wrap sliding in, nothing to sink.
+            _bloomWash = false;
+            _bloomGlyphOff = false;
+            _bloomWashAt = -1f;
+            _bloomGlyphOnAt = -1f;
+            _bloomHoldPct = -1;
+            _bloomParked = true;
+            _gridGhost = fromTile;
+            if ( _gridGhost ) MeasureGhostTops();
+            _gridSink = false;
+            _gridGhostUntil = -1f;
+            _gridPrime = 0;
             SeedBloomCircle( fromTile );
         }
         switch ( id )
@@ -2301,6 +2502,9 @@
         _bloomCircleFade = false;
         _bloomCircleFadeAt = -1f;
         _devBloomHold = false;
+        _bloomHoldPct = -1;          // a dev freeze ends here; the rect (surface colour, .wash held) re-solidifies under the departing view
+        _bloomWashAt = -1f;
+        _bloomGlyphOnAt = -1f;
         _appUnmountAt = Time.Now + 0.12f;
         _appClosingUntil = Time.Now + 0.36f;
         _hoverHit = null;
@@ -2339,6 +2543,16 @@
         _bloomLive = false;
         _bloomCircleGrow = false;
         _bloomCircleFade = false;
+        // zoom-from-tile reverse (2026-09-11): the rect shrinks into the tile (0.22s)
+        // washing back to the accent (0.20s); the grid mounts PRIMED sunk and rises
+        // two frames later; the glyph returns for the landing.
+        _bloomWash = false;
+        _bloomWashAt = -1f;
+        _bloomGlyphOnAt = Time.Now + 0.10f;
+        _gridGhost = false;
+        _gridSink = true;
+        _gridPrime = 2;
+        _ringHoldUntil = Time.Now + 0.3f; // the ring keeps re-targeting through the rise (the open-slide recipe)
         StateHasChanged();
     }
 
@@ -2348,6 +2562,9 @@
     {
         _appClosingUntil = -1f;
         _appUnmountAt = -1f;
+        _bloomParked = true;   // the rect (now exactly the tile, accent + glyph) vanishes over the identical tile
+        _bloomGlyphOff = false;
+        _bloomGlyphOnAt = -1f;
         _bloomApp = null;
         if ( _pendingPopup == "achievements" )
         {
@@ -2378,7 +2595,8 @@
     private void ParkResetTick()
     {
         if ( IsVisible || _fx != FxPhase.Idle || Time.Now < _closingUntil ) return;
-        bool stale = _appView != null || _bloomLive || _bloomCircleGrow || _bloomCircleFade || _bloomApp != null || _appClosingUntil > 0f || _bloomArmFrames > 0;
+        bool stale = _appView != null || _bloomLive || _bloomCircleGrow || _bloomCircleFade || _bloomApp != null || _appClosingUntil > 0f || _bloomArmFrames > 0
+                  || _gridGhost || _gridSink || !_bloomParked || _bloomHoldPct >= 0;
         if ( !stale ) return;
         ResetAppState();
         StateHasChanged();
@@ -2403,6 +2621,16 @@
         _appUiAt = -1f;
         _appUnmountAt = -1f;
         _devBloomHold = false;
+        _bloomParked = true;
+        _bloomWash = false;
+        _bloomGlyphOff = false;
+        _bloomWashAt = -1f;
+        _bloomGlyphOnAt = -1f;
+        _bloomHoldPct = -1;
+        _gridGhost = false;
+        _gridSink = false;
+        _gridGhostUntil = -1f;
+        _gridPrime = 0;
         _appKb = null;
         _hoverHit = null;
         _stops.Clear();
@@ -2430,6 +2658,10 @@
         _bloomCircleFadeAt = -1f;
         _bloomCx = ScreenCx;
         _bloomCy = ScreenCy;
+        // Rect style rest: an 88px r22 square on the screen centre (deep-links).
+        _bloomRestW = 88; _bloomRestH = 88; _bloomRestR = 22f;
+        _bloomRestX = ScreenCx - 44; _bloomRestY = ScreenCy - 44;
+        SeedBloomTarget();
         if ( !fromTile ) return;
         var icon = FocusedIconEl();
         if ( icon == null || _surfaceRef == null ) return;
@@ -2445,6 +2677,43 @@
         if ( cx < 0 || cy < 0 || cx > 538 || cy > 692 ) return; // stale / unlaid-out rect — keep the centre
         _bloomCx = cx;
         _bloomCy = cy;
+        // The PAINTED tile (zoom-from-tile 2026-09-11): the tapped tile is the focused
+        // one and wears the focus pop — scale 1.06 about its centre, lifted 6px —
+        // and Box.Rect is pre-transform, so fold the pop in (UpdateRing's recipe).
+        float w = ir.Width * sc * FocusPopScale, h = ir.Height * sc * FocusPopScale;
+        _bloomRestW = (int)MathF.Round( w );
+        _bloomRestH = (int)MathF.Round( h );
+        _bloomRestX = (int)MathF.Round( cx - w / 2f );
+        _bloomRestY = (int)MathF.Round( cy - h / 2f - FocusPopLift );
+        _bloomRestR = 22f * FocusPopScale;
+    }
+
+    // Where the grid + dock rest right now (padding-box px) — the ghost pins there.
+    private void MeasureGhostTops()
+    {
+        if ( _topRef == null ) return;
+        var tr = _topRef.Box.Rect;
+        if ( tr.Height < 1f ) return;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+        if ( _gridRef != null && _gridRef.Box.Rect.Height > 1f ) _gridGhostTop = (int)MathF.Round( 22f + ( _gridRef.Box.Rect.Top - tr.Top ) * sc );
+        if ( _dockRef != null && _dockRef.Box.Rect.Height > 1f ) _dockGhostTop = (int)MathF.Round( 22f + ( _dockRef.Box.Rect.Top - tr.Top ) * sc );
+    }
+
+    // The landing box = the app view's 512 × 618 at (13, 22 + the status row's
+    // height). The row's HEIGHT is static and measurable at the seed; its
+    // margin-bottom (20 → 0) is gliding at this very moment, so the app view's
+    // own rect is mid-flight — never read it for the top. Constants fall back.
+    private void SeedBloomTarget()
+    {
+        _bloomTgtX = 13; _bloomTgtY = 54; _bloomTgtW = 512; _bloomTgtH = 618;
+        if ( _topRef == null ) return;
+        var tr = _topRef.Box.Rect;
+        if ( tr.Height < 1f ) return;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+        int topH = (int)MathF.Round( tr.Height * sc );
+        if ( topH > 0 && topH < 80 ) _bloomTgtY = 22 + topH;
     }
 
     // ── Press feedback — router-stamped (no :hover/:active reaches the device) ──
@@ -2466,6 +2735,9 @@
         if ( _appUnmountAt > Time.Now + 1f ) _appUnmountAt = -1f;
         if ( _appUiAt > Time.Now + 1f ) _appUiAt = -1f;
         if ( _bloomCircleFadeAt > Time.Now + 1f ) _bloomCircleFadeAt = -1f;
+        if ( _bloomWashAt > Time.Now + 1f ) _bloomWashAt = -1f;
+        if ( _bloomGlyphOnAt > Time.Now + 1f ) _bloomGlyphOnAt = -1f;
+        if ( _gridGhostUntil > Time.Now + 1f ) _gridGhostUntil = -1f;
         if ( _clearArmedAt > Time.Now + 3f ) _clearArmedAt = -1f;
         if ( _clearingAt > Time.Now + 1f ) _clearingAt = -1f;
         if ( _volRepeatAt > Time.Now + 1f ) _volRepeatAt = -1f;
@@ -2491,14 +2763,24 @@
             _bloomArmFrames--;
             if ( _bloomArmFrames == 0 )
             {
-                // t0: the layers rise (240ms) under the disc growing out of the tile (260ms).
+                // t0 (zoom-from-tile 2026-09-11): the rect leaves .parked and grows out of
+                // the tile (260ms glide) OVER the grid, which sinks (180ms); the layers
+                // rise (240ms) under everything.
                 _bloomLive = true;
+                _bloomParked = false;
                 _bloomCircleGrow = true;
-                _appUiAt = Time.Now + 0.14f;           // the app UI fades in over the disc's last 120ms
-                _bloomCircleFadeAt = Time.Now + 0.26f; // disc full -> fade onto the landed tint (180ms)
+                _gridSink = _gridGhost;
+                _gridGhostUntil = _gridGhost ? Time.Now + 0.22f : -1f;
+                _bloomWashAt = Time.Now + 0.10f;       // fill accent -> surface (200ms) · the riding glyph fades (120ms)
+                _appUiAt = Time.Now + 0.18f;           // the app view fades in (120ms) over the rect's landing
+                _bloomCircleFadeAt = Time.Now + 0.30f; // rect (now the surface colour) dissolves onto the landed tint (180ms)
                 dirty = true;
             }
         }
+        if ( _bloomWashAt > 0f && Time.Now >= _bloomWashAt && _bloomHoldPct < 0 ) { _bloomWashAt = -1f; _bloomWash = true; _bloomGlyphOff = true; dirty = true; }
+        if ( _gridGhost && _gridGhostUntil > 0f && Time.Now >= _gridGhostUntil ) { _gridGhost = false; _gridGhostUntil = -1f; _gridSink = false; dirty = true; }
+        if ( _gridPrime > 0 && --_gridPrime == 0 ) { _gridSink = false; dirty = true; } // reverse: the primed grid rises
+        if ( _bloomGlyphOnAt > 0f && Time.Now >= _bloomGlyphOnAt ) { _bloomGlyphOnAt = -1f; _bloomGlyphOff = false; dirty = true; }
         if ( _appUiAt > 0f && Time.Now >= _appUiAt ) { _appUiAt = -1f; _appUiOn = true; dirty = true; }
         // dev_bloom hold parks this stamp (the disc stays full); off lets it fire.
         if ( _bloomCircleFadeAt > 0f && Time.Now >= _bloomCircleFadeAt && !_devBloomHold )
@@ -4310,7 +4592,7 @@
                 NotificationPanel.UnreadCount,
                 Beastborne.Core.NotificationManager.Instance?.NotificationHistory?.Count ?? 0 ),
             // rev-7 apps (2026-08-29): bloom + press stamp + the 1 Hz tick + per-app state.
-            HashCode.Combine( _bloomApp, _bloomLive, _appClosingUntil > 0f, _pressedHit, _bloomCircleGrow, _bloomCircleFade, HashCode.Combine( _bloomCx, _bloomCy ), _appUiOn ),
+            HashCode.Combine( _bloomApp, _bloomLive, _appClosingUntil > 0f, _pressedHit, _bloomCircleGrow, _bloomCircleFade, HashCode.Combine( _bloomCx, _bloomCy, _bloomParked, _bloomWash, _bloomGlyphOff, _bloomHoldPct, HashCode.Combine( _gridGhost, _gridSink, _bloomStyle, _gridGhostTop, _dockGhostTop ), HashCode.Combine( _bloomRestX, _bloomRestY, _bloomRestW, _bloomRestH, _bloomTgtY ) ), _appUiOn ),
             HashCode.Combine(
                 ( _appView is "radio" or "effects" or "alerts" ) ? _tick : 0,
                 _trackKey, HashCode.Combine( VolPct(), _volDragging, _volBeatLive ? _volKey : -1 ),
