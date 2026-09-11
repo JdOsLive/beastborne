@@ -170,9 +170,12 @@
               the phone stands down; Esc blurs back to it, a second Esc backs
               out to the grid.
       RADIO   the cursor walks EVERY control on a 3-row grid — station chip /
-              transport / volume: A/D within a row, W/S between rows (column-
-              mapped: PLAY ↔ seg 3, station ↔ PLAY) · Space/Enter = tap the
-              focused control (on a volume segment: commit that level) ·
+              transport / volume: A/D within the top rows, W/S between rows
+              (column-mapped: transport ↔ the slider, station ↔ PLAY) ·
+              Space/Enter = tap the focused control · on the VOLUME SLIDER
+              (closeout 2026-09-10, user: "volume should be slider") A/D nudge
+              ±5 and REPEAT while held; the mouse drags the knob or taps to
+              seek (backdrop mousedown → per-frame drag → click commits) ·
               direct keys R tune · Z shuffle · X repeat (they do NOT move the
               cursor).
       EFFECTS W/S walk boost rows then skill rows (reading focus).
@@ -184,7 +187,11 @@
 *@
 
 <root class="phone-root @(Shown ? "shown" : "") @(IsVisible ? "open" : "") @(_fx != FxPhase.Idle ? "fx-live" : "")">
-    <div class="pl-backdrop" @ref="_backdropRef" onclick=@OnBackdropClicked></div>
+    @* onmousedown (closeout 2026-09-10): the radio volume slider DRAGS — the
+       device subtree is pointer-transparent, so the press lands here, the
+       router resolves hit-vol, TickApps follows the mouse, the click (mouse
+       up) commits. *@
+    <div class="pl-backdrop" @ref="_backdropRef" onmousedown=@OnBackdropDown onclick=@OnBackdropClicked></div>
 
     <div class="pl-wrap" @ref="_wrapRef">
         <div class="pl-device" @ref="_deviceRef">
@@ -276,7 +283,7 @@
                          pawpad-apps-brief.html). Mouse goes through the backdrop
                          router: every clickable carries `pl-hit hit-<action>`
                          (indexed families hit-alert-N / hit-chat-author-N /
-                         hit-embed-N / hit-vol-N resolve by prefix) and
+                         hit-embed-N / hit-msg-N resolve by prefix) and
                          ActionAtScreen inverse-projects the cursor onto it, walking
                          POST-ORDER from the surface (innermost wins; a scroller
                          only admits points inside its own rect). Q backs out to
@@ -305,21 +312,20 @@
                                 <span class="pl-av-title" style="width: @(TitleBoxPx())px;">@AppViewTitle()</span>
                                 <div class="pl-av-seam" style="background-color: @AppViewAccent();"></div>
                                 <div class="pl-av-seam tail" style="background-color: @AccentRgba( AppViewAccent(), 0.45f );"></div>
-                                @if ( _appView == "radio" )
-                                {
-                                    @* LANE: motion (2026-09-07) — the station LABEL pops (pl-stamp-N, a
-                                       WINDOWED parity class on the host, 0.4s) when R / the chip tunes;
-                                       the pop is OF the span. No press stamp on this tap (a stamp
-                                       dropping mid-pop would restart it — DOC-4 #14). *@
-                                    <div class="pl-av-util chip pl-hit hit-radio-station @StationPopClass() @HitState( "hit-radio-station" )" style="margin-left: 218px; background-color: @AppViewAccent();"><span>@StationChipLabel()</span></div>
-                                }
-                                else if ( _appView == "effects" )
-                                {
-                                    @* count-keyed pop; + _stampKey (bumped when the bloom disc fades at
-                                       +260ms) so the OPEN pop lands once the view is visible, not
-                                       under its opacity 0 (motion lane 2026-09-07). *@
-                                    <div class="pl-av-util stamp @("pl-stamp-" + ( ( EffectsCount() + _stampKey ) % 2 ))" style="margin-left: 204px; background-color: @AppViewAccent();"><span>@EffectsCount() ACTIVE</span></div>
-                                }
+                                @* LANE: motion (closeout 2026-09-10, DOC-7 #5 / CLAUDE.md ghost-child row) —
+                                   ONE always-mounted util element for every app (UtilSlot computes
+                                   class · label · margin as a tuple, the shop GetBuyButtonContent form).
+                                   The old radio / effects if-else cascade lived INSIDE this persistent
+                                   title row, so every hop out of EFFECTS or RADIO left the stale stamp /
+                                   chip painting on the next app's header for 100-200ms (live: a yellow
+                                   "2 ACTIVE" pill on CHAT, an empty purple pill on ALERTS). Attributes
+                                   swap cleanly; children never do. `.none` = display none (chat / alerts).
+                                   Radio: the station LABEL pops (pl-stamp-N, windowed parity, 0.4s) when
+                                   R / the chip tunes — the pop is OF the span; no press stamp on that tap.
+                                   Effects: count-keyed pop + _stampKey (bumped when the bloom disc fades at
+                                   +260ms) so the OPEN pop lands on a visible view. *@
+                                @{ var util = UtilSlot(); }
+                                <div class="pl-av-util @util.Cls" style="margin-left: @(util.Ml)px; background-color: @AppViewAccent();"><span>@util.Label</span></div>
                             </div>
                             <!-- WAVE BAND — the strips are <img> elements, TWO per layer, drifting
                                  by imperative `left` writes (DriftWaves) inside the clipped band.
@@ -357,12 +363,13 @@
                                  — the A/D keys are printed ON the bar. Lit = .pl-chan.on
                                  (accent fill + dark ink); unread dot = a fresh element per
                                  count (render-key parity → plDotPop). -->
-                            @* LANE: motion (2026-09-07) — the bar rides its own rung (pl-chan-in,
-                               lands with row 0); the lit pill follows LitChan() (the PENDING
+                            @* LANE: motion (2026-09-07) — the bar rides its own rung (ChanRung: the
+                               launch hold with row 0, or the hold-free swap rung on an in-phone hop —
+                               closeout 2026-09-10); the lit pill follows LitChan() (the PENDING
                                channel during the 0.12s list-leave latch, so the pill snaps at
                                the tap and the list follows); the unread dot stays MOUNTED and
                                fades via .off (never a hard vanish), popping when it returns. *@
-                            <div class="pl-chan-row pl-chan-in">
+                            <div class="pl-chan-row @ChanRung()">
                                 <div class="pl-akey chan-cap a"><span>A</span></div>
                                 <div class="pl-chan c1 pl-hit hit-chan-global @(LitChan() == "global" ? "on" : "") @HitState( "hit-chan-global" )">
                                     <span>GLOBAL</span>
@@ -394,9 +401,13 @@
                                     // LANE: motion — the ladder is indexed from the TAIL: the viewport
                                     // opens on the newest row, so the six rows nearest the composer
                                     // take rungs 0..5 top-down (oldest visible first, newest last, the
-                                    // composer after it); rows further up mount static (offscreen).
+                                    // composer after it). Rows further up take rung 0 (closeout
+                                    // 2026-09-10): up to eight single-line rows fit the 416px viewport,
+                                    // so the two oldest visible rows used to mount SOLID above a
+                                    // laddering six — they sit above the ladder, so they land with its
+                                    // first step (offscreen rows play the same opacity rung unseen).
                                     int fromEnd = msgs.Count - 1 - mi;
-                                    int rung = fromEnd <= 5 ? Math.Min( msgs.Count, 6 ) - 1 - fromEnd : -1;
+                                    int rung = Math.Max( 0, Math.Min( msgs.Count, 6 ) - 1 - fromEnd );
                                     var motion = RowMotion( m.Id, "hit-msg-" + mi, rung, own );
                                     var authorHit = ( !own && HasCardFor( m.SteamId ) ) ? "pl-hit hit-chat-author-" + mi : "";
                                     var authorPressed = HitState( "hit-chat-author-" + mi );
@@ -455,12 +466,14 @@
                             <!-- input row: 426 + 8 + 78 = 512. The INPUT BOX is the hit
                                  (focus); SEND is its sibling — a row that contains a hit
                                  is never one itself (post-order law). -->
-                            @* LANE: motion — the composer row lands LAST (pl-foot-in, rung 6 ≈ +480ms);
+                            @* LANE: motion — the composer row lands LAST (FootRung: pl-foot-in ≈ +480ms
+                               on a launch, the short pl-foot-swap on a hop — closeout 2026-09-10);
                                SEND wears the windowed send beat (pl-sent-N parity, 0.3s white →
                                light → accent; the ONE HDR tick on this surface is its 0% frame).
-                               The beat replaces the press stamp on a successful send (a stamp
-                               dropping mid-beat would restart it — DOC-4 #14). *@
-                            <div class="pl-chat-inputrow pl-foot-in">
+                               The beat replaces the press stamp on a successful send, and the
+                               host's hover / cursor stamp is FROZEN while it runs (HitState
+                               snapshot) so a mouse-off mid-beat cannot restart it — DOC-4 #14. *@
+                            <div class="pl-chat-inputrow @FootRung()">
                                 <div class="pl-chat-inputbox pl-hit hit-input @HitState( "hit-input" )">
                                     <ChatInputBox @ref="_phoneChatBox" OnSubmit=@OnPhoneChatSend Placeholder="@InputPlaceholder()" />
                                 </div>
@@ -510,7 +523,10 @@
                             <!-- progress: track 476 (ml 18) · fill in PX from the 1 Hz cache ·
                                  time boxes 48 + 380 computed + 48. Not seekable. -->
                             <div class="pl-prog @ZoneRung( 1 )">
-                                <div class="pl-prog-track @("pl-title-" + ( _trackKey % 2 ))"><div class="pl-prog-fill" style="width: @(_progFillPx)px;"></div></div>
+                                @* LANE: motion — the fill DRAINS (1s linear width, the Effects strip's
+                                   dialect); `.snap` rides any BACKWARD move (track change 476 → 0, a
+                                   repeat restart) for 0.15s so the drain never tweens backward. *@
+                                <div class="pl-prog-track @("pl-title-" + ( _trackKey % 2 ))"><div class="pl-prog-fill @(ProgSnap() ? "snap" : "")" style="width: @(_progFillPx)px;"></div></div>
                                 <div class="pl-prog-times @("pl-title-" + ( _trackKey % 2 ))">
                                     <span class="pl-prog-t">@_progPos</span>
                                     <span class="pl-prog-t end">@_progDur</span>
@@ -532,20 +548,25 @@
                                 <div class="pl-rctl pl-hit hit-radio-next @HitState( "hit-radio-next" )"><iconify class="pl-rctl-icon" icon="lucide:skip-forward" Size=@(20) Color="#f4f1ea" /></div>
                                 <div class="pl-rtog pl-hit hit-radio-repeat @(Beastborne.Systems.RadioManager.IsRepeat ? "on" : "") @HitState( "hit-radio-repeat" )"><span>REPEAT</span></div>
                             </div>
-                            <!-- stepped volume: VOLUME chip 96 + 28 computed + 5 × 64 + 4 × 8 =
-                                 476 (ml 18). hit-vol-1..5 → SetVolume .2–1.0; raising lights the
-                                 segments in sequence (per-segment ladder classes, parity-keyed
-                                 so a re-tap replays); lowering goes dark at once. -->
+                            <!-- VOLUME SLIDER (closeout 2026-09-10, user: "volume should be
+                                 slider"): VOLUME chip 96 + 28 computed + slider 300 + 12 + value
+                                 pill 40 = 476 (ml 18). The SLIDER BOX is the one hit (hit-vol) and
+                                 the one cursor stop of the row: track 6 r3 on #131019, fill in the
+                                 accent (px from the volume), knob 16 r8 cream riding an explicit
+                                 `left` (0..284) — value swaps that the 0.14s transitions glide;
+                                 `.dragging` snaps them so a drag tracks 1:1. The five segments,
+                                 their raise ladder and the press stamp are RETIRED (a slider has no
+                                 rungs to light). Feedback = the knob/fill glide + the value numeral's
+                                 pop (pl-volv-N, windowed parity — OF the number, no HDR: DOC-4 #16). -->
+                            @* LANE: motion — the row keeps its zone rung; the knob's kb costume is
+                               the control recipe (2px zero-alpha border → violet; land flash on it). *@
                             <div class="pl-vol-row @ZoneRung( 3 )">
                                 <div class="pl-sect radio vol"><span>VOLUME</span></div>
-                                <div class="pl-vol-segs">
-                                    @for ( int k = 1; k <= 5; k++ )
-                                    {
-                                        var lit = k <= VolStep();
-                                        var ladder = ( lit && VolLadderActive() ) ? "pl-voln-" + k + "-" + ( _volKey % 2 ) : "";
-                                        <div class="pl-vol-seg pl-hit @("hit-vol-" + k) @(lit ? "lit" : "") @ladder @HitState( "hit-vol-" + k )"></div>
-                                    }
+                                <div class="pl-vol-slider pl-hit hit-vol @(_volDragging ? "dragging" : "") @HitState( "hit-vol" )" @ref="_volSliderRef">
+                                    <div class="pl-vol-track"><div class="pl-vol-fill" style="width: @(VolFillPx())px;"></div></div>
+                                    <div class="pl-vol-knob" style="left: @(VolKnobPx())px;"></div>
                                 </div>
+                                <div class="pl-vol-val @VolBeatClass()"><span>@VolPct()</span></div>
                             </div>
                         }
                         else if ( _appView == "effects" )
@@ -572,9 +593,12 @@
                                 @if ( boosts.Count > 0 || ghosts.Count > 0 )
                                 {
                                     @* LANE: motion — chip rung (windowed: the class leaves after the open
-                                       window so a later `mt` flip cannot replay it); .leaving fades the
-                                       chip with the LAST ghost's fold. *@
-                                    <div class="pl-sect fx w-timed @SectRung() @(boosts.Count == 0 ? "leaving" : "")"><span>TIMED BOOSTS</span></div>
+                                       window so a later `mt` flip cannot replay it); .leaving FOLDS the
+                                       chip on the LAST ghost's clock (plSectOut: fade, then height +
+                                       margins → 0, `both`; closeout 2026-09-10 — it used to fade only,
+                                       then unmount with its full 32px box in one frame: a 40px jump of
+                                       everything below). `dev_pawpadfx fold` forces the class for a shot. *@
+                                    <div class="pl-sect fx w-timed @SectRung() @(( boosts.Count == 0 || DevChipLeaving() ) ? "leaving" : "")"><span>TIMED BOOSTS</span></div>
                                 }
                                 @* LANE: motion (2026-09-07) — ONE render order: live boosts with the
                                    expiry ghosts spliced back IN PLACE (FxGhost.Index = the row's index
@@ -645,7 +669,10 @@
                                 }
                                 @if ( skills.Count > 0 )
                                 {
-                                    <div class="pl-sect fx w-skills @SectRung() @(( boosts.Count > 0 || ghosts.Count > 0 ) ? "mt" : "")"><span>SKILL BONUSES · ALWAYS ON</span></div>
+                                    @* `mt` drops the render the timed chip unmounts (its box is already folded
+                       to 0 by then); the 8px it removes GLIDES (margin-top transition on
+                       .w-skills) instead of jumping — closeout 2026-09-10. *@
+                    <div class="pl-sect fx w-skills @SectRung() @(( boosts.Count > 0 || ghosts.Count > 0 ) ? "mt" : "")"><span>SKILL BONUSES · ALWAYS ON</span></div>
                                 }
                                 @foreach ( var sk in skills )
                                 {
@@ -674,7 +701,7 @@
                                 var alerts = PhoneNotifications();
                                 bool todayShown = false;
                                 bool earlierShown = false;
-                                RebuildAlertStops( alerts.Count, alerts.Count > 0 && _clearingAt <= 0f );
+                                RebuildAlertStops( alerts, alerts.Count > 0 && _clearingAt <= 0f );
                             }
                             <div class="pl-list-scroll pl-scroll-clip" @ref="_listScrollRef">
                                 @if ( alerts.Count == 0 )
@@ -742,14 +769,17 @@
                                arms → "SURE?" for 2s; second commits: rows fade bottom-up on the
                                pl-clr-N ladder, the +500ms one-shot empties the record). *@
                             @* LANE: motion (2026-09-07) — a STABLE wrapper carries the open rung
-                               (pl-foot-in, lands after the rows; the slab itself is a volatile
-                               host). The slab stays MOUNTED through the commit and fades via
-                               .clearing (0.12s exit latch) instead of vanishing on the commit
-                               frame; its label cross-fades on arm / disarm (windowed parity). *@
+                               (FootRung: pl-foot-in after the rows on a launch, pl-foot-swap on a
+                               hop; the slab itself is a volatile host). The slab stays MOUNTED
+                               through the commit and fades via .clearing (0.12s exit latch)
+                               instead of vanishing on the commit frame; its label cross-fades on
+                               arm / disarm (windowed parity) and LEAVES WEARING THE LABEL THAT WAS
+                               PRESSED (SURE? holds through the clearing fade — closeout 2026-09-10,
+                               DOC-4 #15; the commit skips the cross-fade). *@
                             @if ( alerts.Count > 0 )
                             {
-                                <div class="pl-alert-clearwrap pl-foot-in">
-                                    <div class="pl-alert-clear pl-hit hit-clear @HitState( "hit-clear" ) @(ClearArmed ? "armed" : "") @(_clearingAt > 0f ? "clearing" : "")"><span class="@ClearLabelClass()">@(ClearArmed ? "SURE?" : "CLEAR ALL")</span></div>
+                                <div class="pl-alert-clearwrap @FootRung()">
+                                    <div class="pl-alert-clear pl-hit hit-clear @HitState( "hit-clear" ) @(ClearArmed ? "armed" : "") @(_clearingAt > 0f ? "clearing" : "")"><span class="@ClearLabelClass()">@(( ClearArmed || _clearingAt > 0f ) ? "SURE?" : "CLEAR ALL")</span></div>
                                 </div>
                             }
                         }
@@ -1161,8 +1191,14 @@
     //   clear    [alerts] — the CLEAR ALL commit ladder + slab fade (record KEPT)
     //   play     [radio]  — the PLAY commit beat (white → accent + glyph pop; no toggle)
     //   station  [radio]  — the station-switch beat (label pop + now-playing cross-fade; no tune)
-    //   vol      [radio]  — the volume RAISE ladder on the lit segments (level untouched)
+    //   vol      [radio]  — the volume slider's value beat (numeral pop; level untouched)
+    //   fold   [effects]  — the TIMED BOOSTS chip fold (plSectOut, 0.45s; boosts untouched)
     //   (cascade / land also work on the radio: the four zone rungs · the cursor's mark)
+    // closeout 2026-09-10: open / cascade now render PRIME FRAMES with every rung
+    // class stripped before re-arming (DOC-4 #8) — on CHAT (no 1 Hz re-render)
+    // the finished pl-cas-N stayed in the DOM and the identical class string
+    // never restarted the keyframe, so the hook was a no-op cold. The prime
+    // covers the foot rung too (it used to be a static literal).
     [ConCmd( "dev_pawpadfx" )]
     public static void DevPawpadFx( string beat = "cascade", string arg = null )
     {
@@ -1171,7 +1207,7 @@
         string needs = beat switch
         {
             "send" or "chan" => "chat",
-            "expire" or "tick" => "effects",
+            "expire" or "tick" or "fold" => "effects",
             "go" or "clear" => "alerts",
             "play" or "station" or "vol" => "radio",
             "arrive" => arg == "alerts" ? "alerts" : "chat",
@@ -1188,16 +1224,16 @@
         {
             case "open":
                 DevBloom( "play" );
-                me._appOpenedAt = Time.Now;
-                me._rowMotionG.Clear();
-                me._rowMotionS.Clear();
+                me._casPrimeFrames = 2; // strip every rung for two frames, then TickApps re-arms (a same-string class never restarts)
                 Log.Info( "[dev_pawpadfx] OPEN — bloom + cascade replayed." );
                 break;
             case "cascade":
-                me._appOpenedAt = Time.Now;
-                me._rowMotionG.Clear();
-                me._rowMotionS.Clear();
-                Log.Info( "[dev_pawpadfx] CASCADE re-armed (rows + chips / the radio zones)." );
+                me._casPrimeFrames = 2;
+                Log.Info( "[dev_pawpadfx] CASCADE re-armed (rows + chips + foot / the radio zones) after a priming frame." );
+                break;
+            case "fold":
+                me._devChipLeaveUntil = Time.Now + 0.45f;
+                Log.Info( "[dev_pawpadfx] FOLD — the TIMED BOOSTS chip folds (returns when the stamp expires)." );
                 break;
             case "play":
                 me.FirePlayBeat();
@@ -1209,11 +1245,11 @@
                 Log.Info( "[dev_pawpadfx] STATION beat (station untouched)." );
                 break;
             case "vol":
-                me._volKey++;
-                me._volLadderUntil = Time.Now + 0.25f;
-                Log.Info( "[dev_pawpadfx] VOL raise ladder on the lit segments." );
+                me.FireVolBeat();
+                Log.Info( "[dev_pawpadfx] VOL — the slider's value beat (level untouched)." );
                 break;
             case "land":
+                if ( arg != null && me._stops.Contains( arg ) ) { me._appKb = arg; me.KbTakeover(); } // `land hit-vol` parks the cursor first (closeout 2026-09-10)
                 if ( me._appKb == null && me._stops.Count > 0 ) me._appKb = me._stops[0];
                 me.StampKbLand();
                 Log.Info( $"[dev_pawpadfx] LAND flash on {me._appKb ?? "(no stop)"}." );
@@ -1275,7 +1311,7 @@
                 Log.Info( "[dev_pawpadfx] CLEAR ladder (record kept — rows return at +500ms)." );
                 break;
             default:
-                Log.Warning( "[dev_pawpadfx] beats: open | cascade | land | hop <id> | send | arrive [alerts] | chan | expire | tick | go | clear | play | station | vol" );
+                Log.Warning( "[dev_pawpadfx] beats: open | cascade | land | hop <id> | send | arrive [alerts] | chan | expire | tick | fold | go | clear | play | station | vol" );
                 return;
         }
         me.StateHasChanged();
@@ -1842,6 +1878,8 @@
                 if ( !IsOnDevice( Mouse.Position ) ) Close();
                 return;
             }
+            // A volume DRAG ends on the click (mouse up): commit the level, one beat.
+            if ( _volDragging ) { EndVolDrag(); return; }
             var act = ActionAtScreen( Mouse.Position );
             if ( WALK_DEBUG ) Log.Info( $"[walkdbg] appview click -> {act ?? "none"}" );
             // Any tap that isn't the input, SEND or a channel pill (all three keep
@@ -1866,6 +1904,24 @@
         if ( idx >= 0 ) { LaunchIndex( idx ); return; }
         if ( IsOnDevice( Mouse.Position ) ) return; // a miss between tiles is inert, not a close (2026-09-01)
         Close();
+    }
+
+    // Mouse DOWN on the backdrop (closeout 2026-09-10): only the radio volume
+    // slider listens — a press on it starts a DRAG (the knob follows the mouse
+    // per frame in TickApps; the click on release commits). Everything else
+    // keeps the click router.
+    private void OnBackdropDown()
+    {
+        if ( _appView != "radio" || _appClosingUntil > 0f || _hopTo != null || _volDragging ) return;
+        if ( ActionAtScreen( Mouse.Position ) != "hit-vol" ) return;
+        _volDragging = true;
+        _appKb = "hit-vol";
+        _hoverHit = "hit-vol";
+        _kbDriven = false;
+        _lastMousePos = Mouse.Position;
+        SeekVolumeAt( Mouse.Position, commit: false );
+        SoundManager.PlayClick();
+        StateHasChanged();
     }
 
     // Is a SCREEN-px point on the device (bezel included)? The lean is zero
@@ -2119,6 +2175,11 @@
         _pendingPopup = null;
         _swipeNextFrame = false;
         _appOpenedAt = Time.Now;
+        // closeout 2026-09-10: a HOP takes the hold-free swap ladder (rows / chips /
+        // bar / zones / foot) — the launch holds were sized to hide under the bloom
+        // disc, and a hop has no disc (the view fades back in over 0.12s).
+        _openWasHop = fromLatch;
+        _casPrimeFrames = 0;
         _rowMotionG.Clear();
         _rowMotionS.Clear();
         _fxLast.Clear();
@@ -2126,11 +2187,16 @@
         _fxValText.Clear();
         _fxValTickAt.Clear();
         _fxValTickUntil = -1f;
+        _devChipLeaveUntil = -1f;
         _pressedHit = null;
         _clearArmedAt = -1f;
         _clearingAt = -1f;
         _clearLabelAt = -1f;
-        _volLadderUntil = -1f;
+        _alertKbId = Guid.Empty;
+        _alertKbIdx = -1;
+        _volDragging = false;
+        _volBeatLive = false;
+        _volRepeatAt = -1f;
         _playLive = false;
         _stationLive = false;
         // Motion windows (all one-shots): send beat, channel latch, deep-link
@@ -2343,9 +2409,22 @@
         if ( _bloomCircleFadeAt > Time.Now + 1f ) _bloomCircleFadeAt = -1f;
         if ( _clearArmedAt > Time.Now + 3f ) _clearArmedAt = -1f;
         if ( _clearingAt > Time.Now + 1f ) _clearingAt = -1f;
-        if ( _volLadderUntil > Time.Now + 1f ) _volLadderUntil = -1f;
+        if ( _volRepeatAt > Time.Now + 1f ) _volRepeatAt = -1f;
+        if ( _devChipLeaveUntil > Time.Now + 1f ) _devChipLeaveUntil = -1f;
+        if ( _progSnapUntil > Time.Now + 1f ) _progSnapUntil = -1f;
 
         bool dirty = false;
+
+        // dev_pawpadfx open / cascade: the PRIME frames have rendered with every
+        // rung stripped — re-arm the ladder now (closeout 2026-09-10, DOC-4 #8).
+        if ( _casPrimeFrames > 0 && --_casPrimeFrames == 0 )
+        {
+            _appOpenedAt = Time.Now;
+            _openWasHop = false;
+            _rowMotionG.Clear();
+            _rowMotionS.Clear();
+            dirty = true;
+        }
 
         // The bloom arm: the app view mounted hidden; toggle .on once layout holds the rest state.
         if ( _bloomArmFrames > 0 && _appView != null )
@@ -2385,8 +2464,29 @@
         if ( _kbLandLive && Time.Now - _kbLandAt >= 0.18f ) { _kbLandLive = false; dirty = true; }
         if ( _playLive && Time.Now - _playAt >= 0.4f ) { _playLive = false; dirty = true; }
         if ( _stationLive && Time.Now - _stationAt >= 0.4f ) { _stationLive = false; dirty = true; }
+        if ( _volBeatLive && Time.Now - _volBeatAt >= 0.3f ) { _volBeatLive = false; dirty = true; }
+        // Beat-host FREEZE (closeout 2026-09-10): a host whose beat is running keeps
+        // its snapshotted stamp; if the CURSOR leaves a host it was sitting on, the
+        // beat ends early (a clean cut to the rest fill) rather than a stale cursor
+        // reading beside the real one for the rest of the window.
+        if ( _playLive && _playSnap.Contains( "kb-focused" ) && _appKb != "hit-radio-play" ) { _playLive = false; dirty = true; }
+        if ( _stationLive && _stationSnap.Contains( "kb-focused" ) && _appKb != "hit-radio-station" ) { _stationLive = false; dirty = true; }
         if ( _clearLabelAt > 0f && Time.Now - _clearLabelAt >= 0.3f ) { _clearLabelAt = -1f; dirty = true; }
         if ( _fxValTickUntil > 0f && Time.Now >= _fxValTickUntil ) { _fxValTickUntil = -1f; dirty = true; }
+        if ( _devChipLeaveUntil > 0f && Time.Now >= _devChipLeaveUntil ) { _devChipLeaveUntil = -1f; dirty = true; }
+        if ( _progSnapUntil > 0f && Time.Now >= _progSnapUntil ) { _progSnapUntil = -1f; dirty = true; }
+        // Volume DRAG: the knob follows the mouse every frame it moves (Style-free —
+        // the value is markup, the hash carries it); a lost button (phone closed /
+        // view left) cancels without a commit.
+        if ( _volDragging )
+        {
+            if ( _appView != "radio" || !IsVisible ) _volDragging = false;
+            else
+            {
+                var dm = Mouse.Position;
+                if ( ( dm - _lastMousePos ).Length > 0.5f ) { _lastMousePos = dm; SeekVolumeAt( dm, commit: false ); }
+            }
+        }
         // Keyboard scroll-follow GLIDE (DOC-5 #13): 0.30/frame toward the target, snap under 1.5px.
         if ( _scrollGlideTo >= 0f )
         {
@@ -2440,7 +2540,6 @@
         {
             int sig = Beastborne.Systems.RadioManager.CurrentStationIndex * 1000 + Beastborne.Systems.RadioManager.CurrentTrackIndex;
             if ( sig != _lastTrackSig ) { _lastTrackSig = sig; _trackKey++; RefreshProgress(); dirty = true; }
-            if ( _volLadderUntil > 0f && Time.Now >= _volLadderUntil ) { _volLadderUntil = -1f; dirty = true; }
         }
         else if ( _appView == "chat" )
         {
@@ -2551,9 +2650,14 @@
     private const float CascadeWindow = 0.7f;
     private const float ArriveWindow = 0.5f;
 
+    // closeout 2026-09-10: a HOP into the app (OpenApp fromLatch) hands the rows the
+    // hold-free pl-swap ladder — the launch holds (243ms) were sized to hide under
+    // the bloom disc, and a hop has none (live: header over an empty body ~250ms).
+    private bool _openWasHop;
+    private bool InOpenWindow => Time.Now - _appOpenedAt < CascadeWindow;
     private string MotionFor( int rung, bool own )
     {
-        if ( Time.Now - _appOpenedAt < CascadeWindow ) return rung < 0 ? "" : "pl-cas-" + rung;
+        if ( InOpenWindow ) return rung < 0 ? "" : ( _openWasHop ? "pl-swap-" : "pl-cas-" ) + rung;
         if ( Time.Now - _chanSwitchedAt < 0.4f ) return rung < 0 ? "" : "pl-swap-" + rung;
         return own ? "pl-arrive-own" : "pl-arrive";
     }
@@ -2570,6 +2674,7 @@
 
     private string RowMotion( Guid id, string act, int rung, bool own )
     {
+        if ( _casPrimeFrames > 0 ) return ""; // dev re-arm: the priming render carries no rung (and caches nothing)
         if ( !_rowMotionG.TryGetValue( id, out var mo ) )
         {
             mo = new RowMo { Cls = MotionFor( rung, own ), Hit = HitState( act ), At = Time.Now };
@@ -2580,6 +2685,7 @@
 
     private string RowMotion( string key, string act, int rung )
     {
+        if ( _casPrimeFrames > 0 ) return "";
         if ( !_rowMotionS.TryGetValue( key, out var mo ) )
         {
             mo = new RowMo { Cls = MotionFor( rung, false ), Hit = HitState( act ), At = Time.Now };
@@ -2590,11 +2696,18 @@
 
     // Section chips ride the open rung only inside the open window (a later
     // `mt` flip on the chip must not replay a mount keyframe — DOC-4 #14).
-    private string SectRung() => Time.Now - _appOpenedAt < CascadeWindow ? "pl-hdr-sect" : "";
+    // Every rung below is EMPTY during the dev prime frames and takes the swap
+    // form on a hop (closeout 2026-09-10).
+    private int _casPrimeFrames;
+    private string SectRung() => _casPrimeFrames == 0 && InOpenWindow ? ( _openWasHop ? "pl-sect-swap" : "pl-hdr-sect" ) : "";
     // Radio zone rungs (MOTION-1): the four STABLE zone wrappers ride plCas0-3
     // inside the same window (replayable by dev_pawpadfx cascade; a finished
     // rung dropping its class on a later re-render is invisible — fill none).
-    private string ZoneRung( int n ) => Time.Now - _appOpenedAt < CascadeWindow ? "pl-cas-" + n : "";
+    private string ZoneRung( int n ) => _casPrimeFrames == 0 && InOpenWindow ? ( _openWasHop ? "pl-swap-" : "pl-cas-" ) + n : "";
+    // The chat channel bar (lands with row 0) and the FOOT (composer / CLEAR ALL,
+    // after the rows): launch holds, or the short swap rungs on a hop.
+    private string ChanRung() => _casPrimeFrames == 0 && InOpenWindow ? ( _openWasHop ? "pl-chan-swap" : "pl-chan-in" ) : "";
+    private string FootRung() => _casPrimeFrames == 0 && Time.Now - _appOpenedAt < 0.9f ? ( _openWasHop ? "pl-foot-swap" : "pl-foot-in" ) : "";
 
     // ── In-phone HOP latch + deep-link ROUTE latch (motion lane 2026-09-07) ──
     private string _hopTo;               // the app the view is leaving for (view wears .pl-leaving)
@@ -2691,11 +2804,13 @@
     private float _sendAt = -999f;
     private bool _sendLive;
     private string SendBeatClass() => _sendLive ? "pl-sent-" + ( _sendKey % 2 ) : "";
+    private string _sendSnap = "";
     private void FireSendBeat()
     {
         _sendKey++;
         _sendAt = Time.Now;
         _sendLive = true;
+        _sendSnap = SnapHit( "hit-send" ); // the host's stamp is frozen for the beat (closeout 2026-09-10)
         SoundManager.PlayClick();
     }
 
@@ -2813,16 +2928,20 @@
     private string _progPos = "0:00";
     private string _progDur = "0:00";
     private int _volKey;
-    private float _volLadderUntil = -1f;
 
     // ── PLAY commit beat + STATION switch beat (motion lane 2026-09-07) —
     // WINDOWED parity classes on the volatile hosts (the SEND-beat form):
     // present 0.4s, dropped on a real re-render, so a later hover / cursor
     // class change on the host finds no animation to restart. The PLAY beat
-    // carries the radio surface's ONE HDR frame (white × 1.6 at 0%). ──
+    // carries the radio surface's ONE HDR frame (white × 1.6 at 0%).
+    // closeout 2026-09-10 — BEAT-HOST FREEZE: INSIDE the window the host's
+    // hover / cursor stamp is a SNAPSHOT (HitState returns it while the beat is
+    // live), so a mouse-off or a hop cannot change the class string and replay
+    // the HDR frame; the cursor leaving the host ends the beat early instead. ──
     private int _playKey;
     private float _playAt = -999f;
     private bool _playLive;
+    private string _playSnap = "";
     private string PlayBeatClass() => _playLive ? "pl-play-" + ( _playKey % 2 ) : "";
     private void FirePlayBeat()
     {
@@ -2830,25 +2949,46 @@
         _playAt = Time.Now;
         _playLive = true;
         _kbLandLive = false; // the beat owns the host's one animation slot — a land flash still running would fight it
+        _playSnap = SnapHit( "hit-radio-play" );
     }
 
     private int _stationKey;
     private float _stationAt = -999f;
     private bool _stationLive;
+    private string _stationSnap = "";
     private string StationPopClass() => _stationLive ? "pl-stamp-" + ( _stationKey % 2 ) : "";
     private void FireStationBeat()
     {
         _stationKey++;
         _stationAt = Time.Now;
         _stationLive = true;
+        _kbLandLive = false;
+        _stationSnap = SnapHit( "hit-radio-station" );
     }
 
+    // The util slot (header) as ONE always-mounted element — class · label ·
+    // margin per app (closeout 2026-09-10, DOC-7 #5). `none` = display none.
+    private (string Cls, string Label, int Ml) UtilSlot() => _appView switch
+    {
+        "radio" => ( "chip pl-hit hit-radio-station " + StationPopClass() + " " + HitState( "hit-radio-station" ), StationChipLabel(), 218 ),
+        "effects" => ( "stamp pl-stamp-" + ( ( EffectsCount() + _stampKey ) % 2 ), EffectsCount() + " ACTIVE", 204 ),
+        _ => ( "none", "", 0 ),
+    };
+
     // 1 Hz cached progress (ClockText pattern) — px fill on the fixed 476 track.
+    // closeout 2026-09-10: the fill DRAINS (a 1s linear width transition, the
+    // Effects strip's recipe — the two 1 Hz fills on one device now wear ONE
+    // dialect); any BACKWARD move (track change 476 → 0, a repeat restart)
+    // wears `.snap` for a beat so it never tweens backward.
+    private float _progSnapUntil = -1f;
+    private bool ProgSnap() => _progSnapUntil > 0f && Time.Now < _progSnapUntil;
     private void RefreshProgress()
     {
         float pos = Beastborne.Systems.RadioManager.TrackPosition;
         float dur = Beastborne.Systems.RadioManager.TrackDuration;
-        _progFillPx = dur > 0.5f ? (int)Math.Clamp( 476f * pos / dur, 0f, 476f ) : 0;
+        int px = dur > 0.5f ? (int)Math.Clamp( 476f * pos / dur, 0f, 476f ) : 0;
+        if ( px < _progFillPx ) _progSnapUntil = Time.Now + 0.15f;
+        _progFillPx = px;
         _progPos = FormatClock( pos );
         _progDur = FormatClock( dur );
     }
@@ -2878,34 +3018,68 @@
         return other == null ? "Track " + i + " of " + n : "Track " + i + " of " + n + " · switches to " + other + " " + where;
     }
 
-    private int VolStep() => Math.Clamp( (int)MathF.Round( Beastborne.Systems.RadioManager.Volume * 5f ), 0, 5 );
-    private bool VolLadderActive() => _volLadderUntil > 0f && Time.Now < _volLadderUntil;
+    // ── VOLUME SLIDER (closeout 2026-09-10, user request) — replaces the five
+    // segments. Track 300 wide; the knob (16 occupied) rides `left` 0..284, the
+    // fill reaches the knob's centre. Value = whole percent. The mouse drags
+    // (backdrop mousedown → SeekVolumeAt per frame → the click commits) or taps
+    // to seek; A/D nudge ±5 with hold-repeat under the cursor. During a drag the
+    // level is written straight to the manager (no cookie churn per frame); the
+    // commit goes through SetVolume (settings + cookie). Feedback = the knob /
+    // fill glide (0.14s, snapped while dragging) + the numeral pop (pl-volv-N,
+    // windowed 0.3s, OF the number — no HDR, an everyday adjust: DOC-4 #16).
+    // The segment raise-ladder and the segment press stamp are RETIRED. ──
+    private Panel _volSliderRef;
+    private bool _volDragging;
+    private float _volBeatAt = -999f;
+    private bool _volBeatLive;
+    private float _volRepeatAt = -1f;
+    private const int VolTravelPx = 284; // 300 − the 16px knob
+    private int VolPct() => Math.Clamp( (int)MathF.Round( Beastborne.Systems.RadioManager.Volume * 100f ), 0, 100 );
+    private int VolKnobPx() => (int)MathF.Round( VolTravelPx * Math.Clamp( Beastborne.Systems.RadioManager.Volume, 0f, 1f ) );
+    private int VolFillPx() => VolKnobPx() + 8;
+    private string VolBeatClass() => _volBeatLive ? "pl-volv-" + ( _volKey % 2 ) : "";
+    private void FireVolBeat() { _volKey++; _volBeatAt = Time.Now; _volBeatLive = true; }
 
-    // Stepped volume: raising lights the segments in sequence (re-keyed ladder),
-    // lowering goes dark at once.
-    private void TapVolume( int k )
+    // Screen px → volume along the knob's travel (the lean is zero, so the layout
+    // rect IS the paint; ScaleFromScreen converts to style px like the router).
+    private void SeekVolumeAt( Vector2 screenPx, bool commit )
     {
-        if ( k < 1 || k > 5 ) return;
-        int old = VolStep();
-        Beastborne.Systems.RadioManager.SetVolume( k * 0.2f );
-        if ( k > old )
-        {
-            // A RAISE is the ladder (the lit segments light in sequence) — no press
-            // stamp on the tapped segment: `.pressed` clearing at +120ms would change
-            // its class string mid-ladder and restart the rung (DOC-4 #14). A land
-            // flash still running on it would take the same animation slot — drop it.
-            _volKey++;
-            _volLadderUntil = Time.Now + 0.25f;
-            _kbLandLive = false;
-        }
-        else
-        {
-            // Lowering / re-tapping the level goes dark at once (0ms is legal SNAP);
-            // the quiet press stamp is the only feedback (MOTION-6).
-            _pressedHit = "hit-vol-" + k;
-            _pressedAt = Time.Now;
-        }
-        SoundManager.PlayClick();
+        if ( _volSliderRef == null ) return;
+        var r = _volSliderRef.Box.Rect;
+        if ( r.Width < 1f ) return;
+        float sc = ScaleFromScreen;
+        if ( sc <= 0.01f || float.IsNaN( sc ) || float.IsInfinity( sc ) ) sc = 1f;
+        float xs = ( screenPx.x - r.Left ) * sc;
+        float v = Math.Clamp( ( xs - 8f ) / VolTravelPx, 0f, 1f );
+        v = MathF.Round( v * 100f ) / 100f;
+        ApplyVolume( v, commit );
+    }
+
+    private void ApplyVolume( float v, bool commit )
+    {
+        v = Math.Clamp( v, 0f, 1f );
+        if ( commit ) Beastborne.Systems.RadioManager.SetVolume( v );
+        else { Beastborne.Systems.RadioManager.Volume = v; Beastborne.Systems.RadioManager.UpdateVolume(); }
+    }
+
+    private void EndVolDrag()
+    {
+        _volDragging = false;
+        ApplyVolume( Beastborne.Systems.RadioManager.Volume, commit: true );
+        FireVolBeat();
+        StateHasChanged();
+    }
+
+    // A/D on the slider: ±5, the initial press beats; held repeats (0.35s then
+    // every 80ms) move the knob without re-popping the numeral (a 12 Hz pop is
+    // jitter, not feedback).
+    private void NudgeVolume( int deltaPct, bool beat )
+    {
+        int pct = Math.Clamp( VolPct() + deltaPct, 0, 100 );
+        if ( pct == VolPct() ) return;
+        ApplyVolume( pct / 100f, commit: true );
+        if ( beat ) { FireVolBeat(); SoundManager.PlayClick(); }
+        StateHasChanged();
     }
 
     // Visualizer — baked LOSSLESS animated WebP <img>, src value-swapped on
@@ -2942,6 +3116,9 @@
     private int EffectsCount() => ActiveEffectsPanel.TotalEffectCount;
     private List<(string Name, int Rank, string IconPath, string Glyph)> PhoneSkills() => ActiveEffectsPanel.GetPhoneSkills();
     private List<FxGhost> FxGhosts() => _fxExpired;
+    // dev_pawpadfx fold — forces the TIMED BOOSTS chip's .leaving fold for a screenshot.
+    private float _devChipLeaveUntil = -1f;
+    private bool DevChipLeaving() => _devChipLeaveUntil > 0f && Time.Now < _devChipLeaveUntil;
 
     // Timed boosts + expiry ghosts: a key that vanished since the last render
     // folds 400ms IN PLACE as .expired (plFxOut: fade, then height → 0), then
@@ -3126,12 +3303,12 @@
     {
         "hit-back", "hit-home", "hit-chan-global", "hit-chan-guild", "hit-chan-trade",
         "hit-send", "hit-input", "hit-radio-prev", "hit-radio-play", "hit-radio-next",
-        "hit-radio-shuffle", "hit-radio-repeat", "hit-radio-station",
+        "hit-radio-shuffle", "hit-radio-repeat", "hit-radio-station", "hit-vol",
         "hit-clear",
     };
 
     // Indexed families resolve by PREFIX (class starts-with → the whole class is the action).
-    private static readonly string[] HitPrefixes = { "hit-alert-", "hit-chat-author-", "hit-embed-", "hit-vol-", "hit-msg-", "hit-fx-", "hit-sk-" };
+    private static readonly string[] HitPrefixes = { "hit-alert-", "hit-chat-author-", "hit-embed-", "hit-msg-", "hit-fx-", "hit-sk-" };
 
     private string ActionAtScreen( Vector2 screenPx )
     {
@@ -3193,6 +3370,10 @@
     private void RunAppAction( string act )
     {
         if ( _appClosingUntil > 0f || _hopTo != null || _routeAt > 0f ) return; // a view mid-latch takes no input
+        // The CLEAR ALL ladder is a 0.5s destructive latch (closeout 2026-09-10,
+        // DOC-5 #14): rows mid-fade take no taps (a restart / a tap on a row about
+        // to be deleted); HOME / back still leave.
+        if ( _clearingAt > 0f && act != "hit-home" && act != "hit-back" ) return;
         // Info rows (effects) are reading stops only — no press flash on a slab
         // that leads nowhere (a flash promises a button).
         if ( act.StartsWith( "hit-fx-" ) || act.StartsWith( "hit-sk-" ) ) return;
@@ -3209,13 +3390,24 @@
         // itself (TapSend: the beat on a real send, the quiet press when empty);
         // PLAY and the station chip wear their commit beats instead (a stamp
         // dropping mid-beat would restart it — DOC-4 #14); a volume segment
-        // decides in TapVolume (the ladder on a raise, the stamp otherwise).
-        if ( act != "hit-input" && act != "hit-send" && act != "hit-radio-play" && act != "hit-radio-station" && !act.StartsWith( "hit-vol-" ) ) { _pressedHit = act; _pressedAt = Time.Now; }
+        // slider seeks / drags with no stamp (the knob glide + numeral pop are its feedback).
+        if ( act != "hit-input" && act != "hit-send" && act != "hit-radio-play" && act != "hit-radio-station" && act != "hit-vol" ) { _pressedHit = act; _pressedAt = Time.Now; }
 
         if ( act.StartsWith( "hit-alert-" ) ) TapAlert( HitIndex( act ) );
         else if ( act.StartsWith( "hit-chat-author-" ) ) TapAuthor( HitIndex( act ) );
         else if ( act.StartsWith( "hit-embed-" ) ) TapEmbed( HitIndex( act ) );
-        else if ( act.StartsWith( "hit-vol-" ) ) TapVolume( HitIndex( act ) );
+        else if ( act == "hit-vol" )
+        {
+            // A click that reached here had no drag (keyboard Space / a press the
+            // backdrop never saw): seek to the mouse if it is over the track, else
+            // nothing (A/D are the slider's keys).
+            if ( _volSliderRef != null && LayoutContains( _volSliderRef.Box.Rect, Box.Rect, ScaleFromScreen, new Vector2( ( Mouse.Position.x - Box.Rect.Left ) * ScaleFromScreen, ( Mouse.Position.y - Box.Rect.Top ) * ScaleFromScreen ), 4f ) )
+            {
+                SeekVolumeAt( Mouse.Position, commit: true );
+                FireVolBeat();
+                SoundManager.PlayClick();
+            }
+        }
         else
         {
             switch ( act )
@@ -3676,7 +3868,24 @@
     private int _kbScrollPending;
 
     // The three router-stamped states, joined for the class attribute.
+    // closeout 2026-09-10 — BEAT-HOST FREEZE (DOC-4 #14): while a commit beat
+    // runs on a volatile host (PLAY / the station chip / SEND), the stamp the
+    // host wears is the one SNAPSHOTTED at the fire — a hover-off, a hop or a
+    // land flash inside the window would otherwise change the class string and
+    // restart the keyframe from its HDR frame (or swap the animation slot to
+    // the land ring). TickApps ends a beat early if the cursor leaves its host.
     private string HitState( string act )
+    {
+        if ( _playLive && act == "hit-radio-play" ) return _playSnap;
+        if ( _stationLive && act == "hit-radio-station" ) return _stationSnap;
+        if ( _sendLive && act == "hit-send" ) return _sendSnap;
+        return HitStateLive( act );
+    }
+
+    // The snapshot: the live stamp minus the transients (press, land flash).
+    private string SnapHit( string act ) => HitStateLive( act ).Replace( "pressed ", "" ).Replace( " pl-kbland", "" ).Trim();
+
+    private string HitStateLive( string act )
     {
         if ( act == null ) return "";
         bool p = _pressedHit == act, h = _hoverHit == act, k = _appKb == act;
@@ -3685,10 +3894,8 @@
         // the same cursor and a flash per hover is a second ambient, DOC-4 #10);
         // stamped on the stop itself, never an ancestor. On the radio (MOTION-3,
         // 2026-09-07) every control flashes its own mark (border on dark fills,
-        // the outer ring on accent fills) — except a volume segment while the
-        // raise ladder runs: ladder and flash share the segment's one animation
-        // slot, and the flash's +180ms drop would restart the rung.
-        bool land = k && _kbLandLive && _kbDriven && !( VolLadderActive() && act.StartsWith( "hit-vol-" ) );
+        // the outer ring on accent fills; the slider's knob wears the border).
+        bool land = k && _kbLandLive && _kbDriven;
         return ( p ? "pressed " : "" ) + ( h ? "hovered " : "" ) + ( k ? ( land ? "kb-focused pl-kbland" : "kb-focused" ) : "" );
     }
 
@@ -3710,7 +3917,7 @@
                 _stops.Add( "hit-radio-next" );
                 _stops.Add( "hit-radio-repeat" );
                 _stops.Add( "hit-radio-station" );
-                for ( int k = 1; k <= 5; k++ ) _stops.Add( "hit-vol-" + k );
+                _stops.Add( "hit-vol" ); // the slider is ONE stop (A/D adjust it)
                 break;
         }
         SettleCursor( app );
@@ -3724,12 +3931,31 @@
         SettleCursor( "effects" );
     }
 
-    private void RebuildAlertStops( int alerts, bool clearVisible )
+    // Alert stops are positional (hit-alert-N) but the CURSOR remembers the row's
+    // Guid (closeout 2026-09-10, DOC-5 #20): an arrival at index 0 used to steal
+    // the cursor by number (and hide its own tick-in beat under it). If the
+    // cursor index is still where this code last left it, the list shifted under
+    // the cursor — re-resolve the remembered id; otherwise input moved it — adopt.
+    private Guid _alertKbId = Guid.Empty;
+    private int _alertKbIdx = -1;
+    private void RebuildAlertStops( List<Beastborne.Core.Notification> alerts, bool clearVisible )
     {
         _stops.Clear();
-        for ( int i = 0; i < alerts; i++ ) _stops.Add( "hit-alert-" + i );
+        for ( int i = 0; i < alerts.Count; i++ ) _stops.Add( "hit-alert-" + i );
         if ( clearVisible ) _stops.Add( "hit-clear" );
+        if ( _appKb != null && _appKb.StartsWith( "hit-alert-" ) && _alertKbId != Guid.Empty && HitIndex( _appKb ) == _alertKbIdx )
+        {
+            int j = alerts.FindIndex( n => n.Id == _alertKbId );
+            if ( j >= 0 && j != _alertKbIdx ) _appKb = "hit-alert-" + j;
+        }
         SettleCursor( "alerts" );
+        if ( _appKb != null && _appKb.StartsWith( "hit-alert-" ) )
+        {
+            int k = HitIndex( _appKb );
+            _alertKbIdx = k;
+            _alertKbId = k >= 0 && k < alerts.Count ? alerts[k].Id : Guid.Empty;
+        }
+        else { _alertKbIdx = -1; _alertKbId = Guid.Empty; }
     }
 
     // Landing per app: chat = the input (you open chat to type), radio = PLAY
@@ -3834,7 +4060,7 @@
     // Mouse over an app view (movement-gated from Tick).
     private void PollAppHover( Vector2 mp )
     {
-        if ( _appClosingUntil > 0f || _hopTo != null || _routeAt > 0f ) return;
+        if ( _appClosingUntil > 0f || _hopTo != null || _routeAt > 0f || _clearingAt > 0f || _volDragging ) return; // latches + a live drag own the mouse
         var act = ActionAtScreen( mp );
         if ( act == _hoverHit ) return;
         _hoverHit = act;
@@ -3855,7 +4081,7 @@
         bool confirm = Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) || Input.Pressed( "Use" );
         bool cycle = Input.Pressed( "Reload" );
 
-        if ( _hopTo != null || _routeAt > 0f ) return; // a view mid-latch takes no keys
+        if ( _hopTo != null || _routeAt > 0f || _clearingAt > 0f ) return; // a view mid-latch (hop / route / the CLEAR ladder) takes no keys — Q still backs out above
 
         // 2026-09-01 (usability audit): the grid's direct keys were DEAD inside an
         // app — leaving RADIO for ALERTS was Q, wait 360ms, N. Now T/C/N hop
@@ -3898,7 +4124,16 @@
                 // "A/D = skip" and "W/S = volume" are RETIRED (they hijacked the
                 // cursor).
                 if ( confirm ) { RunAppAction( _appKb ?? "hit-radio-play" ); return; }
-                if ( left || right ) { MoveRadioCursor( 0, right ? 1 : -1 ); return; }
+                // On the VOLUME SLIDER, A/D nudge ±5 (the press beats) and REPEAT while
+                // held — 0.35s, then every 80ms (closeout 2026-09-10).
+                if ( _appKb == "hit-vol" )
+                {
+                    if ( left || right ) { NudgeVolume( right ? 5 : -5, beat: true ); _volRepeatAt = Time.Now + 0.35f; return; }
+                    bool lHeld = Input.Down( "Left" ), rHeld = Input.Down( "Right" );
+                    if ( ( lHeld || rHeld ) && _volRepeatAt > 0f && Time.Now >= _volRepeatAt ) { NudgeVolume( rHeld ? 5 : -5, beat: false ); _volRepeatAt = Time.Now + 0.08f; return; }
+                    if ( !lHeld && !rHeld ) _volRepeatAt = -1f;
+                }
+                else if ( left || right ) { MoveRadioCursor( 0, right ? 1 : -1 ); return; }
                 if ( up || down ) { MoveRadioCursor( up ? -1 : 1, 0 ); return; }
                 if ( cycle ) { RunAppAction( "hit-radio-station" ); return; }
                 if ( Input.Pressed( "CyclePrev" ) ) { RunAppAction( "hit-radio-shuffle" ); return; }
@@ -3923,14 +4158,14 @@
     }
 
     // ── The radio cursor GRID — row 0 = station chip · row 1 = transport ·
-    // row 2 = volume. A/D move within a row (clamped, silent at the ends like
-    // every list); W/S move between rows column-mapped: transport col i ↔
-    // volume seg i+1 (PLAY ↔ seg 3), station ↔ PLAY. ──
+    // row 2 = the volume slider (ONE stop; A/D adjust it). A/D move within the
+    // top rows (clamped, silent at the ends like every list); W/S move between
+    // rows: station ↔ PLAY, transport ↓ the slider, the slider ↑ PLAY. ──
     private static readonly string[][] RadioGrid =
     {
         new[] { "hit-radio-station" },
         new[] { "hit-radio-shuffle", "hit-radio-prev", "hit-radio-play", "hit-radio-next", "hit-radio-repeat" },
-        new[] { "hit-vol-1", "hit-vol-2", "hit-vol-3", "hit-vol-4", "hit-vol-5" },
+        new[] { "hit-vol" },
     };
 
     private void MoveRadioCursor( int dr, int dc )
@@ -3945,9 +4180,9 @@
         int nc;
         if ( dr != 0 )
         {
-            if ( nr == 0 ) nc = 0;                 // up into the station chip
-            else if ( r == 0 ) nc = 2;             // down from the chip lands on PLAY
-            else nc = Math.Clamp( c, 0, RadioGrid[nr].Length - 1 ); // transport ↔ volume share columns
+            if ( nr == 0 || nr == 2 ) nc = 0;      // up into the station chip / down onto the slider
+            else if ( r == 0 || r == 2 ) nc = 2;   // from the chip or the slider, the transport lands on PLAY
+            else nc = Math.Clamp( c, 0, RadioGrid[nr].Length - 1 );
         }
         else nc = Math.Clamp( c + dc, 0, RadioGrid[nr].Length - 1 );
         var next = RadioGrid[nr][nc];
@@ -4035,11 +4270,13 @@
             HashCode.Combine( _bloomApp, _bloomLive, _appClosingUntil > 0f, _pressedHit, _bloomCircleGrow, _bloomCircleFade, HashCode.Combine( _bloomCx, _bloomCy ), _appUiOn ),
             HashCode.Combine(
                 ( _appView is "radio" or "effects" or "alerts" ) ? _tick : 0,
-                _trackKey, _volKey, VolLadderActive(),
+                _trackKey, HashCode.Combine( VolPct(), _volDragging, _volBeatLive ? _volKey : -1 ),
                 Beastborne.Systems.RadioManager.IsShuffle,
                 Beastborne.Systems.RadioManager.IsRepeat,
                 Beastborne.Systems.RadioManager.CurrentStationIndex,
-                _progFillPx ),
+                HashCode.Combine( _progFillPx, ProgSnap() ),
+                // closeout 2026-09-10: the dev prime frames, the hop ladder form, the dev chip fold
+                HashCode.Combine( _casPrimeFrames, _openWasHop, DevChipLeaving() ) ),
             // + the one cursor and the hovered hit (2026-08-30; both are class stamps) — HashCode.Combine caps at 8 args.
             HashCode.Combine( _appView == "chat" ? ChanCounts() : default, _seenGlobal, _seenGuild, _seenTrade, ChatPanel.IsChatFocused, _appKb, _hoverHit ),
             HashCode.Combine( ClearArmed, _clearingAt > 0f, _readIds.Count, _fxExpired.Count, ActiveEffectsPanel.TotalEffectCount, _alertsSeenBefore, _sbOn,
