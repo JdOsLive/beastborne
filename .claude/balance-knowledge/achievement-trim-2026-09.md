@@ -40,6 +40,8 @@ Sources: `Code/Core/AchievementManager.cs:66-399`, rank generator `:425-446`.
 
 ## 2. The new set: 15 achievements, Tokens only, 195 T lifetime, 5 titles
 
+**BUILT 2026-09-25 with FIXED targets** (user: never "all of a growing set"): Beastbook 10 / 20 (26 launch species, 20 solo-reachable), patterns 1 / 2 (3 exist, 2 without a Pagefin), bosses 1 / 3, Hard 1 / 3. Final ids: `beastbook_10`, `beastbook_20`, `pattern_2`, `boss_3` (rows 3, 4, 8, 12 below are superseded).
+
 R = reused id. N = new id. Rewards are modest: 5 for a first-session beat, 10-15 mid-game, 20-25 for a capstone. Current income is about 83 T/week, so the whole set is worth about 2.5 weeks of play.
 
 | # | id | Name | Requirement → target | Reward | Hook |

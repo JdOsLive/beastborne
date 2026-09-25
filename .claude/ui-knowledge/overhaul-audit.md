@@ -152,3 +152,7 @@ Mostly input-routing fixes, safe to do early. *verify* = confirm in-editor first
 |---|---|---|---|---|
 | 2026-09-25 | 0 | Code-read audit | done | this file + details |
 | 2026-09-25 | 0.5 | M closes phone; R no longer double-fires radio; button-focus guard | pushed, verify in-editor | commits 27dac6d, a2ffeee |
+| 2026-09-25 | 0.5 | Quick fixes 1–10, 12–16 (input core, Feedback/Trading keyboard, Gift inbox, Shop, Leaderboard, Tutorial, menu, Options label, ZONE CLEARED, fusion wording) | pushed, verify in-editor | 1e62f94 + batch 2 |
+| 2026-09-25 | 0.5 | Quests→Tokens; gems→Tokens 1:1 (+save migration v3); regional tokens removed; economy A1–A4 | pushed, verify in-editor | 2c142fc, 8f40af3, 2222d53 |
+| 2026-09-25 | 0.5 | Open: #11 remainder (Quests Main/Guild tabs), #17 copy debt (Daily/Achievement fly-to-HUD targets, Help "Screenshot pending"), zone name "Weaverton Approach" vs map label "Serpinglin Approach", Patch Notes screen still v1.2.0 content | todo | — |
+

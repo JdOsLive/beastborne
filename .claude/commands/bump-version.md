@@ -2,19 +2,22 @@ Bump the game version across all UI files.
 
 Ask the user: "What version are we updating to? (e.g. v0.5.0)" and "What's the update name? (e.g. Shop Update)"
 
-Then update ALL of these locations with the new version:
+Then update these locations:
 
-1. **MainMenu.razor** — Alpha badge (line with `class="alpha-badge"`):
-   Change to `ALPHA v{VERSION}`
+1. **Code/Core/BeastborneBuild.cs** — `public const string Version = "{VERSION}";` (no leading "v").
+   This is the SINGLE source: the main-menu version pill, the featured-card kicker
+   (`UPDATE {VERSION}`), the Menu popup version chip, the Credits footer and the Feedback
+   form's auto-filled version all read it. Do not hard-code a version string anywhere else.
 
-2. **MainMenu.razor** — Splash text array entry that contains the current version:
-   Change to `v{VERSION} - {UPDATE_NAME}`
+2. **Code/UI/MainMenu.razor** — `featuredKicker`: update the update NAME after the version
+   (`$"UPDATE {BeastborneBuild.Version} · {UPDATE_NAME}"`) and refresh the featured copy fields
+   below it if the release has a new headline.
 
-3. **GameHUD.razor** — Version number display (line with `class="version-number"`):
-   Change to `v{VERSION}`
+3. **Assets/data/patchnotes-pending.json** — `target_version` should match.
 
-4. **CreditsPanel.razor** — Credits version (line with `class="version-text"`):
-   Change to `Beastborne v{VERSION}`
+4. **Code/UI/Components/LighthouseScene.razor** — the Patch Notes scene's version hero
+   (`lhd-rail-v-num`) is hand-written together with its notes; update it only when the notes
+   content is updated for the new release.
 
 Do NOT modify:
 - Roadmap/changelog entries (historical versions like v0.1.5, v0.2.0, etc.)
