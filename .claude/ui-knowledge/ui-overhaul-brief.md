@@ -16,8 +16,9 @@ rather than **one game**. This pass is about the *system*, not new looks:
    state language, same motion vocabulary, same hotkey caps, same sounds.
 2. **Motion** — every screen has entrance choreography, view-swap transitions, reactive
    feedback on every input, and one quiet ambient layer. No dead-static screens.
-3. **Input parity** — every screen is fully playable by mouse OR keyboard, and switching
-   between them mid-screen feels natural (last input wins, one cursor, no jumps).
+3. **Input parity** — every screen is fully playable by **mouse, keyboard, AND controller
+   (gamepad)**, and switching between them mid-screen feels natural (last input wins, one
+   selection indicator, no jumps). The user rates this as critical.
 4. **Our own identity** — built from Beastborne's vocabulary, not from generic design-tool
    output. Mocks (Claude Design / DesignSync, ChatGPT, any AI tool) are *input to taste*,
    never the spec. If a screen could belong to any dark-mode app, it isn't done.
@@ -30,8 +31,11 @@ batch-rewrite screens in one context.
   every tab page that doesn't have it yet.
 - **Beasts are the heroes; UI is the frame.** Anti-gacha: celebrate deterministic, visible
   results; never dramatize an RNG roll.
-- **One cursor** (the living violet ring) + app color per page + rationed gold — see
-  `guiding-star.md` §The four signatures.
+- **One selection indicator** + app color per page + rationed gold. **The living violet
+  ring is NOT a fixed point** (user, 2026-09-25): Phase 1 must prove it works as a
+  universal selection indicator — across grids, lists, stage controls, popups, mouse,
+  keyboard and controller, and on the new 26.09 engine. If it doesn't hold up everywhere,
+  replace it with something that does rather than keeping it for its looks.
 - **Engine law:** `CLAUDE.md` quirks table + `laws.md`. Shipped roster code wins over
   docs; when this pass settles something new, update `guiding-star.md` / `laws.md`.
 - **Out of scope (user, 2026-09-25):** BattleView / battle HUD stays off-limits for now;
@@ -80,13 +84,24 @@ Screen families:
 Build or fix the pieces every screen will share, so screens stop re-implementing them:
 - **Page frame:** one shared page shell = `BbHeaderWaves` + kicker/title/app color +
   consistent content column + bottom clearance for the phone button.
-- **Cursor:** extract the living ring into one reusable component (grid mode + control
-  mode), including the `.kb-focused` / `kbLand` language for in-stage controls. Settle
-  the ring-width math (see `laws.md` Unresolved) once, here.
+- **Engine check first:** s&box 26.09.x replaced the layout engine, the renderer, and
+  made `<button>` focusable (see `sbox-26-09-changes.md` + CLAUDE.md "Test these
+  first"). Verify those in-editor before building foundations on top of them.
+- **Selection indicator — decide, then build once:** evaluate the living ring honestly
+  (does it read on every surface? cost? jitter? does it work with controller focus?)
+  against simpler alternatives (e.g. the `.kb-focused` border-recolor + `kbLand` flash
+  already used on stage controls). Show the user both on one screen, pick one, then make
+  it a single reusable component. If the ring stays, settle its width math (see
+  `laws.md` Unresolved) here.
 - **Input model:** one focus-graph pattern per screen (zones → items, WASD moves,
-  Space/Enter/E confirms, Q backs out one level, R page power action, Z/X cycle), one
-  device flag (last input wins; mouse hover == focus; keyboard press hides hover-only
-  states), hotkey caps (`.kb-key`) on every hotkeyed control, and the double-fire guards
+  Space/Enter/E confirms, Q backs out one level, R page power action, Z/X cycle), with a
+  **controller mapping for every action** (d-pad/left stick move, A confirm, B back,
+  bumpers cycle, a face button for the power action, Start/Select for phone/menu — check
+  `ProjectSettings/Input.config` and s&box gamepad glyph support), and on-screen key caps
+  that swap to the active device's glyphs. One device flag (last input wins across mouse /
+  keyboard / controller; mouse hover == focus; keyboard or pad input hides hover-only
+  states). Evaluate the new 26.09 focus APIs (`TabIndex`, `FocusNext()`,
+  `ScrollIntoView`) vs our own routing — adopt them where they fit. hotkey caps (`.kb-key`) on every hotkeyed control, and the double-fire guards
   (`PanelHandledBackKey` / `PanelHandledPowerKey` / `MarkRouted`) built into the pattern
   instead of sprinkled. Use the `input` agent; check current s&box focus APIs first.
 - **Motion kit:** one place for tokens (fix stale `BbTokens.cs`), plus reusable recipes:
@@ -131,7 +146,9 @@ the user's OK before building.
 - [ ] One cursor; every interactive element reachable by keyboard in a sensible order;
       Q always backs out exactly one level; hotkeyed controls wear their key cap.
 - [ ] Mouse: hover == focus, no hover-only information, click targets ≥ 44px on main flows.
-- [ ] Switching mouse ↔ keyboard mid-screen never jumps the cursor or leaves ghost hovers.
+- [ ] Fully playable on controller; key caps show the active device's glyphs.
+- [ ] Switching mouse ↔ keyboard ↔ controller mid-screen never jumps the selection or
+      leaves ghost hovers.
 - [ ] Entrance choreography, view-swap transition, SNAP feedback on every input,
       one ambient layer (FLOW) — and nothing moving that doesn't belong to a layer.
 - [ ] Tokens only (surfaces, app color, element palette, type ladder, motion tokens).
