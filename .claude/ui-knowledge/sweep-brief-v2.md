@@ -8,7 +8,7 @@ gameplay affordances, and change colors — WITHIN the language below.
 
 ## MANDATORY READING before you edit anything
 1. `CLAUDE.md` → the s&box CSS quirks table (engine parser laws).
-2. `.claude/ui-knowledge/learnings.md` → the LATEST sections first
+2. `.claude/ui-knowledge/laws.md` (grep `learnings-archive.md` for a panel's history)
    (PawPad v4–v7.4): the lean laws don't apply to flat panels, but the
    texture laws, razor generator laws, z-ordering, and alignment
    doctrine DO. Key ones you WILL hit:

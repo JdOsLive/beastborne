@@ -10,9 +10,9 @@ You are **not** a coder who sprinkles `Input.Pressed` calls. You are a designer 
 
 ## Before you do anything
 
-Read these, in order — they're short and contain the rules you must not break:
+Read these, in order — they're short and contain the rules you must not break (for history, grep `.claude/ui-knowledge/learnings-archive.md`; never read it whole):
 1. `.claude/ui-knowledge/guiding-star.md` — the keybind-badge language ("hotkeyed → wears the key"), purple = selection, the one-obvious-next-step principle.
-2. `.claude/ui-knowledge/css-quirks.md` and the s&box quirks in `CLAUDE.md` — especially: **mouse-wheel comes through `protected override void OnMouseWheel(Vector2)`, NOT `Input.MouseWheel`**; a `Panel` subclass needs `BuildHash()` to react to state; no `display:block`/`:focus-within`; `TextEntry` has no `onchange`.
+2. `.claude/ui-knowledge/laws.md` (the **Input & focus** section especially) and the s&box quirks in `CLAUDE.md` (already in your context) — especially: **mouse-wheel comes through `protected override void OnMouseWheel(Vector2)`, NOT `Input.MouseWheel`**; a `Panel` subclass needs `BuildHash()` to react to state; no `display:block`/`:focus-within`; `TextEntry` has no `onchange`.
 3. The existing input handling, so you match what already works and don't reinvent it:
    - `Code/UI/MainMenu.razor` — the `selectedIndex` arrow-nav + Enter-confirm + `.selected` highlight model (the cleanest existing keyboard pattern; treat as the reference).
    - `Code/UI/Components/BattleView.razor` — `Input.Pressed("Slot1..5"/"Left"/"Right"/"Jump"/"Enter"/"Menu")` polled in `Tick()` (the bespoke battle scheme).

@@ -1,306 +1,89 @@
 # Beastborne - Claude Guidelines
 
-## Patch Notes — Track As You Ship
+s&box (Razor + SCSS + C#) monster-taming game. Project file is `megarougelite.sbproj` (a relic name — the game is Beastborne). Game/systems overview: `DEV_ONBOARDING.md`.
 
-**After completing any meaningful change, append a one-line player-facing entry to `Assets/data/patchnotes-pending.json`.** This is the running list for the NEXT release.
+## Keep context lean — how the knowledge files work
 
-**Why:** retroactive `git log` summarization at release time misses things on big updates — terse commit messages, too many commits, lossy summarization. Tracking AT ship time per feature is the only reliable approach. The `patch-notes` skill at release rolls pending → versioned and clears it, generating Discord markdown from the structured data with no summarization step.
+This file loads on EVERY turn, so it holds only rules that apply to nearly every task. Everything else loads on demand:
 
-**What counts as meaningful:** new features, balance changes, bug fixes the player would notice, polish that visibly changes how the game feels. Skip: refactors with no behavioral change, comment-only edits, dev-only tooling, internal renames.
+| Need | Read |
+|---|---|
+| UI engine laws + conventions (short, always read for UI work) | `.claude/ui-knowledge/laws.md` |
+| Canonical style spec | `.claude/ui-knowledge/guiding-star.md` |
+| Past UI history / "why is it like this?" | **grep** `.claude/ui-knowledge/learnings-archive.md` — never read it whole (560 KB) |
+| A specific panel's notes | **grep** `.claude/ui-knowledge/panel-inventory.md` for the panel name |
+| Settled balance decisions | `.claude/balance-knowledge/decisions-summary.md`; **grep** `decisions-log.md` for full reasoning |
+| PixelLab art prompts | `/monster-prompt` skill (`.claude/commands/monster-prompt.md`) |
+| Discord patch notes | `/patch-notes` skill |
+| Animated icons (SVG → WebP) | `.claude/ui-knowledge/animated-icons.md` |
 
-**How to add an entry:** open `Assets/data/patchnotes-pending.json`, append to the `entries` array:
-```json
-{ "category": "feature|balance|fix|polish|content", "line": "Player-facing one-liner — write what they'll notice, not what files changed" }
-```
+**Growth caps (enforce when you write):** `laws.md` ≤ ~120 rules / 40 KB — a new law must replace or merge with an old one when at the cap; session narration and per-panel changelogs go to `learnings-archive.md` (append-only, grep-only), never into `laws.md`. `decisions-summary.md` ≤ 15 KB. This file: only add a rule here if it applies to most tasks — otherwise it goes in `laws.md`.
 
-Lines should read like patch notes a player would skim — concrete and concise. "Fixed starter selection screen yellow box bug" → "Starter selection no longer renders a giant yellow rectangle when picking a beast." Lead with the player's experience, not the technical cause.
-
-If the pending file doesn't exist yet for a fresh release cycle, create it with `target_version` set to the next planned version and an empty `entries` array.
+**Environment:** the s&box editor + `sbox` MCP (`compile_status`, `read_console`, `camera_screenshot`) only exist on the user's Windows desktop. In a cloud session, edit + commit + push and say what needs verifying in-editor; don't claim compile/visual verification you couldn't run.
 
 ---
 
-## AI Art Generation (PixelLab)
+## Patch Notes — Track As You Ship
 
-When the user asks for AI art prompts for any monster, follow these guidelines:
+**After completing any meaningful change, append a one-line player-facing entry to `Assets/data/patchnotes-pending.json`** (the running list for the NEXT release; the `patch-notes` skill builds release notes from it).
 
-### Core Principle: Mythology & Description First
-
-**Every beast should be based on or inspired by real-world mythology, folklore, or legends.** When creating new beasts, research the source myth and let it inform the creature's design, description, and visual identity.
-
-**The monster's description in MonsterManager.cs is the primary source for visuals.**
-- Read the description carefully
-- Extract visual cues from the text (colors, forms, effects mentioned)
-- The element is secondary - don't force element colors if the description implies something different
-- If the description doesn't translate well visually, propose an update first
-
-### Art Style
-- **Resolution**: 128x128 pixel art
-- **Format**: Sprite sheet with 4 frames for idle animation
-- **Facing**: Left (all monsters face left for consistency)
-- **Tool**: PixelLab (uses Description + Animation fields)
-- **Background**: Dark/transparent background for sprites
-
-### Prompt Structure
-
-**Description field:**
-```
-[Physical form from description], [key visual features], [colors implied by description], [any magical effects], facing left, 128x128 pixel art, sprite sheet 4 frames idle animation, fantasy monster game art style, dark background
-```
-
-**Animation field:**
-```
-[Idle movement appropriate to creature type], [any effect animations], [secondary motion like tail/wings/wisps]
-```
-
-### Element Colors (Reference Only)
-
-These are fallback suggestions if the description doesn't imply specific colors:
-
-| Element | Suggested Colors | Common Effects |
-|---------|------------------|----------------|
-| Fire | Orange, red, yellow | Flames, embers |
-| Water | Blue, cyan, teal | Bubbles, droplets |
-| Earth | Brown, tan, gray | Rocks, dust |
-| Wind | White, pale green | Swirls, gusts |
-| Electric | Yellow, blue | Sparks, arcs |
-| Ice | Light blue, white | Frost, crystals |
-| Nature | Green, brown, pink | Leaves, vines |
-| Metal | Silver, gray, rust | Gears, shine |
-| Shadow | Purple, black | Dark wisps |
-| Spirit | Pink, gold, white | Halos, glow |
-
-**Important**: These are suggestions, not rules. A Fire monster described as "black flames" should be black, not orange.
-
-### Evolution Lines
-
-When a monster has EvolvesFrom/EvolvesTo:
-1. Check all stages' descriptions
-2. Ensure visual progression makes sense narratively
-3. If descriptions don't connect well, propose updates before generating prompts
-
-**Progression pattern:**
-- Base: Smaller, simpler, cuter
-- Mid: Larger, more defined, element more visible
-- Final: Majestic/powerful, complex details
-
-### Description Quality Check
-
-Before generating prompts, verify the description works visually:
-
-**Good descriptions include:**
-- Physical form hints (ghostly, bird-like, veiled, crystalline)
-- Color/material cues (golden, cream, translucent, prismatic)
-- Behavioral hints that suggest movement (drifts, floats, crawls)
-
-**Bad descriptions need updating:**
-- Too abstract ("keeper of the hour before existence")
-- No physical form implied
-- Contradicts evolution line visually
-
-### Workflow for Any Monster
-
-1. **Read** the description in MonsterManager.cs
-2. **Check** for evolution line (EvolvesFrom/EvolvesTo)
-3. **Evaluate** if description translates to visuals
-4. **If poor fit**: Propose updated description, get approval, update code
-5. **Generate** Description + Animation prompts based on the text
-6. **Include**: 128x128, 4-frame idle, dark background
-
-### Examples
-
-**Haloveil** - Description drives everything:
-> "When a Dawnmote gathers enough light, it condenses into a veiled spirit crowned by a golden halo."
-
-Visual extraction:
-- "veiled spirit" → flowing robes/veil
-- "golden halo" → halo above head
-- "condensed light" → warm glow, cream-gold colors
-
-```
-Description: A veiled ghostly spirit with flowing cream-gold robes, single golden halo floating above its head, trailing ribbon-like sash, ethereal angelic form, soft warm glow, facing left, 128x128 pixel art, sprite sheet 4 frames idle animation, fantasy monster game art style, dark background
-
-Animation: Gentle floating drift, veil and robes billow softly, halo rotates slowly with subtle shimmer, trailing sash flows gracefully
-```
-
-**Solmara** - Description drives everything:
-> "A radiant bird born from gathered dawn-light, crowned by rings of every color sunrise has ever worn."
-
-Visual extraction:
-- "radiant bird" → bird/phoenix form
-- "rings of every color sunrise" → multiple colorful halos
-- "dawn-light" → warm golden body with prismatic accents
-
-```
-Description: A radiant bird-phoenix spirit with elegant swan-like pose, multiple colorful halos/rings in pink orange and rainbow, prismatic wing feathers shimmering with unnamed colors, golden-cream body with luminous glow, facing left, 128x128 pixel art, sprite sheet 4 frames idle animation, fantasy monster game art style, dark background
-
-Animation: Majestic slow wing movements, multiple halos rotate at different speeds, prismatic feathers shimmer and shift colors, radiant aura pulses gently
-```
-
-### Updating Descriptions
-
-If the existing description doesn't work visually:
-1. Propose updated description that keeps the spirit but adds visual clarity
-2. Show how it connects to evolution line (if applicable)
-3. Get user approval before changing MonsterManager.cs
-4. Then generate prompts matching the new description
+- **Meaningful:** new features, balance changes, bug fixes the player would notice, visible polish. **Skip:** no-behavior refactors, comment edits, dev-only tooling, internal renames.
+- **Format:** append to `entries`: `{ "category": "feature|balance|fix|polish|content", "line": "..." }`
+- **Voice:** what the player notices, not what files changed. "Fixed starter selection yellow box bug" → "Starter selection no longer renders a giant yellow rectangle when picking a beast."
+- If the file doesn't exist for a fresh cycle, create it with `target_version` = next planned version and empty `entries`.
 
 ---
 
 ## s&box Razor UI — CSS Quirks & Gotchas
 
-s&box uses a custom CSS engine that behaves differently from browsers. Keep these rules in mind:
+s&box has its own CSS engine. **26.06.03 rewrote the parser.** Now working (stop working around these): unitless `line-height` is a multiplier (see below), one bad rule no longer kills the whole stylesheet, `filter: none` / `transform: none` / `background: none` override base classes, `inset` shorthand, `word-break: break-word`, `transition-*` longhands, colors in the `background:` shorthand, `min()/max()/clamp()`, `:has()` with descendants, `currentColor`, `oklch()/lab()/hwb()`, `dvh/svh/lvh/dvw`, `overflow: auto`, opacity %, logical `margin/padding/inset-block/inline`, `flex-flow` + `font` shorthands, `image-rendering: crisp-edges`, `inherit/initial/unset/revert` (so `flex: unset` probably works — unverified; `flex: 0 0 auto` is the safe default), animation `ms` units.
 
-> **⚠️ Updated for s&box 26.06.03 — CSS parser rewrite.** Garry rewrote the CSS parser in the 26.06.03 update. Rows marked **✅ Resolved (26.06.03)** below no longer apply, and the `line-height` rule **changed** (see first row — it's the change that broke the whole UI on that update).
->
-> **Now FIXED — stop working around these:** unitless `line-height` is now a font-size multiplier (use `px`); **one bad rule no longer bails the whole stylesheet** (the `:first-of-type` "whole panel invisible" catastrophe is gone — "Stylesheet recovers properly when one property is wrong"); `filter: none`, `inset` shorthand, `word-break: break-word`, `transition-delay` (+ `-duration`/`-property`/`-timing-function`), `background: none` (resets bg), and colors inside the `background:` shorthand all parse now; `transform: none`/`filter: none` correctly OVERRIDE a base class.
->
-> **⚡ HDR COLOURS (engine note 2026-09-01):** the UI renders HDR and the colour parser understands multiplication — `background-color: rgba( white * 4, 0.5 );` · `color: #3273EB * 8;` · `border: 2px solid #4ac2e8 * 6` · `outline: 3px solid #4ac2e8 * 6`. Values > 1.0 GLOW via bloom (a post-effect — no scroll-clip leak, unlike box-shadow). Trap from the engine chart: an HDR fill's antialiased edge reads as solid at high multipliers (corners fatten, circles step) — prefer HDR on borders/outlines/text/small marks over big rounded fills. Ration like gold: cursor ring, gold primaries, element rims, presence dots. Verify the installed build parses `* N` before relying on it.
->
-> **⚡ NEW ENGINE RENDERING — ✅ VERIFIED IN OUR BUILD 26.09.01 (`dev_shapes` probe, 2026-09-01; all 16 cells painted, zero parser rejections):** `border-shape: polygon( x% y%, … )` (up to 8 vertices, concave via even-odd) and `border-shape: circle( r at x y )` render as SDF shapes — anti-aliased, take `border`/`filter: drop-shadow`, and HIT-TEST on the real edge. **Polygons are SHARP-CORNERED: `border-radius` is IGNORED on a border-shape (probe cell R), and the 8-vertex cap only buys a bevel** — so polygons replace `skewX` only where the silhouette is sharp anyway: SEAM BARS (migrated 2026-09-01: `.oh-seam`/`.gp-seam`/`.pl-av-seam`, exact silhouettes via widen-by-H·tanθ + negative margins), corner cuts, hex/diamond badges. ROUNDED chips/stamps/filter chips KEEP `border-radius` + `skewX` + counter-skew spans (the house chip is a rounded parallelogram). Polygon syntax verified %-only; a polygon's paint sits INSIDE the box (unlike a skew, which overhangs by H·tanθ/2 each side). **A polygon's `border` is ONE uniform width/colour (SDF stroke) — `border-left: 3px` collapses into the frame; per-side accents must be a 3px absolute strip CHILD (see learnings 2026-09-01, My Beasts `.row-accent`).** Also: corner radii UNIFIED across box/border/clip/shadow (+ h/v radii `40px / 12px`, pill clamp past half-height, `%` radii) — ✅ verified: `border-radius: 999px` + `overflow: hidden` now clips an avatar to a clean circle, so the old 'radius > half box clips to nothing' law is RETIRED (rows below that say otherwise are historical); UI now blends in GAMMA mode (alpha reads like the web — re-check tuned rgba ladders); `background-clip: text` ✅ verified (gradient/image text — ration hard, house titles stay flat cream). HDR ✅ GLOWS as of 2026-09-01: the scene camera now carries a `Bloom` component (Strength 1, **Threshold 1** — only values above SDR white bloom, so normal UI is untouched) and the HUD `ScreenPanel.Timing = BeforePostProcess` (mainscene.scene). Consequence: the UI is also TONEMAPPED now — re-check palette reads. HDR parses on borders, fills, text and inside `linear-gradient()`. THE LIVING RING RECIPE (user-tuned live 2026-09-01): `border: 4px solid #9b6cff * 5;` — ONE HDR stroke. ×3 read flat, ×8 white-cored, and a hugging translucent HDR `outline` halo read as a SECOND RING on most pages (outline does not merge into a glow) — so no outline, one knob. Applied to every roaming ring (.tamer-ring/.pl-cursor/.lh-*-ring/.bb-grid-ring/.sat-ring/.grid-ring/.card-ring). Still RATION HDR elsewhere (gold primaries on press, presence dots, hero numbers — each needs a live judgment); a scene edit needs `save_scene` on the EDIT tab (edits during play land in the session only) and a play restart to take effect.
->
-> **Newly available — reach for these:** `min()`/`max()`/`clamp()` lengths · `:has()` with descendant selectors · `currentColor` · `oklch()`/`lab()`/`hwb()` colors · `dvh`/`svh`/`lvh`/`dvw` units · `overflow: auto` · `opacity` percentages · `aspect-ratio: auto` · logical `margin`/`padding`/`inset`-`block`/`inline` · `flex-flow` + `font` shorthands · `image-rendering: crisp-edges` · css-wide `inherit`/`initial`/`unset`/`revert` · animation `ms` units. Rule matching is also 3–5× faster on large stylesheets and finished animations no longer re-layout every frame.
->
-> **Still NOT supported (verified absent from the 26.06.03 changelog — keep avoiding):** `box-sizing: border-box` (content-box only) · `position: fixed` · `display: block` · `inline-flex` · `transparent` keyword inside gradients · `radial-gradient` shape keywords / px stops · `object-position` percentage pairs · `box-shadow: inset` · `:focus-within` · `repeating-linear-gradient()`.
+**Still NOT supported:** `box-sizing` (any value) · `position: fixed` · `display: block` / `inline-flex` (only `flex`/`none`) · `transparent` inside gradients · `radial-gradient` shape keywords / px stops · `object-position` % pairs · `box-shadow: inset` · `:focus-within` · `:first-of-type`/`:last-of-type`/`:nth-of-type` (use `-child`) · `repeating-linear-gradient()` · quotes in `url()` (use `url(@var)`) · `onmouseenter` (use `onmouseover`).
 
-| Issue | Details |
-|-------|---------|
-| **⚠️ `line-height` unitless = MULTIPLIER (changed 26.06.03)** | As of 26.06.03 a unitless `line-height` is a font-size multiplier (standard CSS): `line-height: 24` on a 24px font = 576px, which balloons every text box and wrecks layout — **this is the change that broke the whole UI on the 26.06.03 update.** Always use explicit **`px`** (`line-height: 24px`) or a small multiplier (`1.3`). Before 26.06.03, unitless was treated as ~absolute px, so old code used values like 18–24; those were bulk-converted to `px` in commit `e286950`. Large fonts (30px+) still need a line box ≥ font-size in px, or text clips. |
-| **`overflow: hidden` collapses flex children** | Setting `overflow: hidden` on a flex child can cause it to shrink to zero width/height, making content invisible. Avoid it on flex children. |
-| **Scroll containers need flat children** | s&box cannot correctly calculate scroll height when a scrollable container has nested flex containers. Scrollable items must be **direct children** of the `overflow-y: scroll` element — do NOT wrap them in an intermediate div. Follow the roster-grid pattern: parent with `display: flex; flex-direction: column; overflow: hidden; height: Xpx;` and scroll child with `flex: 1 1 0; min-height: 0; overflow-y: scroll;` with items as direct children. |
-| **`flex-wrap: wrap` miscalculates height** | The container won't compute its height correctly when children wrap. Use explicit row containers instead (e.g., two `.stats-row` divs instead of one flex-wrap grid). |
-| **Bare text renders vertically** | Text not wrapped in a `<span>` or other element inside flex containers may render character-by-character vertically. Always wrap text in elements. |
-| **`flex: 1` can fail with multiple siblings** | When a flex container has 3+ children, `flex: 1` may not distribute space correctly. Use explicit `width` values instead. |
-| **`Log.Info(multiLineString)` silently truncates after first newline** | `Log.Info(sb.ToString())` where `sb` was built with `.AppendLine()` ends up printing as a blank `Generic` line in the s&box console — only the first line (the empty leading newline) gets through. **Fix**: log each line separately via individual `Log.Info(...)` calls instead of building a multi-line StringBuilder. Verified 2026-05-06 — broke both BeastbookEdit and SlotEdit "save → console" output. |
-| **CSS `filter` on `<img>` bypasses `image-rendering: pixelated`** | Any `filter` (`grayscale(1)`, `brightness(0)`, `blur(N)`, etc.) on an `<img>` element rasterizes the bitmap through the GPU compositor, which falls back to bilinear smoothing regardless of `image-rendering: pixelated`. Symptom: pixel-art sprites with a grayscale/dim/silhouette treatment look soft/blurry while sharp-rendered siblings look crisp. **Workarounds:** (1) use `opacity: N` alone — opacity does NOT trigger the compositor rasterize path; (2) for "tinted" looks, apply a colored overlay div or `background-color` to the wrapper instead of `filter: brightness(...)` on the img; (3) for silhouettes where the shape is the point, accept the softness (you can't tell a black bitmap is blurry). Same root cause as CSS `transform: scale()` blur on pixel art — anything that goes through the compositor smooths the source. |
-| **`transform: translate(-50%, -50%)` on a flex parent BREAKS flex-grow width resolution in descendants** | A modal centered with `position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%)` poisons every flex chain inside it — `flex: 1 1 0` children fall back to content-min-width instead of growing to fill remaining space. Symptom: a `flex: 1 1 0; min-width: 0` column inside a row-flex sibling-of-fixed-width-pair sizes itself to ~content width (e.g., to whatever a FilterBar's intrinsic shrink-fit width is, ~640px) regardless of how much space the parent actually has. The `flex-wrap: wrap` grid inside it then only fits N-1 cards per row even when N would mathematically fit. Verified 2026-05-06 on TeamPickerPopup — drove 6+ hours of debugging that tried every CSS workaround imaginable; root cause was a single line on the modal ancestor. **Fix**: use FLEX CENTERING on the popup's root instead — the root becomes `display: flex; align-items: center; justify-content: center`, the modal switches from `position: absolute + transform: translate` to `position: relative` (no transform). Removes the transform from the entire ancestor chain, lets flex children resolve widths normally. |
-| **`inline-flex` not supported** | Use `display: flex` only. |
-| **✅ Resolved (26.06.03): `background: none` now works** | As of 26.06.03, `background: none` resets the background (image AND colour) and overrides a base class. `background-color: transparent` still works too. |
-| **`position: fixed` not supported** | Runtime log: "Generic fixed is not valid with position". Only `static`/`relative`/`absolute` parse. For viewport-pinned overlays (drag shields, modals), use `position: absolute` against a panel root that already covers the viewport — e.g. anchor with `top/left/right/bottom: 0` on a fullscreen-sized parent. |
-| **URL quotes in `background-image` not supported** | Use `url(@variable)` not `url('@variable')` in inline styles — s&box doesn't need quotes around URLs. |
-| **Empty divs render as visible panels** | Empty `<div>` elements may render as gray rectangles or scrollbar artifacts. Remove wrapper divs that have no content. |
-| **`text-overflow: ellipsis` with `overflow: hidden`** | This combination can collapse the element in s&box flex layouts. Avoid using `overflow: hidden` on text elements inside flex containers. |
-| **Custom fonts must be in `Assets/fonts/` root** | s&box only discovers font files placed **directly** in `Assets/fonts/` — NOT in subdirectories. Place TTF files like `Assets/fonts/Exo2-Bold.ttf`, not `Assets/fonts/Exo2/Exo2-Bold.ttf`. Register in SCSS with `Exo2 { font-family: url("fonts/Exo2-Bold.ttf"); }` and use `font-family: Exo2;` (the embedded font family name from TTF metadata, no space). Resources in `.sbproj` must include `fonts/*`. |
-| **`flex: unset` — likely resolved 26.06.03 (verify)** | 26.06.03 added the css-wide keywords `inherit`/`initial`/`unset`/`revert` "incl. shorthands", so `flex: unset` probably parses now. Not yet verified in-engine — `flex: 0 0 auto` stays the safe default until confirmed. |
-| **✅ Resolved (26.06.03): `inset` shorthand now works** | The `inset` shorthand parses as of 26.06.03 (plus logical `inset-block`/`inset-inline`). Existing code that expands to `top/left/right/bottom` is fine — just no longer required. |
-| **`box-shadow: inset ...` not supported** | s&box rejects any box-shadow with the `inset` keyword. For recessed/embossed effects, use a darker `background-color` + border, or layer a nested absolutely-positioned div with a gradient. Outer drop shadows work fine. |
-| **`:focus-within` not supported** | s&box CSS parser throws "Unsupported Pseudo Class `focus-within`". Use `:hover` as a fallback for search-input-style styling, or track focus state manually via `@ref` + code-behind. |
-| **`:first-of-type` / `:last-of-type` / `:nth-of-type` still unsupported — BUT no longer fails the whole stylesheet (26.06.03)** | s&box still logs "Unsupported Pseudo Class `first-of-type`", but as of 26.06.03 the parser **recovers** ("Stylesheet recovers properly when one property is wrong"; "an unknown css @-rule no longer drops the whole stylesheet") instead of bailing the entire .scss — the catastrophic "whole panel invisible" failure mode is **GONE**. Still prefer `:first-child` / `:last-child` / `:nth-child(N)` (supported). Bonus: `:has()` now supports descendant selectors. |
-| **`TextEntry` has no `onchange` — use `@ref` + poll** | s&box `TextEntry` doesn't accept an `onchange` handler (binding throws `CS8974 Converting method group ... to non-delegate type 'object'`). Pattern: `@ref="searchInput"` + `Text="@searchQuery"` and poll `searchInput.Text` in `Tick()` to sync the backing field. See `FilterBar.razor` / `GuildPanel.razor` for the canonical pattern. |
-| **Flex cards need explicit width + `flex: 0 0 Npx`** | Cards inside flex rows MUST declare `width`, `min-width`, AND `flex: 0 0 Npx` (or `flex-shrink: 0`). Without all three, s&box shrinks them to zero, the content collapses to a thin strip, and text inside reflows one character per line. Pin the card and all its visual children (`.item-compartment`, `.item-nameplate`) explicitly. |
-| **Nested flex-row inside scroll container collapses width** | A flex-row wrapper (e.g. `.section-label-row`) that is a direct child of an `overflow-y: scroll` area will collapse to zero width in s&box — children with `flex: 1 1 0` don't distribute, text inside wraps one character per line. Fix: avoid nested flex inside scroll containers. Use a plain block with `width: 100%` and lay out children with margins, not a nested flex row. |
-| **`Panel` subclass needs `BuildHash()` to react to static state** | If you flip a `public static bool IsVisible` to show/hide a panel, the framework only re-renders when `BuildHash()` changes. Always override `BuildHash()` and include every field that affects rendering — `IsVisible`, selection state, current category, counts, etc. Missing BuildHash = panel never reacts to `Show()/Close()/Toggle()` calls. |
-| **`repeating-linear-gradient()` not supported** | s&box logs "Unknown Image Type 'repeating-linear-gradient(...)'" and skips the background. Use a regular `linear-gradient()` or a solid color + border for hatched/diagonal patterns. |
-| **CSS `@keyframes` animations only play once on first mount** | `animation: foo 0.3s ease-out` on a panel element plays when the element first enters the DOM. Re-opening the panel (toggling `IsVisible`) does NOT replay the animation because the element stays in the DOM. **Use CSS transitions instead** — set the default state (`opacity: 0; transform: scale(0.88);`) on the element and override in the `.visible` parent selector. Transitions re-fire every time the class toggles. |
-| **`border-left` / `border-right` / etc. shorthand with style word WORKS** | `border-left: 3px solid rgba(...)` parses correctly in s&box — the per-side shorthand with a style keyword and rgba color is fine. Confirmed 2026-04-15; MonsterRosterPanel uses it throughout for section accent bars. Earlier entries claiming it fails were wrong. |
-| **`transparent` keyword inside `linear-gradient()` fails** | s&box logs "Unrecognised part transparent in background" + "Unknown Image Type" when a gradient stop uses the `transparent` keyword (e.g. `linear-gradient(90deg, transparent, ...)`). Use `rgba(255, 255, 255, 0)` (or any zero-alpha color) explicitly instead. (Not addressed in 26.06.03 — still avoid.) |
-| **✅ Resolved (26.06.03): colors in the `background:` shorthand now parse** | "Colors now parse fully in the css background shorthand" as of 26.06.03 — `background: rgba(...)` no longer errors as "Unknown Image Type". `background-color: rgba(...)` is still the clearer choice for plain fills. |
-| **Absolutely-positioned bg layers render BEHIND the parent `background-color`** | An `absolute` child with `top/left/right/bottom: 0` (or explicit `width/height: 100%`) intended as a background overlay paints **behind** the parent's solid `background-color` fill in s&box, so it's invisible. Standard CSS stacks it above. Fix: make the bg layer a plain in-flow flex child (no `position: absolute`) as the first child of the panel — matches the working `RadioWidget` pattern. See the `.bg-scroll` pattern on Chat/Effects/Notifications/Radio popups. |
-| **✅ Resolved (26.06.03): `filter: none` now works** | As of 26.06.03 `filter: none` parses AND correctly overrides a filter set by a base class — so you can drop the old `filter: brightness(1)` identity-function hack. (The `grayscale(0)`/`blur(0)` identity trick still works if you prefer it.) |
-| **Scroll containers do NOT clip descendant `box-shadow`, `transform`, or edge-overhanging children** | `overflow-y: scroll` (and `overflow: hidden`) on a grid/list container does NOT clip: (1) descendant `box-shadow` — colored OR dark, both leak past the clip, (2) descendant `transform: translateY/translateX` — a `.selected` card with `translateY(-4px)` teleports out of the scroll clip and renders in the header area, (3) absolutely-positioned descendants that overhang the card (e.g. `.mini-fav { top: -7px }`, `.mini-badge-row { top: -7px; left: -3px }`) render past the scroll viewport. **Rules:** hover/selected states on scroll-grid cards = border-width + border-color + background only; NO transform, NO box-shadow; overhanging badges must sit INSIDE the card bounds (`top: 4px`, not `top: -7px`); headers above scroll grids must be OPAQUE (`rgba(..., 0.95+)`) to cover unavoidable leaks; use `gap: 0` (not `gap: 16px`) between the header and the grid so there's no transparent gap region for leaks to occupy. |
-| **UI mouse-wheel goes through `Panel.OnMouseWheel(Vector2)`, NOT `Input.MouseWheel`** | `Input.MouseWheel` is the GAME INPUT channel (weapon switch, etc) and does not carry UI panel wheel events — polling it in `Tick()` does nothing for wheel-over-UI. The correct UI API is to override `OnMouseWheel( Vector2 delta )`. `delta.y` is the scroll amount (positive = toward user). Return without calling `base.OnMouseWheel(delta)` to CONSUME the event so it doesn't fall through to a parent scroll container. Scope to a child element by tracking `_isMouseOverFoo` via `onmouseover`/`onmouseout` handlers. **Access modifier:** on a Razor panel (`.razor`) the base member is `protected internal` and lives in another assembly — so the `internal` half is invisible here and the override MUST be declared `protected override void OnMouseWheel(...)`. `public override` fails with CS0507 ("cannot change access modifiers"). **⚠️ Footnote (2026-09-04): the base member's visibility DIFFERS by panel — LeaderboardPanel, BeastiaryPanel, MonsterRosterPanel, PhoneLauncher, TeamPickerPopup and WorldMapPanel all compile ONLY with `public override` (the compiler reports the inherited member as public), while MainMenu needs `protected`. Write one, read the compiler's CS0507 message, flip if it names the other.** |
-| **`display: block` is rejected — use `display: flex`** | Runtime error: "Generic block is not valid with display". s&box's CSS parser only accepts `flex` and `none` for `display`. When toggling visibility via class swap (e.g. `.has-item .foo { display: flex } .no-item .foo { display: none }`), use `flex` for the visible state. `flex` behaves identically to `block` for single-child wrappers, so there's no layout cost to the swap. |
-| **`linear-gradient(180deg, ...)` can misparse as a left→right sweep** | For vertical gradients (especially on wide/short elements like scroll-fade bars), the `180deg` degree form can render as horizontal in s&box. Use the `to bottom` / `to top` keyword form instead — it's unambiguous. `to right` / `to left` for horizontal is also reliable. Degree forms work for most cases but fail unpredictably on narrow-vertical geometries. |
-| **Razor `@if / else if / else` cascades swapping whole icon+label blocks leave ghost children** | When a button's markup uses `@if IsA { <iconify A/> <span>X</span> } else if IsB { <iconify B/> <span>Y</span> } else { <iconify C/> <span>Z</span> }`, s&box's re-render diff can leave a stale `<iconify>` in the DOM during rapid state changes — both icons render simultaneously (doubled-icon bug seen on spam-click). **Fix:** compute the icon + label in code-behind as a tuple (`(string icon, string label, string color, int size) GetContent(...)`), then render ONE `<iconify>` + ONE `<span>` with interpolated attribute values. s&box swaps attribute values cleanly; it only trips on child-slot swaps. See shop's `GetBuyButtonContent` for the canonical pattern. |
-| **`radial-gradient` requires PERCENT stops only — and rejects all shape keywords** | Two distinct parser failures stack on this property: (1) shape keywords — `radial-gradient(circle, ...)` and `(ellipse, ...)` are BOTH rejected ("Generic Cannot read a color from 'circle'" / "'ellipse at X% Y%'") — the parser reads the shape word as a color and fails. Drop the shape word entirely. (2) Stop positions — only percent values are accepted ("Generic Only percent stop values are supported: 'rgba(...) 1.5px'"). Pixel-based stops (e.g. for tight halftone dot patterns: `rgba(...) 1.5px, rgba(0,0,0,0) 2px`) all fail. **Working syntax:** `radial-gradient(rgba(...) 0%, rgba(0,0,0,0) 70%)` — soft wash only. **There is no working CSS halftone dot pattern** — for actual halftone visuals, ship a PNG/WebP asset. For warm corner washes / soft glows, the percent-stop form is fine. |
-| **`object-position` rejects percentage pairs — use keyword pairs or drop it** | `object-position: 50% 25%` fails ("Generic 50% 25% is not valid with object-position"). However, keyword pairs (`center top`, `left bottom`, `center center`) DO work. Prefer keyword values when you need non-default positioning. If default centering is acceptable, drop `object-position` entirely and rely on `object-fit: contain`. To bottom-anchor a contained image, use a parent `display: flex; align-items: flex-end;` with a transform-Y offset on the wrapper. |
-| **`<img>` + `object-fit: contain` tiles at the edges when aspect ratios mismatch** | Against the HTML spec, s&box renders large `<img>` elements through a texture path that defaults to `repeat` when the source aspect doesn't match the container — a ghost duplicate of the image appears at the far edge (observed on the main-menu featured portrait rendering Wispryn, and in evolution-line panels that show large monster art in non-matching containers). **Fix:** add explicit `background-repeat: no-repeat;` to any `<img>` that uses `object-fit: contain` in a container with a different aspect ratio. Cheap insurance — put it on every such `<img>` preemptively. |
-| **Scrollable grid cards cannot use colored outer glow halos — they leak past the scroll viewport** | `overflow-y: scroll` (and `overflow: hidden`) on a parent does NOT clip descendant `box-shadow` with large blur radii — a `.selected` card with `box-shadow: 0 0 24px rgba(139, 92, 246, 0.45)` will leak a purple blob onto the page above/below the viewport. Same for colored halos on owned/equipped/featured states. **Fix:** use border + bg tint + translateY for selection feedback. Dark drop shadows (`0 4px 14px rgba(0, 0, 0, 0.5)`) don't leak as noticeably; colored halos always do. If a card is OUTSIDE a scroll (e.g. in the detail sidebar), colored glows are fine. |
-| **✅ Resolved (26.06.03): `word-break: break-word` now works** | Added in 26.06.03. `white-space: normal` is still fine for ordinary wrapping; reach for `word-break: break-word` when you need to break long unbreakable strings. |
-| **✅ Resolved (26.06.03): `transition-delay` now works** | The `transition-delay`/`-duration`/`-property`/`-timing-function` longhands all parse as of 26.06.03 — **staggered transition reveals work properly now**, no more `animation-delay` + render-key workaround. Big unlock for entrance/stagger animation polish (cards cascading in, sequential reveals, etc.). |
-| **Hover tooltips flicker when cursor moves over inner text/icons — children must be `pointer-events: none`** | If a hover-target pill (e.g. trait pill, stat chip, skill node) contains inner `<span>`s, `<iconify>` icons, or a child tooltip body, moving the cursor from the pill's chrome onto its own inner text fires `onmouseout` on the pill (because the cursor is now hit-testing a "different" element from the pill chrome). Same for the cursor moving from the pill into the tooltip body — the inner divs of the tooltip catch the cursor and break the parent's `:hover` state. **Fix:** give every child a CLASS and target it: `.my-glyph { pointer-events: none; }` — the class must sit ON the child element (`<iconify class="my-glyph">`). ⚠️ Selector forms that FAIL to land in-engine (verified live 2026-08-28 on the Beastbook art-viewer buttons): `> * { pointer-events: none; }` and bare element selectors like `iconify { ... }` nested in the parent rule — hover stayed dead with both; the class-on-child form fixed it immediately. Combine with `bottom: 100%` (or `top: 100%`) for the tooltip's edge to sit FLUSH against the pill — any visual gap is a "void" the cursor crosses, breaking the hover. Canonical pattern: `Code/UI/Panels/SkillTreePanel.razor.scss` `.hex-icon { pointer-events: none; }` (the class is on the iconify element). Same fix applied to BeastiaryPanel trait tooltips 2026-05-13; art-viewer buttons 2026-08-28. |
-| **`box-sizing` is rejected — s&box is PADDING-BOX (⚠️ corrected 2026-07-05)** | Runtime log: "Generic border-box is not valid with box-sizing" — no `box-sizing` value parses. The actual box model (verified live 2026-07-05, three independent row measurements): **declared `width`/`height` INCLUDES padding; only borders add on top.** The old "content-box" phrasing was only ever tested against borders. A card that must occupy exactly 200px with a 2px border each side needs `width: 196px` — and that 196 already contains its padding. Do NOT subtract padding from declared sizes — every padded box then renders exactly `padding` too small. Telltales: dead slack after the last tile of a "full-width" row; text overlapping inside a height-pinned tile. Row math: sum(children declared + their borders) + gaps = row width. See learnings.md 2026-07-05 for the measured evidence. |
-| **`width: auto` does NOT shrink-wrap an absolutely-positioned element** | An `position: absolute` element with no `width` (and only `right`/`top` set, or `left`+`right` both unset) does not shrink-fit its content in s&box the way browsers do — it resolves to a degenerate or full-parent width instead of hugging the content. **Fix:** give the absolute element a fixed-size container (explicit `width`/`height`) and put the real content inside as a `flex: 0 0 auto` child, which sizes to content predictably. Don't rely on `width: auto` content-hugging on anything `position: absolute`. |
-| **⚠️ `animation-delay` is KILLED by panel re-renders — bake staggers into keyframe percentages** | (2026-07-12, proven with dev_fusefx freeze-frames on the fusion ritual.) An animation still waiting out its `animation-delay` is cancelled and never starts when the panel re-renders — and busy panels re-render constantly (e.g. `SpriteAnimator.GlobalFrame` in `BuildHash`). Animations that have already STARTED survive re-renders fine (and hold their `both` end state). Symptom: a stagger ladder plays its first 1–2 steps and the rest never appear (the fusion weave showed 2 of 6 rungs; a 0.62s-delayed flare never fired at all). **Fix:** give every staggered element a full-sequence-length animation that starts at t=0, and express its delay as hold percentages (`0% {hidden} 29% {hidden} 51% {shown} 100% {shown}` for a 0.26s delay + 0.2s slide in a 0.9s phase). One keyframe block per ladder step. Canonical example: the `lmRung0–5`/`lmRail0–5` sets in MonsterRosterPanel.razor.scss. This trumps the 26.06.03 `transition-delay` unlock for anything on a frequently-re-rendering panel — transitions with delays likely suffer the same re-render reset. |
-| **⚠️ `AcceptsFocus = true` on a page panel KILLS every game keybind after a click** | (2026-07-12, root-caused on SkillTreePanel — the only panel setting it.) A panel with `AcceptsFocus = true` captures keyboard focus when clicked, and from then on `Input.Pressed(...)` is suppressed GAME-WIDE — M, the 1-6 tab keys, everything dead while that page is open. MainMenu.razor:1265 documents the identical failure. **Never set AcceptsFocus on page panels** — panel keyboard input in this codebase flows through GameHUD's TickInput routing, not engine focus. (TextEntry fields manage their own focus; that's separate and fine.) |
-| **Imperative `Length.Percent` width on an absolutely-positioned child paints FULL width** | (2026-07-12, skill tree hold-F fill.) Writing `Style.Width = Length.Percent(x)` per-tick on a `position: absolute` child rendered full-parent-width regardless of x. **Fix:** compute pixels — `parent.Box.Rect.Width * ScaleFromScreen * fraction` — and write `Length.Pixels` (the ring-math / overlay-scrollbar pattern). For any tick-driven progress fill, go straight to measured pixels. |
-| **Debug console commands that freeze UI states are worth building** | `dev_fusefx gather\|bind\|cocoon\|play\|reveal\|off` (MonsterRosterPanel) freezes the fusion ritual at any phase — mounts the container WITH the phase class so its keyframes fire and hold via `both` fill, letting camera_screenshot inspect each beat at leisure (MCP round-trips are too slow to catch a 2.3s animation mid-flight). This instrument found three bugs in one session that code-reading missed. Pattern: static panel handle set in `OnAfterTreeRender`, ConCmd mutates the state fields directly. |
-| **⚠️ `pointer-events: auto` is NOT a value — s&box parses only `none` / `all`; `auto` silently reads back as `None`** | (2026-08-29, probe-proven with `dev_phonechain` on engine 26.08.19.) A rule like `&.open { pointer-events: auto; }` parses without any console error, but `ComputedStyle.PointerEvents` stays `None` — so the element (and its hit-test claim) never exists for the mouse. Symptom: the PawPad's open root + full-screen backdrop were both `pe=None`, every hover/click/wheel fell through to the page behind the phone ("can't scroll the phone, it keeps going to the background"). **Always write `pointer-events: all`** to opt an element IN (`.content-area` uses it and reads back `All`); `none` to opt out. Engine hit-test (sbox-public `PanelInput.CheckHover`): siblings iterate in DOM order, a later sibling only wins when `SiblingIndex + z-index` ≥ the best so far, `pointer-events:none` skips the panel itself but STILL descends into its children, `IsVisible=false` skips the subtree. Diagnose with `dev_phonechain` (PhoneLauncher) — it dumps every GameHUD child's z / IsVisible / PointerEvents / hovered flag; `dev_phonefocus` logs the hovered leaf path + every wheel the phone receives. |
-| **✅ NATIVE SCROLLBARS (engine 26.09.08b, probe-verified 2026-09-10 — `dev_shapes scroll`) — OPT-IN via `scrollbar-width`; use them instead of the hand-rolled overlay bars** | An unset `scrollbar-width` computes to `0px` and NO bar is created (so nothing changed on the update); `auto` = 12px bar / 8px thumb, `thin` = 8 / 6, a LENGTH works (`4px` → 2px thumb, `6px` → 4px thumb; the thumb inset is engine-inline, not overridable), `none` = no bar. The bar is a real LAST child of the scroller (`scrollbar.vertical` + `panel.thumb`, type `ScrollBar`), created only while the axis overflows (identical under `overflow-y: auto` and `scroll`), thumb geometry inline and proportional, follows any `ScrollOffset` write (the house `OnMouseWheel` path). `scrollbar-color: <thumb> <track>` (hex/rgba, alpha kept) and the longhands `scrollbar-thumb-color`/`-track-color` land as INLINE `background-color` (beat stylesheet rules). `scrollbar-gutter: auto` = the bar OVERLAYS content (rows keep full width); `stable` = the lane is CONSUMED (rows shrink by the bar width — padding-box) and is reserved EVEN WHEN THE CONTENT FITS (no width jump), unpainted while empty; `stable both-edges` reserves both sides. **The engine sheet rests the bar at `opacity: .5` and the thumb at `.7`** (→ 1 on `scrollbar:hover` / `.dragging` / `.visible`), so a set colour reads at 35% at rest and the house .55 violet at ~19% (invisible) — our stylesheets CAN target `scrollbar { opacity: 1 }` / `scrollbar > .thumb { opacity: 1; border-radius: 2px }` (verified matched + winning). House recipe on the scroll container: `scrollbar-width: 4px; scrollbar-color: rgba(155,108,255,.55) rgba(244,241,234,.12); scrollbar-gutter: stable;` + the two opacity overrides; then DELETE the overlay track/thumb markup + `UpdateScrollbar` ticks + hand-reserved lanes — with `auto` the native bar lands in the same lane as `.pl-sb-track` (double-up). API: `Panel.ScrollIntoView( Rect )` PUBLIC → `bool` (least motion; `false` when already visible; pass `child.Box.Rect`), `Panel.ScrollTo( Vector2 )` PUBLIC (clamps to `ScrollSize`); **`Panel.ScrollAncestorsIntoView()` is INTERNAL — CS1061**. Bar is `pointer-events: all`, z 10000, topmost hit inside the scroller (drag reaches the engine; hand-check drag on the first migrated page). Full laws + migration recipe: learnings.md 2026-09-10. |
+### Box model & sizing
+- **⚠️ `line-height`:** unitless = font-size MULTIPLIER since 26.06.03 (`line-height: 24` on 24px text = 576px — this broke the whole UI on that update). Use `px` or a small multiplier (`1.3`). Fonts 30px+ need a line box ≥ font-size in px or text clips.
+- **⚠️ Box model is PADDING-BOX:** declared `width`/`height` INCLUDE padding; only borders add on top. A 200px card with 2px borders = `width: 196px` (padding already inside). Never subtract padding. Row math: sum(children + borders) + gaps = row width. Telltales of getting it wrong: dead slack after the last tile; overlapping text in a height-pinned tile.
+- **Flex cards need `width` + `min-width` + `flex: 0 0 Npx`** (all three), and pin their visual children too — otherwise they shrink to a strip and text reflows one char per line.
+- **`flex: 1` can fail with 3+ siblings** — use explicit widths.
+- **`flex-wrap: wrap` miscalculates container height** — use explicit row containers.
+- **`overflow: hidden` on a flex child can collapse it to zero**; with `text-overflow: ellipsis` it collapses text too. Avoid both on flex children.
+- **`width: auto` doesn't shrink-wrap `position: absolute`** — give it a fixed-size box and put content in a `flex: 0 0 auto` child.
+- **`transform: translate(-50%,-50%)` centering poisons flex-grow in every descendant** (`flex: 1 1 0` falls back to content width). Center modals with flex on the root (`display:flex; align-items/justify-content: center`) and `position: relative` on the modal.
+- **Imperative `Style.Width = Length.Percent(x)` on an absolute child paints full width** — compute pixels (`parent.Box.Rect.Width * ScaleFromScreen * fraction`) and write `Length.Pixels`.
 
----
+### Engine 26.09 rendering (verified in our build — details: grep `learnings-archive.md` for the date)
+- **`pointer-events` accepts only `none` / `all`** — `auto` parses silently but reads back `None`, so the element never hit-tests (2026-08-29, PawPad). Diagnose hit-testing with `dev_phonechain` / `dev_phonefocus`.
+- **HDR colours:** `color: #3273EB * 8`, `border: 4px solid #9b6cff * 5` — values > 1 bloom (camera `Bloom` Threshold 1; HUD `ScreenPanel.Timing = BeforePostProcess`, so UI is tonemapped). Prefer HDR on borders/text/small marks, not big rounded fills. Ration it. Living ring recipe = ONE HDR stroke `border: 4px solid #9b6cff * 5;`, no outline.
+- **`border-shape: polygon(x% y%, …)` / `circle(…)`** render as anti-aliased SDF shapes that hit-test on the real edge (≤8 vertices, % only). Sharp corners only — `border-radius` is ignored on them; a polygon's `border` is one uniform stroke (per-side accents = an absolute strip child). Use for seam bars, corner cuts, hex/diamond badges; rounded chips keep `border-radius` + `skewX`.
+- **Radii unified:** `border-radius: 999px` + `overflow: hidden` now clips to a clean circle (old "radius > half box clips to nothing" law retired). UI blends in gamma mode; `background-clip: text` works (ration it).
+- **Native scrollbars (26.09.08b):** opt-in via `scrollbar-width` (unset = no bar). House recipe on the scroller: `scrollbar-width: 4px; scrollbar-color: rgba(155,108,255,.55) rgba(244,241,234,.12); scrollbar-gutter: stable;` plus `scrollbar { opacity: 1 }` and `scrollbar > .thumb { opacity: 1; border-radius: 2px }` (engine rests them at .5/.7). Then delete hand-rolled overlay bars. `Panel.ScrollIntoView(Rect)` / `ScrollTo(Vector2)` are public; `ScrollAncestorsIntoView()` is internal.
 
-## Discord Patch Notes Style Guide
+### Scroll containers
+- **Items must be DIRECT children of the `overflow-y: scroll` element** — no intermediate wrapper. Pattern: parent `display:flex; flex-direction:column; overflow:hidden; height:Xpx;` → scroll child `flex:1 1 0; min-height:0; overflow-y:scroll;`.
+- **Nested flex-row inside a scroll container collapses to zero width** — use a plain `width: 100%` block with margins instead.
+- **Scroll clipping does NOT clip descendant `box-shadow`, `transform`, or overhanging absolute children.** On scroll-grid cards: hover/selected = border + border-color + background only (no transform, no colored glow); badges sit inside card bounds (`top: 4px`, not `-7px`); headers above grids must be opaque (≥0.95 alpha) with `gap: 0` to the grid. Colored glows are fine outside scroll areas.
 
-When writing patch notes for Discord announcements, follow this format:
+### Rendering & images
+- **`filter` on `<img>` blurs pixel art** (bypasses `image-rendering: pixelated`). Use `opacity`, or a colored overlay on the wrapper. Same cause as `transform: scale()` blur.
+- **`<img>` + `object-fit: contain` tiles at the edges on aspect mismatch** — always add `background-repeat: no-repeat`.
+- **`object-position`:** keyword pairs (`center top`) work; % pairs don't.
+- **`radial-gradient`:** no shape word, percent stops only — `radial-gradient(rgba(...) 0%, rgba(0,0,0,0) 70%)`. No CSS halftone possible; ship a PNG/WebP.
+- **Gradients:** use `rgba(...,0)` not `transparent`; prefer `to bottom`/`to right` over degree forms (`180deg` can render horizontal on narrow elements).
+- **Absolutely-positioned bg layers paint BEHIND the parent's `background-color`** — make the bg layer the first in-flow flex child instead (`.bg-scroll` pattern on Chat/Effects/Notifications/Radio popups).
+- **Empty `<div>`s render as gray rectangles / scrollbar artifacts** — remove them.
+- **Bare text in flex containers renders vertically** — always wrap text in an element.
 
-### Structure
-```
-# 🎮 BEASTBORNE [VERSION] - [UPDATE NAME]
+### Animation
+- **`@keyframes` play once on first mount** — re-showing a still-mounted panel won't replay. Use transitions toggled by a class (default hidden state + `.visible` override).
+- **⚠️ `animation-delay` is killed by re-renders** — a delayed animation that hasn't started gets cancelled when the panel re-renders (busy panels re-render constantly). Bake staggers into keyframe percentages on full-length animations starting at t=0 (canonical: `lmRung0–5`/`lmRail0–5` in `MonsterRosterPanel.razor.scss`). Delayed transitions likely suffer the same.
 
-[One-liner hook or tagline]
-
----
-
-## ⚔️ [MAJOR FEATURE 1]
-[Brief description of the feature]
-
-- **[Sub-feature]** — [Description]
-- **[Sub-feature]** — [Description]
-
-## 🎒 [MAJOR FEATURE 2]
-[Brief description]
-
-- **[Sub-feature]** — [Description]
-
-## 🔧 Improvements & Fixes
-- [Fix or improvement]
-- [Fix or improvement]
-
----
-
-*Thank you for playing Beastborne! Join our Discord: [link]*
-```
-
-### Discord Markdown Reference
-- `# Header` — Large header (only works in forum posts/announcements)
-- `## Subheader` — Medium header
-- `**bold**` — Bold text
-- `*italic*` — Italic text
-- `__underline__` — Underlined text
-- `~~strikethrough~~` — Strikethrough
-- `> quote` — Block quote
-- `- item` — Bullet point
-- `---` — Horizontal divider
-- `` `code` `` — Inline code
-- Use emojis liberally for visual appeal
-
-### Tone Guidelines
-- Exciting but concise
-- Lead with the biggest features
-- Use action verbs (Added, Improved, Fixed)
-- Keep bullet points to one line when possible
-- End with community call-to-action
-
-### Emoji Conventions
-| Category | Emoji |
-|----------|-------|
-| Combat/Battle | ⚔️ |
-| Items/Inventory | 🎒 |
-| Skills/Abilities | ✨ |
-| Monsters/Beasts | 🐉 |
-| Fixes/Polish | 🔧 |
-| New Content | 🆕 |
-| Balance | ⚖️ |
-| UI/UX | 🎨 |
-| Performance | ⚡ |
-| Warning/Important | ⚠️ |
-
----
-
-## Animated Icon Workflow (SVG → WebP)
-
-s&box does NOT support animated SVGs or CSS `@keyframes`. To create animated icons:
-
-1. **Create animated SVGs** with CSS `@keyframes` animations (user does this manually or with a tool)
-2. **Place animated SVGs** in `Assets/ui/icons/animated/` with `-animated.svg` suffix
-3. **Convert to animated WebP** using Playwright (headless Chromium renders CSS animations frame-by-frame):
-   - Install: `pip install playwright Pillow && python -m playwright install chromium`
-   - Load each SVG inline in a headless browser page
-   - Screenshot each frame at 50ms intervals (20fps) with transparent background
-   - Stitch frames into lossless animated WebP using Pillow
-   - Output at **128x128px** resolution for quality when scaled down
-4. **Reference the `.webp` files** in Razor, NOT the `.svg` files
-5. **CSS hover swap pattern**: Both static SVG and animated WebP `<img>` tags sit in the same container. The animated one is `position: absolute; opacity: 0;` and becomes `opacity: 1;` on `:hover`. No state management needed — pure CSS.
-
-### Button icons still need animated SVGs
-The 7 bottom-bar button icons (menu, inventory, chat, effects, music, settings, notification) still have Pillow-generated placeholder WebPs. When ready, create animated SVGs for these and convert them using the same Playwright workflow above. Their static SVGs are in `Assets/ui/icons/buttons/`.
+### Razor / panel behavior
+- **`Panel` subclasses need `BuildHash()`** including every field that affects rendering (`IsVisible`, selection, counts, `kbIndex`...) or the panel never re-renders.
+- **`@if / else if` swapping whole icon+label blocks leaves ghost children** — compute `(icon, label, ...)` in code-behind and render ONE `<iconify>` + ONE `<span>` with interpolated attributes (see shop's `GetBuyButtonContent`).
+- **`TextEntry` has no `onchange`** — `@ref` + `Text="@field"`, poll `.Text` in `Tick()` (see `FilterBar.razor`).
+- **Hover tooltips flicker over inner elements** — put a CLASS on every child and set `.my-glyph { pointer-events: none; }` on BOTH the hover target's children and the tooltip's; make the tooltip flush (`bottom: 100%`) with no gap. ⚠️ `> * { pointer-events: none; }` and bare `iconify { }` selectors do NOT land in-engine (verified 2026-08-28) — class-on-child only.
+- **UI mouse wheel = `override void OnMouseWheel(Vector2 delta)`** (not `Input.MouseWheel`). Don't call base to consume the event. ⚠️ The access modifier DIFFERS by panel (2026-09-04): Leaderboard/Beastiary/MonsterRoster/PhoneLauncher/TeamPickerPopup/WorldMap need `public override`, MainMenu needs `protected` — write one, read the CS0507 message, flip if it names the other.
+- **⚠️ Never set `AcceptsFocus = true` on page panels** — after a click it suppresses `Input.Pressed` game-wide (all keybinds die). Panel keyboard input routes through GameHUD's TickInput.
+- **Custom fonts must sit directly in `Assets/fonts/`** (no subfolders); register `Exo2 { font-family: url("fonts/Exo2-Bold.ttf"); }`, use the embedded family name.
+- **`Log.Info(multiLineString)` prints only the first line** — log each line separately.
+- **Build `dev_*` ConCmds that freeze UI states** for inspection (e.g. `dev_fusefx gather|bind|cocoon|play|reveal|off`) — MCP round-trips are too slow to catch fast animations mid-flight.
