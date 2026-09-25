@@ -42,6 +42,20 @@ public sealed class MissionManager : Component
 	// MISSION POOL — All possible missions by tier
 	// ═══════════════════════════════════════════════════════════════
 
+	/// <summary>
+	/// Ranked Arena is gated (hidden since v1.2.0, returns in v1.3+). The ONE
+	/// switch for it — OnlineHubPanel reads this too. While false, arena
+	/// quests are never generated (they can't be completed, and an
+	/// uncompletable quest blocks the daily/weekly bonus).
+	/// </summary>
+	public const bool RankedEnabled = false;
+
+	private static bool IsMissionAvailable( MissionDefinition m )
+		=> RankedEnabled || !m.Id.StartsWith( "arena_" );
+
+	private static bool IsMissionAvailable( string missionId )
+		=> RankedEnabled || missionId == null || !missionId.StartsWith( "arena_" );
+
 	private static readonly List<MissionDefinition> DailyPool = new()
 	{
 		// ── BATTLE ──────────────────────────────────────────────
@@ -192,7 +206,7 @@ public sealed class MissionManager : Component
 
 		foreach ( MissionCategory category in Enum.GetValues<MissionCategory>() )
 		{
-			var candidates = DailyPool.Where( m => m.Category == category ).ToList();
+			var candidates = DailyPool.Where( m => m.Category == category && IsMissionAvailable( m ) ).ToList();
 			if ( candidates.Count == 0 ) continue;
 
 			var picked = candidates[random.Next( candidates.Count )];
@@ -218,7 +232,7 @@ public sealed class MissionManager : Component
 		WeeklyBonusClaimed = false;
 		var random = new Random();
 
-		var shuffled = WeeklyPool.OrderBy( _ => random.Next() ).Take( 3 ).ToList();
+		var shuffled = WeeklyPool.Where( IsMissionAvailable ).OrderBy( _ => random.Next() ).Take( 3 ).ToList();
 		foreach ( var def in shuffled )
 		{
 			ActiveWeeklyMissions.Add( new MissionState
@@ -240,7 +254,8 @@ public sealed class MissionManager : Component
 	public void GenerateMonthlyChallenge()
 	{
 		var random = new Random();
-		var picked = MonthlyPool[random.Next( MonthlyPool.Count )];
+		var monthly = MonthlyPool.Where( IsMissionAvailable ).ToList();
+		var picked = monthly[random.Next( monthly.Count )];
 
 		ActiveMonthlyChallenge = new MissionState
 		{
@@ -659,8 +674,10 @@ public sealed class MissionManager : Component
 	/// </summary>
 	public bool AreAllDailiesComplete()
 	{
+		// Arena quests rolled before ranked was gated can't be finished — they
+		// don't count against the bonus.
 		return ActiveDailyMissions.Count > 0 &&
-			   ActiveDailyMissions.All( m => m.Completed && m.Claimed );
+			   ActiveDailyMissions.All( m => ( m.Completed && m.Claimed ) || !IsMissionAvailable( m.MissionId ) );
 	}
 
 	/// <summary>
@@ -669,7 +686,7 @@ public sealed class MissionManager : Component
 	public bool AreAllWeekliesComplete()
 	{
 		return ActiveWeeklyMissions.Count > 0 &&
-			   ActiveWeeklyMissions.All( m => m.Completed && m.Claimed );
+			   ActiveWeeklyMissions.All( m => ( m.Completed && m.Claimed ) || !IsMissionAvailable( m.MissionId ) );
 	}
 
 	/// <summary>

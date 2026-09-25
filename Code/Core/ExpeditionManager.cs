@@ -1623,7 +1623,8 @@ public sealed class ExpeditionManager : Component
 		float tokenBonus = TamerManager.Instance?.GetSkillBonus( SkillEffectType.BossTokenBonus ) ?? 0;
 		if ( tokenBonus > 0 )
 		{
-			int bonusTokens = (int)(totalTokens * tokenBonus / 100f);
+			// Round UP — on 1-2 token clears (int) floored the bonus to 0.
+			int bonusTokens = (int)MathF.Ceiling( totalTokens * tokenBonus / 100f );
 			totalTokens += bonusTokens;
 			Log.Info( $"Token Collector bonus: +{bonusTokens} tokens (+{tokenBonus}%)" );
 		}
