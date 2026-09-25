@@ -422,66 +422,204 @@ public sealed class AchievementManager : Component
 	}
 
 	// ═══════════════════════════════════════════════════════════════
-	// RETROACTIVE CHECK
+	// 2026-09 RESTART — legacy payout, wipe, title strip (step A)
 	// ═══════════════════════════════════════════════════════════════
 
 	/// <summary>
-	/// On first load after the update, scan all existing tamer stats
-	/// and auto-unlock any achievements already earned.
+	/// FROZEN reward table of the pre-restart (legacy, set 0/1) achievements:
+	/// id → (gold, ink, tokens). Used ONLY by <see cref="ApplyAchievementRestart"/>
+	/// to pay out legacy achievements that were unlocked but never claimed.
+	/// Gem rewards are already folded into tokens (1:1). Titles are deliberately
+	/// absent — old-achievement titles are removed by the restart. Never edit.
+	/// </summary>
+	private static readonly Dictionary<string, (int Gold, int Ink, int Tokens)> LegacyRewards = new()
+	{
+		["catch_1"] = ( 500, 0, 0 ),
+		["catch_10"] = ( 2000, 0, 0 ),
+		["catch_50"] = ( 10000, 10, 0 ),
+		["catch_100"] = ( 0, 0, 5 ),
+		["catch_500"] = ( 0, 0, 25 ),
+		["beast_complete"] = ( 0, 0, 25 ),
+		["win_1"] = ( 500, 0, 0 ),
+		["win_10"] = ( 2000, 0, 0 ),
+		["win_100"] = ( 10000, 0, 0 ),
+		["win_1000"] = ( 0, 0, 10 ),
+		["damage_10k"] = ( 2000, 0, 0 ),
+		["damage_100k"] = ( 10000, 0, 0 ),
+		["damage_1m"] = ( 0, 0, 5 ),
+		["knockouts_10"] = ( 2000, 0, 0 ),
+		["knockouts_100"] = ( 10000, 0, 0 ),
+		["knockouts_500"] = ( 0, 0, 10 ),
+		["expedition_1"] = ( 1000, 0, 0 ),
+		["expedition_5"] = ( 5000, 10, 0 ),
+		["expedition_12"] = ( 0, 20, 5 ),
+		["expedition_16"] = ( 0, 0, 10 ),
+		["hard_mode_1"] = ( 5000, 0, 0 ),
+		["hard_mode_10"] = ( 0, 0, 10 ),
+		["hard_mode_16"] = ( 0, 0, 15 ),
+		["expeditions_50"] = ( 10000, 0, 0 ),
+		["expeditions_250"] = ( 0, 0, 10 ),
+		["boss_first"] = ( 0, 0, 5 ),
+		["boss_all"] = ( 0, 0, 25 ),
+		["breed_1"] = ( 1000, 0, 0 ),
+		["breed_10"] = ( 5000, 0, 0 ),
+		["breed_50"] = ( 0, 0, 5 ),
+		["breed_100"] = ( 0, 0, 10 ),
+		["high_genes"] = ( 5000, 0, 0 ),
+		["perfect_gene"] = ( 0, 0, 5 ),
+		["gold_1k"] = ( 500, 0, 0 ),
+		["gold_10k"] = ( 2000, 0, 0 ),
+		["gold_100k"] = ( 0, 0, 5 ),
+		["gold_1m"] = ( 0, 0, 10 ),
+		["items_10"] = ( 2000, 0, 0 ),
+		["three_relics"] = ( 3000, 0, 0 ),
+		["server_boost"] = ( 2000, 0, 0 ),
+		["boss_tokens_100"] = ( 0, 0, 25 ),
+		["arena_win_1"] = ( 2000, 0, 0 ),
+		["arena_win_25"] = ( 10000, 0, 0 ),
+		["arena_win_100"] = ( 0, 0, 15 ),
+		["win_streak_3"] = ( 5000, 0, 0 ),
+		["win_streak_10"] = ( 0, 0, 10 ),
+		["arena_sets_100"] = ( 0, 0, 10 ),
+		["reverse_sweep"] = ( 10000, 0, 0 ),
+		["trade_1"] = ( 2000, 0, 0 ),
+		["trade_25"] = ( 0, 0, 5 ),
+		["trade_50"] = ( 0, 0, 10 ),
+		["chat_10"] = ( 1000, 0, 0 ),
+		["beast_showcase"] = ( 1000, 0, 0 ),
+		["cards_10"] = ( 5000, 0, 0 ),
+		["level_10"] = ( 2000, 0, 0 ),
+		["level_50"] = ( 10000, 0, 0 ),
+		["level_100"] = ( 0, 0, 5 ),
+		["level_200"] = ( 0, 0, 15 ),
+		["level_250"] = ( 0, 0, 25 ),
+		["skills_10"] = ( 5000, 0, 0 ),
+		["skills_25"] = ( 0, 0, 5 ),
+		["evolve_5"] = ( 5000, 0, 0 ),
+		["evolve_50"] = ( 0, 0, 10 ),
+		["veteran_max"] = ( 10000, 0, 0 ),
+		["skill_points_100"] = ( 10000, 0, 0 ),
+		["rank_bronze"] = ( 2000, 0, 0 ),
+		["rank_silver"] = ( 4000, 0, 0 ),
+		["rank_gold"] = ( 6000, 0, 0 ),
+		["rank_platinum"] = ( 8000, 0, 0 ),
+		["rank_diamond"] = ( 10000, 0, 10 ),
+		["rank_master"] = ( 12000, 0, 12 ),
+		["rank_legendary"] = ( 14000, 0, 14 ),
+		["rank_mythic"] = ( 16000, 0, 16 ),
+	};
+
+	/// <summary>
+	/// Titles that ONLY the legacy achievements granted. Stripped by the restart
+	/// (user 2026-09-25: "we are making a new system"). None has another source —
+	/// Alpha/Johnson, guild-raid and login-milestone titles are untouched, and the
+	/// level-based "Master Tamer" lives in Tamer.ActiveLevelTitle, not here.
+	/// Qualifying players earn Boss Slayer / Supreme Tamer / Beastborne Master /
+	/// Master Fuser back through the new set.
+	/// </summary>
+	private static readonly string[] LegacyAchievementTitles =
+	{
+		"Boss Slayer", "Supreme Tamer", "Master Tamer", "Beastborne Master",
+		"Conqueror", "Arena Legend", "Master Fuser", "Transcendent",
+	};
+
+	/// <summary>
+	/// One-time restart onto the current achievement set, gated on
+	/// Tamer.AchievementSetVersion (its OWN flag — not the shared MigrationVersion).
+	/// Pure data, no manager dependencies, so TamerManager.Hydrate can call it:
+	///  1. Pay out legacy achievements that were unlocked but unclaimed
+	///     (gold / ink / tokens only — no titles).
+	///  2. Clear tamer.Achievements. Tokens already earned are NOT touched.
+	///  3. Strip legacy-achievement titles; clear ActiveTitleId if it pointed at one.
+	///  4. Flag AchievementRetroPending so <see cref="RetroactiveCheck"/> re-unlocks
+	///     the new set from lifetime stats once every manager has loaded.
+	/// Idempotent: the version bump and the wipe land in the same save.
+	/// Returns true if it ran.
+	/// </summary>
+	public static bool ApplyAchievementRestart( Tamer tamer )
+	{
+		if ( tamer == null ) return false;
+		if ( tamer.AchievementSetVersion >= CURRENT_ACHIEVEMENT_SET ) return false;
+
+		tamer.Achievements ??= new();
+		tamer.UnlockedTitles ??= new();
+
+		// 1. Legacy payout.
+		long gold = 0, ink = 0, tokens = 0;
+		int paid = 0;
+		foreach ( var kvp in tamer.Achievements )
+		{
+			var p = kvp.Value;
+			if ( p == null || !p.IsUnlocked || p.IsClaimed ) continue;
+			if ( !LegacyRewards.TryGetValue( kvp.Key, out var r ) ) continue;
+			gold += r.Gold;
+			ink += r.Ink;
+			tokens += r.Tokens;
+			paid++;
+		}
+		if ( paid > 0 )
+		{
+			tamer.Gold = (int)Math.Min( (long)int.MaxValue, (long)tamer.Gold + gold );
+			tamer.ContractInk = (int)Math.Min( (long)int.MaxValue, (long)tamer.ContractInk + ink );
+			tamer.BossTokens = (int)Math.Min( (long)int.MaxValue, (long)tamer.BossTokens + tokens );
+		}
+
+		// 2. Wipe progress. No Token clawback.
+		int wiped = tamer.Achievements.Count;
+		tamer.Achievements.Clear();
+
+		// 3. Strip legacy-achievement titles.
+		int stripped = tamer.UnlockedTitles.RemoveAll( id => LegacyAchievementTitles.Contains( id ) );
+		if ( !string.IsNullOrEmpty( tamer.ActiveTitleId ) && LegacyAchievementTitles.Contains( tamer.ActiveTitleId ) )
+			tamer.ActiveTitleId = null;
+
+		// 4. Hand off to the retroactive unlock.
+		tamer.AchievementRetroPending = true;
+		tamer.AchievementSetVersion = CURRENT_ACHIEVEMENT_SET;
+
+		Log.Info( $"[Achievement] Restart to set {CURRENT_ACHIEVEMENT_SET}: wiped {wiped} entries, paid {paid} unclaimed legacy rewards ({gold}g, {ink} ink, {tokens} tokens), stripped {stripped} legacy title(s)." );
+
+		if ( paid > 0 )
+		{
+			NotificationManager.Instance?.AddNotification(
+				NotificationType.Success,
+				"Achievements Renewed",
+				$"Unclaimed rewards paid out: {gold:N0} Gold, {ink:N0} Ink, {tokens:N0} Tokens.",
+				8f );
+		}
+
+		return true;
+	}
+
+	// ═══════════════════════════════════════════════════════════════
+	// RETROACTIVE CHECK (step B)
+	// ═══════════════════════════════════════════════════════════════
+
+	/// <summary>
+	/// Called from GameManager.StartGame, after every manager has loaded
+	/// (Beastbook discoveries, Pattern Book, species mastery). When the restart
+	/// left AchievementRetroPending set, unlock every current achievement the
+	/// player already qualifies for from lifetime stats. Unlocks are CLAIMABLE
+	/// (not auto-granted) so each still gets its claim moment; one summary
+	/// notification instead of one per achievement.
 	/// </summary>
 	public void RetroactiveCheck()
 	{
 		if ( _retroactiveCheckDone ) return;
-		_retroactiveCheckDone = true;
 
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
+		_retroactiveCheckDone = true;
 
 		tamer.Achievements ??= new();
 
-		// The achievement-claimed migration must run EXACTLY ONCE per save, not
-		// every load. The old achievement system auto-granted rewards on unlock;
-		// the new system requires a manual claim. For saves created under the old
-		// system we mark already-unlocked achievements as claimed (the rewards
-		// were already granted). But under the NEW system an unlocked-but-unclaimed
-		// achievement is a legitimate pending-reward state — re-running this
-		// migration every session would silently mark those claimed WITHOUT
-		// granting the reward, permanently eating the player's rewards.
-		// Gate on Tamer.MigrationVersion (persisted across sessions). TamerManager
-		// hydration bumps it to 2; this migration is version 3.
-		const int ACHIEVEMENT_CLAIM_MIGRATION_VERSION = 3;
-		if ( tamer.MigrationVersion >= ACHIEVEMENT_CLAIM_MIGRATION_VERSION )
-		{
-			// Migration already done on a previous session — nothing to do.
-			// (Subsequent unlocks correctly stay unclaimed until the player claims.)
-			return;
-		}
+		// Belt-and-braces: a save that reached here without passing through
+		// TamerManager.Hydrate's restart call still gets restarted exactly once.
+		ApplyAchievementRestart( tamer );
 
-		// Migrate existing unlocked achievements to claimed (they got auto-rewards
-		// from the old system). Runs only on the first load after this update.
-		if ( tamer.Achievements.Count > 0 )
-		{
-			bool migrated = false;
-			foreach ( var kvp in tamer.Achievements )
-			{
-				if ( kvp.Value.IsUnlocked && !kvp.Value.IsClaimed )
-				{
-					kvp.Value.IsClaimed = true;
-					migrated = true;
-				}
-			}
-			tamer.MigrationVersion = ACHIEVEMENT_CLAIM_MIGRATION_VERSION;
-			TamerManager.Instance?.SaveToCloud();
-			if ( migrated )
-				Log.Info( "[Achievement] Migrated existing unlocked achievements to claimed state" );
-			return;
-		}
-
-		Log.Info( "[Achievement] Running retroactive check for existing player..." );
+		if ( !tamer.AchievementRetroPending ) return;
 
 		int unlocked = 0;
-
-		// Check all stat-based achievements silently (don't spam notifications)
 		foreach ( var achievement in _achievements )
 		{
 			if ( achievement.IsSecret ) continue;
@@ -495,43 +633,33 @@ public sealed class AchievementManager : Component
 				tamer.Achievements[achievement.Id] = progress;
 			}
 
+			if ( progress.IsUnlocked ) continue; // a live hook already fired this session
+
 			progress.CurrentValue = currentValue;
 
-			if ( currentValue >= achievement.RequiredValue && !progress.IsUnlocked )
+			if ( currentValue >= achievement.RequiredValue )
 			{
 				progress.IsUnlocked = true;
-				progress.IsClaimed = true; // Auto-claim retroactive rewards
+				progress.IsClaimed = false; // claimable — rewards land on claim
 				progress.UnlockedAt = DateTime.UtcNow;
-
-				// Grant rewards silently
-				foreach ( var reward in achievement.Rewards )
-				{
-					GrantReward( tamer, reward );
-				}
-
+				Sandbox.Services.Achievements.Unlock( achievement.Id );
 				unlocked++;
 			}
 		}
 
-		// Mark the achievement-claim migration done so it never runs again — even
-		// if no achievements unlocked here. Otherwise the next session (when this
-		// player DOES have achievement entries) would re-enter the migration block
-		// above and force-claim any legitimately-pending unlocks without rewards.
-		tamer.MigrationVersion = ACHIEVEMENT_CLAIM_MIGRATION_VERSION;
+		tamer.AchievementRetroPending = false;
 
 		if ( unlocked > 0 )
 		{
 			NotificationManager.Instance?.AddNotification(
 				NotificationType.Success,
 				"Achievements Unlocked!",
-				$"{unlocked} achievements retroactively unlocked! Check your rewards."
+				$"{unlocked} achievement{(unlocked == 1 ? "" : "s")} ready to claim — open Achievements to collect your rewards."
 			);
-
-			Stats.SetValue( "achievements-count", tamer.Achievements.Values.Count( p => p.IsUnlocked ) );
-
-			Log.Info( $"[Achievement] Retroactively unlocked {unlocked} achievements" );
+			Log.Info( $"[Achievement] Retroactively unlocked {unlocked} achievements (claimable)" );
 		}
 
+		Stats.SetValue( "achievements-count", CountUnlocked( tamer ) );
 		TamerManager.Instance?.SaveToCloud();
 	}
 
@@ -563,14 +691,17 @@ public sealed class AchievementManager : Component
 			AchievementRequirement.ArenaSetsCompleted => tamer.ArenaSetsCompleted,
 			AchievementRequirement.SkillsUnlocked => tamer.SkillRanks?.Count ?? 0,
 			// Must match the live hook (TamerManager.GetTotalSkillPointsSpent) — that
-			// is cost-weighted (rank × node.CostPerRank). The old `Values.Sum()` here
-			// summed raw ranks, undercounting whenever any node costs >1 SP/rank, so
-			// the achievement could fail to unlock retroactively for a player who
-			// genuinely invested 100+ SP.
+			// is cost-weighted (rank × node.CostPerRank).
 			AchievementRequirement.SkillPointsInvested => TamerManager.Instance?.GetTotalSkillPointsSpent() ?? 0,
 			AchievementRequirement.TamerCardsCollected => tamer.CollectedCards?.Count ?? 0,
 			AchievementRequirement.ArenaRankReached => GetRankNumericValue( tamer.ArenaRank ),
 			AchievementRequirement.BeastiaryCompleted => BeastiaryManager.Instance != null && BeastiaryManager.Instance.GetDiscoveryCount() >= BeastiaryManager.Instance.GetTotalSpeciesCount() && BeastiaryManager.Instance.GetTotalSpeciesCount() > 0 ? 1 : 0,
+			// 2026-09 restart
+			AchievementRequirement.BeastbookDiscovered => BeastiaryManager.Instance?.GetDiscoveryCount() ?? 0,
+			AchievementRequirement.PatternsDiscovered => MonsterManager.Instance?.DiscoveredPatterns?.Count ?? 0,
+			AchievementRequirement.TributesOffered => tamer.TributesOffered,
+			// Mastery level 6 = Grandmaster (see BeastiaryManager mastery table).
+			AchievementRequirement.MonsterVeteranMaxRank => tamer.SpeciesMastery != null && tamer.SpeciesMastery.Values.Any( d => d != null && d.Level >= 6 ) ? 1 : 0,
 			_ => 0
 		};
 	}

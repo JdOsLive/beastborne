@@ -337,7 +337,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
 
-		var achievementCount = tamer.Achievements?.Values.Count( p => p.IsUnlocked ) ?? 0;
+		var achievementCount = AchievementManager.Instance?.CountUnlocked( tamer ) ?? 0;
 		var title = GetTamerTitle( tamer.Level );
 
 		var message = new ChatMessage
@@ -557,7 +557,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		var totalExp = tamer.TotalExpeditionsCompleted;
 		var totalTrades = tamer.TotalTradesCompleted;
 		var playTime = (int)tamer.TotalPlayTime.TotalMinutes;
-		var achCount = tamer.Achievements?.Values.Count( p => p.IsUnlocked ) ?? 0;
+		var achCount = AchievementManager.Instance?.CountUnlocked( tamer ) ?? 0;
 		var guildTag = GuildManager.Instance?.Membership?.GuildTag ?? "";
 		var guildName = GuildManager.Instance?.Membership?.GuildName ?? "";
 

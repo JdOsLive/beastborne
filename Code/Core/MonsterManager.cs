@@ -9058,6 +9058,9 @@ public sealed class MonsterManager : Component
 
 		SaveDiscoveredPatterns();
 
+		// Fixed-count Pattern Book milestones (1 / 2).
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.PatternsDiscovered, DiscoveredPatterns.Count );
+
 		var pattern = FusionPatterns.All.FirstOrDefault( p => p.Id == patternId );
 		Log.Info( $"[PatternBook] NEW PATTERN inscribed: {pattern?.Name ?? patternId}" );
 		if ( pattern != null )
