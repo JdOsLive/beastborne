@@ -15,9 +15,10 @@ accent — see "Known stale sources" at the end).
 > fusion, teams); the UI's job is to make that feel approachable, warm, obvious-at-a-glance.
 > **The beasts are the heroes — UI is the frame.**
 
-> **Scope rules still in force:** the **main menu (`MainMenu.razor`) is LIKED — keep its
-> structure.** **BattleView / battle HUD is OFF-LIMITS** for restyling. Don't sweep dormant
-> GuildPanel / ArenaPanel (features not live).
+> **Scope rules (user, 2026-09-25):** the **main menu (`MainMenu.razor`) will be REBUILT on
+> the new shared system** as the final phase of the UI overhaul (`ui-overhaul-brief.md`) — until
+> then, don't restyle it piecemeal. **BattleView / battle HUD stays OFF-LIMITS.** Don't sweep
+> dormant GuildPanel / ArenaPanel (features not live).
 
 ---
 

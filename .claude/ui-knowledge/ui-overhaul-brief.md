@@ -34,11 +34,11 @@ batch-rewrite screens in one context.
   `guiding-star.md` §The four signatures.
 - **Engine law:** `CLAUDE.md` quirks table + `laws.md`. Shipped roster code wins over
   docs; when this pass settles something new, update `guiding-star.md` / `laws.md`.
-- **Out of scope unless the user opts in:** BattleView / battle HUD, dormant features
-  (GuildPanel, ArenaPanel, PvP), gameplay logic/data.
-- **Main menu:** in scope as the LAST phase, pending the user's call. It's currently a
-  ChatGPT-era build the user likes structurally; the question is whether to rebuild it on
-  the same system or polish it to match. Ask before starting it.
+- **Out of scope (user, 2026-09-25):** BattleView / battle HUD stays off-limits for now;
+  also dormant features (GuildPanel, ArenaPanel, PvP) and gameplay logic/data.
+- **Main menu: REBUILD on the new system** (user decision 2026-09-25) — the current
+  ChatGPT-era build gets replaced so menu → game reads as one product. It's the LAST phase,
+  after the foundations are proven in-game; don't restyle it piecemeal before then.
 
 ## Anti-"AI UI" checklist (reject on sight)
 Uniform 1px `rgba(255,255,255,.1)` hairlines on everything · the same 12–16px radius on
@@ -67,7 +67,7 @@ Screen families:
 5. Flow popups — TeamPicker, Contract negotiation, Expedition result, evolution/fusion
    reveals, level-up/unlock moments
 6. Meta/reward — Achievements, Daily, Gift inbox, Showcases, Trading, Tutorial, Credits
-7. Main menu + save/starter flow (last, pending the user)
+7. Main menu + save/starter flow (last — full rebuild)
 
 ### Phase 1 — Foundations (shared systems before any screen)
 Build or fix the pieces every screen will share, so screens stop re-implementing them:
@@ -110,8 +110,12 @@ consistent empty/loading/error states, performance check (no per-frame `BuildHas
 no display-flip stalls), a keyboard-only playthrough and a mouse-only playthrough of the
 core loop.
 
-### Phase 5 — Main menu (if the user approves)
-Rebuild or polish on the same system so the menu → game handoff feels like one product.
+### Phase 5 — Main menu rebuild
+Rebuild the menu (and save-slot / starter flow) on the shared system so the menu → game
+handoff feels like one product. Carry over what works — the living ring's liquid stretch,
+the PLAY detonation beat, the scene-swap transitions (`scene-swap-spec.md`) — as
+deliberate choices, not inherited code. Propose the new composition (sketch/mock) and get
+the user's OK before building.
 
 ---
 
