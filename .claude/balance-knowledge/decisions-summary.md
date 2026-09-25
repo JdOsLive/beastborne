@@ -98,3 +98,6 @@ Full reasoning for any entry: grep `decisions-log.md` for the date or title.
 - Evolved or over-band species leaking into early wild pools (branchling, Stomplet 382, Epic in wilds).
 - Log only what was actually edited — the round-2 entry claimed a Lochmaw edit that never shipped.
 - Save safety: learnsets hot-update via `ValidateAndRepairMonster`; new int fields default 0; adding `EvolvesTo` makes existing high-level beasts evolve on load — flag to QA.
+
+### Currency (UI overhaul)
+- 2026-09-25 — **Quests & daily streak pay Tokens (BossTokens), not gems** (user decision; the game has no gem currency). Same amounts the UI already displayed: mission `GemReward` (legacy name), daily bonus 5, weekly bonus 10, streak day + milestone "gems" slot. Achievements and gifts still grant gems — open.

@@ -117,12 +117,18 @@ Mostly input-routing fixes, safe to do early. *verify* = confirm in-editor first
     iOS-style pictograms (Beasts and Beastbook share a paw), equal-weight 3×4 grid, plain
     in-phone lists with hard-cut transitions.
 
-## Decisions needed from the user
-1. **Quests rewards:** what should the gem rewards become — Tokens, Ink, or removed?
-   (Blocks the Quests pilot.) Also: drop the "Coming Soon" Main tab and the dormant Guild tab?
-2. **Chat / Radio / Effects:** make the phone the only home and retire the floating widgets (and their R/C hotkeys → phone apps)?
-3. **Accent for system & meta screens** (Options, Help, Feedback, Achievements, Gift, Credits…): one shared "system" color, or reuse app colors?
-4. **Level-up / evolution / unlock moments:** add a proper presentation (e.g. a shared "moment" overlay), or keep them as Alerts?
+## Decisions (user, 2026-09-25)
+1. **Quests rewards → Tokens.** Every gem reward (mission `GemReward`, daily/weekly bonus,
+   streak calendar) grants and shows Tokens; the calendar also shows Ink where Ink is granted.
+   *Still open:* drop the "Coming Soon" Main tab and the dormant Guild tab?
+2. **Chat / Radio / Effects → the phone is the only home.** Retire the floating ChatPanel
+   popup, RadioWidget and ActiveEffectsPanel widgets; T / R / C open the phone apps (as N
+   already does). The in-phone apps must then reach full parity (keyboard, states, motion).
+3. *Still open:* accent for system & meta screens — one shared "system" color, or reuse app colors?
+4. **Level-up / evolution / unlock → add a celebration screen.** One shared "moment"
+   overlay (Tamer level-up, beast level-up recap, evolution, zone unlock, new species, big
+   achievements), built on the motion kit's celebration beat, anti-gacha (celebrate the
+   visible result, never a roll). Queue moments so they never stack; Alerts still logs them.
 
 ## Proposed order
 - **Phase 0.5 — quick fixes** 1–9 (input routing; mostly mechanical) + the copy/data items once decisions land.

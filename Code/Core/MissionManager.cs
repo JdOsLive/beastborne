@@ -36,10 +36,10 @@ public sealed class MissionManager : Component
 	// Bonus payouts — ONE source of truth (ClaimDailyBonus / ClaimWeeklyBonus
 	// grant these; QuestPanel reads them for the band chips — never re-typed).
 	public const int DailyBonusGold = 10000;
-	public const int DailyBonusGems = 5;
+	public const int DailyBonusTokens = 5;
 	public const int DailyBonusXP = 1000;
 	public const int WeeklyBonusGold = 50000;
-	public const int WeeklyBonusGems = 10;
+	public const int WeeklyBonusTokens = 10;
 
 	// Ranked arena is kill-switched at launch (PvP scope A, UI dormant):
 	// arena_* missions are excluded from the Generate* picks while false, and
@@ -632,8 +632,9 @@ public sealed class MissionManager : Component
 		if ( def.GoldReward > 0 )
 			TamerManager.Instance.AddGold( def.GoldReward );
 
+		// "GemReward" is a legacy name: quests pay Tokens (user, 2026-09-25 — no gems).
 		if ( def.GemReward > 0 )
-			TamerManager.Instance.AddGems( def.GemReward );
+			TamerManager.Instance.AddBossTokens( def.GemReward );
 
 		if ( def.InkReward > 0 )
 			TamerManager.Instance.AddContractInk( def.InkReward );
@@ -687,22 +688,22 @@ public sealed class MissionManager : Component
 	}
 
 	/// <summary>
-	/// Claim the daily bonus (10,000 Gold + 5 Gems + 1,000 XP). Returns true if successful.
+	/// Claim the daily bonus (10,000 Gold + 5 Tokens + 1,000 XP). Returns true if successful.
 	/// </summary>
 	public bool ClaimDailyBonus()
 	{
 		if ( !AreAllDailiesComplete() || DailyBonusClaimed ) return false;
 
-		TamerManager.Instance?.AddGold( 10000 );
-		TamerManager.Instance?.AddGems( 5 );
-		TamerManager.Instance?.AddXP( 1000 );
+		TamerManager.Instance?.AddGold( DailyBonusGold );
+		TamerManager.Instance?.AddBossTokens( DailyBonusTokens );
+		TamerManager.Instance?.AddXP( DailyBonusXP );
 
 		DailyBonusClaimed = true;
 
 		NotificationManager.Instance?.AddNotification(
 			NotificationType.Success,
 			"Daily Bonus!",
-			"All dailies complete: 10,000 Gold + 5 Gems + 1,000 XP"
+			$"All dailies complete: {DailyBonusGold:N0} Gold + {DailyBonusTokens} Tokens + {DailyBonusXP:N0} XP"
 		);
 
 		SaveToCookies();
@@ -713,21 +714,21 @@ public sealed class MissionManager : Component
 	}
 
 	/// <summary>
-	/// Claim the weekly bonus (50,000 Gold + 10 Gems). Returns true if successful.
+	/// Claim the weekly bonus (50,000 Gold + 10 Tokens). Returns true if successful.
 	/// </summary>
 	public bool ClaimWeeklyBonus()
 	{
 		if ( !AreAllWeekliesComplete() || WeeklyBonusClaimed ) return false;
 
-		TamerManager.Instance?.AddGold( 50000 );
-		TamerManager.Instance?.AddGems( 10 );
+		TamerManager.Instance?.AddGold( WeeklyBonusGold );
+		TamerManager.Instance?.AddBossTokens( WeeklyBonusTokens );
 
 		WeeklyBonusClaimed = true;
 
 		NotificationManager.Instance?.AddNotification(
 			NotificationType.Success,
 			"Weekly Bonus!",
-			"All weeklies complete: 50,000 Gold + 10 Gems"
+			$"All weeklies complete: {WeeklyBonusGold:N0} Gold + {WeeklyBonusTokens} Tokens"
 		);
 
 		SaveToCookies();
@@ -830,7 +831,7 @@ public sealed class MissionManager : Component
 		var parts = new List<string>();
 		if ( def.GoldReward > 0 ) parts.Add( $"{def.GoldReward:N0} Gold" );
 		if ( def.XPReward > 0 ) parts.Add( $"{def.XPReward:N0} XP" );
-		if ( def.GemReward > 0 ) parts.Add( $"{def.GemReward} Gem{(def.GemReward != 1 ? "s" : "")}" );
+		if ( def.GemReward > 0 ) parts.Add( $"{def.GemReward} Token{(def.GemReward != 1 ? "s" : "")}" );
 		if ( def.InkReward > 0 ) parts.Add( $"{def.InkReward} Ink" );
 		if ( !string.IsNullOrEmpty( def.ItemReward ) ) parts.Add( def.ItemReward );
 		return string.Join( " + ", parts );
