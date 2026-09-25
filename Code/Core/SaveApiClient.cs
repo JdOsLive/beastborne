@@ -133,6 +133,8 @@ public static class SaveApiClient
 
 		try
 		{
+			// Undo the server's snake->camel rewrite of the blob's data keys first.
+			response = SaveKeyRepair.RepairResponse( response );
 			var wrapper = JsonSerializer.Deserialize<SaveApiResponse>( response, JsonOptions );
 			if ( wrapper == null )
 			{

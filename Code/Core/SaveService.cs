@@ -684,6 +684,8 @@ public sealed class SaveService : Component
 			if ( !FileSystem.Data.FileExists( CacheFileName ) ) return null;
 			var json = FileSystem.Data.ReadAllText( CacheFileName );
 			if ( string.IsNullOrEmpty( json ) ) return null;
+			// A cache written after a cloud load carries the server's renamed keys.
+			json = SaveKeyRepair.RepairBlob( json );
 			return JsonSerializer.Deserialize<SaveBlob>( json, JsonOpts );
 		}
 		catch ( System.Exception ex )
