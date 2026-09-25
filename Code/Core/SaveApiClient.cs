@@ -85,7 +85,7 @@ public static class SaveApiClient
 	/// </summary>
 	private static bool HasSteamId()
 	{
-		return Connection.Local != null && Connection.Local.SteamId != 0;
+		return Connection.Local != null && Connection.Local.SteamId != 0L;
 	}
 
 	/// <summary>

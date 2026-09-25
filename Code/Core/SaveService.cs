@@ -127,7 +127,7 @@ public sealed class SaveService : Component
 			Log.Info( "[SaveService] initialized (shadow mode)" );
 			// One-time log of the local Steam ID — handy for /gift testing from
 			// Discord. Prints as `[SteamID] 7656119...` on game start.
-			Log.Info( $"[SteamID] {Connection.Local?.SteamId ?? 0}" );
+			Log.Info( $"[SteamID] {Connection.Local?.SteamId ?? 0L}" );
 		}
 		else
 		{
@@ -272,7 +272,7 @@ public sealed class SaveService : Component
 				// cache (OwnerSteamId == 0) can't be verified, so we don't prefer it — it
 				// gets stamped on the next flush and works normally from the next boot.
 				var cacheCheck = TryReadCache();
-				var localSteamId = (long)(Connection.Local?.SteamId ?? 0);
+				var localSteamId = (long)(Connection.Local?.SteamId ?? 0L);
 				bool cacheIsNewer = cacheCheck != null && cacheCheck.LastSaveTicks > cloudResult.Blob.LastSaveTicks;
 				bool cacheIsOurs = cacheCheck != null && localSteamId != 0 && cacheCheck.OwnerSteamId == localSteamId;
 
@@ -525,7 +525,7 @@ public sealed class SaveService : Component
 
 		// Stamp + serialize.
 		CurrentBlob.LastSaveTicks = System.DateTime.UtcNow.Ticks;
-		CurrentBlob.OwnerSteamId = (long)(Connection.Local?.SteamId ?? 0);
+		CurrentBlob.OwnerSteamId = (long)(Connection.Local?.SteamId ?? 0L);
 
 		string json;
 		try
@@ -698,7 +698,7 @@ public sealed class SaveService : Component
 	private void WriteCache( SaveBlob blob )
 	{
 		blob.LastSaveTicks = System.DateTime.UtcNow.Ticks;
-		blob.OwnerSteamId = (long)(Connection.Local?.SteamId ?? 0);
+		blob.OwnerSteamId = (long)(Connection.Local?.SteamId ?? 0L);
 		var json = JsonSerializer.Serialize( blob, JsonOpts );
 		FileSystem.Data.WriteAllText( CacheFileName, json );
 	}

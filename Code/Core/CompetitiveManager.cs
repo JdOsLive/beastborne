@@ -886,7 +886,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			AddMatchHistory( playerWon, pointsChange );
 
 			// Collect opponent's tamer card (online matches only)
-			if ( CurrentOpponent?.IsRealPlayer == true && CurrentOpponent.SteamId != 0 )
+			if ( CurrentOpponent?.IsRealPlayer == true && CurrentOpponent.SteamId != 0L )
 			{
 				var profile = ChatManager.Instance?.GetProfileByConnectionId( CurrentOpponent.ConnectionId );
 				TamerManager.Instance?.CollectTamerCard(
@@ -1106,11 +1106,11 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	// ONLINE MATCHMAKING
 	// ═══════════════════════════════════════════════════════════════
 
-	public bool IsNetworkActive => GameNetworkSystem.IsActive;
+	public bool IsNetworkActive => Networking.IsActive;
 
 	private Guid LocalConnectionId => Connection.Local?.Id ?? Guid.Empty;
 	private string LocalPlayerName => Connection.Local?.DisplayName ?? TamerManager.Instance?.CurrentTamer?.Name ?? "Player";
-	private long LocalSteamId => Connection.Local?.SteamId ?? 0;
+	private long LocalSteamId => Connection.Local?.SteamId ?? 0L;
 
 	/// <summary>
 	/// Join the online matchmaking queue
@@ -1118,7 +1118,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 	public void JoinOnlineQueue( ArenaMode mode = ArenaMode.Ranked )
 	{
 		CurrentMode = mode;
-		if ( !GameNetworkSystem.IsActive )
+		if ( !Networking.IsActive )
 		{
 			OnMatchmakingError?.Invoke( "Not connected to a server. Join a lobby first!" );
 			return;
@@ -1432,7 +1432,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			Team = hostTeamPreview,
 			IsRealPlayer = true,
 			ConnectionId = senderConnectionId,
-			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0,
+			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0L,
 			GuildTag = opProfile1?.GuildTag,
 			GuildName = opProfile1?.GuildName
 		};
@@ -1485,7 +1485,7 @@ public sealed class CompetitiveManager : Component, Component.INetworkListener
 			Team = opponentTeam,
 			IsRealPlayer = true,
 			ConnectionId = senderConnectionId,
-			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0,
+			SteamId = Connection.All.FirstOrDefault( c => c.Id.ToString() == senderConnectionId )?.SteamId ?? 0L,
 			GuildTag = opProfile2?.GuildTag,
 			GuildName = opProfile2?.GuildName
 		};

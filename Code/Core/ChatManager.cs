@@ -29,12 +29,12 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	public Action OnProfilesUpdated;
 
 	// Network state
-	public bool IsConnected => GameNetworkSystem.IsActive;
-	public int OnlinePlayerCount => GameNetworkSystem.IsActive ? Connection.All.Count : 1;
+	public bool IsConnected => Networking.IsActive;
+	public int OnlinePlayerCount => Networking.IsActive ? Connection.All.Count : 1;
 
 	// Local player info
 	public string LocalPlayerName => Connection.Local?.DisplayName ?? "Player";
-	public long LocalSteamId => Connection.Local?.SteamId ?? 0;
+	public long LocalSteamId => Connection.Local?.SteamId ?? 0L;
 
 	// Unique connection ID (different for each game instance, even with same Steam account)
 	public Guid LocalConnectionId => Connection.Local?.Id ?? Guid.Empty;
@@ -115,7 +115,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 
 		// Fallback: create locally for single player only
 		// For multiplayer, ChatManager should be added to scene as a prefab with NetworkMode.Object
-		if ( !GameNetworkSystem.IsActive )
+		if ( !Networking.IsActive )
 		{
 			var go = scene.CreateObject();
 			go.Name = "ChatManager";
@@ -135,7 +135,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	{
 		if ( string.IsNullOrWhiteSpace( content ) ) return;
 
-		Log.Info( $"[ChatManager] SendMessage called - Content: {content}, IsNetworkActive: {GameNetworkSystem.IsActive}" );
+		Log.Info( $"[ChatManager] SendMessage called - Content: {content}, IsNetworkActive: {Networking.IsActive}" );
 
 		// Limit message length
 		content = content.Length > 500 ? content.Substring( 0, 500 ) : content;
@@ -164,7 +164,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		AddMessage( message );
 
 		// If we're in a networked game, broadcast to others
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			Log.Info( $"[ChatManager] Broadcasting to others via RPC (ConnectionId: {LocalConnectionId})..." );
 			BroadcastToOthers( LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName, content, (int)ChatMessageType.Player, message.Timestamp.Ticks );
@@ -186,7 +186,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		};
 		AddMessage( message );
 
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			BroadcastToOthers( LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName, content, (int)type, message.Timestamp.Ticks );
 		}
@@ -277,7 +277,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		};
 		AddMessage( message );
 
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			BroadcastBeastShowcase(
 				LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName,
@@ -374,7 +374,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		};
 		AddMessage( message );
 
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			BroadcastTamerCardShowcase(
 				LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName,
@@ -542,7 +542,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 	/// </summary>
 	public void SendPlayerProfile()
 	{
-		if ( !GameNetworkSystem.IsActive ) return;
+		if ( !Networking.IsActive ) return;
 
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
@@ -659,7 +659,7 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		};
 		AddMessage( message );
 
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			BroadcastTradeChat( LocalConnectionId.ToString(), LocalSteamId, LocalPlayerName, content, message.Timestamp.Ticks );
 		}
@@ -689,13 +689,13 @@ public sealed class ChatManager : Component, Component.INetworkListener
 
 	public void SendGuildMessage( string content )
 	{
-		if ( !GameNetworkSystem.IsActive ) return;
+		if ( !Networking.IsActive ) return;
 		if ( string.IsNullOrWhiteSpace( content ) ) return;
 
 		var guild = GuildManager.Instance;
 		if ( guild == null || !guild.IsInGuild ) return;
 
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		var name = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown";
 		var connId = Connection.Local?.Id.ToString() ?? "";
 		var guildId = guild.Guild.Id;

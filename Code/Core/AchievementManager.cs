@@ -410,7 +410,7 @@ public sealed class AchievementManager : Component
 							Level = reward.Value > 0 ? reward.Value : 1,
 							Genetics = Genetics.GenerateRandom(),
 							OriginalTrainerName = tamer.Name ?? "Unknown",
-							OriginalTrainerId = Connection.Local?.SteamId ?? 0
+							OriginalTrainerId = Connection.Local?.SteamId ?? 0L
 						};
 						MonsterManager.Instance?.RecalculateStats( monster );
 						monster.FullHeal();

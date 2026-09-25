@@ -206,7 +206,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
 
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		await GuildApiClient.PostAsync( $"guilds/{Guild.Id}/members/{steamId}/heartbeat", new
 		{
 			level = tamer.Level,
@@ -272,7 +272,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	{
 		try
 		{
-			var steamId = Connection.Local?.SteamId ?? 0;
+			var steamId = Connection.Local?.SteamId ?? 0L;
 			if ( steamId == 0 )
 			{
 				Log.Warning( "GuildManager: No Steam ID, skipping API load" );
@@ -498,7 +498,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		} ).ToList() ?? new();
 
 		// Restore online status from RPC-tracked data
-		var selfSteamId = Connection.Local?.SteamId ?? 0;
+		var selfSteamId = Connection.Local?.SteamId ?? 0L;
 		var self = Members.FirstOrDefault( m => m.SteamId == selfSteamId );
 		if ( self != null )
 		{
@@ -592,7 +592,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		}
 
 		// Load full guild data from API
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		var fullData = await GuildApiClient.GetAsync<MyGuildResponse>( $"players/{steamId}/guild" );
 		if ( fullData != null )
 			ApplyApiData( fullData );
@@ -624,7 +624,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 			return false;
 		}
 
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		var connId = Connection.Local?.Id.ToString() ?? "";
 		var guildId = Guild.Id;
 		var playerName = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown";
@@ -667,7 +667,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	private async Task DisbandGuildAsync( string connId, string guildId, string guildName )
 	{
 		// Broadcast disband to online members before deleting
-		foreach ( var member in Members.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0) ) )
+		foreach ( var member in Members.Where( m => m.SteamId != (Connection.Local?.SteamId ?? 0L) ) )
 		{
 			BroadcastMemberKicked( connId, guildId, member.SteamId, member.Name, "Guild disbanded" );
 		}
@@ -745,7 +745,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	private async Task InvitePlayerAsync( string targetConnectionId, string targetName, long targetSteamId )
 	{
 		var playerName = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown";
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 
 		// Create invite record in API
 		var result = await GuildApiClient.PostAsync( $"guilds/{Guild.Id}/invites", new
@@ -788,7 +788,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	private async Task AcceptInviteAsync( GuildInvite invite )
 	{
 		var tamer = TamerManager.Instance?.CurrentTamer;
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 
 		// If we have the API ID, use it. Otherwise, join directly via POST /members.
 		bool success;
@@ -892,7 +892,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	private async Task JoinGuildDirectAsync( string guildId, string guildName, string guildTag )
 	{
 		var tamer = TamerManager.Instance?.CurrentTamer;
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 
 		var result = await GuildApiClient.PostAsync<MembersResponse>( $"guilds/{guildId}/members", new
 		{
@@ -946,7 +946,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 		// Also broadcast via RPC for real-time notification to online officers
 		var connId = Connection.Local?.Id.ToString() ?? "";
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		BroadcastJoinRequest( connId, steamId, tamer.Name, tamer.Level,
 			CompetitiveManager.GetRankFromPoints( tamer.ArenaPoints ), tamer.ArenaPoints,
 			guildId );
@@ -1116,7 +1116,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		if ( (DateTime.UtcNow - leader.LastSeen).TotalDays < LEADER_INACTIVE_DAYS ) return;
 
 		// Check if caller is the highest-ranking online member
-		var selfSteamId = Connection.Local?.SteamId ?? 0;
+		var selfSteamId = Connection.Local?.SteamId ?? 0L;
 		var self = Members.FirstOrDefault( m => m.SteamId == selfSteamId );
 		if ( self == null ) return;
 
@@ -1160,7 +1160,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		if ( leader == null ) return false;
 		if ( (DateTime.UtcNow - leader.LastSeen).TotalDays < LEADER_INACTIVE_DAYS ) return false;
 
-		var selfSteamId = Connection.Local?.SteamId ?? 0;
+		var selfSteamId = Connection.Local?.SteamId ?? 0L;
 		var highestOnline = Members
 			.Where( m => m.IsOnline && m.SteamId != leader.SteamId )
 			.OrderByDescending( m => m.Role )
@@ -1331,7 +1331,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 		Guild.Level = result.Level;
 
 		// Track weekly XP locally (will sync via heartbeat)
-		var selfSteamId = Connection.Local?.SteamId ?? 0;
+		var selfSteamId = Connection.Local?.SteamId ?? 0L;
 		var self = Members.FirstOrDefault( m => m.SteamId == selfSteamId );
 		if ( self != null )
 			self.WeeklyGuildXP += amount;
@@ -1342,7 +1342,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	public void AddWeeklyRP( int amount )
 	{
 		if ( !IsInGuild || amount <= 0 ) return;
-		var selfSteamId = Connection.Local?.SteamId ?? 0;
+		var selfSteamId = Connection.Local?.SteamId ?? 0L;
 		var self = Members.FirstOrDefault( m => m.SteamId == selfSteamId );
 		if ( self != null )
 			self.WeeklyRP += amount;
@@ -1813,7 +1813,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	/// </summary>
 	public async Task LoadPendingInvites()
 	{
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		if ( steamId == 0 ) return;
 
 		var result = await GuildApiClient.GetAsync<InvitesResponse>( $"players/{steamId}/invites" );
@@ -1949,7 +1949,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	private async Task CompleteRaidAttemptAsync( int rawDamage, float comboMultiplier, string comboName, int roundsUsed )
 	{
 		int totalScore = (int)(rawDamage * comboMultiplier);
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 		var playerName = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown";
 
 		// Submit score to API
@@ -2136,13 +2136,13 @@ public sealed class GuildManager : Component, Component.INetworkListener
 
 	private void BroadcastPresence()
 	{
-		if ( !IsInGuild || !GameNetworkSystem.IsActive ) return;
+		if ( !IsInGuild || !Networking.IsActive ) return;
 
 		var tamer = TamerManager.Instance?.CurrentTamer;
 		if ( tamer == null ) return;
 
 		var connId = Connection.Local?.Id.ToString() ?? "";
-		var steamId = Connection.Local?.SteamId ?? 0;
+		var steamId = Connection.Local?.SteamId ?? 0L;
 
 		BroadcastGuildPresence( connId, steamId, tamer.Name, Guild.Id, Guild.Name, Guild.Tag,
 			(int)Membership.Role, tamer.Level, tamer.ArenaPoints,
@@ -2307,7 +2307,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	{
 		if ( !IsInGuild || Guild?.Id != guildId ) return;
 
-		var selfSteamId = Connection.Local?.SteamId ?? 0;
+		var selfSteamId = Connection.Local?.SteamId ?? 0L;
 
 		// If we're the one being kicked
 		if ( targetSteamId == selfSteamId )
@@ -2336,7 +2336,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	{
 		if ( !IsInGuild || Guild?.Id != guildId ) return;
 
-		var localSteamId = Connection.Local?.SteamId ?? 0;
+		var localSteamId = Connection.Local?.SteamId ?? 0L;
 		if ( steamId == localSteamId ) return; // Already processed locally
 
 		if ( CurrentRaidBoss == null ) return;
@@ -2467,7 +2467,7 @@ public sealed class GuildManager : Component, Component.INetworkListener
 	/// </summary>
 	public IEnumerable<InviteCandidate> GetAllInviteCandidates( string search )
 	{
-		var localSteamId = Connection.Local?.SteamId ?? 0;
+		var localSteamId = Connection.Local?.SteamId ?? 0L;
 		var memberSteamIds = new HashSet<long>( Members?.Select( m => m.SteamId ) ?? Enumerable.Empty<long>() );
 		var needle = string.IsNullOrWhiteSpace( search ) ? null : search.Trim();
 		var seen = new HashSet<long>();

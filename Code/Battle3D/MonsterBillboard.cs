@@ -226,7 +226,7 @@ public sealed class MonsterBillboard : Component
 		else
 		{
 			// Fallback: create sprite from icon texture
-			var tex = Texture.Load( FileSystem.Mounted, Species?.IconPath ?? "" );
+			var tex = Texture.LoadFromFileSystem( Species?.IconPath ?? "", FileSystem.Mounted );
 			if ( tex != null )
 			{
 				renderer.Sprite = Sprite.FromTexture( tex );

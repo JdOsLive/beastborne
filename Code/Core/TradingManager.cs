@@ -41,7 +41,7 @@ public sealed class TradingManager : Component, Component.INetworkListener
 	// Local connection info
 	private string LocalConnectionId => Connection.Local?.Id.ToString() ?? "";
 	private string LocalPlayerName => Connection.Local?.DisplayName ?? "Player";
-	private long LocalSteamId => Connection.Local?.SteamId ?? 0;
+	private long LocalSteamId => Connection.Local?.SteamId ?? 0L;
 
 	// Events
 	public Action<string, string> OnTradeRequestReceived; // connectionId, playerName
@@ -161,7 +161,7 @@ public sealed class TradingManager : Component, Component.INetworkListener
 			return false;
 		}
 
-		if ( !GameNetworkSystem.IsActive )
+		if ( !Networking.IsActive )
 		{
 			Log.Warning( "[Trade] Not connected to a server" );
 			return false;
@@ -439,7 +439,7 @@ public sealed class TradingManager : Component, Component.INetworkListener
 		// Collect trade partner's tamer card
 		var partnerName = CurrentTrade.GetPartnerName( LocalConnectionId );
 		var partnerConn = Connection.All.FirstOrDefault( c => c.Id.ToString() == partnerId );
-		if ( partnerConn != null && partnerConn.SteamId != 0 )
+		if ( partnerConn != null && partnerConn.SteamId != 0L )
 		{
 			var profile = ChatManager.Instance?.GetProfileByConnectionId( partnerId );
 			TamerManager.Instance?.CollectTamerCard(

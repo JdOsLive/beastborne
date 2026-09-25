@@ -28,7 +28,7 @@ public sealed class SlashEffect : Component
 		renderer = GameObject.Components.GetOrCreate<SpriteRenderer>();
 
 		// Load the slash texture
-		var tex = Texture.Load( FileSystem.Mounted, "ui/effects/slash.png" );
+		var tex = Texture.LoadFromFileSystem( "ui/effects/slash.png", FileSystem.Mounted );
 		if ( tex != null )
 		{
 			renderer.Sprite = Sprite.FromTexture( tex );

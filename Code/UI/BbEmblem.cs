@@ -131,7 +131,7 @@ public static class BbEmblem
 			d = (96, 96);
 			try
 			{
-				var tex = Texture.Load( FileSystem.Mounted, s.IconPath );
+				var tex = Texture.LoadFromFileSystem( s.IconPath, FileSystem.Mounted );
 				if ( tex != null && tex.Width > 0 && tex.Height > 0 ) d = (tex.Width, tex.Height);
 			}
 			catch { }

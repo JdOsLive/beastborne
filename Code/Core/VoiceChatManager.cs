@@ -77,7 +77,7 @@ public sealed class VoiceChatManager : Component, Component.INetworkListener
 
 	private string LocalConnectionId => Connection.Local?.Id.ToString() ?? "";
 	private string LocalPlayerName => Connection.Local?.DisplayName ?? "Player";
-	private long LocalSteamId => Connection.Local?.SteamId ?? 0;
+	private long LocalSteamId => Connection.Local?.SteamId ?? 0L;
 
 	// Events
 	public Action OnRoomsUpdated;
@@ -221,7 +221,7 @@ public sealed class VoiceChatManager : Component, Component.INetworkListener
 	public bool CreateRoom( string roomName )
 	{
 		if ( CurrentRoom != null ) return false;
-		if ( !GameNetworkSystem.IsActive ) return false;
+		if ( !Networking.IsActive ) return false;
 		if ( _rooms.Count( r => !r.IsLobby ) >= MAX_ROOMS ) return false;
 
 		roomName = roomName?.Trim() ?? "";

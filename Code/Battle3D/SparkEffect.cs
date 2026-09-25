@@ -22,7 +22,7 @@ public sealed class SparkEffect : Component
 
 		renderer = GameObject.Components.GetOrCreate<SpriteRenderer>();
 
-		var tex = Texture.Load( FileSystem.Mounted, "ui/effects/spark.png" );
+		var tex = Texture.LoadFromFileSystem( "ui/effects/spark.png", FileSystem.Mounted );
 		if ( tex != null )
 		{
 			renderer.Sprite = Sprite.FromTexture( tex );

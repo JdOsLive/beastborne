@@ -209,7 +209,7 @@ public sealed class MonsterManager : Component
 				if ( string.IsNullOrEmpty( monster.OriginalTrainerName ) || monster.OriginalTrainerName == "Unknown" )
 				{
 					monster.OriginalTrainerName = tamer.Name ?? "Unknown";
-					monster.OriginalTrainerId = Connection.Local?.SteamId ?? 0;
+					monster.OriginalTrainerId = Connection.Local?.SteamId ?? 0L;
 					needsSave = true;
 				}
 			}
@@ -8855,7 +8855,7 @@ public sealed class MonsterManager : Component
 			Genetics = genetics ?? Genetics.GenerateRandom(),
 			Level = 1,
 			OriginalTrainerName = TamerManager.Instance?.CurrentTamer?.Name ?? "Unknown",
-			OriginalTrainerId = Connection.Local?.SteamId ?? 0
+			OriginalTrainerId = Connection.Local?.SteamId ?? 0L
 		};
 
 		// Calculate initial stats
@@ -8937,7 +8937,7 @@ public sealed class MonsterManager : Component
 			Generation = Math.Max( parent1.Generation, parent2.Generation ) + 1,
 			Contract = null,  // Bred monsters are loyal
 			OriginalTrainerName = tamer?.Name ?? "Unknown",
-			OriginalTrainerId = Connection.Local?.SteamId ?? 0
+			OriginalTrainerId = Connection.Local?.SteamId ?? 0L
 		};
 
 		RecalculateStats( offspring );

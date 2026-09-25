@@ -24,7 +24,7 @@ public sealed class ImpactBurstEffect : Component
 		renderer = GameObject.Components.GetOrCreate<SpriteRenderer>();
 
 		var texPath = shape == "ring" ? "ui/effects/ring.png" : "ui/effects/circle.png";
-		var tex = Texture.Load( FileSystem.Mounted, texPath );
+		var tex = Texture.LoadFromFileSystem( texPath, FileSystem.Mounted );
 		if ( tex != null )
 		{
 			renderer.Sprite = Sprite.FromTexture( tex );

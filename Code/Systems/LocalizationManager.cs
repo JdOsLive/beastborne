@@ -57,7 +57,7 @@ public static class LocalizationManager
 		// Load saved language preference
 		try
 		{
-			var savedLang = Cookie.Get( "beastborne.language", "en" );
+			var savedLang = Game.Cookies.Get( "beastborne.language", "en" );
 			Log.Info( $"[L10N] Saved language: {savedLang}" );
 			if ( savedLang != "en" )
 			{
@@ -125,7 +125,7 @@ public static class LocalizationManager
 		if ( CurrentLanguage == langCode ) return;
 
 		CurrentLanguage = langCode;
-		Cookie.Set( "beastborne.language", langCode );
+		Game.Cookies.Set( "beastborne.language", langCode );
 
 		if ( langCode == "en" )
 		{

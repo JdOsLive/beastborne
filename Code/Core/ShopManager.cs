@@ -81,7 +81,7 @@ public sealed class ShopManager : Component
 	protected override void OnStart()
 	{
 		// Request any active server boosts from other players when joining
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			// Delay slightly to ensure network is ready
 			_ = RequestServerBoostsDelayed();
@@ -1032,7 +1032,7 @@ public sealed class ShopManager : Component
 			);
 
 			// Broadcast to network
-			if ( GameNetworkSystem.IsActive )
+			if ( Networking.IsActive )
 			{
 				BroadcastServerBoost( type, multiplier, durationMinutes, playerName, steamId );
 			}
@@ -1071,7 +1071,7 @@ public sealed class ShopManager : Component
 		);
 
 		// Broadcast to network
-		if ( GameNetworkSystem.IsActive )
+		if ( Networking.IsActive )
 		{
 			BroadcastServerBoost( type, multiplier, durationMinutes, playerName, steamId );
 		}
@@ -1115,7 +1115,7 @@ public sealed class ShopManager : Component
 	/// </summary>
 	public void RequestServerBoosts()
 	{
-		if ( !GameNetworkSystem.IsActive ) return;
+		if ( !Networking.IsActive ) return;
 
 		var mySteamId = (long)Sandbox.Utility.Steam.SteamId;
 		BroadcastBoostRequest( mySteamId );

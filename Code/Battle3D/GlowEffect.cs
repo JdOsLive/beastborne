@@ -22,7 +22,7 @@ public sealed class GlowEffect : Component
 
 		renderer = GameObject.Components.GetOrCreate<SpriteRenderer>();
 
-		var tex = Texture.Load( FileSystem.Mounted, "ui/effects/glow.png" );
+		var tex = Texture.LoadFromFileSystem( "ui/effects/glow.png", FileSystem.Mounted );
 		if ( tex != null )
 		{
 			renderer.Sprite = Sprite.FromTexture( tex );

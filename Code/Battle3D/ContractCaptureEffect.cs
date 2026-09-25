@@ -25,7 +25,7 @@ public sealed class ContractCaptureEffect : Component
 		particles = new SpriteRenderer[ParticleCount];
 		orbitOffsets = new Vector3[ParticleCount];
 
-		var tex = Texture.Load( FileSystem.Mounted, "ui/effects/glow.png" );
+		var tex = Texture.LoadFromFileSystem( "ui/effects/glow.png", FileSystem.Mounted );
 
 		for ( int i = 0; i < ParticleCount; i++ )
 		{
