@@ -128,6 +128,21 @@ Build or fix the pieces every screen will share, so screens stop re-implementing
   `tools/ui_deadcss.py` (dead-CSS finder). Still to build: an in-game `dev_uilab` engine
   test screen (box model, gradients, focus, scroll clipping, blur side by side) to verify
   the 26.09 engine changes once and keep CLAUDE.md honest.
+- **Reward system (user-approved 2026-09-25) — build with the celebration screen:**
+  1. one `RewardBundle` format (list of kind + amount/id: gold, ink, tokens, xp, item,
+     title…) used by missions, daily/streak/milestones, achievements, gifts and
+     expedition/boss results;
+  2. one payout function (`Rewards.Grant(bundle, source)`) that applies bonuses
+     consistently (Golden Touch, guild), fires currency events, logs to Alerts and queues
+     the celebration screen;
+  3. one reward display component (currency pixel icon + amount) + one claim beat,
+     replacing the three hand-built claim celebrations (Achievement, Daily, Trading);
+  4. clean currency list — **Gold, Ink, Tokens**; regional tokens renamed/folded/removed
+     per the economy check; **gems removed entirely, including saves** (migration per
+     `.claude/balance-knowledge/currency-audit-2026-09.md`);
+  5. economy check by the `balance` agent before tuning amounts.
+  Currency icons are being redone as **pixel art** (PNG at one native size, displayed at
+  integer multiples with `image-rendering: pixelated`, no `filter`).
 - **State language:** one hover/press/selected/disabled/locked recipe (light → dark hover
   polarity; bring `BbButton`, `FilterBar`, `MonsterCard` in line).
 - **Element palette:** consolidate the ~16 per-panel copies onto `BbTokens.Element`.
