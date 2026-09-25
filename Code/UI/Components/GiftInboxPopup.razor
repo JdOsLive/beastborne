@@ -28,10 +28,11 @@
 			</div>
 			<div class="gift-head-right">
 				<div class="gift-count-cap"><span>@GetSubtitle()</span></div>
-				<button class="close-btn"
+				<button class="close-btn gift-close"
 						onclick=@Close
 						onmouseover=@(() => OnHover("close"))>
 					<iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" />
+					<span class="gift-key">Q</span>
 				</button>
 			</div>
 		</div>
@@ -74,6 +75,7 @@
 					disabled=@isClaiming>
 				<iconify icon="@(isClaiming ? "lucide:loader" : "lucide:gift")" Size=@(16) Color="#2a1605" />
 				<span>@(isClaiming ? "CLAIMING..." : "CLAIM ALL")</span>
+				<span class="gift-key">SPACE</span>
 			</button>
 		</div>
 	</div>
@@ -84,6 +86,50 @@
 	private static readonly List<GiftInboxPopup> _instances = new();
 
 	public bool IsVisible { get; private set; }
+
+	/// <summary>
+	/// True when ANY mounted inbox instance is showing (mirrors
+	/// OptionsPanel.AnyVisible — the instance-picker pattern means a single
+	/// Instance.IsVisible read can point at the wrong mount). MainMenu reads
+	/// this to stop its own keys (Space → PLAY) firing behind the popup.
+	/// </summary>
+	public static bool AnyVisible
+	{
+		get
+		{
+			foreach ( var inst in _instances )
+				if ( inst != null && inst.IsVisible ) return true;
+			return false;
+		}
+	}
+
+	/// <summary>
+	/// Keyboard for the open inbox: confirm (Space/Enter/E) = CLAIM ALL
+	/// (ignored while a claim is in flight), Q = close. Called by the HOST's
+	/// input loop (MainMenu.HandleKeyboardInput) inside its overlay-precedence
+	/// chain, not from Tick — so an overlay stacked above the inbox (the boot
+	/// beta disclaimer) consumes the press first and one Space can never
+	/// dismiss the disclaimer AND claim in the same frame. A future mount
+	/// under another host must call this from that host's input routing.
+	/// </summary>
+	public static void HandleKeyboard()
+	{
+		GiftInboxPopup open = null;
+		foreach ( var inst in _instances )
+		{
+			if ( inst != null && inst.IsVisible ) { open = inst; break; }
+		}
+		if ( open == null ) return;
+
+		if ( UiInput.ConfirmPressed() )
+		{
+			if ( !open.isClaiming ) open.OnClaimAllClicked();
+		}
+		else if ( Input.Pressed( "Menu" ) )
+		{
+			open.Close();
+		}
+	}
 
 	// Session-scoped "don't re-pop" latch — once the user closes the popup
 	// without claiming, the auto-show stays suppressed until game restart.
@@ -264,7 +310,7 @@
 	{
 		var parts = new List<string>();
 		if ( gift.Gold > 0 ) parts.Add( $"{gift.Gold:N0} gold" );
-		if ( gift.Gems > 0 ) parts.Add( $"{gift.Gems:N0} tokens" );
+		if ( gift.Gems > 0 ) parts.Add( $"{gift.Gems:N0} tokens" ); // legacy gem field pays Tokens
 		if ( gift.Ink > 0 ) parts.Add( $"{gift.Ink:N0} ink" );
 		if ( gift.BossTokens > 0 ) parts.Add( $"{gift.BossTokens:N0} boss tokens" );
 		if ( gift.Items != null )

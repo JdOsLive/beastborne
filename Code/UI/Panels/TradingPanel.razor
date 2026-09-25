@@ -8,13 +8,13 @@
 @using System.Linq;
 @inherits Panel
 
-<root class="@(IsVisible ? "visible" : "")">
+<root class="@(IsVisible ? "visible" : "") @(_kbMode ? "kbd-mode" : "")">
 	<div class="trade-overlay" onclick=@Close></div>
 
 	@if ( showTradeRequest )
 	{
 		<!-- Incoming Trade Request Popup -->
-		<div class="trade-request-popup">
+		<div class="trade-request-popup" onmousemove=@OnPanelMouseMove>
 			<div class="request-icon-row">
 				<iconify icon="lucide:arrow-left-right" Size=@(28) Color="#9ecdf5" />
 			</div>
@@ -24,10 +24,11 @@
 				<div class="request-message"><span>@pendingPlayerName wants to trade with you!</span></div>
 			</div>
 			<div class="request-buttons">
-				<button class="btn-accept" onclick=@AcceptRequest>
+				<button class="btn-accept @(_reqIndex == 0 ? "kb-focused" : "")" onclick=@AcceptRequest onmouseover=@(() => OnRequestHover( 0 ))>
 					<span>ACCEPT</span>
 				</button>
-				<button class="btn-decline" onclick=@DeclineRequest>
+				<button class="btn-decline @(_reqIndex == 1 ? "kb-focused" : "")" onclick=@DeclineRequest onmouseover=@(() => OnRequestHover( 1 ))>
+					<span class="tp-cap">Q</span>
 					<span>DECLINE</span>
 				</button>
 			</div>
@@ -35,7 +36,7 @@
 	}
 	else if ( TradingManager.Instance?.IsInTrade == true || showTradeComplete )
 	{
-		<div class="trade-window">
+		<div class="trade-window" onmousemove=@OnPanelMouseMove>
 			<!-- Header -->
 			<div class="trade-header">
 				<div class="trade-trader">
@@ -63,7 +64,10 @@
 						<img src="ui/characters/male/male_tamer.png" />
 					</div>
 				</div>
-				<button class="close-btn" onclick=@CancelTrade><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
+				<div class="trade-close-wrap">
+					<span class="tp-cap">Q</span>
+					<button class="close-btn" onclick=@CancelTrade><iconify icon="lucide:x" Size=@(15) Color="rgba(255, 255, 255, 0.85)" /></button>
+				</div>
 			</div>
 
 			<!-- Body: 2/3 My Side + 1/3 Partner Side -->
@@ -103,13 +107,15 @@
 							</div>
 						</div>
 						<button class="btn-ready @(isReady ? "ready" : "")" onclick=@ToggleReady>
+							<span class="tp-cap">R</span>
 							<span>@(isReady ? "READY \u2713" : "READY UP")</span>
 						</button>
 					</div>
 
 					<!-- Filter Bar -->
 					<div class="trade-filter-bar">
-						<FilterBar CurrentElement=@currentFilter
+						<FilterBar @ref="filterBarRef"
+								   CurrentElement=@currentFilter
 								   CurrentSort=@currentSort
 								   CurrentRarity=@currentRarity
 								   SortAscending=@sortAscending
@@ -125,18 +131,22 @@
 					<!-- Beast Collection Area -->
 					<div class="my-collection @(selectedMonster != null ? "with-detail" : "")">
 						<!-- Beast Grid -->
-						<div class="my-beast-grid @(isReady ? "locked" : "")">
+						<div class="my-beast-grid @(isReady ? "locked" : "")" @ref="gridRef">
 							@{
 								var availableMonsters = GetFilteredMonsters();
 							}
 							@if ( availableMonsters != null )
 							{
+								int slotIdx = 0;
 								foreach ( var monster in availableMonsters )
 								{
 									var isOffered = IsMonsterOffered( monster.Id );
 									var isSelected = selectedMonster?.Id == monster.Id;
+									var myIdx = slotIdx;
+									slotIdx++;
 									<div class="beast-grid-slot @(isOffered ? "offered" : "") @(isSelected ? "selected" : "")"
-										 onclick=@(() => SelectBeast( monster ))>
+										 onclick=@(() => SelectBeast( monster ))
+										 onmouseover=@(() => OnGridHover( myIdx ))>
 										<MonsterCard Monster=@monster
 													 IsCompact=@true
 													 UseStaticImage=@true />
@@ -227,6 +237,7 @@
 									{
 										<button class="detail-offer-btn @(selOffered ? "remove" : "")"
 												onclick=@(() => ToggleOffer( selectedMonster.Id ))>
+											<span class="tp-cap">SPACE</span>
 											<span>@(selOffered ? "REMOVE FROM OFFER" : "ADD TO OFFER")</span>
 										</button>
 									}
@@ -395,6 +406,17 @@
 
 	private string localConnectionId => Connection.Local?.Id.ToString() ?? "";
 
+	// ── Keyboard nav (quick-fix: the panel is a registered blocking modal, so
+	// GameHUD's keys are suppressed while it's open — without its own handler a
+	// keyboard player was stuck). Grid cursor == selection in keyboard mode;
+	// hover writes the same index in mouse mode (hover == focus).
+	private bool _kbMode = false;       // last input device was the keyboard (.kbd-mode gates rings)
+	private int _kbGridIndex = 0;       // grid cursor (render order of GetFilteredMonsters)
+	private int _reqIndex = 0;          // request popup: 0 = ACCEPT, 1 = DECLINE
+	private int _scrollFollowTries = 0; // ticks left to bring the cursor card into view
+	private Panel gridRef;
+	private FilterBar filterBarRef;
+
 	private TradeOffer GetMyOffer() => TradingManager.Instance?.CurrentTrade?.GetMyOffer( localConnectionId );
 	private TradeOffer GetPartnerOffer() => TradingManager.Instance?.CurrentTrade?.GetPartnerOffer( localConnectionId );
 
@@ -417,6 +439,12 @@
 
 		if ( !_subscribed )
 			SubscribeEvents();
+
+		if ( IsVisible )
+		{
+			TickKeyboard();
+			TickScrollFollow();
+		}
 
 		// Force UI refresh during lock countdown so timer updates every frame
 		if ( TradingManager.Instance?.CurrentTrade?.State == TradeState.Locked )
@@ -447,6 +475,8 @@
 	{
 		pendingPlayerName = playerName;
 		showTradeRequest = true;
+		_reqIndex = 0;
+		_kbMode = false;
 		IsVisible = true;
 		SoundManager.PlayPopup();
 		StateHasChanged();
@@ -462,6 +492,8 @@
 		currentRarity = "all";
 		currentNameFilter = "";
 		sortAscending = false;
+		_kbGridIndex = 0;
+		_kbMode = false;
 		IsVisible = true;
 		SoundManager.PlayPopup();
 		StateHasChanged();
@@ -585,6 +617,260 @@
 			IsVisible = false;
 			SoundManager.PlayPopdown();
 		}
+	}
+
+	// ═══════════════════════════════════════
+	// Keyboard
+	// ═══════════════════════════════════════
+
+	private void TickKeyboard()
+	{
+		if ( !UIModalState.IsTopModal( "TradingPanel" ) ) return;
+		if ( NavManager.RoutedThisFrame ) return; // the key that opened us
+
+		// FilterBar dropdowns / name search own the keyboard (typing must not
+		// move the grid) — Q closes them, same as the roster. Checked BEFORE
+		// IsChatFocused, which now reads true for the focused search box too.
+		if ( filterBarRef != null && (filterBarRef.IsAnyDropdownOpen || filterBarRef.IsSearchFocused) )
+		{
+			if ( Input.Pressed( "Menu" ) )
+			{
+				filterBarRef.CloseAllDropdowns();
+				if ( filterBarRef.IsSearchFocused ) filterBarRef.BlurSearchChip();
+				GameHUD.PanelHandledBackKey = true;
+			}
+			return;
+		}
+		if ( ChatPanel.IsChatFocused ) return;
+
+		bool back = Input.Pressed( "Menu" );
+
+		// ── Incoming request popup: A/D (or W/S) pick, Space/E/Enter confirms, Q declines ──
+		if ( showTradeRequest )
+		{
+			if ( back )
+			{
+				GameHUD.PanelHandledBackKey = true;
+				DeclineRequest();
+				NavManager.MarkRouted();
+				return;
+			}
+			if ( Input.Pressed( "Left" ) || Input.Pressed( "Forward" ) || Input.Pressed( "Up" ) ) { SetRequestIndex( 0 ); return; }
+			if ( Input.Pressed( "Right" ) || Input.Pressed( "Backward" ) || Input.Pressed( "Down" ) ) { SetRequestIndex( 1 ); return; }
+			if ( UiInput.ConfirmPressed() )
+			{
+				_kbMode = true;
+				if ( _reqIndex == 0 ) AcceptRequest();
+				else { DeclineRequest(); NavManager.MarkRouted(); }
+				StateHasChanged();
+			}
+			return;
+		}
+
+		// ── Trade-complete celebration: Q skips the rest of it ──
+		if ( showTradeComplete )
+		{
+			if ( back )
+			{
+				GameHUD.PanelHandledBackKey = true;
+				showTradeComplete = false;
+				IsVisible = false;
+				NavManager.MarkRouted();
+				StateHasChanged();
+			}
+			return;
+		}
+
+		// ── Nothing to show (stray visible state) — Q always gets out ──
+		if ( TradingManager.Instance?.IsInTrade != true )
+		{
+			if ( back )
+			{
+				GameHUD.PanelHandledBackKey = true;
+				Close();
+				NavManager.MarkRouted();
+			}
+			return;
+		}
+
+		// ── Q: detail rail first, then cancel the trade (same as the header X) ──
+		if ( back )
+		{
+			GameHUD.PanelHandledBackKey = true;
+			if ( selectedMonster != null )
+			{
+				selectedMonster = null;
+				SoundManager.PlayBack();
+				StateHasChanged();
+			}
+			else
+			{
+				CancelTrade();
+				NavManager.MarkRouted();
+			}
+			return;
+		}
+
+		// ── R: READY toggle ──
+		if ( Input.Pressed( "Reload" ) )
+		{
+			_kbMode = true;
+			ToggleReady();
+			SoundManager.PlayClick();
+			StateHasChanged();
+			return;
+		}
+
+		// ── WASD: walk the beast grid (cursor == selection → detail rail follows) ──
+		int dx = 0, dy = 0;
+		if ( Input.Pressed( "Left" ) ) dx = -1;
+		else if ( Input.Pressed( "Right" ) ) dx = 1;
+		else if ( Input.Pressed( "Forward" ) || Input.Pressed( "Up" ) ) dy = -1;
+		else if ( Input.Pressed( "Backward" ) || Input.Pressed( "Down" ) ) dy = 1;
+		bool confirm = dx == 0 && dy == 0 && UiInput.ConfirmPressed();
+		if ( dx == 0 && dy == 0 && !confirm ) return;
+
+		var list = GetFilteredMonsters().ToList();
+		if ( list.Count == 0 )
+		{
+			if ( confirm ) SoundManager.PlayDeny();
+			return;
+		}
+
+		// Current cursor: in keyboard mode it IS the selection (re-found by id,
+		// because offering re-sorts the grid); otherwise the last hovered card.
+		int selIdx = selectedMonster != null ? list.FindIndex( m => m.Id == selectedMonster.Id ) : -1;
+		int cur = (_kbMode && selIdx >= 0) ? selIdx : Math.Clamp( _kbGridIndex, 0, list.Count - 1 );
+		bool waking = selectedMonster == null || selIdx < 0;
+		_kbMode = true;
+
+		if ( confirm )
+		{
+			var target = list[cur];
+			selectedMonster = target;
+			_kbGridIndex = cur;
+			bool offered = IsMonsterOffered( target.Id );
+			if ( isReady || (!offered && (GetMyOffer()?.OfferedMonsterIds.Count ?? 0) >= 3) )
+			{
+				SoundManager.PlayDeny();
+			}
+			else
+			{
+				ToggleOffer( target.Id );
+				SoundManager.PlayClick();
+				// The grid sorts offered beasts first — keep the cursor on this beast.
+				var after = GetFilteredMonsters().ToList();
+				int ni = after.FindIndex( m => m.Id == target.Id );
+				if ( ni >= 0 ) _kbGridIndex = ni;
+				_scrollFollowTries = 4;
+			}
+			StateHasChanged();
+			return;
+		}
+
+		int next = cur;
+		if ( !waking )
+		{
+			int cols = GetGridColumns();
+			if ( dx != 0 ) next = Math.Clamp( cur + dx, 0, list.Count - 1 );
+			else
+			{
+				int n = cur + dy * cols;
+				if ( n >= 0 && n < list.Count ) next = n;
+				else if ( dy > 0 && cur / cols < (list.Count - 1) / cols ) next = list.Count - 1; // partial last row
+			}
+		}
+
+		_kbGridIndex = next;
+		if ( selectedMonster?.Id != list[next].Id )
+		{
+			selectedMonster = list[next];
+			SoundManager.PlayHover();
+		}
+		_scrollFollowTries = 4;
+		StateHasChanged();
+	}
+
+	private void SetRequestIndex( int idx )
+	{
+		_kbMode = true;
+		if ( _reqIndex != idx )
+		{
+			_reqIndex = idx;
+			SoundManager.PlayHover();
+		}
+		StateHasChanged();
+	}
+
+	private void OnRequestHover( int idx )
+	{
+		if ( _kbMode ) return;
+		_reqIndex = idx;
+	}
+
+	private void OnGridHover( int idx )
+	{
+		if ( _kbMode ) return; // synthetic mouseovers from scroll-follow
+		_kbGridIndex = idx;
+	}
+
+	private void OnPanelMouseMove()
+	{
+		if ( !_kbMode ) return;
+		_kbMode = false;
+		StateHasChanged();
+	}
+
+	// Columns = cards sharing the first card's row (the grid is flex-wrap and
+	// narrows when the detail rail opens, so it's measured, not assumed).
+	private int GetGridColumns()
+	{
+		if ( gridRef == null ) return 1;
+		float firstTop = 0f;
+		bool haveFirst = false;
+		int n = 0;
+		foreach ( var ch in gridRef.Children )
+		{
+			if ( !ch.HasClass( "beast-grid-slot" ) ) continue;
+			float t = ch.Box.Rect.Top;
+			if ( !haveFirst ) { firstTop = t; haveFirst = true; }
+			else if ( Math.Abs( t - firstTop ) > 4f ) break;
+			n++;
+		}
+		return Math.Max( 1, n );
+	}
+
+	// Keep the cursor card inside the grid viewport (Inventory satGrid math).
+	private void TickScrollFollow()
+	{
+		if ( _scrollFollowTries <= 0 ) return;
+		_scrollFollowTries--;
+		if ( gridRef == null ) return;
+
+		Panel target = null;
+		int i = 0;
+		foreach ( var ch in gridRef.Children )
+		{
+			if ( !ch.HasClass( "beast-grid-slot" ) ) continue;
+			if ( i == _kbGridIndex ) { target = ch; break; }
+			i++;
+		}
+		if ( target == null ) return;
+
+		var gr = gridRef.Box.Rect;
+		var cr = target.Box.Rect;
+		if ( gr.Height <= 0f || cr.Height <= 0f ) return;
+
+		float curOff = gridRef.ScrollOffset.y;
+		float top = cr.Top - gr.Top + curOff;
+		float bot = top + cr.Height;
+		const float margin = 16f;
+		float newOff = curOff;
+		if ( top - margin < curOff ) newOff = top - margin;
+		else if ( bot + margin > curOff + gr.Height ) newOff = bot + margin - gr.Height;
+		newOff = Math.Max( 0f, newOff );
+		if ( Math.Abs( newOff - curOff ) > 0.5f )
+			gridRef.ScrollOffset = new Vector2( gridRef.ScrollOffset.x, newOff );
 	}
 
 	private string GetPartnerName()
@@ -778,6 +1064,8 @@
 		hash.Add( currentRarity );
 		hash.Add( sortAscending );
 		hash.Add( currentNameFilter );
+		hash.Add( _kbMode );
+		hash.Add( _reqIndex );
 		return hash.ToHashCode();
 	}
 }
