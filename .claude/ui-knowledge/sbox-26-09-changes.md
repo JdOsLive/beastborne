@@ -15,8 +15,10 @@ verified in our editor.** When you verify an item in-game, update the matching r
    (`Controls/Button.cs:101`, `UISystem.cs:363`). We have ~300 `<button>` tags. Focused
    buttons also get `:focus`, Tab/Shift+Tab move focus, Enter/Space click the focused
    control (possible double-fire with `UiInput.ConfirmPressed()`).
-   Candidate fixes to test: set `ButtonInput = PanelInputType.Game` on focusable controls
-   (keys then flow to the game), or clear UI focus after clicks.
+   **Fix applied 2026-09-25:** `Code/UI/UiFocusGuard.cs` — each frame, if
+   `InputFocus.Current` isn't an IME/text input, `InputFocus.Clear()`. Called from
+   `GameHUD.OnUpdate` and `MainMenu.OnUpdate`. (Alternative if that misbehaves: set
+   `ButtonInput = PanelInputType.Game` on focusable controls.) Not yet verified in-editor.
 2. **Yoga replaced by `Sandbox.Layout`** (a7b5147, 2026-09-05 → 26.09.08). Defaults
    preserved (flex, row, shrink 1, align-content flex-start, static). Internal sizing is
    `BoxSizing.BorderBox` (LayoutStyle.cs:273), not reachable from CSS — our 2026-07-05
