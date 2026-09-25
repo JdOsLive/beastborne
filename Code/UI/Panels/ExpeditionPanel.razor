@@ -12,468 +12,9 @@
 @inherits Panel
 
 <div class="expedition-panel @(currentView == "team" ? "team-view" : "") @(currentView == "battle" ? "battle-mode" : "") @GetExpeditionBackgroundClass() @(currentView == "battle" && BattleSceneController.Instance?.IsActive == true ? "battle-3d" : "")" onclick=@OnPanelClicked>
-	@* ═══════════════════════════════════════════════════════════════
-	   POST-WORLDMAP: the "list" and "result" currentView branches below
-	   are legacy UI from before WorldMapPanel became the expedition entry
-	   point and ExpeditionResultPopup (a global GameHUD child) took over
-	   the result screen. The markup is kept for reference but gated off
-	   via `false` so it can never render and confuse the player (the
-	   "came back to old expedition screen" bug was this stale path
-	   reaching render because currentView defaulted to "list" on re-mount).
-	   SyncWithBackgroundExpedition now auto-finalizes stale resolved
-	   expeditions, and the "list" view specifically bails to nothing so
-	   the world-map swap happens on the next render.
-	   ═══════════════════════════════════════════════════════════════ *@
-	@if (false && currentView == "list")
-	{
-		<!-- Expedition List View -->
-		<div class="panel-header">
-			<div class="header-text">
-				<img class="panel-title-icon" src="ui/icons/expedition.svg" />
-				<div class="panel-title">@L("ui.expedition.title")</div>
-			</div>
-			<div class="expedition-controls">
-			<!-- Difficulty Dropdown -->
-			<div class="dropdown-container">
-				<button class="dropdown-btn @(hardModeEnabled ? "hard-active" : "")" onclick=@ToggleDifficultyDropdown onmouseover=@(() => SoundManager.PlayHover())>
-					<img class="dropdown-icon-svg" src="@(hardModeEnabled ? "ui/icons/sort/skull.svg" : "ui/icons/sword.svg")" />
-					<span class="dropdown-label">@(hardModeEnabled ? L("ui.expedition.hard") : L("ui.expedition.normal"))</span>
-					<span class="dropdown-arrow @(difficultyDropdownOpen ? "open" : "")">▼</span>
-				</button>
-				@if (difficultyDropdownOpen)
-				{
-					<div class="dropdown-menu">
-						<div class="dropdown-item @(hardModeEnabled == false ? "active" : "")" onclick=@(() => SelectDifficulty(false)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sword.svg" />
-							<span class="item-label">@L("ui.expedition.normal")</span>
-						</div>
-						<div class="dropdown-item hard @(hardModeEnabled ? "active" : "") @(IsHardModeUnlocked() ? "" : "locked")" onclick=@(() => SelectDifficulty(true)) onmouseover=@(() => SoundManager.PlayHover())>
-							@if (!IsHardModeUnlocked())
-							{
-								<span class="item-icon">🔒</span>
-							}
-							else
-							{
-								<img class="item-icon-svg" src="ui/icons/sort/skull.svg" />
-							}
-							<span class="item-label">@L("ui.expedition.hard")</span>
-							@if (!IsHardModeUnlocked())
-							{
-								<span class="item-hint">@L("ui.expedition.unlock_cartographer")</span>
-							}
-							else
-							{
-								<span class="item-hint">@L("ui.expedition.hard_mode_benefit")</span>
-							}
-						</div>
-					</div>
-				}
-			</div>
-
-			<!-- Auto Contract Dropdown -->
-			<div class="dropdown-container">
-				<button class="dropdown-btn @(autoNegotiate ? "active" : "")" onclick=@ToggleCatchDropdown onmouseover=@(() => SoundManager.PlayHover())>
-					<span class="dropdown-label">@L("ui.expedition.auto_contract")</span>
-					<span class="dropdown-value @(autoNegotiate ? "enabled" : "")">@GetCatchStrategyLabel()</span>
-					<span class="dropdown-arrow @(catchDropdownOpen ? "open" : "")">▼</span>
-				</button>
-				@if (catchDropdownOpen)
-				{
-					<div class="dropdown-menu catch-menu">
-						<div class="dropdown-item @(!autoNegotiate ? "active" : "")" onclick=@(() => SetAutoCatchMode(false)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sort/x-circle.svg" />
-							<span class="item-label">@L("ui.expedition.off")</span>
-						</div>
-						<div class="dropdown-divider"></div>
-						<!-- Smart auto-contract: the old fixed strategies (Skip/Generous/
-						     Fair/Strict/Golden) are gone — the auto path now evaluates
-						     every approach offered for the beast with the real success
-						     math and takes the highest chance. -->
-						<div class="dropdown-item @(autoNegotiate ? "active" : "")" onclick=@(() => SetAutoCatchMode(true)) onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sort/handshake.svg" />
-							<span class="item-label">@L("ui.expedition.auto_best")</span>
-							<span class="item-hint">@L("ui.expedition.auto_best_hint")</span>
-						</div>
-						<div class="dropdown-divider"></div>
-						<div class="dropdown-item" onclick=@OpenContractTargetSearch onmouseover=@(() => SoundManager.PlayHover())>
-							<img class="item-icon-svg" src="ui/icons/sort/target.svg" />
-							<span class="item-label">@(autoContractTargetSpecies != null ? L("ui.expedition.change_target") : L("ui.expedition.target_beast"))</span>
-						</div>
-						@if (autoContractTargetSpecies != null)
-						{
-							<div class="dropdown-item" onclick=@ClearContractTarget onmouseover=@(() => SoundManager.PlayHover())>
-								<img class="item-icon-svg" src="ui/icons/sort/x-circle.svg" />
-								<span class="item-label">@L("ui.expedition.clear_target")</span>
-							</div>
-						}
-					</div>
-				}
-			</div>
-		</div>
-		</div>
-
-		<div class="expedition-grid">
-			@foreach (var expedition in GetExpeditions())
-			{
-				var isLocked = !CanStartExpedition(expedition);
-				var isCleared = IsCleared(expedition);
-				<div class="expedition-card @(isLocked ? "locked" : "") @(isCleared ? "cleared" : "") @(selectedExpedition?.Id == expedition.Id ? "selected" : "") @GetBackgroundClass(expedition) @(!hasAnimatedCards ? "animate-entrance" : "")"
-					 onclick=@(() => SelectExpedition(expedition))>
-
-					@if (!string.IsNullOrEmpty(GetBackgroundClass(expedition)))
-					{
-						<div class="card-gradient-overlay"></div>
-					}
-
-					<div class="card-element @expedition.Element.ToString().ToLower()">
-						<img class="element-icon" src="ui/icons/elements/element_white/@(GetElementIconName(expedition.Element)).png" />
-					</div>
-
-					<div class="card-body">
-						<div class="card-title">@expedition.Name</div>
-						<div class="card-desc">@expedition.Description</div>
-
-						<div class="card-stats">
-							<div class="stat-badge">
-								<img class="stat-badge-icon" src="ui/icons/expedition_badges/waves.svg" />
-								<span class="stat-value">@expedition.Waves Waves</span>
-							</div>
-							<div class="stat-badge @(hardModeEnabled ? "hard-mode" : "")">
-								<img class="stat-badge-icon" src="ui/icons/expedition_badges/level.svg" />
-								<span class="stat-value">Lv.@GetDisplayLevel(expedition)+</span>
-							</div>
-						</div>
-
-						<div class="card-rewards">
-							<div class="reward-badge gold @(hardModeEnabled ? "boosted" : "")">
-								<img class="currency-icon" src="ui/icons/currency/money.png" />
-								<span>@GetDisplayGold(expedition)</span>
-							</div>
-							<div class="reward-badge xp @(hardModeEnabled ? "boosted" : "")">
-								<img class="currency-icon" src="ui/icons/expedition_badges/xp.svg" />
-								<span>@GetDisplayXP(expedition)</span>
-							</div>
-						</div>
-
-						<div class="card-info-buttons">
-							<div class="monsters-info-btn" onclick=@((e) => { e.StopPropagation(); ShowMonstersPopup(expedition); })>
-								<img class="monsters-icon" src="ui/icons/beast.svg" />
-								<span class="monsters-label">@L("ui.expedition.beasts")</span>
-							</div>
-							<div class="monsters-info-btn drops-btn" onclick=@((e) => { e.StopPropagation(); ShowDropsPopup(expedition); })>
-								<img class="monsters-icon" src="ui/icons/expedition_badges/drops.svg" />
-								<span class="monsters-label">@L("ui.expedition.drops")</span>
-							</div>
-						</div>
-					</div>
-
-					@if (isLocked)
-					{
-						<div class="locked-overlay">
-							<span class="lock-icon">🔒</span>
-							<span class="lock-text">Tamer Lv.@expedition.RequiredLevel</span>
-						</div>
-					}
-
-					@if (isCleared)
-					{
-						<div class="cleared-mark">✓</div>
-					}
-
-					@if (selectedExpedition?.Id == expedition.Id)
-					{
-						<button class="card-select-team-btn" onclick=@((e) => { e.StopPropagation(); GoToTeam(); })>
-							SELECT TEAM ▸
-						</button>
-					}
-				</div>
-			}
-		</div>
-
-		@if (showMonstersPopup && monstersPopupExpedition != null)
-		{
-			<div class="monsters-popup-overlay" onclick=@CloseMonstersPopup>
-				<div class="monsters-popup" onclick=@((e) => e.StopPropagation())>
-					<div class="popup-header">
-						<span class="popup-title">@monstersPopupExpedition.Name</span>
-						<button class="popup-close" onclick=@CloseMonstersPopup>×</button>
-					</div>
-					<div class="popup-content">
-						@{
-							var bossPool = BossPoolDatabase.GetPool(monstersPopupExpedition.Id);
-							var bossSpeciesIds = bossPool?.Bosses?.Select(b => b.SpeciesId).ToHashSet() ?? new HashSet<string>();
-							var regularSpecies = monstersPopupExpedition.PossibleSpecies.Where(s => !bossSpeciesIds.Contains(s)).ToList();
-						}
-
-						<!-- Regular Encounters Section -->
-						<div class="popup-section">
-							<div class="section-header">
-								<span class="section-title">@L("ui.expedition.regular_encounters")</span>
-								<span class="section-count">@regularSpecies.Count beasts</span>
-							</div>
-							<div class="monsters-grid">
-								@foreach (var speciesId in regularSpecies)
-								{
-									var species = GetSpecies(speciesId);
-									if (species != null)
-									{
-										var isDiscovered = IsSpeciesDiscovered(speciesId);
-										var isSeen = IsSpeciesSeen(speciesId);
-										<div class="monster-card @(isDiscovered ? "discovered" : isSeen ? "seen" : "unknown")">
-											<div class="monster-sprite-container">
-												@if (isDiscovered || isSeen)
-												{
-													<img class="monster-sprite" src="@species.IconPath" />
-												}
-												else
-												{
-													<div class="monster-sprite-unknown">?</div>
-												}
-												<div class="monster-status-badge @(isDiscovered ? "discovered" : isSeen ? "seen" : "unknown")">
-													@if (isDiscovered) { <span>✓</span> }
-													else if (isSeen) { <span>👁</span> }
-													else { <span>?</span> }
-												</div>
-											</div>
-											<div class="monster-details">
-												@if (isDiscovered || isSeen)
-												{
-													<span class="monster-name">@species.Name</span>
-													<div class="monster-element @species.Element.ToString().ToLower()">
-														<img class="element-icon-inline" src="ui/icons/elements/transparent/@(GetElementIconName(species.Element)).png" />
-														<span>@species.Element</span>
-													</div>
-													<span class="monster-rarity @species.BaseRarity.ToString().ToLower()">@species.BaseRarity</span>
-												}
-												else
-												{
-													<span class="monster-name unknown">???</span>
-													<span class="monster-element unknown">Unknown</span>
-													<span class="monster-rarity unknown">???</span>
-												}
-											</div>
-										</div>
-									}
-								}
-							</div>
-						</div>
-
-						<!-- Boss Section -->
-						@if (bossPool != null && bossPool.Bosses.Count > 0)
-						{
-							<div class="popup-section boss-section">
-								<div class="section-header boss">
-									<span class="section-title">@L("ui.expedition.boss_pool")</span>
-									<span class="section-count">1 random boss per run</span>
-								</div>
-								<div class="monsters-grid boss-grid">
-									@foreach (var boss in bossPool.Bosses)
-									{
-										var species = GetSpecies(boss.SpeciesId);
-										if (species != null)
-										{
-											var isDiscovered = IsSpeciesDiscovered(boss.SpeciesId);
-											var isSeen = IsSpeciesSeen(boss.SpeciesId);
-											<div class="monster-card boss-card @(isDiscovered ? "discovered" : isSeen ? "seen" : "unknown")">
-												<div class="monster-sprite-container">
-													@if (isDiscovered || isSeen)
-													{
-														<img class="monster-sprite" src="@species.IconPath" />
-													}
-													else
-													{
-														<div class="monster-sprite-unknown">?</div>
-													}
-													<div class="boss-badge">BOSS</div>
-													<div class="monster-status-badge @(isDiscovered ? "discovered" : isSeen ? "seen" : "unknown")">
-														@if (isDiscovered) { <span>✓</span> }
-														else if (isSeen) { <span>👁</span> }
-														else { <span>?</span> }
-													</div>
-												</div>
-												<div class="monster-details">
-													@if (isDiscovered || isSeen)
-													{
-														<span class="monster-name">@species.Name</span>
-														<div class="monster-element @species.Element.ToString().ToLower()">
-															<img class="element-icon-inline" src="ui/icons/elements/transparent/@(GetElementIconName(species.Element)).png" />
-															<span>@species.Element</span>
-														</div>
-														<span class="monster-rarity @species.BaseRarity.ToString().ToLower()">@species.BaseRarity</span>
-													}
-													else
-													{
-														<span class="monster-name unknown">???</span>
-														<span class="monster-element unknown">Unknown</span>
-														<span class="monster-rarity unknown">???</span>
-													}
-												</div>
-											</div>
-										}
-									}
-								</div>
-							</div>
-						}
-					</div>
-				</div>
-			</div>
-		}
-
-		@if (showDropsPopup && dropsPopupExpedition != null)
-		{
-			<div class="monsters-popup-overlay drops-popup-overlay" onclick=@CloseDropsPopup>
-				<div class="monsters-popup drops-popup" onclick=@((e) => e.StopPropagation())>
-					<div class="popup-header">
-						<span class="popup-title">@dropsPopupExpedition.Name - Possible Drops</span>
-						<button class="popup-close" onclick=@CloseDropsPopup>×</button>
-					</div>
-					<div class="popup-content">
-						@{
-							var drops = GetExpeditionDrops(dropsPopupExpedition);
-							var consumables = drops.Where(d => d.Category == ItemCategory.Consumable).ToList();
-							var heldItems = drops.Where(d => d.Category == ItemCategory.HeldItem).ToList();
-							var relics = drops.Where(d => d.Category == ItemCategory.Relic).ToList();
-						}
-
-						@if (heldItems.Any())
-						{
-							<!-- Held Items Section -->
-							<div class="popup-section">
-								<div class="section-header held">
-									<img class="section-icon-svg" src="ui/icons/sword.svg" /><span class="section-title">Held Items</span>
-									<span class="section-count">@heldItems.Count items</span>
-								</div>
-								<div class="items-grid">
-									@foreach (var item in heldItems.OrderBy(i => i.Rarity))
-									{
-										<div class="item-card @GetRarityClass(item.Rarity)">
-											<div class="item-icon-container">
-												<img class="item-icon" src="@item.IconPath" />
-											</div>
-											<div class="item-details">
-												<span class="item-name">@item.Name</span>
-												<span class="item-rarity @GetRarityClass(item.Rarity)">@item.Rarity</span>
-												<span class="item-desc">@item.Description</span>
-											</div>
-										</div>
-									}
-								</div>
-							</div>
-						}
-
-						@if (consumables.Any())
-						{
-							<!-- Consumables Section -->
-							<div class="popup-section">
-								<div class="section-header consumable">
-									<span class="section-title">🧪 Consumables</span>
-									<span class="section-count">@consumables.Count items</span>
-								</div>
-								<div class="items-grid">
-									@foreach (var item in consumables.OrderBy(i => i.Rarity))
-									{
-										<div class="item-card @GetRarityClass(item.Rarity)">
-											<div class="item-icon-container">
-												<img class="item-icon" src="@item.IconPath" />
-											</div>
-											<div class="item-details">
-												<span class="item-name">@item.Name</span>
-												<span class="item-rarity @GetRarityClass(item.Rarity)">@item.Rarity</span>
-												<span class="item-desc">@item.Description</span>
-											</div>
-										</div>
-									}
-								</div>
-							</div>
-						}
-
-						@if (relics.Any())
-						{
-							<!-- Relics Section -->
-							<div class="popup-section">
-								<div class="section-header relic">
-									<span class="section-title">🏺 Relics</span>
-									<span class="section-count">@relics.Count items</span>
-								</div>
-								<div class="items-grid">
-									@foreach (var item in relics.OrderBy(i => i.Rarity))
-									{
-										<div class="item-card @GetRarityClass(item.Rarity)">
-											<div class="item-icon-container">
-												<img class="item-icon" src="@item.IconPath" />
-											</div>
-											<div class="item-details">
-												<span class="item-name">@item.Name</span>
-												<span class="item-rarity @GetRarityClass(item.Rarity)">@item.Rarity</span>
-												<span class="item-desc">@item.Description</span>
-											</div>
-										</div>
-									}
-								</div>
-							</div>
-						}
-
-						@if (!drops.Any())
-						{
-							<div class="no-drops">
-								<img class="empty-icon-svg" src="ui/icons/sort/box.svg" />
-								<span class="empty-text">@L("ui.expedition.no_special_drops")</span>
-								<span class="empty-hint">@L("ui.expedition.no_special_drops_hint")</span>
-							</div>
-						}
-					</div>
-				</div>
-			</div>
-		}
-
-		@if (IsExpeditionRunning())
-		{
-			<div class="running-expedition-bar">
-				<div class="running-info">
-					<img class="running-icon-svg" src="ui/icons/sword.svg" />
-					<span class="running-text">@GetRunningExpeditionName() - Wave @GetRunningWave()</span>
-				</div>
-				<div class="running-actions">
-					<button class="btn-secondary" onclick=@ResumeExpedition>
-						RESUME
-					</button>
-					<button class="btn-danger" onclick=@CancelExpedition>
-						CANCEL
-					</button>
-				</div>
-			</div>
-		}
-
-		@if (contractTargetSearchOpen)
-		{
-			<div class="monsters-popup-overlay contract-search-overlay" onclick=@CloseContractTargetSearch>
-				<div class="contract-search-popup" onclick=@((e) => e.StopPropagation())>
-					<div class="contract-search-header">
-						<span class="contract-search-title">@L("ui.expedition.target_beast")</span>
-						<button class="contract-search-close" onclick=@CloseContractTargetSearch>×</button>
-					</div>
-					<div class="contract-search-input-wrapper">
-						<TextEntry class="contract-search-input" @ref="contractTargetSearchInput" Text="@contractTargetSearchText" Placeholder="Type to filter..." />
-					</div>
-					<div class="contract-search-results">
-						@foreach (var species in GetFilteredSpecies())
-						{
-							<div class="contract-search-result @(autoContractTargetSpecies == species.Id ? "active" : "")" onclick=@(() => SelectContractTarget(species))>
-								<span class="result-number">#@species.BeastiaryNumber</span>
-								<img class="result-element-icon" src="ui/icons/elements/background/@(GetElementIconName(species.Element)).png" />
-								<span class="result-name">@species.Name</span>
-							</div>
-						}
-						@if (GetFilteredSpecies().Count == 0)
-						{
-							<div class="contract-search-empty">@L("ui.battle.no_matches")</div>
-						}
-					</div>
-				</div>
-			</div>
-		}
-	}
-	else if (currentView == "team")
+	@* The old expedition LIST and RESULT views are gone: WorldMapPanel is the
+	   entry point and ExpeditionResultPopup (a GameHUD child) shows results. *@
+	@if (currentView == "team")
 	{
 		<!-- Team Selection View -->
 		<div class="team-view @(teamViewEntered ? "entered" : "") @(isTransitioningToBattle ? "transitioning-out" : "") @(isTransitioningToList ? "transitioning-back" : "")">
@@ -634,97 +175,6 @@
 		<!-- Battle View -->
 		<BattleView OnBattleEnd=@OnBattleComplete OnExpeditionCancelled=@OnExpeditionCancelled ExpeditionId="@(selectedExpedition?.Id ?? "")" />
 	}
-	else if (false && currentView == "result")
-	{
-		<!-- LEGACY: result view is now rendered by the global
-			 ExpeditionResultPopup (mounted in GameHUD) so it survives the
-			 panel-swap that fires when the expedition ends. This inline
-			 branch is unreachable — kept for reference only. -->
-		<!-- Result Popup — dark backdrop + centered modal so the run's end
-			 feels like a moment instead of a navigation. -->
-		@{
-			var isExpeditionComplete = lastBattleWon && currentWave >= (selectedExpedition?.Waves ?? 0);
-		}
-		<div class="result-popup-root @(lastBattleWon ? "victory" : "defeat")">
-			<div class="result-popup-backdrop"></div>
-			<div class="result-popup-modal">
-
-				<div class="result-popup-banner">
-					@if (isExpeditionComplete)
-					{
-						<div class="result-popup-icon victory">
-							<img src="ui/icons/rarity/gold.svg" />
-						</div>
-						<div class="result-popup-kicker">EXPEDITION COMPLETE</div>
-						<div class="result-popup-title">VICTORY</div>
-						<div class="result-popup-subtitle">@selectedExpedition?.Name conquered</div>
-					}
-					else
-					{
-						<div class="result-popup-icon defeat">
-							<img src="ui/icons/sort/skull.svg" />
-						</div>
-						<div class="result-popup-kicker">EXPEDITION FAILED</div>
-						<div class="result-popup-title">DEFEATED</div>
-						<div class="result-popup-subtitle">Your team fell on Wave @currentWave of @(selectedExpedition?.Waves ?? 0)</div>
-					}
-				</div>
-
-				@if (lastBattleWon)
-				{
-					<div class="result-popup-rewards">
-						<div class="result-reward-row">
-							<img class="result-reward-icon" src="ui/icons/currency/money.png" />
-							<span class="result-reward-label">GOLD EARNED</span>
-							<span class="result-reward-amount gold">+@battleGold</span>
-						</div>
-						<div class="result-reward-row">
-							<img class="result-reward-icon" src="ui/icons/expedition_badges/xp.svg" />
-							<span class="result-reward-label">TAMER XP</span>
-							<span class="result-reward-amount xp">+@battleXP</span>
-						</div>
-						@if (battleTokens > 0)
-						{
-							<div class="result-reward-row">
-								<img class="result-reward-icon" src="ui/icons/currency/token.png" />
-								<span class="result-reward-label">BOSS TOKENS</span>
-								<span class="result-reward-amount tokens">+@battleTokens</span>
-							</div>
-						}
-					</div>
-				}
-
-				<div class="result-popup-actions">
-					@if (lastBattleWon)
-					{
-						<button class="result-btn primary" onclick=@EmbarkAgain>
-							<iconify icon="lucide:compass" Size=@(16) Color="#ffffff" />
-							<span>EMBARK AGAIN</span>
-						</button>
-						<button class="result-btn secondary" onclick=@ReturnToList>
-							<iconify icon="lucide:map" Size=@(14) Color="#cbd5e1" />
-							<span>RETURN TO MAP</span>
-						</button>
-					}
-					else
-					{
-						<button class="result-btn primary" onclick=@(() => RetryExpedition(false))>
-							<iconify icon="lucide:rotate-ccw" Size=@(16) Color="#ffffff" />
-							<span>RETRY</span>
-						</button>
-						<button class="result-btn secondary" onclick=@EmbarkAgain>
-							<iconify icon="lucide:users" Size=@(14) Color="#cbd5e1" />
-							<span>CHANGE TEAM</span>
-						</button>
-						<button class="result-btn ghost" onclick=@ReturnToList>
-							<iconify icon="lucide:map" Size=@(14) Color="#94a3b8" />
-							<span>MAP</span>
-						</button>
-					}
-				</div>
-			</div>
-		</div>
-	}
 
 	@* ── Tier 3 expedition-CLEAR celebration ──────────────────────────────
 	   One-shot "ZONE CLEARED" burst on a full zone clear. The @key bumps every
@@ -756,16 +206,9 @@
 	private string currentView = "list";
 	private Expedition selectedExpedition;
 	private List<Monster> selectedTeam = new();
-	private bool autoNegotiate = false;
 	private bool hardModeEnabled = false;
 	private bool isTransitioningToBattle = false;
 	private bool isTransitioningToList = false;
-	private string autoContractTargetSpecies
-	{
-		get => ExpeditionManager.Instance?.AutoContractTargetSpecies;
-		set { if (ExpeditionManager.Instance != null) ExpeditionManager.Instance.AutoContractTargetSpecies = value; }
-	}
-	private bool hasAnimatedCards = false;
 
 	// Team-view entrance: the `.team-view` mounts in its pre-entrance state, then
 	// `teamViewEntered` flips true one frame later so CSS TRANSITIONS (not @keyframes,
@@ -780,16 +223,8 @@
 	private bool showClearCelebrate = false;
 	private int clearCelebrateVersion = 0;
 
-	// Dropdown states
-	private bool difficultyDropdownOpen = false;
-	private bool catchDropdownOpen = false;
 
-	// Contract target search popup
-	private bool contractTargetSearchOpen = false;
-	private string contractTargetSearchText = "";
-	private TextEntry contractTargetSearchInput;
 
-	private bool lastBattleWon = false;
 	private int currentWave = 0;
 	private int battleGold = 0;
 	private int battleXP = 0;
@@ -829,17 +264,11 @@
 		return MonsterManager.Instance?.OwnedMonsters?.FirstOrDefault(m => m.Id == hoveredMonsterId.Value);
 	}
 
-	// Monsters popup state
-	private bool showMonstersPopup = false;
-	private Expedition monstersPopupExpedition;
-	private bool showDropsPopup = false;
-	private Expedition dropsPopupExpedition;
 
 	// Keyboard navigation
 	private int selectedExpeditionIndex = 0;
 	private int selectedMonsterIndex = 0;
 	private Panel availMonstersGrid;
-	private int selectedTeamSlotIndex = 0;
 
 	private void OnPanelClicked()
 	{
@@ -852,7 +281,6 @@
 		if (firstTime)
 		{
 			SyncWithBackgroundExpedition();
-			_ = MarkCardsAnimated();
 
 			// Subscribe to hard mode unlock so we can toast + refresh the toggle
 			var expMgr = ExpeditionManager.Instance;
@@ -876,22 +304,9 @@
 		StateHasChanged();
 	}
 
-	private async Task MarkCardsAnimated()
-	{
-		await Task.Delay(600); // Wait for staggered animation to complete
-		hasAnimatedCards = true;
-		StateHasChanged();
-	}
-
 	public override void Tick()
 	{
 		base.Tick();
-
-		// Update contract target search text from input
-		if (contractTargetSearchInput != null && contractTargetSearchOpen)
-		{
-			contractTargetSearchText = contractTargetSearchInput.Text ?? "";
-		}
 
 		// Check if we need to sync with a running expedition
 		// This handles returning from background mode
@@ -1100,24 +515,6 @@
 				RemoveFromTeam(selectedTeam[2]);
 			}
 		}
-		// Result view
-		else if (currentView == "result")
-		{
-			if (Input.Pressed("Jump") || Input.Pressed("Enter") || Input.Pressed("Menu"))
-			{
-				if (lastBattleWon && currentWave < (selectedExpedition?.Waves ?? 0))
-				{
-					ContinueExpedition();
-				}
-				else
-				{
-					ReturnToList();
-				}
-				// Q here dismisses the result view internally — claim it so
-				// GameHUD doesn't also exit to the tab bar this frame.
-				if (Input.Pressed("Menu")) GameHUD.PanelHandledBackKey = true;
-			}
-		}
 	}
 
 	/// <summary>
@@ -1129,9 +526,6 @@
 		if (expMgr == null) return;
 
 		var oldView = currentView;
-
-		// Sync toggle states
-		autoNegotiate = expMgr.AutoNegotiate;
 
 		// If there's an expedition running (background or not), sync to it
 		if (expMgr.CurrentExpedition != null)
@@ -1185,126 +579,6 @@
 		return tamer != null && tamer.Level >= expedition.RequiredLevel;
 	}
 
-	private bool IsCleared(Expedition expedition)
-	{
-		var expeditions = GetExpeditions();
-		var index = expeditions.IndexOf(expedition);
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		return tamer != null && index < tamer.HighestExpeditionCleared;
-	}
-
-	private string GetElementIconName(ElementType element)
-	{
-		return element.ToString().ToLower();
-	}
-
-	private int GetDisplayLevel(Expedition expedition)
-	{
-		if (hardModeEnabled)
-			return (int)Math.Floor(expedition.BaseEnemyLevel * ExpeditionManager.HARD_MODE_LEVEL_MULT);
-		return expedition.BaseEnemyLevel;
-	}
-
-	private int GetDisplayGold(Expedition expedition)
-	{
-		if (hardModeEnabled)
-			return (int)(expedition.GoldReward * ExpeditionManager.HARD_MODE_GOLD_MULT);
-		return expedition.GoldReward;
-	}
-
-	private int GetDisplayXP(Expedition expedition)
-	{
-		if (hardModeEnabled)
-			return (int)(expedition.XPReward * ExpeditionManager.HARD_MODE_XP_MULT);
-		return expedition.XPReward;
-	}
-
-	private void ShowMonstersPopup(Expedition expedition)
-	{
-		monstersPopupExpedition = expedition;
-		showMonstersPopup = true;
-		SoundManager.PlaySelect();
-		StateHasChanged();
-	}
-
-	private void CloseMonstersPopup()
-	{
-		showMonstersPopup = false;
-		monstersPopupExpedition = null;
-		SoundManager.PlayBack();
-		StateHasChanged();
-	}
-
-	private void ShowDropsPopup(Expedition expedition)
-	{
-		dropsPopupExpedition = expedition;
-		showDropsPopup = true;
-		SoundManager.PlaySelect();
-		StateHasChanged();
-	}
-
-	private void CloseDropsPopup()
-	{
-		showDropsPopup = false;
-		dropsPopupExpedition = null;
-		SoundManager.PlayBack();
-		StateHasChanged();
-	}
-
-	private List<ItemDefinition> GetExpeditionDrops(Expedition expedition)
-	{
-		if (ItemManager.Instance == null || expedition == null)
-			return new List<ItemDefinition>();
-
-		return ItemManager.Instance.GetDropsForExpedition(expedition.Id);
-	}
-
-	private string GetRarityClass(ItemRarity rarity)
-	{
-		return rarity.ToString().ToLower();
-	}
-
-	private string GetItemIcon(ItemDefinition item)
-	{
-		// Return emoji based on item category
-		return item.Category switch
-		{
-			ItemCategory.Consumable => "🧪",
-			ItemCategory.HeldItem => "⚔",
-			ItemCategory.Relic => "🏺",
-			ItemCategory.QuestItem => "📜",
-			_ => "📦"
-		};
-	}
-
-	private MonsterSpecies GetSpecies(string speciesId)
-	{
-		return MonsterManager.Instance?.GetSpecies(speciesId);
-	}
-
-	private bool IsSpeciesDiscovered(string speciesId)
-	{
-		return BeastiaryManager.Instance?.IsDiscovered(speciesId) ?? false;
-	}
-
-	private bool IsSpeciesSeen(string speciesId)
-	{
-		return BeastiaryManager.Instance?.IsSeen(speciesId) ?? false;
-	}
-
-	private string GetBackgroundClass(Expedition expedition)
-	{
-		// CSS class hook for card backgrounds. Launch zones only; add more when
-		// post-launch expeditions come back.
-		return expedition.Id switch
-		{
-			"saltmoor_cove" => "has-background bg-saltmoor_cove",
-			"saltmoor_forest" => "has-background bg-saltmoor_forest",
-			"old_saltmoor" => "has-background bg-old_saltmoor",
-			_ => ""
-		};
-	}
-
 	private string GetExpeditionBackgroundClass()
 	{
 		// Return CSS class for the expedition panel background (team select & battle)
@@ -1339,14 +613,6 @@
 		return ExpeditionManager.Instance?.IsHardModeUnlocked(expeditionId) ?? false;
 	}
 
-	// Difficulty dropdown methods
-	private void ToggleDifficultyDropdown()
-	{
-		difficultyDropdownOpen = !difficultyDropdownOpen;
-		catchDropdownOpen = false;
-		SoundManager.PlayClick();
-	}
-
 	private void SelectDifficulty(bool hard)
 	{
 		// Can't select hard mode if not unlocked. Use the selected expedition's
@@ -1365,99 +631,6 @@
 		// Hard Mode v1.2.0 ship; per-expedition Expedition.IsHardMode is
 		// the source of truth at runtime).
 
-		difficultyDropdownOpen = false;
-		SoundManager.PlaySelect();
-		StateHasChanged();
-	}
-
-	// Auto Catch dropdown methods
-	private void ToggleCatchDropdown()
-	{
-		catchDropdownOpen = !catchDropdownOpen;
-		difficultyDropdownOpen = false;
-		SoundManager.PlayClick();
-	}
-
-	// Smart auto-contract: on/off only — when on, the auto path picks the
-	// best approach for each beast itself (ContractGenerator.PickBestOption).
-	private void SetAutoCatchMode(bool enabled)
-	{
-		autoNegotiate = enabled;
-		if (ExpeditionManager.Instance != null)
-			ExpeditionManager.Instance.AutoNegotiate = enabled;
-
-		catchDropdownOpen = false;
-		SoundManager.PlaySelect();
-		StateHasChanged();
-	}
-
-	private string GetCatchStrategyLabel()
-	{
-		if (!autoNegotiate) return "Off";
-		var label = "Best Approach";
-		if (autoContractTargetSpecies != null)
-		{
-			var targetName = MonsterManager.Instance?.GetSpecies(autoContractTargetSpecies)?.Name ?? "?";
-			label += $" ({targetName})";
-		}
-		return label;
-	}
-
-	// Contract target search methods
-	private void OpenContractTargetSearch()
-	{
-		catchDropdownOpen = false;
-		contractTargetSearchOpen = true;
-		contractTargetSearchText = "";
-		SoundManager.PlayForward();
-	}
-
-	private void CloseContractTargetSearch()
-	{
-		contractTargetSearchOpen = false;
-		contractTargetSearchText = "";
-		SoundManager.PlayBack();
-	}
-
-	private void SelectContractTarget(MonsterSpecies species)
-	{
-		autoContractTargetSpecies = species.Id;
-		contractTargetSearchOpen = false;
-		contractTargetSearchText = "";
-		SoundManager.PlaySelect();
-	}
-
-	private void ClearContractTarget()
-	{
-		autoContractTargetSpecies = null;
-		catchDropdownOpen = false;
-		SoundManager.PlaySelect();
-	}
-
-	private List<MonsterSpecies> GetFilteredSpecies()
-	{
-		var allSpecies = MonsterManager.Instance?.GetAllSpecies() ?? new List<MonsterSpecies>();
-		var sorted = allSpecies.Where(s => s.IsCatchable).OrderBy(s => s.BeastiaryNumber).ToList();
-
-		if (string.IsNullOrEmpty(contractTargetSearchText))
-			return sorted.Take(20).ToList();
-
-		return sorted
-			.Where(s => s.Name.ToLower().Contains(contractTargetSearchText.ToLower()))
-			.Take(20)
-			.ToList();
-	}
-
-	private void SetExpeditionFilter(string filter)
-	{
-		expeditionFilter = filter;
-		SoundManager.PlaySelect();
-		StateHasChanged();
-	}
-
-	private void SetExpeditionSort(string sort)
-	{
-		expeditionSort = sort;
 		SoundManager.PlaySelect();
 		StateHasChanged();
 	}
@@ -1510,17 +683,6 @@
 		if (m?.Genetics == null) return 0;
 		return m.Genetics.HPGene + m.Genetics.ATKGene + m.Genetics.DEFGene +
 			   m.Genetics.SpAGene + m.Genetics.SpDGene + m.Genetics.SPDGene;
-	}
-
-	private string GetContractClass(int satisfaction)
-	{
-		return satisfaction switch
-		{
-			>= 90 => "excellent",
-			>= 70 => "good",
-			>= 50 => "warning",
-			_ => "danger"
-		};
 	}
 
 	private List<Monster> GetAvailableMonsters()
@@ -1700,7 +862,6 @@
 		}
 
 		Log.Info($"OnBattleComplete: playerWon={playerWon}, currentWave={currentWave}, totalWaves={selectedExpedition?.Waves ?? 0}");
-		lastBattleWon = playerWon;
 
 		var result = BattleManager.Instance?.CurrentResult;
 		if (result != null)
@@ -1852,73 +1013,6 @@
 		Log.Info($"ContinueExpedition: Wave={currentWave}, IsInBattle={BattleManager.Instance?.IsInBattle}");
 	}
 
-	private void RetryExpedition(bool awardCompletionRewards = false)
-	{
-		if (selectedExpedition == null || selectedTeam.Count == 0) return;
-
-		SoundManager.PlayBattleStart();
-
-		// Reset accumulated rewards for the new attempt
-		battleGold = 0;
-		battleXP = 0;
-		battleTokens = 0;
-
-		// Use ExpeditionManager's retry method which preserves the player's active monster index
-		ExpeditionManager.Instance?.RetryExpedition(awardCompletionRewards);
-		currentWave = ExpeditionManager.Instance?.CurrentWave ?? 1;
-
-		Log.Info($"RetryExpedition: Wave={currentWave}, IsInBattle={BattleManager.Instance?.IsInBattle}");
-	}
-
-	// Return to world map AND immediately pop the team picker for the same
-	// zone, so the player can retry with a different team or just relaunch
-	// with the same loadout in one click. Bridges the post-result popup back
-	// into the picker without forcing a detour through the world map.
-	private void EmbarkAgain()
-	{
-		SoundManager.PlayForward();
-		var zoneId = selectedExpedition?.Id;
-
-		// Clear the current expedition state (also heals the roster).
-		ExpeditionManager.Instance?.CancelExpedition();
-
-		// Reset local UI state.
-		currentView = "list";
-		selectedExpedition = null;
-		selectedTeam.Clear();
-		currentWave = 0;
-		battleGold = 0;
-		battleXP = 0;
-		battleTokens = 0;
-
-		// Queue the picker to show once WorldMapPanel mounts. TeamPickerPopup
-		// handles the Instance==null case by stashing state statically; the
-		// popup pre-fills + animates in as soon as it mounts.
-		if ( !string.IsNullOrEmpty( zoneId ) )
-		{
-			TeamPickerPopup.Show( zoneId );
-		}
-	}
-
-	private void ReturnToList()
-	{
-		SoundManager.PlayBack();
-
-		// Clear the expedition in ExpeditionManager (also cleans up battle state)
-		ExpeditionManager.Instance?.CancelExpedition();
-
-		// Reset local UI state
-		currentView = "list";
-		selectedExpedition = null;
-		selectedTeam.Clear();
-		currentWave = 0;
-		battleGold = 0;
-		battleXP = 0;
-		battleTokens = 0;
-		lastBattleWon = false;
-		StateHasChanged();
-	}
-
 	private async void GoToList()
 	{
 		if (isTransitioningToList) return;
@@ -1961,16 +1055,6 @@
 			&& currentView == "list";
 	}
 
-	private string GetRunningExpeditionName()
-	{
-		return ExpeditionManager.Instance?.CurrentExpedition?.Name ?? "Expedition";
-	}
-
-	private int GetRunningWave()
-	{
-		return ExpeditionManager.Instance?.CurrentWave ?? 1;
-	}
-
 	private void ResumeExpedition()
 	{
 		// Sync local state with the running expedition
@@ -1982,7 +1066,6 @@
 			currentWave = expMgr.CurrentWave;
 			battleGold = expMgr.AccumulatedGold;
 			battleXP = expMgr.AccumulatedXP;
-			autoNegotiate = expMgr.AutoNegotiate;
 		}
 
 		// Disable background mode so UI takes over
@@ -1993,40 +1076,15 @@
 		StateHasChanged();
 	}
 
-	private void CancelExpedition()
-	{
-		// Stop any ongoing battle
-		if (BattleManager.Instance?.IsInBattle == true)
-		{
-			BattleManager.Instance.ExitBattle();
-		}
-
-		// Clear expedition state
-		ExpeditionManager.Instance?.CancelExpedition();
-
-		// Reset local state
-		selectedExpedition = null;
-		selectedTeam.Clear();
-		currentWave = 0;
-		battleGold = 0;
-		battleXP = 0;
-		battleTokens = 0;
-		lastBattleWon = false;
-
-		StateHasChanged();
-	}
-
 	protected override int BuildHash()
 	{
 		var hash = new HashCode();
 		hash.Add(currentView);
 		hash.Add(selectedExpedition?.Id);
 		hash.Add(selectedTeam.Count);
-		hash.Add(lastBattleWon);
 		hash.Add(currentWave);
 		hash.Add(battleGold);
 		hash.Add(battleXP);
-		hash.Add(autoNegotiate);
 		hash.Add(SpriteAnimator.GlobalFrame);
 		hash.Add(MonsterManager.Instance?.OwnedMonsters?.Count ?? 0);
 		foreach (var m in selectedTeam)
@@ -2041,12 +1099,6 @@
 		// Include running expedition state for the cancel bar
 		hash.Add(ExpeditionManager.Instance?.CurrentExpedition?.Id);
 		hash.Add(ExpeditionManager.Instance?.CurrentWave ?? 0);
-		// Include monsters popup state
-		hash.Add(showMonstersPopup);
-		hash.Add(monstersPopupExpedition?.Id);
-		// Include drops popup state
-		hash.Add(showDropsPopup);
-		hash.Add(dropsPopupExpedition?.Id);
 		// Include transition states
 		hash.Add(isTransitioningToBattle);
 		hash.Add(isTransitioningToList);
@@ -2054,13 +1106,7 @@
 		hash.Add(teamViewEntered);
 		hash.Add(showClearCelebrate);
 		hash.Add(clearCelebrateVersion);
-		// Include dropdown states
-		hash.Add(difficultyDropdownOpen);
-		hash.Add(catchDropdownOpen);
 		hash.Add(hardModeEnabled);
-		hash.Add(contractTargetSearchOpen);
-		hash.Add(contractTargetSearchText);
-		hash.Add(autoContractTargetSpecies);
 		return hash.ToHashCode();
 	}
 }
