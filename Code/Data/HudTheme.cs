@@ -50,7 +50,10 @@ public static class CosmeticDatabase
 			TitleColor = "#22d3ee"
 		},
 
-		// === Achievement-granted (one per major pillar) ===
+		// === Achievement-granted (2026-09 restart set) ===
+		// Ids are the persisted title strings — never rename. The legacy-only
+		// titles (Master Tamer, Conqueror, Arena Legend, Transcendent) were
+		// removed with the restart; PruneOrphanTitles drops any stragglers.
 		new TamerTitle
 		{
 			Id = "Boss Slayer",
@@ -62,51 +65,39 @@ public static class CosmeticDatabase
 		{
 			Id = "Supreme Tamer",
 			Title = "Supreme Tamer",
-			Description = "Defeat every expedition boss at least once",
+			Description = "Defeat 3 different expedition bosses",
 			TitleColor = "#06b6d4"
-		},
-		new TamerTitle
-		{
-			Id = "Master Tamer",
-			Title = "Master Tamer",
-			Description = "Catch 100 monsters",
-			TitleColor = "#22d3ee"
 		},
 		new TamerTitle
 		{
 			Id = "Beastborne Master",
 			Title = "Beastborne Master",
-			Description = "Discover every species in the Beastiary",
+			Description = "Discover 20 species in the Beastbook",
 			TitleColor = "#f59e0b"
-		},
-		new TamerTitle
-		{
-			Id = "Conqueror",
-			Title = "Conqueror",
-			Description = "Clear every expedition",
-			TitleColor = "#10b981"
-		},
-		new TamerTitle
-		{
-			Id = "Arena Legend",
-			Title = "Arena Legend",
-			Description = "Win 100 ranked sets",
-			TitleColor = "#fbbf24"
 		},
 		new TamerTitle
 		{
 			Id = "Master Fuser",
 			Title = "Master Fuser",
-			Description = "Fuse 100 monsters",
+			Description = "Inscribe 2 fusion patterns in the Pattern Book",
 			TitleColor = "#a855f7"
 		},
 		new TamerTitle
 		{
-			Id = "Transcendent",
-			Title = "Transcendent",
-			Description = "Reach the highest tamer level",
-			TitleColor = "#f59e0b"
+			Id = "Unyielding",
+			Title = "Unyielding",
+			Description = "Clear 3 expeditions on Hard Mode",
+			TitleColor = "#ef4444"
 		},
+
+		// === Login milestone titles (DailyRewardManager.GetMilestoneReward) ===
+		// Ids must match the milestone title strings exactly. Without these
+		// entries PruneOrphanTitles stripped them on every load.
+		new TamerTitle { Id = "Dedicated", Title = "Dedicated", Description = "Log in on 7 different days", TitleColor = "#34d399" },
+		new TamerTitle { Id = "Devoted", Title = "Devoted", Description = "Log in on 30 different days", TitleColor = "#60a5fa" },
+		new TamerTitle { Id = "Faithful", Title = "Faithful", Description = "Log in on 60 different days", TitleColor = "#a78bfa" },
+		new TamerTitle { Id = "Eternal", Title = "Eternal", Description = "Log in on 100 different days", TitleColor = "#f472b6" },
+		new TamerTitle { Id = "Beastborne Veteran", Title = "Beastborne Veteran", Description = "Log in on 365 different days", TitleColor = "#fbbf24" },
 
 		// === Guild Raid titles (granted via raid score milestones) ===
 		new TamerTitle

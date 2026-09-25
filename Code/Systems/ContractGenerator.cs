@@ -550,6 +550,11 @@ public static class ContractGenerator
 			if ( tamer == null || tamer.BossTokens < option.BossTokenCost )
 				return (false, false);
 			tamer.BossTokens -= option.BossTokenCost;
+
+			// Tribute actually paid (only the Tribute approach carries a Token
+			// cost) — counts win or lose. Drives the "Offering" achievement.
+			tamer.TributesOffered++;
+			AchievementManager.Instance?.CheckProgress( AchievementRequirement.TributesOffered, tamer.TributesOffered );
 		}
 
 		// Roll for success

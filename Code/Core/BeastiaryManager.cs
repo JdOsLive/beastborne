@@ -194,6 +194,10 @@ public sealed class BeastiaryManager : Component
 		// permanently unreachable. GetTotalSpeciesCount / GetDiscoveryCount are
 		// both launch-roster scoped.
 		int total = GetTotalSpeciesCount();
+
+		// Fixed-count Beastbook milestones (10 / 20) — launch-roster scoped too.
+		AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BeastbookDiscovered, GetDiscoveryCount() );
+
 		if ( total > 0 && GetDiscoveryCount() >= total )
 		{
 			AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.BeastiaryCompleted, 1 );

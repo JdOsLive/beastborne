@@ -307,6 +307,13 @@ public sealed class TamerManager : Component
 				}
 			}
 
+			// Achievement restart (2026-09): legacy unclaimed payout, wipe, legacy
+			// title strip. Gated on Tamer.AchievementSetVersion — its OWN flag, not
+			// MigrationVersion. The retroactive re-unlock of the new set runs later
+			// in AchievementManager.RetroactiveCheck (GameManager.StartGame), once
+			// the Beastbook / Pattern Book / mastery data have loaded.
+			AchievementManager.ApplyAchievementRestart( CurrentTamer );
+
 			// ── DEFINITIVE SKILL-STATE FIX ─────────────────────────────────
 			// Single self-healing audit on hydrate. Enforces the invariant
 			// TotalEarnedSP(Level) == SkillPoints + Σ(rank × CostPerRank).
@@ -380,6 +387,8 @@ public sealed class TamerManager : Component
 			ArenaPoints = 0,
 			LastLogin = DateTime.UtcNow,
 			CreatedAt = DateTime.UtcNow,
+			// Fresh saves start on the current achievement set — nothing to restart.
+			AchievementSetVersion = AchievementManager.CURRENT_ACHIEVEMENT_SET,
 		};
 
 		// Mirror the defensive ??= block from the existing-save Hydrate path.
@@ -972,6 +981,7 @@ public sealed class TamerManager : Component
 			ActiveBoosts = new(),
 			ActiveTitleId = null,
 			ActiveLevelTitle = null,
+			AchievementSetVersion = AchievementManager.CURRENT_ACHIEVEMENT_SET,
 			LastLogin = DateTime.UtcNow
 		};
 

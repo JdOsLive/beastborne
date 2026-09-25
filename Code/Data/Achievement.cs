@@ -84,6 +84,11 @@ public enum AchievementRequirement
 	MonstersEvolved,
 	MonsterVeteranMaxRank,
 	SkillPointsInvested,
+
+	// 2026-09 restart
+	BeastbookDiscovered,   // distinct launch-roster species discovered
+	PatternsDiscovered,    // cross-species fusion patterns inscribed
+	TributesOffered,       // Tribute contracts paid for (win or lose)
 }
 
 /// <summary>
