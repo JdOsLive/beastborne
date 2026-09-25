@@ -108,17 +108,7 @@ The full dated history is `learnings-archive.md`. Grep it by panel, class, sympt
 
 ## User preferences & standing rulings
 - **Where guiding-star and shipped roster code (My Beasts fd dossier) disagree, the SHIPPED CODE WINS.** _(src: "Beastbook dossier — fd-architecture port", 2026-07-12)_
-- **Known guiding-star drifts to ignore:**
-  - The liquid-expansion nav is retired; routing uses the accent swipe.
-  - Hover polarity is light→dark.
-  - Gold is not the universal primary: pages wear their app color, and fusion's CTA isn't gold.
-  - One violet cursor handles selection, never the beast card's "gold ring + fill".
-  - There are six Exo2 cuts, not two.
-  - Cards use corner-cut radius-0.
-  - Newer motion tokens apply.
-  - The ring is a later sibling, not an `inset: -10px` child.
-
-  _(src: "Beastbook dossier — fd-architecture port", 2026-07-12)_
+- **guiding-star.md was re-synced to shipped code on 2026-09-25** (accent swipe, light→dark hover, app-color pages with rationed gold, one violet cursor, six Exo2 cuts, corner-cut 1B cards, current motion tokens, later-sibling ring). If you find a new drift, fix guiding-star rather than listing it here. _(src: "Beastbook dossier — fd-architecture port", 2026-07-12)_
 - **Hover polarity is light→dark: rest is brightest, hover darker, press darkest.** _(src: "One-cursor + feel pass", 2026-07-06)_
 - **Ration the gold snap to consequential commits (PLAY, fuse, release, contract).** "Gold spent freely is gold worth nothing." _(src: "App-color identity pass", 2026-07-12)_
 - **Never build trait or nature hover tooltips. Write effects INLINE instead: register rows (icon + name + description) where there's room, and name-only chips in dense areas.** Native `title=""` doesn't render. _(src: "Trait tooltips RETIRED game-wide", 2026-07-13)_
