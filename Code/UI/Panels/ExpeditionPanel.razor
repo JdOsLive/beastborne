@@ -1778,19 +1778,27 @@
 			// "ZONE CLEARED" burst the panel renders itself (render-keyed so it
 			// replays on every clear). Defeats and partial exits skip it — the
 			// celebration must feel earned, never fire on a loss.
-			if ( playerWon )
-				_ = FireClearCelebrate();
-
 			// Fire the global result popup. Keep currentView = "battle" so the
 			// BattleView + 3D scene stay visible behind the modal.
-			ExpeditionResultPopup.Show(
+			// On a win, ZONE CLEARED plays FIRST and the result popup follows it —
+			// both used to fire at once, so the celebration played hidden behind
+			// the popup's backdrop.
+			// Snapshot the reward fields now — the popup may open ~1.1s later.
+			var resultGold = battleGold;
+			var resultXP = battleXP;
+			var resultTokens = battleTokens;
+			void ShowResult() => ExpeditionResultPopup.Show(
 				won: playerWon,
 				wave: resultWave,
 				zoneId: resultZoneId,
-				gold: battleGold,
-				xp: battleXP,
-				tokens: battleTokens,
+				gold: resultGold,
+				xp: resultXP,
+				tokens: resultTokens,
 				team: resultTeam );
+			if ( playerWon )
+				_ = FireClearCelebrate( ShowResult );
+			else
+				ShowResult();
 		}
 
 		StateHasChanged();
@@ -1798,9 +1806,9 @@
 
 	// Tier 3 expedition-CLEAR celebration. Mounts a render-keyed burst overlay
 	// (the version bump forces a fresh DOM node so the transition replays even on
-	// a back-to-back clear), holds briefly, then unmounts. Purely additive —
-	// sits behind the global ExpeditionResultPopup and doesn't gate any flow.
-	private async Task FireClearCelebrate()
+	// a back-to-back clear), holds briefly, then unmounts and hands off to
+	// `then` (the result popup) so the two beats play in sequence, not stacked.
+	private async Task FireClearCelebrate( Action then = null )
 	{
 		// Bump the @key so the overlay mounts FRESH — that fresh mount is what
 		// makes the @keyframes play (re-using the node would not replay them).
@@ -1813,6 +1821,7 @@
 		await Task.Delay( 1100 );
 		showClearCelebrate = false;
 		StateHasChanged();
+		then?.Invoke();
 	}
 
 	private void OnExpeditionCancelled()

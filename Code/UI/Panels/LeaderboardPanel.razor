@@ -389,12 +389,15 @@
 				board.MaxEntries = 100;
 				await board.Refresh();
 
+				// Normalize the stat's stored unit to display units so board
+				// scores and the local tamer value compare like-for-like.
+				long scale = GetBoardScale( cat.Key );
 				var entries = board.Entries.Select( ( e, index ) => new LeaderboardEntry
 				{
 					Rank = (int)e.Rank,
 					Name = e.DisplayName,
 					// e.Value is double in s&box; cast to long for our integer-only stats.
-					Score = (long)e.Value,
+					Score = (long)e.Value * scale,
 					// TODO post-launch: avatar resolution needs the player's Steam ID. The
 					// Sandbox.Services leaderboard entry probably exposes it (e.Identifier in
 					// historical APIs), but verify the field name against the current s&box
@@ -568,22 +571,24 @@
 		return Math.Max( 0L, Math.Max( localValue, boardValue ) );
 	}
 
+	// Multiplier from a stat's submitted unit to display units. Gold is
+	// submitted in thousands (TamerManager: TotalGoldEarned / 1000) to
+	// fit the int stat; everything else is submitted raw.
+	private static long GetBoardScale( string key ) => key == "total-gold" ? 1000L : 1L;
+
 	private string FormatValue( long value, string category )
 	{
 		// Clamp to sane maximums for display
 		value = ClampForDisplay( value, category );
 
+		// Keyed on CategoryInfo.Key (the short keys every caller passes),
+		// NOT the "-launch" stat names. Gold arrives here already in whole
+		// gold (board scores are scaled up on load — see GetBoardScale).
 		return category switch
 		{
 			"guild-ranking" => $"{value:N0} RP",
-			"monsters-caught-launch" => $"{value:N0}",
-			"monsters-bred-launch" => $"{value:N0}",
-			"monsters-evolved-launch" => $"{value:N0}",
-			"battles-won-launch" => $"{value:N0}",
-			"total-damage-launch" => FormatLargeNumber( value ),
-			"total-knockouts-launch" => $"{value:N0}",
-			"total-gold" => FormatLargeNumber( value * 1000L ),
-			"expeditions-completed-launch" => $"{value:N0}",
+			"total-damage" => FormatLargeNumber( value ),
+			"total-gold" => FormatLargeNumber( value ),
 			"total-playtime" => FormatPlaytime( value ),
 			_ => $"{value:N0}"
 		};

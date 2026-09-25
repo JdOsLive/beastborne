@@ -45,8 +45,8 @@
 				</div>
 			</div>
 			<div class="sh-kb-hint">
-				<div class="sh-cap"><span>&lt;</span></div>
-				<div class="sh-cap"><span>&gt;</span></div>
+				<div class="sh-cap"><span>Z</span></div>
+				<div class="sh-cap"><span>X</span></div>
 			</div>
 		</div>
 		<div class="filter-controls">
@@ -407,8 +407,8 @@
 									</div>
 								</div>
 								@{ var goldBtn = GetBuyButtonContent(caseItem); }
-								<button class="buy-btn @(IsPurchaseFlash ? "purchased is-flashing" : "") @(CanPurchaseQty(caseItem) ? "" : "disabled") @(buyBtnOvershoot ? "overshoot" : "")"
-										onclick=@(() => PurchaseItem(caseItem))>
+								<button class="buy-btn @(IsPurchaseFlash ? "purchased is-flashing" : "") @(CanPurchaseQty(caseItem) ? "" : "disabled") @(buyBtnOvershoot ? "overshoot" : "") @(!IsPurchaseFlash && IsBuyArmed(caseItem.Id) ? "armed" : "")"
+										onclick=@(() => RequestBuyItem(caseItem, false))>
 									<iconify icon="@goldBtn.icon" Size=@(goldBtn.size) Color="@goldBtn.color" />
 									<span>@goldBtn.label</span>
 								</button>
@@ -617,8 +617,8 @@
 									</div>
 								</div>
 								@{ var cBtn = GetBuyButtonContentConsumable(selectedConsumable); }
-								<button class="buy-btn @(IsPurchaseFlash ? "purchased is-flashing" : "") @(CanPurchaseConsumableQty(selectedConsumable) ? "" : "disabled") @(buyBtnOvershoot ? "overshoot" : "")"
-										onclick=@(() => PurchaseConsumable(selectedConsumable))>
+								<button class="buy-btn @(IsPurchaseFlash ? "purchased is-flashing" : "") @(CanPurchaseConsumableQty(selectedConsumable) ? "" : "disabled") @(buyBtnOvershoot ? "overshoot" : "") @(!IsPurchaseFlash && IsBuyArmed(selectedConsumable.Id) ? "armed" : "")"
+										onclick=@(() => RequestBuyConsumable(selectedConsumable, false))>
 									<iconify icon="@cBtn.icon" Size=@(cBtn.size) Color="@cBtn.color" />
 									<span>@cBtn.label</span>
 								</button>
@@ -775,6 +775,9 @@
 	public override void Tick()
 	{
 		base.Tick();
+		// Armed buy lapses silently after BuyConfirmWindow (BuildHash
+		// picks up the null and reverts the CTA label).
+		if ( armedBuyId != null && RealTime.Now >= buyArmExpires ) armedBuyId = null;
 		UpdateShopRing();
 		ApplyShopRingWave();
 	}
@@ -954,6 +957,7 @@
 		selectedItem = null;
 		hoveredShopItem = null;
 		purchaseQty = 1;
+		DisarmBuy();
 		swapVersion++;
 	}
 
@@ -984,6 +988,7 @@
 		};
 		selectedItem = null;
 		purchaseQty = 1;
+		DisarmBuy();
 		swapVersion++;
 		SoundManager.PlayClick();
 	}
@@ -998,6 +1003,7 @@
 		};
 		selectedConsumable = null;
 		purchaseQty = 1;
+		DisarmBuy();
 		swapVersion++;
 		SoundManager.PlayClick();
 	}
@@ -1037,6 +1043,7 @@
 		shopView = view;
 		selectedItem = null;
 		selectedConsumable = null;
+		DisarmBuy();
 		justSelectedItemId = null;
 		purchaseQty = 1;
 		swapVersion++;
@@ -1048,7 +1055,8 @@
 	// Reuses selectedItem / selectedConsumable as the cursor so the
 	// existing card-highlight + detail-pane state needs no parallel
 	// fields. Arrows move the cursor through the flat visible list,
-	// confirm purchases the selected item, Q/E swap stores.
+	// confirm arms then buys the selected item (two-stage), Z/X swap
+	// stores, Q deselects.
 	// ============================================================
 	public void TickInput()
 	{
@@ -1134,7 +1142,7 @@
 		// A blocking popup is open — it owns the keyboard.
 		if ( UIModalState.AnyModalOpen ) return;
 
-		// , / . swap stores (CyclePrev / CycleNext — the <,> keys). A prev/next
+		// Z / X swap stores (CyclePrev / CycleNext). A prev/next
 		// pair that doesn't collide with the grid's arrows, Jump/Enter confirm,
 		// or Menu/Run back. ( [ / ] stay reserved for the global radio skip.)
 		if ( Input.Pressed( "CyclePrev" ) ) { SwitchShopView( "gold" ); return; }
@@ -1172,23 +1180,25 @@
 				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, true );
 				SelectItem( items[idx] );
 			}
-			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			else if ( UiInput.ConfirmPressed() )
 			{
-				if ( selectedItem != null ) PurchaseItem( selectedItem );
-				else SelectItem( items[0] );
+				// Two-stage buy: first press arms the CTA, second buys.
+				// Nothing selected = adopt the item the case is DISPLAYING
+				// (the Daily Spotlight) rather than jumping to items[0].
+				if ( selectedItem != null ) RequestBuyItem( selectedItem, true );
+				else SelectItem( GetFeaturedItem( allFiltered ) ?? items[0] );
 			}
 			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 			{
-				// Back: deselect first, then exit to tab nav. The deselect is
-				// an INTERNAL action — claim the back key so GameHUD doesn't
-				// also exit to tabs the same frame. When nothing is selected,
-				// Q genuinely exits the panel, so the flag is NOT set there.
+				// Back: deselect first. The deselect is an INTERNAL action —
+				// claim the back key so GameHUD doesn't also act on it the
+				// same frame. When nothing is selected the key is left
+				// UNHANDLED so GameHUD's own back behaviour takes it.
 				if ( selectedItem != null )
 				{
-					selectedItem = null; detailVersion++; SoundManager.PlayBack();
+					selectedItem = null; detailVersion++; DisarmBuy(); SoundManager.PlayBack();
 					GameHUD.PanelHandledBackKey = true;
 				}
-				else GameHUD.ExitPanel();
 			}
 		}
 		else // boss store
@@ -1218,21 +1228,20 @@
 				idx = idx < 0 ? 0 : GetVerticalNeighbor( idx, items.Count, true );
 				SelectConsumable( items[idx] );
 			}
-			else if ( Input.Pressed( "Jump" ) || Input.Pressed( "Enter" ) )
+			else if ( UiInput.ConfirmPressed() )
 			{
-				if ( selectedConsumable != null ) PurchaseConsumable( selectedConsumable );
+				if ( selectedConsumable != null ) RequestBuyConsumable( selectedConsumable, true );
 				else SelectConsumable( items[0] );
 			}
 			else if ( Input.Pressed( "Menu" ) || Input.Pressed( "run" ) )
 			{
-				// Same two-stage back as the gold store: deselect = internal
-				// (claim the key), nothing selected = genuine exit (don't).
+				// Same back as the gold store: deselect = internal (claim
+				// the key), nothing selected = leave it unhandled for GameHUD.
 				if ( selectedConsumable != null )
 				{
-					selectedConsumable = null; detailVersion++; SoundManager.PlayBack();
+					selectedConsumable = null; detailVersion++; DisarmBuy(); SoundManager.PlayBack();
 					GameHUD.PanelHandledBackKey = true;
 				}
-				else GameHUD.ExitPanel();
 			}
 		}
 	}
@@ -1628,6 +1637,7 @@
 		if (selectedItem != null && SupportsMultiBuy(selectedItem)) max = GetMaxBuyQty(selectedItem);
 		else if (selectedConsumable != null) max = GetMaxBuyQty(selectedConsumable);
 		purchaseQty = Math.Max(1, Math.Min(max, next));
+		DisarmBuy(); // qty changed the total — re-confirm
 		SoundManager.PlayClick();
 	}
 
@@ -1639,6 +1649,7 @@
 			purchaseQty = GetMaxBuyQty(selectedConsumable);
 		else
 			purchaseQty = 1;
+		DisarmBuy();
 		SoundManager.PlayClick();
 	}
 
@@ -1712,6 +1723,7 @@
 			return ("lucide:archive", "Max Storage", "rgba(255,255,255,0.5)", 16);
 
 		if (GetGold() < total) return ("lucide:x", "Not Enough", "rgba(255,255,255,0.5)", 16);
+		if (IsBuyArmed(item.Id)) return ("lucide:shopping-bag", GetArmedBuyLabel(), "#ffffff", 18);
 		return ("lucide:shopping-bag", qty > 1 ? $"Purchase x{qty}" : "Purchase", "#ffffff", 18);
 	}
 
@@ -1727,6 +1739,7 @@
 		int stackRoom = GetConsumableMaxStack(item.Id) - GetConsumableOwned(item.Id);
 		if (stackRoom < qty) return ("lucide:archive", "Stack Full", "rgba(255,255,255,0.5)", 16);
 		if (GetBossTokens() < total) return ("lucide:x", "Not Enough", "rgba(255,255,255,0.5)", 16);
+		if (IsBuyArmed(item.Id)) return ("lucide:shopping-bag", GetArmedBuyLabel(), "#ffffff", 18);
 		return ("lucide:shopping-bag", qty > 1 ? $"Purchase x{qty}" : "Purchase", "#ffffff", 18);
 	}
 
@@ -1735,12 +1748,59 @@
 		if (selectedItem?.Id == item.Id) return;
 		selectedItem = item;
 		purchaseQty = 1; // reset multi-buy qty so a new item never inherits a stale count
+		DisarmBuy();
 		detailVersion++;
 		// One-shot card-select pulse — the overlay div is keyed on
 		// selectPulseVersion so it remounts each click, replaying @keyframes.
 		justSelectedItemId = item.Id;
 		selectPulseVersion++;
 		SoundManager.PlayClick();
+	}
+
+	// ------------------------------------------------------------
+	// Two-stage buy (same grammar as FUSE / Skill Tree reset): the
+	// first press ARMS the CTA ("press again to buy"), the second press
+	// inside BuyConfirmWindow buys. Unaffordable / blocked = deny sound,
+	// never arms. Keyboard confirm and mouse click share this path.
+	// Any selection / qty / store change disarms; Tick() expires it.
+	// ------------------------------------------------------------
+	private const float BuyConfirmWindow = 3f;
+	private string armedBuyId = null;
+	private float buyArmExpires = 0f;
+	private bool buyArmedByKey = false;
+
+	private bool IsBuyArmed(string id) => armedBuyId != null && armedBuyId == id && RealTime.Now < buyArmExpires;
+
+	private void DisarmBuy() { armedBuyId = null; }
+
+	private string GetArmedBuyLabel() => buyArmedByKey ? "Press again to buy" : "Click again to buy";
+
+	private void ArmBuy(string id, bool viaKey)
+	{
+		armedBuyId = id;
+		buyArmedByKey = viaKey;
+		buyArmExpires = RealTime.Now + BuyConfirmWindow;
+		SoundManager.PlayClick();
+	}
+
+	private void RequestBuyItem(ShopItem item, bool viaKey)
+	{
+		if (item == null) return;
+		if (IsPurchaseFlash || purchaseBurstActive) return; // previous buy still landing
+		if (!CanPurchaseQty(item)) { DisarmBuy(); SoundManager.PlayDeny(); return; }
+		if (!IsBuyArmed(item.Id)) { ArmBuy(item.Id, viaKey); return; }
+		DisarmBuy();
+		PurchaseItem(item);
+	}
+
+	private void RequestBuyConsumable(BossConsumable item, bool viaKey)
+	{
+		if (item == null) return;
+		if (IsPurchaseFlash || purchaseBurstActive) return;
+		if (!CanPurchaseConsumableQty(item)) { DisarmBuy(); SoundManager.PlayDeny(); return; }
+		if (!IsBuyArmed(item.Id)) { ArmBuy(item.Id, viaKey); return; }
+		DisarmBuy();
+		PurchaseConsumable(item);
 	}
 
 	private async void PurchaseItem(ShopItem item)
@@ -1976,6 +2036,7 @@
 		if (selectedConsumable?.Id == item.Id) return;
 		selectedConsumable = item;
 		purchaseQty = 1;
+		DisarmBuy();
 		detailVersion++;
 		justSelectedItemId = item.Id;
 		selectPulseVersion++;
@@ -2120,6 +2181,8 @@
 		hash.Add(selectPulseVersion);
 		hash.Add(purchasedItemId);
 		hash.Add(buyBtnOvershoot);
+		hash.Add(armedBuyId);
+		hash.Add(buyArmedByKey);
 		hash.Add(purchaseBurstActive);
 		hash.Add(purchaseBurstVersion);
 		hash.Add(purchaseQty);

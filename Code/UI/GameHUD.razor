@@ -44,11 +44,11 @@
 					<div class="tlc-title">LEAVE EXPEDITION?</div>
 					<div class="tlc-body">Your current run will end and any un-awarded rewards will be lost.</div>
 					<div class="tlc-actions">
-						<button class="tlc-btn danger" onclick=@ConfirmLeaveExpedition>
+						<button class="tlc-btn danger @(_leaveKbIndex == 1 ? "kb-focused" : "")" onclick=@ConfirmLeaveExpedition onmouseover=@(() => _leaveKbIndex = 1)>
 							<iconify icon="lucide:log-out" Size=@(14) Color="#ffffff" />
 							<span>END &amp; LEAVE</span>
 						</button>
-						<button class="tlc-btn secondary" onclick=@CancelLeaveExpedition>
+						<button class="tlc-btn secondary @(_leaveKbIndex == 0 ? "kb-focused" : "")" onclick=@CancelLeaveExpedition onmouseover=@(() => _leaveKbIndex = 0)>
 							<iconify icon="lucide:arrow-left" Size=@(14) Color="#cbd5e1" />
 							<span>STAY</span>
 						</button>
@@ -502,6 +502,16 @@
 	// R this frame sets PanelHandledPowerKey; GameHUD's R->Radio yields to it.
 	// Reset alongside PanelHandledBackKey at the top of OnUpdate().
 	public static bool PanelHandledPowerKey { get; set; } = false;
+	// A page with an in-page popup open (release confirm, dropdown, zoom view…)
+	// sets this from its TickInput each frame; GameHUD then skips ALL of its own
+	// hotkeys that frame (tabs, phone, widgets, back→menu), so they can't fire
+	// underneath the page's popup. Reset at the top of OnUpdate().
+	public static bool PageCapturesInput { get; set; } = false;
+	// True if a blocking modal was open at the END of the previous frame. On the
+	// frame a modal closes (its own Tick may run before or after this component),
+	// the key that closed it is still "Pressed" — the page and GameHUD skip input
+	// that frame so e.g. the Q that closed the Bag can't also open the menu.
+	private static bool _modalWasOpen = false;
 	// 7 tabs: home is position 0, then the original 6. Number keys 1–6
 	// still map to the original tabs (indexes 1–6) and H maps to home (index 0).
 	private static string[] tabs = { "monsters", "skills", "expedition", "online", "beastiary", "shop" };
@@ -630,6 +640,7 @@
 			// Menu->exit-panel flip in HandleKeyboardInput() then yields to it.
 			PanelHandledBackKey = false;
 			PanelHandledPowerKey = false;
+			PageCapturesInput = false;
 
 			// s&box 26.09.08 made <button> focusable; a focused button swallows
 			// game input. Drop any non-text focus before input is read.
@@ -664,6 +675,9 @@
 
 			HandleKeyboardInput();
 
+			// Record modal state AFTER this frame's input ran (see _modalWasOpen).
+			_modalWasOpen = UIModalState.AnyModalOpen;
+
 			// Check radio hotkeys and tick for auto-advance
 			RadioManager.CheckInput();
 			RadioManager.Tick();
@@ -687,10 +701,13 @@
 		// panel must NOT also run its keyboard handler, or WASD would move the
 		// selection in the panel UNDERNEATH the modal. Mirrors the same guard
 		// in HandleKeyboardInput().
-		if (UIModalState.AnyModalOpen) return;
+		if (UIModalState.AnyModalOpen || _modalWasOpen) return;
 
-		// Only tick panels when not navigating tabs (panels handle their own input)
-		if (IsNavigatingTabs) return;
+		// A 3D battle owns the keyboard (BattleView) — no page input underneath.
+		if (Is3DBattleActive()) return;
+
+		// The leave-expedition confirm is up — no page input underneath it.
+		if (_pendingTabSwitch != null) return;
 
 		try
 		{
@@ -705,8 +722,13 @@
 				case "expedition":
 					// Exactly one of these is mounted at a time — the world map
 					// when no run is active, the expedition panel during a run.
-					expeditionPanel?.TickInput();
-					worldMapPanel?.TickInput();
+					// Tick ONLY the mounted one (same condition as the markup) — the
+					// other @ref can be a stale, unmounted instance.
+					if ( ExpeditionManager.Instance?.CurrentExpedition == null
+						&& BattleManager.Instance?.IsInBattle != true )
+						worldMapPanel?.TickInput();
+					else
+						expeditionPanel?.TickInput();
 					break;
 				case "online":
 					onlineHubPanel?.TickInput();
@@ -990,6 +1012,19 @@
 		// global edge-triggered presses underneath it.
 		if (UIModalState.AnyModalOpen) return;
 
+		// A modal closed this frame — its closing key must not also act here.
+		if (_modalWasOpen) return;
+
+		// The active page has an in-page popup open this frame — it owns the keys.
+		if (PageCapturesInput) return;
+
+		// The leave-expedition confirm (GameHUD's own in-page modal) owns the keys.
+		if (_pendingTabSwitch != null)
+		{
+			HandleLeaveConfirmKeys();
+			return;
+		}
+
 		// A nav route already fired THIS frame — e.g. the phone launcher
 		// consumed this same edge-triggered press and closed itself, which
 		// released the modal gate above before this handler ran. The second
@@ -1033,28 +1068,18 @@
 		else if (Input.Pressed("View")) { NavManager.OpenOverlay(NavManager.OverlayEffects); }
 		else if (Input.Pressed("Notifications")) { NavManager.OpenOverlay(NavManager.OverlayNotifications); }
 
-		// Escape/Menu to go back to main menu (or exit panel first).
+		// Q / Escape at a page's top level opens the system menu.
 		//
-		// If the active panel already used Q THIS frame for an internal back
-		// action (closing a sub-picker, detail->grid, etc.) it sets
-		// PanelHandledBackKey — in that case GameHUD must NOT also flip into
-		// tab-nav, or the panel would freeze. Escape is exempt from that
-		// suppression: panels never consume Escape, so Escape always escalates.
+		// This used to flip IsNavigatingTabs (a mode for the retired bottom tab
+		// bar): the page stopped ticking and nothing on screen explained it — the
+		// "Q freezes the page" bug. Now the first unconsumed back press goes
+		// straight to MenuPopup (Q closes it again). A page that used Q/Escape for
+		// an internal back step this frame sets PanelHandledBackKey and we yield.
 		bool backPressed = Input.Pressed("Menu") || Input.Pressed("Escape");
-		bool menuConsumedByPanel = Input.Pressed("Menu") && PanelHandledBackKey;
-		if (backPressed && !menuConsumedByPanel)
+		if (backPressed && !PanelHandledBackKey)
 		{
-			if (!IsNavigatingTabs)
-			{
-				// Exit panel first (go to tab navigation)
-				IsNavigatingTabs = true;
-				SoundManager.PlayBack();
-			}
-			else
-			{
-				// Already at tabs, go to main menu
-				OnMenuClicked();
-			}
+			IsNavigatingTabs = false;
+			OnMenuClicked();
 		}
 		}
 		catch (Exception ex)
@@ -1170,11 +1195,35 @@
 	// Pending tab destination when the player tried to leave mid-expedition.
 	// The confirm dialog commits or cancels the switch.
 	private string _pendingTabSwitch;
+	// Keyboard cursor on the leave-expedition confirm: 0 = STAY (seeded — a
+	// destructive confirm always starts on cancel), 1 = END & LEAVE.
+	private int _leaveKbIndex = 0;
+
+	/// <summary>Keyboard for the leave-expedition confirm. A/D (or W/S) move
+	/// between STAY and END &amp; LEAVE, confirm activates, Q = stay.</summary>
+	private void HandleLeaveConfirmKeys()
+	{
+		if ( Input.Pressed( "Left" ) || Input.Pressed( "Right" ) || Input.Pressed( "Up" ) || Input.Pressed( "Down" ) )
+		{
+			_leaveKbIndex = _leaveKbIndex == 0 ? 1 : 0;
+			SoundManager.PlayHover();
+		}
+		else if ( Input.Pressed( "Menu" ) )
+		{
+			CancelLeaveExpedition();
+		}
+		else if ( UiInput.ConfirmPressed() )
+		{
+			if ( _leaveKbIndex == 1 ) ConfirmLeaveExpedition();
+			else CancelLeaveExpedition();
+		}
+	}
 
 	private void ConfirmLeaveExpedition()
 	{
 		var target = _pendingTabSwitch;
 		_pendingTabSwitch = null;
+		_leaveKbIndex = 0;
 
 		// End the current expedition. CancelExpedition handles battle teardown
 		// and heals the roster so nothing gets stuck at 0 HP on the map.
@@ -1190,6 +1239,7 @@
 	private void CancelLeaveExpedition()
 	{
 		_pendingTabSwitch = null;
+		_leaveKbIndex = 0;
 		SoundManager.PlayPopdown();
 	}
 
@@ -1485,8 +1535,9 @@
 
 	private void OnRadioClicked()
 	{
-		SoundManager.PlayClick();
-		RadioWidget.Toggle();
+		// The floating RadioWidget is retired (user 2026-09-25: the phone is the
+		// only home for Chat/Radio/Effects) — R opens the PawPad Radio app.
+		PhoneLauncher.OpenToApp( "radio" );
 	}
 
 	private string GetTitleColor()
@@ -1516,7 +1567,9 @@
 
 	private void OnEffectsClicked()
 	{
-		ActiveEffectsPanel.Instance?.ToggleExpanded();
+		// The floating effects widget is retired (phone-only, user 2026-09-25) —
+		// C opens the PawPad Effects app.
+		PhoneLauncher.OpenToApp( "effects" );
 	}
 
 	private void OnNotificationsClicked()
@@ -1644,6 +1697,8 @@
 			hash.Add(BattleManager.Instance?.CurrentTurnIndex ?? 0);
 			// Keyboard navigation state
 			hash.Add(IsNavigatingTabs);
+			hash.Add(_pendingTabSwitch);
+			hash.Add(_leaveKbIndex);
 			hash.Add(selectedTabIndex);
 			// Inventory count for badge updates
 			hash.Add(GetInventoryItemCount());
