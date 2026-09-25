@@ -808,7 +808,9 @@ public sealed class ItemManager : Component
 			SellPrice = 0
 		}, tokenPrice: 200 );
 
-		AddBossTokenGood( new ItemDefinition
+		// Off sale (economy A3, user 2026-09-25): Ink x5 for 150 Tokens undercut
+		// the Tokens economy. Still defined so existing stacks keep working.
+		AddItem( new ItemDefinition
 		{
 			Id = "boss_contract_ink_bundle",
 			Name = "Contract Ink x5",
@@ -820,7 +822,7 @@ public sealed class ItemManager : Component
 			EffectValue = 5,
 			MaxStack = 20,
 			SellPrice = 0
-		}, tokenPrice: 150 );
+		} );
 
 		AddBossTokenGood( new ItemDefinition
 		{

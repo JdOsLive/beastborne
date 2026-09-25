@@ -44,8 +44,18 @@ public sealed class MissionManager : Component
 	// Ranked arena is kill-switched at launch (PvP scope A, UI dormant):
 	// arena_* missions are excluded from the Generate* picks while false, and
 	// any already-rolled arena_* state wears QuestPanel's .dormant costume.
-	// Flip to true when CompetitiveManager's ranked flow goes live.
-	public static bool ArenaMissionsEnabled => false;
+	// Flip RankedEnabled when CompetitiveManager's ranked flow goes live — it is
+	// the ONE ranked switch (OnlineHubPanel reads it too). Arena quests count
+	// ranked sets only; ghost/quickplay battles never earn them.
+	public const bool RankedEnabled = false;
+	// Property (not the const) at the use sites so the day-one `false` doesn't
+	// trip CS0162 unreachable-code warnings.
+	public static bool ArenaMissionsEnabled => RankedEnabled;
+
+	// An already-rolled arena_* quest while ranked is off: it can't progress,
+	// so it must not block the all-dailies / all-weeklies bonus.
+	private static bool IsDormantArena( string missionId )
+		=> !ArenaMissionsEnabled && missionId != null && missionId.StartsWith( "arena_" );
 
 	// Events
 	public Action OnMissionsUpdated;
@@ -675,7 +685,7 @@ public sealed class MissionManager : Component
 	public bool AreAllDailiesComplete()
 	{
 		return ActiveDailyMissions.Count > 0 &&
-			   ActiveDailyMissions.All( m => m.Completed && m.Claimed );
+			   ActiveDailyMissions.All( m => (m.Completed && m.Claimed) || IsDormantArena( m.MissionId ) );
 	}
 
 	/// <summary>
@@ -684,7 +694,7 @@ public sealed class MissionManager : Component
 	public bool AreAllWeekliesComplete()
 	{
 		return ActiveWeeklyMissions.Count > 0 &&
-			   ActiveWeeklyMissions.All( m => m.Completed && m.Claimed );
+			   ActiveWeeklyMissions.All( m => (m.Completed && m.Claimed) || IsDormantArena( m.MissionId ) );
 	}
 
 	/// <summary>

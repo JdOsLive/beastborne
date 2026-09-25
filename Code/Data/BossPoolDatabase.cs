@@ -52,11 +52,11 @@ public static class BossPoolDatabase
 				ExpeditionId = "saltmoor_forest",
 				Bosses = new List<BossData>
 				{
-					CreateBoss( "jackacabra", BossTier.Normal, 1, 4,
+					CreateBoss( "jackacabra", BossTier.Normal, 2, 4,
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "The Jackacabra bares its fangs — the herd's nightmare wakes!", ATKMultiplier = 1.3f, Ability = BossAbilityType.Enrage } ),
-					CreateBoss( "twincoil", BossTier.Normal, 1, 4,
+					CreateBoss( "twincoil", BossTier.Normal, 2, 4,
 						new BossPhase { HPThreshold = 0.5f, TransitionMessage = "Twincoil tightens its grip!", DEFMultiplier = 1.3f, Ability = BossAbilityType.Shield } ),
-					CreateBoss( "gnollium", BossTier.Elite, 2, 6,
+					CreateBoss( "gnollium", BossTier.Elite, 3, 6,
 						new BossPhase { HPThreshold = 0.6f, TransitionMessage = "Gnollium unfurls — the grove's keeper is roused!", ATKMultiplier = 1.3f, Ability = BossAbilityType.AreaDamage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Gnollium calls the wood — every leaf is its weapon!", DEFMultiplier = 1.2f, Ability = BossAbilityType.Regenerate } )
 				}
@@ -71,7 +71,7 @@ public static class BossPoolDatabase
 				ExpeditionId = "mini_loomweaver_burrow",
 				Bosses = new List<BossData>
 				{
-					CreateBoss( "loomweaver", BossTier.Elite, 2, 10,
+					CreateBoss( "loomweaver", BossTier.Elite, 3, 10,
 						new BossPhase { HPThreshold = 0.6f, TransitionMessage = "The pot shatters — what steps out was never really inside it.", ATKMultiplier = 1.35f, Ability = BossAbilityType.Enrage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "Loomweaver draws silk through the fragments — the shards become armour.", DEFMultiplier = 1.3f, Ability = BossAbilityType.Shield } )
 				}
@@ -91,7 +91,7 @@ public static class BossPoolDatabase
 				ExpeditionId = "old_saltmoor",
 				Bosses = new List<BossData>
 				{
-					CreateBoss( "liliprince", BossTier.Elite, 2, 8,
+					CreateBoss( "liliprince", BossTier.Elite, 3, 8,
 						new BossPhase { HPThreshold = 0.6f, TransitionMessage = "Liliprince's crown takes the dawn-light — the muse turns toward you!", ATKMultiplier = 1.4f, Ability = BossAbilityType.AreaDamage },
 						new BossPhase { HPThreshold = 0.25f, TransitionMessage = "The pond ripples — every lily answers Liliprince's call!", DEFMultiplier = 1.3f, Ability = BossAbilityType.Regenerate } )
 				}
@@ -102,6 +102,8 @@ public static class BossPoolDatabase
 	/// <summary>
 	/// Create a boss with phases.
 	/// </summary>
+	// Repeat-clear tokens: Normal 2, Elite 3 (raised 2026-09-25 so bosses stay the
+	// main Token source after quests started paying Tokens — currency-audit-2026-09.md A4).
 	private static BossData CreateBoss( string speciesId, BossTier tier, int baseTokens, int firstClear, params BossPhase[] phases )
 	{
 		return new BossData
