@@ -73,7 +73,7 @@ public sealed class NotificationManager : Component
 
 	protected override void OnAwake()
 	{
-		if ( Instance == null )
+		if ( !Instance.IsValid() )
 		{
 			Instance = this;
 		}
@@ -284,7 +284,7 @@ public sealed class NotificationManager : Component
 
 	public static void EnsureInstance( Scene scene )
 	{
-		if ( Instance != null ) return;
+		if ( Instance.IsValid() ) return;
 
 		var go = scene.CreateObject();
 		go.Name = "NotificationManager";

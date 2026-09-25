@@ -83,7 +83,7 @@ public sealed class BattleManager : Component
 
 	protected override void OnAwake()
 	{
-		if ( Instance == null )
+		if ( !Instance.IsValid() )
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;

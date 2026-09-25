@@ -112,7 +112,7 @@ public sealed class SideQuestManager : Component
 
 	protected override void OnAwake()
 	{
-		if ( Instance == null )
+		if ( !Instance.IsValid() )
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
@@ -128,7 +128,7 @@ public sealed class SideQuestManager : Component
 
 	public static void EnsureInstance( Scene scene )
 	{
-		if ( Instance != null ) return;
+		if ( Instance.IsValid() ) return;
 		var go = scene.CreateObject();
 		go.Name = "SideQuestManager";
 		go.Components.Create<SideQuestManager>();

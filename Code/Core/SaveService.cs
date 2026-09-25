@@ -119,7 +119,7 @@ public sealed class SaveService : Component
 
 	protected override void OnAwake()
 	{
-		if ( Instance == null )
+		if ( !Instance.IsValid() )
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
@@ -227,7 +227,7 @@ public sealed class SaveService : Component
 
 	public static void EnsureInstance( Scene scene )
 	{
-		if ( Instance != null ) return;
+		if ( Instance.IsValid() ) return;
 		if ( scene == null ) return;
 
 		var go = scene.CreateObject();

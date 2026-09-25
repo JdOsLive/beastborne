@@ -35,7 +35,7 @@ public sealed class ItemManager : Component
 
 	protected override void OnAwake()
 	{
-		if ( Instance == null )
+		if ( !Instance.IsValid() )
 		{
 			Instance = this;
 			GameObject.Flags = GameObjectFlags.DontDestroyOnLoad;
@@ -51,9 +51,17 @@ public sealed class ItemManager : Component
 		}
 	}
 
+	// Clear the static when this manager goes away (GameManager's stale-session
+	// reboot DestroyImmediate()s leftovers) so EnsureInstance builds a fresh
+	// one instead of reusing the dead instance and its stale state.
+	protected override void OnDestroy()
+	{
+		if ( Instance == this ) Instance = null;
+	}
+
 	public static void EnsureInstance( Scene scene )
 	{
-		if ( Instance != null ) return;
+		if ( Instance.IsValid() ) return;
 
 		var go = scene.CreateObject();
 		go.Name = "ItemManager";

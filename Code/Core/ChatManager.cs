@@ -93,9 +93,17 @@ public sealed class ChatManager : Component, Component.INetworkListener
 		AddSystemMessage( Beastborne.Systems.LocalizationManager.Get( SystemTipKeys[index] ), ChatMessageType.System );
 	}
 
+	// Clear the static when this manager goes away (GameManager's stale-session
+	// reboot DestroyImmediate()s leftovers) so EnsureInstance builds a fresh
+	// one instead of reusing the dead instance and its stale state.
+	protected override void OnDestroy()
+	{
+		if ( Instance == this ) Instance = null;
+	}
+
 	public static void EnsureInstance( Scene scene )
 	{
-		if ( Instance != null ) return;
+		if ( Instance.IsValid() ) return;
 
 		// Try to find existing ChatManager in scene (added via prefab in editor)
 		Instance = scene.GetAllComponents<ChatManager>().FirstOrDefault();
