@@ -37,18 +37,28 @@ This file loads on EVERY turn, so it holds only rules that apply to nearly every
 
 ## s&box Razor UI — CSS Quirks & Gotchas
 
+> **⚠️ ENGINE MOVED AGAIN (Aug–Sep 2026) — rows below were measured on the OLD engine.** 26.09.01 rewrote UI rendering (shader gradients, gamma blending, real blur/drop-shadow, one rounded-rect path, big perf pass); **26.09.08 replaced Yoga with `Sandbox.Layout`** (new flex engine, `display: block/grid/inline/contents`, `position: fixed`, scrollbars, Tab focus traversal, `ScrollIntoView`); 26.09.15 switched to GPU text + the Painter renderer; 26.09.22 fixed shadow/filter layer clipping. Findings below marked **(26.09 — verify)** come from reading Facepunch's engine source (sbox-public @ 2026-09-24) and the news posts — **not yet confirmed in our editor.** Until a row is verified in-editor, keep writing the proven-safe way; when you verify one, update the row and drop the tag. Full research notes: `.claude/ui-knowledge/sbox-26-09-changes.md`.
+>
+> **Test these first (likely live regressions):**
+> 1. **`<button>` now takes keyboard focus** (26.09.08, `Button` ctor sets `AcceptsFocus = true`; ~300 `<button>` tags in our razor). In-game, a focused panel with default `ButtonInput` routes keys to UI, so **clicking any button may kill game keybinds** (the AcceptsFocus row below) — and Space/Enter now "click" the focused button, which can double-fire with our `UiInput.ConfirmPressed()`. Test: click a button, then press M / 1–6.
+> 2. **Box model:** `Sandbox.Layout` sizes border-box internally — declared width may now INCLUDE borders, contradicting the 2026-07-05 padding-box measurement. Re-measure one bordered row.
+> 3. **Scrollbars are opt-in** (`scrollbar-width` default draws nothing) — check scroll areas still show whatever scroll affordance we expect.
+
 s&box has its own CSS engine. **26.06.03 rewrote the parser.** Now working (stop working around these): unitless `line-height` is a multiplier (see below), one bad rule no longer kills the whole stylesheet, `filter: none` / `transform: none` / `background: none` override base classes, `inset` shorthand, `word-break: break-word`, `transition-*` longhands, colors in the `background:` shorthand, `min()/max()/clamp()`, `:has()` with descendants, `currentColor`, `oklch()/lab()/hwb()`, `dvh/svh/lvh/dvw`, `overflow: auto`, opacity %, logical `margin/padding/inset-block/inline`, `flex-flow` + `font` shorthands, `image-rendering: crisp-edges`, `inherit/initial/unset/revert` (so `flex: unset` probably works — unverified; `flex: 0 0 auto` is the safe default), animation `ms` units.
 
-**Still NOT supported:** `box-sizing` (any value) · `position: fixed` · `display: block` / `inline-flex` (only `flex`/`none`) · `transparent` inside gradients · `radial-gradient` shape keywords / px stops · `object-position` % pairs · `box-shadow: inset` · `:focus-within` · `:first-of-type`/`:last-of-type`/`:nth-of-type` (use `-child`) · `repeating-linear-gradient()` · quotes in `url()` (use `url(@var)`) · `onmouseenter` (use `onmouseover`).
+**Reportedly supported now (26.09 — verify before relying on it):** `position: fixed` · `display: block/grid/inline/contents` · `transparent` in gradients · `radial-gradient` `circle`/`ellipse` + px stops · `conic-gradient` · `backdrop-filter` · `box-shadow: inset` · `::before`/`::after` · `isolation` · `background-clip: text` · `overscroll-behavior` · `scrollbar-width/-color` · `Panel.ScrollIntoView` · `Panel.TabIndex` / `FocusNext()`.
+
+**Still NOT supported (confirmed in engine source):** `box-sizing` as a CSS property · `inline-flex` · **`object-position` in any form** (the property doesn't exist — keyword pairs "working" was the default centering) · `:focus-within` · `:first-of-type`/`:last-of-type`/`:nth-of-type` (use `-child`) · `repeating-linear-gradient()` · CSS `var()` / `--x` (SCSS `$vars` only) · `color-mix()` · `transform-style: preserve-3d` / `perspective` property (the `perspective()` transform function works; panels don't depth-sort) · `opacity()` inside `filter` (kills the whole declaration; other filter functions chain but apply in a FIXED order, not source order) · quotes in `url()` (use `url(@var)`) · `onmouseenter` (use `onmouseover`).
 
 ### Box model & sizing
 - **⚠️ `line-height`:** unitless = font-size MULTIPLIER since 26.06.03 (`line-height: 24` on 24px text = 576px — this broke the whole UI on that update). Use `px` or a small multiplier (`1.3`). Fonts 30px+ need a line box ≥ font-size in px or text clips.
-- **⚠️ Box model is PADDING-BOX:** declared `width`/`height` INCLUDE padding; only borders add on top. A 200px card with 2px borders = `width: 196px` (padding already inside). Never subtract padding. Row math: sum(children + borders) + gaps = row width. Telltales of getting it wrong: dead slack after the last tile; overlapping text in a height-pinned tile.
+- **⚠️ Box model is PADDING-BOX (measured on Yoga, 2026-07-05 — 26.09 `Sandbox.Layout` is border-box internally; RE-MEASURE):** declared `width`/`height` INCLUDE padding; only borders add on top. A 200px card with 2px borders = `width: 196px` (padding already inside). Never subtract padding. Row math: sum(children + borders) + gaps = row width. Telltales of getting it wrong: dead slack after the last tile; overlapping text in a height-pinned tile.
+- *The layout rows below were all found on Yoga (replaced 26.09.08). They're still the safe way to write layout, but may no longer be necessary — re-test before removing a workaround.*
 - **Flex cards need `width` + `min-width` + `flex: 0 0 Npx`** (all three), and pin their visual children too — otherwise they shrink to a strip and text reflows one char per line.
 - **`flex: 1` can fail with 3+ siblings** — use explicit widths.
 - **`flex-wrap: wrap` miscalculates container height** — use explicit row containers.
 - **`overflow: hidden` on a flex child can collapse it to zero**; with `text-overflow: ellipsis` it collapses text too. Avoid both on flex children.
-- **`width: auto` doesn't shrink-wrap `position: absolute`** — give it a fixed-size box and put content in a `flex: 0 0 auto` child.
+- **`width: auto` doesn't shrink-wrap `position: absolute`** (26.09 — the new engine shrink-fits; verify) — give it a fixed-size box and put content in a `flex: 0 0 auto` child.
 - **`transform: translate(-50%,-50%)` centering poisons flex-grow in every descendant** (`flex: 1 1 0` falls back to content width). Center modals with flex on the root (`display:flex; align-items/justify-content: center`) and `position: relative` on the modal.
 - **Imperative `Style.Width = Length.Percent(x)` on an absolute child paints full width** — compute pixels (`parent.Box.Rect.Width * ScaleFromScreen * fraction`) and write `Length.Pixels`.
 
@@ -62,15 +72,15 @@ s&box has its own CSS engine. **26.06.03 rewrote the parser.** Now working (stop
 ### Scroll containers
 - **Items must be DIRECT children of the `overflow-y: scroll` element** — no intermediate wrapper. Pattern: parent `display:flex; flex-direction:column; overflow:hidden; height:Xpx;` → scroll child `flex:1 1 0; min-height:0; overflow-y:scroll;`.
 - **Nested flex-row inside a scroll container collapses to zero width** — use a plain `width: 100%` block with margins instead.
-- **Scroll clipping does NOT clip descendant `box-shadow`, `transform`, or overhanging absolute children.** On scroll-grid cards: hover/selected = border + border-color + background only (no transform, no colored glow); badges sit inside card bounds (`top: 4px`, not `-7px`); headers above grids must be opaque (≥0.95 alpha) with `gap: 0` to the grid. Colored glows are fine outside scroll areas.
+- **Scroll clipping does NOT clip descendant `box-shadow`, `transform`, or overhanging absolute children** (26.09 — the Painter renderer draws children inside the parent's clip, so this is likely fixed; verify before using lifts/glows in scrolls). On scroll-grid cards: hover/selected = border + border-color + background only (no transform, no colored glow); badges sit inside card bounds (`top: 4px`, not `-7px`); headers above grids must be opaque (≥0.95 alpha) with `gap: 0` to the grid. Colored glows are fine outside scroll areas.
 
 ### Rendering & images
 - **`filter` on `<img>` blurs pixel art** (bypasses `image-rendering: pixelated`). Use `opacity`, or a colored overlay on the wrapper. Same cause as `transform: scale()` blur.
 - **`<img>` + `object-fit: contain` tiles at the edges on aspect mismatch** — always add `background-repeat: no-repeat`.
-- **`object-position`:** keyword pairs (`center top`) work; % pairs don't.
-- **`radial-gradient`:** no shape word, percent stops only — `radial-gradient(rgba(...) 0%, rgba(0,0,0,0) 70%)`. No CSS halftone possible; ship a PNG/WebP.
-- **Gradients:** use `rgba(...,0)` not `transparent`; prefer `to bottom`/`to right` over degree forms (`180deg` can render horizontal on narrow elements).
-- **Absolutely-positioned bg layers paint BEHIND the parent's `background-color`** — make the bg layer the first in-flow flex child instead (`.bg-scroll` pattern on Chat/Effects/Notifications/Radio popups).
+- **`object-position` doesn't exist in s&box** (confirmed in engine source) — drop it; to anchor an image, position its wrapper with flex alignment.
+- **`radial-gradient`:** no shape word, percent stops only — `radial-gradient(rgba(...) 0%, rgba(0,0,0,0) 70%)`. (26.09 — shape keywords + px stops reportedly work now; verify before relying on them.)
+- **Gradients:** use `rgba(...,0)` not `transparent` (26.09 — `transparent` reportedly fine now); prefer `to bottom`/`to right` over degree forms (`180deg` can render horizontal on narrow elements).
+- **Absolutely-positioned bg layers paint BEHIND the parent's `background-color`** (old renderer — re-test under 26.09) — make the bg layer the first in-flow flex child instead (`.bg-scroll` pattern on Chat/Effects/Notifications/Radio popups).
 - **Empty `<div>`s render as gray rectangles / scrollbar artifacts** — remove them.
 - **Bare text in flex containers renders vertically** — always wrap text in an element.
 
@@ -84,7 +94,7 @@ s&box has its own CSS engine. **26.06.03 rewrote the parser.** Now working (stop
 - **`TextEntry` has no `onchange`** — `@ref` + `Text="@field"`, poll `.Text` in `Tick()` (see `FilterBar.razor`).
 - **Hover tooltips flicker over inner elements** — put a CLASS on every child and set `.my-glyph { pointer-events: none; }` on BOTH the hover target's children and the tooltip's; make the tooltip flush (`bottom: 100%`) with no gap. ⚠️ `> * { pointer-events: none; }` and bare `iconify { }` selectors do NOT land in-engine (verified 2026-08-28) — class-on-child only.
 - **UI mouse wheel = `override void OnMouseWheel(Vector2 delta)`** (not `Input.MouseWheel`). Don't call base to consume the event. ⚠️ The access modifier DIFFERS by panel (2026-09-04): Leaderboard/Beastiary/MonsterRoster/PhoneLauncher/TeamPickerPopup/WorldMap need `public override`, MainMenu needs `protected` — write one, read the CS0507 message, flip if it names the other.
-- **⚠️ Never set `AcceptsFocus = true` on page panels** — after a click it suppresses `Input.Pressed` game-wide (all keybinds die). Panel keyboard input routes through GameHUD's TickInput.
+- **⚠️ Never set `AcceptsFocus = true` on page panels** — after a click it suppresses `Input.Pressed` game-wide (all keybinds die). Panel keyboard input routes through GameHUD's TickInput. **26.09.08: `<button>` sets `AcceptsFocus = true` itself** — see "Test these first" above; candidate fixes (verify first): `ButtonInput = PanelInputType.Game` on focusable controls, or clearing UI focus after a click.
 - **Custom fonts must sit directly in `Assets/fonts/`** (no subfolders); register `Exo2 { font-family: url("fonts/Exo2-Bold.ttf"); }`, use the embedded family name.
 - **`Log.Info(multiLineString)` prints only the first line** — log each line separately.
 - **Build `dev_*` ConCmds that freeze UI states** for inspection (e.g. `dev_fusefx gather|bind|cocoon|play|reveal|off`) — MCP round-trips are too slow to catch fast animations mid-flight.

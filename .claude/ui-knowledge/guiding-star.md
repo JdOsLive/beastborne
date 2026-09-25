@@ -36,6 +36,8 @@ accent — see "Known stale sources" at the end).
 ## The four signatures
 
 ### 1. One cursor — the living violet ring
+> ⚠️ **Under review (user, 2026-09-25):** the ring stays only if the overhaul's Phase 1 shows it works as a *universal* selection indicator across mouse, keyboard and controller. If not, it gets replaced. This section describes what ships today.
+
 The selection cursor is **the only perpetually-moving control-level thing on screen.**
 - A real bordered element — `border: 4px solid #9b6cff`, transparent fill — **not** box-shadow (s&box distorts shadow corners).
 - It is a **root-level absolute element rendered AFTER the content** (a later sibling, so it paints on top), not an `inset:-10px` child of each item. Code writes its `left/top/width/height/border-radius` from the target's `Box.Rect`; it glides on **GLIDE** `0.27s cubic-bezier(0.22, 1, 0.36, 1)` (left/top/width/height only) + opacity 0.15–0.2s. A `.snap` class makes the first lock-on land instantly.
@@ -215,12 +217,12 @@ Rules:
 ---
 
 ## s&box translation layer (browser CSS that doesn't port)
-Authoritative table: `CLAUDE.md`. The ones that shape this visual language:
+Authoritative table: `CLAUDE.md`. ⚠️ **s&box 26.09.x (Aug–Sep 2026) changed a lot** (see `sbox-26-09-changes.md`): new layout engine, shader gradients (`transparent`, radial shapes and px stops, conic), `backdrop-filter`, `box-shadow: inset`, `position: fixed`, `display: block/grid`, real blur. Several items below may no longer apply. **Verify in-editor before designing around the new capabilities; until then these are the safe defaults.** The ones that shape this visual language:
 - No `backdrop-filter` → near-opaque solid/gradient fills. No `conic-gradient` → linear/solid.
 - `radial-gradient` → bare percent stops only; no shape keyword. Circles/wipes = solid scaling/sliding divs (the accent swipe is a skewed solid slab).
 - No `transparent` inside gradients → `rgba(...,0)`.
 - No `filter` on sprites (`<img>` blurs pixel art) → glow via a behind div, shadow via a wrapper `box-shadow` (never `inset`).
-- No CSS border-triangles → iconify or text glyphs.
+- No CSS border-triangles → iconify or text glyphs. (26.09 adds `border-shape` polygons — verify.)
 - `image-rendering: pixelated` on sprites; never fractional-scale pixel art.
 - Scroll containers don't clip descendant `box-shadow`/`transform` → no colored glows or lifts on scroll-grid cards; overhanging badges stay inside card bounds.
 - No `display: block` / `inline-flex` / `position: fixed` / `box-sizing` (s&box is padding-box: declared size includes padding, borders add on top).
