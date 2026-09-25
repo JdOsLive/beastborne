@@ -49,8 +49,10 @@ The selection cursor is **the only perpetually-moving control-level thing on scr
 - Fusion mode keeps the ring **violet** (the pink fusion accent was retired 2026-07-12).
 
 ### 2. Skew dialect (in-game) + angled planes (menu & device)
+> ⚠️ **Under review (user, 2026-09-25):** the skew angles mostly weren't working. Don't add new skew; the overhaul's shapes decision session decides what stays.
+
 - **In-game panels speak `skewX`**, not 3D planes: section chips `skewX(-12deg)` with counter-skewed labels; LV / genes pills and FilterBar triggers at `-8deg`; header seam dashes at `-24deg`; rarity pedestal strip `-18deg`; the PawPad accent swipe slants `-12deg`.
-- **Receding 3D planes (`perspective() rotateY()`) live only on the main menu** (sidebar `rotateY(13deg)`, cards `10deg`, scene backdrops ±5–7°, Persona pop `translateX(9px) rotateY(13deg) scale(1.04)`) **and the PawPad device lean** (`perspective(1600px) rotateY(-13deg)`, origin right).
+- **Receding 3D planes (`perspective() rotateY()`) live only on the main menu** (sidebar `rotateY(13deg)`, cards `10deg`, scene backdrops ±5–7°, Persona pop `translateX(9px) rotateY(13deg) scale(1.04)`) The PawPad is flat since v9 (its `ProjectLean`/`InverseLean` constants are zeroed — dead weight to remove).
 - **45° diamonds** remain the action shape (`BbDiamond`, stage `.item-/.fuse-/.release-diamond`, `.detail-diamond`), inner icon counter-rotated.
 - ⚠ Engine: a transform-holder can't also carry bg/border/overflow (renders flat under 3D) → surface on a child. Never transform a flex parent whose children rely on flex-grow widths — drive entrances with opacity.
 
@@ -190,7 +192,7 @@ Rules:
 
 ## Navigation — the PawPad
 - **The persistent bottom bar is retired** (markup parked under `@if (false)` in `GameHUD.razor`). The only persistent HUD chrome is the **phone button** (bottom-right, wears an `M` keycap, shows a chat + alerts unread badge). Hidden during 3D battle.
-- **M or the phone button opens the PawPad** ("PawPad · TamerLink OS"; code `PhoneLauncher.razor`): a right-anchored device tilted `perspective(1600px) rotateY(-13deg)`, sliding in from the right, 3×4 app grid + System Dock. It's a **router, never a content holder** — the one exception being the four in-phone widget apps. Q / Esc / 8 close it.
+- **M or the phone button opens the PawPad** ("PawPad · TamerLink OS"; code `PhoneLauncher.razor`): a right-anchored flat device sliding in from the right, 3×4 app grid + System Dock. It's a **router, never a content holder** — the one exception being the four in-phone widget apps. Q / Esc / 8 close it.
 - **Apps (grid order; key in brackets):**
   | App | Accent | Opens |
   |---|---|---|
