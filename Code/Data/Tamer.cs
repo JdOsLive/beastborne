@@ -84,9 +84,12 @@ public class Tamer
 	// System.Text.Json like the List<string> fields above.
 	public HashSet<string> SeenStoryBeats { get; set; } = new();
 
-	// Hard Mode token currency — one bucket per zone. Awarded 3-5 per Hard clear.
-	// Tide  = Weaverton  · Loom = Weaverwood · Dawn = Weavermere · Threaded = Whispering Hollow.
-	// Redemption flow ships in a follow-up patch (items-economy lane).
+	// LEGACY — regional Hard tokens (Tide/Loom/Dawn/Threaded) are retired
+	// (user 2026-09-25): nothing awards or spends them; first Hard clears pay
+	// Tokens instead (ExpeditionManager.HARD_MODE_FIRST_CLEAR_TOKENS). The
+	// fields stay only so the load migration in TamerManager can read old
+	// balances (they existed since v1.2.0) and convert them to Tokens — the
+	// JSON loader drops unknown fields. Remove at >= 1.4 alongside Gems.
 	public int TideTokens { get; set; } = 0;
 	public int LoomTokens { get; set; } = 0;
 	public int DawnTokens { get; set; } = 0;

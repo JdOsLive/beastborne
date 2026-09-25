@@ -272,6 +272,41 @@ public sealed class TamerManager : Component
 				CurrentTamer.MigrationVersion = 2;
 			}
 
+			// Retired currencies → Tokens (user 2026-09-25). Gems had no sink, and
+			// the regional Hard tokens (Tide/Loom/Dawn/Threaded, in saves since
+			// v1.2.0) had no sink either. Convert both to Tokens 1:1, written straight
+			// to BossTokens (not an earn event). Gated on a non-zero balance, NOT on
+			// MigrationVersion: AchievementManager's claim migration already stamps
+			// MigrationVersion = 3 on most saves. Zeroing lands in the same save, so
+			// it can't double-apply. Keep the fields until >= 1.4 — the JSON loader
+			// drops unknown fields, so deleting them first would erase balances.
+			{
+				int gems = Math.Clamp( CurrentTamer.Gems, 0, 4000 );
+				if ( CurrentTamer.Gems > 4000 )
+					Log.Warning( $"[TamerManager] Currency migration: {CurrentTamer.Gems} gems exceeds the 4000 cap — converting 4000." );
+				int regional = Math.Max( 0, CurrentTamer.TideTokens ) + Math.Max( 0, CurrentTamer.LoomTokens )
+					+ Math.Max( 0, CurrentTamer.DawnTokens ) + Math.Max( 0, CurrentTamer.ThreadedTokens );
+				if ( gems > 0 || regional > 0 || CurrentTamer.Gems != 0 )
+				{
+					CurrentTamer.BossTokens += gems + regional;
+					CurrentTamer.Gems = 0;
+					CurrentTamer.TideTokens = 0;
+					CurrentTamer.LoomTokens = 0;
+					CurrentTamer.DawnTokens = 0;
+					CurrentTamer.ThreadedTokens = 0;
+					int total = gems + regional;
+					if ( total > 0 )
+					{
+						Log.Info( $"[TamerManager] Currency migration: {gems} gems + {regional} regional Hard tokens -> {total} Tokens." );
+						NotificationManager.Instance?.AddNotification(
+							NotificationType.Success,
+							"Currencies merged into Tokens",
+							$"Your old Gems and Hard tokens were converted to {total:N0} Tokens.",
+							8f );
+					}
+				}
+			}
+
 			// ── DEFINITIVE SKILL-STATE FIX ─────────────────────────────────
 			// Single self-healing audit on hydrate. Enforces the invariant
 			// TotalEarnedSP(Level) == SkillPoints + Σ(rank × CostPerRank).

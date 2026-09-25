@@ -152,7 +152,9 @@ public sealed class GiftManager : Component
 		foreach ( var gift in claimed )
 		{
 			tamer.Gold += gift.Gold;
-			tamer.Gems += gift.Gems;
+			// No gems in Beastborne (user 2026-09-25): gifts authored with gems pay
+			// Tokens 1:1 until the gift backend stops sending them.
+			tamer.BossTokens += gift.Gems;
 			tamer.ContractInk += gift.Ink;
 			tamer.BossTokens += gift.BossTokens;
 
@@ -232,7 +234,7 @@ public sealed class GiftManager : Component
 	{
 		var parts = new List<string>();
 		if ( gift.Gold > 0 ) parts.Add( $"{gift.Gold:N0} gold" );
-		if ( gift.Gems > 0 ) parts.Add( $"{gift.Gems:N0} gems" );
+		if ( gift.Gems > 0 ) parts.Add( $"{gift.Gems:N0} tokens" ); // legacy gem field → Tokens
 		if ( gift.Ink > 0 ) parts.Add( $"{gift.Ink:N0} ink" );
 		if ( gift.BossTokens > 0 ) parts.Add( $"{gift.BossTokens:N0} boss tokens" );
 		if ( gift.Items != null )

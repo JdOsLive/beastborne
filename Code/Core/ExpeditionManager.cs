@@ -39,12 +39,11 @@ public sealed class ExpeditionManager : Component
 	public const float HARD_MODE_DROP_RATE_MULT = 1.5f;
 	public const float HARD_MODE_ATK_MULT = 1.15f;
 	public const float HARD_MODE_HPDEFSPD_MULT = 1.10f;
-	// Per-zone Hard Token award range, granted on EVERY Hard clear of an
-	// expedition (repeatable by design — Hard zones are a farmable token
-	// source). This is intentionally not gated to first-clear, unlike the
-	// HardModeCleared flag which only tracks the first clear.
-	public const int HARD_MODE_TOKEN_AWARD_MIN = 3;
-	public const int HARD_MODE_TOKEN_AWARD_MAX = 5;
+	// First Hard clear of each expedition pays a one-time Token bonus
+	// (user 2026-09-25: replaces the per-zone regional Hard tokens, which
+	// had no sink and never shipped). Repeat Hard clears already pay 2x gold,
+	// 2x XP and 1.5x drops.
+	public const int HARD_MODE_FIRST_CLEAR_TOKENS = 5;
 
 	// Wave size cap. The battle target UI is built for three (tg-slot-1..3,
 	// Slot1-3 keys) — do not raise without a UI pass.
@@ -113,47 +112,6 @@ public sealed class ExpeditionManager : Component
 		enemy.SpA = (int)( enemy.SpA * HARD_MODE_ATK_MULT );
 		enemy.SpD = (int)( enemy.SpD * HARD_MODE_HPDEFSPD_MULT );
 		// SPD intentionally unchanged — don't make Hard Mode a speed-tier nightmare.
-	}
-
-	/// <summary>
-	/// Zone-id → Tamer Hard Token field name. Used when awarding tokens on
-	/// Hard clear. Four launch zones; mini-expedition uses "threaded".
-	/// </summary>
-	private static readonly Dictionary<string, string> ZoneTokenBucket = new()
-	{
-		{ "weaverton_pasture", "tide" },     // Weaverton zone (the pasture is the Lv1 entry)
-		{ "weaverton_approach", "tide" },    // Tutorial alias maps to same bucket
-		{ "saltmoor_forest", "loom" },       // Weaverwood (internal id is saltmoor_forest)
-		{ "old_saltmoor", "dawn" },          // Weavermere (internal id is old_saltmoor)
-		{ "mini_loomweaver_burrow", "threaded" } // Whispering Hollow mini-expedition
-	};
-
-	/// <summary>
-	/// Award Hard Mode tokens to the appropriate per-zone bucket on Tamer.
-	/// Awards a random count in [HARD_MODE_TOKEN_AWARD_MIN..HARD_MODE_TOKEN_AWARD_MAX].
-	/// Granted on every Hard clear (repeatable — Hard zones are a farmable
-	/// token source); deliberately NOT first-clear-gated.
-	/// No-op if the expedition is not in the zone map or the player is on a Normal run.
-	/// </summary>
-	private void AwardHardModeTokens()
-	{
-		if ( CurrentExpedition?.IsHardMode != true ) return;
-		var tamer = TamerManager.Instance?.CurrentTamer;
-		if ( tamer == null ) return;
-		if ( !ZoneTokenBucket.TryGetValue( CurrentExpedition.Id, out var bucket ) )
-		{
-			Log.Info( $"[Hard Mode] No token bucket mapped for expedition '{CurrentExpedition.Id}' — skipping token award." );
-			return;
-		}
-		int count = _sharedRandom.Next( HARD_MODE_TOKEN_AWARD_MIN, HARD_MODE_TOKEN_AWARD_MAX + 1 );
-		switch ( bucket )
-		{
-			case "tide": tamer.TideTokens += count; break;
-			case "loom": tamer.LoomTokens += count; break;
-			case "dawn": tamer.DawnTokens += count; break;
-			case "threaded": tamer.ThreadedTokens += count; break;
-		}
-		Log.Info( $"[Hard Mode] Awarded {count} {bucket} tokens for clearing {CurrentExpedition.Id} on Hard." );
 	}
 
 	// Species filter for auto-contract
@@ -827,6 +785,13 @@ public sealed class ExpeditionManager : Component
 				tamer.HighestHardModeCleared = Math.Max( tamer.HighestHardModeCleared, hardClearCount );
 				AchievementManager.Instance?.CheckProgress( Data.AchievementRequirement.HighestHardModeCleared, tamer.HighestHardModeCleared );
 				Log.Info( $"[Hard Mode] First hard clear: {CurrentExpedition.Id} — total hard clears: {hardClearCount}" );
+
+				// One-time Token bonus for the first Hard clear of this expedition.
+				TamerManager.Instance?.AddBossTokens( HARD_MODE_FIRST_CLEAR_TOKENS );
+				NotificationManager.Instance?.AddNotification(
+					NotificationType.Success,
+					"First Hard Clear!",
+					$"{CurrentExpedition.Name} cleared on Hard: +{HARD_MODE_FIRST_CLEAR_TOKENS} Tokens." );
 			}
 		}
 		else
@@ -919,7 +884,6 @@ public sealed class ExpeditionManager : Component
 			TamerManager.Instance?.AddXP( finalXP );
 			AwardTeamCompletionXP( finalXP ); // completion bonus to every team member
 			Log.Info( $"RetryExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardGoldMult}), {finalXP} XP (+{xpBonus}%, x{hardXPMult})" );
-			AwardHardModeTokens();
 
 			// Guild XP for expedition completion
 			GuildManager.Instance?.AddGuildXP( 20 );
@@ -1631,7 +1595,6 @@ public sealed class ExpeditionManager : Component
 			TamerManager.Instance?.AddXP( finalXP );
 			AwardTeamCompletionXP( finalXP ); // completion bonus to every team member
 			Log.Info( $"CompleteExpedition: Awarded expedition completion rewards: {finalGold} gold (+{goldBonus}%, x{hardGoldMult}), {finalXP} XP (+{xpBonus}%, x{hardXPMult})" );
-			AwardHardModeTokens();
 
 			// Track expedition completions for veteran stats
 			foreach ( var monster in SelectedTeam )
