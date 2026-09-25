@@ -193,10 +193,17 @@
     // Spotlight + arrow target tracking
     //
     // Each frame we search the panel tree for an element matching the current
-    // step's TargetSelector (a CSS-class string like ".embark-btn"). When
-    // found, cache its Box.Rect and compute the four darken rectangles + the
-    // arrow position. When not found, _hasTarget stays false and the spotlight
-    // markup doesn't render — the banner alone provides guidance.
+    // step's TargetSelector — a small CSS subset (see FindTarget): compound
+    // classes (".zone-marker.unlocked"), descendant chains
+    // (".contract-radial .tier-primary") and comma-separated fallbacks tried in
+    // order. When found, cache its Box.Rect and compute the four darken
+    // rectangles + the arrow position. When not found, _hasTarget stays false
+    // and the spotlight markup doesn't render — the banner alone guides.
+    //
+    // Box.Rect is SCREEN px; the inline style px are panel units. Everything
+    // is converted (relative to this panel's own origin, × ScaleFromScreen)
+    // before it's stored, so the hole lands on the target at any resolution,
+    // not just 1080p.
     // ============================================================
 
     private bool _hasTarget;
@@ -210,9 +217,9 @@
     // "above" | "below" | "left" | "right" — which side of the target the arrow sits on
     private string _arrowSide = "above";
 
-    // Rect stability tracking. Bottom-bar elements (.cb-tab-*) live in a
-    // `position: absolute; bottom: 16px` container whose parent height
-    // briefly compresses during panel transitions — Box.Rect reads the
+    // Rect stability tracking. Bottom-anchored elements (e.g. the PawPad
+    // .hud-phone-btn) live in `position: absolute; bottom: 16px` and the
+    // parent height can briefly compress during panel transitions — Box.Rect reads the
     // mid-flight position, so the highlight lands in the middle of the
     // screen instead of on the actual button. We require the rect to be
     // STABLE across two consecutive ticks before committing to it; a
@@ -280,11 +287,8 @@
             return;
         }
 
-        // Strip leading '.' if present (CSS-style class selector).
-        var className = sel.StartsWith(".") ? sel.Substring(1) : sel;
-
-        var found = FindByClass(FindRootPanel(), className);
-        if (found == null || found.Box.Rect.Width < 1f)
+        var found = FindTarget(FindRootPanel(), sel);
+        if (found == null)
         {
             _hasTarget = false;
             // Reset stability tracker so a stale rect can't bleed across selector changes.
@@ -293,9 +297,12 @@
             return;
         }
 
+        // Screen px → this panel's style units (see the header note).
         var rect = found.Box.Rect;
-        int top = (int)rect.Top;
-        int left = (int)rect.Left;
+        var origin = Box.Rect;
+        float scale = ScaleFromScreen;
+        int top = (int)((rect.Top - origin.Top) * scale);
+        int left = (int)((rect.Left - origin.Left) * scale);
 
         // Stability gate: the rect must match the previous frame's reading
         // (within 4px of slop) before we commit to highlighting it. Reset
@@ -329,9 +336,9 @@
         }
 
         _targetTop = top;
-        _targetBottom = (int)rect.Bottom;
+        _targetBottom = (int)((rect.Bottom - origin.Top) * scale);
         _targetLeft = left;
-        _targetRight = (int)rect.Right;
+        _targetRight = (int)((rect.Right - origin.Left) * scale);
         _targetMidHeight = Math.Max(0, _targetBottom - _targetTop);
 
         // Choose arrow placement based on where the target sits on screen.
@@ -341,8 +348,8 @@
         // the target is too close to the left edge).
         const int ARROW_SIZE = 48;
         const int ARROW_OFFSET = 12;
-        var screenH = (int)Box.Rect.Height;
-        var screenW = (int)Box.Rect.Width;
+        var screenH = (int)(origin.Height * scale);
+        var screenW = (int)(origin.Width * scale);
         if (screenH <= 0) screenH = 1080;
         if (screenW <= 0) screenW = 1920;
 
@@ -393,21 +400,62 @@
     }
 
     /// <summary>
-    /// Walk the panel tree from root and return the first descendant with the
-    /// given class. Returns null if not found.
+    /// Resolve a TargetSelector against the tree. Supported subset:
+    ///   ".a.b"        compound — the element has EVERY listed class
+    ///   ".a .b"       descendant chain — a .b somewhere inside a .a
+    ///   ".x, .y"      fallbacks — tried in order, first laid-out hit wins
+    /// Returns the first match in tree order with a real layout (width >= 1),
+    /// so a parked/collapsed duplicate never swallows the spotlight.
     /// </summary>
-    private static Panel FindByClass(Panel root, string className)
+    private static Panel FindTarget(Panel root, string selector)
     {
-        if (root == null) return null;
-        if (root.HasClass(className)) return root;
-        foreach (var child in root.Children)
+        if (root == null || string.IsNullOrWhiteSpace(selector)) return null;
+        foreach (var alt in selector.Split(','))
+        {
+            var chain = alt.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (chain.Length == 0) continue;
+            var hit = FindChain(root, chain, 0);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    // Depth-first descendant match: once a node satisfies link `idx`, its
+    // subtree only needs to satisfy the remaining links.
+    private static Panel FindChain(Panel node, string[] chain, int idx)
+    {
+        if (node == null) return null;
+        int next = idx;
+        if (MatchesCompound(node, chain[idx]))
+        {
+            if (idx == chain.Length - 1)
+            {
+                if (node.Box.Rect.Width >= 1f) return node;
+            }
+            else
+            {
+                next = idx + 1;
+            }
+        }
+        foreach (var child in node.Children)
         {
             if (child is Panel p)
             {
-                var hit = FindByClass(p, className);
+                var hit = FindChain(p, chain, next);
                 if (hit != null) return hit;
             }
         }
         return null;
+    }
+
+    private static bool MatchesCompound(Panel node, string compound)
+    {
+        bool any = false;
+        foreach (var cls in compound.Split('.', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!node.HasClass(cls)) return false;
+            any = true;
+        }
+        return any;
     }
 }

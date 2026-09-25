@@ -140,9 +140,9 @@ public sealed class TutorialManager : Component
 			{
 				Id = "open-map",
 				Title = "Open the World Map",
-				Message = "Every expedition starts here. Click the Expedition tab on the bottom command bar.",
-				ActionHint = "Click the Expedition tab.",
-				TargetSelector = ".cb-tab-expedition",
+				Message = "Every expedition starts on the World Map. Open your PawPad — press M or click the phone in the bottom-right corner — then tap the Expedition app. (Shortcut: press 3.)",
+				ActionHint = "Press M, then open Expedition.",
+				TargetSelector = ".hud-phone-btn",
 				AdvanceEvent = "worldmap.opened",
 			},
 
@@ -153,7 +153,9 @@ public sealed class TutorialManager : Component
 				Title = "Weaverton Approach",
 				Message = "Click your first zone — Weaverton Approach, a friendly stretch of pasture lane just outside the village gate. Perfect for a first run.",
 				ActionHint = "Pick Weaverton Approach.",
-				TargetSelector = ".zone-card.tutorial-zone",
+				// First UNLOCKED marker in tree order = the tutorial zone (Zones[0] in
+				// WorldMapPanel, only visible while the tutorial runs).
+				TargetSelector = ".zone-marker.unlocked",
 				AdvanceEvent = "worldmap.zone-selected",
 			},
 
@@ -162,9 +164,11 @@ public sealed class TutorialManager : Component
 			{
 				Id = "build-team",
 				Title = "Build Your Team",
-				Message = "Add your starter to the team slot. You only need one Beast for now — once you tame more, fill all three slots before tougher zones.",
-				ActionHint = "Drag your starter into Slot 1.",
-				TargetSelector = ".picker-monster.starter",
+				Message = "Click Embark on the zone card to open your team. Your starter fills Slot 1 on its own — you only need one Beast for now. Once you tame more, fill all three slots before tougher zones.",
+				ActionHint = "Click Embark to open your team.",
+				// The zone pane's Embark opens the team picker, which auto-fills the
+				// starter and fires team.beast-added.
+				TargetSelector = ".hw-embark",
 				AdvanceEvent = "team.beast-added",
 			},
 
@@ -173,9 +177,9 @@ public sealed class TutorialManager : Component
 			{
 				Id = "embark",
 				Title = "Embark",
-				Message = "When you're ready, embark. The run starts on the next click.",
-				ActionHint = "Click Embark.",
-				TargetSelector = ".embark-btn",
+				Message = "Your starter is in Slot 1. When you're ready, embark — the run starts on the next click.",
+				ActionHint = "Click Embark (or press R).",
+				TargetSelector = ".picker-embark-btn",
 				AdvanceEvent = "expedition.embarked",
 			},
 
@@ -184,9 +188,10 @@ public sealed class TutorialManager : Component
 			{
 				Id = "wave-move",
 				Title = "Pick a Move",
-				Message = "Each Beast has up to four moves. Match a move's element to your Beast's element for a 1.5× STAB damage bonus. Tap any move to commit.",
-				ActionHint = "Pick a move to attack.",
-				TargetSelector = ".move-pill",
+				Message = "Each Beast has up to four moves. Match a move's element to your Beast's element for a 1.5× STAB damage bonus. Press FIGHT, then tap any move to commit.",
+				ActionHint = "FIGHT (1), then pick a move (1–4).",
+				// The battle action cluster — holds FIGHT and, once opened, the moves.
+				TargetSelector = ".action3d-buttons",
 				AdvanceEvent = "battle.move-selected",
 				RiggedSuccess = true, // tells ExpeditionManager to spawn a weak enemy
 			},
@@ -207,7 +212,7 @@ public sealed class TutorialManager : Component
 				Title = "A Tameable Beast",
 				Message = "This wild Beast can be added to your roster — but only if you weaken it first. The lower its HP, the higher your contract odds. Keep attacking until it's around half HP.",
 				ActionHint = "Lower its HP to ~50%.",
-				TargetSelector = ".enemy-hp",
+				TargetSelector = ".enemy-card",
 				AdvanceEvent = "battle.enemy-hp-low",
 			},
 
@@ -217,7 +222,7 @@ public sealed class TutorialManager : Component
 				Id = "open-contract",
 				Title = "Open Negotiations",
 				Message = "Now's the moment. Open contract negotiations to start the deal.",
-				ActionHint = "Click Contract.",
+				ActionHint = "Click Contract (or press 4).",
 				TargetSelector = ".contract-btn",
 				AdvanceEvent = "contract.opened",
 			},
@@ -228,8 +233,9 @@ public sealed class TutorialManager : Component
 				Id = "pick-approach",
 				Title = "Choose an Approach",
 				Message = "Four approaches, each with different ink costs and odds. Fair Terms costs 2 Contract Ink and lands half the time on most Beasts — a reliable opener. Pick whichever feels right.",
-				ActionHint = "Select an approach.",
-				TargetSelector = ".approach-pill.kindness",
+				ActionHint = "Click an approach tile.",
+				// No spotlight: the four approach tiles fan around the beast and any
+				// one counts — a single-rect hole would dim three valid choices.
 				AdvanceEvent = "contract.approach-selected",
 			},
 
@@ -238,9 +244,10 @@ public sealed class TutorialManager : Component
 			{
 				Id = "confirm-contract",
 				Title = "Confirm",
-				Message = "Lock it in. The Beast will join your roster.",
-				ActionHint = "Click Confirm.",
-				TargetSelector = ".contract-confirm-btn",
+				Message = "Lock it in with Attempt. The Beast will join your roster.",
+				ActionHint = "Click Attempt (or press Space).",
+				// ATTEMPT is the negotiation panel's primary BbButton.
+				TargetSelector = ".contract-radial .tier-primary",
 				AdvanceEvent = "contract.confirmed",
 				RiggedSuccess = true, // ContractGenerator forces success during this step
 			},

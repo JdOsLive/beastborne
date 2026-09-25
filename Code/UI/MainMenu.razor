@@ -138,7 +138,7 @@
 						<img class="lh-studio-mark" src="ui/logo/ps_mark_white_64.png" />
 						<span class="lh-studio-name">Public Square</span>
 					</span>
-					<span class="lh-ver">v1.2.1 — OPEN BETA</span>
+					<span class="lh-ver">v@(BeastborneBuild.Version) — OPEN BETA</span>
 				</div>
 			</div>
 		</aside>
@@ -174,10 +174,12 @@
 				 patch-notes data. The hero <img> reuses currentFeatureArt (rotating
 				 starter art placeholder) — swap for a real key-art screenshot later. -->
 			<section class="lh-featured @(entranceStage >= 2 ? "entered" : "") @(_menuDeparting ? "departing" : "") feat-@(GetFeatureElementClass())" @ref="_refFeatured">
-				<!-- KEY ART background (placeholder). When art is ready, set on .lh-feat-shot:
-					 background-image: url(<screenshot>); background-size: cover; and delete the
-					 label. The scrim dims the left so the headline stays readable over the art. -->
-				<div class="lh-feat-shot"><span class="lh-feat-shot-label">SCREENSHOT · KEY ART HERE</span>
+				<!-- KEY ART background. When per-release art is ready, set on .lh-feat-shot:
+					 background-image: url(<screenshot>); background-size: cover. (The shipped
+					 "SCREENSHOT · KEY ART HERE" placeholder label was removed — the dark slab
+					 + rotating starter hero stand on their own until then.) The scrim dims the
+					 left so the headline stays readable over the art. -->
+				<div class="lh-feat-shot">
 					<div class="lh-feat-scrim"></div>
 					<div class="lh-feat-vignette"></div>
 					<img class="lh-feat-hero" src="@currentFeatureArt" />
@@ -1163,7 +1165,7 @@
 	//   FUTURE: could be wired to the latest patch-notes entry or a dedicated
 	//   "featured" field on the live-events / announcements payload so marketing
 	//   doesn't require a client patch.
-	private string featuredKicker = "UPDATE 1.3 · FOUNDATIONS";
+	private string featuredKicker = $"UPDATE {BeastborneBuild.Version} · FOUNDATIONS"; // version from the shared constant — never hand-type a number here
 	private string featuredTitle = "Built for";
 	private string featuredTitleAccent = "what's next.";
 	private string featuredTitleTail = "";
@@ -1977,6 +1979,18 @@
 			return;
 		}
 
+		// Gift inbox (z 1050, auto-opens on the menu when dev-granted gifts are
+		// pending). Same rule as OptionsPanel.AnyVisible above: while ANY
+		// instance is open the menu reads NO keys — Space used to fire PLAY
+		// behind it. The inbox's own keys (confirm = CLAIM ALL, Q = close) are
+		// routed from HERE rather than its own Tick so the beta disclaimer
+		// (z 2000, handled above) always wins the press on the boot frame.
+		if (GiftInboxPopup.AnyVisible)
+		{
+			GiftInboxPopup.HandleKeyboard();
+			return;
+		}
+
 		// A swap in its departure window owns the screen — keyboard goes quiet
 		// for the ~160ms (mouse clicks still buffer via RequestScene). Arrival
 		// stays fully interactive (input outruns animation — interrupts work).
@@ -2083,16 +2097,43 @@
 		}
 		else if (showStarterSelection)
 		{
-			// Navigate starters. Allow -1 as "none chosen"; first keypress picks 0.
+			// Navigate starters SPATIALLY — the trio is a triangle (see .slot-*
+			// in SCSS): Cherune/wind (2) TOP-center, Pagefin/water (1)
+			// BOTTOM-LEFT, Embrik/fire (0) BOTTOM-RIGHT. The old index walk
+			// (0→1→2) sent D from fire (bottom-right) LEFT to water. A/D now
+			// walk the left→right screen order water · wind · fire (clamped);
+			// W goes up to wind; S drops from wind to the bottom slot you came
+			// from (water by default). From "none chosen" (-1) the key picks
+			// the slot on that side of the triangle.
+			int starterNav = -2; // -2 = no nav key this frame
 			if (Input.Pressed("Left"))
 			{
-				selectedStarter = selectedStarter <= 0 ? 0 : selectedStarter - 1;
-				SoundManager.PlayHover();
+				int pos = Array.IndexOf(StarterScreenOrder, selectedStarter);
+				starterNav = pos < 0 ? StarterScreenOrder[0] : StarterScreenOrder[Math.Max(0, pos - 1)];
 			}
 			else if (Input.Pressed("Right"))
 			{
-				selectedStarter = selectedStarter < 0 ? 0 : Math.Min(2, selectedStarter + 1);
-				SoundManager.PlayHover();
+				int pos = Array.IndexOf(StarterScreenOrder, selectedStarter);
+				starterNav = pos < 0 ? StarterScreenOrder[StarterScreenOrder.Length - 1]
+				                     : StarterScreenOrder[Math.Min(StarterScreenOrder.Length - 1, pos + 1)];
+			}
+			else if (Input.Pressed("Up") || Input.Pressed("Forward"))
+			{
+				starterNav = 2; // wind — the top of the triangle
+			}
+			else if (Input.Pressed("Down") || Input.Pressed("Backward"))
+			{
+				starterNav = selectedStarter == 0 || selectedStarter == 1 ? selectedStarter : _starterLastBottom;
+			}
+
+			if (starterNav >= 0)
+			{
+				if (starterNav == 0 || starterNav == 1) _starterLastBottom = starterNav;
+				if (starterNav != selectedStarter)
+				{
+					selectedStarter = starterNav;
+					SoundManager.PlayHover();
+				}
 			}
 			else if (Input.Pressed("Jump") || Input.Pressed("Enter"))
 				OnConfirmStarter();
@@ -2772,7 +2813,29 @@
 		if ( changed ) StateHasChanged();
 	}
 
+	// PLAY re-entry guard. OnPlayClicked is async (save load + the 2.2s wipe),
+	// and nothing stopped a second Space/click from re-firing the detonation and
+	// starting a SECOND sweep + StartGame mid-transition. Set on entry, cleared
+	// in the finally once the route resolves: the wipe has fully finished, the
+	// starter picker is up, or the save-fail prompt took over (its RETRY /
+	// PLAY OFFLINE buttons call OnPlayClicked again, so it must be clear then).
+	private bool _playInFlight = false;
+
 	private async void OnPlayClicked()
+	{
+		if ( _playInFlight ) return;
+		_playInFlight = true;
+		try
+		{
+			await RunPlayRoute();
+		}
+		finally
+		{
+			_playInFlight = false;
+		}
+	}
+
+	private async Task RunPlayRoute()
 	{
 		// (No PlayPopup here — StartPlayDetonation below owns the fire + slam audio.)
 
@@ -2893,13 +2956,36 @@
 		return starterNames[index];
 	}
 
+	// Left→right SCREEN order of the starter triangle (indices into
+	// starterSpecies): water bottom-left · wind top-center · fire bottom-right.
+	// LOCKSTEP with the .slot-water / .slot-wind / .slot-fire positions in SCSS.
+	private static readonly int[] StarterScreenOrder = { 1, 2, 0 };
+	private int _starterLastBottom = 1; // S from wind returns here (water by default)
+
 	private string[] starterSpecies = { "embrik", "pagefin", "cherune" };
 	private string[] starterNames = { "Embrik", "Pagefin", "Cherune" };
+
+	// Same re-entry class as PLAY: confirm awaits a save flush before leaving the
+	// picker, and a second Space/click during that await created a SECOND starter.
+	private bool _confirmingStarter = false;
 
 	private async void OnConfirmStarter()
 	{
 		if (selectedStarter < 0) return; // guard — can't confirm nothing
+		if (_confirmingStarter) return;
+		_confirmingStarter = true;
+		try
+		{
+			await RunConfirmStarter();
+		}
+		finally
+		{
+			_confirmingStarter = false;
+		}
+	}
 
+	private async Task RunConfirmStarter()
+	{
 		PlayClickSound();
 
 		// Default the tamer to Male — the gender-select screen has been removed,
