@@ -37,7 +37,7 @@ public class MissionDefinition
 	public int Target { get; set; }
 	public int GoldReward { get; set; }
 	public int XPReward { get; set; }
-	public int GemReward { get; set; }
+	public int GemReward { get; set; } // LEGACY NAME — granted as Tokens (BossTokens) since 2026-09-25; the game has no gems
 	public int InkReward { get; set; }
 	public string ItemReward { get; set; } // item ID or empty
 	public string Icon { get; set; } // SVG path

@@ -307,9 +307,10 @@ public sealed class DailyRewardManager : Component
 		// Grant gold (use TamerManager to apply Golden Touch + guild bonuses)
 		TamerManager.Instance.AddGold( gold );
 
-		// Grant gems
+		// Grant tokens — the "gems" slot is legacy naming; streak rewards pay Tokens
+		// (BossTokens) since 2026-09-25 (the game has no gems).
 		if ( gems > 0 )
-			TamerManager.Instance.AddGems( gems );
+			TamerManager.Instance.AddBossTokens( gems );
 
 		// Grant ink
 		if ( ink > 0 )
@@ -337,7 +338,7 @@ public sealed class DailyRewardManager : Component
 			NotificationType.Success,
 			"Daily Reward Claimed!",
 			$"Day {day}: {gold:N0} Gold" +
-			(gems > 0 ? $" + {gems} Gems" : "") +
+			(gems > 0 ? $" + {gems} Tokens" : "") +
 			(ink > 0 ? $" + {ink} Ink" : "")
 		);
 
@@ -346,7 +347,7 @@ public sealed class DailyRewardManager : Component
 		SaveToCookies();
 		TamerManager.Instance?.SaveToCloud();
 
-		Log.Info( $"[DailyReward] Claimed Day {day} reward: {gold}G, {gems} Gems, {ink} Ink" );
+		Log.Info( $"[DailyReward] Claimed Day {day} reward: {gold}G, {gems} Tokens, {ink} Ink" );
 		return true;
 	}
 
@@ -450,7 +451,7 @@ public sealed class DailyRewardManager : Component
 		TamerManager.Instance.AddGold( gold );
 
 		if ( gems > 0 )
-			TamerManager.Instance.AddGems( gems );
+			TamerManager.Instance.AddBossTokens( gems ); // legacy "gems" slot = Tokens
 
 		if ( !string.IsNullOrEmpty( title ) && !tamer.UnlockedTitles.Contains( title ) )
 			tamer.UnlockedTitles.Add( title );
@@ -468,7 +469,7 @@ public sealed class DailyRewardManager : Component
 		NotificationManager.Instance?.AddNotification(
 			NotificationType.Success,
 			$"Milestone: {milestone} Days!",
-			$"{gold:N0} Gold + {gems} Gems" +
+			$"{gold:N0} Gold + {gems} Tokens" +
 			(!string.IsNullOrEmpty( title ) ? $" + \"{title}\" Title" : "")
 		);
 
@@ -481,7 +482,7 @@ public sealed class DailyRewardManager : Component
 		SaveToCookies();
 		TamerManager.Instance?.SaveToCloud();
 
-		Log.Info( $"[DailyReward] Claimed milestone {milestone}: {gold}G, {gems} Gems" );
+		Log.Info( $"[DailyReward] Claimed milestone {milestone}: {gold}G, {gems} Tokens" );
 		return true;
 	}
 

@@ -58,6 +58,11 @@ batch-rewrite screens in one context.
 - **Skew is under review, not a signature.** The skew angles mostly weren't working. Don't
   add new skew; the Phase 1 shapes decision session decides where (if anywhere) it stays.
 
+## Product decisions (user, 2026-09-25)
+- Quests grant **Tokens** (no gems anywhere). · Chat/Radio/Effects live **only in the phone**.
+- A shared **celebration / "moment" screen** for level-ups, evolution, unlocks (build it in
+  Phase 1's motion kit; first used by the Quests pilot's claim beat).
+
 ## Anti-"AI UI" checklist (reject on sight)
 Uniform 1px `rgba(255,255,255,.1)` hairlines on everything · the same 12–16px radius on
 every box · soft layered shadows as decoration · purple accents everywhere · decorative
