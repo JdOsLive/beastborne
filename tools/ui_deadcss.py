@@ -26,7 +26,9 @@ UI = CODE / "UI"
 
 _BLOCK = re.compile(r"/\*.*?\*/", re.S)
 _LINE = re.compile(r"(?<!:)//[^\n]*")
-_CLASS = re.compile(r"(?<![\w-])\.(-?[A-Za-z_][\w-]*)")
+# A class is `.name` not preceded by a digit (so `.a.b` chains count both
+# classes, while 0.5s / 1.2em stay out; property lines are stripped anyway).
+_CLASS = re.compile(r"(?<!\d)\.(-?[A-Za-z_][\w-]*)")
 _PROP_LINE = re.compile(r"^\s*[\w-]+\s*:[^{]*;\s*$", re.M)  # declarations (skip: .5s, url(x.png))
 
 
@@ -43,29 +45,51 @@ def classes_in(scss: str) -> set[str]:
     return out
 
 
+def _prefixes_in(text: str) -> set[str]:
+    found = set(re.findall(r"([A-Za-z_][\w-]*-)@", text))            # class="foo-@x"
+    found |= set(re.findall(r"\"([A-Za-z_][\w-]*-)\"\s*\+", text))  # "foo-" + x
+    found |= set(re.findall(r"\$\"[^\"]*?([A-Za-z_][\w-]*-)\{", text))  # $"foo-{x}"
+    return found
+
+
 def code_corpus():
+    """Tokens used anywhere, plus runtime-built class prefixes.
+
+    A prefix only protects classes in the stylesheet of the component that
+    builds it (Foo.razor -> Foo.razor.scss), unless it is built in plain C# or
+    in a component with no stylesheet of its own — then it counts everywhere.
+    (Before, AchievementPanel's `cb-@version` made every `cb-*` class in
+    GameHUD's sheet look used, hiding the whole retired command bar.)"""
     parts = []
+    global_prefixes: set[str] = set()
+    scoped: dict[str, set[str]] = {}   # stylesheet stem -> prefixes
     for p in CODE.rglob("*"):
-        if p.suffix in (".razor", ".cs") and p.is_file():
-            parts.append(p.read_text(encoding="utf-8", errors="replace"))
+        if p.suffix not in (".razor", ".cs") or not p.is_file():
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        parts.append(text)
+        pre = _prefixes_in(text)
+        if not pre:
+            continue
+        own_sheet = p.with_name(p.name + ".scss") if p.suffix == ".razor" else None
+        if own_sheet is not None and own_sheet.exists():
+            scoped.setdefault(own_sheet.name, set()).update(pre)
+        else:
+            global_prefixes |= pre
     corpus = "\n".join(parts)
     tokens = set(re.findall(r"[A-Za-z_][\w-]*", corpus))
-    prefixes = set()
-    # class="foo-@x", class="foo-@(x)"
-    prefixes |= set(re.findall(r"([A-Za-z_][\w-]*-)@", corpus))
-    # "foo-" + x   /   $"foo-{x}"
-    prefixes |= set(re.findall(r"\"([A-Za-z_][\w-]*-)\"\s*\+", corpus))
-    prefixes |= set(re.findall(r"\$\"[^\"]*?([A-Za-z_][\w-]*-)\{", corpus))
-    return tokens, prefixes
+    return tokens, (global_prefixes, scoped)
 
 
-def dead_classes(scss_path: Path, tokens: set[str], prefixes: set[str]) -> list[str]:
+def dead_classes(scss_path: Path, tokens: set[str], prefixes) -> list[str]:
+    global_prefixes, scoped = prefixes
+    usable = global_prefixes | scoped.get(scss_path.name, set())
     names = classes_in(scss_path.read_text(encoding="utf-8", errors="replace"))
     dead = []
     for c in sorted(names):
         if c in tokens:
             continue
-        if any(c.startswith(p) for p in prefixes):
+        if any(c.startswith(p) for p in usable):
             continue
         dead.append(c)
     return dead
