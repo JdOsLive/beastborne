@@ -7,7 +7,8 @@ Beastborne dead-CSS finder — lists SCSS classes that nothing in the code appea
     python tools/ui_deadcss.py FILE.scss    # just one stylesheet, with names
 
 Stdlib only, no AI. A class counts as USED if its name appears anywhere in Code/**/*.razor
-or *.cs (s&box stylesheets are global, so any panel can use any class), or if it starts
+or *.cs anywhere (a coarse check — sheets are really SCOPED to their panel's subtree,
+so this under-reports; see laws.md), or if it starts
 with a dynamic prefix the code builds (e.g. `pop-@ver`, `"elem-" + x`, `$"rarity-{r}"`).
 
 It's a heuristic: treat results as "probably dead — confirm with a grep before deleting".
