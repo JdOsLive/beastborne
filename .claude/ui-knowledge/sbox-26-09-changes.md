@@ -73,3 +73,9 @@ verified in our editor.** When you verify an item in-game, update the matching r
 
 Unverified extras: `mix-blend-mode`/`background-blend-mode` parse; UI textures sample with
 −1.5 mip bias again (09-03); failed font loads now log an error.
+
+## Engine popups & tooltips — a consolidation opportunity (read from 26.09.22 API docs, 2026-09-25; ⚠️ not yet tried in-editor)
+The user's hunch: new s&box can style popups from one place. The engine ships systems we hand-roll today:
+- **Tooltips:** `Panel.Tooltip` (string), **`Panel.TooltipClass`** (CSS class put on the tooltip panel — one house style for every tooltip), `OnTooltip`, `CreateTooltipPanel()`/`BuildTooltip()` for rich custom tooltip panels. `TooltipSystem` (one per UI) handles hover delay (game UI: instant), `GraceTime` (sweeping along a row reads each tooltip without re-waiting), positioning beside the cursor and staying on screen, and walks up to the first ancestor with a tooltip. Could replace our hand-rolled hover tooltips and their flicker workarounds (the class-on-child `pointer-events` law).
+- **Popups/menus:** `Popup` (`BasePopup` = closes when clicked away from; `StayOpen`, cascading `ParentPopup` chains) with `AddOption(text, icon, action)`, `Title`/`Icon` header, built-in keyboard selection (`MoveSelection`, `SelectedChild`), `PositionMode` (Below/Above Left/Center/Right/Stretch, Left/Right, RightTop for submenus, UnderMouse), auto-flip to fit, `CloseWhenParentIsHidden`, and unused keys forwarded to the source panel. `SetPositioning` "applies relevant CSS classes", so one stylesheet can skin every menu. Candidate to replace FilterBar dropdowns and small context menus.
+- **Try first (Phase 1, "one of each shared piece"):** set `Tooltip` + `TooltipClass` on one chip and style `.bb-tooltip`; build one FilterBar dropdown as a `Popup` and check it respects the one-cursor / Q-back grammar and our z-order (PawPad 9500). If both hold, they become the house tooltip and dropdown.
