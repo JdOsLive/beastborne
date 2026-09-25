@@ -262,7 +262,7 @@ public sealed class TamerManager : Component
 				CurrentTamer.MigrationVersion = 2;
 			}
 
-			// MigrationVersion 3 — gems removed (user 2026-09-25). Quests, the
+			// Gem conversion — gems removed (user 2026-09-25). Quests, the
 			// login streak and milestones used to pay a gem currency with no sink
 			// (the quest UI even showed Token icons); convert saved gems to Tokens
 			// 1:1, safety-capped. Written straight to BossTokens (not a "spend",
@@ -271,17 +271,22 @@ public sealed class TamerManager : Component
 			// drops unknown fields, so deleting it first would erase balances
 			// before this could read them. (Regional Hard tokens were removed too —
 			// unreleased, so there are no player balances to convert.)
-			if ( CurrentTamer.MigrationVersion < 3 )
+			// ⚠ Gated on Gems > 0, NOT on MigrationVersion: AchievementManager's
+			// claim migration (ACHIEVEMENT_CLAIM_MIGRATION_VERSION = 3) has stamped
+			// MigrationVersion = 3 on nearly every save since July, so a "< 3" gate
+			// would never convert anyone. Zeroing Gems in the same save makes this
+			// idempotent. (MigrationVersion is shared by two owners — any future
+			// step should use its own flag or a value above both.)
+			if ( CurrentTamer.Gems > 0 )
 			{
 				int gems = Math.Clamp( CurrentTamer.Gems, 0, 4000 );
 				if ( CurrentTamer.Gems > 4000 )
-					Log.Warning( $"[TamerManager] Migration v3: {CurrentTamer.Gems} gems exceeds the 4000 cap — converting 4000." );
+					Log.Warning( $"[TamerManager] Gem conversion: {CurrentTamer.Gems} gems exceeds the 4000 cap — converting 4000." );
 				CurrentTamer.BossTokens += gems;
 				CurrentTamer.Gems = 0;
-				CurrentTamer.MigrationVersion = 3;
 				if ( gems > 0 )
 				{
-					Log.Info( $"[TamerManager] Migration v3: converted {gems} gems to Tokens." );
+					Log.Info( $"[TamerManager] Gem conversion: converted {gems} gems to Tokens." );
 					NotificationManager.Instance?.AddNotification(
 						NotificationType.Success,
 						"Gems are now Tokens",
