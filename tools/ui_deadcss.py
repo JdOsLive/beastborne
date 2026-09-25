@@ -48,8 +48,7 @@ def classes_in(scss: str) -> set[str]:
 def _prefixes_in(text: str) -> set[str]:
     found = set(re.findall(r"([A-Za-z_][\w-]*-)@", text))            # class="foo-@x"
     found |= set(re.findall(r"(?<![\w@-])([A-Za-z_][\w-]*)@\(", text))  # class="p@(i)"
-    found |= set(re.findall(r"\"[^\"
-]*?([A-Za-z_][\w-]*)\"\s*\+", text))  # "foo-" + x / "a sk-col-" + i
+    found |= set(re.findall(r"\"[^\"\n]*?([A-Za-z_][\w-]*)\"\s*\+", text))  # "foo-" + x / "a sk-col-" + i
     found |= set(re.findall(r"\$\"[^\"]*?([A-Za-z_][\w-]*)\{", text))  # $"foo-{x}" / $"p{i}"
     return found
 
