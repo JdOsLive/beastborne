@@ -51,6 +51,13 @@ batch-rewrite screens in one context.
 - **The PawPad itself** (device shell, tiles, dock, icons, in-phone apps, open/close) is in
   scope for a visual upgrade, not just the pages it routes to.
 
+## Code debt & shapes (user, 2026-09-25)
+- **Minimize code debt as we go.** Delete dead code before redesigning a screen (use
+  `tools/ui_deadcss.py` + the audit's dead-code lists); every rewrite should end smaller than
+  it started; shared components replace private copies. Targets are in `GOALS.md`.
+- **Skew is under review, not a signature.** The skew angles mostly weren't working. Don't
+  add new skew; the Phase 1 shapes decision session decides where (if anywhere) it stays.
+
 ## Anti-"AI UI" checklist (reject on sight)
 Uniform 1px `rgba(255,255,255,.1)` hairlines on everything · the same 12–16px radius on
 every box · soft layered shadows as decoration · purple accents everywhere · decorative
@@ -108,6 +115,14 @@ Build or fix the pieces every screen will share, so screens stop re-implementing
   page entrance (header → content cascade via keyframe-percentage staggers),
   view swap (directional slide keyed by version), selection change, confirm SNAP,
   reward/celebration beat, list-item arrival. Remember: no `animation-delay`.
+- **Shapes decision session (first thing in Phase 1):** for card shape, corner radii,
+  angles/skew, selection indicator, button shapes and motion timings, show 2–3 options side
+  by side (quick HTML mock), the user picks, lock the picks as tokens. Output replaces the
+  matching guiding-star sections.
+- **Tooling already in place:** `tools/ui_lint.py` (run before committing UI work) and
+  `tools/ui_deadcss.py` (dead-CSS finder). Still to build: an in-game `dev_uilab` engine
+  test screen (box model, gradients, focus, scroll clipping, blur side by side) to verify
+  the 26.09 engine changes once and keep CLAUDE.md honest.
 - **State language:** one hover/press/selected/disabled/locked recipe (light → dark hover
   polarity; bring `BbButton`, `FilterBar`, `MonsterCard` in line).
 - **Element palette:** consolidate the ~16 per-panel copies onto `BbTokens.Element`.

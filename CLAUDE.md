@@ -20,6 +20,8 @@ This file loads on EVERY turn, so it holds only rules that apply to nearly every
 
 **Growth caps (enforce when you write):** `laws.md` ≤ ~120 rules / 40 KB — a new law must replace or merge with an old one when at the cap; session narration and per-panel changelogs go to `learnings-archive.md` (append-only, grep-only), never into `laws.md`. `decisions-summary.md` ≤ 15 KB. This file: only add a rule here if it applies to most tasks — otherwise it goes in `laws.md`.
 
+**Goals + checks:** `GOALS.md` (current milestone, code-health targets, how we work). Before committing UI work run `python tools/ui_lint.py` (engine-rule violations; only NEW ones fail) — and `python tools/ui_deadcss.py` when cleaning up.
+
 **Environment:** the s&box editor + `sbox` MCP (`compile_status`, `read_console`, `camera_screenshot`) only exist on the user's Windows desktop. In a cloud session, edit + commit + push and say what needs verifying in-editor; don't claim compile/visual verification you couldn't run.
 
 ---
