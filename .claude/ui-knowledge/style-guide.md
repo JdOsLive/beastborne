@@ -112,7 +112,7 @@ For per-tier text colors in mastery sections (Lv0 unbound → Lv6 grandmaster):
 | Number/registry pill | 11px | 800 | monospace-feel, ls 1.2 |
 | Tiny meta (timestamps, counts) | 9-10px | 600-700 | uppercase optional |
 
-**s&box quirk:** large fonts (30px+) need `line-height` numerically ≥ font-size + 2. See `css-quirks.md`.
+**s&box quirk:** large fonts (30px+) need a `px` line-height ≥ font-size (never unitless — unitless is a multiplier since 26.06.03). See `CLAUDE.md`.
 
 ---
 
@@ -319,8 +319,8 @@ These are Beastborne's visual fingerprints. Reuse when appropriate.
 
 ## Critical s&box quirks (always honor)
 
-See `css-quirks.md` for the full list. The high-impact ones:
-- `line-height` ≥ font-size for 30px+ fonts
+See `CLAUDE.md` for the full list. The high-impact ones:
+- `line-height` in `px` ≥ font-size for 30px+ fonts (unitless = multiplier)
 - `overflow: hidden` collapses flex children — avoid on flex
 - Scroll containers need direct flat children (no nested flex wrappers)
 - `flex-wrap: wrap` miscalculates height — use explicit row divs

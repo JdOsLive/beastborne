@@ -17,7 +17,7 @@ wins on tokens/color/motion**; `style-guide.md` wins on component anatomy/recipe
   motion conflict.
 - **style-guide.md** — the COMPONENT COOKBOOK (buttons, pills, badges, diamonds, section
   chrome) with `MonsterRosterPanel` as the living reference. WINS on component anatomy.
-- **css-quirks.md** — the engine-constraint companion (what parses, what breaks).
+- **CLAUDE.md** quirks table + **laws.md** — the engine constraints (what parses, what breaks).
 - **scene-swap-spec.md** — the transition system for sibling screen changes.
 
 > **⚠️ Reinvention scope (user directive, 2026-07-01):** the **main menu (title/launcher
@@ -238,8 +238,8 @@ expansion, and the menu's background — one color, defined once.
 ---
 
 ## s&box translation layer (design CSS is browser CSS — these DON'T port)
-Full table in `css-quirks.md`. The high-impact ones for the sweep:
-- **No `box-sizing: border-box`** — content-box only; subtract borders/padding from explicit widths.
+Full table in `CLAUDE.md`. The high-impact ones for the sweep:
+- **No `box-sizing`** — s&box is PADDING-BOX: declared width/height include padding; subtract only borders.
 - **No `backdrop-filter`** → solid dark `rgba()`. **No `conic-gradient`** → linear/solid.
 - **`radial-gradient`** → bare percent-stops only (`rgba(...) 0%, rgba(0,0,0,0) 70%`). No shape keyword, no `at X% Y%`, no px stops, no `transparent` keyword. For circles/halftone/liquid-expansion use a **solid scaling div**, not a gradient.
 - **No `transparent` keyword in any gradient** → `rgba(...,0)`.

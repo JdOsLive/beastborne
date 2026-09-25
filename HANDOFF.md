@@ -76,7 +76,7 @@ Going forward the desktop's live memory will drift from this snapshot — that's
 
 ## 4. Current state / open threads (as of 2026-08-19)
 
-Things in flight when the laptop was parked — the detailed context for all of these lives in `.claude/memory/ui-redesign-state.md` and `.claude/ui-knowledge/learnings.md`:
+Things in flight when the laptop was parked — the detailed context for all of these lives in `.claude/memory/ui-redesign-state.md` and `.claude/ui-knowledge/learnings-archive.md` (grep it):
 
 **Needs live verification (committed, not yet seen running):**
 - Fusion end-to-end on a real fuse (inline result centering + ledger layout landed after the last verified capture)
@@ -100,7 +100,7 @@ Things in flight when the laptop was parked — the detailed context for all of 
 - BattleView / battle HUD is OFF-LIMITS for restyling
 - Don't sweep dormant GuildPanel / ArenaPanel (features not live)
 - Restart the game after agents land UI code — hotload lambda debris causes dead onclicks / fps craters
-- Canonical style spec: `.claude/ui-knowledge/guiding-star.md`; engine law journal: `.claude/ui-knowledge/learnings.md`; both are current
+- Canonical style spec: `.claude/ui-knowledge/guiding-star.md`; engine laws: `.claude/ui-knowledge/laws.md` (full dated journal, grep-only: `learnings-archive.md`)
 
 ---
 
@@ -112,10 +112,10 @@ Things in flight when the laptop was parked — the detailed context for all of 
 | Game/systems onboarding | `DEV_ONBOARDING.md` |
 | Claude memory snapshot | `.claude/memory/` (restore per section 3) |
 | Style spec (canonical) | `.claude/ui-knowledge/guiding-star.md` |
-| Engine laws / hard-won lessons | `.claude/ui-knowledge/learnings.md` |
+| Engine laws / hard-won lessons | `.claude/ui-knowledge/laws.md` (short, always read) · `learnings-archive.md` (full journal, grep-only) |
 | Panel inventory + sweep state | `.claude/ui-knowledge/panel-inventory.md` |
 | Design-system live-HTML bundle | `.claude/design-system/` |
-| Balance knowledge + decisions log | `.claude/balance-knowledge/` |
+| Balance knowledge + decisions | `.claude/balance-knowledge/` (`decisions-summary.md` always read; `decisions-log.md` grep-only) |
 | Custom agents (balance, sbox-ui, input) | `.claude/agents/` |
 | Skills / slash commands | `.claude/commands/` |
 | Pending patch notes (v1.2.1) | `Assets/data/patchnotes-pending.json` |

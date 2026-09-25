@@ -6,7 +6,7 @@ VISUAL SKELETON, chosen concept: **Center Stage** (three zones). The C# logic la
 CARRIES OVER UNTOUCHED — this is a markup + SCSS rebuild that rebinds to existing
 handlers/state, not a logic rewrite.
 
-Read with: `sweep-brief-v2.md` (dialect contract) + `learnings.md` (engine laws).
+Read with: `sweep-brief-v2.md` (dialect contract) + `laws.md` (engine laws).
 
 ## The three zones (at ~2560×1440 reference; flex so 1920 works)
 
