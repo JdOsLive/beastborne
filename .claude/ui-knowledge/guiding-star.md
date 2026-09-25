@@ -209,7 +209,7 @@ Rules:
 ## Input grammar (keyboard)
 - **WASD** navigate · **Space / Enter / E** confirm (Space is the displayed key; E a silent alternate — `UiInput.ConfirmPressed()`) · **Q** back (universal) · **R** the page's power action · **Z / X** cycle sections/filters · **M** phone · **1–7, 9, 0** jump to apps · **T / N** open phone to Chat / Alerts · **F** hold-to-reset / page utility.
 - Routing: `GameHUD.OnUpdate` → active panel `TickInput()` → `HandleKeyboardInput()`; both stop while `UIModalState.AnyModalOpen`. Modals gate their `Tick()` on `UIModalState.IsTopModal(id)` (ConfirmDialog highest). Register every new blocking popup in `UIModalState`. Never set `AcceptsFocus` on page panels.
-- Known input bugs (2026-09 audit, not yet fixed): M doesn't close the phone; R on Skills/Beastbook/Roster also toggles the radio widget in the same frame (only Q has a `PanelHandledBackKey`-style guard).
+- Double-fire guards: a page that consumes Q sets `GameHUD.PanelHandledBackKey`; one that consumes R sets `GameHUD.PanelHandledPowerKey` (both reset each frame); routes and keyboard closes stamp `NavManager.MarkRouted()`. Any new page key that GameHUD also maps needs the same treatment. M toggles the phone both ways.
 
 ---
 

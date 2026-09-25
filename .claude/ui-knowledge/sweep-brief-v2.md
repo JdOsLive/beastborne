@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-09-25** by `ui-overhaul-brief.md` (the July sweep is complete). Kept for history.
+
 # SWEEP BRIEF v2 — the full panel overhaul (2026-07-02)
 
 The user commissioned redoing EVERY in-game panel. The two reference

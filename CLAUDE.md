@@ -10,6 +10,7 @@ This file loads on EVERY turn, so it holds only rules that apply to nearly every
 |---|---|
 | UI engine laws + conventions (short, always read for UI work) | `.claude/ui-knowledge/laws.md` |
 | Canonical style spec | `.claude/ui-knowledge/guiding-star.md` |
+| Active UI overhaul brief (the standing prompt) | `.claude/ui-knowledge/ui-overhaul-brief.md` |
 | Past UI history / "why is it like this?" | **grep** `.claude/ui-knowledge/learnings-archive.md` — never read it whole (560 KB) |
 | A specific panel's notes | **grep** `.claude/ui-knowledge/panel-inventory.md` for the panel name |
 | Settled balance decisions | `.claude/balance-knowledge/decisions-summary.md`; **grep** `decisions-log.md` for full reasoning |
