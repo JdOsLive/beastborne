@@ -40,6 +40,13 @@ batch-rewrite screens in one context.
   ChatGPT-era build gets replaced so menu → game reads as one product. It's the LAST phase,
   after the foundations are proven in-game; don't restyle it piecemeal before then.
 
+## Known unfinished work (user, 2026-09-25)
+- **Expedition** (World Map → prep → run → result) is the app that never got a full design
+  pass. It needs a real redesign, not a polish pass.
+- **Quests** is partly done; the **Quests popup** in particular still needs work.
+- **The PawPad itself** (device shell, tiles, dock, icons, in-phone apps, open/close) is in
+  scope for a visual upgrade, not just the pages it routes to.
+
 ## Anti-"AI UI" checklist (reject on sight)
 Uniform 1px `rgba(255,255,255,.1)` hairlines on everything · the same 12–16px radius on
 every box · soft layered shadows as decoration · purple accents everywhere · decorative
