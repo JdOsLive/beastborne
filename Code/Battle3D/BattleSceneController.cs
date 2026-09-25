@@ -54,7 +54,6 @@ public sealed class BattleSceneController : Component
 	// 3D mouse picking
 	public MonsterBillboard HoveredBillboard { get; private set; }
 	public Action<Monster> OnBillboardClicked { get; set; }
-	private MonsterBillboard hoveredBillboard;
 
 	private BattleCameraController cameraController;
 	private BattleArena arena;

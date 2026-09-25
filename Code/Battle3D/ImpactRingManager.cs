@@ -38,7 +38,7 @@ public sealed class ImpactRingManager : Component
 	// Total animation duration (ringExpand keyframe is 0.4s ease-out forwards).
 	private const float RingLifetime = 0.4f;
 
-	public List<ImpactRingData> Active { get; } = new();
+	public new List<ImpactRingData> Active { get; } = new();
 
 	protected override void OnAwake()
 	{

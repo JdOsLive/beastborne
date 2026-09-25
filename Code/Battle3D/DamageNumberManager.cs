@@ -51,7 +51,7 @@ public sealed class DamageNumberManager : Component
 	// the sprite.
 	private const float VerticalLiftFraction = 0.02f;
 
-	public List<DamageNumberData> Active { get; } = new();
+	public new List<DamageNumberData> Active { get; } = new();
 
 	protected override void OnAwake()
 	{

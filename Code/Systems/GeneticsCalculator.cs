@@ -142,7 +142,6 @@ public static class GeneticsCalculator
 	{
 		var preview = new BreedingPreview();
 
-		int maxGene = Genetics.MaxGeneValue;
 
 		// Get skill bonus for expected value calculation. Matches the
 		// new InheritGene formula: 60% base higher-bias + up to 25% from skills.
