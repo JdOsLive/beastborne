@@ -51,6 +51,23 @@ public static class UIModalState
 	{
 		get
 		{
+			var top = ComputeTopModal();
+			if ( top != _lastTop )
+			{
+				_lastTop = top;
+				_topChangedAt = Time.Now;
+			}
+			return top;
+		}
+	}
+
+	// Frame stamp of the last TopModal change. Any caller computing TopModal
+	// records the change, so the first observer in a frame marks it.
+	private static string _lastTop;
+	private static float _topChangedAt = float.MinValue;
+
+	private static string ComputeTopModal()
+	{
 			// ── Highest priority: the confirm yes/no. It can stack on anything. ──
 			if ( ConfirmDialog.IsVisible ) return "ConfirmDialog";
 
@@ -102,13 +119,19 @@ public static class UIModalState
 			}
 
 			return null;
-		}
 	}
 
 	/// <summary>
 	/// Convenience: true when <paramref name="modalId"/> is the top-priority
 	/// open modal. A popup's <c>Tick()</c> uses this to gate its keyboard input
 	/// so a lower modal in the stack stays inert.
+	///
+	/// Returns FALSE on the frame the top modal changes (a popup just opened,
+	/// or the one above it just closed): Input.Pressed is edge-triggered and
+	/// global, so the press that opened/uncovered this popup would otherwise be
+	/// read again by it (e.g. Space on EMBARK AGAIN also toggling a beast in the
+	/// TeamPicker it opened). Time.Now is constant within a frame; a stamp from a
+	/// previous play session can't match (Time.Now resets), so no stale lockout.
 	/// </summary>
-	public static bool IsTopModal( string modalId ) => TopModal == modalId;
+	public static bool IsTopModal( string modalId ) => TopModal == modalId && Time.Now != _topChangedAt;
 }
