@@ -1,284 +1,239 @@
-# Beastborne UI — Guiding Star (canonical style reference + Fable 5 sweep brief)
+# Beastborne UI — Guiding Star (canonical style spec)
 
-The single source of truth for the all-panel UI sweep. Every panel — main menu, tab
-screens, floating widgets, sub-panels, popups — converges here. The new visual language
-was **proven first on the main menu** (Concept C launcher, purple liquid ring, angled
-planes, italic display type); this doc lifts that language off the menu and makes it the
-target for the entire game. Where an older doc or a shipped panel conflicts, **this doc
-wins on tokens/color/motion**; `style-guide.md` wins on component anatomy/recipes.
+**Describes the SHIPPED visual language** as of the 2026-08-19 code (Fable 5 panel sweep, Beasts
+Center Stage / fd dossier, PawPad, one-cursor + app-color passes). Rewritten 2026-09-25 from a
+code audit — the early-July brief it replaces was aspirational and had drifted.
+
+**Precedence:** where this doc and shipped code disagree, **the shipped code wins** (user
+ruling) — `MonsterRosterPanel.razor(.scss)` is the living reference; fix this doc. Engine
+constraints live in the `CLAUDE.md` quirks table + `laws.md`; component anatomy details in
+`style-guide.md` (older — this doc wins on tokens/color/motion); live-HTML swatches in
+`.claude/design-system/` (note: several of its cards still show the retired pink fusion
+accent — see "Known stale sources" at the end).
 
 > **North star:** *Make the deep feel simple.* Beastborne is genuinely complex (genetics,
-> breeding, fusion, teams); the UI's whole job is to make that feel approachable, warm,
-> obvious-at-a-glance. **The beasts are the heroes — UI is the frame.**
+> fusion, teams); the UI's job is to make that feel approachable, warm, obvious-at-a-glance.
+> **The beasts are the heroes — UI is the frame.**
 
-**THE MIX (each doc owns its lane):**
-- **guiding-star.md (this doc)** — principles, the new visual language, color/type/space
-  tokens, motion doctrine, stroke discipline, navigation model. WINS on any token/color/
-  motion conflict.
-- **style-guide.md** — the COMPONENT COOKBOOK (buttons, pills, badges, diamonds, section
-  chrome) with `MonsterRosterPanel` as the living reference. WINS on component anatomy.
-- **CLAUDE.md** quirks table + **laws.md** — the engine constraints (what parses, what breaks).
-- **scene-swap-spec.md** — the transition system for sibling screen changes.
-
-> **⚠️ Reinvention scope (user directive, 2026-07-01):** the **main menu (title/launcher
-> screen, `MainMenu.razor`) is LIKED — keep its structure.** It's the reference: its visual
-> vocabulary (motion doctrine, angled planes, italic display, engine-safe patterns) AND its
-> overall composition both work. The reinvention target is the **in-game menus/panels** — the
-> tabs, floating widgets, sub-panels, and popups — whose **layout and especially FORMATTING**
-> the user is unhappy with. Rethink how each of those is structured and laid out; be
-> innovative, don't just reskin. Carry the main menu's vocabulary AND its compositional
-> confidence into them so every screen feels like the same game — that's what "sibling of the
-> menu" means.
+> **Scope rules still in force:** the **main menu (`MainMenu.razor`) is LIKED — keep its
+> structure.** **BattleView / battle HUD is OFF-LIMITS** for restyling. Don't sweep dormant
+> GuildPanel / ArenaPanel (features not live).
 
 ---
 
 ## Principles (the gut-check)
 - **P1 Simple surface, deep system** — lead with one action + the few numbers that matter; tuck genetics/traits/edge stats behind progressive reveal. First read ≠ spreadsheet.
-- **P2 Readable at a glance** — big type, high contrast, generous space. Parse the most important thing in <1s. If two things fight for "most important," one is wrong.
-- **P3 Beasts are the heroes** — chrome stays dark + quiet so sprites/art pop. A panel never out-shouts a beast.
-- **P4 Color carries meaning** — never decorate with it. One accent per view.
-- **P5 Playful, not noisy** — chunky pills, rounded cards, italic energy, dry wit; discipline underneath (one accent, consistent spacing).
-- **P6 The next step is always obvious** — teach *through the interface* (one first-run hint / empty-state nudge in context), never stacked tutorials. If players need a tooltip to know what to do, fix the screen.
-- **★ One-line test** — finish "The player is here to ____." If the layout doesn't make that the easiest thing, simplify until it does.
+- **P2 Readable at a glance** — big type, high contrast, generous space. If two things fight for "most important," one is wrong.
+- **P3 Beasts are the heroes** — chrome stays dark + quiet so sprites/art pop.
+- **P4 Color carries meaning** — never decoration. One accent per view: the page's app color.
+- **P5 Playful, not noisy** — skew chips, italic energy, dry wit; discipline underneath.
+- **P6 The next step is always obvious** — teach through the interface. Every hotkeyed control **wears its key** (`.kb-key` cap). No tooltips as crutches (trait tooltips are retired game-wide — effects are written inline).
+- **★ One-line test** — finish "The player is here to ____." If the layout doesn't make that the easiest thing, simplify.
 
 ---
 
-## What the sweep fixes (the 5 problems, and their mandates)
+## The four signatures
 
-The current game has five named problems. Every panel in the sweep is judged against these:
+### 1. One cursor — the living violet ring
+The selection cursor is **the only perpetually-moving control-level thing on screen.**
+- A real bordered element — `border: 4px solid #9b6cff`, transparent fill — **not** box-shadow (s&box distorts shadow corners).
+- It is a **root-level absolute element rendered AFTER the content** (a later sibling, so it paints on top), not an `inset:-10px` child of each item. Code writes its `left/top/width/height/border-radius` from the target's `Box.Rect`; it glides on **GLIDE** `0.27s cubic-bezier(0.22, 1, 0.36, 1)` (left/top/width/height only) + opacity 0.15–0.2s. A `.snap` class makes the first lock-on land instantly.
+- **Ink-lean:** a continuous per-frame multi-sine skew/rotate wave applied imperatively (never a CSS transition). Menu = full amplitude + liquid stretch on long hops + copies its target's 3D plane; Roster/PawPad = rebalanced wave at ×0.6 with ±1.3% scale breathing. Reference: `MainMenu.razor ~2548-2595`, `MonsterRosterPanel.razor ~2662`, `PhoneLauncher.razor ~776`.
+- Radius = host radius + gap (grid card 22 → ring 32; PawPad tile → 30). Size math: see `UpdateGridRing` in `MonsterRosterPanel.razor` (ring-width math is listed as unresolved in `laws.md` — check there before touching it).
+- **Scope:** the liquid ring follows **beast/tile selection** (roster grid, PawPad grid, menu, and skewed rings in OnlineHub / Beastbook / SkillTree / Shop / Inventory / MenuPopup). **Controls inside a detail stage/dossier show focus as a `.kb-focused` border recolor** (violet, or the control's own accent on action slabs) with a `kbLand` flash `0.18s` (`#d9c9ff → #9b6cff`) — not a second ring. Hover moves the selection (hover == focus), so there is one cursor, never a separate hover ring.
+- **Selected beast card = violet ring + violet fill** (`#2b2250 → #1d1738`, transparent border) in the roster; outside the roster a 2px `#9b6cff` border. **No gold selection rings.**
+- **Gold snap:** on PLAY the menu ring snaps to gold `#ffce3a` and slams shut (gap → 2px, 0.09s). Gold is rationed to consequential commits; PLAY is currently the only implemented snap.
+- Fusion mode keeps the ring **violet** (the pink fusion accent was retired 2026-07-12).
 
-| Problem today | Root cause | The mandate |
-|---|---|---|
-| **Not much movement / feels static** | Panels are flat and dead; motion is either absent or sprinkled thinly everywhere so nothing reads as alive. | **Concentrate motion.** Every screen has exactly ONE alive element (the violet selection ring) + a quiet ambient scene layer + hard SNAP feedback on the control you touch. Dead-static panels are a bug. See Motion. |
-| **No angles / flat grid look** | Everything sits on a rectangular grid, axis-aligned. | **Adopt the angled-plane dialect** — `rotateY(13°)` sidebar buttons, `rotateY(10°)` cards, signed `±7°` scene backdrops, 45° diamonds, ±3° tilted stamps. Nothing sits perfectly flat. See The New Visual Language §2. |
-| **Colors are messy** | ~12,400 hardcoded color literals, no token layer, element hues drift between panels, hairline borders everywhere read "generic AI dashboard." | **Token discipline + one accent per view + the vector rule.** Wind = teal is locked; the rest of the element palette is Fable 5's to redesign as ONE set. Kill decorative hairline borders. See Color + Surface & Stroke. |
-| **Different UI style everywhere** | No shared primitives; every panel re-implements button/pill/card/modal/header by copy-paste, then drifts. | **Every panel is a sibling of the menu.** Header, section chrome, card, pill, diamond, focus ring all come from ONE source. Copy the canonical, don't invent. Reusable parts get captured into shared components, not pasted. |
-| **Players get confused** | The always-on 3-island bottom bar spreads attention across ~13 targets; too many entry points, no clear "what do I do here." | **P1/P2/P6 + the phone launcher.** One primary action per view; replace the persistent bar with a single menu button that opens a clear launcher. See Navigation. |
+### 2. Skew dialect (in-game) + angled planes (menu & device)
+- **In-game panels speak `skewX`**, not 3D planes: section chips `skewX(-12deg)` with counter-skewed labels; LV / genes pills and FilterBar triggers at `-8deg`; header seam dashes at `-24deg`; rarity pedestal strip `-18deg`; the PawPad accent swipe slants `-12deg`.
+- **Receding 3D planes (`perspective() rotateY()`) live only on the main menu** (sidebar `rotateY(13deg)`, cards `10deg`, scene backdrops ±5–7°, Persona pop `translateX(9px) rotateY(13deg) scale(1.04)`) **and the PawPad device lean** (`perspective(1600px) rotateY(-13deg)`, origin right).
+- **45° diamonds** remain the action shape (`BbDiamond`, stage `.item-/.fuse-/.release-diamond`, `.detail-diamond`), inner icon counter-rotated.
+- ⚠ Engine: a transform-holder can't also carry bg/border/overflow (renders flat under 3D) → surface on a child. Never transform a flex parent whose children rely on flex-grow widths — drive entrances with opacity.
 
----
+### 3. Color identity — app color per page, violet cursor, rationed gold
+- **Every page wears its PawPad app color** — wave header, kicker, seams, chips, section header accent, focus tints on action slabs. Registry = `PhoneLauncher.razor` `Apps` (the source of truth; see Navigation table).
+- **Violet `#9b6cff` = the one cursor / "you".** Never used as a page accent substitute.
+- **Gold `#ffce3a` (ink `#2a1605`) is rationed:** PLAY, currency, EVOLVE (hero tier), SkillTree INVEST, the `BbButton` primary tier, milestones. *"Gold spent freely is gold worth nothing."* It is NOT the universal primary.
+- **Fusion CTA = forge violet** `#7b4ddb` (hover `#6a3fc0`, ready pulse `#7b4ddb ↔ #9b6cff`), two-stage in-button confirm.
 
-## The new visual language (sourced from the main menu)
-
-Four signatures make the look *new* vs a generic dark dashboard. These are the DNA every
-panel inherits. All values below are real, shipped, engine-proven on the menu.
-
-### 1. One alive element — the living violet ring
-The selection cursor is the **only** perpetually-moving thing on any screen. It is a real
-bordered `<div>` (`border: 4px solid #9b6cff`, transparent fill) — **not** a box-shadow
-ring (s&box distorts box-shadow corners) — whose position/size/radius are written from
-code and glide on the signature ease:
-```
-transition: left/top/width/height 0.27s cubic-bezier(0.22, 1, 0.36, 1);
-```
-It carries a continuous, per-frame multi-sine "ink-lean" wave (small skew/rotate, applied
-imperatively so it never gets low-passed) and a 3D tilt that copies its target's plane.
-The selected item's solid fill sits *behind* its label with a literal gap of moving
-background between fill and ring (the "View button" look). On PLAY it snaps to gold
-`#ffce3a` and slams shut (`0.09s`). **Every panel that has a selection/keyboard cursor
-uses this exact ring.** See Focus ring & interaction.
-
-### 2. The angled-plane dialect
-Nothing sits on a flat axis-aligned grid. The vocabulary:
-- **Receding planes** — sidebar buttons `perspective(1300px) rotateY(13deg)` (origin left center); half-width cards `perspective(2000px) rotateY(10deg)` (a full-width element's far edge recedes ~2× a half-width one at the same angle, so wide = smaller angle). One shared plane per GROUP (can't share a camera across separate elements in s&box — no `preserve-3d`).
-- **Persona pop** — selecting an item lunges it OUT of the lean toward the player: `translateX(9px) rotateY(13deg) scale(1.04)` (nav), `scale(1.05–1.06)` (cards/CTAs). Hard SNAP, ≤150ms.
-- **Signed scene lean as wayfinding** — Roadmap `+7°`, Patch Notes `−7°` (mirrored — the angle tells you where you are), Options `+5°`, all `perspective(2000px)`.
-- **45° diamonds** — icon frames / gems: `rotate(45deg)` with inner icon counter-rotated `rotate(-45deg)`. The diamond is Beastborne's action shape.
-- **Tilted stamps** — badges rest at `rotate(-3deg)` / `rotate(3deg)` and straighten to `0deg` on hover ("snaps to attention"). OUT NOW badge idle-wiggles 2°→5°.
-- **⚠ Engine rule:** a transform-holder can't also carry bg/border/overflow (renders flat under 3D) → put the surface on a direct CHILD. And never put a transform on a flex parent whose children rely on flex-grow width (poisons width resolution) — drive entrances with opacity.
-
-### 3. Three-color identity
-- **Violet ring `#9b6cff`** = selection / "you" / focus. Everywhere, one color.
-- **Gold hero `#ffce3a`** (on dark brown text `#2a1605`) = PLAY / primary / "go" / kickers.
-- **One saturated accent per destination** — each screen owns a single accent (menu scenes: Roadmap gold, Patch Notes violet, Options teal). This is what the phone-launcher's per-app color and its liquid-expansion background build on (see Navigation).
-
-### 4. Italic-900 display type + the vector rule + no-glow
-- **Editorial voice**: large italic 900 display (76px featured title, 52px scene title, 38px PLAY), wide-tracked uppercase kickers. Persona "stamp-and-slab," not neutral sans UI.
-- **The vector rule**: NO decorative hairline borders. A component is a **filled slab** separated from its parent by CONTRAST, not a stroke. Permitted lines only: the violet ring, a left accent bar, a bottom rarity strip, one optional 2px solid panel-signature strip. A border that just "defines an edge" → delete it, fix the fill contrast.
-- **No-glow**: colored box-shadow halos read as smudge over moving/dark backgrounds. Hover feedback is dark elevation + brighten, never a colored glow. (Colored glows survive only in static, dark, non-scroll contexts, sparingly.)
+### 4. Type voice + stroke discipline + no-glow
+- **Editorial voice:** italic 900 display (menu 76/52/38px; panel page title 38px italic), wide-tracked uppercase kickers; hero numerals upright Exo2Black ("record book" register). See Typography.
+- **Stroke discipline (revised):** components are filled slabs separated by contrast. Permitted lines: the violet cursor · a left accent bar · the rarity pedestal strip · one panel-signature strip (roster header: 2px `rgba(123,77,219,0.6)`) · **the dossier hairline family** (`#262038` rules, `#2A2340` 1px card borders) and the corner cut. What's banned is the generic *decorative* `rgba(255,255,255,0.1)` hairline on every chip/pill — the "AI dashboard" look.
+- **No-glow:** colored halos only as a signal, only outside scroll containers, only in static dark contexts (e.g. the READY CTA breathe, the PawPad HUD chip). Elevation = dark drop shadow (`0 4px 14px rgba(0,0,0,0.45)`), never `inset`.
+- **"The concept is the theme, Beastborne is the material":** build from game vocabulary (dark slabs, corner cuts, hairlines, two-tone element light, skew chips, Exo2 italics) — never real-world materials (the April bronze bevel is retired).
 
 ---
 
 ## Color tokens
 
-**Surfaces** (near-black, purple-leaning — the menu's actual darks):
-- Root base `#04060f` · App/page bg `#0A0912`/`#0c0a18` · Panel slab `#15121F` · Raised card `#1C1830` · Card fill `rgba(20,20,35,0.95)` · Empty slot `#131019`
-- Sidebar/slab gradient reference: `rgba(24,17,48,1) → rgba(11,7,28,1)`.
-
-**Semantic accents** — fixed meaning, never recolored for variety:
-| Token | Value | Means |
+**Surfaces (dossier family — current):**
+| Token | Hex | Use |
 |---|---|---|
-| Gold | `#ffce3a` (grad `#ffd95a→#ffb330→#f59312`, dark text `#2a1605`) | highlight · level · primary · "go" |
-| Violet ring | `#9b6cff` | selection · focus · nav · "you" |
-| Purple deep | `#7B4DDB` | secondary purple chrome |
-| Orange | `#ee5421` | live · embark · alert |
-| Red | `#E0414A` | destructive · release |
-| Green | `#3FB45E` | success · confirm |
-| Blue | `#3F8FE0` | info · neutral action |
-| Discord blurple | `#5865F2` | Discord only |
-| Text | `#F4F1EA` warm cream (dim `rgba(214,206,236,.6)`) | primary text |
+| Page / root | `#0A0712` | page bg (menu root `#04060f`) |
+| Column | `#130E1D` | containers, corner-cut fill |
+| Register card | `#161022` | journal/register rows |
+| 1B card | `#1A1428` | corner-cut dossier cards |
+| Raised card | `#1C1830` | mini beast card top, BbButton secondary |
+| Action slab rest | `#262040` | stage action slabs (hover `#14101f`, press `#0e0b16`) |
+| Gauge track | `#221B33` | bar tracks |
+| Hairline | `#262038` | rules |
+| Card border | `#2A2340` | 1px card borders |
+Also: `#0c0a18` modal bg · `#15121f` panel slab · `#131019` empty slot.
 
-### Element identity — **the full palette (incl. Wind) is OPEN — Fable 5 to design**
-The exact hues are Fable 5's to design as ONE cohesive 11-element set. Only the *rendering
-system* is a constant.
+**Page accents (PawPad apps):** Beasts `#7b4ddb` · Skills `#ff6bd6` · Expedition `#ee5421` · Online `#3f8fe0` · Beastbook `#2dd4bf` · Shop `#ffce3a` · Quests `#3fb45e` · Bag `#d9a054` · Chat `#4aa8ff` · Radio `#c26bff` · Effects `#f7e024` · Alerts `#e0414a`.
 
-**THE ONE CONSTANT (keep):**
-- **Two-tone rendering** — each element = a **dark saturated FILL + a bright RIM** (e.g. shipped Fire `#b91c1c` fill / `#dc2626` rim). This keeps cards uniformly dark so beasts pop; the element reads via a rimmed BADGE, **never a card-wide color flood**. No rarity-colored card borders either.
-- **One hue per element**, used everywhere that element appears (badge, filter pill, detail, dual-type). Dual-typed beasts show BOTH badges, primary first. Neutral fallback `#9AA0AD`.
+**Semantic:** Violet cursor `#9b6cff` · section chip `#8b5cf6` · kicker/LEARN `#a78bfa` · Gold `#ffce3a` (grad `#ffd95a→#ffb330→#f59312`, ink `#2a1605`) · Red/destructive `#e0414a` · Green/success `#3fb45e` · Blue/info `#3f8fe0` · Discord `#5865f2` (Discord only).
 
-**OPEN — design a full 11-element palette (10 elements + Neutral):**
-Fire · Water · Earth · **Wind** · Electric · Ice · Nature · Metal · Shadow · Spirit · Neutral.
-*Wind is currently teal (`#0d9488`/`#2dd4bf`) and that's a fine anchor, but it is NO LONGER
-locked — change it if the cohesive set calls for it.* Constraints for the new set: every hue
-must (a) render legibly as a dark-fill + bright-rim badge on the `#0c0a18`/`#1C1830`
-surfaces, (b) stay distinct from the semantic accents — **especially keep Shadow clear of the
-`#9b6cff` selection violet** and Fire clear of the destructive-red — and (c) pass a contrast
-check at badge size. Deliver as a single table (fill + rim per element); it then replaces the
-current per-panel copies in ONE token pass. *Current shipped values live in
-`Code/UI/Panels/BeastiaryPanel.razor.scss:797-807` + `FilterBar.razor.scss:102-112` — the
-baseline to iterate from, not gospel.*
+**Text:** warm cream (display) `#F4F1EA` · cool cream (values) `#EFEAF7` · body/prose `#A79DBE` · meta/labels `#7C7295`.
 
-### Rarity ladder (card top-edge tint + soft strip; goes to Mythic)
-Common `#9ca3af` · Uncommon `#22c55e` · Rare `#3b82f6` · Epic `#a855f7` · Legendary `#fbbf24` (dark text) · **Mythic `#ec4899`**.
+### Element palette
+- **Rendering system (the constant):** each element = **dark saturated FILL + bright RIM** badge/glyph tile; the element never floods a card; no rarity-colored card borders. Dual-typed beasts show both, primary first.
+- **Reference set = `BbTokens.Element` v1 (fill / rim):** Fire `#7C2410/#FF6A3D` · Water `#1E3A8A/#4AA8FF` · Earth `#6B3F14/#D9A054` · Wind `#0F766E/#2DD4BF` · Electric `#806C00/#F7E024` · Ice `#155E75/#9FE8FF` · Nature `#14532D/#4ADE80` · Metal `#3F4B5C/#C3CDD9` · Shadow `#4A1580/#C26BFF` · Spirit `#86185D/#FF6BD6` · Neutral `#44403C/#A8A29E`. Shadow sits magenta-ward of the cursor violet on purpose. **Wind = teal.**
+- ⚠ **Not yet consolidated:** `BbTokens.Element` has no callers; ~16 scss files carry their own element copies (Roster flat set, FilterBar's older `#0d9488/#2dd4bf`-era values, Beastiary tints, Guild). New code should use the BbTokens set; a one-pass consolidation is still open.
+- Baked element art: dais platters `ui/dais/dais-<el>.png`, glyph SVGs `ui/icons/elements/background/*.svg`.
 
-### Stat hues (fixed)
-HP green · ATK red · DEF blue · SpA purple · SpD cyan · SPD gold. *(Keep stat-cyan slightly bluer than Wind teal.)*
+### Rarity ladder (pedestal strip, never a border)
+Common `#9ca3af` · Uncommon `#22c55e` · Rare `#3b82f6` · Epic `#a855f7` · Legendary `#fbbf24` (dark text) · Mythic `#ec4899`.
+
+### Stat hues
+HP `#4ade80` · ATK `#f87171` · DEF `#60a5fa` · SpA `#c084fc` · SpD `#2dd4bf` (newer fd rules; older rules still use cyan `#67e8f9` — known inconsistency) · SPD `#fbbf24`.
 
 ### Currency
-Gold / Ink / Tokens. *(No "gem" — the game has none.)*
+Gold / Ink / Tokens (`Assets/ui/icons/currency/{money,ink,token}.svg`). **No gems** — `GetGems()` is a dead vestigial field; never surface it.
 
 ---
 
-## Typography — Exo 2 only
-- Two registered families: **`Exo2`** (Exo2-Bold.ttf) and **`Exo2Italic`** (Exo2-BoldItalic.ttf). s&box doesn't honor `@font-face` style-matching, so **italic is its own named family** — set `font-family: Exo2Italic; font-style: italic;`. One typeface, no second font.
-- **The new look leans heavily italic**: display, labels, and even body copy on the menu use Exo2Italic. Italic is the default voice for headlines, hero beast names, kickers, CTAs, and card titles. Keep dense data/tables roman for legibility.
-- Scale (menu-proven): hero/featured title **76px/900**, scene title **52px/900**, PLAY **38px/900**, nav labels **26px/800**, card title **26px/900**, body/desc **21px/500 italic**, CTA **20px/900**, kicker **13–16px/900 uppercase ls 0.2em**, key-cap **11px/900**. Panel-internal type stays smaller (page title 22, section header 11 uppercase, body 13) — see style-guide.md.
-- ⚠ **Engine reality:** only Bold weights are in `Assets/fonts/` root, so every `font-weight` is faux-synthesized off Bold (reads heavy). Build hierarchy from **size + italic + color**, not fine weight steps. **`line-height` MUST be `px`** (unitless = multiplier post-26.06.03); for 30px+ type, line-height ≥ font-size.
+## Typography — Exo 2 weight ladder
+Registered families (`GameHUD.razor.scss:1-33`, `MainMenu.razor.scss:1-9`): **`Exo2`** (Bold + BoldItalic via `font-style: italic`), **`Exo2Italic`** (BoldItalic as its own family), **`Exo2Medium`**, **`Exo2SemiBold`**, **`Exo2ExtraBold`** (registered, currently unused), **`Exo2Black`**.
+
+| Role | Family / weight | Size |
+|---|---|---|
+| Prose (move descriptions, metas, dates) | Exo2Medium 500 | 13px / lh 19px, `#A79DBE` |
+| Tile labels, column heads, record labels | Exo2SemiBold 600 uppercase ls 2px | 10px, `#7C7295` |
+| Chips, badges, kickers, section labels | Exo2 700 uppercase ls 1.5–3px | 10–11px |
+| Move / card names | Exo2Italic 700 | 15px |
+| Stat values (right-aligned numeral) | Exo2Italic 700 | 20px / lh 24px |
+| CTA voice (ITEM / FUSE / RELEASE) | Exo2Italic 900 uppercase | 15px |
+| Sub-view band names | Exo2Italic 900 uppercase | 19px |
+| Hero numerals (record tiles, totals) | **Exo2Black 900 upright** | 24px |
+| Reveal name (fusion result) | Exo2Italic 900 uppercase | 30px |
+| Panel page title | Exo2Italic 900 uppercase | 38px |
+| Menu only | Exo2Italic 900 | 52px scene · 76px featured |
+
+Keep dense data roman; italic is the display voice. **`line-height` always in `px`** (unitless = multiplier since 26.06.03); for 30px+ type, line-height ≥ font-size. Full live ladder: `design-system/tokens/type.html`.
 
 ---
 
-## Layout, spacing & radii
+## Layout, radii & cards
+- Designed at **1920×1080**, root scales to fit. Spacing scale 4-based: 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 56.
+- **Two card families coexist:**
+  - **Dossier "1B" card** (content cards in Roster/Beastbook/SkillTree detail): `#1A1428` fill, `1px solid #2A2340`, **`border-radius: 0`**, with a **corner cut** — a 20×20 `#130E1D` square rotated 45° at top/right −10px with a 1px `#2A2340` bottom edge (`.fd-cut`; SkillTree `.sk-cut`). The cut turns violet on `.kb-focused`.
+  - **Rounded chrome:** mini beast card r22, compact card r16, stage collection / journal modal r26, PawPad tiles r22 / screen r30, `BbButton` r16 (size-34 r11), action slabs r14, FUSE CTA r16.
+- Ring radius = host radius + gap. Legacy small radii (4/6/8/10/12px) remain in older panels — don't copy them into new work.
 
-- Designed at **1920×1080**, root scales to fit.
-- **Spacing scale (4-based):** 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 56. Inside a component lean small (8–16); between sections lean large (24–56). Screen padding ~32–56px.
-- **Radii — the new scale is ROUNDER than the old panels** (menu-derived):
-  | Token | Value | Use |
-  |---|---|---|
-  | chip / small pill | 10–11px | key-caps, small pills, tiny CTAs (13px) |
-  | button | **16px** | primary buttons, nav items, posters (menu standard) |
-  | card | **22px** | content cards |
-  | large surface / hero | **26px** | featured cards, big panels |
-  | scene / modal slab | **30px** | full backdrops, large modals |
-  | fully round | 999px | pills, dots |
-  - **Concentric focus ring**: ring radius = host radius + inset (menu uses **+10px** → 26px ring on a 16px button, 32px ring on a 22px card). Keep the ring a fixed even gap around its host.
-  - Dense content grids (roster cards) may stay tighter (14px) for information density — that's the one allowed exception; everything chrome-level uses the rounder scale.
+### Mini beast card (the atom, 150×180 — `MonsterCard.razor(.scss)`)
+- Shell: gradient `#1c1830 → #141021`, static drop shadow `0 4px 14px rgba(0,0,0,.45)`.
+- **Top-left:** LV pill + genes/quality pill — `skewX(-8deg)` dark slabs `rgba(8,6,16,.94)`; quality = text color only.
+- **Top-right:** favorite star (roster uses an interactive `.card-fav-qt`).
+- **Foot:** nameplate with 24px `#262040` element glyph tiles + italic uppercase 12px name.
+- **Rarity:** centered 60×4 `skewX(-18deg)` pedestal strip. Never a border, never a flood.
+- **No PWR on the mini card** (PWR shows on horizontal/default variants and the detail stage).
+- Art is the biggest thing. (A legacy `filter: drop-shadow` still sits on the mini-card sprite — don't copy it; `filter` on `<img>` blurs pixel art.)
 
 ---
 
 ## Components
-- **Buttons** — one primary per view. Tiers: Primary (gold fill, dark text) → Commit (red fill, rationed — Embark/start battle) → Secondary (surface fill + diamond action icon) → Ghost (faint) → Danger (red-tinted, hold-to-confirm). Sizes 56/44/34px; ≥44 on main flows. States: hover brighten, active dim — **hue never changes**, and a ring-bearing button never transforms on hover (breaks the gap). Cost = trailing coin chip (red + inert when unaffordable); destructive = hold-to-confirm, not single click.
-- **The diamond** (45°) = the action shape. Battle: diamond leads, keybind+label pill juts from its bottom edge. Menus/lists: small diamond *inside* a rectangular button so rows align. Tint to function (Item blue, Fuse pink, Release red). Never on nav/Play/passive chrome.
-- **Beast card** (the atom): dark fill, soft separation (contrast, not stroke), **level pill top-left**, **favorite/multi-select top-right**, **PWR bottom-right over art**, **name + element badge(s) at foot**. Rarity = top-edge tint + bottom strip (never a card-wide border or flood). Selection = gold ring + fill. Art is the biggest thing; never drop-shadow the sprite (the card carries elevation).
-- **Detail panel** stack: identity (art/name/badges) → lore → actions → stats → moves/traits. Glanceable up top, deepest data last. Slides out from under the content grid.
-- **Badges** — element (dark-fill + bright-rim + solid glyph + UPPER label), rarity ladder, chips (LV, NEW, +N signed delta).
-- **Nav** — see Navigation (the persistent bottom bar is being retired).
+- **Buttons — `BbButton` tiers:** primary (gold gradient, ink text — rationed), commit (red `#e0414a`, for Embark-class actions; currently unused), secondary (surface fill + `BbDiamond` icon), ghost, danger. Sizes 56/44/34; ≥44 on main flows. Page CTAs usually wear the page accent instead (e.g. FUSE forge violet).
+- **Destructive actions:** inline **two-stage** confirm in the button (FUSE; SkillTree reset = two-stage click OR hold-F ~0.9s). Where a modal is unavoidable (Release), Cancel/Confirm with the **keyboard cursor seeded on Cancel**. `HoldToConfirm` primitive exists but is unused.
+- **Keycaps (`.kb-key`):** Exo2Italic 11px/900 `#f4ecd8` on `rgba(8,6,16,.88)` with a 2px black edge. Every hotkeyed control wears one, spatially anchored to the control.
+- **Section header:** skew chip (`#8b5cf6`, `skewX(-12deg)`, counter-skewed label) → hairline → skew badge. Shared `BbSectionHeader` (Kicker / Title / AccentColor) on Online, Quests, Bag — accent = app color.
+- **Wave header:** `BbHeaderWaves` (baked PNG accent waves, two strips counter-drifting ~30s/18s + opaque header fill) on Roster (violet), Skills (app pink), Beastbook (teal). Kickers are per-page spans (`rh-/sk-/bh-/sh-/mb-kicker`).
+- **Sub-view header band:** `.fsub-head` 88px identity band outside the scroll, per-view ambient, back button on Q (Roster journal and move/item pickers).
+- **Element dais:** baked PNG platter per element under the stage beast, slow breathe (5.4s) + flare.
+- **Background ambients:** `BbIconScroll` glyph drift (Quests, Online, Beastbook, Skills, Shop, Leaderboard, Inventory, Roster).
+- **Record tiles / stat rows:** Exo2Black numeral + faint violet ghost watermark; skewed hatched stat bars (`design-system/components/corner-card.html`, `stat-row.html`).
+- **Detail stack:** identity (art/name/badges) → lore → actions → stats → moves/traits. Traits as inline rows/chips with the effect text — no hover tooltips.
+- **Badges:** element (fill + rim glyph tile), rarity strip, chips (LV, NEW, +N signed delta).
 
 ---
 
-## Motion — the three-layer doctrine
+## Motion — three layers, one easing language
 
-Every motion belongs to exactly ONE layer. If you can't name the layer, the motion is wrong.
+| Token | Value | Use |
+|---|---|---|
+| FAST | `0.12s cubic-bezier(0.4, 0, 0.2, 1)` | press / state acks — the sharpest thing on screen |
+| STANDARD | `0.2s cubic-bezier(0.4, 0, 0.2, 1)` | focus, hover fills, entrances |
+| SLOW | `0.35s cubic-bezier(0.4, 0, 0.2, 1)` | view / mode transitions |
+| GLIDE | `0.27s cubic-bezier(0.22, 1, 0.36, 1)` | the cursor ring only (left/top/width/height) |
+| SETTLE | `cubic-bezier(0.2, 0.8, 0.3, 1.12)` | entrance overshoot springs (fusion sprite 0.35s, stage pop 0.3s, fav pop 0.14s) |
+Also in use: lifts `0.14s ease-out`, `kbLand` 0.18s, PLAY slam 0.09s. (`BbTokens.cs` still lists TSnap 0.14 / TCard 0.16 and the old 16/22/26/30 radius constants — stale; the table above is current.)
 
-| Layer | Speed | Owner | Examples (menu durations) |
-|---|---|---|---|
-| **FLOW** (ambient) | slow, continuous, environmental | the *scene*, never controls | wave video bg, nebula drift 34s, hero bob 6s, gold sheen 4.8s, pulse dots 1.6s ∞ |
-| **ALIVE** (the selector) | organic, perpetual, small | the violet ring ONLY | ring glide 0.27s `cubic-bezier(0.22,1,0.36,1)`, continuous ink-lean wave |
-| **SNAP** (interaction) | fast, sharp, finite ≤150ms | the control you touched | Persona pop 0.14s, hover brighten, press dim, card hover 0.16s |
+| Layer | Owner | Examples |
+|---|---|---|
+| **FLOW** (ambient) | the scene, never controls | header waves ~30s/18s, dais breathe 5.4s, twinkle 3.2–5.6s, orbit 9s, icon-scroll drift, menu wave video + PLAY sheen 4.8s |
+| **ALIVE** | the violet cursor ONLY | GLIDE + per-frame ink-lean |
+| **SNAP** (≤150ms) | the control you touched | press dim, `kbLand` border flash, fav pop |
 
-Rules that fall out:
-- **Surfaces are SOLID.** Panels/buttons/cards never deform, ripple, or breathe. Organic motion lives in the ring + the scene. ⚠ HARD VETO: never put wave/skew motion on a large surface near the player's focus (motion sickness — PLAY's liquid gold was vetoed twice).
-- **Player input creates the sharpest motion on screen.** Nothing ambient moves as fast as interaction feedback — that contrast is what makes clicking feel like *doing*.
-- **Entrances** are staggered class-toggle transitions (`transition-delay` works post-26.06.03): sidebar slide-in 0.6s overshoot, nav rows cascade 0/0.06/0.12/0.18s. Drive entrances with **opacity** when a transform would poison child flex widths.
-- **@keyframes only play once on mount** — fine for infinite ambient loops, WRONG for state reveals (won't replay on re-open). Use `transition:` for state changes.
-- Reserve big celebratory setpieces for real milestones (the PLAY "detonation" — five-layer acknowledge into the tilted two-tone Persona wipe — is the template; don't spend it on routine actions).
-
----
-
-## Surface & stroke discipline (the vector rule)
-- Component = **filled slab** on a surface tone, separated by CONTRAST. Idle controls sit DARK and quiet; brightness is earned by selection (idle = quiet, focus = lit).
-- Permitted lines only: violet selection ring · left accent bar (cards) · bottom rarity strip · one optional 2px solid panel-signature strip (ONE per panel, solid not gradient). That's the budget.
-- No hairline `rgba(255,255,255,0.1)` borders on chips/pills/cards — that's the "AI dashboard" look. Delete and fix fill contrast.
-- No colored glow halos (see no-glow). Drop shadows for elevation are fine (`0 4px 16px rgba(0,0,0,0.5)`); never `inset`.
-
----
-
-## Navigation — retire the persistent bar, adopt the phone launcher
-
-**The change:** remove the always-shown 3-island bottom command bar. Replace it with a
-**single menu button** that opens a **phone/device overlay acting as a LAUNCHER** — a grid
-of themed "app" buttons, one per destination. The phone is a *guide/router*, not where
-content lives. This declutters every screen (P6, fixes "players get confused") and is the
-exact abstraction the future **2D pixel-art map** needs (a map + a menu button, no
-persistent chrome).
-
-**The signature transition (the reason it's cool):** tapping an app plays a **liquid
-expansion** — a solid circle in that app's accent color scales up from the button's
-position to fill the screen, *becoming that menu's background*, with the menu fading in
-behind it. Each destination owns an accent token; that token drives the app button, the
-expansion, and the menu's background — one color, defined once.
-- ⚠ Implement as a **scaling solid `<div>` circle** (`transform: scale()` on a `border-radius: 50%` element), NOT a `radial-gradient` (s&box rejects gradient shape keywords + px stops). This is proven-safe.
-- The menu itself renders **full-screen or as a large popup**, per its own layout — the phone never holds real content.
-
-**What to build to enable it (the decoupling):**
-- A small **`NavManager` router** (static state + `Open(dest)`) so nav triggers are separate from whatever chrome renders them. Panels and chrome both call the router.
-- Each destination declares its **accent token** (app color = expansion = bg).
-- Remove the **96px bottom padding reserve** (`::after` spacer) currently on every tab panel — it exists only to clear the old bar.
-- Remap the number-key routing / `IsNavigatingTabs` state to the launcher (keep hotkeys; they open the launcher or jump to an app).
-- **Preserve** the rock-solid patterns: static `IsVisible` + `BuildHash()` for show/hide, `UIModalState` for input blocking, the concentric focus ring for keyboard nav inside the launcher.
+Rules:
+- **Hover polarity is light → dark: rest is brightest, hover darker, press darkest** (`.action-v2` `#262040 → #14101f → #0e0b16`; FUSE `#7b4ddb → #6a3fc0`). **Hue never changes between states.** ⚠ `BbButton`, `FilterBar` and `MonsterCard` still brighten on hover — legacy; bring them in line when touched.
+- Lifts (`translateY(-3px) scale(1.02)`, press `translateY(1px)`) only OUTSIDE scroll containers. Inside scrolls, fake lift with a lighter top border + darker bottom border.
+- **Surfaces are solid.** Panels/buttons/cards never ripple or breathe (the READY CTA's shadow breathe is the sanctioned exception as a signal). ⚠ HARD VETO: no wave/skew motion on a large surface near the player's focus (motion sickness).
+- **Player input creates the sharpest motion on screen.**
+- **Entrances:** class-toggle transitions for persistent elements; `@keyframes` for fresh mounts. **Staggers are baked into keyframe percentages — never `animation-delay`** (re-renders cancel pending delays; see CLAUDE.md).
+- Reserve big setpieces for real milestones (PLAY detonation, fusion ritual). Anti-gacha: celebrate deterministic, visible results; never dramatize an RNG roll.
 
 ---
 
-## s&box translation layer (design CSS is browser CSS — these DON'T port)
-Full table in `CLAUDE.md`. The high-impact ones for the sweep:
-- **No `box-sizing`** — s&box is PADDING-BOX: declared width/height include padding; subtract only borders.
-- **No `backdrop-filter`** → solid dark `rgba()`. **No `conic-gradient`** → linear/solid.
-- **`radial-gradient`** → bare percent-stops only (`rgba(...) 0%, rgba(0,0,0,0) 70%`). No shape keyword, no `at X% Y%`, no px stops, no `transparent` keyword. For circles/halftone/liquid-expansion use a **solid scaling div**, not a gradient.
-- **No `transparent` keyword in any gradient** → `rgba(...,0)`.
-- **No `filter: drop-shadow` on `<img>`/sprites** (blurs pixel art) → glow via a behind div; drop shadow via `box-shadow` on a wrapper (never `inset`).
-- **`filter` accepts only ONE function** — never chain.
-- **No CSS border-triangles** → iconify glyph or a text `▶`/`◆` glyph for diamonds/arrows.
-- **`line-height` always `px`.** **Sprites** use `image-rendering: pixelated` — never anti-alias or fractional-scale.
-- **Transforms poison flex width** — no transform on a flex parent whose children rely on flex-grow; entrances via opacity. Transform-holders can't carry bg/border/overflow (flat under 3D) → surface on a direct child.
-- **Scroll containers** don't clip descendant `box-shadow`/`transform` — no colored glows/transforms on scroll-grid cards; overhanging badges sit inside card bounds; celebration overlays go full-screen/outside the scroll.
-- **`display: block` / `inline-flex` / `position: fixed`** rejected — use `display: flex`, `position: absolute` against a fullscreen root.
-- Replace all **emoji** with the iconify/in-game icon set — one set, one weight.
+## Navigation — the PawPad
+- **The persistent bottom bar is retired** (markup parked under `@if (false)` in `GameHUD.razor`). The only persistent HUD chrome is the **phone button** (bottom-right, wears an `M` keycap, shows a chat + alerts unread badge). Hidden during 3D battle.
+- **M or the phone button opens the PawPad** ("PawPad · TamerLink OS"; code `PhoneLauncher.razor`): a right-anchored device tilted `perspective(1600px) rotateY(-13deg)`, sliding in from the right, 3×4 app grid + System Dock. It's a **router, never a content holder** — the one exception being the four in-phone widget apps. Q / Esc / 8 close it.
+- **Apps (grid order; key in brackets):**
+  | App | Accent | Opens |
+  |---|---|---|
+  | BEASTS [1] | `#7b4ddb` | tab monsters |
+  | SKILLS [2] | `#ff6bd6` | tab skills |
+  | EXPEDITION [3] | `#ee5421` | tab expedition |
+  | ONLINE [4] | `#3f8fe0` | tab online |
+  | BEASTBOOK [5] | `#2dd4bf` | tab beastiary |
+  | SHOP [6] | `#ffce3a` | tab shop |
+  | QUESTS [7] | `#3fb45e` | QuestPanel overlay |
+  | BAG [9] | `#d9a054` | InventoryPanel overlay |
+  | CHAT [T] · RADIO [R] · EFFECTS [C] · ALERTS [N] | `#4aa8ff` · `#c26bff` · `#f7e024` · `#e0414a` | in-phone widget apps (no swipe) |
+  System Dock: Profile [0] · Settings · Guide · Feedback → popups (no swipe).
+- **The accent swipe** (replaced the liquid-expansion circle, which under-covered): a full-screen slab in the app's accent, slanted `-12deg`, 130%×124% of screen — sweeps in from the right (0.22s ease-out cubic), the phone hides and the route fires at full cover, holds 0.03s, sweeps out left (0.20s ease-in cubic); ~450ms total. The tapped icon shoots left 340px / scale 1.12 as it launches. Only tabs + Quests + Bag get the swipe.
+- **Router:** `Code/UI/NavManager.cs` — `GoTo(tab)`, `GoToIndex(i)`, `OpenOverlay(id)`, `NotifyTabChanged`, `TabChanged` event, `RoutedThisFrame`/`MarkRouted()` (one press = one route). GameHUD is the registered host.
+- **Notifications:** toasts are retired; the phone's **ALERTS** app is the record (last 50). A brief "peek" (≤3 cards, ~3.6s) slides out above the phone button; clicking it opens ALERTS.
+- Tab panels keep a 56px `::after` bottom spacer (clears the phone button); Roster uses `margin-bottom: 64px`.
+
+## Input grammar (keyboard)
+- **WASD** navigate · **Space / Enter / E** confirm (Space is the displayed key; E a silent alternate — `UiInput.ConfirmPressed()`) · **Q** back (universal) · **R** the page's power action · **Z / X** cycle sections/filters · **M** phone · **1–7, 9, 0** jump to apps · **T / N** open phone to Chat / Alerts · **F** hold-to-reset / page utility.
+- Routing: `GameHUD.OnUpdate` → active panel `TickInput()` → `HandleKeyboardInput()`; both stop while `UIModalState.AnyModalOpen`. Modals gate their `Tick()` on `UIModalState.IsTopModal(id)` (ConfirmDialog highest). Register every new blocking popup in `UIModalState`. Never set `AcceptsFocus` on page panels.
+- Known input bugs (2026-09 audit, not yet fixed): M doesn't close the phone; R on Skills/Beastbook/Roster also toggles the radio widget in the same frame (only Q has a `PanelHandledBackKey`-style guard).
 
 ---
 
-## Focus ring & button interaction (the reusable cursor)
-The keyboard/focus cursor is a **violet ring** (`#9b6cff`) with a small even GAP,
-implemented as a **real bordered element** (NOT box-shadow — s&box distorts corners):
-a child at `inset:-10px; border:4px solid #9b6cff; border-radius: hostRadius+10;
-background-color: rgba(0,0,0,0); opacity:0`, flipped to `opacity:1` on focus/selection.
-If the host has `overflow:hidden`, make the ring a *sibling* in a slot; otherwise a direct
-*child*. Scale inset/border down for small controls.
-
-**The rule:** a ring-bearing button must NOT transform on hover/active (a lift breaks the
-even gap) — feedback is **brighten (hover) / dim (active)** only. Mouse-only buttons with
-no ring may use hover-lift 1px + brighten. **Hue never changes between states.** Where
-hover also sets the keyboard index (hover == focus), the ring shows on hover too — one
-identical cursor on every control, in every panel.
+## s&box translation layer (browser CSS that doesn't port)
+Authoritative table: `CLAUDE.md`. The ones that shape this visual language:
+- No `backdrop-filter` → near-opaque solid/gradient fills. No `conic-gradient` → linear/solid.
+- `radial-gradient` → bare percent stops only; no shape keyword. Circles/wipes = solid scaling/sliding divs (the accent swipe is a skewed solid slab).
+- No `transparent` inside gradients → `rgba(...,0)`.
+- No `filter` on sprites (`<img>` blurs pixel art) → glow via a behind div, shadow via a wrapper `box-shadow` (never `inset`).
+- No CSS border-triangles → iconify or text glyphs.
+- `image-rendering: pixelated` on sprites; never fractional-scale pixel art.
+- Scroll containers don't clip descendant `box-shadow`/`transform` → no colored glows or lifts on scroll-grid cards; overhanging badges stay inside card bounds.
+- No `display: block` / `inline-flex` / `position: fixed` / `box-sizing` (s&box is padding-box: declared size includes padding, borders add on top).
+- Replace all emoji with the iconify set.
 
 ---
 
 ## Voice
-UI copy: short, confident, imperative ("Embark", "Out now.", "Five new beasts await."). Lore copy: warm, sensory, a little mythic. Labels UPPERCASE tracked; numbers brag for themselves ("PWR 916"). Dry wit ("Genetics go brrrrr."), rare exclamation points, never explain what the player can already see.
+UI copy: short, confident, imperative ("Embark", "Out now.", "Five new beasts await."). Lore copy: warm, sensory, a little mythic. Labels UPPERCASE tracked; numbers brag for themselves ("PWR 916"). Dry wit, rare exclamation points, never explain what the player can already see.
 
 ---
 
-## Live-game corrections vs the old handoff (quick list)
-1. **Wind is currently teal** (`#0d9488`/`#2dd4bf`) — a good anchor, but NOT locked; the whole element palette is open to Fable 5's redesign.
-2. **The full element palette is being REDESIGNED by Fable 5** as one cohesive set — don't re-canonize the old per-panel values; iterate from the shipped baseline, keep the two-tone rendering system.
-3. **Currency** = Gold/Ink/Tokens, not "gem".
-4. **Rarity** includes **Mythic** above Legendary.
-5. **The persistent bottom command bar is being retired** for the phone launcher (see Navigation) — don't design new panels around a permanent bottom bar or its 96px reserve.
-6. **Radii are rounder now** (16/22/26/30) than the old 10/14/18 panel scale.
+## Known stale sources (don't follow these parts)
+- `.claude/design-system/` cards `cursor.html`, `section-header.html`, `wave-header.html` — still show the retired **pink** fusion ring/chips/waves; fusion CTA shown as gold "go"; `move-slab.html` says "hover is bg-brighten".
+- `Code/UI/BbTokens.cs` — TSnap 0.14 / TCard 0.16 and 16/22/26/30 radius constants are stale; `Element`/`Rarity` sets unused.
+- `style-guide.md` — April-era cookbook (bronze-bevel buttons, `#8b5cf6` as interaction color, brighten hovers). Use for component anatomy only where it doesn't conflict with this doc.
+- Stale code comments: `PhoneLauncher.razor:15-17` (says Slot8 / persistent bar), `GameHUD.razor.scss` + `MonsterRosterPanel.razor.scss:431` ("96px" reserve), FUSE CTA "gold go tier" comment (`MonsterRosterPanel.razor.scss:~6340`).
