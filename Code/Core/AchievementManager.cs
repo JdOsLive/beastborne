@@ -581,11 +581,17 @@ public sealed class AchievementManager : Component
 
 		if ( paid > 0 )
 		{
-			NotificationManager.Instance?.AddNotification(
-				NotificationType.Success,
-				"Achievements Renewed",
-				$"Unclaimed rewards paid out: {gold:N0} Gold, {ink:N0} Ink, {tokens:N0} Tokens.",
-				8f );
+			// List only what was actually paid ("5,000 Gold", not "5,000 Gold, 0 Ink, 0 Tokens").
+			var parts = new List<string>();
+			if ( gold > 0 ) parts.Add( $"{gold:N0} Gold" );
+			if ( ink > 0 ) parts.Add( $"{ink:N0} Ink" );
+			if ( tokens > 0 ) parts.Add( $"{tokens:N0} Tokens" );
+			if ( parts.Count > 0 )
+				NotificationManager.Instance?.AddNotification(
+					NotificationType.Success,
+					"Achievements Renewed",
+					$"Unclaimed rewards paid out: {string.Join( ", ", parts )}.",
+					8f );
 		}
 
 		return true;
