@@ -117,6 +117,9 @@ public class Tamer
 	public int TotalMiniGamesPlayed { get; set; } = 0;
 	public int ChatMessagesSent { get; set; } = 0;
 	public int BossTokensSpent { get; set; } = 0;
+	// Tribute contract attempts where Tokens were actually paid (win or lose).
+	// Added with the 2026-09 achievement restart — no history before that.
+	public int TributesOffered { get; set; } = 0;
 	public int TotalDamageDealt { get; set; } = 0;
 	public int TotalKnockouts { get; set; } = 0;
 	public int ArenaWinStreak { get; set; } = 0;
@@ -126,6 +129,17 @@ public class Tamer
 
 	// Achievement system
 	public Dictionary<string, AchievementProgress> Achievements { get; set; } = new();
+
+	// Which achievement SET this save's Achievements dict belongs to. Owned by
+	// AchievementManager — deliberately NOT MigrationVersion (that counter is
+	// shared, and sharing it broke the gem conversion). 0/1 = legacy 73-achievement
+	// set; 2 = the 2026-09 restart (15 achievements). See
+	// AchievementManager.ApplyAchievementRestart.
+	public int AchievementSetVersion { get; set; } = 0;
+
+	// Set by the restart wipe; cleared once RetroactiveCheck has re-unlocked the
+	// new set from lifetime stats (after every manager has loaded).
+	public bool AchievementRetroPending { get; set; } = false;
 
 	// Species-level mastery progress (keyed by SpeciesId) — replaces per-instance VeteranRank
 	public Dictionary<string, SpeciesMasteryData> SpeciesMastery { get; set; } = new();
