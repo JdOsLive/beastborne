@@ -30,7 +30,10 @@ Plan: `.claude/ui-knowledge/ui-overhaul-brief.md` · Scores: `.claude/ui-knowled
    tokens. Skew is *not* assumed: it stays only where the decision session says it earns
    its place (user, 2026-09-25: the skew angles mostly weren't working).
 5. **Zero known input bugs** from the audit's quick-fix list.
-6. **Main menu rebuilt** on the shared system (final phase). Battle screen untouched.
+6. **One reward system:** every reward in the game is a `RewardBundle` paid through one
+   function and shown by one component + one celebration; currencies are exactly Gold,
+   Ink and Tokens (no gems in code, saves or UI); new pixel-art currency icons.
+7. **Main menu rebuilt** on the shared system (final phase). Battle screen untouched.
 
 ## Code-health goals (less code, less debt)
 Smaller code is cheaper to change, cheaper for Claude to read, and has fewer places to
