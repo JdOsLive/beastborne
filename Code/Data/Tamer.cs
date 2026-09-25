@@ -77,13 +77,8 @@ public class Tamer
 	public Dictionary<string, bool> HardModeCleared { get; set; } = new();
 	public int HighestHardModeCleared { get; set; } = 0;
 
-	// Hard Mode token currency — one bucket per zone. Awarded 3-5 per Hard clear.
-	// Tide  = Weaverton  · Loom = Weaverwood · Dawn = Weavermere · Threaded = Whispering Hollow.
-	// Redemption flow ships in a follow-up patch (items-economy lane).
-	public int TideTokens { get; set; } = 0;
-	public int LoomTokens { get; set; } = 0;
-	public int DawnTokens { get; set; } = 0;
-	public int ThreadedTokens { get; set; } = 0;
+	// (Regional Hard tokens Tide/Loom/Dawn/Threaded removed 2026-09-25 — unreleased,
+	// no sink. First Hard clears pay Tokens instead: ExpeditionManager.HARD_MODE_FIRST_CLEAR_TOKENS.)
 
 	public string ArenaRank { get; set; } = "Unranked";
 	public int ArenaPoints { get; set; } = 0;

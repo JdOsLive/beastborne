@@ -262,6 +262,34 @@ public sealed class TamerManager : Component
 				CurrentTamer.MigrationVersion = 2;
 			}
 
+			// MigrationVersion 3 — gems removed (user 2026-09-25). Quests, the
+			// login streak and milestones used to pay a gem currency with no sink
+			// (the quest UI even showed Token icons); convert saved gems to Tokens
+			// 1:1, safety-capped. Written straight to BossTokens (not a "spend",
+			// not an earn event). The bump + zeroing land in the same save, so it
+			// can't double-apply. Keep Tamer.Gems until ≥1.4: the JSON loader
+			// drops unknown fields, so deleting it first would erase balances
+			// before this could read them. (Regional Hard tokens were removed too —
+			// unreleased, so there are no player balances to convert.)
+			if ( CurrentTamer.MigrationVersion < 3 )
+			{
+				int gems = Math.Clamp( CurrentTamer.Gems, 0, 4000 );
+				if ( CurrentTamer.Gems > 4000 )
+					Log.Warning( $"[TamerManager] Migration v3: {CurrentTamer.Gems} gems exceeds the 4000 cap — converting 4000." );
+				CurrentTamer.BossTokens += gems;
+				CurrentTamer.Gems = 0;
+				CurrentTamer.MigrationVersion = 3;
+				if ( gems > 0 )
+				{
+					Log.Info( $"[TamerManager] Migration v3: converted {gems} gems to Tokens." );
+					NotificationManager.Instance?.AddNotification(
+						NotificationType.Success,
+						"Gems are now Tokens",
+						$"Your {gems:N0} Gems were converted to {gems:N0} Tokens.",
+						8f );
+				}
+			}
+
 			// ── DEFINITIVE SKILL-STATE FIX ─────────────────────────────────
 			// Single self-healing audit on hydrate. Enforces the invariant
 			// TotalEarnedSP(Level) == SkillPoints + Σ(rank × CostPerRank).
