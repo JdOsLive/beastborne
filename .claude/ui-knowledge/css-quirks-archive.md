@@ -1,3 +1,5 @@
+> **ARCHIVED 2026-09 — stale, do not use.** Superseded by the quirks table in `CLAUDE.md` (authoritative) + `laws.md`. Several entries here predate the s&box 26.06.03 CSS parser rewrite and are now WRONG (e.g. unitless `line-height`, content-box).
+
 # s&box CSS Quirks (agent-owned mirror)
 
 This mirrors the quirks table in `CLAUDE.md`. Keep in sync — if a new quirk is learned, add it here AND flag for promotion to CLAUDE.md in `learnings.md` with a `[PROMOTE]` tag.

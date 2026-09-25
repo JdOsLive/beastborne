@@ -1,3 +1,5 @@
+> **ARCHIVE — grep only, never read whole (~560 KB).** Distilled rules live in `laws.md` (always read). This file is the full dated journal: grep it by panel name, CSS class, symptom, or the `src:` heading cited in `laws.md`. New session narration / per-panel changelogs get APPENDED at the end as a dated `##` section; durable rules go into `laws.md` instead. The "Rules for writing/reading this file" below predate the split (2026-09) — the ~100-entry cap now applies to `laws.md`.
+
 # sbox-ui Agent Learnings
 
 A growing file of things the agent has learned while working on Beastborne UI. Every invocation reads this; every invocation may append to it.
