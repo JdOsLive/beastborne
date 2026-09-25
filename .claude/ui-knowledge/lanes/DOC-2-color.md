@@ -4,7 +4,7 @@
 semantic colors (violet = cursor, gold = primary), the element and rarity token systems, the
 two-tone badge recipe, surface tones, and the stroke/glow budget's COLOR half. It is a LENS —
 canonical values live in `guiding-star.md` (§Color tokens, §Surface & stroke),
-`Code/UI/BbTokens.cs`, `.claude/design-system/tokens/colors.html`, and dated `learnings.md`
+`Code/UI/BbTokens.cs`, `.claude/design-system/tokens/colors.html`, and dated `learnings-archive.md`
 rulings. Sources win over this summary; flag drift.
 
 ## THE CHECKLIST

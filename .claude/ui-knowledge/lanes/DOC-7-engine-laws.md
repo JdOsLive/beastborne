@@ -3,7 +3,7 @@
 **Charter.** This lane owns what the engine will and won't do — the constraints no design
 decision can override. It is a distilled INDEX, not the law book: the full rows live in the
 **CLAUDE.md quirks table** (authoritative), `css-quirks.md`, `guiding-star.md` §s&box
-translation layer, and dated `learnings.md` entries. Cite the row, verify against the source;
+translation layer, and dated `learnings-archive.md` entries. Cite the row, verify against the source;
 if the engine version changes (parser rewrites like 26.06.03), the sources get updated first.
 
 ## THE CHECKLIST — grouped by symptom
@@ -56,4 +56,4 @@ if the engine version changes (parser rewrites like 26.06.03), the sources get u
 ## WHAT THIS LANE DOES NOT OWN
 Design intent — every other lane. This doc says what CANNOT work; it never says what SHOULD.
 When a checklist here collides with a design ask, the engine wins and the design lane adapts
-(and the collision gets recorded in `learnings.md`, promoted to CLAUDE.md when proven twice).
+(and the collision gets recorded in `learnings-archive.md`, promoted to CLAUDE.md when proven twice).

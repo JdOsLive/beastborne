@@ -4,7 +4,7 @@
 the slab construction of components, the radius ladder, page-header anatomy, the spacing
 scale, and every pixel of width/height math under s&box's padding-box model. It is a LENS,
 not a fork — canonical truth lives in `guiding-star.md` (§Layout, §Navigation, §2 angled
-planes), `learnings.md` (dated entries cited below), and the CLAUDE.md quirks table. If this
+planes), `learnings-archive.md` (dated entries cited below), and the CLAUDE.md quirks table. If this
 doc and a source disagree, the source wins; flag the drift.
 
 ## THE CHECKLIST

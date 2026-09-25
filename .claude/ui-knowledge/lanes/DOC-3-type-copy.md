@@ -3,7 +3,7 @@
 **Charter.** This lane owns everything written and how it is set: the Exo 2 family rules,
 the size/weight ladder, the italic doctrine, the 12px player-facing floor, casing/tracking,
 and the plain-words copy voice. It is a LENS — canonical truth lives in `guiding-star.md`
-(§Typography, §Voice), `learnings.md` dated rulings, and the shipped font registrations in
+(§Typography, §Voice), `learnings-archive.md` dated rulings, and the shipped font registrations in
 `GameHUD.razor.scss:1-34`. Where guiding-star and shipped code disagree (2 cuts vs 6
 registered families), THE CODE WINS. [learnings 2026-07-12 drift item 1]
 

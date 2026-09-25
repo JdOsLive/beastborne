@@ -6,9 +6,10 @@ mass-generate consistently instead of each build re-deriving the laws.
 ## The docs (lenses over canonical truth — see lanes/INDEX.md)
 DOC-1 layout · DOC-2 color · DOC-3 type/copy · DOC-4 motion · DOC-5 input ·
 DOC-6 components · DOC-7 engine laws. Canonical sources stay authoritative
-(guiding-star.md, learnings.md, CLAUDE.md quirks, design-system cards); the DOCs are
-checklists with pointers. When a new law is learned, it lands in learnings/CLAUDE.md
-FIRST, then the relevant DOC checklist gets one line pointing at it.
+(guiding-star.md, laws.md, CLAUDE.md quirks, design-system cards; learnings-archive.md is the
+grep-only dated journal); the DOCs are checklists with pointers. When a new law is learned, the
+dated narrative goes in learnings-archive.md and the distilled rule in laws.md (or CLAUDE.md if it
+applies to most tasks) FIRST, then the relevant DOC checklist gets one line pointing at it.
 
 ## The lanes (standing agents in .claude/agents/)
 | # | agent | owns | runs |

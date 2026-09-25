@@ -3,7 +3,7 @@
 **Charter.** This lane owns how the player drives a page: the canonical key map, the
 one-cursor / one-device model, ring-vs-slab cursor costumes and their geometry, hover laws,
 `TickInput`/`UIModalState`/`NavManager` routing, and hit-testing. It is a LENS — canonical
-truth lives in `learnings.md` (§Input/keyboard + the dated one-cursor entries),
+truth lives in `learnings-archive.md` (§Input/keyboard + the dated one-cursor entries),
 `Code/UI/UIModalState.cs`, `Code/UI/UiInput.cs`, `guiding-star.md` (§Focus ring), and memory
 `project_keyboard_nav.md`. Sources win; flag drift.
 

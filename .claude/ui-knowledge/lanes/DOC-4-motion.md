@@ -5,7 +5,7 @@ transitions-vs-keyframes decision tree, stagger ladders, the smash pop, the livi
 motion character, entrance grammar, celebration setpieces, and the list of things that never
 move. It is a LENS — canonical truth lives in `guiding-star.md` (§Motion),
 `.claude/design-system/components/online-motion-spec.html`, `tokens/motion.html`, and the
-dated `learnings.md` animation laws cited below. Sources win; flag drift.
+dated `learnings-archive.md` animation laws cited below. Sources win; flag drift.
 
 ## THE CHECKLIST
 1. Every motion belongs to exactly ONE layer — **FLOW** (slow ambient, the scene, never controls) / **ALIVE** (the violet ring ONLY, glide 0.27s `cubic-bezier(0.22,1,0.36,1)` + ink-lean wave) / **SNAP** (finite ≤150ms on the control you touched). Can't name the layer → the motion is wrong. [guiding-star §Motion table]
